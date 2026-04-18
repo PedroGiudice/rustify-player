@@ -110,12 +110,13 @@ impl PositionUpdate {
 }
 
 /// Output routing mode the user picks in settings.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OutputMode {
     /// System default (on Linux this goes ALSA default -> PipeWire -> user's
     /// default sink, which is typically routed through EasyEffects).
     /// PipeWire handles sample-rate conversion; the engine does not.
+    #[default]
     System,
 
     /// Open an ALSA `hw:X,Y` device directly, bypassing PipeWire. The engine
@@ -124,12 +125,6 @@ pub enum OutputMode {
 
     /// Route through a running JACK server.
     Jack,
-}
-
-impl Default for OutputMode {
-    fn default() -> Self {
-        OutputMode::System
-    }
 }
 
 /// Information about an enumerated output device (shown in Settings).
