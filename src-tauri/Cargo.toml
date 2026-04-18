@@ -59,5 +59,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = "1"
+tracing-subscriber = { workspace = true }
 library-indexer = { path = "crates/library-indexer" }
 audio-engine = { path = "crates/audio-engine", features = ["serde"] }
+tauri-plugin-fs = "2.5.0"

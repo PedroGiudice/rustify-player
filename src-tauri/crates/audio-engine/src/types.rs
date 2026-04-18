@@ -66,6 +66,7 @@ pub enum PlaybackState {
     Idle,
     Loading {
         track: TrackHandle,
+        play_on_load: bool,
     },
     Playing {
         track: TrackHandle,
@@ -168,6 +169,7 @@ pub enum Command {
 
 /// Events broadcast from the engine back to consumers.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum StateUpdate {
     StateChanged(PlaybackState),
     Position(PositionUpdate),

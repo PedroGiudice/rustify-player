@@ -1,3 +1,5 @@
+import { playTrack } from "../components/player-bar.js";
+
 const { invoke } = window.__TAURI__.core;
 
 export function render() {
@@ -67,7 +69,7 @@ async function load(view) {
       try {
         const tracks = await invoke("lib_shuffle", { limit: 50 });
         if (tracks.length > 0) {
-          await invoke("player_play", { path: tracks[0].path });
+          playTrack(tracks[0]);
           for (let i = 1; i < Math.min(tracks.length, 5); i++) {
             await invoke("player_enqueue_next", { path: tracks[i].path });
           }

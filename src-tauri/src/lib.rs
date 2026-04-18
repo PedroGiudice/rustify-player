@@ -6,13 +6,16 @@ use library_indexer::{
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 // ---------------------------------------------------------------------------
 // State wrappers
 // ---------------------------------------------------------------------------
 
-struct Library(IndexerHandle);
+struct Library {
+    handle: IndexerHandle,
+    cache_dir: PathBuf,
+}
 struct Player(Mutex<Option<EngineHandle>>);
 
 // ---------------------------------------------------------------------------
@@ -29,7 +32,7 @@ fn err(e: impl std::fmt::Display) -> String {
 
 #[tauri::command]
 fn lib_list_genres(lib: State<Library>) -> Result<Vec<Genre>, String> {
-    lib.0.list_genres().map_err(err)
+    lib.handle.list_genres().map_err(err)
 }
 
 #[tauri::command]
@@ -47,7 +50,7 @@ fn lib_list_tracks(
         limit,
         ..Default::default()
     };
-    lib.0.list_tracks(filter).map_err(err)
+    lib.handle.list_tracks(filter).map_err(err)
 }
 
 #[tauri::command]
@@ -63,7 +66,16 @@ fn lib_list_albums(
         limit,
         ..Default::default()
     };
-    lib.0.list_albums(filter).map_err(err)
+    let mut albums = lib.handle.list_albums(filter).map_err(err)?;
+
+    // Resolve absolute cover paths
+    for album in &mut albums {
+        if let Some(rel) = &album.cover_path {
+            album.cover_path = Some(lib.cache_dir.join(rel).to_string_lossy().to_string());
+        }
+    }
+
+    Ok(albums)
 }
 
 #[tauri::command]
@@ -77,7 +89,7 @@ fn lib_list_artists(
         limit,
         ..Default::default()
     };
-    lib.0.list_artists(filter).map_err(err)
+    lib.handle.list_artists(filter).map_err(err)
 }
 
 #[tauri::command]
@@ -86,22 +98,28 @@ fn lib_search(
     query: String,
     limit: Option<usize>,
 ) -> Result<SearchResults, String> {
-    lib.0.search(&query, limit.unwrap_or(20)).map_err(err)
+    lib.handle.search(&query, limit.unwrap_or(20)).map_err(err)
 }
 
 #[tauri::command]
 fn lib_get_track(lib: State<Library>, id: i64) -> Result<Option<Track>, String> {
-    lib.0.track(id).map_err(err)
+    lib.handle.track(id).map_err(err)
 }
 
 #[tauri::command]
 fn lib_get_album(lib: State<Library>, id: i64) -> Result<Option<Album>, String> {
-    lib.0.album(id).map_err(err)
+    let album = lib.handle.album(id).map_err(err)?;
+    Ok(album.map(|mut a| {
+        if let Some(rel) = &a.cover_path {
+            a.cover_path = Some(lib.cache_dir.join(rel).to_string_lossy().to_string());
+        }
+        a
+    }))
 }
 
 #[tauri::command]
 fn lib_get_artist(lib: State<Library>, id: i64) -> Result<Option<Artist>, String> {
-    lib.0.artist(id).map_err(err)
+    lib.handle.artist(id).map_err(err)
 }
 
 #[tauri::command]
@@ -110,7 +128,7 @@ fn lib_similar(
     track_id: i64,
     limit: Option<usize>,
 ) -> Result<Vec<SimilarTrack>, String> {
-    lib.0
+    lib.handle
         .similar(track_id, limit.unwrap_or(10))
         .map(|v| v.into_iter().map(|(t, s)| SimilarTrack { track: t, score: s }).collect())
         .map_err(err)
@@ -138,12 +156,12 @@ fn lib_shuffle(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    lib.0.shuffle(filter, seed, limit.unwrap_or(50)).map_err(err)
+    lib.handle.shuffle(filter, seed, limit.unwrap_or(50)).map_err(err)
 }
 
 #[tauri::command]
 fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
-    lib.0.snapshot()
+    lib.handle.snapshot()
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +228,15 @@ fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,audio_engine=debug,rustify_player=debug".into()),
+        )
+        .init();
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|_app| {
             let home = dirs_home();
@@ -233,9 +259,21 @@ pub fn run() {
 
             let indexer = Indexer::open(config)
                 .expect("failed to open library indexer");
-            _app.manage(Library(indexer));
+            _app.manage(Library {
+                handle: indexer,
+                cache_dir,
+            });
 
             let engine = Engine::start().expect("failed to start audio engine");
+            
+            let rx = engine.subscribe();
+            let app_handle = _app.handle().clone();
+            std::thread::spawn(move || {
+                while let Ok(event) = rx.recv() {
+                    let _ = app_handle.emit("player-state", event);
+                }
+            });
+
             _app.manage(Player(Mutex::new(Some(engine))));
 
             Ok(())

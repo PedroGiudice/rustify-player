@@ -1,4 +1,6 @@
-const { invoke } = window.__TAURI__.core;
+import { playTrack } from "../components/player-bar.js";
+
+const { invoke, convertFileSrc } = window.__TAURI__.core;
 
 export function render() {
   const view = document.createElement("article");
@@ -28,7 +30,7 @@ async function load(view) {
       <div class="card-grid">
         ${albums.map((a) => `
           <div class="card" data-album-id="${a.id}">
-            <div class="card__cover card__cover--initials">${initials(a.title)}</div>
+            <div class="card__cover card__cover--initials" id="album-cover-${a.id}">${initials(a.title)}</div>
             <div class="card__label">${esc(a.title)}</div>
             <div class="card__sub">${esc(a.album_artist_name || "—")}${a.year ? ` &bull; ${a.year}` : ""}</div>
           </div>
@@ -36,13 +38,29 @@ async function load(view) {
       </div>
     `;
 
+    // Fetch covers asynchronously
+    albums.forEach(async (a) => {
+      try {
+        if (a.cover_path) {
+          const assetUrl = convertFileSrc(a.cover_path);
+          const coverDiv = body.querySelector(`#album-cover-${a.id}`);
+          if (coverDiv) {
+            coverDiv.innerHTML = `<img src="${assetUrl}" alt="${esc(a.title)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">`;
+            coverDiv.classList.remove("card__cover--initials");
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load cover for album", a.id, e);
+      }
+    });
+
     body.addEventListener("click", async (e) => {
       const card = e.target.closest(".card");
       if (!card) return;
       const albumId = Number(card.dataset.albumId);
       const tracks = await invoke("lib_list_tracks", { albumId, limit: 100 });
       if (tracks.length > 0) {
-        await invoke("player_play", { path: tracks[0].path });
+        playTrack(tracks[0]);
         for (let i = 1; i < tracks.length; i++) {
           await invoke("player_enqueue_next", { path: tracks[i].path });
         }

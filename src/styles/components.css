@@ -407,6 +407,128 @@
   color: var(--on-surface-variant);
 }
 
+/* ===== Card grid (artists, albums) ===== */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-6);
+  padding: var(--space-4) 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+}
+
+.card__cover {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  background: var(--surface-container);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.card:hover .card__cover {
+  background: var(--surface-container-high);
+}
+
+.card__cover--initials {
+  font-family: var(--font-body);
+  font-size: var(--text-display-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--primary);
+}
+
+.card__label {
+  font-size: var(--text-body-md);
+  font-weight: var(--fw-medium);
+  color: var(--on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: var(--tracking-tight);
+}
+
+.card__sub {
+  font-size: var(--text-label-md);
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Home ===== */
+.home-section {
+  margin-bottom: var(--space-12);
+}
+
+.home-section__title {
+  font-size: var(--text-headline-sm);
+  font-weight: var(--fw-bold);
+  color: var(--on-surface);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-4);
+}
+
+.home-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+
+.home-action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  color: var(--on-surface);
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: background var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard);
+}
+
+.home-action:hover {
+  background: var(--surface-container-high);
+  border-color: var(--primary);
+}
+
+.home-action:hover .home-action__label {
+  color: var(--primary);
+}
+
+.home-action__label {
+  font-size: var(--text-title-md);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.home-action__hint {
+  font-size: var(--text-label-md);
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
 /* ===== View toolbar ===== */
 .view__toolbar {
   margin-top: var(--space-4);

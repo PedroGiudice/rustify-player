@@ -222,7 +222,7 @@ impl EngineState {
 
     fn cmd_load(&mut self, path: PathBuf) {
         let handle = self.fresh_handle();
-        self.set_state(PlaybackState::Loading { track: handle });
+        self.set_state(PlaybackState::Loading { track: handle, play_on_load: false });
         spawn_prepare(path, handle, PrepareTarget::Current, self.prepared_tx.clone());
     }
 
@@ -233,6 +233,9 @@ impl EngineState {
 
     fn cmd_play(&mut self) {
         if self.current.is_none() {
+            if let PlaybackState::Loading { track, .. } = &self.state {
+                self.set_state(PlaybackState::Loading { track: *track, play_on_load: true });
+            }
             return;
         }
         if self.active_stream.is_none() {
@@ -345,12 +348,28 @@ impl EngineState {
             info: prep.info.clone(),
             format: prep.format,
         });
-        // Entering Paused preserves the "Load loads but does not play" contract.
-        self.set_state(PlaybackState::Paused {
-            track: prep.info.handle,
-            position_samples: 0,
-        });
+
+        let handle = prep.info.handle;
         let _ = self.state_tx.send(StateUpdate::TrackStarted(prep.info));
+
+        let should_play = if let PlaybackState::Loading { play_on_load, .. } = self.state {
+            play_on_load
+        } else {
+            false
+        };
+
+        if should_play {
+            self.set_state(PlaybackState::Playing {
+                track: handle,
+                position_samples: 0,
+            });
+        } else {
+            // Entering Paused preserves the "Load loads but does not play" contract.
+            self.set_state(PlaybackState::Paused {
+                track: handle,
+                position_samples: 0,
+            });
+        }
     }
 
     // ---------------------------------------------------------------------

@@ -1,3 +1,5 @@
+import { playTrack } from "../components/player-bar.js";
+
 const { invoke } = window.__TAURI__.core;
 
 export function render() {
@@ -120,9 +122,10 @@ function renderTracks(tbody, tracks) {
     const row = e.target.closest(".track-row");
     if (!row) return;
     const path = row.dataset.path;
-    invoke("player_play", { path }).catch((err) =>
-      console.error("[player] play failed:", err)
-    );
+    const track = tracks.find((t) => t.id == row.dataset.trackId);
+    if (track) {
+      playTrack(track);
+    }
   });
 }
 
