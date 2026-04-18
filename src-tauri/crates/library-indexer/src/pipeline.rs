@@ -301,13 +301,13 @@ fn run_scan(
     }
 
     let _ = evt_tx.send(IndexerEvent::ScanProgress { processed, total });
+    state.refresh_from_db(writer);
+    state.scan_in_progress.store(false, Ordering::Relaxed);
     let _ = evt_tx.send(IndexerEvent::ScanDone {
         added,
         updated,
         removed,
     });
-    state.scan_in_progress.store(false, Ordering::Relaxed);
-    state.refresh_from_db(writer);
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 [Unit]
 Description=rustify-embed (MERT audio embedding service for rustify-player)
-After=docker.service tailscaled.service
-Requires=docker.service
+# systemd --user cannot reference system units (docker.service is system-level).
+# User is responsible for ensuring Docker is running before starting this unit.
 
 [Service]
 Type=simple
