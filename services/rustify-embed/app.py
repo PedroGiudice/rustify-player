@@ -79,7 +79,12 @@ def health() -> HealthResponse:
 
 @app.post("/embed", response_model=EmbedResponse)
 async def embed(request: Request) -> EmbedResponse:
-    content_encoding = request.headers.get("Content-Encoding", "").lower()
+    # Use X-Audio-Encoding instead of Content-Encoding to avoid reverse
+    # proxies (Tailscale Serve, nginx) stripping or altering the header.
+    content_encoding = request.headers.get(
+        "X-Audio-Encoding",
+        request.headers.get("Content-Encoding", ""),
+    ).lower()
     try:
         sample_rate = int(request.headers.get("X-Sample-Rate", str(TARGET_SR)))
     except ValueError:
@@ -95,7 +100,7 @@ async def embed(request: Request) -> EmbedResponse:
     raw = await request.body()
     if content_encoding == "zstd":
         try:
-            raw = _decompressor.decompress(raw)
+            raw = _decompressor.decompress(raw, max_output_size=MAX_SAMPLES * 4 + 4096)
         except zstd.ZstdError as e:
             raise HTTPException(status_code=400, detail=f"zstd decompress: {e}")
     elif content_encoding not in ("", "identity"):

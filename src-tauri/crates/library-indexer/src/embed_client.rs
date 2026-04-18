@@ -101,14 +101,23 @@ impl EmbedClient {
             "POST /embed"
         );
 
-        let response = self
+        let response = match self
             .agent
             .post(&url)
             .set("Content-Type", "application/octet-stream")
-            .set("Content-Encoding", "zstd")
+            .set("X-Audio-Encoding", "zstd")
             .set("X-Sample-Rate", &TARGET_SAMPLE_RATE.to_string())
             .send_bytes(&compressed)
-            .map_err(|e| IndexerError::Embedding(format!("POST /embed: {e}")))?;
+        {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                return Err(IndexerError::Embedding(format!(
+                    "POST /embed: HTTP {code}: {body}"
+                )));
+            }
+            Err(e) => return Err(IndexerError::Embedding(format!("POST /embed: {e}"))),
+        };
 
         let parsed: EmbedResponse = response
             .into_json()
