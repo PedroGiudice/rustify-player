@@ -87,9 +87,18 @@ fn configure_system(
         .ok_or(OutputError::NoDevices)?;
     let supported = device.default_output_config()?;
 
-    let stream_config: StreamConfig = supported.config();
+    // Open the stream at the SOURCE sample rate, not the device default.
+    // cpal's default_output_config() returns the device's preferred rate
+    // (e.g. 48000 on PipeWire), not a mandatory rate. Requesting the source
+    // rate here lets the ALSA->PipeWire plugin resample internally; without
+    // this override, the engine feeds source-rate samples into a device-rate
+    // stream and playback speed/pitch shifts (96k source -> 48k stream plays
+    // at half speed; 44.1k source -> 48k stream plays 8.8% fast).
+    let mut stream_config: StreamConfig = supported.config();
+    stream_config.sample_rate = format.sample_rate;
+
     let actual = StreamFormat {
-        sample_rate: stream_config.sample_rate,
+        sample_rate: format.sample_rate,
         source_channels: format.source_channels,
         output_channels: stream_config.channels,
         sample_format: SampleFormat::F32,
