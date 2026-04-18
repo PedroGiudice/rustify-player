@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# audio-engine fixtures (binary FLACs — kept out of git)
+src-tauri/crates/audio-engine/tests/fixtures/*.flac
+

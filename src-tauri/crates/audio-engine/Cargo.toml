@@ -1,0 +1,33 @@
+[package]
+name = "audio-engine"
+version = "0.1.0"
+description = "Audio decoding and playback engine for rustify-player (FLAC + cpal + PipeWire/ALSA)"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+name = "audio_engine"
+path = "src/lib.rs"
+
+[dependencies]
+symphonia = { workspace = true }
+cpal = { workspace = true }
+rtrb = { workspace = true }
+crossbeam-channel = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Used by integration tests and examples.
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[[example]]
+name = "play_file"
+path = "examples/play_file.rs"
