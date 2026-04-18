@@ -1,7 +1,7 @@
 [package]
 name = "audio-engine"
 version = "0.1.0"
-description = "Audio decoding and playback engine for rustify-player (FLAC + cpal + PipeWire/ALSA)"
+description = "Audio decoding and playback engine for rustify-player (FLAC + native PipeWire)"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -12,7 +12,8 @@ path = "src/lib.rs"
 
 [dependencies]
 symphonia = { workspace = true }
-cpal = { workspace = true }
+pipewire = { workspace = true }
+libspa = { workspace = true }
 rtrb = { workspace = true }
 crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }

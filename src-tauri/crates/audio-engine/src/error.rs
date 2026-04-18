@@ -57,50 +57,15 @@ pub enum OutputError {
     #[error("device disconnected")]
     Disconnected,
 
-    #[error("cpal stream error: {0}")]
-    CpalStream(String),
+    #[error("pipewire stream error: {0}")]
+    PipewireStream(String),
 
-    #[error("cpal build stream error: {0}")]
-    CpalBuild(String),
-
-    #[error("cpal devices error: {0}")]
-    CpalDevices(String),
+    #[error("pipewire init error: {0}")]
+    PipewireInit(String),
 }
 
-impl From<cpal::StreamError> for OutputError {
-    fn from(err: cpal::StreamError) -> Self {
-        match err {
-            cpal::StreamError::DeviceNotAvailable => OutputError::Disconnected,
-            cpal::StreamError::BackendSpecific { err } => {
-                OutputError::CpalStream(err.description)
-            }
-            // cpal 0.17 added these variants; treat both as generic stream
-            // errors rather than disconnects (they may be recoverable).
-            other => OutputError::CpalStream(other.to_string()),
-        }
-    }
-}
-
-impl From<cpal::BuildStreamError> for OutputError {
-    fn from(err: cpal::BuildStreamError) -> Self {
-        OutputError::CpalBuild(err.to_string())
-    }
-}
-
-impl From<cpal::DevicesError> for OutputError {
-    fn from(err: cpal::DevicesError) -> Self {
-        OutputError::CpalDevices(err.to_string())
-    }
-}
-
-impl From<cpal::DefaultStreamConfigError> for OutputError {
-    fn from(err: cpal::DefaultStreamConfigError) -> Self {
-        OutputError::CpalBuild(err.to_string())
-    }
-}
-
-impl From<cpal::SupportedStreamConfigsError> for OutputError {
-    fn from(err: cpal::SupportedStreamConfigsError) -> Self {
-        OutputError::CpalDevices(err.to_string())
+impl From<pipewire::Error> for OutputError {
+    fn from(err: pipewire::Error) -> Self {
+        OutputError::PipewireInit(err.to_string())
     }
 }

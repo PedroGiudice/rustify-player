@@ -11,7 +11,8 @@ license = "MIT"
 [workspace.dependencies]
 # Audio stack
 symphonia = { version = "0.5.4", default-features = false, features = ["flac"] }
-cpal = "0.17"
+pipewire = "0.9"
+libspa = "0.9"
 rtrb = "0.3"
 crossbeam-channel = "0.5"
 

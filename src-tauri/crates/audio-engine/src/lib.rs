@@ -1,7 +1,7 @@
 //! Audio engine for rustify-player.
 //!
 //! The crate exposes [`Engine`] and [`EngineHandle`], the public API for
-//! driving playback of FLAC files through cpal (PipeWire/ALSA/Jack) while
+//! driving playback of FLAC files through native PipeWire while
 //! keeping the audio callback thread free of allocations, locks, and I/O.
 //!
 //! The crate has no dependency on Tauri. Consumers (CLI, Tauri app, tests)
@@ -18,7 +18,7 @@ mod position;
 mod queue;
 
 pub use error::{EngineError, OutputError};
-pub use output::{AudioOutput, CpalOutput};
+pub use output::{AudioOutput, PipewireBackend};
 pub use types::{
     Command, DeviceInfo, EngineMetrics, OutputMode, PlaybackState, PositionUpdate, SampleFormat,
     StateUpdate, StreamFormat, TrackHandle,

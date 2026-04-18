@@ -1,7 +1,7 @@
-use audio_engine::{Command as EngineCommand, EngineHandle, Engine};
+use audio_engine::{Command as EngineCommand, Engine, EngineHandle};
 use library_indexer::{
-    Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, IndexerConfig,
-    IndexerHandle, Indexer, SearchResults, Track, TrackFilter, TrackOrder,
+    Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
+    IndexerHandle, SearchResults, Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -98,15 +98,18 @@ fn lib_search(
     query: String,
     limit: Option<usize>,
 ) -> Result<SearchResults, String> {
-    let mut results = lib.handle.search(&query, limit.unwrap_or(20)).map_err(err)?;
-    
+    let mut results = lib
+        .handle
+        .search(&query, limit.unwrap_or(20))
+        .map_err(err)?;
+
     // Resolve absolute cover paths in albums search results
     for album in &mut results.albums {
         if let Some(rel) = &album.cover_path {
             album.cover_path = Some(lib.cache_dir.join(rel));
         }
     }
-    
+
     // Resolve absolute cover paths in tracks search results
     for track in &mut results.tracks {
         if let Some(rel) = &track.album_cover_path {
@@ -152,7 +155,11 @@ fn lib_similar(
 ) -> Result<Vec<SimilarTrack>, String> {
     lib.handle
         .similar(track_id, limit.unwrap_or(10))
-        .map(|v| v.into_iter().map(|(t, s)| SimilarTrack { track: t, score: s }).collect())
+        .map(|v| {
+            v.into_iter()
+                .map(|(t, s)| SimilarTrack { track: t, score: s })
+                .collect()
+        })
         .map_err(err)
 }
 
@@ -178,7 +185,9 @@ fn lib_shuffle(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    lib.handle.shuffle(filter, seed, limit.unwrap_or(50)).map_err(err)
+    lib.handle
+        .shuffle(filter, seed, limit.unwrap_or(50))
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -194,7 +203,9 @@ fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
 fn player_play(player: State<Player>, path: String) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
-    handle.send(EngineCommand::Load(PathBuf::from(&path))).map_err(err)?;
+    handle
+        .send(EngineCommand::Load(PathBuf::from(&path)))
+        .map_err(err)?;
     handle.send(EngineCommand::Play).map_err(err)
 }
 
@@ -224,7 +235,9 @@ fn player_seek(player: State<Player>, seconds: f64) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
     handle
-        .send(EngineCommand::Seek(std::time::Duration::from_secs_f64(seconds)))
+        .send(EngineCommand::Seek(std::time::Duration::from_secs_f64(
+            seconds,
+        )))
         .map_err(err)
 }
 
@@ -279,15 +292,14 @@ pub fn run() {
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
             };
 
-            let indexer = Indexer::open(config)
-                .expect("failed to open library indexer");
+            let indexer = Indexer::open(config).expect("failed to open library indexer");
             _app.manage(Library {
                 handle: indexer,
                 cache_dir,
             });
 
             let engine = Engine::start().expect("failed to start audio engine");
-            
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             std::thread::spawn(move || {

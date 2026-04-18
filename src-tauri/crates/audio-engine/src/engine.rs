@@ -17,7 +17,7 @@
 //! - Scheduled events (defer `TrackStarted` by the ring-buffer fill) are not
 //!   yet implemented; we emit immediately. The UI will be a few hundred
 //!   milliseconds ahead of the DAC on track boundaries. Acceptable for v1.
-//! - Format-change drain (mid-track reconfigure of cpal stream) is not yet
+//! - Format-change drain (mid-track reconfigure of the output stream) is not yet
 //!   implemented; same-format gapless swap only. Different-format next
 //!   tracks are handled by stopping and re-configuring from the top.
 
@@ -31,7 +31,7 @@ use crossbeam_channel::{select, tick, Receiver, Sender};
 
 use crate::decoder::FlacDecoder;
 use crate::error::{EngineError, OutputError};
-use crate::output::{ActiveStream, AudioOutput, CpalOutput};
+use crate::output::{ActiveStream, AudioOutput, PipewireBackend};
 use crate::position::EventScheduler;
 use crate::queue::{spawn_prepare, PrepareTarget, PreparedDecoder, PreparedMessage};
 use crate::types::{
@@ -133,7 +133,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
         .name("audio-engine".to_string())
         .spawn(move || {
             let mut engine = EngineState {
-                output: Box::new(CpalOutput::new(OutputMode::default())),
+                output: Box::new(PipewireBackend::new(OutputMode::default())),
                 output_mode: OutputMode::default(),
                 active_stream: None,
                 current: None,
@@ -317,7 +317,7 @@ impl EngineState {
     fn cmd_set_output_mode(&mut self, mode: OutputMode) {
         self.output_mode = mode.clone();
         // Rebuild the backend with the new mode; previous stream is dropped.
-        self.output = Box::new(CpalOutput::new(mode.clone()));
+        self.output = Box::new(PipewireBackend::new(mode.clone()));
         self.active_stream = None;
         let _ = self
             .state_tx
@@ -396,7 +396,7 @@ impl EngineState {
             }
         }
 
-        // Detect disconnect from the cpal callback thread.
+        // Detect disconnect from the output callback thread.
         if let Some(stream) = &self.active_stream {
             if !stream.alive.load(Ordering::Acquire) {
                 self.active_stream = None;

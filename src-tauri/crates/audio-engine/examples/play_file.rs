@@ -2,7 +2,7 @@
 //!
 //! Loads one or more FLAC files into the engine, drives the state machine,
 //! and prints a progress bar to stderr. Useful as a smoke test when a Tauri
-//! UI is not available and for verifying bit-perfect and JACK output modes
+//! UI is not available and for verifying bit-perfect output modes
 //! on real hardware.
 //!
 //! ```text

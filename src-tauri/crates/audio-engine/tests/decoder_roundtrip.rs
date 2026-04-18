@@ -98,7 +98,7 @@ fn list_devices_does_not_panic() {
 // ---------------------------------------------------------------------------
 
 /// End-to-end playback: load track_01, play it, let the engine drive itself
-/// through the ring buffer and cpal until EOF. Verifies that we get the
+/// through the ring buffer and the output until EOF. Verifies that we get the
 /// expected sequence of state transitions and that the track actually
 /// completes.
 #[test]

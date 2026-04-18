@@ -3,14 +3,14 @@
 //! The engine does not own a specific audio API; it talks to an
 //! [`AudioOutput`] implementation. Two implementations are expected:
 //!
-//! - [`CpalOutput`] (real): routes through cpal to ALSA/PipeWire/Jack.
+//! - [`PipewireBackend`] (real): connects directly to the PipeWire daemon.
 //! - `MockAudioOutput` (tests): consumes samples at a fake clock rate.
 
 #![allow(dead_code)]
 
-mod cpal_backend;
+mod pipewire_backend;
 
-pub use cpal_backend::CpalOutput;
+pub use pipewire_backend::PipewireBackend;
 
 use crate::error::OutputError;
 use crate::types::{DeviceInfo, StreamFormat};
@@ -46,7 +46,7 @@ pub trait AudioOutput: Send {
     fn xrun_count(&self) -> u64;
 }
 
-/// Enumerate output devices across every host cpal knows about.
+/// Enumerate output devices visible through the PipeWire daemon.
 pub fn list_devices() -> Vec<DeviceInfo> {
-    cpal_backend::list_devices()
+    pipewire_backend::list_devices()
 }
