@@ -58,12 +58,13 @@ function renderRouteError(path, err) {
 }
 
 export function initRouter(mount) {
-  // If no hash on first load, normalize to default so sidebar highlights.
+  // Register listener BEFORE any hash mutation so the event doesn't fire
+  // before we're listening.
+  window.addEventListener("hashchange", () => resolve(mount));
+
   if (!window.location.hash) {
     window.location.hash = DEFAULT_ROUTE;
-    // The hashchange event will fire; return early here.
-    return;
+  } else {
+    resolve(mount);
   }
-  resolve(mount);
-  window.addEventListener("hashchange", () => resolve(mount));
 }
