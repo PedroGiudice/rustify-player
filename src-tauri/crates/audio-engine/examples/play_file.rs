@@ -51,12 +51,8 @@ struct Args {
     list_devices: bool,
 
     /// Use bit-perfect mode with this ALSA device (e.g. hw:0,0).
-    #[arg(long, conflicts_with = "jack")]
+    #[arg(long)]
     bit_perfect: Option<String>,
-
-    /// Use JACK host.
-    #[arg(long, conflicts_with = "bit_perfect")]
-    jack: bool,
 
     /// Volume 0.0..=1.0 (default 1.0).
     #[arg(long, default_value_t = 1.0)]
@@ -423,8 +419,6 @@ fn build_output_mode(args: &Args) -> OutputMode {
         OutputMode::BitPerfect {
             device: device.clone(),
         }
-    } else if args.jack {
-        OutputMode::Jack
     } else {
         OutputMode::System
     }

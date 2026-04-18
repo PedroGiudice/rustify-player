@@ -123,9 +123,6 @@ pub enum OutputMode {
     /// Open an ALSA `hw:X,Y` device directly, bypassing PipeWire. The engine
     /// reconfigures the output stream to match each track's sample rate.
     BitPerfect { device: String },
-
-    /// Route through a running JACK server.
-    Jack,
 }
 
 /// Information about an enumerated output device (shown in Settings).

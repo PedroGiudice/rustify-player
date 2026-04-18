@@ -57,10 +57,6 @@ impl AudioOutput for CpalOutput {
             OutputMode::BitPerfect { device } => {
                 configure_bit_perfect(self.xruns.clone(), format, device)
             }
-            OutputMode::Jack => {
-                tracing::warn!("Jack mode is not yet wired up; falling back to System");
-                configure_system(self.xruns.clone(), format)
-            }
         }
     }
 
