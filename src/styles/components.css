@@ -319,3 +319,90 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-widest);
 }
+
+/* ===== Genre chips ===== */
+.genre-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+}
+
+.chip {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-label-xs);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--on-surface-variant);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-standard);
+}
+
+.chip:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
+.chip--active {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+
+/* ===== Track table ===== */
+.track-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.track-table__th {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-label-xs);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  color: var(--on-surface-variant);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.track-table__th--num { width: 3rem; text-align: right; }
+.track-table__th--dur { width: 4rem; text-align: right; }
+
+.track-row {
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.track-row:hover {
+  background: var(--surface-container-high);
+}
+
+.track-table__td {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-sm);
+  color: var(--on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 20rem;
+}
+
+.track-table__td--num {
+  text-align: right;
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.track-table__td--title {
+  font-weight: var(--fw-medium);
+}
+
+.track-table__td--dur {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}

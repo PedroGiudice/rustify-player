@@ -206,7 +206,7 @@ pub enum IndexerEvent {
 }
 
 /// Cheap status snapshot for the UI status bar.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct IndexerSnapshot {
     pub tracks_total: u64,
     pub embeddings_done: u64,
