@@ -1,0 +1,16 @@
+# Pinned versions chosen for CPU inference stability on Ubuntu 24.04 / x86_64.
+# Rebuild the Docker image if you need to bump any of these.
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+zstandard==0.23.0
+numpy==1.26.4
+
+# Torch CPU-only wheel. --extra-index-url handled in Dockerfile.
+torch==2.4.1+cpu
+torchaudio==2.4.1+cpu
+
+# MERT uses custom code in modeling_MERT.py + Wav2Vec2FeatureExtractor.
+transformers==4.44.2
+accelerate==0.34.2

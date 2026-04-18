@@ -30,14 +30,13 @@ rusqlite = { version = "0.32", features = ["bundled", "blob", "limits"] }
 walkdir = "2"
 notify = { version = "6", default-features = false, features = ["macos_kqueue"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-ort = { version = "2.0.0-rc.10", default-features = false, features = ["download-binaries", "tls-rustls"] }
-ndarray = "0.16"
 rubato = "0.15"
 sha1 = "0.10"
 sha2 = "0.10"
 unicode-normalization = "0.1"
 strsim = "0.11"
-ureq = { version = "2", default-features = false, features = ["tls"] }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+zstd = { version = "0.13", default-features = false }
 tempfile = "3"
 
 [package]

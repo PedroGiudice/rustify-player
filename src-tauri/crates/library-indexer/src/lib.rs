@@ -17,7 +17,10 @@ pub mod types;
 mod db;
 mod scan;
 mod metadata;
-// Future modules (stubs added in subsequent tasks):
+mod cover;
+mod watch;
+mod search;
+mod embed_client;
 // mod cover;
 // mod embedding;
 // mod watch;

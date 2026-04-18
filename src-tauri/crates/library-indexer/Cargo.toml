@@ -21,9 +21,8 @@ rusqlite = { workspace = true }
 walkdir = { workspace = true }
 notify = { workspace = true }
 image = { workspace = true }
-ort = { workspace = true }
-ndarray = { workspace = true }
 rubato = { workspace = true }
+zstd = { workspace = true }
 sha1 = { workspace = true }
 sha2 = { workspace = true }
 unicode-normalization = { workspace = true }

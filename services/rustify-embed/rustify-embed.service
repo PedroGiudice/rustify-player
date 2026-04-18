@@ -1,0 +1,28 @@
+[Unit]
+Description=rustify-embed (MERT audio embedding service for rustify-player)
+After=docker.service tailscaled.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+
+# Fully-qualified image name locally. Build with:
+#   cd /home/opc/rustify-player/services/rustify-embed
+#   docker build -t rustify-embed:latest .
+ExecStartPre=-/usr/bin/docker stop rustify-embed
+ExecStartPre=-/usr/bin/docker rm rustify-embed
+ExecStart=/usr/bin/docker run \
+    --name rustify-embed \
+    --rm \
+    -p 127.0.0.1:8447:8447 \
+    --cpus=14 \
+    --memory=8g \
+    -v rustify-embed-models:/models \
+    rustify-embed:latest
+
+ExecStop=/usr/bin/docker stop rustify-embed
+
+[Install]
+WantedBy=default.target
