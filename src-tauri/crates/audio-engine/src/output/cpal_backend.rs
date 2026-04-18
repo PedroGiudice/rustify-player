@@ -82,31 +82,9 @@ fn configure_system(
     format: StreamFormat,
 ) -> Result<ActiveStream, OutputError> {
     let host = cpal::default_host();
-    
-    let mut device_opt = None;
-    
-    // On Linux ALSA, `default` often maps to the raw hardware or bypasses PipeWire 
-    // dynamically, causing choppy audio if buffer sizes negotiate poorly. 
-    // We explicitly hunt for the "pipewire" or "pulse" device first to ensure
-    // we route through the modern sound server cleanly.
-    if host.id().name() == "Alsa" {
-        if let Ok(devices) = host.output_devices() {
-            let available: Vec<_> = devices.collect();
-            for preferred in ["pipewire", "pulse", "default"] {
-                if let Some(dev) = available.iter().find(|d| device_name(d) == preferred) {
-                    if dev.default_output_config().is_ok() {
-                        device_opt = Some(dev.clone());
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    let device = device_opt
-        .or_else(|| host.default_output_device())
+    let device = host
+        .default_output_device()
         .ok_or(OutputError::NoDevices)?;
-        
     let supported = device.default_output_config()?;
 
     let stream_config: StreamConfig = supported.config();

@@ -71,7 +71,7 @@ fn lib_list_albums(
     // Resolve absolute cover paths
     for album in &mut albums {
         if let Some(rel) = &album.cover_path {
-            album.cover_path = Some(lib.cache_dir.join(rel).to_string_lossy().to_string());
+            album.cover_path = Some(lib.cache_dir.join(rel));
         }
     }
 
@@ -98,12 +98,34 @@ fn lib_search(
     query: String,
     limit: Option<usize>,
 ) -> Result<SearchResults, String> {
-    lib.handle.search(&query, limit.unwrap_or(20)).map_err(err)
+    let mut results = lib.handle.search(&query, limit.unwrap_or(20)).map_err(err)?;
+    
+    // Resolve absolute cover paths in albums search results
+    for album in &mut results.albums {
+        if let Some(rel) = &album.cover_path {
+            album.cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    
+    // Resolve absolute cover paths in tracks search results
+    for track in &mut results.tracks {
+        if let Some(rel) = &track.album_cover_path {
+            track.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+
+    Ok(results)
 }
 
 #[tauri::command]
 fn lib_get_track(lib: State<Library>, id: i64) -> Result<Option<Track>, String> {
-    lib.handle.track(id).map_err(err)
+    let track = lib.handle.track(id).map_err(err)?;
+    Ok(track.map(|mut t| {
+        if let Some(rel) = &t.album_cover_path {
+            t.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+        t
+    }))
 }
 
 #[tauri::command]
@@ -111,7 +133,7 @@ fn lib_get_album(lib: State<Library>, id: i64) -> Result<Option<Album>, String> 
     let album = lib.handle.album(id).map_err(err)?;
     Ok(album.map(|mut a| {
         if let Some(rel) = &a.cover_path {
-            a.cover_path = Some(lib.cache_dir.join(rel).to_string_lossy().to_string());
+            a.cover_path = Some(lib.cache_dir.join(rel));
         }
         a
     }))
@@ -253,7 +275,7 @@ pub fn run() {
             let config = IndexerConfig {
                 db_path,
                 music_root,
-                cache_dir,
+                cache_dir: cache_dir.clone(),
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
             };
 
