@@ -55,7 +55,7 @@ const ZSTD_LEVEL: i32 = 3;
 /// HTTP client for the embedding service.
 ///
 /// Cheap to construct, cheap to clone (just wraps a `ureq::Agent`).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EmbedClient {
     agent: ureq::Agent,
     base_url: String,

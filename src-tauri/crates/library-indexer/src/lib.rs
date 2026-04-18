@@ -1,8 +1,9 @@
 //! Library indexer for rustify-player.
 //!
 //! Walks a music root directory, parses FLAC metadata, extracts cover art,
-//! and produces MERT audio embeddings for similarity-based continuity.
-//! Persists everything in a single SQLite file with FTS5 indexes.
+//! and requests MERT audio embeddings (from the Tailnet `rustify-embed`
+//! service) for similarity-based continuity. Persists everything in a
+//! single SQLite file with FTS5 indexes.
 //!
 //! The crate has no dependency on Tauri. Consumers (CLI, Tauri app, tests)
 //! drive it via [`IndexerCommand`] messages and observe state via
@@ -21,20 +22,18 @@ mod cover;
 mod watch;
 mod search;
 mod embed_client;
-// mod cover;
-// mod embedding;
-// mod watch;
-// mod pipeline;
-// mod search;
-// mod model_download;
+mod pipeline;
 
+pub use embed_client::EmbedClient;
 pub use error::IndexerError;
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
     IndexerEvent, IndexerSnapshot, SearchResults, Tag, Track, TrackFilter, TrackOrder,
 };
 
+use crossbeam_channel::{Receiver, Sender};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Configuration passed to [`Indexer::open`].
 #[derive(Debug, Clone)]
@@ -45,35 +44,130 @@ pub struct IndexerConfig {
     /// Root folder containing FLAC files (recursive).
     /// Recommended: `~/Music`.
     pub music_root: PathBuf,
-    /// Cache directory for cover thumbnails and downloaded models.
+    /// Cache directory for cover thumbnails.
     /// Recommended: `~/.cache/rustify-player`.
     pub cache_dir: PathBuf,
-    /// Skip embedding extraction. Useful for fast scan-only smoke tests.
-    pub enable_embedding: bool,
+    /// Optional embedding client. When `None`, tracks land with
+    /// `embedding_status = 'pending'` and similarity queries degrade
+    /// gracefully (similar() returns an empty vec for anchors with no
+    /// embedding). Pass `Some(EmbedClient::new(url))` to enable.
+    pub embed_client: Option<EmbedClient>,
 }
 
 /// Entry point. Stateless; calling [`Indexer::open`] spawns threads.
 pub struct Indexer;
 
 impl Indexer {
-    /// Opens (or initializes) the library at `config.db_path` and spawns the
-    /// coordinator thread. Returns an [`IndexerHandle`] for further control.
-    pub fn open(_config: IndexerConfig) -> Result<IndexerHandle, IndexerError> {
-        // Stub — wired up in pipeline.rs task.
-        Err(IndexerError::ModelUnavailable(
-            "Indexer::open not yet implemented".into(),
-        ))
+    /// Opens (or initializes) the library at `config.db_path`, applies
+    /// migrations, and spawns the coordinator + embedding worker threads.
+    pub fn open(config: IndexerConfig) -> Result<IndexerHandle, IndexerError> {
+        let db = db::open_and_migrate(&config.db_path)?;
+        let pipeline_cfg = pipeline::PipelineConfig {
+            music_root: config.music_root.clone(),
+            cache_dir: config.cache_dir.clone(),
+            embed_client: config.embed_client.clone(),
+        };
+        let (cmd_tx, evt_rx, state, pool, _handles) = pipeline::start(db, pipeline_cfg);
+        Ok(IndexerHandle {
+            inner: Arc::new(HandleInner {
+                cmd_tx,
+                evt_rx,
+                state,
+                pool,
+            }),
+        })
     }
+}
+
+struct HandleInner {
+    cmd_tx: Sender<IndexerCommand>,
+    evt_rx: Receiver<IndexerEvent>,
+    state: Arc<pipeline::SharedState>,
+    pool: db::ReadPool,
 }
 
 /// Handle to a running indexer. Clone-able, Send-safe.
 #[derive(Clone)]
 pub struct IndexerHandle {
-    // Fields will be populated in pipeline.rs task.
-    _placeholder: (),
+    inner: Arc<HandleInner>,
 }
 
 impl IndexerHandle {
-    // Stubs to pin the API surface. Real impls land with their respective
-    // modules (pipeline, search).
+    pub fn send(&self, cmd: IndexerCommand) -> Result<(), IndexerError> {
+        self.inner
+            .cmd_tx
+            .send(cmd)
+            .map_err(|_| IndexerError::Shutdown)
+    }
+
+    pub fn subscribe(&self) -> Receiver<IndexerEvent> {
+        self.inner.evt_rx.clone()
+    }
+
+    pub fn snapshot(&self) -> IndexerSnapshot {
+        self.inner.state.snapshot()
+    }
+
+    // --- Read queries -----------------------------------------------------
+
+    pub fn track(&self, id: i64) -> Result<Option<Track>, IndexerError> {
+        self.inner.pool.with(|conn| search::get_track(conn, id))
+    }
+
+    pub fn album(&self, id: i64) -> Result<Option<Album>, IndexerError> {
+        self.inner.pool.with(|conn| search::get_album(conn, id))
+    }
+
+    pub fn artist(&self, id: i64) -> Result<Option<Artist>, IndexerError> {
+        self.inner.pool.with(|conn| search::get_artist(conn, id))
+    }
+
+    pub fn list_genres(&self) -> Result<Vec<Genre>, IndexerError> {
+        self.inner.pool.with(search::list_genres)
+    }
+
+    pub fn list_tracks(&self, filter: TrackFilter) -> Result<Vec<Track>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::list_tracks(conn, &filter))
+    }
+
+    pub fn list_albums(&self, filter: AlbumFilter) -> Result<Vec<Album>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::list_albums(conn, &filter))
+    }
+
+    pub fn list_artists(&self, filter: ArtistFilter) -> Result<Vec<Artist>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::list_artists(conn, &filter))
+    }
+
+    pub fn search(&self, query: &str, limit: usize) -> Result<SearchResults, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::search(conn, query, limit))
+    }
+
+    pub fn similar(
+        &self,
+        track_id: i64,
+        limit: usize,
+    ) -> Result<Vec<(Track, f32)>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::similar(conn, track_id, limit))
+    }
+
+    pub fn shuffle(
+        &self,
+        filter: TrackFilter,
+        seed: u64,
+        limit: usize,
+    ) -> Result<Vec<Track>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::shuffle(conn, &filter, seed, limit))
+    }
 }
