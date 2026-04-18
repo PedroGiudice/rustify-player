@@ -12,5 +12,8 @@ torch==2.4.1+cpu
 torchaudio==2.4.1+cpu
 
 # MERT uses custom code in modeling_MERT.py + Wav2Vec2FeatureExtractor.
-transformers==4.44.2
-accelerate==0.34.2
+# transformers must be <=4.38 — later versions switch weight_norm to the
+# parametrizations API and the MERT pos_conv_embed layer ends up with random
+# weights, silently degrading embedding quality. See HF issue #26796.
+transformers==4.38.2
+accelerate==0.27.2

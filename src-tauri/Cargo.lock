@@ -3671,6 +3671,8 @@ dependencies = [
 name = "rustify-player"
 version = "0.1.0"
 dependencies = [
+ "audio-engine",
+ "library-indexer",
  "serde",
  "serde_json",
  "tauri",
