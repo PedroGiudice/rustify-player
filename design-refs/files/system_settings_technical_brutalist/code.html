@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Settings - The Kinetic Vault</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-container": "#201f1f",
+                        "on-primary-fixed": "#2e1500",
+                        "background": "#131313",
+                        "surface-bright": "#3a3939",
+                        "on-tertiary": "#00344c",
+                        "surface-tint": "#ffb77a",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "tertiary-fixed": "#c7e7ff",
+                        "on-surface": "#e5e2e1",
+                        "inverse-on-surface": "#313030",
+                        "tertiary-fixed-dim": "#85cfff",
+                        "outline-variant": "#564334",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-lowest": "#0e0e0e",
+                        "tertiary-container": "#00b7ff",
+                        "primary": "#ffb87b",
+                        "tertiary": "#87cfff",
+                        "secondary-fixed-dim": "#fbb981",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-high": "#2a2a2a",
+                        "on-primary": "#4c2700",
+                        "inverse-primary": "#8f4e00",
+                        "secondary-fixed": "#ffdcc2",
+                        "on-tertiary-container": "#004563",
+                        "on-secondary": "#4c2700",
+                        "on-primary-container": "#623400",
+                        "on-primary-fixed-variant": "#6d3a00",
+                        "surface-variant": "#353534",
+                        "on-tertiary-fixed-variant": "#004c6c",
+                        "outline": "#a48c7a",
+                        "on-secondary-fixed": "#2e1500",
+                        "secondary": "#fbb981",
+                        "on-background": "#e5e2e1",
+                        "secondary-container": "#693c0f",
+                        "on-secondary-fixed-variant": "#693c0f",
+                        "on-secondary-container": "#e7a872",
+                        "primary-container": "#ff8f00",
+                        "surface-container-highest": "#353534",
+                        "on-tertiary-fixed": "#001e2e",
+                        "on-surface-variant": "#dcc1ae",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-dim": "#131313",
+                        "surface": "#131313",
+                        "primary-fixed-dim": "#ffb77a",
+                        "primary-fixed": "#ffdcc2",
+                        "error-container": "#93000a"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "full": "0px"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom styles to enforce Brutalist-Minimalist design system */
+        * { border-radius: 0px !important; }
+        
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 4px;
+            background: #ffb87b;
+            cursor: pointer;
+            margin-top: -10px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #353534;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        input[type=range]:focus::-webkit-slider-runnable-track {
+            background: #353534;
+        }
+
+        /* Custom Checkbox */
+        input[type="checkbox"] {
+            appearance: none;
+            background-color: transparent;
+            margin: 0;
+            font: inherit;
+            color: #ffb87b;
+            width: 24px;
+            height: 24px;
+            border: 2px solid #564334;
+            display: grid;
+            place-content: center;
+            cursor: pointer;
+        }
+        input[type="checkbox"]::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em #ffb87b;
+            background-color: transform;
+        }
+        input[type="checkbox"]:checked::before {
+            transform: scale(1);
+        }
+        input[type="checkbox"]:focus {
+            outline: 1px solid #ffb87b;
+            outline-offset: 2px;
+            border-color: #ffb87b;
+        }
+
+        /* Custom Select */
+        select {
+            appearance: none;
+            background-color: transparent;
+            border: none;
+            border-bottom: 2px solid #353534;
+            padding: 8px 32px 8px 0;
+            color: #e5e2e1;
+            font-family: inherit;
+            font-size: inherit;
+            cursor: pointer;
+            line-height: inherit;
+            outline: none;
+            background-image: url('data:image/svg+xml;utf8,<svg fill="%23ffb87b" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 0px top 50%;
+        }
+        select:focus {
+            border-bottom-color: #ffb87b;
+        }
+        
+        /* Custom Input */
+        input[type="text"] {
+             background-color: transparent;
+             border: none;
+             border-bottom: 2px solid #353534;
+             color: #e5e2e1;
+             padding: 8px 0;
+             outline: none;
+        }
+        input[type="text"]:focus {
+             border-bottom-color: #ffb87b;
+        }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface font-body overflow-hidden h-screen w-screen flex">
+<!-- SideNavBar (Shared Component) -->
+<nav class="hidden md:flex flex-col bg-[#131313] fixed left-0 top-0 h-full w-20 items-center py-8 z-40 border-r-0">
+<div class="mb-12">
+<h1 class="text-xl font-black text-[#ffb87b] tracking-tighter" title="VAULT MASTER">VLT</h1>
+</div>
+<div class="flex flex-col gap-8 justify-start items-center w-full">
+<a aria-label="Home" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">home</span>
+</a>
+<a aria-label="Library" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">library_music</span>
+</a>
+<a aria-label="Artists" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">person</span>
+</a>
+<a aria-label="Albums" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">album</span>
+</a>
+<a aria-label="History" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">history</span>
+</a>
+<a aria-label="Tracks" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">audiotrack</span>
+</a>
+<a aria-label="Playlists" class="text-[#e5e2e1]/40 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">queue_music</span>
+</a>
+<div class="mt-auto w-full">
+<a aria-label="Settings" class="text-[#ffb87b] scale-110 hover:bg-[#2a2a2a] transition-colors duration-150 active:bg-[#ffb87b]/10 p-3 flex flex-col items-center gap-1 w-full bg-surface-container-high" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+</a>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 md:ml-20 mb-24 h-full overflow-y-auto bg-surface-container-lowest">
+<!-- Header -->
+<header class="pt-24 pb-16 px-8 md:px-16 lg:px-24 max-w-7xl mx-auto">
+<h2 class="leading-none font-black tracking-tighter text-on-surface mb-2 uppercase break-words text-4xl md:text-5xl lg:text-6xl">System Settings</h2>
+</header>
+<!-- Settings Grid -->
+<div class="px-8 md:px-16 lg:px-24 max-w-7xl mx-auto pb-32 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-16 lg:gap-32 items-start">
+<!-- Left Column: Categories Menu -->
+<aside class="flex flex-col gap-6 font-medium text-sm md:text-base uppercase tracking-widest font-label border-l-4 border-surface-container-high pl-6 sticky top-8">
+<button class="text-left text-[#ffb87b] transition-colors">Áudio &amp; DAC</button>
+<button class="text-left text-on-surface-variant hover:text-on-surface transition-colors">Indexação &amp; Biblioteca</button>
+<button class="text-left text-on-surface-variant hover:text-on-surface transition-colors">Interface</button>
+<button class="text-left text-on-surface-variant hover:text-on-surface transition-colors">Avançado (Rust/Tauri)</button>
+</aside>
+<!-- Right Column: Forms Area -->
+<div class="flex flex-col gap-24">
+<!-- Audio & DAC Section -->
+<section class="flex flex-col gap-12">
+<div class="flex flex-col gap-4">
+<label class="text-[0.75rem] text-[#ffb87b] uppercase tracking-[0.1em] font-bold">Audio Backend API</label>
+<select class="w-full text-xl md:text-2xl font-medium pb-4 border-b-2 border-surface-variant focus:border-[#ffb87b] bg-transparent outline-none">
+<option>PipeWire (Native Direct)</option>
+<option>ALSA (Hw:0,0 Exclusive)</option>
+<option>JACK Audio Connection Kit</option>
+</select>
+</div>
+<div class="flex flex-col gap-4">
+<div class="flex justify-between items-end mb-2">
+<label class="text-[0.75rem] text-[#ffb87b] uppercase tracking-[0.1em] font-bold">Bit-Perfect Mode</label>
+<span class="text-[0.65rem] font-black bg-[#ffb87b] text-on-primary px-3 py-1 uppercase tracking-[0.2em]">Enabled</span>
+</div>
+<p class="text-base text-on-surface-variant border-b-2 border-surface-variant pb-6 leading-relaxed">
+                            Ignora o resampler do sistema operacional. O hardware acompanhará o sample rate do arquivo original dinamicamente.
+                        </p>
+</div>
+<div class="flex flex-col gap-4">
+<label class="text-[0.75rem] text-[#ffb87b] uppercase tracking-[0.1em] font-bold">Hardware Buffer Size</label>
+<input class="w-full text-xl md:text-2xl font-medium pb-4 border-b-2 border-surface-variant focus:border-[#ffb87b] bg-transparent outline-none text-on-surface cursor-not-allowed" readonly="" type="text" value="1024 frames"/>
+</div>
+</section>
+<!-- Indexação & Biblioteca Section -->
+<section class="flex flex-col gap-12 pt-12 border-t-4 border-surface-container-high">
+<div class="flex flex-col gap-4">
+<label class="text-[0.75rem] text-[#ffb87b] uppercase tracking-[0.1em] font-bold mb-2">Watched Paths</label>
+<div class="flex flex-col gap-3 font-mono text-sm md:text-base border-b-2 border-surface-variant pb-6">
+<div class="text-on-surface bg-surface-container px-4 py-3 border-l-2 border-[#ffb87b]">/home/pedro/Music/Soulseek</div>
+<div class="text-on-surface bg-surface-container px-4 py-3 border-l-2 border-surface-variant">/home/pedro/Vault/FLAC_Rip</div>
+</div>
+</div>
+<div class="flex flex-col gap-6">
+<label class="text-[0.75rem] text-[#ffb87b] uppercase tracking-[0.1em] font-bold">SQLite Engine (Rust/FFI)</label>
+<button class="bg-transparent text-[#ffb87b] border-2 border-[#ffb87b] hover:bg-[#ffb87b] hover:text-on-primary px-8 py-5 font-black uppercase tracking-[0.15em] text-sm md:text-base transition-colors w-max">
+                            Force Re-Index (50,214 Tracks)
+                        </button>
+</div>
+</section>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Shared Component) -->
+<div class="fixed bottom-0 left-0 w-full h-24 z-50 bg-[#131313]/90 backdrop-blur-md flex items-center justify-between px-6 md:px-12 border-t-0 bg-surface-container-lowest">
+<div class="flex items-center gap-6 w-1/3">
+<!-- Album Art Placeholder -->
+<div class="w-14 h-14 bg-surface-container-high flex-shrink-0 relative overflow-hidden">
+<img alt="Album Cover" class="w-full h-full object-cover opacity-80 mix-blend-luminosity" data-alt="abstract monochromatic dark texture with subtle horizontal lines reminiscent of vinyl grooves" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqqjrYMW1NSmmkju_oP2XE-K_yKtDa3IlExdYtMdIujbXwT0H5DMYkbtjvoCzgpAlOmXBpJjSWflUGL2XjoV8saYcxcWO1g_--GNWrwCZa9vDkwBzFtJPuPAHngDUINwYfe9GAwDT7meUXhpW8g-6F30uhxxKhwtCN27mhe86G2HdpFb-wXUx4w79mNmoTSSAxD2TStycChc3nBPe-kPKMAk_Xqwk2M4j660A_RSf7fqK8TOY1evu4ToBSkCfd3IFCKp45kvFWL9Q"/>
+<div class="absolute inset-0 bg-primary mix-blend-overlay opacity-20"></div>
+</div>
+<div class="flex flex-col hidden sm:flex truncate">
+<span class="text-on-surface font-bold text-sm truncate">Automatic Stop</span>
+<span class="text-on-surface-variant text-xs truncate">Dexter Gordon</span>
+</div>
+</div>
+<!-- Controls -->
+<div class="flex flex-col items-center gap-2 flex-1 max-w-md w-full">
+<div class="flex items-center gap-8 text-[#e5e2e1]">
+<span class="material-symbols-outlined cursor-pointer hover:text-[#ffb87b] transition-all" style="font-variation-settings: 'FILL' 0;">skip_previous</span>
+<span class="material-symbols-outlined text-[32px] text-[#ffb87b] cursor-pointer active:opacity-80 transition-all scale-110" style="font-variation-settings: 'FILL' 1;">pause_circle</span>
+<span class="material-symbols-outlined cursor-pointer hover:text-[#ffb87b] transition-all" style="font-variation-settings: 'FILL' 0;">skip_next</span>
+</div>
+<div class="w-full flex items-center gap-3">
+<span class="text-[10px] text-on-surface-variant font-mono">03:42</span>
+<div class="h-1 flex-1 bg-surface-container-highest relative group cursor-pointer">
+<div class="absolute top-0 left-0 h-full w-[65%] bg-gradient-to-r from-primary to-primary-container"></div>
+<div class="absolute top-[-6px] left-[65%] w-[2px] h-[16px] bg-primary hidden group-hover:block"></div>
+</div>
+<span class="text-[10px] text-on-surface-variant font-mono">08:14</span>
+</div>
+</div>
+<!-- Meta / Volume -->
+<div class="flex items-center gap-6 w-1/3 justify-end">
+<div class="hidden lg:flex flex-col items-end">
+<span class="font-['Inter'] text-[11px] uppercase tracking-wider font-bold text-[#ffb87b]">FLAC 24-bit</span>
+<span class="text-[10px] text-on-surface-variant font-mono">192 kHz / 5432 kbps</span>
+</div>
+<div class="flex items-center gap-2 w-24">
+<span class="material-symbols-outlined text-sm text-[#e5e2e1]" style="font-variation-settings: 'FILL' 0;">volume_up</span>
+<div class="h-1 flex-1 bg-surface-container-highest relative cursor-pointer">
+<div class="absolute top-0 left-0 h-full w-[80%] bg-on-surface"></div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

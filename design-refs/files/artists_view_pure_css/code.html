@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>VAULT MASTER - Artists</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-container": "#201f1f",
+                        "on-primary-fixed": "#2e1500",
+                        "background": "#131313",
+                        "surface-bright": "#3a3939",
+                        "on-tertiary": "#00344c",
+                        "surface-tint": "#ffb77a",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "tertiary-fixed": "#c7e7ff",
+                        "on-surface": "#e5e2e1",
+                        "inverse-on-surface": "#313030",
+                        "tertiary-fixed-dim": "#85cfff",
+                        "outline-variant": "#564334",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-lowest": "#0e0e0e",
+                        "tertiary-container": "#00b7ff",
+                        "primary": "#ffb87b",
+                        "tertiary": "#87cfff",
+                        "secondary-fixed-dim": "#fbb981",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-high": "#2a2a2a",
+                        "on-primary": "#4c2700",
+                        "inverse-primary": "#8f4e00",
+                        "secondary-fixed": "#ffdcc2",
+                        "on-tertiary-container": "#004563",
+                        "on-secondary": "#4c2700",
+                        "on-primary-container": "#623400",
+                        "on-primary-fixed-variant": "#6d3a00",
+                        "surface-variant": "#353534",
+                        "on-tertiary-fixed-variant": "#004c6c",
+                        "outline": "#a48c7a",
+                        "on-secondary-fixed": "#2e1500",
+                        "secondary": "#fbb981",
+                        "on-background": "#e5e2e1",
+                        "secondary-container": "#693c0f",
+                        "on-secondary-fixed-variant": "#693c0f",
+                        "on-secondary-container": "#e7a872",
+                        "primary-container": "#ff8f00",
+                        "surface-container-highest": "#353534",
+                        "on-tertiary-fixed": "#001e2e",
+                        "on-surface-variant": "#dcc1ae",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-dim": "#131313",
+                        "surface": "#131313",
+                        "primary-fixed-dim": "#ffb77a",
+                        "primary-fixed": "#ffdcc2",
+                        "error-container": "#93000a"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "full": "0px"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"],
+                        "display": ["Inter", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface h-screen w-screen overflow-hidden flex font-body">
+<!-- SideNavBar -->
+<nav class="hidden md:flex fixed left-0 top-0 h-full w-20 flex-col items-center py-8 bg-[#131313] border-r-0 z-40 justify-start gap-8">
+<div class="flex flex-col items-center mb-8">
+<span class="text-xl font-black text-[#ffb87b] tracking-tighter">VAULT</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px] text-on-surface-variant mt-1">MASTER</span>
+</div>
+<div class="flex flex-col gap-8 items-center w-full">
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">home</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Home</span>
+</a>
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">library_music</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Library</span>
+</a>
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#ffb87b] scale-110" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Artists</span>
+</a>
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">album</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Albums</span>
+</a>
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">history</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">History</span>
+</a>
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">audiotrack</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Tracks</span>
+</a>
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">queue_music</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Playlists</span>
+</a>
+</div>
+<div class="mt-auto w-full flex flex-col items-center gap-6">
+<a class="flex flex-col items-center gap-1 group w-full hover:bg-[#2a2a2a] transition-colors duration-150 py-3 scale-95 active:bg-[#ffb87b]/10 text-[#e5e2e1]/40 hover:text-[#e5e2e1]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+<span class="font-['Inter'] uppercase tracking-widest text-[10px]">Settings</span>
+</a>
+<img alt="User Profile" class="w-10 h-10 object-cover mt-4 grayscale border border-surface-container-high hover:border-primary transition-colors" data-alt="close up black and white portrait of a woman looking directly at the camera with dramatic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKkA6tEycpp6xg_gD2rG9e0pC-130uYSjhGJeVCfhs0JR_1VSV95t3Q24JRt0ZUsKYXOYeQ_pLbfLu0OfKasUphsGCQ6TnG1jwCJIBZg-TMhPheqX6oXoswEbJUFW-7ZqUO8NtiX_mVatL1H2-u7L0LDsklO_ANtttd1KDiEbLtckZUs3TBLgpATZImwJtKmUrEGFecq0IbyuwCmKd7E6MQCkeuFmv1TF3Lw3oj3BApMecEcOXK8bCCXVnLp1JTWC6fEqFV2sjh3c"/>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 ml-0 md:ml-20 mb-24 overflow-y-auto bg-surface-container-lowest">
+<!-- Header -->
+<header class="sticky top-0 z-30 bg-surface-container-lowest/90 backdrop-blur-md px-12 py-8 flex items-end justify-between border-b border-surface/0">
+<div>
+<h1 class="text-5xl font-black tracking-tighter text-on-surface uppercase font-display">Artists</h1>
+<p class="text-on-surface-variant text-sm mt-2 font-label uppercase tracking-widest">24 High-Fidelity Profiles</p>
+</div>
+<!-- Search/Filter (Minimal) -->
+<div class="flex items-center gap-4">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm" style="font-variation-settings: 'FILL' 0;">search</span>
+<input class="bg-transparent border-0 border-b-2 border-surface-container-highest focus:border-primary focus:ring-0 text-on-surface pl-10 pr-4 py-2 font-label text-xs uppercase tracking-wider w-64 transition-colors placeholder:text-on-surface-variant/50" placeholder="SEARCH ARTISTS..." type="text"/>
+</div>
+<button class="bg-surface-container-high text-on-surface hover:text-primary p-2 transition-colors duration-150 flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">filter_list</span>
+</button>
+</div>
+</header>
+<!-- Artists Grid -->
+<div class="px-12 py-8 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-8 gap-y-12">
+<!-- Artist Card 1 -->
+<a class="group flex flex-col items-center gap-4" href="#">
+<div class="relative w-full aspect-square overflow-hidden bg-surface-container bg-surface-container-high transition-transform duration-300 group-hover:scale-105">
+<img alt="Artist Name" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 opacity-80 group-hover:opacity-100 mix-blend-luminosity group-hover:mix-blend-normal" data-alt="black and white moody portrait of a male musician playing a guitar in shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCdCVVPSx80v81tl1HI96NYupMFJmKYQCJRv77T0bBA7y7p9yLAT49bDwnWp3pjPwPKzuB-5qEst-JlmZRIW0MeotYKVh_cBimrW_PJYSRUrjJUQOCu-RgFI6ifli-tJQle0tpZ5qFeAPgKt1-fmzF--p27Ue0qqRTWiBtwmZi9O5RUX5fSCKUqyMyHjhuWE41xM7dNTtxIaLx9hFaUHL0v7PmME_cBIbq6oqO3DgAGwrPz3Rc34Y-92at-5jZb_RoYPQ8YvUslFmQ"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60 group-hover:opacity-0 transition-opacity duration-300"></div>
+</div>
+<div class="text-center w-full">
+<h3 class="text-on-surface font-bold uppercase tracking-widest text-sm truncate opacity-80 group-hover:opacity-100 group-hover:text-primary transition-all duration-150">The Midnight</h3>
+<p class="text-on-surface-variant text-[10px] font-label uppercase tracking-wider mt-1 opacity-60">Synthwave</p>
+</div>
+</a>
+<!-- Artist Card 2 -->
+<a class="group flex flex-col items-center gap-4" href="#">
+<div class="relative w-full aspect-square overflow-hidden bg-surface-container transition-transform duration-300 group-hover:scale-105">
+<img alt="Artist Name" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 opacity-80 group-hover:opacity-100 mix-blend-luminosity group-hover:mix-blend-normal" data-alt="dramatic lighting concert photography of a silhouette singer against bright white stage lights" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAt2HOnS2ENMDikGgFk32TXHezzKtLVTAj_ks6KLSQmSHwtSdgmuV26coS1ZU1Fp6DtlAsJI-N3_9qkLZC72chVLxuJSK6SxDIQjnboBwhqgi_VjGp1XnkRvVsz9fNT8Jb4p05dPaTsPn8qiDSEGntARTap6lbjuMHml5QvTpRHm9tP0p_RpEM53nJo1tscxHf7eAJM6IgzFHR5y8hY079uxqemjg5JX0HNLaG7ToOwBptjz-RtxT_b2_G-_YiznLc9irYvbCeu1mE"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60 group-hover:opacity-0 transition-opacity duration-300"></div>
+</div>
+<div class="text-center w-full">
+<h3 class="text-on-surface font-bold uppercase tracking-widest text-sm truncate opacity-80 group-hover:opacity-100 group-hover:text-primary transition-all duration-150">Kavinsky</h3>
+<p class="text-on-surface-variant text-[10px] font-label uppercase tracking-wider mt-1 opacity-60">Electronic</p>
+</div>
+</a>
+<!-- Artist Card 3 -->
+<a class="group flex flex-col items-center gap-4" href="#">
+<div class="relative w-full aspect-square overflow-hidden bg-surface-container transition-transform duration-300 group-hover:scale-105">
+<img alt="Artist Name" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 opacity-80 group-hover:opacity-100 mix-blend-luminosity group-hover:mix-blend-normal" data-alt="close up profile portrait of a female artist in a dark studio setting with soft side lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0a5aUknTN0dG0Ocrh90JoZM5sJhxJ_QCg3h00TJZEfXHRsIylcH2nbNNa9FA7DzXwCngFAjfbKQNBd0_MrhaM6IwCOxYlz-O-jwn0TpPZ8XaH4bRabl2e0KBCPh_5XY7POz3aalqe3GpQkeHBUkkaeLXI3LlKo1qg9kUaU75iH3G3oxuEMojnm16bcWWB-sHihL1YKyeDqbkpj5i5osGAh6W7SHw1tR6pB-xDBcjrJhzq9op3fD4KXZVn31A6s58a5_Hj8onYnX0"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60 group-hover:opacity-0 transition-opacity duration-300"></div>
+</div>
+<div class="text-center w-full">
+<h3 class="text-on-surface font-bold uppercase tracking-widest text-sm truncate opacity-80 group-hover:opacity-100 group-hover:text-primary transition-all duration-150">Gunship</h3>
+<p class="text-on-surface-variant text-[10px] font-label uppercase tracking-wider mt-1 opacity-60">Retrowave</p>
+</div>
+</a>
+<!-- Artist Card 4 -->
+<a class="group flex flex-col items-center gap-4" href="#">
+<div class="relative w-full aspect-square overflow-hidden bg-surface-container transition-transform duration-300 group-hover:scale-105">
+<img alt="Artist Name" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 opacity-80 group-hover:opacity-100 mix-blend-luminosity group-hover:mix-blend-normal" data-alt="microphone stand in a dark recording studio illuminated by a single warm spotlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPMlbLgsYKiDU1JkPP6xzGYhpAf_EgQ4Kh-xxwakyaxVT-pirKcW2boAw4GBrZxWqa35CRXbeLTYBpi2e5pCeFrHNmjR8dtGF9q_axJtt-1fY7qAKtgAdYn0bJ07h_4Uo31jm5LU7wG2AeSsizftKajEbHOBNzlEnovzBP-eXln6_iOVH8TPtaLb4CDgZj9cHDXnKVgQaUYR9sti9jeQOisWYydxZqPnJpJrqlivxA-7iwS8M8WdxdT7ctxC5TwYGYv5rPS9-zt0Q"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60 group-hover:opacity-0 transition-opacity duration-300"></div>
+</div>
+<div class="text-center w-full">
+<h3 class="text-on-surface font-bold uppercase tracking-widest text-sm truncate opacity-80 group-hover:opacity-100 group-hover:text-primary transition-all duration-150">Timecop1983</h3>
+<p class="text-on-surface-variant text-[10px] font-label uppercase tracking-wider mt-1 opacity-60">Dreamwave</p>
+</div>
+</a>
+<!-- Artist Card 5 -->
+<a class="group flex flex-col items-center gap-4" href="#">
+<div class="relative w-full aspect-square overflow-hidden bg-surface-container transition-transform duration-300 group-hover:scale-105">
+<img alt="Artist Name" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 opacity-80 group-hover:opacity-100 mix-blend-luminosity group-hover:mix-blend-normal" data-alt="abstract long exposure concert photography with streaking amber lights in a dark venue" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0btjsGr1j1f18QoXfdEV6BYodRW5sOUww8obhh9txJ9UNQBNVWgmIMHRiKiZt77wY7dKYlatzU-k-6XyM_gARlNQT0cMebwPrtcNNai0uOo-Q_8qKuUsmh-lEqF595VF_Sa1mOKGMuw7HENaKQQ0Im-i7TLoshuJ4Zvg15t8XvP2OIW8Xmhy4ut6PxlbN4wDPZRd2j9slLGFahBsZosnJRZDsEIfO0-Znx0fIDt-jd-aCUynH1fISMEu9n8v3i68_iPkDQVAwp4U"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60 group-hover:opacity-0 transition-opacity duration-300"></div>
+</div>
+<div class="text-center w-full">
+<h3 class="text-on-surface font-bold uppercase tracking-widest text-sm truncate opacity-80 group-hover:opacity-100 group-hover:text-primary transition-all duration-150">FM-84</h3>
+<p class="text-on-surface-variant text-[10px] font-label uppercase tracking-wider mt-1 opacity-60">Synthpop</p>
+</div>
+</a>
+<!-- Artist Card 6 -->
+<a class="group flex flex-col items-center gap-4" href="#">
+<div class="relative w-full aspect-square overflow-hidden bg-surface-container transition-transform duration-300 group-hover:scale-105">
+<img alt="Artist Name" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 opacity-80 group-hover:opacity-100 mix-blend-luminosity group-hover:mix-blend-normal" data-alt="close up of a vintage synthesizer keyboard in dramatic low light setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCF8Or5YDazN4QG3ySw_xj-ZHn1fXLtEWvTE7_gWKqfih9CQaSrEkVH_a5i25StatjYt3JCH4zQQuQukBHv70SapH1NDjkUrJ8dxDj9ucDX0BIqDsH27l7tIqbjT4XTcRb4ynhSlb6pwepbuN8sjVTtp85bpDQdBTmbkE248dOODo0YRnHJOLcZ_-HVGqYPqGJeJrpPtED6BLdeTv67gq3SG7JN5Mt6KcZl7S_j16Brjk-Ig0HJ7x7Fq1bbFtK5ASlQjb5idol6czo"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest to-transparent opacity-60 group-hover:opacity-0 transition-opacity duration-300"></div>
+</div>
+<div class="text-center w-full">
+<h3 class="text-on-surface font-bold uppercase tracking-widest text-sm truncate opacity-80 group-hover:opacity-100 group-hover:text-primary transition-all duration-150">Lazerhawk</h3>
+<p class="text-on-surface-variant text-[10px] font-label uppercase tracking-wider mt-1 opacity-60">Outrun</p>
+</div>
+</a>
+</div>
+</main>
+<!-- BottomNavBar (Player Bar) -->
+<div class="fixed bottom-0 left-0 w-full h-24 z-50 bg-[#131313]/80 backdrop-blur-md border-t-2 border-[#2a2a2a] flex items-center justify-between px-12 md:pl-32">
+<!-- Track Info -->
+<div class="flex items-center gap-6 w-1/3">
+<img alt="Album Art" class="w-14 h-14 object-cover border border-surface-container-highest" data-alt="abstract geometric album cover art featuring neon orange shapes on a deep black background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANTZLyVNnwqyWye8o498bH6r64VzfzQqdHggCifHMn2_XLkPpD-DlyyMtZFJwXBxpFfG2kk0tQORvhTDX8lO7MxxQIMympf6brU4JyUPetGIMIqjeHTi6x6XSu0GpzYL4fQ54fnbXnWaDEQfd-FBlcbpbAzCM-6jsqrbXQhJ0Qaxhui4ByMsqR-PMje3vnkZi-wCGQyOfeKhdMdqKxu5c8amp4u3cOCQt6fCqrRuVQbBcGXusuZO_RhMdCKGxGV2G356E2ceT998g"/>
+<div class="flex flex-col">
+<span class="text-on-surface font-bold text-sm tracking-wide">Vampires</span>
+<span class="text-on-surface-variant text-xs mt-1">The Midnight</span>
+</div>
+</div>
+<!-- Controls -->
+<div class="flex flex-col items-center justify-center w-1/3 gap-3">
+<div class="flex items-center gap-6 text-[#e5e2e1]">
+<button class="hover:text-[#ffb87b] transition-colors cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">skip_previous</span>
+</button>
+<button class="w-12 h-12 bg-primary flex items-center justify-center hover:bg-primary-fixed-dim transition-colors cursor-pointer active:opacity-80 text-on-primary">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+<button class="hover:text-[#ffb87b] transition-colors cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">skip_next</span>
+</button>
+</div>
+<!-- Progress Bar -->
+<div class="flex items-center gap-3 w-full max-w-md">
+<span class="text-[10px] font-label text-on-surface-variant font-medium tracking-wider">02:14</span>
+<div class="h-1 flex-1 bg-surface-container-highest relative cursor-pointer group">
+<div class="absolute left-0 top-0 h-full w-1/3 bg-gradient-to-r from-primary to-primary-container"></div>
+<div class="absolute left-1/3 top-1/2 -translate-y-1/2 w-[2px] h-3 bg-on-surface opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<span class="text-[10px] font-label text-on-surface-variant font-medium tracking-wider">05:17</span>
+</div>
+</div>
+<!-- Utility Icons -->
+<div class="flex items-center justify-end w-1/3 gap-6">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[#ffb87b] text-sm" style="font-variation-settings: 'FILL' 1;">high_res</span>
+<span class="font-['Inter'] text-[11px] uppercase tracking-wider font-medium text-[#ffb87b]">FLAC 24-bit</span>
+</div>
+<button class="text-[#e5e2e1] hover:text-[#ffb87b] transition-all cursor-pointer active:opacity-80 flex items-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">graphic_eq</span>
+</button>
+<div class="flex items-center gap-2 text-[#e5e2e1]">
+<button class="hover:text-[#ffb87b] transition-all cursor-pointer active:opacity-80 flex items-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">volume_up</span>
+</button>
+<div class="w-24 h-1 bg-surface-container-highest relative">
+<div class="absolute left-0 top-0 h-full w-2/3 bg-[#e5e2e1]"></div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

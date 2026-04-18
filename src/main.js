@@ -1,18 +1,47 @@
-const { invoke } = window.__TAURI__.core;
+// Entry — wires shell components and kicks off the router.
 
-let greetInputEl;
-let greetMsgEl;
+import { mountSidebar } from "./js/components/sidebar.js";
+import { mountPlayerBar } from "./js/components/player-bar.js";
+import { initRouter } from "./js/router.js";
 
-async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsgEl.textContent = await invoke("greet", { name: greetInputEl.value });
+async function loadIconSprite() {
+  // Inline the SVG sprite so `<use href="#icon-X">` references resolve
+  // without relying on cross-document <use>, which has inconsistent
+  // support in webviews (especially under file://).
+  try {
+    const res = await fetch("assets/icons.svg");
+    if (!res.ok) throw new Error(`sprite fetch ${res.status}`);
+    const svg = await res.text();
+    const holder = document.createElement("div");
+    holder.style.display = "none";
+    holder.setAttribute("aria-hidden", "true");
+    holder.innerHTML = svg;
+    document.body.prepend(holder);
+  } catch (err) {
+    console.error("[icons] sprite load failed", err);
+  }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
-});
+async function boot() {
+  // Sprite first — views and components reference #icon-* symbols.
+  await loadIconSprite();
+
+  const sidebar = document.getElementById("sidebar");
+  const main = document.getElementById("main");
+  const playerBar = document.getElementById("player-bar");
+
+  if (!sidebar || !main || !playerBar) {
+    console.error("[boot] shell mount points missing");
+    return;
+  }
+
+  mountSidebar(sidebar);
+  mountPlayerBar(playerBar);
+  initRouter(main);
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", boot, { once: true });
+} else {
+  boot();
+}

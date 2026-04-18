@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Vault - Library</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#004c6c",
+                        "primary": "#ffb87b",
+                        "surface-container-high": "#2a2a2a",
+                        "on-surface-variant": "#dcc1ae",
+                        "error-container": "#93000a",
+                        "tertiary-fixed": "#c7e7ff",
+                        "on-primary-fixed": "#2e1500",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary-fixed": "#2e1500",
+                        "surface-dim": "#131313",
+                        "on-surface": "#e5e2e1",
+                        "primary-fixed": "#ffdcc2",
+                        "background": "#131313",
+                        "surface-container-highest": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "on-background": "#e5e2e1",
+                        "secondary-container": "#693c0f",
+                        "outline": "#a48c7a",
+                        "on-primary-container": "#623400",
+                        "on-tertiary-fixed": "#001e2e",
+                        "on-tertiary-container": "#004563",
+                        "on-secondary": "#4c2700",
+                        "on-secondary-container": "#e7a872",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-fixed-variant": "#693c0f",
+                        "error": "#ffb4ab",
+                        "outline-variant": "#564334",
+                        "on-primary-fixed-variant": "#6d3a00",
+                        "secondary": "#fbb981",
+                        "surface-bright": "#3a3939",
+                        "on-tertiary": "#00344c",
+                        "tertiary-container": "#00b7ff",
+                        "on-error-container": "#ffdad6",
+                        "on-error": "#690005",
+                        "surface-tint": "#ffb77a",
+                        "surface-container-low": "#1c1b1b",
+                        "inverse-primary": "#8f4e00",
+                        "tertiary": "#87cfff",
+                        "surface-container": "#201f1f",
+                        "secondary-fixed-dim": "#fbb981",
+                        "tertiary-fixed-dim": "#85cfff",
+                        "surface": "#131313",
+                        "primary-fixed-dim": "#ffb77a",
+                        "on-primary": "#4c2700",
+                        "surface-variant": "#353534",
+                        "secondary-fixed": "#ffdcc2",
+                        "primary-container": "#ff8f00"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "full": "0px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface h-screen overflow-hidden flex flex-col md:flex-row antialiased selection:bg-primary selection:text-on-primary">
+<!-- Desktop SideNavBar -->
+<nav class="hidden md:flex bg-[#131313] w-20 flex-col items-center py-8 fixed h-full z-50 left-0 top-0 border-0 shadow-none border-r-0">
+<div class="mb-12">
+<span class="text-[#ffb87b] font-bold text-xl uppercase tracking-tighter">Vault</span>
+</div>
+<div class="flex flex-col gap-6 w-full">
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="home">home</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#ffb87b] border-l-2 border-[#ffb87b] bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="library_music" style="font-variation-settings: 'FILL' 1;">library_music</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Library</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="person">person</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Artists</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="album">album</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Albums</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="history">history</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">History</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="audiotrack">audiotrack</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Tracks</span>
+</a>
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="queue_music">queue_music</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Playlists</span>
+</a>
+</div>
+<div class="mt-auto w-full">
+<a class="flex flex-col items-center justify-center w-full py-4 text-[#e5e2e1]/60 hover:text-[#e5e2e1] hover:bg-[#2a2a2a] transition-colors duration-150 scale-95 active:scale-90 group relative" href="#">
+<span class="material-symbols-outlined mb-1 text-2xl" data-icon="settings">settings</span>
+<span class="font-['Inter'] tracking-widest uppercase text-[10px] hidden group-hover:block absolute top-1/2 left-full ml-4 bg-surface-container-high px-3 py-2 text-on-surface whitespace-nowrap z-50 border border-outline-variant/15">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-20 mb-24 md:mb-24 overflow-y-auto bg-surface-container-lowest">
+<!-- Header -->
+<header class="px-8 py-12 lg:px-16 lg:py-20 sticky top-0 bg-surface-container-lowest/90 backdrop-blur-md z-40">
+<h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-on-surface uppercase font-headline">Local Library</h1>
+<div class="mt-4 flex gap-4 text-xs font-label uppercase tracking-widest text-on-surface-variant">
+<span>1,204 Tracks</span>
+<span class="text-surface-container-highest">•</span>
+<span>FLAC / WAV</span>
+<span class="text-surface-container-highest">•</span>
+<span>84 Hours</span>
+</div>
+</header>
+<!-- Tracklist Canvas -->
+<div class="px-8 lg:px-16 pb-32">
+<!-- Table Header -->
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 text-xs font-label uppercase tracking-widest text-on-surface-variant sticky top-[160px] bg-surface-container-lowest z-30">
+<div class="w-12 text-center">#</div>
+<div>Title</div>
+<div class="hidden sm:block">Artist</div>
+<div class="hidden md:block">Album</div>
+<div class="w-20 text-right pr-4"><span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span></div>
+</div>
+<!-- Tracks -->
+<div class="flex flex-col">
+<!-- Active Track -->
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 items-center group bg-surface-container-high transition-colors duration-150">
+<div class="w-12 flex justify-center text-primary">
+<span class="material-symbols-outlined animate-pulse text-lg" data-icon="graphic_eq" style="font-variation-settings: 'FILL' 1;">graphic_eq</span>
+</div>
+<div class="font-medium text-primary truncate">Oblivion</div>
+<div class="text-on-surface-variant truncate hidden sm:block">Grimes</div>
+<div class="text-on-surface-variant truncate hidden md:block">Visions</div>
+<div class="w-20 text-right pr-4 text-on-surface-variant font-label text-sm">4:11</div>
+</div>
+<!-- Inactive Tracks -->
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 items-center group hover:bg-surface-container-high transition-colors duration-150 cursor-pointer">
+<div class="w-12 text-center text-on-surface-variant group-hover:hidden">2</div>
+<div class="w-12 justify-center hidden group-hover:flex text-on-surface"><span class="material-symbols-outlined text-lg" data-icon="play_arrow">play_arrow</span></div>
+<div class="font-medium text-on-surface group-hover:text-primary transition-colors truncate">Nightcall</div>
+<div class="text-on-surface-variant truncate hidden sm:block">Kavinsky</div>
+<div class="text-on-surface-variant truncate hidden md:block">OutRun</div>
+<div class="w-20 text-right pr-4 text-on-surface-variant font-label text-sm">4:19</div>
+</div>
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 items-center group hover:bg-surface-container-high transition-colors duration-150 cursor-pointer">
+<div class="w-12 text-center text-on-surface-variant group-hover:hidden">3</div>
+<div class="w-12 justify-center hidden group-hover:flex text-on-surface"><span class="material-symbols-outlined text-lg" data-icon="play_arrow">play_arrow</span></div>
+<div class="font-medium text-on-surface group-hover:text-primary transition-colors truncate">Genesis</div>
+<div class="text-on-surface-variant truncate hidden sm:block">Grimes</div>
+<div class="text-on-surface-variant truncate hidden md:block">Visions</div>
+<div class="w-20 text-right pr-4 text-on-surface-variant font-label text-sm">4:15</div>
+</div>
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 items-center group hover:bg-surface-container-high transition-colors duration-150 cursor-pointer">
+<div class="w-12 text-center text-on-surface-variant group-hover:hidden">4</div>
+<div class="w-12 justify-center hidden group-hover:flex text-on-surface"><span class="material-symbols-outlined text-lg" data-icon="play_arrow">play_arrow</span></div>
+<div class="font-medium text-on-surface group-hover:text-primary transition-colors truncate">Midnight City</div>
+<div class="text-on-surface-variant truncate hidden sm:block">M83</div>
+<div class="text-on-surface-variant truncate hidden md:block">Hurry Up, We're Dreaming</div>
+<div class="w-20 text-right pr-4 text-on-surface-variant font-label text-sm">4:03</div>
+</div>
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 items-center group hover:bg-surface-container-high transition-colors duration-150 cursor-pointer">
+<div class="w-12 text-center text-on-surface-variant group-hover:hidden">5</div>
+<div class="w-12 justify-center hidden group-hover:flex text-on-surface"><span class="material-symbols-outlined text-lg" data-icon="play_arrow">play_arrow</span></div>
+<div class="font-medium text-on-surface group-hover:text-primary transition-colors truncate">Under Your Spell</div>
+<div class="text-on-surface-variant truncate hidden sm:block">Desire</div>
+<div class="text-on-surface-variant truncate hidden md:block">Desire</div>
+<div class="w-20 text-right pr-4 text-on-surface-variant font-label text-sm">4:52</div>
+</div>
+<div class="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 py-4 items-center group hover:bg-surface-container-high transition-colors duration-150 cursor-pointer">
+<div class="w-12 text-center text-on-surface-variant group-hover:hidden">6</div>
+<div class="w-12 justify-center hidden group-hover:flex text-on-surface"><span class="material-symbols-outlined text-lg" data-icon="play_arrow">play_arrow</span></div>
+<div class="font-medium text-on-surface group-hover:text-primary transition-colors truncate">A Real Hero</div>
+<div class="text-on-surface-variant truncate hidden sm:block">College, Electric Youth</div>
+<div class="text-on-surface-variant truncate hidden md:block">Secret Diary</div>
+<div class="w-20 text-right pr-4 text-on-surface-variant font-label text-sm">4:27</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Player Bar) -->
+<div class="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center px-6 md:px-12 h-24 bg-[#131313]/80 backdrop-blur-xl border-0 md:ml-20 md:w-[calc(100%-5rem)]">
+<!-- Track Info -->
+<div class="flex items-center gap-4 w-1/3 min-w-0">
+<img alt="Visions Album Art" class="w-14 h-14 object-cover hidden sm:block" data-alt="abstract geometric forms in neon pink and deep black mimicking synthwave album cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxhudrCmFMIWrVkEB7orQkqxcrOkuR4MYd0PPBw1kMPEpCpXVByso9S2GeBdPHsNJts9cLkQ7uhX2FLb4f2tQQjZumu5gz-Cs5fBfYVi5VIDl4KUPyJ67Km41Ih79c6av42QXgHvfhrTcnsPNro4p6kkMhe3lTCFfZtd5Oout4nyuxVzGKa07MxC9aI7TZSXxEBxCK2_UJFdj6WFR2CJnH8bIXrusaawVKs2ZpXsZOTMmTv1Kic9LVxw3j88ORPlo6f_7oZyGLdBU"/>
+<div class="flex flex-col min-w-0">
+<span class="font-['Inter'] font-medium text-[11px] tracking-tight text-[#ffb87b] uppercase mb-1 flex items-center gap-2">
+<span class="material-symbols-outlined text-xs" data-icon="music_note">music_note</span> Track Info
+                </span>
+<span class="text-on-surface font-semibold truncate text-sm">Oblivion</span>
+<span class="text-on-surface-variant text-xs truncate">Grimes</span>
+</div>
+</div>
+<!-- Controls & Progress -->
+<div class="flex flex-col items-center justify-center w-1/3 max-w-md">
+<div class="flex items-center gap-6 mb-2">
+<button class="text-[#e5e2e1] hover:text-[#ffb87b] transition-colors"><span class="material-symbols-outlined" data-icon="skip_previous">skip_previous</span></button>
+<button class="w-10 h-10 flex items-center justify-center bg-primary text-on-primary hover:bg-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="pause" style="font-variation-settings: 'FILL' 1;">pause</span>
+</button>
+<button class="text-[#e5e2e1] hover:text-[#ffb87b] transition-colors"><span class="material-symbols-outlined" data-icon="skip_next">skip_next</span></button>
+</div>
+<div class="w-full flex items-center gap-3">
+<span class="text-[10px] font-label text-on-surface-variant w-8 text-right">1:24</span>
+<div class="h-1 flex-1 bg-surface-container-highest relative cursor-pointer group">
+<div class="absolute top-0 left-0 h-full w-1/3 bg-gradient-to-r from-primary to-primary-container"></div>
+<div class="absolute top-1/2 left-1/3 w-0.5 h-3 bg-on-surface -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<span class="text-[10px] font-label text-on-surface-variant w-8">4:11</span>
+</div>
+</div>
+<!-- Technical -->
+<div class="flex items-center justify-end gap-4 w-1/3 hidden md:flex">
+<span class="font-['Inter'] font-medium text-[11px] tracking-tight text-[#e5e2e1] hover:text-[#ffb87b] uppercase flex items-center gap-2 cursor-pointer transition-colors">
+<span class="material-symbols-outlined text-xs" data-icon="high_quality">high_quality</span> Technical
+            </span>
+<div class="text-right">
+<div class="text-[10px] font-label uppercase tracking-widest text-primary border border-outline-variant/30 px-1.5 py-0.5 mb-1 inline-block">FLAC</div>
+<div class="text-[10px] text-on-surface-variant font-label uppercase tracking-widest">96kHz / 24bit</div>
+</div>
+</div>
+</div>
+</body></html>
