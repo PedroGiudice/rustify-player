@@ -16,7 +16,7 @@ ExecStartPre=-/usr/bin/docker rm rustify-embed
 ExecStart=/usr/bin/docker run \
     --name rustify-embed \
     --rm \
-    -p 127.0.0.1:8447:8447 \
+    -p 127.0.0.1:8448:8448 \
     --cpus=14 \
     --memory=8g \
     -v rustify-embed-models:/models \

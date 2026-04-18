@@ -63,7 +63,7 @@ pub struct EmbedClient {
 
 impl EmbedClient {
     /// Construct a client pointing at `base_url` (e.g.
-    /// `"https://extractlab.cormorant-alpha.ts.net:8447"`).
+    /// `"https://extractlab.cormorant-alpha.ts.net:8448"`).
     pub fn new(base_url: impl Into<String>) -> Self {
         let agent = ureq::AgentBuilder::new()
             .timeout_connect(Duration::from_secs(5))
@@ -427,7 +427,7 @@ mod tests {
     #[test]
     #[ignore = "requires rustify-embed service running on VM; manual test"]
     fn health_returns_model_name() {
-        let client = EmbedClient::new("http://localhost:8447");
+        let client = EmbedClient::new("http://localhost:8448");
         let model = client.health().unwrap();
         assert!(!model.is_empty());
     }

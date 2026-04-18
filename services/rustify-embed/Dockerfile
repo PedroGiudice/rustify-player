@@ -45,9 +45,9 @@ RUN python -c "from transformers import AutoModel, Wav2Vec2FeatureExtractor; \
     AutoModel.from_pretrained('m-a-p/MERT-v1-95M', trust_remote_code=True); \
     Wav2Vec2FeatureExtractor.from_pretrained('m-a-p/MERT-v1-95M', trust_remote_code=True)"
 
-EXPOSE 8447
+EXPOSE 8448
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:8447/health || exit 1
+    CMD curl -fsS http://localhost:8448/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8447"]
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8448"]

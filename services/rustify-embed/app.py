@@ -149,5 +149,5 @@ def _short_model_id() -> str:
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("RUSTIFY_EMBED_PORT", "8447"))
+    port = int(os.environ.get("RUSTIFY_EMBED_PORT", "8448"))
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

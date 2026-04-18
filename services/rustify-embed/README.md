@@ -37,7 +37,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now rustify-embed
 
 # Verify
-curl -fsS http://127.0.0.1:8447/health
+curl -fsS http://127.0.0.1:8448/health
 # → {"model":"mert-v1-95m","status":"ok"}
 
 # Logs
@@ -46,14 +46,14 @@ journalctl --user -u rustify-embed -f
 
 ## Expose on Tailnet
 
-The container binds `127.0.0.1:8447` inside the VM (firewall defense in
+The container binds `127.0.0.1:8448` inside the VM (firewall defense in
 depth). Tailscale Serve routes a tailnet URL to that port:
 
 ```bash
-sudo tailscale serve --https=8447 --bg 127.0.0.1:8447
+sudo tailscale serve --https=8448 --bg 127.0.0.1:8448
 ```
 
-Client uses `https://extractlab.cormorant-alpha.ts.net:8447` as the
+Client uses `https://extractlab.cormorant-alpha.ts.net:8448` as the
 base URL. Do **not** use Funnel — the service has no authentication.
 
 ## Memory and CPU footprint
