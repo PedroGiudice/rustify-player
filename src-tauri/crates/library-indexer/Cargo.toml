@@ -1,0 +1,42 @@
+[package]
+name = "library-indexer"
+version = "0.1.0"
+description = "Music library indexer with metadata, cover art, and MERT audio embeddings"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Shared via workspace
+symphonia = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+crossbeam-channel = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Indexer-specific
+rusqlite = { workspace = true }
+walkdir = { workspace = true }
+notify = { workspace = true }
+image = { workspace = true }
+ort = { workspace = true }
+ndarray = { workspace = true }
+rubato = { workspace = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+unicode-normalization = { workspace = true }
+strsim = { workspace = true }
+ureq = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+default = []
+
+[[example]]
+name = "scan_folder"
+path = "examples/scan_folder.rs"

@@ -1,0 +1,17 @@
+[
+  {"name": "Eletrônica",             "display_order": 1},
+  {"name": "Rap & Hip-Hop",          "display_order": 2},
+  {"name": "Funk Brasileiro",        "display_order": 3},
+  {"name": "MPB",                    "display_order": 4},
+  {"name": "Funk & Soul",            "display_order": 5},
+  {"name": "Rock",                   "display_order": 6},
+  {"name": "R&B & Neo-Soul",         "display_order": 7},
+  {"name": "Country & Americana",    "display_order": 8},
+  {"name": "Indie",                  "display_order": 9},
+  {"name": "Clássica",               "display_order": 10},
+  {"name": "Jazz",                   "display_order": 11},
+  {"name": "Blues",                  "display_order": 12},
+  {"name": "Reggae",                 "display_order": 13},
+  {"name": "World",                  "display_order": 14},
+  {"name": "Meme & Shitpost Energy", "display_order": 15}
+]
