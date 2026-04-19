@@ -15,6 +15,7 @@ use tauri::{Emitter, Manager, State};
 struct Library {
     handle: IndexerHandle,
     cache_dir: PathBuf,
+    music_root: PathBuf,
 }
 struct Player(Mutex<Option<EngineHandle>>);
 
@@ -202,6 +203,28 @@ fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Folder-based playlists
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_list_folders(lib: State<Library>) -> Result<Vec<library_indexer::FolderPlaylist>, String> {
+    let root = lib.music_root.to_string_lossy();
+    lib.handle.list_folders(&root).map_err(err)
+}
+
+#[tauri::command]
+fn lib_list_folder_tracks(lib: State<Library>, folder: String) -> Result<Vec<Track>, String> {
+    let root = lib.music_root.to_string_lossy();
+    let mut tracks = lib.handle.list_folder_tracks(&root, &folder).map_err(err)?;
+    for track in &mut tracks {
+        if let Some(rel) = &track.album_cover_path {
+            track.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(tracks)
+}
+
+// ---------------------------------------------------------------------------
 // Library management
 // ---------------------------------------------------------------------------
 
@@ -327,7 +350,7 @@ pub fn run() {
 
             let config = IndexerConfig {
                 db_path,
-                music_root,
+                music_root: music_root.clone(),
                 cache_dir: cache_dir.clone(),
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
             };
@@ -336,6 +359,7 @@ pub fn run() {
             _app.manage(Library {
                 handle: indexer,
                 cache_dir,
+                music_root,
             });
 
             let engine = Engine::start().expect("failed to start audio engine");
@@ -365,6 +389,8 @@ pub fn run() {
             lib_shuffle,
             lib_snapshot,
             lib_rescan,
+            lib_list_folders,
+            lib_list_folder_tracks,
             lib_record_play,
             lib_list_history,
             player_play,

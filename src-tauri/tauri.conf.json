@@ -20,9 +20,10 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost",
       "assetProtocol": {
-        "scope": ["$HOME/.cache/rustify-player/**"]
+        "enable": true,
+        "scope": ["$HOME/.cache/rustify-player/**", "**/.cache/rustify-player/**"]
       }
     }
   },

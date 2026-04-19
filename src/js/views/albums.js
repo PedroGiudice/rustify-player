@@ -40,18 +40,17 @@ async function load(view) {
 
     // Fetch covers asynchronously
     albums.forEach(async (a) => {
-      try {
-        if (a.cover_path) {
-          const assetUrl = convertFileSrc(a.cover_path);
-          const coverDiv = body.querySelector(`#album-cover-${a.id}`);
-          if (coverDiv) {
-            coverDiv.innerHTML = `<img src="${assetUrl}" alt="${esc(a.title)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">`;
-            coverDiv.classList.remove("card__cover--initials");
-          }
-        }
-      } catch (e) {
-        console.error("Failed to load cover for album", a.id, e);
-      }
+      if (!a.cover_path) return;
+      const coverDiv = body.querySelector(`#album-cover-${a.id}`);
+      if (!coverDiv) return;
+      const img = new Image();
+      img.onload = () => {
+        coverDiv.innerHTML = "";
+        coverDiv.appendChild(img);
+        img.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
+        coverDiv.classList.remove("card__cover--initials");
+      };
+      img.src = convertFileSrc(a.cover_path);
     });
 
     body.addEventListener("click", async (e) => {

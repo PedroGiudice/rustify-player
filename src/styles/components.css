@@ -759,3 +759,62 @@
   background: var(--surface-container-high);
   color: var(--on-surface-variant);
 }
+
+/* ===== Folder / Playlist view ===== */
+.view__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-right: var(--space-3);
+  vertical-align: middle;
+  background: var(--surface-container);
+  color: var(--on-surface);
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-headline-sm);
+  line-height: 1;
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.view__back:hover {
+  background: var(--surface-container-high);
+}
+
+.folder-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4);
+  background: transparent;
+  color: var(--on-surface);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.folder-item:hover {
+  background: var(--surface-container);
+}
+
+.folder-item__name {
+  font-size: var(--text-body-md);
+  font-weight: var(--fw-medium);
+}
+
+.folder-item__count {
+  font-size: var(--text-label-md);
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  flex-shrink: 0;
+  margin-left: var(--space-4);
+}

@@ -490,6 +490,102 @@ pub fn shuffle(
 }
 
 // ---------------------------------------------------------------------------
+// Folder-based playlists
+// ---------------------------------------------------------------------------
+
+/// A folder inside the music root that contains tracks.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FolderPlaylist {
+    /// Folder name relative to music_root (e.g. "Eletronica"). Empty string for root.
+    pub name: String,
+    pub track_count: u32,
+}
+
+/// List top-level subdirectories under `music_root` that contain indexed tracks.
+pub fn list_folders(
+    conn: &Connection,
+    music_root: &str,
+) -> Result<Vec<FolderPlaylist>, IndexerError> {
+    let prefix = if music_root.ends_with('/') {
+        music_root.to_string()
+    } else {
+        format!("{}/", music_root)
+    };
+    let prefix_len = prefix.len() as i64;
+
+    let sql = "
+        SELECT
+            CASE
+                WHEN instr(substr(path, ?1 + 1), '/') > 0
+                THEN substr(substr(path, ?1 + 1), 1, instr(substr(path, ?1 + 1), '/') - 1)
+                ELSE ''
+            END as folder,
+            count(*) as cnt
+        FROM tracks
+        WHERE path LIKE ?2 || '%'
+        GROUP BY folder
+        ORDER BY folder
+    ";
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt
+        .query_map(rusqlite::params![prefix_len, prefix], |row| {
+            let name: String = row.get(0)?;
+            let count: u32 = row.get(1)?;
+            Ok(FolderPlaylist {
+                name,
+                track_count: count,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// List tracks inside a specific folder (relative to music_root).
+/// Pass empty string for root-level tracks.
+pub fn list_folder_tracks(
+    conn: &Connection,
+    music_root: &str,
+    folder: &str,
+) -> Result<Vec<Track>, IndexerError> {
+    let prefix = if music_root.ends_with('/') {
+        music_root.to_string()
+    } else {
+        format!("{}/", music_root)
+    };
+
+    let pattern = if folder.is_empty() {
+        // Root: files directly in music_root (no subfolder)
+        format!("{}%", prefix)
+    } else {
+        format!("{}{}/%", prefix, folder)
+    };
+
+    // For root, exclude files in subfolders
+    let sql = if folder.is_empty() {
+        format!(
+            "{TRACK_SELECT} WHERE path LIKE ?1 AND instr(substr(path, ?2 + 1), '/') = 0 \
+             ORDER BY t.title COLLATE NOCASE"
+        )
+    } else {
+        format!(
+            "{TRACK_SELECT} WHERE path LIKE ?1 \
+             ORDER BY t.track_number, t.title COLLATE NOCASE"
+        )
+    };
+
+    let mut stmt = conn.prepare(&sql)?;
+    let prefix_len = prefix.len() as i64;
+    let rows: Vec<Track> = if folder.is_empty() {
+        stmt.query_map(rusqlite::params![pattern, prefix_len], map_track)?
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        stmt.query_map(rusqlite::params![pattern], map_track)?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
 // Playback history
 // ---------------------------------------------------------------------------
 

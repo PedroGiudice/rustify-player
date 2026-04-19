@@ -26,6 +26,7 @@ mod pipeline;
 
 pub use embed_client::EmbedClient;
 pub use error::IndexerError;
+pub use search::FolderPlaylist;
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
     IndexerEvent, IndexerSnapshot, SearchResults, Tag, Track, TrackFilter, TrackOrder,
@@ -169,6 +170,14 @@ impl IndexerHandle {
         self.inner
             .pool
             .with(|conn| search::shuffle(conn, &filter, seed, limit))
+    }
+
+    pub fn list_folders(&self, music_root: &str) -> Result<Vec<search::FolderPlaylist>, IndexerError> {
+        self.inner.pool.with(|conn| search::list_folders(conn, music_root))
+    }
+
+    pub fn list_folder_tracks(&self, music_root: &str, folder: &str) -> Result<Vec<Track>, IndexerError> {
+        self.inner.pool.with(|conn| search::list_folder_tracks(conn, music_root, folder))
     }
 
     pub fn record_play(&self, track_id: i64) -> Result<(), IndexerError> {
