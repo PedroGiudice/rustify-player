@@ -45,8 +45,7 @@ async function load(view) {
         <div class="settings-row">
           <label class="settings-row__label">Re-scan</label>
           <div class="settings-row__control">
-            <button class="settings-button" disabled>Re-scan library</button>
-            <span class="badge--soon">Coming soon</span>
+            <button class="settings-button" id="st-rescan">Re-scan library</button>
           </div>
         </div>
 
@@ -120,6 +119,23 @@ async function load(view) {
         </div>
       </section>
     `;
+
+    const rescanBtn = body.querySelector("#st-rescan");
+    rescanBtn.addEventListener("click", async () => {
+      rescanBtn.disabled = true;
+      rescanBtn.textContent = "Scanning...";
+      try {
+        await invoke("lib_rescan");
+        rescanBtn.textContent = "Scan started";
+        setTimeout(() => {
+          rescanBtn.disabled = false;
+          rescanBtn.textContent = "Re-scan library";
+        }, 5000);
+      } catch (e) {
+        rescanBtn.textContent = "Scan failed";
+        rescanBtn.disabled = false;
+      }
+    });
 
     const slider = body.querySelector("#st-volume");
     const valueLabel = body.querySelector("#st-volume-val");

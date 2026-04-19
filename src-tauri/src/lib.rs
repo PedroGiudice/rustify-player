@@ -202,6 +202,17 @@ fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Library management
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_rescan(lib: State<Library>) -> Result<(), String> {
+    lib.handle
+        .send(library_indexer::IndexerCommand::Rescan)
+        .map_err(err)
+}
+
+// ---------------------------------------------------------------------------
 // Playback history
 // ---------------------------------------------------------------------------
 
@@ -353,6 +364,7 @@ pub fn run() {
             lib_similar,
             lib_shuffle,
             lib_snapshot,
+            lib_rescan,
             lib_record_play,
             lib_list_history,
             player_play,

@@ -1,4 +1,4 @@
-import { playTrack } from "../components/player-bar.js";
+import { playTrack, setQueue } from "../components/player-bar.js";
 
 const { invoke } = window.__TAURI__.core;
 
@@ -121,10 +121,10 @@ function renderTracks(tbody, tracks) {
   tbody.addEventListener("dblclick", (e) => {
     const row = e.target.closest(".track-row");
     if (!row) return;
-    const path = row.dataset.path;
-    const track = tracks.find((t) => t.id == row.dataset.trackId);
-    if (track) {
-      playTrack(track);
+    const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+    if (idx >= 0) {
+      setQueue(tracks, idx);
+      playTrack(tracks[idx]);
     }
   });
 }
