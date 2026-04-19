@@ -119,11 +119,14 @@ impl FlacDecoder {
             .make(&codec_params, &DecoderOptions::default())
             .map_err(EngineError::from)?;
 
+        let bit_depth = codec_params.bits_per_sample;
+
         let info = TrackInfo {
             handle,
             path: path.to_path_buf(),
             sample_rate,
             channels: channel_count,
+            bit_depth,
             total_frames,
             duration,
         };

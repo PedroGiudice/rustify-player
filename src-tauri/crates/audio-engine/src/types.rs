@@ -29,6 +29,8 @@ pub struct TrackInfo {
     pub path: PathBuf,
     pub sample_rate: u32,
     pub channels: u16,
+    /// Bits per sample from the codec (e.g. 16, 24, 32). `None` if unavailable.
+    pub bit_depth: Option<u32>,
     /// Total number of frames (samples per channel), if known from the header.
     pub total_frames: Option<u64>,
     /// Total duration in seconds, if `total_frames` is known.

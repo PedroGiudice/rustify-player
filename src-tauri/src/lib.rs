@@ -50,7 +50,13 @@ fn lib_list_tracks(
         limit,
         ..Default::default()
     };
-    lib.handle.list_tracks(filter).map_err(err)
+    let mut tracks = lib.handle.list_tracks(filter).map_err(err)?;
+    for track in &mut tracks {
+        if let Some(rel) = &track.album_cover_path {
+            track.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(tracks)
 }
 
 #[tauri::command]
@@ -283,7 +289,10 @@ pub fn run() {
             let db_path = data_dir.join("library.db");
             let music_root = dirs_home().join("Music");
 
-            let embed_url = std::env::var("RUSTIFY_EMBED_URL").ok();
+            let embed_url = std::env::var("RUSTIFY_EMBED_URL").ok().or_else(|| {
+                // Default to Tailscale endpoint on the dev VM
+                Some("https://extractlab.cormorant-alpha.ts.net:8448".to_string())
+            });
 
             let config = IndexerConfig {
                 db_path,
