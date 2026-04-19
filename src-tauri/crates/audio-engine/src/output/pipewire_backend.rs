@@ -463,28 +463,27 @@ fn run_mainloop(
     alive.store(false, Ordering::Release);
 }
 
-/// Copy up to `out.len()` samples from `consumer` into `out` in one pass.
+/// Copy up to `out.len()` samples from `consumer` into `out`.
 /// Returns the number of samples actually written.
 fn fill_f32_from_ring(out: &mut [f32], consumer: &mut Consumer<f32>) -> usize {
-    let requested = out.len();
     let available = consumer.slots();
-    let to_read = available.min(requested);
+    let to_read = available.min(out.len());
     if to_read == 0 {
         return 0;
     }
-    let Ok(chunk) = consumer.read_chunk(to_read) else {
-        return 0;
-    };
-    let (a, b) = chunk.as_slices();
-    let mut written = 0;
-    out[..a.len()].copy_from_slice(a);
-    written += a.len();
-    if !b.is_empty() {
-        out[written..written + b.len()].copy_from_slice(b);
-        written += b.len();
+    match consumer.read_chunk(to_read) {
+        Ok(chunk) => {
+            let (a, b) = chunk.as_slices();
+            out[..a.len()].copy_from_slice(a);
+            if !b.is_empty() {
+                out[a.len()..a.len() + b.len()].copy_from_slice(b);
+            }
+            let written = a.len() + b.len();
+            chunk.commit_all();
+            written
+        }
+        Err(_) => 0,
     }
-    chunk.commit_all();
-    written
 }
 
 /// Helper trait to reinterpret a `&mut [u8]` as `&mut [f32]` without going

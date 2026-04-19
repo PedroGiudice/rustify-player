@@ -184,7 +184,7 @@ export async function playTrack(track) {
       const album = await invoke("lib_get_album", { id: track.album_id });
       if (album && album.cover_path) {
         const assetUrl = convertFileSrc(album.cover_path);
-        ui.cover.innerHTML = `<img src="${assetUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">`;
+        ui.cover.innerHTML = `<img src="${assetUrl}" alt="">`;
         ui.cover.classList.remove("album-cover-empty");
       } else {
         ui.cover.innerHTML = "";

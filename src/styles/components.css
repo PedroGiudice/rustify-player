@@ -125,12 +125,21 @@
   gap: var(--space-4);
 }
 
-/* Empty album cover placeholder (left block) */
+/* Album cover in player bar (left block) */
+#pb-cover,
 .album-cover-empty {
   width: 3.5rem;
   height: 3.5rem;
   background: var(--surface-container-highest);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+#pb-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .player-bar__track-meta {
