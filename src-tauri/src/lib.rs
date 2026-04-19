@@ -1,7 +1,7 @@
 use audio_engine::{Command as EngineCommand, Engine, EngineHandle};
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
-    IndexerHandle, SearchResults, Track, TrackFilter, TrackOrder,
+    IndexerHandle, LyricLine, SearchResults, Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -236,6 +236,15 @@ fn lib_rescan(lib: State<Library>) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Lyrics
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_get_lyrics(lib: State<Library>, track_id: i64) -> Result<Vec<LyricLine>, String> {
+    lib.handle.get_lyrics(track_id).map_err(err)
+}
+
+// ---------------------------------------------------------------------------
 // Playback history
 // ---------------------------------------------------------------------------
 
@@ -389,6 +398,7 @@ pub fn run() {
             lib_shuffle,
             lib_snapshot,
             lib_rescan,
+            lib_get_lyrics,
             lib_list_folders,
             lib_list_folder_tracks,
             lib_record_play,

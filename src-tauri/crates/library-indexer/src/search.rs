@@ -58,7 +58,8 @@ const TRACK_SELECT: &str = "
            (SELECT group_concat(tg.name, '||')
               FROM track_tags tt
               JOIN tags tg ON tg.id = tt.tag_id
-             WHERE tt.track_id = t.id) AS tags_concat
+             WHERE tt.track_id = t.id) AS tags_concat,
+           t.lrc_path
       FROM tracks t
  LEFT JOIN albums  al ON al.id = t.album_id
  LEFT JOIN artists ar ON ar.id = t.artist_id
@@ -97,6 +98,8 @@ fn map_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         })
         .unwrap_or_default();
 
+    let lrc_path_str: Option<String> = row.get(26)?;
+
     Ok(Track {
         id: row.get(0)?,
         path: path_str.into(),
@@ -132,6 +135,7 @@ fn map_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         embedding_status,
         play_count: row.get::<_, i64>(23)? as u32,
         last_played: row.get(24)?,
+        lrc_path: lrc_path_str.map(Into::into),
     })
 }
 
@@ -608,6 +612,38 @@ pub fn list_history(conn: &Connection, limit: usize) -> Result<Vec<Track>, Index
         .query_map([limit as i64], map_track)?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Lyrics
+// ---------------------------------------------------------------------------
+
+/// Look up the lrc_path for a track and parse the lyrics file.
+/// Returns an empty vec if no lrc_path is set or the file is unreadable.
+pub fn get_lyrics(
+    conn: &Connection,
+    track_id: i64,
+) -> Result<Vec<crate::lyrics::LyricLine>, IndexerError> {
+    let lrc_path: Option<String> = conn
+        .query_row(
+            "SELECT lrc_path FROM tracks WHERE id = ?",
+            params![track_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+
+    match lrc_path {
+        Some(p) => {
+            let path = std::path::Path::new(&p);
+            if path.is_file() {
+                crate::lyrics::parse_lrc_file(path)
+            } else {
+                Ok(Vec::new())
+            }
+        }
+        None => Ok(Vec::new()),
+    }
 }
 
 // ---------------------------------------------------------------------------

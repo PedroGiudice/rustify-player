@@ -30,6 +30,7 @@ use crate::cover::{self, CoverSource};
 use crate::db::{self, OpenedDb, ReadPool};
 use crate::embed_client::EmbedClient;
 use crate::error::IndexerError;
+use crate::lyrics;
 use crate::metadata::{self, ParsedFlacMetadata, PictureUsage};
 use crate::scan::{self, FileEntry};
 use crate::types::{IndexerCommand, IndexerEvent, IndexerSnapshot};
@@ -389,6 +390,9 @@ fn ingest_within_tx(
         )
         .ok();
 
+    // Discover sidecar .lrc lyrics file.
+    let lrc_path = lyrics::find_lrc_sidecar(&entry.path).map(|p| path_str(&p));
+
     let (track_id, is_new) = if let Some(id) = existing_id {
         tx.execute(
             "UPDATE tracks SET
@@ -398,7 +402,7 @@ fn ingest_within_tx(
                 sample_rate = ?, bit_depth = ?, channels = ?,
                 rg_track_gain = ?, rg_album_gain = ?, rg_track_peak = ?, rg_album_peak = ?,
                 embedding_status = 'pending', embedding = NULL, embedding_error = NULL,
-                indexed_at = ?
+                indexed_at = ?, lrc_path = ?
              WHERE id = ?",
             params![
                 filename,
@@ -419,6 +423,7 @@ fn ingest_within_tx(
                 md.rg_track_peak,
                 md.rg_album_peak,
                 now,
+                lrc_path,
                 id,
             ],
         )?;
@@ -431,8 +436,8 @@ fn ingest_within_tx(
                  album_id, artist_id, genre_id,
                  sample_rate, bit_depth, channels,
                  rg_track_gain, rg_album_gain, rg_track_peak, rg_album_peak,
-                 embedding_status, indexed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+                 embedding_status, indexed_at, lrc_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
             params![
                 path_str(&entry.path),
                 filename,
@@ -453,6 +458,7 @@ fn ingest_within_tx(
                 md.rg_track_peak,
                 md.rg_album_peak,
                 now,
+                lrc_path,
             ],
         )?;
         (tx.last_insert_rowid(), true)

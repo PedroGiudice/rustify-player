@@ -21,7 +21,10 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
 /// Ordered (version, SQL) pairs embedded at compile time.
-const MIGRATIONS: &[(i32, &str)] = &[(1, include_str!("../migrations/001_initial.sql"))];
+const MIGRATIONS: &[(i32, &str)] = &[
+    (1, include_str!("../migrations/001_initial.sql")),
+    (2, include_str!("../migrations/002_add_lrc_path.sql")),
+];
 
 const GENRE_SEED: &str = include_str!("../seeds/genres.json");
 
@@ -280,7 +283,7 @@ mod tests {
             .writer
             .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]

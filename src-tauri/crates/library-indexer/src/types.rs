@@ -117,6 +117,9 @@ pub struct Track {
     pub embedding_status: EmbeddingStatus,
     pub play_count: u32,
     pub last_played: Option<i64>,
+
+    /// Path to a sidecar `.lrc` lyrics file, if one exists.
+    pub lrc_path: Option<PathBuf>,
 }
 
 /// Filter applied to list_tracks queries.

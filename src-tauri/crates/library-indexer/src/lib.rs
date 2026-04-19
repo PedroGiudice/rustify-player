@@ -24,8 +24,11 @@ mod search;
 mod embed_client;
 mod pipeline;
 
+pub mod lyrics;
+
 pub use embed_client::EmbedClient;
 pub use error::IndexerError;
+pub use lyrics::LyricLine;
 pub use search::FolderPlaylist;
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
@@ -178,6 +181,10 @@ impl IndexerHandle {
 
     pub fn list_folder_tracks(&self, music_root: &str, folder: &str) -> Result<Vec<Track>, IndexerError> {
         self.inner.pool.with(|conn| search::list_folder_tracks(conn, music_root, folder))
+    }
+
+    pub fn get_lyrics(&self, track_id: i64) -> Result<Vec<LyricLine>, IndexerError> {
+        self.inner.pool.with(|conn| search::get_lyrics(conn, track_id))
     }
 
     pub fn record_play(&self, track_id: i64) -> Result<(), IndexerError> {
