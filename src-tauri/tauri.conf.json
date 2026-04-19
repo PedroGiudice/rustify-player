@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost",
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: http://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["$HOME/.cache/rustify-player/**", "**/.cache/rustify-player/**"]
