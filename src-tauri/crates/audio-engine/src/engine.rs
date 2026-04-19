@@ -330,6 +330,17 @@ impl EngineState {
     }
 
     fn install_current(&mut self, prep: PreparedDecoder) {
+        // Drop the active stream if the new track's format differs (e.g.
+        // switching from 96kHz to 44.1kHz). The next pump() will call
+        // reconfigure_stream() which creates a stream matching the new format.
+        let needs_reconfigure = self
+            .active_stream
+            .as_ref()
+            .is_some_and(|s| !format_matches(&prep.format, &s.actual_format));
+        if needs_reconfigure {
+            self.active_stream = None;
+        }
+
         self.current = Some(LoadedTrack {
             decoder: prep.decoder,
             info: prep.info.clone(),
