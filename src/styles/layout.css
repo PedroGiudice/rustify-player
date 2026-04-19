@@ -1,9 +1,10 @@
-/* Layout — the three-area shell grid.
+/* Layout — three-area shell.
  *   sidebar | main
  *   player-bar (spans both columns)
  *
- * No-Line Rule: the three areas are separated by background color only.
- * No borders, no dividers.
+ * Sidebar width is driven by --sidebar-w, which shifts when
+ * [data-sidebar="expanded"] is applied to <html>.
+ * Player-bar height is driven by --player-bar-h (compact tokens override).
  */
 
 body {
@@ -13,6 +14,8 @@ body {
   grid-template-areas:
     "sidebar main"
     "player-bar player-bar";
+  transition: grid-template-columns var(--dur-normal) var(--ease-standard),
+              grid-template-rows var(--dur-normal) var(--ease-standard);
 }
 
 .sidebar {
@@ -20,7 +23,7 @@ body {
   background: var(--surface);
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   padding: var(--space-8) 0;
   z-index: 2;
   overflow: hidden;
@@ -36,15 +39,21 @@ body {
 
 .player-bar {
   grid-area: player-bar;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   z-index: 3;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1.4fr 1fr;
   align-items: center;
   padding: 0 var(--space-8);
   gap: var(--space-6);
+}
+
+/* Compact density tweaks */
+html[data-density="compact"] .player-bar {
+  padding: 0 var(--space-6);
+  gap: var(--space-4);
 }
 
 /* ===== View container (inside .main) ===== */
@@ -58,8 +67,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 4;
-  padding: var(--space-12) var(--space-8);
-  background: color-mix(in srgb, var(--surface-lowest) 90%, transparent);
+  padding: var(--space-12) var(--space-8) var(--space-6);
+  background: color-mix(in srgb, var(--surface-lowest) 92%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -70,12 +79,18 @@ body {
   letter-spacing: var(--tracking-tight);
   text-transform: uppercase;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .view__stats {
   margin-top: var(--space-4);
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  font-family: var(--font-technical);
   font-size: var(--text-label-md);
   text-transform: uppercase;
   letter-spacing: var(--tracking-widest);
@@ -94,9 +109,11 @@ body {
   flex-direction: column;
 }
 
-/* Wider horizontal padding on larger viewports */
 @media (min-width: 1024px) {
-  .view__header,
+  .view__header {
+    padding-left: var(--space-16);
+    padding-right: var(--space-16);
+  }
   .view__body {
     padding-left: var(--space-16);
     padding-right: var(--space-16);
@@ -105,3 +122,6 @@ body {
     font-size: var(--text-display-lg);
   }
 }
+
+/* Hide view title on routes where a hero replaces it */
+.view--hero .view__header { display: none; }

@@ -1,13 +1,11 @@
-// Entry — wires shell components and kicks off the router.
+// Entry — loads tweaks first (to avoid flash), then wires shell components and router.
 
 import { mountSidebar } from "./js/components/sidebar.js";
 import { mountPlayerBar } from "./js/components/player-bar.js";
+import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
 import { initRouter } from "./js/router.js";
 
 async function loadIconSprite() {
-  // Inline the SVG sprite so `<use href="#icon-X">` references resolve
-  // without relying on cross-document <use>, which has inconsistent
-  // support in webviews (especially under file://).
   try {
     const res = await fetch("assets/icons.svg");
     if (!res.ok) throw new Error(`sprite fetch ${res.status}`);
@@ -23,7 +21,10 @@ async function loadIconSprite() {
 }
 
 async function boot() {
-  // Sprite first — views and components reference #icon-* symbols.
+  // 1. Apply persisted tweaks before any rendering to avoid flash
+  loadTweaks();
+
+  // 2. Load icon sprite — views and components reference #icon-* symbols
   await loadIconSprite();
 
   const sidebar = document.getElementById("sidebar");
@@ -35,8 +36,12 @@ async function boot() {
     return;
   }
 
+  // 3. Mount shell components
   mountSidebar(sidebar);
   mountPlayerBar(playerBar);
+  mountTweaks();
+
+  // 4. Start router
   initRouter(main);
 }
 

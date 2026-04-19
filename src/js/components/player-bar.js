@@ -1,10 +1,17 @@
+// Player bar — three-block layout: left (cover+meta), center (transport+seek), right (tech+volume).
+// Preserves all Tauri IPC contracts. Adds shuffle, repeat, volume, drag-to-seek.
+
 const { listen } = window.__TAURI__.event;
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
 let currentTrack = null;
-let trackQueue = []; // tracks from the current view for prev/next
+let trackQueue = [];
 let queueIndex = -1;
 let ui = {};
+let isPlaying = false;
+let durationSecs = 0;
+let currentSecs = 0;
+let isScrubbing = false;
 
 export function setQueue(tracks, startIndex) {
   trackQueue = tracks;
@@ -20,26 +27,35 @@ export function mountPlayerBar(root) {
           <svg class="icon icon--sm" aria-hidden="true"><use href="#icon-music-note"></use></svg>
           No Track
         </span>
-        <span class="player-bar__track-title" id="pb-title">—</span>
-        <span class="player-bar__track-artist" id="pb-artist">—</span>
+        <span class="player-bar__track-title" id="pb-title">\u2014</span>
+        <span class="player-bar__track-artist" id="pb-artist">\u2014</span>
       </div>
     </div>
 
     <div class="player-bar__block player-bar__block--center">
       <div class="player-bar__controls">
+        <button class="icon-btn icon-btn--toggle" id="pb-shuffle" aria-label="Shuffle">
+          <svg class="icon" aria-hidden="true"><use href="#icon-shuffle"></use></svg>
+          <span class="icon-btn__pip"></span>
+        </button>
         <button class="icon-btn" id="pb-prev" aria-disabled="true" aria-label="Previous">
           <svg class="icon" aria-hidden="true"><use href="#icon-skip-previous"></use></svg>
         </button>
         <button class="icon-btn icon-btn--primary" id="pb-play-pause" aria-disabled="true" aria-label="Play">
-          <svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+          <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play"></use></svg>
         </button>
         <button class="icon-btn" id="pb-next" aria-disabled="true" aria-label="Next">
           <svg class="icon" aria-hidden="true"><use href="#icon-skip-next"></use></svg>
         </button>
+        <button class="icon-btn icon-btn--toggle" id="pb-repeat" aria-label="Repeat" data-mode="off">
+          <svg class="icon" aria-hidden="true"><use href="#icon-repeat"></use></svg>
+          <span class="icon-btn__pip"></span>
+          <span class="icon-btn__badge">1</span>
+        </button>
       </div>
       <div class="player-bar__seek">
         <span class="player-bar__time" id="pb-time-current">0:00</span>
-        <div class="progress" role="slider" id="pb-progress" aria-label="Seek">
+        <div class="progress" id="pb-progress" aria-label="Seek">
           <div class="progress__fill" id="pb-progress-fill" style="width: 0%"></div>
           <div class="progress__thumb" id="pb-progress-thumb" style="left: 0%"></div>
         </div>
@@ -49,12 +65,28 @@ export function mountPlayerBar(root) {
 
     <div class="player-bar__block player-bar__block--right">
       <div class="player-bar__tech">
-        <div class="tech-badge tech-badge--dim" id="pb-tech-badge">—</div>
-        <div class="player-bar__tech-line" id="pb-tech-line">— / —</div>
+        <div class="tech-badge tech-badge--dim" id="pb-tech-badge">\u2014</div>
+        <div class="player-bar__tech-line" id="pb-tech-line">\u2014 / \u2014</div>
+      </div>
+      <div class="volume">
+        <button class="icon-btn" id="pb-vol-btn" aria-label="Volume">
+          <svg class="icon" aria-hidden="true"><use href="#icon-volume"></use></svg>
+        </button>
+        <div class="progress" id="pb-vol-progress" aria-label="Volume">
+          <div class="progress__fill" id="pb-vol-fill" style="width: 78%"></div>
+        </div>
       </div>
     </div>
   `;
 
+  cacheUI(root);
+  bindTransport();
+  bindSeek();
+  bindVolume();
+  listenEngine();
+}
+
+function cacheUI(root) {
   ui = {
     cover: root.querySelector("#pb-cover"),
     label: root.querySelector("#pb-label"),
@@ -63,6 +95,8 @@ export function mountPlayerBar(root) {
     playPauseBtn: root.querySelector("#pb-play-pause"),
     prevBtn: root.querySelector("#pb-prev"),
     nextBtn: root.querySelector("#pb-next"),
+    shuffleBtn: root.querySelector("#pb-shuffle"),
+    repeatBtn: root.querySelector("#pb-repeat"),
     timeCurrent: root.querySelector("#pb-time-current"),
     timeTotal: root.querySelector("#pb-time-total"),
     progressFill: root.querySelector("#pb-progress-fill"),
@@ -70,12 +104,15 @@ export function mountPlayerBar(root) {
     progressBar: root.querySelector("#pb-progress"),
     techBadge: root.querySelector("#pb-tech-badge"),
     techLine: root.querySelector("#pb-tech-line"),
+    volBtn: root.querySelector("#pb-vol-btn"),
+    volProgress: root.querySelector("#pb-vol-progress"),
+    volFill: root.querySelector("#pb-vol-fill"),
   };
+}
 
-  // Play / Pause
+function bindTransport() {
   ui.playPauseBtn.addEventListener("click", () => {
     if (ui.playPauseBtn.getAttribute("aria-disabled") === "true") return;
-    const isPlaying = ui.playPauseBtn.dataset.playing === "true";
     if (isPlaying) {
       invoke("player_pause");
     } else {
@@ -83,7 +120,6 @@ export function mountPlayerBar(root) {
     }
   });
 
-  // Previous
   ui.prevBtn.addEventListener("click", () => {
     if (ui.prevBtn.getAttribute("aria-disabled") === "true") return;
     if (queueIndex > 0) {
@@ -92,7 +128,6 @@ export function mountPlayerBar(root) {
     }
   });
 
-  // Next
   ui.nextBtn.addEventListener("click", () => {
     if (ui.nextBtn.getAttribute("aria-disabled") === "true") return;
     if (queueIndex < trackQueue.length - 1) {
@@ -101,16 +136,81 @@ export function mountPlayerBar(root) {
     }
   });
 
-  // Seek
-  ui.progressBar.addEventListener("click", (e) => {
-    if (!currentTrack || !currentTrack.duration_secs) return;
-    const rect = ui.progressBar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const seekTo = pct * currentTrack.duration_secs;
-    invoke("player_seek", { seconds: seekTo });
+  ui.shuffleBtn.addEventListener("click", () => {
+    ui.shuffleBtn.classList.toggle("is-active");
+    invoke("toggle_shuffle").catch(() => {});
   });
 
-  // Engine state events
+  ui.repeatBtn.addEventListener("click", () => {
+    const modes = ["off", "all", "one"];
+    const cur = ui.repeatBtn.dataset.mode || "off";
+    const next = modes[(modes.indexOf(cur) + 1) % modes.length];
+    ui.repeatBtn.dataset.mode = next;
+    ui.repeatBtn.classList.toggle("is-active", next !== "off");
+    invoke("cycle_repeat").catch(() => {});
+  });
+}
+
+function bindSeek() {
+  const onPointerDown = (e) => {
+    if (!currentTrack || !durationSecs) return;
+    isScrubbing = true;
+    ui.progressBar.classList.add("is-scrubbing");
+    updateSeekFromEvent(e);
+
+    const onMove = (ev) => updateSeekFromEvent(ev);
+    const onUp = (ev) => {
+      isScrubbing = false;
+      ui.progressBar.classList.remove("is-scrubbing");
+      updateSeekFromEvent(ev);
+      invoke("player_seek", { seconds: currentSecs }).catch(() => {});
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  ui.progressBar.addEventListener("pointerdown", onPointerDown);
+}
+
+function updateSeekFromEvent(e) {
+  const rect = ui.progressBar.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  currentSecs = pct * durationSecs;
+  updateProgressUI(pct * 100);
+  ui.timeCurrent.textContent = formatDuration(currentSecs);
+}
+
+function bindVolume() {
+  ui.volProgress.addEventListener("pointerdown", (e) => {
+    const update = (ev) => {
+      const rect = ui.volProgress.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      ui.volFill.style.width = `${pct * 100}%`;
+      invoke("set_volume", { volume: pct }).catch(() => {});
+    };
+    update(e);
+    const onMove = (ev) => update(ev);
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  });
+
+  let muted = false;
+  ui.volBtn.addEventListener("click", () => {
+    muted = !muted;
+    const useId = muted ? "#icon-volume-mute" : "#icon-volume";
+    ui.volBtn.querySelector("use").setAttribute("href", useId);
+    invoke("set_volume", { volume: muted ? 0 : 0.78 }).catch(() => {});
+    ui.volFill.style.width = muted ? "0%" : "78%";
+  });
+}
+
+function listenEngine() {
   listen("player-state", (e) => {
     const payload = e.payload;
     if (payload.StateChanged) {
@@ -122,22 +222,28 @@ export function mountPlayerBar(root) {
         setPlayingState(false);
       }
     } else if (payload.Position) {
-      updatePosition(payload.Position);
+      if (!isScrubbing) {
+        updatePosition(payload.Position);
+      }
     } else if (payload.TrackStarted) {
       const info = payload.TrackStarted;
       updateTechInfo(info);
       if (info.duration && info.duration.secs) {
-        ui.timeTotal.textContent = formatDuration(info.duration.secs);
+        durationSecs = info.duration.secs;
+        ui.timeTotal.textContent = formatDuration(durationSecs);
       }
     }
   });
 }
 
-function setPlayingState(isPlaying) {
-  ui.playPauseBtn.dataset.playing = isPlaying ? "true" : "false";
-  ui.playPauseBtn.innerHTML = isPlaying
-    ? `<svg class="icon" aria-hidden="true"><use href="#icon-pause"></use></svg>`
-    : `<svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>`;
+function setPlayingState(playing) {
+  isPlaying = playing;
+  const useEl = ui.playPauseBtn.querySelector("use");
+  useEl.setAttribute("href", playing ? "#icon-pause" : "#icon-play");
+  ui.playPauseBtn.setAttribute("data-playing", playing ? "true" : "false");
+  ui.label.innerHTML = playing
+    ? `<svg class="icon icon--sm" aria-hidden="true"><use href="#icon-music-note"></use></svg> Playing`
+    : `<svg class="icon icon--sm" aria-hidden="true"><use href="#icon-pause"></use></svg> Paused`;
 }
 
 function updateNavButtons() {
@@ -146,37 +252,38 @@ function updateNavButtons() {
 }
 
 function updatePosition(pos) {
-  const currentSecs = pos.samples_played / pos.sample_rate;
+  currentSecs = pos.samples_played / pos.sample_rate;
   ui.timeCurrent.textContent = formatDuration(currentSecs);
-
-  if (currentTrack && currentTrack.duration_secs > 0) {
-    const percent = Math.min(100, (currentSecs / currentTrack.duration_secs) * 100);
-    ui.progressFill.style.width = `${percent}%`;
-    ui.progressThumb.style.left = `${percent}%`;
+  if (durationSecs > 0) {
+    const pct = Math.min(100, (currentSecs / durationSecs) * 100);
+    updateProgressUI(pct);
   }
+}
+
+function updateProgressUI(pct) {
+  ui.progressFill.style.width = `${pct}%`;
+  ui.progressThumb.style.left = `${pct}%`;
 }
 
 function updateTechInfo(info) {
   ui.techBadge.textContent = "FLAC";
   ui.techBadge.classList.remove("tech-badge--dim");
-  const depth = info.bit_depth != null ? `${info.bit_depth}bit` : "—";
-  const rate = info.sample_rate ? `${info.sample_rate / 1000}kHz` : "—";
+  const depth = info.bit_depth != null ? `${info.bit_depth}bit` : "\u2014";
+  const rate = info.sample_rate ? `${info.sample_rate / 1000}kHz` : "\u2014";
   ui.techLine.textContent = `${depth} / ${rate}`;
 }
 
 export async function playTrack(track) {
   currentTrack = track;
+  durationSecs = track.duration_secs || 0;
+  currentSecs = 0;
 
   ui.title.textContent = track.title || "Unknown Title";
   ui.artist.textContent = track.artist_name || "Unknown Artist";
-  ui.label.innerHTML = `<svg class="icon icon--sm" aria-hidden="true"><use href="#icon-music-note"></use></svg> Playing`;
-  ui.timeTotal.textContent = formatDuration(track.duration_secs || 0);
+  ui.timeTotal.textContent = formatDuration(durationSecs);
   ui.playPauseBtn.removeAttribute("aria-disabled");
   updateNavButtons();
-
-  // Reset progress
-  ui.progressFill.style.width = "0%";
-  ui.progressThumb.style.left = "0%";
+  updateProgressUI(0);
   ui.timeCurrent.textContent = "0:00";
 
   if (track.album_id) {
@@ -190,8 +297,8 @@ export async function playTrack(track) {
         ui.cover.innerHTML = "";
         ui.cover.classList.add("album-cover-empty");
       }
-    } catch (e) {
-      console.error(e);
+    } catch (_) {
+      // album fetch failed — keep empty cover
     }
   }
 
@@ -200,9 +307,7 @@ export async function playTrack(track) {
   );
 
   if (track.id) {
-    invoke("lib_record_play", { trackId: track.id }).catch((err) =>
-      console.error("[player] record_play failed:", err)
-    );
+    invoke("lib_record_play", { trackId: track.id }).catch(() => {});
   }
 }
 

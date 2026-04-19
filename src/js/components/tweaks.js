@@ -1,0 +1,126 @@
+// Tweaks panel — floating bottom-right panel for accent, density, sidebar, NP layout, type, glow.
+// Persists to localStorage. Applied on boot before any render.
+
+const STORAGE_KEY = "kv-tweaks";
+
+const DEFAULTS = {
+  accent: "moss",
+  density: "normal",
+  sidebar: "collapsed",
+  npLayout: "left",
+  type: "body",
+  glow: 0.15,
+};
+
+let state = { ...DEFAULTS };
+let panelEl = null;
+
+export function loadTweaks() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved) Object.assign(state, saved);
+  } catch (_) {}
+  applyTweaks();
+}
+
+export function applyTweaks() {
+  const html = document.documentElement;
+  if (state.accent !== "moss") {
+    html.dataset.accent = state.accent;
+  } else {
+    delete html.dataset.accent;
+  }
+  html.dataset.density = state.density === "compact" ? "compact" : "";
+  html.dataset.sidebar = state.sidebar === "expanded" ? "expanded" : "";
+  html.dataset.npLayout = state.npLayout || "left";
+  html.dataset.type = state.type === "mono" ? "mono" : "";
+  html.style.setProperty("--glow", String(state.glow));
+  save();
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (_) {}
+}
+
+function setVal(key, val) {
+  state[key] = val;
+  applyTweaks();
+  renderPanel();
+}
+
+export function mountTweaks() {
+  panelEl = document.createElement("aside");
+  panelEl.className = "tweaks";
+  panelEl.setAttribute("aria-label", "Design tweaks");
+  document.body.appendChild(panelEl);
+
+  window.addEventListener("toggle-tweaks", () => {
+    panelEl.classList.toggle("is-visible");
+    if (panelEl.classList.contains("is-visible")) renderPanel();
+  });
+}
+
+function segmented(label, key, options) {
+  const btns = options
+    .map(
+      ([val, text]) =>
+        `<button class="segmented__btn ${state[key] === val ? "is-active" : ""}" data-key="${key}" data-val="${val}">${text}</button>`
+    )
+    .join("");
+  return `
+    <div class="tweaks__row">
+      <span class="tweaks__label">${label}</span>
+      <div class="segmented">${btns}</div>
+    </div>
+  `;
+}
+
+function renderPanel() {
+  if (!panelEl) return;
+  panelEl.innerHTML = `
+    <div class="tweaks__title">Tweaks</div>
+    ${segmented("Accent", "accent", [
+      ["moss", "Moss"],
+      ["amber", "Amber"],
+      ["cyan", "Cyan"],
+      ["cold", "Cold"],
+    ])}
+    ${segmented("Density", "density", [
+      ["normal", "Normal"],
+      ["compact", "Compact"],
+    ])}
+    ${segmented("Sidebar", "sidebar", [
+      ["collapsed", "Icons"],
+      ["expanded", "Labels"],
+    ])}
+    ${segmented("Now Playing", "npLayout", [
+      ["left", "Left"],
+      ["top", "Top"],
+      ["split", "Split"],
+    ])}
+    ${segmented("Type", "type", [
+      ["body", "Inter"],
+      ["mono", "Mono"],
+    ])}
+    <div class="tweaks__row">
+      <span class="tweaks__label">Glow ${state.glow.toFixed(2)}</span>
+      <input type="range" class="settings-range" id="tweaks-glow"
+        min="0" max="1" step="0.05" value="${state.glow}">
+    </div>
+  `;
+
+  // Bind segmented buttons
+  panelEl.querySelectorAll(".segmented__btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setVal(btn.dataset.key, btn.dataset.val);
+    });
+  });
+
+  // Bind glow slider
+  const glowInput = panelEl.querySelector("#tweaks-glow");
+  glowInput.addEventListener("input", (e) => {
+    setVal("glow", parseFloat(e.target.value));
+  });
+}

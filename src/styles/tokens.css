@@ -1,8 +1,9 @@
 /* The Kinetic Vault — Design Tokens
  * Single source of truth for colors, typography, spacing, motion, layout.
  * All raw values live here. Components consume only custom properties.
- * Extracted from design-refs/files/monolith_hifi/DESIGN.md and the
- * tailwind.config inlined in library_view_pure_css/code.html.
+ *
+ * UPDATED: accent themes (amber/cyan/cold), density variants, glow intensity,
+ * type-accent toggle. Configurable at runtime via data-* attributes on <html>.
  */
 
 :root {
@@ -15,84 +16,145 @@
   --surface-container-high: #2a2a2a;     /* Level 2: active/hover rows, tooltips */
   --surface-container-highest: #353534;  /* Progress track, input underline */
 
-  /* ===== Primary "glow" =====
-   * Amber accent used for active states, play buttons, progress fill. */
-  --primary: #ffb87b;
-  --primary-container: #ff8f00;
-  --primary-fixed-dim: #ffb77a;
-  --on-primary: #4c2700;
-  --on-primary-container: #623400;
+  /* ===== Primary "glow" — MOSS (default)
+   * Oxidized-green console light. Warm enough to sit over the same dark
+   * tonal hierarchy; reads as vinyl-gear / VU-meter rather than generic. */
+  --primary: #9bc48a;
+  --primary-container: #5ea572;
+  --primary-fixed-dim: #b2d6a2;
+  --on-primary: #0f2914;
+  --on-primary-container: #17361e;
 
   /* ===== Text ===== */
   --on-surface: #e5e2e1;                 /* High-contrast primary text */
-  --on-surface-variant: #dcc1ae;         /* Warm tonal secondary (NOT grey) */
-  --outline-variant: #564334;            /* Ghost-border fallback, 15% opacity */
+  --on-surface-variant: #c2ccbe;         /* Warm-sage tonal secondary (NOT grey) */
+  --outline-variant: #3f4a3e;            /* Ghost-border fallback */
 
-  /* ===== Signature gradient =====
-   * Warm vacuum-tube glow for progress bars and CTAs. */
+  /* ===== Signature gradient ===== */
   --grad-primary: linear-gradient(90deg, var(--primary), var(--primary-container));
+
+  /* ===== Glow intensity (tweakable; 0..1) ===== */
+  --glow: 0.15;
 
   /* ===== Typography ===== */
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-technical: var(--font-body); /* Swapped to --font-mono when [data-type="mono"] */
 
-  /* Editorial scale — see DESIGN.md §3 */
-  --text-display-lg: 3.5rem;     /* Artist/Album mastheads, tracking-tight */
+  /* Editorial scale */
+  --text-display-lg: 3.5rem;
   --text-display-md: 2.75rem;
   --text-display-sm: 2.25rem;
   --text-headline-lg: 2rem;
   --text-headline-md: 1.75rem;
-  --text-headline-sm: 1.5rem;    /* Section headers */
+  --text-headline-sm: 1.5rem;
   --text-title-lg: 1.375rem;
   --text-title-md: 1rem;
   --text-body-lg: 1rem;
-  --text-body-md: 0.875rem;      /* Default body */
+  --text-body-md: 0.875rem;
   --text-body-sm: 0.8125rem;
   --text-label-lg: 0.875rem;
-  --text-label-md: 0.75rem;      /* Metadata (bitrates, formats, timestamps) */
+  --text-label-md: 0.75rem;
   --text-label-sm: 0.6875rem;
-  --text-label-xs: 0.625rem;     /* Technical micro-labels */
+  --text-label-xs: 0.625rem;
 
-  /* Letter-spacing */
   --tracking-tighter: -0.03em;
   --tracking-tight: -0.015em;
   --tracking-normal: 0;
   --tracking-wide: 0.05em;
-  --tracking-widest: 0.15em;     /* Uppercase technical labels */
+  --tracking-widest: 0.15em;
 
-  /* Weights */
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-bold: 700;
 
   /* ===== Spacing (4px base) ===== */
   --space-0: 0;
-  --space-1: 0.25rem;    /* 4px */
-  --space-2: 0.5rem;     /* 8px */
-  --space-3: 0.75rem;    /* 12px */
-  --space-4: 1rem;       /* 16px — default row padding in tracklist */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
   --space-5: 1.25rem;
-  --space-6: 1.5rem;     /* 24px */
-  --space-8: 2rem;       /* 32px — view horizontal padding (mobile) */
+  --space-6: 1.5rem;
+  --space-8: 2rem;
   --space-10: 2.5rem;
-  --space-12: 3rem;      /* 48px — view vertical header padding */
-  --space-16: 4rem;      /* 64px — view horizontal padding (lg) */
+  --space-12: 3rem;
+  --space-16: 4rem;
   --space-20: 5rem;
   --space-24: 6rem;
 
-  /* ===== Motion =====
-   * DESIGN.md §6: nothing longer than 150ms. Audiophile gear is instant. */
+  /* ===== Motion (≤150ms, non-negotiable) ===== */
   --dur-instant: 0ms;
   --dur-fast: 100ms;
   --dur-normal: 150ms;
-
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 
   /* ===== Layout constants ===== */
-  --sidebar-w: 5rem;              /* 80px */
-  --player-bar-h: 6rem;           /* 96px */
-  --content-max-w: 80rem;         /* 1280px */
+  --sidebar-w: 5rem;              /* Icons-only (default) */
+  --sidebar-w-expanded: 14rem;    /* When [data-sidebar="expanded"] */
+  --player-bar-h: 6rem;
+  --player-bar-h-compact: 4.5rem; /* When [data-density="compact"] */
+  --content-max-w: 80rem;
 
   /* ===== Brutalist invariants ===== */
-  --radius: 0;                    /* Non-negotiable */
+  --radius: 0;
   --border-none: 0;
+}
+
+/* ===== ACCENT THEMES =====
+ * Applied via `<html data-accent="amber|cyan|cold">`. Moss is default.
+ * Only the primary/glow tokens shift — everything else stays neutral so the
+ * Kinetic Vault bones remain intact.
+ */
+
+html[data-accent="amber"] {
+  --primary: #ffb87b;
+  --primary-container: #ff8f00;
+  --primary-fixed-dim: #ffb77a;
+  --on-primary: #4c2700;
+  --on-primary-container: #623400;
+  --on-surface-variant: #dcc1ae;
+  --outline-variant: #564334;
+}
+
+html[data-accent="cyan"] {
+  --primary: #87cfff;
+  --primary-container: #00b7ff;
+  --primary-fixed-dim: #85cfff;
+  --on-primary: #00344c;
+  --on-primary-container: #004563;
+  --on-surface-variant: #c1d2dc;  /* shift warm→cool secondary */
+  --outline-variant: #334856;
+}
+
+html[data-accent="cold"] {
+  --primary: #e5e2e1;
+  --primary-container: #a9a4a1;
+  --primary-fixed-dim: #e5e2e1;
+  --on-primary: #1a1a1a;
+  --on-primary-container: #2a2a2a;
+  --on-surface-variant: #b8b5b3;
+  --outline-variant: #4a4846;
+}
+
+/* ===== DENSITY =====
+ * Compact mode shrinks the player bar and vertical rhythm for power users.
+ */
+html[data-density="compact"] {
+  --player-bar-h: var(--player-bar-h-compact);
+}
+
+/* ===== SIDEBAR EXPANSION =====
+ * Grid layout reads this to widen the sidebar and reveal labels.
+ */
+html[data-sidebar="expanded"] {
+  --sidebar-w: var(--sidebar-w-expanded);
+}
+
+/* ===== TYPE ACCENT =====
+ * When user flips to monospace, technical labels (bitrate, timestamps,
+ * sample rate, file formats) switch — body text stays Inter for legibility.
+ */
+html[data-type="mono"] {
+  --font-technical: var(--font-mono);
 }
