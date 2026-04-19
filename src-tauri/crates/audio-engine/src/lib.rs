@@ -20,8 +20,8 @@ mod queue;
 pub use error::{EngineError, OutputError};
 pub use output::{AudioOutput, PipewireBackend};
 pub use types::{
-    Command, DeviceInfo, EngineMetrics, OutputMode, PlaybackState, PositionUpdate, SampleFormat,
-    StateUpdate, StreamFormat, TrackHandle,
+    Command, EngineMetrics, PlaybackState, PositionUpdate, SampleFormat, StateUpdate, StreamFormat,
+    TrackHandle,
 };
 
 use crossbeam_channel::Receiver;
@@ -39,13 +39,6 @@ impl Engine {
         engine::spawn()
     }
 
-    /// Enumerates the audio output devices exposed by the host.
-    ///
-    /// This is a one-shot query; the UI should re-call it when the user
-    /// opens the output picker. Devices can appear and disappear at any time.
-    pub fn list_output_devices() -> Vec<DeviceInfo> {
-        output::list_devices()
-    }
 }
 
 /// Handle to a running engine. Clone-able, `Send`-safe.

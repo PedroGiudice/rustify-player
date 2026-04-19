@@ -35,8 +35,8 @@ use crate::output::{ActiveStream, AudioOutput, PipewireBackend};
 use crate::position::EventScheduler;
 use crate::queue::{spawn_prepare, PrepareTarget, PreparedDecoder, PreparedMessage};
 use crate::types::{
-    Command, EngineMetrics, OutputMode, PlaybackState, PositionUpdate, StateUpdate, StreamFormat,
-    TrackHandle, TrackInfo,
+    Command, EngineMetrics, PlaybackState, PositionUpdate, StateUpdate, StreamFormat, TrackHandle,
+    TrackInfo,
 };
 use crate::EngineHandle;
 
@@ -78,9 +78,8 @@ impl SharedMetrics {
 
 /// Full engine state. Lives on the engine thread; never shared.
 struct EngineState {
-    // Output backend. Swap-able via `SetOutputMode`.
+    // Output backend (PipeWire AUTOCONNECT, no device picker).
     output: Box<dyn AudioOutput>,
-    output_mode: OutputMode,
     active_stream: Option<ActiveStream>,
 
     // Decoders.
@@ -133,8 +132,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
         .name("audio-engine".to_string())
         .spawn(move || {
             let mut engine = EngineState {
-                output: Box::new(PipewireBackend::new(OutputMode::default())),
-                output_mode: OutputMode::default(),
+                output: Box::new(PipewireBackend::new()),
                 active_stream: None,
                 current: None,
                 next: None,
@@ -209,7 +207,6 @@ impl EngineState {
             Command::Stop => self.cmd_stop(),
             Command::Seek(pos) => self.cmd_seek(pos),
             Command::SetVolume(v) => self.cmd_set_volume(v),
-            Command::SetOutputMode(mode) => self.cmd_set_output_mode(mode),
             Command::EnqueueNext(path) => self.cmd_enqueue_next(path),
             Command::ClearQueue => {
                 self.next = None;
@@ -312,16 +309,6 @@ impl EngineState {
         let _ = self
             .state_tx
             .send(StateUpdate::VolumeChanged(self.volume));
-    }
-
-    fn cmd_set_output_mode(&mut self, mode: OutputMode) {
-        self.output_mode = mode.clone();
-        // Rebuild the backend with the new mode; previous stream is dropped.
-        self.output = Box::new(PipewireBackend::new(mode.clone()));
-        self.active_stream = None;
-        let _ = self
-            .state_tx
-            .send(StateUpdate::OutputModeChanged(mode));
     }
 
     fn handle_prepared(&mut self, msg: PreparedMessage) {

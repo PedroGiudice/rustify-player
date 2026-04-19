@@ -110,35 +110,6 @@ impl PositionUpdate {
     }
 }
 
-/// Output routing mode the user picks in settings.
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum OutputMode {
-    /// System default (on Linux this goes ALSA default -> PipeWire -> user's
-    /// default sink, which is typically routed through EasyEffects).
-    /// PipeWire handles sample-rate conversion; the engine does not.
-    #[default]
-    System,
-
-    /// Open an ALSA `hw:X,Y` device directly, bypassing PipeWire. The engine
-    /// reconfigures the output stream to match each track's sample rate.
-    BitPerfect { device: String },
-}
-
-/// Information about an enumerated output device (shown in Settings).
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct DeviceInfo {
-    pub host: String,
-    pub name: String,
-    pub is_default: bool,
-    /// Sample rates the device advertises support for. Unreliable on PipeWire
-    /// (reports a single value), informational on ALSA `hw:X,Y` devices.
-    pub supported_sample_rates: Vec<u32>,
-    /// Channel counts the device advertises support for.
-    pub supported_channels: Vec<u16>,
-}
-
 /// Commands driven from the consumer (UI/CLI) to the engine.
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -154,8 +125,6 @@ pub enum Command {
     Seek(Duration),
     /// Set playback volume. Clamped to `0.0..=1.0`.
     SetVolume(f32),
-    /// Change the output backend (triggers a stream reconfigure).
-    SetOutputMode(OutputMode),
     /// Pre-load a track into the gapless "next" slot.
     EnqueueNext(PathBuf),
     /// Drop the pre-loaded next track without affecting the current one.
@@ -175,7 +144,6 @@ pub enum StateUpdate {
     DeviceDisconnected,
     Xrun { total: u64 },
     VolumeChanged(f32),
-    OutputModeChanged(OutputMode),
     /// A recoverable error; engine returns to `Stopped` state.
     Error(String),
 }

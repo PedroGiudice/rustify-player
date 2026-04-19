@@ -2,8 +2,7 @@
 //!
 //! Loads one or more FLAC files into the engine, drives the state machine,
 //! and prints a progress bar to stderr. Useful as a smoke test when a Tauri
-//! UI is not available and for verifying bit-perfect output modes
-//! on real hardware.
+//! UI is not available.
 //!
 //! ```text
 //! $ cargo run --example play_file --release -- path/to/track.flac
@@ -18,10 +17,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use audio_engine::types::TrackInfo;
-use audio_engine::{
-    Command, DeviceInfo, Engine, EngineHandle, OutputMode, PlaybackState, PositionUpdate,
-    StateUpdate,
-};
+use audio_engine::{Command, Engine, EngineHandle, PlaybackState, PositionUpdate, StateUpdate};
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
@@ -46,14 +42,6 @@ struct Args {
     /// playback.
     files: Vec<PathBuf>,
 
-    /// Enumerate output devices and exit.
-    #[arg(long)]
-    list_devices: bool,
-
-    /// Use bit-perfect mode with this ALSA device (e.g. hw:0,0).
-    #[arg(long)]
-    bit_perfect: Option<String>,
-
     /// Volume 0.0..=1.0 (default 1.0).
     #[arg(long, default_value_t = 1.0)]
     volume: f32,
@@ -71,11 +59,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     init_tracing(&args.log_level);
 
-    if args.list_devices {
-        print_devices(&Engine::list_output_devices());
-        return Ok(());
-    }
-
     if args.files.is_empty() {
         return Err("provide at least one file".into());
     }
@@ -86,12 +69,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let output_mode = build_output_mode(&args);
-
     let engine = Engine::start()?;
     let updates = engine.subscribe();
 
-    engine.send(Command::SetOutputMode(output_mode))?;
     engine.send(Command::SetVolume(args.volume.clamp(0.0, 1.0)))?;
 
     // Queue controller: spawns a small helper thread that enqueues next
@@ -212,7 +192,7 @@ fn run_loop(
                     eprintln!("[play_file] output device disconnected");
                     return 1;
                 }
-                StateUpdate::VolumeChanged(_) | StateUpdate::OutputModeChanged(_) => {}
+                StateUpdate::VolumeChanged(_) => {}
             },
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
@@ -290,70 +270,6 @@ fn format_time(seconds: f64) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Devices
-// ---------------------------------------------------------------------------
-
-fn print_devices(devices: &[DeviceInfo]) {
-    if devices.is_empty() {
-        println!("(no output devices available)");
-        return;
-    }
-    println!(
-        "{:<8}  {:<40}  {:<7}  {:<20}  CHANNELS",
-        "HOST", "NAME", "DEFAULT", "SAMPLE RATES"
-    );
-    for d in devices {
-        let default = if d.is_default { "yes" } else { "" };
-        let sr = summarize_numbers(&d.supported_sample_rates);
-        let ch = summarize_numbers_u16(&d.supported_channels);
-        println!(
-            "{:<8}  {:<40}  {:<7}  {:<20}  {}",
-            truncate(&d.host, 8),
-            truncate(&d.name, 40),
-            default,
-            truncate(&sr, 20),
-            ch
-        );
-    }
-}
-
-fn summarize_numbers(values: &[u32]) -> String {
-    if values.is_empty() {
-        return "-".to_string();
-    }
-    let min = values.iter().min().copied().unwrap_or(0);
-    let max = values.iter().max().copied().unwrap_or(0);
-    if min == max {
-        format!("{min}")
-    } else {
-        format!("{min}..={max}")
-    }
-}
-
-fn summarize_numbers_u16(values: &[u16]) -> String {
-    if values.is_empty() {
-        return "-".to_string();
-    }
-    let min = values.iter().min().copied().unwrap_or(0);
-    let max = values.iter().max().copied().unwrap_or(0);
-    if min == max {
-        format!("{min}")
-    } else {
-        format!("{min}..={max}")
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('\u{2026}');
-        out
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Queue controller
 // ---------------------------------------------------------------------------
 
@@ -414,12 +330,3 @@ fn init_tracing(level: &str) {
         .try_init();
 }
 
-fn build_output_mode(args: &Args) -> OutputMode {
-    if let Some(device) = &args.bit_perfect {
-        OutputMode::BitPerfect {
-            device: device.clone(),
-        }
-    } else {
-        OutputMode::System
-    }
-}

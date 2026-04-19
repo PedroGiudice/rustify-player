@@ -20,13 +20,9 @@
 //!   its setup result back synchronously so `configure()` can surface errors
 //!   before the stream starts running.
 //!
-//! Two modes are supported:
-//!
-//! - `OutputMode::System` (default): let wireplumber route the stream to the
-//!   user's default sink using standard `MEDIA_ROLE=Music` properties. On the
-//!   target setup this goes through EasyEffects automatically.
-//! - `OutputMode::BitPerfect { device }`: currently accepted but behaves like
-//!   `System`. Future work: `EXCLUSIVE` flag + `PW_KEY_TARGET_OBJECT`.
+//! Routing is always AUTOCONNECT with `MEDIA_ROLE=Music`: wireplumber sends
+//! the stream to the user's default sink, which on the target setup goes
+//! through EasyEffects automatically. No device picker, no bit-perfect mode.
 
 use std::any::Any;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -43,7 +39,7 @@ use spa::pod::Pod;
 
 use super::{ActiveStream, AudioOutput};
 use crate::error::OutputError;
-use crate::types::{DeviceInfo, OutputMode, SampleFormat, StreamFormat};
+use crate::types::{SampleFormat, StreamFormat};
 
 /// Ring buffer target: ~500 ms of samples at the negotiated rate. Matches the
 /// previous cpal backend for consistency.
@@ -106,21 +102,20 @@ impl Drop for PipewireStreamGuard {
 unsafe impl Send for PipewireStreamGuard {}
 
 pub struct PipewireBackend {
-    mode: OutputMode,
     xruns: Arc<AtomicU64>,
 }
 
-impl PipewireBackend {
-    pub fn new(mode: OutputMode) -> Self {
+impl Default for PipewireBackend {
+    fn default() -> Self {
         Self {
-            mode,
             xruns: Arc::new(AtomicU64::new(0)),
         }
     }
+}
 
-    #[allow(dead_code)]
-    pub fn set_mode(&mut self, mode: OutputMode) {
-        self.mode = mode;
+impl PipewireBackend {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -148,14 +143,12 @@ impl AudioOutput for PipewireBackend {
         let thread_alive = alive.clone();
         let thread_err = last_error.clone();
         let thread_actual = actual_format.clone();
-        let thread_mode = self.mode.clone();
 
         let thread = thread::Builder::new()
             .name("pipewire-mainloop".to_string())
             .spawn(move || {
                 run_mainloop(
                     format,
-                    thread_mode,
                     consumer,
                     thread_xruns,
                     thread_alive,
@@ -225,7 +218,6 @@ impl AudioOutput for PipewireBackend {
 #[allow(clippy::too_many_arguments)]
 fn run_mainloop(
     format: StreamFormat,
-    _mode: OutputMode,
     consumer: Consumer<f32>,
     xruns: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
@@ -523,127 +515,13 @@ impl AsChunksMutLayout for [u8] {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Device enumeration
-// ---------------------------------------------------------------------------
-
-/// Enumerate output sinks visible through the pipewire daemon.
-///
-/// This spins up a short-lived mainloop, walks the registry for `Node` objects
-/// with `media.class=Audio/Sink`, and collects a snapshot. If pipewire isn't
-/// reachable, returns an empty list rather than panicking — the UI treats an
-/// empty list as "no devices".
-pub(super) fn list_devices() -> Vec<DeviceInfo> {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    use pw::registry::GlobalObject;
-    use pw::types::ObjectType;
-
-    pw::init();
-
-    let Ok(mainloop) = pw::main_loop::MainLoopRc::new(None) else {
-        return Vec::new();
-    };
-    let Ok(context) = pw::context::ContextRc::new(&mainloop, None) else {
-        return Vec::new();
-    };
-    let Ok(core) = context.connect_rc(None) else {
-        return Vec::new();
-    };
-    let Ok(registry) = core.get_registry_rc() else {
-        return Vec::new();
-    };
-
-    let devices: Rc<RefCell<Vec<DeviceInfo>>> = Rc::new(RefCell::new(Vec::new()));
-    let devices_cb = devices.clone();
-
-    let _registry_listener = registry
-        .add_listener_local()
-        .global(move |obj: &GlobalObject<&spa::utils::dict::DictRef>| {
-            if obj.type_ != ObjectType::Node {
-                return;
-            }
-            let Some(props) = obj.props else {
-                return;
-            };
-            let Some(class) = props.get("media.class") else {
-                return;
-            };
-            if class != "Audio/Sink" {
-                return;
-            }
-            let name = props
-                .get("node.description")
-                .or_else(|| props.get("node.nick"))
-                .or_else(|| props.get("node.name"))
-                .unwrap_or("(unnamed)")
-                .to_string();
-
-            devices_cb.borrow_mut().push(DeviceInfo {
-                host: "pipewire".to_string(),
-                name,
-                // Without the metadata proxy we can't cheaply know the default
-                // sink. For the MVP we mark the first reported sink as
-                // default; the UI uses this as a hint, not a source of truth.
-                is_default: false,
-                supported_sample_rates: Vec::new(),
-                supported_channels: Vec::new(),
-            });
-        })
-        .register();
-
-    // Do a single roundtrip: quit the loop once the server finishes sending
-    // the initial set of globals.
-    let mainloop_weak = mainloop.downgrade();
-    let _core_listener = core
-        .add_listener_local()
-        .done(move |_id, _seq| {
-            if let Some(ml) = mainloop_weak.upgrade() {
-                ml.quit();
-            }
-        })
-        .register();
-
-    // Trigger `done` emission.
-    let _sync_seq = core.sync(0);
-
-    // Safety net: if anything stalls, bail after one second via a timer.
-    let mainloop_weak2 = mainloop.downgrade();
-    let timer = mainloop.loop_().add_timer(move |_| {
-        if let Some(ml) = mainloop_weak2.upgrade() {
-            ml.quit();
-        }
-    });
-    let _ = timer.update_timer(
-        Some(Duration::from_millis(1000)),
-        Some(Duration::from_secs(0)),
-    );
-
-    mainloop.run();
-
-    let mut out = devices.borrow().clone();
-    if let Some(first) = out.first_mut() {
-        first.is_default = true;
-    }
-    out.sort_by(|a, b| b.is_default.cmp(&a.is_default).then(a.name.cmp(&b.name)));
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn list_devices_does_not_panic() {
-        let list = list_devices();
-        // On a headless CI box this can legitimately be empty.
-        let _ = list;
-    }
-
-    #[test]
     fn pipewire_backend_constructs() {
-        let backend = PipewireBackend::new(OutputMode::System);
+        let backend = PipewireBackend::new();
         assert_eq!(backend.xrun_count(), 0);
     }
 }

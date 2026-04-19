@@ -81,18 +81,6 @@ fn engine_shutdown_is_clean() {
     }
 }
 
-/// Device enumeration must not panic or leak thread handles. An empty list
-/// is an acceptable outcome on a headless CI runner.
-#[test]
-fn list_devices_does_not_panic() {
-    let devices = Engine::list_output_devices();
-    // Trivial sanity on the shape of each entry.
-    for d in &devices {
-        assert!(!d.name.is_empty(), "device name should not be empty");
-        assert!(!d.host.is_empty(), "device host should not be empty");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests that require a working audio output device.
 // ---------------------------------------------------------------------------

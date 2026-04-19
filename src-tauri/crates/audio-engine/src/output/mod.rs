@@ -13,7 +13,7 @@ mod pipewire_backend;
 pub use pipewire_backend::PipewireBackend;
 
 use crate::error::OutputError;
-use crate::types::{DeviceInfo, StreamFormat};
+use crate::types::StreamFormat;
 use rtrb::Producer;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -46,7 +46,3 @@ pub trait AudioOutput: Send {
     fn xrun_count(&self) -> u64;
 }
 
-/// Enumerate output devices visible through the PipeWire daemon.
-pub fn list_devices() -> Vec<DeviceInfo> {
-    pipewire_backend::list_devices()
-}
