@@ -41,14 +41,14 @@ use crate::types::{
 use crate::EngineHandle;
 
 /// How often the engine loop wakes up to pump samples and evaluate state.
-const PUMP_INTERVAL: Duration = Duration::from_millis(20);
+const PUMP_INTERVAL: Duration = Duration::from_millis(5);
 
 /// How often we emit a `PositionUpdate` to the consumer (approximate).
 const POSITION_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Intermediate scratch buffer size per iteration (samples, not frames).
 /// 4096 f32s = 16 KB; fits L1 on any modern CPU.
-const DECODE_SCRATCH: usize = 4096;
+const DECODE_SCRATCH: usize = 8192;
 
 /// Counters shared with the output backend (xruns) and exposed to the
 /// consumer via `EngineHandle::metrics`.
