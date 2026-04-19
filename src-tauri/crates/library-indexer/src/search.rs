@@ -490,6 +490,31 @@ pub fn shuffle(
 }
 
 // ---------------------------------------------------------------------------
+// Playback history
+// ---------------------------------------------------------------------------
+
+/// Increment play count and set last_played to current unix timestamp.
+pub fn record_play(conn: &Connection, track_id: i64) -> Result<(), IndexerError> {
+    conn.execute(
+        "UPDATE tracks SET play_count = play_count + 1, last_played = unixepoch() WHERE id = ?",
+        [track_id],
+    )?;
+    Ok(())
+}
+
+/// Return recently played tracks, ordered by last_played DESC.
+pub fn list_history(conn: &Connection, limit: usize) -> Result<Vec<Track>, IndexerError> {
+    let sql = format!(
+        "{TRACK_SELECT} WHERE t.last_played IS NOT NULL ORDER BY t.last_played DESC LIMIT ?"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([limit as i64], map_track)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

@@ -170,4 +170,12 @@ impl IndexerHandle {
             .pool
             .with(|conn| search::shuffle(conn, &filter, seed, limit))
     }
+
+    pub fn record_play(&self, track_id: i64) -> Result<(), IndexerError> {
+        self.inner.pool.with(|conn| search::record_play(conn, track_id))
+    }
+
+    pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
+        self.inner.pool.with(|conn| search::list_history(conn, limit))
+    }
 }

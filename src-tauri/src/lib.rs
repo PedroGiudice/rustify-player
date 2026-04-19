@@ -202,6 +202,26 @@ fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Playback history
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_record_play(lib: State<Library>, track_id: i64) -> Result<(), String> {
+    lib.handle.record_play(track_id).map_err(err)
+}
+
+#[tauri::command]
+fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let mut tracks = lib.handle.list_history(limit.unwrap_or(50)).map_err(err)?;
+    for track in &mut tracks {
+        if let Some(rel) = &track.album_cover_path {
+            track.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(tracks)
+}
+
+// ---------------------------------------------------------------------------
 // Player commands
 // ---------------------------------------------------------------------------
 
@@ -333,6 +353,8 @@ pub fn run() {
             lib_similar,
             lib_shuffle,
             lib_snapshot,
+            lib_record_play,
+            lib_list_history,
             player_play,
             player_pause,
             player_resume,

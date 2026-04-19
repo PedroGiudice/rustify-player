@@ -147,6 +147,12 @@ export async function playTrack(track) {
   invoke("player_play", { path: track.path }).catch((err) =>
     console.error("[player] play failed:", err)
   );
+
+  if (track.id) {
+    invoke("lib_record_play", { trackId: track.id }).catch((err) =>
+      console.error("[player] record_play failed:", err)
+    );
+  }
 }
 
 function formatDuration(secs) {

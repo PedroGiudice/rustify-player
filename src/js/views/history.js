@@ -1,16 +1,99 @@
-import { renderView } from "./_view.js";
+import { playTrack } from "../components/player-bar.js";
+
+const { invoke } = window.__TAURI__.core;
 
 export function render() {
-  const view = renderView({
-    title: "History",
-    emptyIcon: "history",
-    emptyTitle: "No playback history yet",
-    emptyHint: "Playback history coming soon",
-  });
-
-  const hint = view.querySelector(".empty-state__hint");
-  if (hint) {
-    hint.insertAdjacentHTML("afterend", `<span class="badge--soon">Coming soon</span>`);
-  }
+  const view = document.createElement("article");
+  view.className = "view";
+  view.innerHTML = `
+    <header class="view__header">
+      <h1 class="view__title">History</h1>
+      <div class="view__stats" id="hist-stats"></div>
+    </header>
+    <div class="view__body" id="hist-body">
+      <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
+    </div>
+  `;
+  load(view);
   return view;
+}
+
+async function load(view) {
+  const stats = view.querySelector("#hist-stats");
+  const body = view.querySelector("#hist-body");
+
+  try {
+    const tracks = await invoke("lib_list_history", { limit: 100 });
+    stats.innerHTML = `<span class="view__stats-item">${tracks.length} played</span>`;
+
+    if (tracks.length === 0) {
+      body.innerHTML = `
+        <div class="empty-state">
+          <p class="empty-state__title">No playback history yet</p>
+          <p class="empty-state__hint">Play some tracks and they'll appear here</p>
+        </div>
+      `;
+      return;
+    }
+
+    body.innerHTML = `
+      <table class="track-table">
+        <thead>
+          <tr>
+            <th class="track-table__th">Title</th>
+            <th class="track-table__th">Artist</th>
+            <th class="track-table__th">Album</th>
+            <th class="track-table__th track-table__th--dur">Played</th>
+          </tr>
+        </thead>
+        <tbody id="hist-rows"></tbody>
+      </table>
+    `;
+
+    const tbody = body.querySelector("#hist-rows");
+    tbody.innerHTML = tracks
+      .map(
+        (t) => `
+      <tr class="track-row" data-track-id="${t.id}" data-path="${escAttr(t.path)}">
+        <td class="track-table__td track-table__td--title">${esc(t.title)}</td>
+        <td class="track-table__td">${esc(t.artist_name || "—")}</td>
+        <td class="track-table__td">${esc(t.album_title || "—")}</td>
+        <td class="track-table__td track-table__td--dur">${formatAgo(t.last_played)}</td>
+      </tr>`
+      )
+      .join("");
+
+    tbody.addEventListener("dblclick", (e) => {
+      const row = e.target.closest(".track-row");
+      if (!row) return;
+      const track = tracks.find((t) => t.id == row.dataset.trackId);
+      if (track) playTrack(track);
+    });
+  } catch (err) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <p class="empty-state__title">Failed to load history</p>
+        <p class="empty-state__hint">${esc(String(err))}</p>
+      </div>
+    `;
+  }
+}
+
+function formatAgo(unixTs) {
+  if (!unixTs) return "—";
+  const diff = Math.floor(Date.now() / 1000) - unixTs;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
+}
+
+function escAttr(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
