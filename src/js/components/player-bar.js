@@ -232,27 +232,6 @@ function listenEngine() {
         durationSecs = info.duration.secs;
         ui.timeTotal.textContent = formatDuration(durationSecs);
       }
-      // Audio is now actually flowing — re-enable the play/pause button
-      // (playTrack disabled it to avoid the 2-click race).
-      ui.playPauseBtn.removeAttribute("aria-disabled");
-      // Pre-load next track for gapless playback (ONE decoder, not N).
-      const nextTrack = trackQueue[queueIndex + 1];
-      if (nextTrack) {
-        invoke("player_enqueue_next", { path: nextTrack.path }).catch((err) =>
-          console.error("[player] prefetch next failed:", err)
-        );
-      }
-    } else if (payload.TrackEnded != null) {
-      if (queueIndex < trackQueue.length - 1) {
-        queueIndex++;
-        currentTrack = trackQueue[queueIndex];
-        ui.title.textContent = currentTrack.title || "Unknown Title";
-        ui.artist.textContent = currentTrack.artist_name || "Unknown Artist";
-        ui.timeTotal.textContent = formatDuration(currentTrack.duration_secs || 0);
-        updateProgressUI(0);
-        ui.timeCurrent.textContent = "0:00";
-        updateNavButtons();
-      }
     }
   });
 }

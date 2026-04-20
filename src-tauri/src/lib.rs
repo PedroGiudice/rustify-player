@@ -1,11 +1,13 @@
-use audio_engine::{Command as EngineCommand, Engine, EngineHandle};
+use audio_engine::{
+    Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
+};
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
     IndexerHandle, LyricLine, SearchResults, Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 
 // ---------------------------------------------------------------------------
@@ -18,6 +20,17 @@ struct Library {
     music_root: PathBuf,
 }
 struct Player(Mutex<Option<EngineHandle>>);
+
+/// Snapshot of engine state, updated by the event-listener thread.
+/// Read by the `get_state` command so the frontend can hydrate views
+/// without waiting for the next event push.
+#[derive(Default, Clone, Serialize)]
+struct PlayerSnapshot {
+    current_track: Option<TrackInfo>,
+    is_playing: bool,
+    volume: f32,
+}
+struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
 // ---------------------------------------------------------------------------
 // Error bridging — Tauri commands return Result<T, String>
@@ -326,6 +339,12 @@ fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String
         .map_err(err)
 }
 
+#[tauri::command]
+fn get_state(snapshot: State<Snapshot>) -> Result<serde_json::Value, String> {
+    let snap = snapshot.0.lock().map_err(err)?;
+    serde_json::to_value(&*snap).map_err(err)
+}
+
 // ---------------------------------------------------------------------------
 // Self-update commands (delegate to /usr/bin/rustify-update, shipped in the
 // .deb). Keeps signing-key / polkit concerns out of the Tauri process itself.
@@ -480,14 +499,39 @@ pub fn run() {
 
             let engine = Engine::start().expect("failed to start audio engine");
 
+            let snapshot = Arc::new(Mutex::new(PlayerSnapshot {
+                volume: 1.0,
+                ..Default::default()
+            }));
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
+            let snap_writer = snapshot.clone();
             std::thread::spawn(move || {
                 while let Ok(event) = rx.recv() {
+                    // Update the snapshot cache before emitting.
+                    if let Ok(mut s) = snap_writer.lock() {
+                        match &event {
+                            StateUpdate::TrackStarted(info) => {
+                                s.current_track = Some(info.clone());
+                            }
+                            StateUpdate::StateChanged(ps) => {
+                                s.is_playing = matches!(ps, PlaybackState::Playing { .. });
+                                if matches!(ps, PlaybackState::Idle | PlaybackState::Stopped) {
+                                    s.current_track = None;
+                                }
+                            }
+                            StateUpdate::VolumeChanged(v) => {
+                                s.volume = *v;
+                            }
+                            _ => {}
+                        }
+                    }
                     let _ = app_handle.emit("player-state", event);
                 }
             });
 
+            _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
 
             Ok(())
@@ -517,6 +561,7 @@ pub fn run() {
             player_seek,
             player_set_volume,
             player_enqueue_next,
+            get_state,
             check_for_update,
             install_update,
         ])

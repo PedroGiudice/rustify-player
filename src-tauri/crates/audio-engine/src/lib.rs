@@ -21,7 +21,7 @@ pub use error::{EngineError, OutputError};
 pub use output::{AudioOutput, PipewireBackend};
 pub use types::{
     Command, EngineMetrics, PlaybackState, PositionUpdate, SampleFormat, StateUpdate, StreamFormat,
-    TrackHandle,
+    TrackHandle, TrackInfo,
 };
 
 use crossbeam_channel::Receiver;
