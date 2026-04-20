@@ -3,6 +3,7 @@
 import { mountSidebar } from "./js/components/sidebar.js";
 import { mountPlayerBar } from "./js/components/player-bar.js";
 import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
+import { mountResources, toggleResources } from "./js/components/resources.js";
 import { initRouter } from "./js/router.js";
 
 async function loadIconSprite() {
@@ -70,6 +71,10 @@ async function boot() {
   mountSidebar(sidebar);
   mountPlayerBar(playerBar);
   mountTweaks();
+  mountResources();
+
+  // Wire RES button in titlebar
+  document.getElementById("titlebar-res")?.addEventListener("click", toggleResources);
 
   // 5. Start router
   initRouter(main);
