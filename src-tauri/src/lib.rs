@@ -327,6 +327,113 @@ fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String
 }
 
 // ---------------------------------------------------------------------------
+// Self-update commands (delegate to /usr/bin/rustify-update, shipped in the
+// .deb). Keeps signing-key / polkit concerns out of the Tauri process itself.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct UpdateStatus {
+    current_version: String,
+    latest_version: String,
+    update_available: bool,
+    published_at: Option<String>,
+    download_url: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum UpdateCheckResult {
+    Ok(UpdateStatus),
+    Error { code: String, message: String },
+}
+
+fn run_updater(args: &[&str]) -> Result<std::process::Output, String> {
+    // Prefer the installed binary path; fall back to PATH for dev runs.
+    let exe = if std::path::Path::new("/usr/bin/rustify-update").exists() {
+        "/usr/bin/rustify-update"
+    } else {
+        "rustify-update"
+    };
+    std::process::Command::new(exe)
+        .args(args)
+        .output()
+        .map_err(|e| format!("failed to spawn rustify-update: {e}"))
+}
+
+#[tauri::command]
+fn check_for_update() -> Result<UpdateCheckResult, String> {
+    let output = run_updater(&["--check-json"])?;
+    if !output.status.success() {
+        return Err(format!(
+            "rustify-update exited with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("invalid JSON from rustify-update: {e}"))?;
+
+    if let Some(code) = json.get("error").and_then(|v| v.as_str()) {
+        let message = json
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        return Ok(UpdateCheckResult::Error {
+            code: code.to_string(),
+            message,
+        });
+    }
+
+    let status = UpdateStatus {
+        current_version: json
+            .get("current_version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        latest_version: json
+            .get("latest_version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        update_available: json
+            .get("update_available")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        published_at: json
+            .get("published_at")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        download_url: json
+            .get("download_url")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+    };
+    Ok(UpdateCheckResult::Ok(status))
+}
+
+#[tauri::command]
+async fn install_update() -> Result<(), String> {
+    // Use spawn_blocking so the Tauri async runtime isn't blocked by pkexec
+    // waiting on user input in the desktop-environment password prompt.
+    tauri::async_runtime::spawn_blocking(|| {
+        let output = run_updater(&["--install"])?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "rustify-update install failed ({}): {}",
+                output.status, stderr
+            ));
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+// ---------------------------------------------------------------------------
 // App bootstrap
 // ---------------------------------------------------------------------------
 
@@ -410,6 +517,8 @@ pub fn run() {
             player_seek,
             player_set_volume,
             player_enqueue_next,
+            check_for_update,
+            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
