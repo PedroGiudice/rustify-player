@@ -119,7 +119,11 @@ cmd_install() {
 
     local tmpdir
     tmpdir=$(mktemp -d -t rustify-update-XXXXXX)
-    trap 'rm -rf "$tmpdir"' EXIT
+    # Expand $tmpdir into the trap at registration time (double quotes),
+    # not at dispatch time. Single quotes would defer expansion to the
+    # global scope on EXIT, where the `local` variable doesn't exist —
+    # combined with `set -u` that's an unbound-variable error.
+    trap "rm -rf '$tmpdir'" EXIT
 
     # gh writes the asset with its original name; --clobber guarantees
     # overwrite if something weird was left behind.
