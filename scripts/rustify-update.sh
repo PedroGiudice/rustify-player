@@ -40,18 +40,39 @@ cmd_check_json() {
     require_cmd date
 
     local current_ver
-    current_ver=$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || echo "unknown")
+    # Prefer the VERSION file the .deb installs (carries the git sha from the
+    # build). Fall back to the dpkg package version for installs that predate
+    # the VERSION file.
+    if [ -r /usr/share/rustify-player/VERSION ]; then
+        current_ver=$(head -n 1 /usr/share/rustify-player/VERSION)
+    else
+        current_ver=$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || echo "unknown")
+    fi
 
     local remote_data
-    if ! remote_data=$(gh release view "$TAG" -R "$REPO" --json name,publishedAt,assets 2>/dev/null); then
+    if ! remote_data=$(gh release view "$TAG" -R "$REPO" --json name,assets,body 2>/dev/null); then
         emit_error_json "github_query_failed" "Could not query GitHub release. Is 'gh' authenticated?"
         return 0
     fi
 
-    local remote_pub remote_url remote_ver
-    remote_pub=$(echo "$remote_data" | jq -r '.publishedAt // empty')
-    remote_ver=$(echo "$remote_data" | jq -r '.name // empty')
+    local remote_pub remote_url remote_ver remote_body remote_sha
+    # Use the .deb asset's updatedAt (rewritten on every upload) instead of
+    # the release's publishedAt (set only on creation). With a rolling "dev"
+    # tag, publishedAt never advances — updatedAt tracks each new build.
+    remote_pub=$(echo "$remote_data" | jq -r '[.assets[] | select(.name | endswith(".deb"))] | .[0].updatedAt // empty')
     remote_url=$(echo "$remote_data" | jq -r '.assets[] | select(.name | endswith(".deb")) | .url' | head -n 1)
+    # Extract the short commit SHA from the release notes body (release.sh
+    # writes "Branch: X  ·  Commit: <sha>  ·  <ts>"). Combined with the Cargo
+    # version gives a friendly diff like "0.1.0 · 0a40f91" in the UI.
+    remote_body=$(echo "$remote_data" | jq -r '.body // empty')
+    remote_sha=$(echo "$remote_body" | grep -oE 'Commit: [a-f0-9]{7,}' | head -n 1 | awk '{print $2}')
+    local remote_name
+    remote_name=$(echo "$remote_data" | jq -r '.name // empty')
+    if [ -n "$remote_sha" ]; then
+        remote_ver="0.1.0 · $remote_sha"
+    else
+        remote_ver="$remote_name"
+    fi
 
     if [ -z "$remote_pub" ] || [ -z "$remote_url" ]; then
         emit_error_json "no_release_asset" "Release exists but has no .deb asset."

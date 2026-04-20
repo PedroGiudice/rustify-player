@@ -12,14 +12,21 @@ REPO="PedroGiudice/rustify-player"
 TAG="dev"
 DEB="src-tauri/target/release/bundle/deb/rustify-player_0.1.0_amd64.deb"
 
+COMMIT="$(git rev-parse --short HEAD)"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+NOTES="Branch: $BRANCH  ·  Commit: $COMMIT  ·  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Write the build metadata into a file the .deb bundles to /usr/share, so
+# the installed app can report which commit it is (matches the format used
+# by rustify-update's remote latest_version: "0.1.0 · <sha>"). Must exist
+# BEFORE `cargo tauri build` runs — the bundler reads it during packaging.
+mkdir -p src-tauri/build-metadata
+echo "0.1.0 · $COMMIT" > src-tauri/build-metadata/VERSION
+
 echo "[release] build"
 cargo tauri build --bundles deb >/dev/null
 
 test -f "$DEB" || { echo "[release] missing $DEB"; exit 1; }
-
-COMMIT="$(git rev-parse --short HEAD)"
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-NOTES="Branch: $BRANCH  ·  Commit: $COMMIT  ·  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
   echo "[release] updating existing tag $TAG"

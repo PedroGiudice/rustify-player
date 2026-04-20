@@ -16,7 +16,9 @@
         "minWidth": 960,
         "minHeight": 600,
         "resizable": true,
-        "theme": "Dark"
+        "theme": "Dark",
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
@@ -41,7 +43,8 @@
       "deb": {
         "depends": ["libpipewire-0.3-0", "policykit-1", "jq", "gh"],
         "files": {
-          "/usr/bin/rustify-update": "../scripts/rustify-update.sh"
+          "/usr/bin/rustify-update": "../scripts/rustify-update.sh",
+          "/usr/share/rustify-player/VERSION": "build-metadata/VERSION"
         }
       }
     }
