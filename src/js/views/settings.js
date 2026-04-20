@@ -106,6 +106,24 @@ async function load(view) {
       </section>
 
       <section class="settings-section">
+        <h3 class="settings-section__title">Updates</h3>
+
+        <div class="settings-row">
+          <label class="settings-row__label">Status</label>
+          <div class="settings-row__control" id="st-update-status">
+            <span class="settings-row__value settings-row__value--muted">Not checked</span>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <label class="settings-row__label">Action</label>
+          <div class="settings-row__control" id="st-update-actions">
+            <button class="settings-button" id="st-check-update">Check for updates</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <h3 class="settings-section__title">About</h3>
 
         <div class="settings-row">
@@ -134,6 +152,54 @@ async function load(view) {
       } catch (e) {
         rescanBtn.textContent = "Scan failed";
         rescanBtn.disabled = false;
+      }
+    });
+
+    // Update checker
+    const checkBtn = body.querySelector("#st-check-update");
+    const updateStatus = body.querySelector("#st-update-status");
+    const updateActions = body.querySelector("#st-update-actions");
+
+    checkBtn.addEventListener("click", async () => {
+      checkBtn.disabled = true;
+      checkBtn.textContent = "Checking...";
+      updateStatus.innerHTML = `<span class="settings-row__value settings-row__value--muted">Checking...</span>`;
+
+      try {
+        const result = await invoke("check_for_update");
+
+        if (result.error) {
+          updateStatus.innerHTML = `<span class="settings-row__value settings-row__value--muted">${esc(result.message)}</span>`;
+          checkBtn.textContent = "Check for updates";
+          checkBtn.disabled = false;
+          return;
+        }
+
+        const publishedAgo = result.published_at ? relativeTime(result.published_at) : "";
+
+        if (result.update_available) {
+          updateStatus.innerHTML = `
+            <span class="status-pill status-pill--warn">Update available</span>
+            <span class="settings-row__hint">v${esc(result.current_version)} \u2192 v${esc(result.latest_version)}${publishedAgo ? ` (published ${publishedAgo})` : ""}</span>
+          `;
+          updateActions.innerHTML = `
+            <button class="settings-button settings-button--primary" id="st-install-update">Install Update</button>
+            <button class="settings-button" id="st-check-update">Check again</button>
+          `;
+          bindInstallBtn(body);
+          bindCheckBtn(body, updateStatus, updateActions);
+        } else {
+          updateStatus.innerHTML = `
+            <span class="status-pill status-pill--ok">Up to date</span>
+            <span class="settings-row__hint">v${esc(result.current_version)}${publishedAgo ? ` (published ${publishedAgo})` : ""}</span>
+          `;
+          checkBtn.textContent = "Check again";
+          checkBtn.disabled = false;
+        }
+      } catch (err) {
+        updateStatus.innerHTML = `<span class="settings-row__value settings-row__value--muted">Check failed: ${esc(String(err))}</span>`;
+        checkBtn.textContent = "Retry";
+        checkBtn.disabled = false;
       }
     });
 
@@ -169,6 +235,59 @@ function embedStatusLabel(s) {
   if (s.embeddings_pending > 0) return "Pending";
   if (s.embeddings_failed > 0) return "Partial";
   return "Idle";
+}
+
+function bindInstallBtn(body) {
+  const installBtn = body.querySelector("#st-install-update");
+  if (!installBtn) return;
+  installBtn.addEventListener("click", async () => {
+    installBtn.disabled = true;
+    installBtn.textContent = "Installing...";
+    try {
+      await invoke("install_update");
+      const statusEl = body.querySelector("#st-update-status");
+      statusEl.innerHTML = `
+        <span class="status-pill status-pill--ok">Installed</span>
+        <span class="settings-row__hint">Update installed. Please restart Rustify.</span>
+      `;
+      installBtn.textContent = "Restart required";
+    } catch (err) {
+      installBtn.textContent = "Install failed";
+      installBtn.disabled = false;
+      const statusEl = body.querySelector("#st-update-status");
+      statusEl.innerHTML += `<br><span class="settings-row__value settings-row__value--muted">${esc(String(err))}</span>`;
+    }
+  });
+}
+
+function bindCheckBtn(body, updateStatus, updateActions) {
+  const newCheckBtn = body.querySelector("#st-check-update");
+  if (!newCheckBtn) return;
+  // Re-render triggers a full load(), so just re-navigate
+  newCheckBtn.addEventListener("click", () => {
+    window.location.hash = "/settings";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+}
+
+function relativeTime(isoStr) {
+  try {
+    const then = new Date(isoStr);
+    const now = new Date();
+    const diffMs = now - then;
+    const diffSecs = Math.floor(diffMs / 1000);
+    if (diffSecs < 60) return "just now";
+    const diffMins = Math.floor(diffSecs / 60);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return "yesterday";
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return then.toLocaleDateString();
+  } catch (_) {
+    return "";
+  }
 }
 
 function esc(s) {
