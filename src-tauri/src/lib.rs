@@ -346,6 +346,150 @@ fn get_state(snapshot: State<Snapshot>) -> Result<serde_json::Value, String> {
 }
 
 // ---------------------------------------------------------------------------
+// System resources — reads /proc directly, zero external dependencies.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct SystemResources {
+    /// Per-core CPU usage (0.0–1.0). Length = number of logical cores.
+    cpu_cores: Vec<f64>,
+    /// Overall CPU usage (0.0–1.0), average of all cores.
+    cpu_overall: f64,
+    /// Total physical RAM in bytes.
+    ram_total: u64,
+    /// Used RAM in bytes (total - available).
+    ram_used: u64,
+    /// RAM usage fraction (0.0–1.0).
+    ram_percent: f64,
+    /// Rustify player process RSS in bytes (0 if not found).
+    process_rss: u64,
+    /// Rustify player process CPU% since last sample (0.0–1.0).
+    process_cpu: f64,
+}
+
+/// Previous CPU jiffy snapshot for delta computation.
+static CPU_PREV: Mutex<Option<Vec<(u64, u64)>>> = Mutex::new(None);
+static PROC_PREV: Mutex<Option<(u64, u64)>> = Mutex::new(None); // (utime+stime, total_jiffies)
+
+fn read_file(path: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
+}
+
+fn parse_cpu_cores() -> Result<(Vec<(u64, u64)>, (u64, u64)), String> {
+    let stat = read_file("/proc/stat")?;
+    let mut cores = Vec::new();
+    let mut overall = (0u64, 0u64);
+    for line in stat.lines() {
+        if line.starts_with("cpu") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 5 {
+                continue;
+            }
+            let vals: Vec<u64> = parts[1..]
+                .iter()
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            let total: u64 = vals.iter().sum();
+            // idle is field 4 (index 3)
+            let idle = vals.get(3).copied().unwrap_or(0)
+                + vals.get(4).copied().unwrap_or(0); // iowait
+            let busy = total.saturating_sub(idle);
+            if parts[0] == "cpu" {
+                overall = (busy, total);
+            } else {
+                cores.push((busy, total));
+            }
+        }
+    }
+    Ok((cores, overall))
+}
+
+fn parse_meminfo() -> Result<(u64, u64), String> {
+    let info = read_file("/proc/meminfo")?;
+    let mut total = 0u64;
+    let mut available = 0u64;
+    for line in info.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            total = rest.trim().split_whitespace().next()
+                .and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) * 1024;
+        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            available = rest.trim().split_whitespace().next()
+                .and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) * 1024;
+        }
+    }
+    Ok((total, total.saturating_sub(available)))
+}
+
+fn parse_process_stat() -> Result<(u64, u64), String> {
+    let pid = std::process::id();
+    let stat = read_file(&format!("/proc/{pid}/stat"))?;
+    // Fields 14 (utime) and 15 (stime) are 0-indexed after splitting by space.
+    let parts: Vec<&str> = stat.split_whitespace().collect();
+    let utime: u64 = parts.get(13).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let stime: u64 = parts.get(14).and_then(|s| s.parse().ok()).unwrap_or(0);
+    // RSS is field 24 (pages)
+    let rss_pages: u64 = parts.get(23).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let page_size = 4096u64; // almost always 4K on Linux
+    Ok((utime + stime, rss_pages * page_size))
+}
+
+#[tauri::command]
+fn get_system_resources() -> Result<SystemResources, String> {
+    let (cores_now, overall_now) = parse_cpu_cores()?;
+    let (ram_total, ram_used) = parse_meminfo()?;
+    let (proc_ticks, proc_rss) = parse_process_stat()?;
+
+    // CPU deltas
+    let mut prev_guard = CPU_PREV.lock().map_err(err)?;
+    let cpu_cores: Vec<f64> = if let Some(prev) = prev_guard.as_ref() {
+        cores_now
+            .iter()
+            .zip(prev.iter())
+            .map(|((busy, total), (pb, pt))| {
+                let dt = total.saturating_sub(*pt);
+                if dt == 0 { 0.0 } else { (busy.saturating_sub(*pb)) as f64 / dt as f64 }
+            })
+            .collect()
+    } else {
+        vec![0.0; cores_now.len()]
+    };
+    *prev_guard = Some(cores_now);
+    drop(prev_guard);
+
+    let cpu_overall = if cpu_cores.is_empty() {
+        0.0
+    } else {
+        cpu_cores.iter().sum::<f64>() / cpu_cores.len() as f64
+    };
+
+    // Process CPU delta
+    let mut proc_guard = PROC_PREV.lock().map_err(err)?;
+    let process_cpu = if let Some((prev_ticks, prev_total)) = proc_guard.as_ref() {
+        let dt = overall_now.1.saturating_sub(*prev_total);
+        if dt == 0 { 0.0 } else {
+            let dp = proc_ticks.saturating_sub(*prev_ticks);
+            dp as f64 / dt as f64
+        }
+    } else {
+        0.0
+    };
+    *proc_guard = Some((proc_ticks, overall_now.1));
+    drop(proc_guard);
+
+    let ram_percent = if ram_total == 0 { 0.0 } else { ram_used as f64 / ram_total as f64 };
+
+    Ok(SystemResources {
+        cpu_cores,
+        cpu_overall,
+        ram_total,
+        ram_used,
+        ram_percent,
+        process_rss: proc_rss,
+        process_cpu,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Self-update commands (delegate to /usr/bin/rustify-update, shipped in the
 // .deb). Keeps signing-key / polkit concerns out of the Tauri process itself.
 // ---------------------------------------------------------------------------
@@ -562,6 +706,7 @@ pub fn run() {
             player_set_volume,
             player_enqueue_next,
             get_state,
+            get_system_resources,
             check_for_update,
             install_update,
         ])
