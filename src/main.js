@@ -21,14 +21,30 @@ async function loadIconSprite() {
 }
 
 function wireTitlebar() {
-  const win = window.__TAURI__?.window;
-  if (!win) return;
-  const appWindow = win.getCurrentWindow();
-  document.getElementById("titlebar-minimize")?.addEventListener("click", () => appWindow.minimize());
-  document.getElementById("titlebar-maximize")?.addEventListener("click", async () => {
-    (await appWindow.isMaximized()) ? appWindow.unmaximize() : appWindow.maximize();
+  // Tauri 2 with withGlobalTauri: window API lives under __TAURI__.window
+  const api = window.__TAURI__?.window;
+  if (!api) {
+    console.warn("[titlebar] Tauri window API not available");
+    return;
+  }
+  const appWindow = api.getCurrentWindow();
+  if (!appWindow) {
+    console.warn("[titlebar] getCurrentWindow() returned null");
+    return;
+  }
+  document.getElementById("titlebar-minimize")?.addEventListener("click", () => {
+    appWindow.minimize().catch((e) => console.error("[titlebar] minimize:", e));
   });
-  document.getElementById("titlebar-close")?.addEventListener("click", () => appWindow.close());
+  document.getElementById("titlebar-maximize")?.addEventListener("click", async () => {
+    try {
+      (await appWindow.isMaximized()) ? await appWindow.unmaximize() : await appWindow.maximize();
+    } catch (e) {
+      console.error("[titlebar] maximize:", e);
+    }
+  });
+  document.getElementById("titlebar-close")?.addEventListener("click", () => {
+    appWindow.close().catch((e) => console.error("[titlebar] close:", e));
+  });
 }
 
 async function boot() {
