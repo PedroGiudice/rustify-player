@@ -648,21 +648,100 @@ pub fn run() {
                 ..Default::default()
             }));
 
+            // --- MPRIS2 media controls via souvlaki ---
+            // Media key events (play/pause/next from keyboard or DE controls)
+            // are translated into engine commands via a crossbeam channel.
+            let engine_tx_media = engine.command_sender();
+            let (media_cmd_tx, media_cmd_rx) =
+                crossbeam_channel::unbounded::<souvlaki::MediaControlEvent>();
+
+            // Spawn a dedicated thread for souvlaki. On Linux (zbus backend),
+            // MediaControls must be created and used from the same thread.
+            let media_controls: Arc<Mutex<Option<souvlaki::MediaControls>>> =
+                Arc::new(Mutex::new(None));
+            let mc_writer = media_controls.clone();
+
+            std::thread::Builder::new()
+                .name("media-controls".to_string())
+                .spawn(move || {
+                    let config = souvlaki::PlatformConfig {
+                        dbus_name: "rustify_player",
+                        display_name: "Rustify Player",
+                        hwnd: None,
+                    };
+                    match souvlaki::MediaControls::new(config) {
+                        Ok(mut mc) => {
+                            let tx = media_cmd_tx.clone();
+                            if let Err(e) = mc.attach(move |ev| {
+                                let _ = tx.send(ev);
+                            }) {
+                                tracing::warn!(?e, "failed to attach media controls callback");
+                            }
+                            tracing::info!("MPRIS2 media controls registered");
+                            if let Ok(mut slot) = mc_writer.lock() {
+                                *slot = Some(mc);
+                            }
+                            // Keep thread alive so the dbus connection stays open.
+                            // The media_cmd_rx being consumed in the engine listener
+                            // thread handles shutdown implicitly.
+                            loop {
+                                std::thread::park();
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(?e, "failed to create media controls; media keys disabled");
+                        }
+                    }
+                })
+                .ok();
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
+            let mc_reader = media_controls.clone();
             std::thread::spawn(move || {
                 while let Ok(event) = rx.recv() {
-                    // Update the snapshot cache before emitting.
+                    // Update snapshot + MPRIS2 metadata.
                     if let Ok(mut s) = snap_writer.lock() {
                         match &event {
                             StateUpdate::TrackStarted(info) => {
                                 s.current_track = Some(info.clone());
+                                // Push metadata to MPRIS2.
+                                if let Ok(mut mc) = mc_reader.lock() {
+                                    if let Some(mc) = mc.as_mut() {
+                                        let title = info
+                                            .path
+                                            .file_stem()
+                                            .and_then(|s| s.to_str())
+                                            .unwrap_or("Unknown");
+                                        let dur = info.duration;
+                                        let _ = mc.set_metadata(souvlaki::MediaMetadata {
+                                            title: Some(title),
+                                            duration: dur,
+                                            ..Default::default()
+                                        });
+                                    }
+                                }
                             }
                             StateUpdate::StateChanged(ps) => {
                                 s.is_playing = matches!(ps, PlaybackState::Playing { .. });
                                 if matches!(ps, PlaybackState::Idle | PlaybackState::Stopped) {
                                     s.current_track = None;
+                                }
+                                // Push playback status to MPRIS2.
+                                if let Ok(mut mc) = mc_reader.lock() {
+                                    if let Some(mc) = mc.as_mut() {
+                                        let pb = match ps {
+                                            PlaybackState::Playing { .. } => {
+                                                souvlaki::MediaPlayback::Playing { progress: None }
+                                            }
+                                            PlaybackState::Paused { .. } => {
+                                                souvlaki::MediaPlayback::Paused { progress: None }
+                                            }
+                                            _ => souvlaki::MediaPlayback::Stopped,
+                                        };
+                                        let _ = mc.set_playback(pb);
+                                    }
                                 }
                             }
                             StateUpdate::VolumeChanged(v) => {
@@ -672,6 +751,32 @@ pub fn run() {
                         }
                     }
                     let _ = app_handle.emit("player-state", event);
+
+                    // Drain any pending media key events and translate to
+                    // engine commands.
+                    while let Ok(mev) = media_cmd_rx.try_recv() {
+                        let cmd = match mev {
+                            souvlaki::MediaControlEvent::Play => Some(EngineCommand::Play),
+                            souvlaki::MediaControlEvent::Pause => Some(EngineCommand::Pause),
+                            souvlaki::MediaControlEvent::Toggle => {
+                                // Check current state to decide.
+                                let playing = snap_writer
+                                    .lock()
+                                    .map(|s| s.is_playing)
+                                    .unwrap_or(false);
+                                if playing {
+                                    Some(EngineCommand::Pause)
+                                } else {
+                                    Some(EngineCommand::Play)
+                                }
+                            }
+                            souvlaki::MediaControlEvent::Stop => Some(EngineCommand::Stop),
+                            _ => None, // Next/Previous handled by frontend queue
+                        };
+                        if let Some(cmd) = cmd {
+                            let _ = engine_tx_media.send(cmd);
+                        }
+                    }
                 }
             });
 

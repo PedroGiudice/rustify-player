@@ -66,6 +66,13 @@ impl EngineHandle {
         self.state_rx.clone()
     }
 
+    /// Get a clone of the command sender. Useful when an external subsystem
+    /// (e.g. media keys via souvlaki) needs to send commands without holding
+    /// the full EngineHandle behind a Mutex.
+    pub fn command_sender(&self) -> crossbeam_channel::Sender<Command> {
+        self.command_tx.clone()
+    }
+
     /// Snapshot the engine's counters (xruns, uptime, etc.).
     pub fn metrics(&self) -> EngineMetrics {
         self.metrics.snapshot()

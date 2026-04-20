@@ -64,3 +64,6 @@ tracing-subscriber = { workspace = true }
 library-indexer = { path = "crates/library-indexer" }
 audio-engine = { path = "crates/audio-engine", features = ["serde"] }
 tauri-plugin-fs = "2.5.0"
+souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
