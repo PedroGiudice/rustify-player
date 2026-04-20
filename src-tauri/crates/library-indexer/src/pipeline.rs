@@ -221,6 +221,20 @@ fn run_scan(
     state.scan_in_progress.store(true, Ordering::Relaxed);
     let _ = evt_tx.send(IndexerEvent::ScanStarted);
 
+    // If migration 003 just introduced `embedded_lyrics`, existing tracks
+    // have NULL there. Force a full re-ingest to backfill.
+    let force_reingest = db::meta_get(writer, db::META_NEEDS_EMBEDDED_LYRICS_SCAN)
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("1");
+    if force_reingest {
+        info!(
+            target: "library_indexer::pipeline",
+            "embedded-lyrics backfill flag active; forcing full re-ingest"
+        );
+    }
+
     let entries: Vec<FileEntry> = scan::walk_music_root(&config.music_root)?.collect();
     let total = entries.len() as u64;
     let existing = load_existing(writer)?;
@@ -256,7 +270,11 @@ fn run_scan(
         let prior = by_path.get(&entry.path);
         let needs_ingest = match prior {
             None => true,
-            Some((_, mt, sz)) => (*mt as u64) != entry.mtime || (*sz as u64) != entry.size,
+            Some((_, mt, sz)) => {
+                force_reingest
+                    || (*mt as u64) != entry.mtime
+                    || (*sz as u64) != entry.size
+            }
         };
         if needs_ingest {
             match ingest_one(writer, config, &entry) {
@@ -304,6 +322,17 @@ fn run_scan(
     let _ = evt_tx.send(IndexerEvent::ScanProgress { processed, total });
     state.refresh_from_db(writer);
     state.scan_in_progress.store(false, Ordering::Relaxed);
+
+    // A successful full scan backfills `embedded_lyrics` for every track,
+    // so the one-shot migration-003 flag is satisfied.
+    if let Err(e) = db::meta_clear(writer, db::META_NEEDS_EMBEDDED_LYRICS_SCAN) {
+        warn!(
+            target: "library_indexer::pipeline",
+            error = %e,
+            "failed to clear embedded-lyrics scan flag"
+        );
+    }
+
     let _ = evt_tx.send(IndexerEvent::ScanDone {
         added,
         updated,
@@ -393,6 +422,13 @@ fn ingest_within_tx(
     // Discover sidecar .lrc lyrics file.
     let lrc_path = lyrics::find_lrc_sidecar(&entry.path).map(|p| path_str(&p));
 
+    // Normalize embedded lyrics: drop empty-after-trim values.
+    let embedded_lyrics: Option<String> = md
+        .embedded_lyrics
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     let (track_id, is_new) = if let Some(id) = existing_id {
         tx.execute(
             "UPDATE tracks SET
@@ -402,7 +438,7 @@ fn ingest_within_tx(
                 sample_rate = ?, bit_depth = ?, channels = ?,
                 rg_track_gain = ?, rg_album_gain = ?, rg_track_peak = ?, rg_album_peak = ?,
                 embedding_status = 'pending', embedding = NULL, embedding_error = NULL,
-                indexed_at = ?, lrc_path = ?
+                indexed_at = ?, lrc_path = ?, embedded_lyrics = ?
              WHERE id = ?",
             params![
                 filename,
@@ -424,6 +460,7 @@ fn ingest_within_tx(
                 md.rg_album_peak,
                 now,
                 lrc_path,
+                embedded_lyrics,
                 id,
             ],
         )?;
@@ -436,8 +473,8 @@ fn ingest_within_tx(
                  album_id, artist_id, genre_id,
                  sample_rate, bit_depth, channels,
                  rg_track_gain, rg_album_gain, rg_track_peak, rg_album_peak,
-                 embedding_status, indexed_at, lrc_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+                 embedding_status, indexed_at, lrc_path, embedded_lyrics)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
             params![
                 path_str(&entry.path),
                 filename,
@@ -459,6 +496,7 @@ fn ingest_within_tx(
                 md.rg_album_peak,
                 now,
                 lrc_path,
+                embedded_lyrics,
             ],
         )?;
         (tx.last_insert_rowid(), true)

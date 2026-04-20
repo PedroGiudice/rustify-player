@@ -56,6 +56,8 @@ const BOOT_TIMEOUT: Duration = Duration::from_secs(3);
 /// Control-plane command sent from the engine thread to the mainloop thread.
 enum Cmd {
     Shutdown,
+    Cork,
+    Uncork,
 }
 
 /// Shared data accessed by the realtime `process` callback.
@@ -189,6 +191,7 @@ impl AudioOutput for PipewireBackend {
             .and_then(|slot| *slot)
             .unwrap_or(format);
 
+        let cork_tx = cmd_tx.clone();
         Ok(ActiveStream {
             producer,
             actual_format: advertised,
@@ -198,6 +201,9 @@ impl AudioOutput for PipewireBackend {
                 thread: Some(thread),
                 cmd_tx,
             }) as Box<dyn Any + Send>,
+            set_cork: Some(Box::new(move |cork: bool| {
+                let _ = cork_tx.send(if cork { Cmd::Cork } else { Cmd::Uncork });
+            })),
         })
     }
 
@@ -280,6 +286,12 @@ fn run_mainloop(
             return;
         }
     };
+
+    // Grab the raw pointer before the borrow-checker ties it to local
+    // lifetimes. The `cmd_rx.attach` closure requires `'static`, but the
+    // stream outlives the mainloop — so dereferencing is safe inside any
+    // callback attached to this loop.
+    let raw_stream: *mut pw::sys::pw_stream = stream.as_raw_ptr();
 
     // Listener must outlive `mainloop.run()`. Keep it in scope until the end
     // of this function.
@@ -441,13 +453,23 @@ fn run_mainloop(
         return;
     }
 
-    // Attach the command receiver to the loop so we can react to Shutdown.
+    // Attach the command receiver to the loop so we can react to commands.
     let mainloop_weak = mainloop.downgrade();
     let _cmd_attached = cmd_rx.attach(mainloop.loop_(), move |cmd| match cmd {
         Cmd::Shutdown => {
             if let Some(ml) = mainloop_weak.upgrade() {
                 ml.quit();
             }
+        }
+        Cmd::Cork => {
+            // SAFETY: `raw_stream` points to the `StreamBox` declared above,
+            // which outlives `mainloop.run()`. This closure is attached to the
+            // same mainloop, so it cannot fire after the stream is dropped.
+            unsafe { pw::sys::pw_stream_set_active(raw_stream, false) };
+        }
+        Cmd::Uncork => {
+            // SAFETY: same as Cork.
+            unsafe { pw::sys::pw_stream_set_active(raw_stream, true) };
         }
     });
 

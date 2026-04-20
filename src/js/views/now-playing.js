@@ -7,6 +7,7 @@ const { invoke, convertFileSrc } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 let positionUnlisten = null;
+let lyricsState = null; // { lines: [{t, text, header}], mode: "empty" | "plain" | "timed", activeIdx: -1 }
 
 export function render() {
   const view = document.createElement("article");
@@ -68,16 +69,26 @@ async function load(view) {
             <span id="np-time-total">${fmtDur(dur)}</span>
           </div>
         </div>
-        <div class="np__tech">
-          ${techCell("Sample Rate", rate)}
-          ${techCell("Bit Depth", depth)}
-          ${techCell("Format", "FLAC")}
-          ${techCell("Channels", "2 \u2022 Stereo")}
-          ${techCell("DSP", "Bit-Perfect")}
-          ${techCell("Output", "PipeWire")}
+        <div class="np__info-grid">
+          <div class="np__tech">
+            ${techCell("Sample Rate", rate)}
+            ${techCell("Bit Depth", depth)}
+            ${techCell("Format", "FLAC")}
+            ${techCell("Channels", "2 \u2022 Stereo")}
+            ${techCell("DSP", "Bit-Perfect")}
+            ${techCell("Output", "PipeWire")}
+          </div>
+          <div class="np__lyrics">
+            <span class="np__tech-label">Lyrics</span>
+            <div class="np__lyrics-scroll" id="np-lyrics">
+              <p class="np__lyrics-empty">Loading lyrics...</p>
+            </div>
+          </div>
         </div>
       </div>
     `;
+
+    loadLyrics(view, track);
 
     // Nav links
     view.querySelector("#np-artist")?.addEventListener("click", () => {
@@ -95,17 +106,82 @@ async function load(view) {
     if (positionUnlisten) positionUnlisten();
     positionUnlisten = await listen("player-state", (e) => {
       const payload = e.payload;
-      if (payload.Position && dur > 0) {
+      if (payload.Position) {
         const secs = payload.Position.samples_played / payload.Position.sample_rate;
-        const pct = Math.min(100, (secs / dur) * 100);
-        fill.style.width = `${pct}%`;
-        thumb.style.left = `${pct}%`;
-        timeCur.textContent = fmtDur(secs);
+        if (dur > 0) {
+          const pct = Math.min(100, (secs / dur) * 100);
+          fill.style.width = `${pct}%`;
+          thumb.style.left = `${pct}%`;
+          timeCur.textContent = fmtDur(secs);
+        }
+        updateLyricsHighlight(view, secs);
       }
     });
   } catch (err) {
     root.innerHTML = `<div class="empty-state"><p class="empty-state__title">Failed to load</p><p class="empty-state__hint">${err}</p></div>`;
   }
+}
+
+async function loadLyrics(view, track) {
+  const box = view.querySelector("#np-lyrics");
+  if (!box) return;
+
+  lyricsState = null;
+
+  let lines = [];
+  try {
+    lines = await invoke("lib_get_lyrics", { trackId: track.id });
+  } catch (err) {
+    console.error("[lyrics] fetch failed:", err);
+    box.innerHTML = `<p class="np__lyrics-empty">No lyrics available</p>`;
+    return;
+  }
+
+  if (!Array.isArray(lines) || lines.length === 0) {
+    box.innerHTML = `<p class="np__lyrics-empty">No lyrics available</p>`;
+    return;
+  }
+
+  const allZero = lines.every((l) => (l.t ?? 0) === 0);
+  const mode = allZero ? "plain" : "timed";
+
+  box.innerHTML = lines
+    .map((l) => {
+      const cls = l.header
+        ? "np__lyrics-line np__lyrics-line--header"
+        : "np__lyrics-line";
+      const dataT = mode === "timed" ? ` data-t="${l.t}"` : "";
+      return `<p class="${cls}"${dataT}>${esc(l.text || "")}</p>`;
+    })
+    .join("");
+
+  lyricsState = { lines, mode, activeIdx: -1 };
+}
+
+function updateLyricsHighlight(view, secs) {
+  if (!lyricsState || lyricsState.mode !== "timed") return;
+  const { lines } = lyricsState;
+
+  let idx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if ((lines[i].t ?? 0) <= secs) idx = i;
+    else break;
+  }
+
+  if (idx === lyricsState.activeIdx) return;
+
+  const box = view.querySelector("#np-lyrics");
+  if (!box) return;
+  const nodes = box.querySelectorAll(".np__lyrics-line");
+
+  if (lyricsState.activeIdx >= 0 && nodes[lyricsState.activeIdx]) {
+    nodes[lyricsState.activeIdx].classList.remove("is-active");
+  }
+  if (idx >= 0 && nodes[idx]) {
+    nodes[idx].classList.add("is-active");
+    nodes[idx].scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  lyricsState.activeIdx = idx;
 }
 
 function techCell(label, value) {

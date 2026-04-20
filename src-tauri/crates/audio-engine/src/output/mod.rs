@@ -31,6 +31,10 @@ pub struct ActiveStream {
     /// Backend-private handle that keeps the stream alive; dropping this
     /// tears the stream down.
     pub(crate) _keepalive: Box<dyn std::any::Any + Send>,
+    /// Cork (true) / uncork (false) the output stream. When corked, the
+    /// backend stops invoking the realtime callback, preventing phantom
+    /// xruns during pause. `None` for mock backends.
+    pub(crate) set_cork: Option<Box<dyn Fn(bool) + Send>>,
 }
 
 /// Trait for swappable output backends.

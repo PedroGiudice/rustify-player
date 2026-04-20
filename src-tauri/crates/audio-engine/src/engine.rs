@@ -278,6 +278,12 @@ impl EngineState {
                 return;
             }
         }
+        // Uncork the output stream when resuming from pause.
+        if let Some(stream) = &self.active_stream {
+            if let Some(set_cork) = &stream.set_cork {
+                (set_cork)(false);
+            }
+        }
         let (handle, pos) = match &self.current {
             Some(t) => (t.info.handle, t.decoder.position_samples()),
             None => return,
@@ -290,6 +296,12 @@ impl EngineState {
 
     fn cmd_pause(&mut self) {
         if let Some(t) = &self.current {
+            // Cork the output stream to stop callbacks and prevent phantom xruns.
+            if let Some(stream) = &self.active_stream {
+                if let Some(set_cork) = &stream.set_cork {
+                    (set_cork)(true);
+                }
+            }
             let handle = t.info.handle;
             let pos = t.decoder.position_samples();
             self.set_state(PlaybackState::Paused {

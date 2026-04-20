@@ -618,32 +618,54 @@ pub fn list_history(conn: &Connection, limit: usize) -> Result<Vec<Track>, Index
 // Lyrics
 // ---------------------------------------------------------------------------
 
-/// Look up the lrc_path for a track and parse the lyrics file.
-/// Returns an empty vec if no lrc_path is set or the file is unreadable.
+/// Look up lyrics for a track. Preference order:
+///
+/// 1. LRC sidecar file at `lrc_path` (timed lyrics).
+/// 2. `embedded_lyrics` text (one `LyricLine` per line, all `t == 0.0`).
+///    The `t == 0.0` invariant signals "no timing" to the frontend.
+/// 3. Empty vec.
 pub fn get_lyrics(
     conn: &Connection,
     track_id: i64,
 ) -> Result<Vec<crate::lyrics::LyricLine>, IndexerError> {
-    let lrc_path: Option<String> = conn
+    let row: Option<(Option<String>, Option<String>)> = conn
         .query_row(
-            "SELECT lrc_path FROM tracks WHERE id = ?",
+            "SELECT lrc_path, embedded_lyrics FROM tracks WHERE id = ?",
             params![track_id],
-            |row| row.get(0),
+            |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
         )
-        .ok()
-        .flatten();
+        .ok();
 
-    match lrc_path {
-        Some(p) => {
-            let path = std::path::Path::new(&p);
-            if path.is_file() {
-                crate::lyrics::parse_lrc_file(path)
-            } else {
-                Ok(Vec::new())
-            }
+    let Some((lrc_path, embedded_lyrics)) = row else {
+        return Ok(Vec::new());
+    };
+
+    // 1. Prefer sidecar LRC (timed).
+    if let Some(p) = lrc_path {
+        let path = std::path::Path::new(&p);
+        if path.is_file() {
+            return crate::lyrics::parse_lrc_file(path);
         }
-        None => Ok(Vec::new()),
     }
+
+    // 2. Fall back to embedded lyrics (untimed).
+    if let Some(text) = embedded_lyrics {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            let lines = trimmed
+                .lines()
+                .map(|line| crate::lyrics::LyricLine {
+                    t: 0.0,
+                    line: line.to_string(),
+                    header: false,
+                })
+                .collect::<Vec<_>>();
+            return Ok(lines);
+        }
+    }
+
+    // 3. Nothing available.
+    Ok(Vec::new())
 }
 
 // ---------------------------------------------------------------------------

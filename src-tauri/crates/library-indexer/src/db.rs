@@ -24,7 +24,13 @@ use tracing::{debug, info};
 const MIGRATIONS: &[(i32, &str)] = &[
     (1, include_str!("../migrations/001_initial.sql")),
     (2, include_str!("../migrations/002_add_lrc_path.sql")),
+    (3, include_str!("../migrations/003_add_embedded_lyrics.sql")),
 ];
+
+/// Flag set in the `meta` table when migration 003 promotes the schema.
+/// Startup checks this to trigger a background rescan that backfills
+/// `embedded_lyrics` for tracks indexed before the column existed.
+pub const META_NEEDS_EMBEDDED_LYRICS_SCAN: &str = "needs_embedded_lyrics_scan";
 
 const GENRE_SEED: &str = include_str!("../seeds/genres.json");
 
@@ -137,9 +143,58 @@ fn apply_migrations(conn: &mut Connection) -> Result<(), IndexerError> {
             "INSERT INTO schema_version (version) VALUES (?)",
             params![version],
         )?;
+        // When migration 003 is the one just applied, flag a one-shot
+        // rescan so existing tracks backfill the new `embedded_lyrics`
+        // column. The `meta` table is created in migration 003 itself.
+        if version == 3 {
+            tx.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, '1')",
+                params![META_NEEDS_EMBEDDED_LYRICS_SCAN],
+            )?;
+        }
         tx.commit()?;
     }
 
+    Ok(())
+}
+
+/// Read a value from the `meta` key-value table. Returns `None` when the
+/// key is absent or the `meta` table doesn't exist yet (pre-migration-3 DB).
+pub fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>, IndexerError> {
+    let has_meta: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='meta'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if has_meta == 0 {
+        return Ok(None);
+    }
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?",
+            params![key],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(value)
+}
+
+/// Delete a key from the `meta` table. No-op when absent or when the table
+/// itself doesn't exist.
+pub fn meta_clear(conn: &Connection, key: &str) -> Result<(), IndexerError> {
+    let has_meta: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='meta'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if has_meta == 0 {
+        return Ok(());
+    }
+    conn.execute("DELETE FROM meta WHERE key = ?", params![key])?;
     Ok(())
 }
 
@@ -176,13 +231,12 @@ fn seed_genres(conn: &Connection) -> Result<(), IndexerError> {
 // Used by the ingest pipeline. Writer-side only; readers never call these.
 
 pub fn upsert_artist(conn: &Connection, name: &str) -> Result<i64, IndexerError> {
-    if let Some(id) = conn
+    if let Ok(id) = conn
         .query_row(
             "SELECT id FROM artists WHERE name = ? COLLATE NOCASE",
             params![name],
             |row| row.get::<_, i64>(0),
         )
-        .ok()
     {
         return Ok(id);
     }
@@ -199,7 +253,7 @@ pub fn upsert_album(
     album_artist_id: Option<i64>,
     year: Option<i32>,
 ) -> Result<i64, IndexerError> {
-    if let Some(id) = conn
+    if let Ok(id) = conn
         .query_row(
             "SELECT id FROM albums
              WHERE title = ? COLLATE NOCASE
@@ -207,7 +261,6 @@ pub fn upsert_album(
             params![title, album_artist_id],
             |row| row.get::<_, i64>(0),
         )
-        .ok()
     {
         // Fill year if previously null.
         if let Some(y) = year {
@@ -226,13 +279,12 @@ pub fn upsert_album(
 }
 
 pub fn upsert_genre(conn: &Connection, name: &str) -> Result<i64, IndexerError> {
-    if let Some(id) = conn
+    if let Ok(id) = conn
         .query_row(
             "SELECT id FROM genres WHERE name = ? COLLATE NOCASE",
             params![name],
             |row| row.get::<_, i64>(0),
         )
-        .ok()
     {
         return Ok(id);
     }
@@ -251,13 +303,12 @@ pub fn upsert_genre(conn: &Connection, name: &str) -> Result<i64, IndexerError> 
 }
 
 pub fn upsert_tag(conn: &Connection, name: &str) -> Result<i64, IndexerError> {
-    if let Some(id) = conn
+    if let Ok(id) = conn
         .query_row(
             "SELECT id FROM tags WHERE name = ? COLLATE NOCASE",
             params![name],
             |row| row.get::<_, i64>(0),
         )
-        .ok()
     {
         return Ok(id);
     }
@@ -283,7 +334,7 @@ mod tests {
             .writer
             .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]

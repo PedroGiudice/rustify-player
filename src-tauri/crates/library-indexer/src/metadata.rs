@@ -51,6 +51,9 @@ pub struct ParsedFlacMetadata {
     pub genre_raw: Option<String>,
     /// Tokenized tags: splits `GENRE` on `[,;/]` and whitespace collapse.
     pub tags: Vec<String>,
+    /// Embedded lyrics text extracted from Vorbis Comment (`LYRICS` /
+    /// `UNSYNCEDLYRICS`) or ID3 (`USLT`). `None` when absent or empty.
+    pub embedded_lyrics: Option<String>,
 
     // ReplayGain
     pub rg_track_gain: Option<f32>,
@@ -198,6 +201,12 @@ fn apply_tags(md: &mut ParsedFlacMetadata, tags: &[Tag]) {
                     md.genre_raw.get_or_insert(value.clone());
                     continue;
                 }
+                StandardTagKey::Lyrics => {
+                    // ID3 USLT frames and any other tagger that maps to
+                    // StandardTagKey::Lyrics land here.
+                    md.embedded_lyrics.get_or_insert(value.clone());
+                    continue;
+                }
                 StandardTagKey::ReplayGainTrackGain => {
                     md.rg_track_gain = parse_db(&value);
                     continue;
@@ -246,6 +255,17 @@ fn apply_tags(md: &mut ParsedFlacMetadata, tags: &[Tag]) {
             }
             "GENRE" => {
                 md.genre_raw.get_or_insert(value.clone());
+            }
+            // Vorbis Comment: `LYRICS` (preferred) or `UNSYNCEDLYRICS` (fallback).
+            // Some ID3 taggers also surface `USLT` under this raw key path.
+            "LYRICS" => {
+                md.embedded_lyrics.get_or_insert(value.clone());
+            }
+            "UNSYNCEDLYRICS" | "UNSYNCED LYRICS" | "USLT" => {
+                // Only fill if no preferred LYRICS tag was seen yet.
+                if md.embedded_lyrics.is_none() {
+                    md.embedded_lyrics = Some(value.clone());
+                }
             }
             "REPLAYGAIN_TRACK_GAIN" => md.rg_track_gain = parse_db(&value),
             "REPLAYGAIN_ALBUM_GAIN" => md.rg_album_gain = parse_db(&value),
@@ -314,7 +334,7 @@ fn parse_db(s: &str) -> Option<f32> {
 /// dedup preserved-order.
 pub fn tokenize_genre(raw: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for part in raw.split(|c: char| matches!(c, ',' | ';' | '/' | '\\' | '\t')) {
+    for part in raw.split([',', ';', '/', '\\', '\t']) {
         let token = part.trim();
         if token.is_empty() {
             continue;
@@ -345,7 +365,7 @@ pub fn find_folder_cover(album_dir: &Path) -> Option<PathBuf> {
         "album.png",
     ];
     let entries = std::fs::read_dir(album_dir).ok()?;
-    let candidates_lower: Vec<&str> = CANDIDATES.iter().copied().collect();
+    let candidates_lower: Vec<&str> = CANDIDATES.to_vec();
     for entry in entries.flatten() {
         let p = entry.path();
         if !p.is_file() {

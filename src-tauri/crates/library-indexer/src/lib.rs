@@ -194,4 +194,19 @@ impl IndexerHandle {
     pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
         self.inner.pool.with(|conn| search::list_history(conn, limit))
     }
+
+    /// True when migration 003 has been applied during a previous or the
+    /// current open and tracks indexed before it need backfilling of the
+    /// new `embedded_lyrics` column. The coordinator clears the flag on
+    /// the next successful scan.
+    pub fn needs_embedded_lyrics_scan(&self) -> bool {
+        self.inner
+            .pool
+            .with(|conn| {
+                Ok(db::meta_get(conn, db::META_NEEDS_EMBEDDED_LYRICS_SCAN)?
+                    .as_deref()
+                    == Some("1"))
+            })
+            .unwrap_or(false)
+    }
 }

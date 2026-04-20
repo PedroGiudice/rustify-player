@@ -243,6 +243,11 @@ function listenEngine() {
         );
       }
     } else if (payload.TrackEnded != null) {
+      const endedTrack = currentTrack;
+      if (endedTrack?.id) {
+        invoke("lib_record_play", { trackId: endedTrack.id })
+          .catch((err) => console.error("[history] record_play failed:", err));
+      }
       // Auto-advance to the next queue entry.
       if (queueIndex < trackQueue.length - 1) {
         queueIndex++;
@@ -332,7 +337,8 @@ export async function playTrack(track) {
   );
 
   if (track.id) {
-    invoke("lib_record_play", { trackId: track.id }).catch(() => {});
+    invoke("lib_record_play", { trackId: track.id })
+      .catch((err) => console.error("[history] record_play failed:", err));
   }
 }
 

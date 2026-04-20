@@ -1,6 +1,6 @@
 import { playTrack, setQueue } from "../components/player-bar.js";
 
-const { invoke } = window.__TAURI__.core;
+const { invoke, convertFileSrc } = window.__TAURI__.core;
 
 export function render() {
   const view = document.createElement("article");
@@ -114,6 +114,7 @@ async function openFolder(view, folder) {
       <table class="track-table">
         <thead>
           <tr>
+            <th class="track-table__th track-table__th--cover"></th>
             <th class="track-table__th track-table__th--num">#</th>
             <th class="track-table__th">Title</th>
             <th class="track-table__th">Artist</th>
@@ -162,7 +163,8 @@ function renderRows(tbody, tracks) {
     .map(
       (t, i) => `
     <tr class="track-row" data-track-id="${t.id}" data-path="${escAttr(t.path)}">
-      <td class="track-table__td track-table__td--num">${t.track_number ?? i + 1}</td>
+      <td class="track-table__td track-table__td--cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</td>
+      <td class="track-table__td track-table__td--num">${i + 1}</td>
       <td class="track-table__td track-table__td--title">${esc(t.title)}</td>
       <td class="track-table__td">${esc(t.artist_name || "\u2014")}</td>
       <td class="track-table__td">${esc(t.album_title || "\u2014")}</td>

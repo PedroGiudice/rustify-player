@@ -84,7 +84,6 @@ fn lib_list_albums(
         artist_id,
         genre_id,
         limit,
-        ..Default::default()
     };
     let mut albums = lib.handle.list_albums(filter).map_err(err)?;
 
@@ -107,7 +106,6 @@ fn lib_list_artists(
     let filter = ArtistFilter {
         genre_id,
         limit,
-        ..Default::default()
     };
     lib.handle.list_artists(filter).map_err(err)
 }
@@ -375,7 +373,9 @@ fn read_file(path: &str) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
 }
 
-fn parse_cpu_cores() -> Result<(Vec<(u64, u64)>, (u64, u64)), String> {
+type CpuSnapshot = (Vec<(u64, u64)>, (u64, u64));
+
+fn parse_cpu_cores() -> Result<CpuSnapshot, String> {
     let stat = read_file("/proc/stat")?;
     let mut cores = Vec::new();
     let mut overall = (0u64, 0u64);
@@ -410,10 +410,10 @@ fn parse_meminfo() -> Result<(u64, u64), String> {
     let mut available = 0u64;
     for line in info.lines() {
         if let Some(rest) = line.strip_prefix("MemTotal:") {
-            total = rest.trim().split_whitespace().next()
+            total = rest.split_whitespace().next()
                 .and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) * 1024;
         } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            available = rest.trim().split_whitespace().next()
+            available = rest.split_whitespace().next()
                 .and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) * 1024;
         }
     }
@@ -635,6 +635,11 @@ pub fn run() {
             };
 
             let indexer = Indexer::open(config).expect("failed to open library indexer");
+            if indexer.needs_embedded_lyrics_scan() {
+                tracing::info!(
+                    "embedded-lyrics backfill pending; initial scan will re-ingest existing tracks"
+                );
+            }
             _app.manage(Library {
                 handle: indexer,
                 cache_dir,

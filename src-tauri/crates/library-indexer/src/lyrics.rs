@@ -31,7 +31,7 @@ pub struct LyricLine {
 
 /// Parse an `.lrc` file from disk.
 pub fn parse_lrc_file(path: &Path) -> Result<Vec<LyricLine>, IndexerError> {
-    let content = std::fs::read_to_string(path).map_err(|e| IndexerError::Io(e))?;
+    let content = std::fs::read_to_string(path).map_err(IndexerError::Io)?;
     Ok(parse_lrc(&content))
 }
 
