@@ -43,6 +43,13 @@ export function mountSidebar(root) {
         <span class="sidebar-item__label">Tweaks</span>
         <span class="sidebar-item__tooltip">Tweaks</span>
       </button>
+      <div class="sidebar__vu" id="sidebar-vu">
+        <span style="height:4px"></span>
+        <span style="height:7px"></span>
+        <span style="height:10px"></span>
+        <span style="height:6px"></span>
+        <span style="height:8px"></span>
+      </div>
     </div>
   `;
 
@@ -61,4 +68,29 @@ export function mountSidebar(root) {
   tweaksBtn.addEventListener("click", () => {
     window.dispatchEvent(new CustomEvent("toggle-tweaks"));
   });
+
+  // Animate VU bars when playing
+  const vuBars = root.querySelectorAll("#sidebar-vu span");
+  let vuInterval = null;
+  const { listen } = window.__TAURI__?.event || {};
+  if (listen) {
+    listen("player-state", (e) => {
+      const p = e.payload;
+      if (p.Playing || p.Position) {
+        if (!vuInterval) {
+          vuInterval = setInterval(() => {
+            vuBars.forEach((bar) => {
+              bar.style.height = `${3 + Math.random() * 9}px`;
+            });
+          }, 180);
+        }
+      } else if (p.Paused || p.Stopped) {
+        clearInterval(vuInterval);
+        vuInterval = null;
+        vuBars.forEach((bar, i) => {
+          bar.style.height = `${[4, 7, 10, 6, 8][i]}px`;
+        });
+      }
+    });
+  }
 }

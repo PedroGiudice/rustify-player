@@ -4,7 +4,7 @@
 const STORAGE_KEY = "kv-tweaks";
 
 const DEFAULTS = {
-  accent: "moss",
+  accent: "copper",
   density: "normal",
   sidebar: "collapsed",
   npLayout: "left",
@@ -25,7 +25,7 @@ export function loadTweaks() {
 
 export function applyTweaks() {
   const html = document.documentElement;
-  if (state.accent !== "moss") {
+  if (state.accent !== "copper") {
     html.dataset.accent = state.accent;
   } else {
     delete html.dataset.accent;
@@ -80,12 +80,17 @@ function segmented(label, key, options) {
 function renderPanel() {
   if (!panelEl) return;
   panelEl.innerHTML = `
-    <div class="tweaks__title">Tweaks</div>
+    <div class="tweaks__header">
+      <span class="tweaks__title">Tweaks</span>
+      <button class="tweaks__close" id="tweaks-close">&times;</button>
+    </div>
+    <div class="tweaks__body">
     ${segmented("Accent", "accent", [
+      ["copper", "Copper"],
       ["moss", "Moss"],
-      ["amber", "Amber"],
-      ["cyan", "Cyan"],
-      ["cold", "Cold"],
+      ["rust", "Rust"],
+      ["slate", "Slate"],
+      ["ink", "Ink"],
     ])}
     ${segmented("Density", "density", [
       ["normal", "Normal"],
@@ -109,7 +114,13 @@ function renderPanel() {
       <input type="range" class="settings-range" id="tweaks-glow"
         min="0" max="1" step="0.05" value="${state.glow}">
     </div>
+    </div>
   `;
+
+  // Bind close button
+  panelEl.querySelector("#tweaks-close")?.addEventListener("click", () => {
+    panelEl.classList.remove("is-visible");
+  });
 
   // Bind segmented buttons
   panelEl.querySelectorAll(".segmented__btn").forEach((btn) => {

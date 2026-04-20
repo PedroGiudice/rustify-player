@@ -20,6 +20,17 @@ async function loadIconSprite() {
   }
 }
 
+function wireTitlebar() {
+  const win = window.__TAURI__?.window;
+  if (!win) return;
+  const appWindow = win.getCurrentWindow();
+  document.getElementById("titlebar-minimize")?.addEventListener("click", () => appWindow.minimize());
+  document.getElementById("titlebar-maximize")?.addEventListener("click", async () => {
+    (await appWindow.isMaximized()) ? appWindow.unmaximize() : appWindow.maximize();
+  });
+  document.getElementById("titlebar-close")?.addEventListener("click", () => appWindow.close());
+}
+
 async function boot() {
   // 1. Apply persisted tweaks before any rendering to avoid flash
   loadTweaks();
@@ -36,12 +47,15 @@ async function boot() {
     return;
   }
 
-  // 3. Mount shell components
+  // 3. Wire custom titlebar
+  wireTitlebar();
+
+  // 4. Mount shell components
   mountSidebar(sidebar);
   mountPlayerBar(playerBar);
   mountTweaks();
 
-  // 4. Start router
+  // 5. Start router
   initRouter(main);
 }
 

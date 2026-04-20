@@ -1,16 +1,22 @@
 # Rustify Player — Claude Project Rules
 
-## Release workflow (obrigatorio apos qualquer mudanca de codigo)
+## Compilacao e release
 
-Sempre que eu terminar de aplicar mudancas que compilam e quero que o usuario
-teste na cmr-auto, rodo:
+**Nao compilar ate ter certeza de que nao fara mais edicoes no momento.**
+Acumule todas as mudancas pendentes (backend + frontend) e compile/release
+uma unica vez no final. Compilacoes intermediarias poluem o contexto e
+desperdicam tokens. `cargo check` pontual e ok pra validar sintaxe critica;
+`release.sh` so quando for entregar pro usuario testar.
 
 ```bash
+# Validacao rapida (sem binario, sem bundle)
+cargo check --manifest-path src-tauri/Cargo.toml
+
+# Release completo (build + .deb + publish GH)
 ./scripts/release.sh
 ```
 
-Isso builda o .deb na VM (rapido — ~25s em 16 vCPU EPYC) e publica como rolling
-release `dev` no GH. A cmr-auto puxa com:
+A cmr-auto puxa com:
 
 ```bash
 gh release download -R PedroGiudice/rustify-player -p '*.deb' -D /tmp --clobber

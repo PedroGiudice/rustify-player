@@ -1,6 +1,5 @@
-/* Base — reset, @font-face, body defaults, focus, selection.
- * Inter fonts expected at ../assets/fonts/.
- * JetBrains Mono is optional — used only when user toggles mono type accent.
+/* Base — reset, @font-face, body defaults.
+ * Inter + Fraunces (editorial serif) + JetBrains Mono.
  */
 
 /* ===== @font-face ===== */
@@ -25,7 +24,22 @@
   font-display: swap;
   src: url("../assets/fonts/Inter-Bold.woff2") format("woff2");
 }
-/* Optional mono — only loaded if ship the file; otherwise falls back to system ui-monospace */
+/* Fraunces — editorial display serif (variable weight + italic) */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("../assets/fonts/Fraunces-VariableFont.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "Fraunces";
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("../assets/fonts/Fraunces-Italic-VariableFont.woff2") format("woff2-variations");
+}
+/* Optional mono */
 @font-face {
   font-family: "JetBrains Mono";
   font-style: normal;
@@ -54,19 +68,20 @@ body {
   font-family: var(--font-body);
   font-size: var(--text-body-md);
   font-weight: var(--fw-regular);
-  line-height: 1.5;
+  line-height: 1.45;
   color: var(--on-surface);
   background: var(--surface-lowest);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+  text-rendering: geometricPrecision;
   user-select: none;
   -webkit-user-select: none;
+  font-feature-settings: "ss01", "cv11";
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-weight: var(--fw-bold);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: -0.01em;
   line-height: 1.1;
 }
 
@@ -90,10 +105,11 @@ button[aria-disabled="true"] {
 
 ul, ol { list-style: none; }
 img { display: block; max-width: 100%; }
+input { font: inherit; color: inherit; }
 
 :focus { outline: none; }
 :focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 1px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -102,16 +118,15 @@ img { display: block; max-width: 100%; }
   color: var(--on-primary);
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+/* Scrollbar — thinner, subtler */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--surface-container-high); }
-::-webkit-scrollbar-thumb:hover { background: var(--surface-container-highest); }
+::-webkit-scrollbar-thumb { background: var(--divider-hi); }
 
-/* Utility: tabular numerics for timestamps, bitrates, counts */
+/* Utility: tabular numerics */
 .num { font-variant-numeric: tabular-nums; }
 
-/* Utility: technical text (uppercase + widest tracking + technical font family) */
+/* Utility: technical text */
 .tech {
   font-family: var(--font-technical);
   text-transform: uppercase;
