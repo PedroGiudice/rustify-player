@@ -994,7 +994,7 @@ html[data-density="compact"] .album-cover-empty {
 .folder-list { display: flex; flex-direction: column; }
 .folder-item {
   display: grid;
-  grid-template-columns: 16px 1fr auto;
+  grid-template-columns: 1fr auto;
   gap: var(--space-4);
   align-items: center;
   padding: 12px var(--space-3);
