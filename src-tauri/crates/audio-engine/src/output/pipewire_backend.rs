@@ -43,7 +43,7 @@ use crate::types::{SampleFormat, StreamFormat};
 
 /// Ring buffer target: ~500 ms of samples at the negotiated rate. Matches the
 /// previous cpal backend for consistency.
-const RING_BUFFER_MS: u32 = 500;
+const RING_BUFFER_MS: u32 = 1500;
 
 /// Minimum ring buffer size in samples. Guards against tiny buffers at low
 /// sample rates that would underrun immediately.

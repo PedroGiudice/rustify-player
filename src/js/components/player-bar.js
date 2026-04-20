@@ -281,7 +281,10 @@ export async function playTrack(track) {
   ui.title.textContent = track.title || "Unknown Title";
   ui.artist.textContent = track.artist_name || "Unknown Artist";
   ui.timeTotal.textContent = formatDuration(durationSecs);
-  ui.playPauseBtn.removeAttribute("aria-disabled");
+  // Keep the play/pause button disabled until the backend confirms the
+  // track actually started (TrackStarted event). Otherwise a state flicker
+  // between send-Play and audio-out makes a second click look like pause.
+  ui.playPauseBtn.setAttribute("aria-disabled", "true");
   updateNavButtons();
   updateProgressUI(0);
   ui.timeCurrent.textContent = "0:00";

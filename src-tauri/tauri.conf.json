@@ -39,7 +39,10 @@
     ],
     "linux": {
       "deb": {
-        "depends": ["libpipewire-0.3-0"]
+        "depends": ["libpipewire-0.3-0", "policykit-1", "jq", "gh"],
+        "files": {
+          "/usr/bin/rustify-update": "../scripts/rustify-update.sh"
+        }
       }
     }
   }

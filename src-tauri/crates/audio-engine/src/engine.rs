@@ -131,6 +131,25 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     thread::Builder::new()
         .name("audio-engine".to_string())
         .spawn(move || {
+            // Promote this thread to realtime priority so scheduling jitter
+            // doesn't starve the ring buffer. On Linux this goes through rtkit
+            // (PipeWire already uses it, so the permission is usually granted).
+            // If the system rejects the request, we fall back silently to the
+            // default scheduling policy — playback still works, just with
+            // higher risk of xruns under load.
+            match thread_priority::set_current_thread_priority(
+                thread_priority::ThreadPriority::Crossplatform(
+                    thread_priority::ThreadPriorityValue::try_from(50u8)
+                        .unwrap_or(thread_priority::ThreadPriorityValue::try_from(20u8).unwrap()),
+                ),
+            ) {
+                Ok(()) => tracing::info!("audio-engine thread promoted to realtime priority"),
+                Err(err) => tracing::warn!(
+                    ?err,
+                    "failed to set RT priority on audio-engine thread; continuing at default"
+                ),
+            }
+
             let mut engine = EngineState {
                 output: Box::new(PipewireBackend::new()),
                 active_stream: None,
@@ -601,8 +620,16 @@ impl EngineState {
 
         // Also surface xrun counts when they change.
         let xruns = self.output.xrun_count();
-        if xruns > self.metrics.xrun_count.load(Ordering::Relaxed) {
+        let prev = self.metrics.xrun_count.load(Ordering::Relaxed);
+        if xruns > prev {
+            let delta = xruns - prev;
             self.metrics.xrun_count.store(xruns, Ordering::Relaxed);
+            tracing::warn!(
+                xrun_delta = delta,
+                xrun_total = xruns,
+                sample_rate = track.info.sample_rate,
+                "pipewire xrun (underrun) detected"
+            );
             let _ = self.state_tx.send(StateUpdate::Xrun { total: xruns });
         }
     }

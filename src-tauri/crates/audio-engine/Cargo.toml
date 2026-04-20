@@ -18,6 +18,7 @@ rtrb = { workspace = true }
 crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+thread-priority = "1.2"
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
