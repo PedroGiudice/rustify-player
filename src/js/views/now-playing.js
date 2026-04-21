@@ -151,7 +151,7 @@ async function loadLyrics(view, track) {
         ? "np__lyrics-line np__lyrics-line--header"
         : "np__lyrics-line";
       const dataT = mode === "timed" ? ` data-t="${l.t}"` : "";
-      return `<p class="${cls}"${dataT}>${esc(l.text || "")}</p>`;
+      return `<p class="${cls}"${dataT}>${esc(l.line || "")}</p>`;
     })
     .join("");
 
