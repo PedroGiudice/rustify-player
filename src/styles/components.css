@@ -1069,20 +1069,6 @@ html[data-np-layout="split"] .np {
   box-shadow: 0 24px 60px 0 rgba(0,0,0,0.45);
 }
 .np__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.np__cover-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  padding: 3px 8px;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  font-size: var(--text-label-xs);
-  font-weight: var(--fw-bold);
-  color: var(--on-surface);
-  letter-spacing: 0.03em;
-  font-variant-numeric: tabular-nums;
-}
 html[data-np-layout="top"] .np__cover { max-width: 340px; }
 html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 
@@ -1144,83 +1130,50 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 }
 .np__album:hover { color: var(--on-surface); }
 
-/* Seek bar in hero */
-.np__seek {
+/* Tech strip — one-line metadata row (replaces the old 2x3 tech grid).
+   Seek bar is intentionally absent here: it lives in the player-bar. */
+.np__tech-strip {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) 0;
   margin-top: var(--space-3);
-}
-.np__seek .progress { height: 3px; }
-.np__seek .progress:hover { height: 5px; }
-.np__seek-times {
-  display: flex;
-  justify-content: space-between;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
   font-size: var(--text-label-sm);
-  color: var(--on-surface-mute);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
   font-variant-numeric: tabular-nums;
 }
-
-/* Technical info grid */
-.np__tech {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-  gap: var(--space-4) var(--space-6);
-  margin-top: var(--space-6);
-}
-.np__tech-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
+.np__tech-val { color: var(--on-surface-variant); }
+.np__tech-sep { color: var(--on-surface-mute); opacity: 0.5; }
 .np__tech-label {
   display: block;
   font-size: var(--text-label-xs);
   color: var(--on-surface-mute);
   letter-spacing: 0.04em;
 }
-.np__tech-value {
-  display: block;
-  font-family: var(--font-display);
-  font-size: var(--text-headline-sm);
-  font-weight: var(--fw-bold);
-  color: var(--on-surface);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
 
-/* Now Playing: info grid (Technical Info + Lyrics) */
-.np__info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-6);
-  margin-top: var(--space-6);
-  min-height: 0;
-  flex: 1;
-}
-.np__info-grid .np__tech {
-  margin-top: 0;
-}
-@media (max-width: 900px) {
-  .np__info-grid { grid-template-columns: 1fr; }
-}
-
-/* Lyrics column */
+/* Lyrics — full width of the body, below the tech strip */
 .np__lyrics {
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
   gap: var(--space-2);
+  margin-top: var(--space-4);
+  flex: 1;
 }
 .np__lyrics-scroll {
   flex: 1;
   overflow-y: auto;
   padding-right: var(--space-4);
-  max-height: 22rem;
+  max-height: 36rem;
   scroll-behavior: smooth;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 92%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 92%, transparent 100%);
 }
 .np__lyrics-scroll::-webkit-scrollbar { width: 2px; }
 .np__lyrics-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -1230,8 +1183,8 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 }
 .np__lyrics-line {
   font-family: var(--font-display);
-  font-size: var(--text-body-md);
-  line-height: 1.6;
+  font-size: var(--text-headline-sm);
+  line-height: 1.5;
   color: var(--on-surface-variant);
   padding: var(--space-1) 0;
   margin: 0;

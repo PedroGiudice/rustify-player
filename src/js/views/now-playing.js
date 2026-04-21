@@ -1,4 +1,4 @@
-// Now Playing — hero view with cover art, tech info grid, seek bar.
+// Now Playing — hero view with cover art, tech strip, lyrics.
 // Layout driven by data-np-layout attribute (left/top/split).
 
 import { navigate } from "../router.js";
@@ -41,17 +41,17 @@ async function load(view) {
     const fallbackTitle = (() => {
       const p = audio.path || "";
       const base = p.split(/[\\/]/).pop() || "";
-      return base.replace(/\.[^.]+$/, "") || "\u2014";
+      return base.replace(/\.[^.]+$/, "") || "—";
     })();
 
     const track = {
       // library fields (may be missing if lib is null)
       id: lib?.id ?? null,
       title: lib?.title ?? fallbackTitle,
-      artist_name: lib?.artist_name ?? "\u2014",
+      artist_name: lib?.artist_name ?? "—",
       artist_id: lib?.artist_id ?? null,
       album_id: lib?.album_id ?? null,
-      album_title: lib?.album_title ?? "\u2014",
+      album_title: lib?.album_title ?? "—",
       album_cover_path: lib?.album_cover_path ?? null,
       lrc_path: lib?.lrc_path ?? null,
       // audio fields
@@ -64,47 +64,38 @@ async function load(view) {
       ? `<img src="${convertFileSrc(track.album_cover_path)}" alt="">`
       : "";
 
-    const depth = track.bit_depth ? `${track.bit_depth}bit` : "\u2014";
-    const rate = track.sample_rate ? `${track.sample_rate / 1000}kHz` : "\u2014";
-    const dur = track.duration_secs || 0;
+    const depth = track.bit_depth ? `${track.bit_depth} bit` : "—";
+    const rate = track.sample_rate ? `${track.sample_rate / 1000} kHz` : "—";
 
     root.innerHTML = `
       <div class="np__cover">
         ${coverHTML}
-        <div class="np__cover-badge">FLAC \u2022 ${depth}</div>
       </div>
       <div class="np__body">
         <div class="np__eyebrow">
           <span class="np__eyebrow-tag">Now Playing</span>
-          <span>Local \u2022 PipeWire</span>
+          <span>Local • PipeWire</span>
         </div>
-        <h1 class="np__title">${esc(track.title || "\u2014")}</h1>
-        <div class="np__artist" id="np-artist">${esc(track.artist_name || "\u2014")}</div>
-        <div class="np__album" id="np-album">${esc(track.album_title || "\u2014")}</div>
-        <div class="np__seek">
-          <div class="progress" id="np-progress">
-            <div class="progress__fill" id="np-fill" style="width:0%"></div>
-            <div class="progress__thumb" id="np-thumb" style="left:0%"></div>
-          </div>
-          <div class="np__seek-times">
-            <span id="np-time-cur">0:00</span>
-            <span id="np-time-total">${fmtDur(dur)}</span>
-          </div>
+        <h1 class="np__title">${esc(track.title || "—")}</h1>
+        <div class="np__artist" id="np-artist">${esc(track.artist_name || "—")}</div>
+        <div class="np__album" id="np-album">${esc(track.album_title || "—")}</div>
+        <div class="np__tech-strip">
+          <span class="np__tech-val">${rate}</span>
+          <span class="np__tech-sep">·</span>
+          <span class="np__tech-val">${depth}</span>
+          <span class="np__tech-sep">·</span>
+          <span class="np__tech-val">FLAC</span>
+          <span class="np__tech-sep">·</span>
+          <span class="np__tech-val">Stereo</span>
+          <span class="np__tech-sep">·</span>
+          <span class="np__tech-val">Bit-Perfect</span>
+          <span class="np__tech-sep">·</span>
+          <span class="np__tech-val">PipeWire</span>
         </div>
-        <div class="np__info-grid">
-          <div class="np__tech">
-            ${techCell("Sample Rate", rate)}
-            ${techCell("Bit Depth", depth)}
-            ${techCell("Format", "FLAC")}
-            ${techCell("Channels", "2 \u2022 Stereo")}
-            ${techCell("DSP", "Bit-Perfect")}
-            ${techCell("Output", "PipeWire")}
-          </div>
-          <div class="np__lyrics">
-            <span class="np__tech-label">Lyrics</span>
-            <div class="np__lyrics-scroll" id="np-lyrics">
-              <p class="np__lyrics-empty">Loading lyrics...</p>
-            </div>
+        <div class="np__lyrics">
+          <span class="np__tech-label">Lyrics</span>
+          <div class="np__lyrics-scroll" id="np-lyrics">
+            <p class="np__lyrics-empty">Loading lyrics...</p>
           </div>
         </div>
       </div>
@@ -120,22 +111,13 @@ async function load(view) {
       if (track.album_id) navigate(`/album/${track.album_id}`);
     });
 
-    // Live position updates
-    const fill = view.querySelector("#np-fill");
-    const thumb = view.querySelector("#np-thumb");
-    const timeCur = view.querySelector("#np-time-cur");
-
+    // Live position updates — seek bar lives in the player-bar; here we only
+    // drive the lyrics highlight.
     if (positionUnlisten) positionUnlisten();
     positionUnlisten = await listen("player-state", (e) => {
       const payload = e.payload;
       if (payload.Position) {
         const secs = payload.Position.samples_played / payload.Position.sample_rate;
-        if (dur > 0) {
-          const pct = Math.min(100, (secs / dur) * 100);
-          fill.style.width = `${pct}%`;
-          thumb.style.left = `${pct}%`;
-          timeCur.textContent = fmtDur(secs);
-        }
         updateLyricsHighlight(view, secs);
       }
     });
@@ -210,17 +192,6 @@ function updateLyricsHighlight(view, secs) {
     nodes[idx].scrollIntoView({ block: "center", behavior: "smooth" });
   }
   lyricsState.activeIdx = idx;
-}
-
-function techCell(label, value) {
-  return `<div class="np__tech-cell"><span class="np__tech-label">${label}</span><span class="np__tech-value">${value}</span></div>`;
-}
-
-function fmtDur(secs) {
-  if (!secs) return "0:00";
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function esc(s) {
