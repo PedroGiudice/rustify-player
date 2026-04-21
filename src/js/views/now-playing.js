@@ -111,12 +111,18 @@ async function load(view) {
       if (track.album_id) navigate(`/album/${track.album_id}`);
     });
 
-    // Live position updates — seek bar lives in the player-bar; here we only
-    // drive the lyrics highlight.
+    // Player events: re-render the whole hero on TrackStarted (track
+    // changed), clear on Stopped/Idle, drive lyrics highlight on Position.
     if (positionUnlisten) positionUnlisten();
     positionUnlisten = await listen("player-state", (e) => {
       const payload = e.payload;
-      if (payload.Position) {
+      if (payload.TrackStarted) {
+        // New track: re-hydrate from get_state so cover/title/artist/
+        // album/tech/lyrics all refresh together.
+        load(view);
+      } else if (payload.StateChanged === "Idle" || payload.StateChanged === "Stopped") {
+        load(view);
+      } else if (payload.Position) {
         const secs = payload.Position.samples_played / payload.Position.sample_rate;
         updateLyricsHighlight(view, secs);
       }
