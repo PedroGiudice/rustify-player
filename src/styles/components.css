@@ -1683,3 +1683,31 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .res-legend .dot--free { background: var(--surface-container-high); border: 1px solid var(--divider); }
 .res-legend__sep { opacity: 0.4; }
 .res-legend b { color: var(--on-surface); font-weight: var(--fw-medium); }
+
+/* ========================================================================
+ * GLOBAL BACK BUTTON (titlebar)
+ * Visible on every route except /home. Triggers window.history.back().
+ * ====================================================================== */
+.nav-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--on-surface-mute);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+.nav-back:hover {
+  color: var(--primary);
+}
+.nav-back[hidden] {
+  display: none;
+}

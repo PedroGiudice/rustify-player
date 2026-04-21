@@ -46,8 +46,9 @@ use crate::types::{SampleFormat, StreamFormat};
 const RING_BUFFER_MS: u32 = 1500;
 
 /// Minimum ring buffer size in samples. Guards against tiny buffers at low
-/// sample rates that would underrun immediately.
-const MIN_RING_SAMPLES: usize = 2048;
+/// sample rates that would underrun immediately. 8192 samples = 4096 frames
+/// at stereo, giving ~85ms of headroom at 48 kHz even under scheduler jitter.
+const MIN_RING_SAMPLES: usize = 8192;
 
 /// Timeout for the bootstrap handshake. If pipewire takes longer than this to
 /// come up, something is wrong (daemon down, broken env) and we give up.
@@ -391,10 +392,24 @@ fn run_mainloop(
             let written = fill_f32_from_ring(f32_slice, &mut user_data.consumer);
             if written < f32_slice.len() {
                 // Underrun: pad silence, bump counter.
+                let missing = f32_slice.len() - written;
                 for s in &mut f32_slice[written..] {
                     *s = 0.0;
                 }
-                user_data.xruns.fetch_add(1, Ordering::Relaxed);
+                let prev = user_data.xruns.fetch_add(1, Ordering::Relaxed);
+                // Log the first underrun of a burst. Emitting from the RT
+                // callback is not ideal, but tracing's macros short-circuit
+                // when the level is disabled, and warn-level underruns are
+                // rare enough that any formatting cost is acceptable when
+                // diagnosing issues.
+                if prev == 0 {
+                    tracing::warn!(
+                        missing_samples = missing,
+                        requested = f32_slice.len(),
+                        got = written,
+                        "pipewire underrun: ring buffer starved (first of burst)"
+                    );
+                }
             }
 
             let chunk = data.chunk_mut();

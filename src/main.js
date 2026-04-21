@@ -48,6 +48,28 @@ function wireTitlebar() {
   });
 }
 
+function wireGlobalBack() {
+  const btn = document.getElementById("nav-back");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => {
+    window.history.back();
+  });
+
+  const update = (path) => {
+    const hideOn = !path || path === "/home" || path === "/" || path === "";
+    btn.hidden = hideOn;
+  };
+
+  // Initial state based on current hash
+  const initialPath = window.location.hash.replace(/^#/, "").split("/").slice(0, 2).join("/") || "/home";
+  update(initialPath || "/home");
+
+  window.addEventListener("route-changed", (e) => {
+    update(e.detail?.path);
+  });
+}
+
 async function boot() {
   // 1. Apply persisted tweaks before any rendering to avoid flash
   loadTweaks();
@@ -66,6 +88,7 @@ async function boot() {
 
   // 3. Wire custom titlebar
   wireTitlebar();
+  wireGlobalBack();
 
   // 4. Mount shell components
   mountSidebar(sidebar);

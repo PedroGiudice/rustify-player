@@ -59,7 +59,7 @@ async function load(view) {
     const tbody = body.querySelector("#tr-rows");
     renderRows(tbody, tracks);
 
-    tbody.addEventListener("dblclick", (e) => {
+    tbody.addEventListener("click", (e) => {
       const row = e.target.closest(".track-row");
       if (!row) return;
       const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);

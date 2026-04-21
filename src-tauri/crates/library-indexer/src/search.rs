@@ -376,6 +376,25 @@ pub fn get_track(conn: &Connection, id: i64) -> Result<Option<Track>, IndexerErr
     }
 }
 
+/// Look up a track by its absolute filesystem path.
+///
+/// Used by the player bootstrap to enrich the engine's `TrackInfo`
+/// (path + format only) with library metadata (title, artist, cover
+/// path, lyrics path, ...) when a new track starts playing.
+pub fn get_track_by_path(
+    conn: &Connection,
+    path: &std::path::Path,
+) -> Result<Option<Track>, IndexerError> {
+    let sql = format!("{TRACK_SELECT} WHERE t.path = ?1 LIMIT 1");
+    let mut stmt = conn.prepare(&sql)?;
+    let path_str = path.to_string_lossy().into_owned();
+    let mut rows = stmt.query(params![path_str])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(map_track(row)?)),
+        None => Ok(None),
+    }
+}
+
 pub fn get_album(conn: &Connection, id: i64) -> Result<Option<Album>, IndexerError> {
     let sql = format!("{ALBUM_SELECT} WHERE al.id = ? LIMIT 1");
     let mut stmt = conn.prepare(&sql)?;

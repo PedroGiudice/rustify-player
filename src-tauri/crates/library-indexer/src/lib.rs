@@ -118,6 +118,15 @@ impl IndexerHandle {
         self.inner.pool.with(|conn| search::get_track(conn, id))
     }
 
+    pub fn get_track_by_path(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Option<Track>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::get_track_by_path(conn, path))
+    }
+
     pub fn album(&self, id: i64) -> Result<Option<Album>, IndexerError> {
         self.inner.pool.with(|conn| search::get_album(conn, id))
     }

@@ -24,9 +24,16 @@ struct Player(Mutex<Option<EngineHandle>>);
 /// Snapshot of engine state, updated by the event-listener thread.
 /// Read by the `get_state` command so the frontend can hydrate views
 /// without waiting for the next event push.
+///
+/// `current_track` exposes the engine's decoder-level `TrackInfo` (path,
+/// sample rate, channels, bit depth). `current_library_track` enriches
+/// the snapshot with library metadata resolved by looking up
+/// `current_track.path` in the indexer (title, artist, cover, lrc path,
+/// ...). Both are cleared when playback stops.
 #[derive(Default, Clone, Serialize)]
 struct PlayerSnapshot {
     current_track: Option<TrackInfo>,
+    current_library_track: Option<Track>,
     is_playing: bool,
     volume: f32,
 }
@@ -640,6 +647,12 @@ pub fn run() {
                     "embedded-lyrics backfill pending; initial scan will re-ingest existing tracks"
                 );
             }
+            // Clone for the event-listener thread: it looks up library
+            // metadata by path whenever a new track starts so the snapshot
+            // carries title/artist/cover/lrc without the frontend having to
+            // issue a separate lookup.
+            let indexer_for_events = indexer.clone();
+            let cache_dir_for_events = cache_dir.clone();
             _app.manage(Library {
                 handle: indexer,
                 cache_dir,
@@ -711,6 +724,32 @@ pub fn run() {
                         match &event {
                             StateUpdate::TrackStarted(info) => {
                                 s.current_track = Some(info.clone());
+                                // Resolve library metadata by path. The engine
+                                // has no awareness of the library; looking up
+                                // here keeps the snapshot self-contained for
+                                // the frontend. Miss is expected for files
+                                // played outside the indexed root.
+                                let lib_track = match indexer_for_events
+                                    .get_track_by_path(&info.path)
+                                {
+                                    Ok(Some(mut t)) => {
+                                        if let Some(rel) = &t.album_cover_path {
+                                            t.album_cover_path =
+                                                Some(cache_dir_for_events.join(rel));
+                                        }
+                                        Some(t)
+                                    }
+                                    Ok(None) => None,
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            ?e,
+                                            path = %info.path.display(),
+                                            "failed to resolve library track by path"
+                                        );
+                                        None
+                                    }
+                                };
+                                s.current_library_track = lib_track;
                                 // Push metadata to MPRIS2.
                                 if let Ok(mut mc) = mc_reader.lock() {
                                     if let Some(mc) = mc.as_mut() {
@@ -732,6 +771,7 @@ pub fn run() {
                                 s.is_playing = matches!(ps, PlaybackState::Playing { .. });
                                 if matches!(ps, PlaybackState::Idle | PlaybackState::Stopped) {
                                     s.current_track = None;
+                                    s.current_library_track = None;
                                 }
                                 // Push playback status to MPRIS2.
                                 if let Ok(mut mc) = mc_reader.lock() {

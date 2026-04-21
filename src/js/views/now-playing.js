@@ -31,16 +31,38 @@ async function load(view) {
       return;
     }
 
-    const track = state.current_track;
-    let coverHTML = "";
-    if (track.album_id) {
-      try {
-        const album = await invoke("lib_get_album", { id: track.album_id });
-        if (album?.cover_path) {
-          coverHTML = `<img src="${convertFileSrc(album.cover_path)}" alt="">`;
-        }
-      } catch (_) {}
-    }
+    // Audio metadata comes from current_track (path, sample_rate, bit_depth, ...)
+    // Library metadata (title, artist, album, cover, lyrics) comes from current_library_track.
+    const audio = state.current_track;
+    const lib = state.current_library_track || null;
+
+    // Build a unified track object so the rest of the view doesn't need to juggle two sources.
+    // Fallback: if no library match, derive a title from the audio path's basename.
+    const fallbackTitle = (() => {
+      const p = audio.path || "";
+      const base = p.split(/[\\/]/).pop() || "";
+      return base.replace(/\.[^.]+$/, "") || "\u2014";
+    })();
+
+    const track = {
+      // library fields (may be missing if lib is null)
+      id: lib?.id ?? null,
+      title: lib?.title ?? fallbackTitle,
+      artist_name: lib?.artist_name ?? "\u2014",
+      artist_id: lib?.artist_id ?? null,
+      album_id: lib?.album_id ?? null,
+      album_title: lib?.album_title ?? "\u2014",
+      album_cover_path: lib?.album_cover_path ?? null,
+      lrc_path: lib?.lrc_path ?? null,
+      // audio fields
+      sample_rate: audio.sample_rate,
+      bit_depth: audio.bit_depth,
+      duration_secs: audio.duration_secs || lib?.duration_secs || 0,
+    };
+
+    const coverHTML = track.album_cover_path
+      ? `<img src="${convertFileSrc(track.album_cover_path)}" alt="">`
+      : "";
 
     const depth = track.bit_depth ? `${track.bit_depth}bit` : "\u2014";
     const rate = track.sample_rate ? `${track.sample_rate / 1000}kHz` : "\u2014";
@@ -127,6 +149,12 @@ async function loadLyrics(view, track) {
   if (!box) return;
 
   lyricsState = null;
+
+  // No library match = no lyrics lookup possible
+  if (track.id == null) {
+    box.innerHTML = `<p class="np__lyrics-empty">No lyrics available</p>`;
+    return;
+  }
 
   let lines = [];
   try {
