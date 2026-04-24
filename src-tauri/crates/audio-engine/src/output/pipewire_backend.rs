@@ -55,10 +55,12 @@ const MIN_RING_SAMPLES: usize = 8192;
 const BOOT_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// How often the realtime callback emits an integrity telemetry log line.
-/// At ~86 callbacks/sec (1024 frames @ 88.2 kHz), 10_000 callbacks is roughly
-/// every two minutes — low enough to not spam, frequent enough to catch
-/// regressions quickly during A/B testing.
-const LOG_EVERY_N_CALLBACKS: u64 = 10_000;
+/// Calibrated for the actual observed quantum on the target setup (~5.8 cb/s
+/// at 96 kHz with a 16384-frame buffer): 200 callbacks ≈ 34 s, which gives a
+/// usable cadence during 3-minute single-track runs. For smaller quanta
+/// (1024-frame) this drops to ~2 s between lines — still cheap, since each
+/// log is one string format job off the RT path.
+const LOG_EVERY_N_CALLBACKS: u64 = 200;
 
 /// EMA smoothing factor for the running `max_abs` estimate. With `alpha = 0.02`
 /// the estimate decays to ~86% of the previous value after 100 callbacks, so
@@ -74,6 +76,17 @@ static CALLBACK_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// the raw bits of an `f32` so we can update it lock-free via CAS. Initialized
 /// to `0.0f32.to_bits() == 0`.
 static MAX_ABS_EMA_BITS: AtomicU32 = AtomicU32::new(0);
+
+/// Per-period maximum `max_abs` (raw, not smoothed). Reset to 0.0 on every log
+/// mark; tracks the worst batch peak since the last log line. Detects short
+/// clip bursts that the EMA would smooth out.
+static MAX_ABS_PERIOD_BITS: AtomicU32 = AtomicU32::new(0);
+
+/// Snapshot of `xruns` at the last log mark. Subtracted from the current
+/// `xruns.load()` to derive `xruns_delta` in each log line. Reveals underruns
+/// that would otherwise be invisible (the warn-on-first-of-burst path only
+/// logs once per stream lifetime).
+static LAST_XRUNS_LOGGED: AtomicU64 = AtomicU64::new(0);
 
 /// Sticky flag: becomes `true` on the first NaN/Inf seen and never resets.
 /// Used to upgrade the next periodic log from `info` to `warn`.
@@ -454,9 +467,7 @@ fn run_mainloop(
                 let (max_abs_batch, nan_count, inf_count, clip_count) =
                     scan_batch(&f32_slice[..written]);
 
-                // Lock-free EMA update: decay the stored value and fold in the
-                // current batch max. We tolerate CAS retries because contention
-                // is near-zero (this callback runs single-threaded per stream).
+                // Lock-free EMA update.
                 let mut current_bits = MAX_ABS_EMA_BITS.load(Ordering::Relaxed);
                 loop {
                     let current = f32::from_bits(current_bits);
@@ -474,6 +485,21 @@ fn run_mainloop(
                     }
                 }
 
+                // Lock-free period max update (monotonic max within a log window).
+                let new_bits = max_abs_batch.to_bits();
+                let mut current = MAX_ABS_PERIOD_BITS.load(Ordering::Relaxed);
+                while f32::from_bits(new_bits) > f32::from_bits(current) {
+                    match MAX_ABS_PERIOD_BITS.compare_exchange_weak(
+                        current,
+                        new_bits,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => break,
+                        Err(actual) => current = actual,
+                    }
+                }
+
                 if nan_count > 0 || inf_count > 0 {
                     HAS_SEEN_PATHOLOGICAL.store(true, Ordering::Relaxed);
                 }
@@ -481,10 +507,20 @@ fn run_mainloop(
                 let n = CALLBACK_COUNTER.fetch_add(1, Ordering::Relaxed);
                 if n % LOG_EVERY_N_CALLBACKS == 0 {
                     let ema = f32::from_bits(MAX_ABS_EMA_BITS.load(Ordering::Relaxed));
+                    let period_max =
+                        f32::from_bits(MAX_ABS_PERIOD_BITS.swap(0, Ordering::Relaxed));
+                    let xruns_total = user_data.xruns.load(Ordering::Relaxed);
+                    let xruns_prev = LAST_XRUNS_LOGGED.swap(xruns_total, Ordering::Relaxed);
+                    let xruns_delta = xruns_total.saturating_sub(xruns_prev);
+                    let written_frames = written / channels;
                     if HAS_SEEN_PATHOLOGICAL.load(Ordering::Relaxed) {
                         tracing::warn!(
                             callback_n = n,
                             max_abs_ema = ema,
+                            max_abs_period = period_max,
+                            written_frames,
+                            xruns_total,
+                            xruns_delta,
                             clip_count_batch = clip_count,
                             nan_count_batch = nan_count,
                             inf_count_batch = inf_count,
@@ -494,6 +530,10 @@ fn run_mainloop(
                         tracing::info!(
                             callback_n = n,
                             max_abs_ema = ema,
+                            max_abs_period = period_max,
+                            written_frames,
+                            xruns_total,
+                            xruns_delta,
                             clip_count_batch = clip_count,
                             nan_count_batch = nan_count,
                             inf_count_batch = inf_count,
