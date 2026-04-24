@@ -135,36 +135,22 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     thread::Builder::new()
         .name("audio-engine".to_string())
         .spawn(move || {
-            // Promote this thread to SCHED_FIFO — a hard realtime scheduling
-            // class. Unlike nice-value tweaks (SCHED_OTHER), SCHED_FIFO threads
-            // are never pre-empted by normal threads; only higher-priority FIFO
-            // threads or kernel IRQs interrupt them. PipeWire's own audio thread
-            // runs at FIFO/88; we use 50, below PipeWire but above everything
-            // else. Requires CAP_SYS_NICE or ulimit -r >= 50 (user's machine
-            // has ulimit -r = 95, so this works without root).
-            //
-            // If the OS refuses (e.g. container, SELinux), we fall back silently
-            // to the default scheduling policy — playback still works, just with
-            // higher risk of xruns under load.
-            {
-                use thread_priority::unix::*;
-                use thread_priority::{ThreadPriority, ThreadPriorityValue};
-                let policy = ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo);
-                let priority = ThreadPriority::Crossplatform(
-                    ThreadPriorityValue::try_from(50u8)
-                        .unwrap_or(ThreadPriorityValue::try_from(20u8).unwrap()),
-                );
-                match set_thread_priority_and_policy(thread_native_id(), priority, policy) {
-                    Ok(()) => {
-                        tracing::info!("audio-engine thread promoted to SCHED_FIFO rtprio 50")
-                    }
-                    Err(err) => tracing::warn!(
-                        ?err,
-                        "failed to set SCHED_FIFO on audio-engine thread; \
-                         continuing at default priority"
-                    ),
-                }
-            }
+            // DIAGNOSTIC: SCHED_FIFO temporarily disabled to isolate whether
+            // the realtime scheduling on the pump thread is interacting
+            // poorly with PipeWire's own RT thread. Symptoms: stream delivers
+            // clean samples (telemetry: zero xruns, zero clip, max_abs_period
+            // well below 1.0) but audible crackling persists, with pw-play
+            // through the exact same graph playing cleanly. The pump +
+            // rtrb + SCHED_FIFO combination is the main structural
+            // difference vs pw-play/mpv. If leaving the pump at default
+            // scheduling eliminates crackling, the next step is to
+            // reconsider the SCHED_FIFO priority (50 vs 20) or drop the
+            // policy entirely. Revert this block if the test is
+            // inconclusive — default scheduling raises xrun risk under
+            // heavy CPU load.
+            tracing::info!(
+                "audio-engine thread: default scheduling (SCHED_FIFO diagnostic disabled)"
+            );
 
             let mut engine = EngineState {
                 output: Box::new(PipewireBackend::new()),
