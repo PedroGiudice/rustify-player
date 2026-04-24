@@ -290,8 +290,7 @@ impl QueueController {
             };
         }
         files.remove(0);
-        let pending: Arc<Mutex<VecDeque<PathBuf>>> =
-            Arc::new(Mutex::new(VecDeque::from(files)));
+        let pending: Arc<Mutex<VecDeque<PathBuf>>> = Arc::new(Mutex::new(VecDeque::from(files)));
 
         // If we have a second file, enqueue it after a short delay to let the
         // engine finish preparing the first track first.
@@ -329,4 +328,3 @@ fn init_tracing(level: &str) {
         .with_writer(io::stderr)
         .try_init();
 }
-

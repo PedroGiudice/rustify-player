@@ -358,7 +358,10 @@ fn run_mainloop(
         })
         .state_changed(|_stream, user_data, old, new| {
             tracing::debug!(?old, ?new, "pipewire stream state changed");
-            if matches!(new, pw::stream::StreamState::Error(_) | pw::stream::StreamState::Unconnected) {
+            if matches!(
+                new,
+                pw::stream::StreamState::Error(_) | pw::stream::StreamState::Unconnected
+            ) {
                 // Treat error/unconnected as a disconnect from the engine's
                 // perspective so it can recover.
                 user_data.alive.store(false, Ordering::Release);
@@ -597,9 +600,8 @@ impl AsChunksMutLayout for [u8] {
         let (head, tail) = self.split_at_mut(whole_bytes);
         // SAFETY: `head` is `whole * 4` bytes long; PipeWire gives us a
         // 4-byte-aligned buffer. Reinterpreting as `[f32]` is sound.
-        let f32_slice = unsafe {
-            std::slice::from_raw_parts_mut(head.as_mut_ptr().cast::<f32>(), whole)
-        };
+        let f32_slice =
+            unsafe { std::slice::from_raw_parts_mut(head.as_mut_ptr().cast::<f32>(), whole) };
         (f32_slice, tail)
     }
 }

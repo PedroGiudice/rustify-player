@@ -35,6 +35,14 @@ pub struct TrackInfo {
     pub total_frames: Option<u64>,
     /// Total duration in seconds, if `total_frames` is known.
     pub duration: Option<Duration>,
+    /// ReplayGain track gain in dB (e.g. `-6.28`). `None` when absent.
+    pub track_gain_db: Option<f32>,
+    /// ReplayGain album gain in dB. `None` when absent.
+    pub album_gain_db: Option<f32>,
+    /// ReplayGain track peak (linear, `0.0..=1.0+`). `None` when absent.
+    pub track_peak: Option<f32>,
+    /// ReplayGain album peak (linear). `None` when absent.
+    pub album_peak: Option<f32>,
 }
 
 /// Sample format the engine is willing to negotiate with the output.
@@ -144,7 +152,9 @@ pub enum StateUpdate {
     TrackStarted(TrackInfo),
     TrackEnded(TrackHandle),
     DeviceDisconnected,
-    Xrun { total: u64 },
+    Xrun {
+        total: u64,
+    },
     VolumeChanged(f32),
     /// A recoverable error; engine returns to `Stopped` state.
     Error(String),

@@ -26,9 +26,7 @@ fn engine_handles_nonexistent_file_gracefully() {
     let rx = engine.subscribe();
 
     let bogus = PathBuf::from("/tmp/rustify-nonexistent-fixture-xyz.flac");
-    engine
-        .send(Command::Load(bogus))
-        .expect("send Load");
+    engine.send(Command::Load(bogus)).expect("send Load");
 
     // We accept either an explicit `Error(_)` update or transitioning into
     // `PlaybackState::Stopped` via `StateChanged` — both are valid recovery
@@ -70,7 +68,10 @@ fn engine_shutdown_is_clean() {
     // eventually return Disconnected. We give it up to 2s before failing.
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     loop {
-        if deadline.checked_duration_since(std::time::Instant::now()).is_none() {
+        if deadline
+            .checked_duration_since(std::time::Instant::now())
+            .is_none()
+        {
             panic!("engine thread did not shut down within 2s");
         }
         match rx.recv_timeout(Duration::from_millis(50)) {

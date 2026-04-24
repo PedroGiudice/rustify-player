@@ -48,7 +48,9 @@ pub enum OutputError {
     #[error("requested format not supported by device: {detail}")]
     FormatNotSupported { detail: String },
 
-    #[error("downmix not allowed in bit-perfect mode ({source_channels}ch -> {target_channels}ch)")]
+    #[error(
+        "downmix not allowed in bit-perfect mode ({source_channels}ch -> {target_channels}ch)"
+    )]
     DownmixNotAllowed {
         source_channels: u16,
         target_channels: u16,

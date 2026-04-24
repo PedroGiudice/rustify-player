@@ -49,4 +49,3 @@ pub trait AudioOutput: Send {
     /// Monotonically-increasing count of underruns observed since startup.
     fn xrun_count(&self) -> u64;
 }
-

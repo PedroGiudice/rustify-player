@@ -55,9 +55,7 @@ fn gapless_enqueue_next_emits_track_events() {
     // Duration::from_secs(9999) is fine: the decoder clamps to the track
     // length on seek errors by returning EOS on the next pump, which is
     // what we want here.
-    engine
-        .send(Command::Seek(Duration::from_secs(9999)))
-        .ok();
+    engine.send(Command::Seek(Duration::from_secs(9999))).ok();
 
     engine
         .send(Command::EnqueueNext(common::fixture_path("track_02.flac")))

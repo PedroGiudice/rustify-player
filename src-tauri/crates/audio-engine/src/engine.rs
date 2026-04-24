@@ -109,6 +109,10 @@ struct LoadedTrack {
     decoder: FlacDecoder,
     info: TrackInfo,
     format: StreamFormat,
+    /// Effective per-track linear gain applied before user volume. Guaranteed
+    /// in `(0.0, 1.0]`. See [`compute_track_gain`] for the derivation from
+    /// ReplayGain tags (with a fixed `-3 dB` fallback when tags are absent).
+    effective_gain: f32,
 }
 
 /// Spawn the engine thread and return a clone-able handle.
@@ -145,21 +149,15 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
             {
                 use thread_priority::unix::*;
                 use thread_priority::{ThreadPriority, ThreadPriorityValue};
-                let policy = ThreadSchedulePolicy::Realtime(
-                    RealtimeThreadSchedulePolicy::Fifo,
-                );
+                let policy = ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo);
                 let priority = ThreadPriority::Crossplatform(
                     ThreadPriorityValue::try_from(50u8)
                         .unwrap_or(ThreadPriorityValue::try_from(20u8).unwrap()),
                 );
-                match set_thread_priority_and_policy(
-                    thread_native_id(),
-                    priority,
-                    policy,
-                ) {
-                    Ok(()) => tracing::info!(
-                        "audio-engine thread promoted to SCHED_FIFO rtprio 50"
-                    ),
+                match set_thread_priority_and_policy(thread_native_id(), priority, policy) {
+                    Ok(()) => {
+                        tracing::info!("audio-engine thread promoted to SCHED_FIFO rtprio 50")
+                    }
                     Err(err) => tracing::warn!(
                         ?err,
                         "failed to set SCHED_FIFO on audio-engine thread; \
@@ -256,8 +254,16 @@ impl EngineState {
 
     fn cmd_load(&mut self, path: PathBuf) {
         let handle = self.fresh_handle();
-        self.set_state(PlaybackState::Loading { track: handle, play_on_load: false });
-        spawn_prepare(path, handle, PrepareTarget::Current, self.prepared_tx.clone());
+        self.set_state(PlaybackState::Loading {
+            track: handle,
+            play_on_load: false,
+        });
+        spawn_prepare(
+            path,
+            handle,
+            PrepareTarget::Current,
+            self.prepared_tx.clone(),
+        );
     }
 
     fn cmd_enqueue_next(&mut self, path: PathBuf) {
@@ -381,9 +387,7 @@ impl EngineState {
 
     fn cmd_set_volume(&mut self, v: f32) {
         self.volume = v.clamp(0.0, 1.0);
-        let _ = self
-            .state_tx
-            .send(StateUpdate::VolumeChanged(self.volume));
+        let _ = self.state_tx.send(StateUpdate::VolumeChanged(self.volume));
     }
 
     fn handle_prepared(&mut self, msg: PreparedMessage) {
@@ -392,10 +396,12 @@ impl EngineState {
                 self.install_current(prep);
             }
             (PrepareTarget::Next, Ok(prep)) => {
+                let effective_gain = compute_track_gain(&prep.info);
                 self.next = Some(LoadedTrack {
                     decoder: prep.decoder,
                     info: prep.info,
                     format: prep.format,
+                    effective_gain,
                 });
             }
             (_, Err(err)) => {
@@ -416,10 +422,12 @@ impl EngineState {
             self.active_stream = None;
         }
 
+        let effective_gain = compute_track_gain(&prep.info);
         self.current = Some(LoadedTrack {
             decoder: prep.decoder,
             info: prep.info.clone(),
             format: prep.format,
+            effective_gain,
         });
 
         let handle = prep.info.handle;
@@ -526,9 +534,7 @@ impl EngineState {
         };
 
         self.decode_scratch.clear();
-        let decoded = track
-            .decoder
-            .next_chunk(&mut self.decode_scratch)?;
+        let decoded = track.decoder.next_chunk(&mut self.decode_scratch)?;
 
         match decoded {
             None => {
@@ -549,11 +555,14 @@ impl EngineState {
                     &mut self.output_scratch,
                 )?;
 
-                // Apply volume (branch-predicted away when == 1.0).
-                let volume = self.volume;
-                if (volume - 1.0).abs() > f32::EPSILON {
+                // Apply ReplayGain-derived track gain combined with user
+                // volume. `effective_gain` is precomputed per track and is
+                // always in `(0.0, 1.0]`, so the combined factor is always
+                // `<= 1.0`. Branch away the multiply when it is exactly 1.0.
+                let combined = self.volume * track.effective_gain;
+                if (combined - 1.0).abs() > f32::EPSILON {
                     for sample in self.output_scratch.iter_mut() {
-                        *sample *= volume;
+                        *sample *= combined;
                     }
                 }
 
@@ -674,8 +683,8 @@ impl EngineState {
         // Subtract the samples still unplayed in the ring buffer so the
         // reported position matches what's actually leaving the DAC.
         let buffered = stream.producer.buffer().capacity() - stream.producer.slots();
-        let buffered_frames = buffered as u64
-            / u64::from(stream.actual_format.output_channels.max(1));
+        let buffered_frames =
+            buffered as u64 / u64::from(stream.actual_format.output_channels.max(1));
         let reported_samples = track
             .decoder
             .position_samples()
@@ -728,6 +737,46 @@ impl EngineState {
 enum ControlFlow {
     Continue,
     Stop,
+}
+
+/// Compute the effective linear gain to apply to samples for a given track.
+///
+/// Uses ReplayGain 2.0 Track mode with clip prevention. Falls back to `-3 dB`
+/// fixed attenuation for tracks without RG tags. Always returns a value in
+/// `(0.0, 1.0]` — the gain is always protective (never amplifies).
+///
+/// Strategy:
+///
+/// 1. Track has `track_gain_db` and `track_peak`:
+///    - `base = 10^(track_gain_db / 20)`
+///    - if `base * peak > 1.0`, reduce base to `0.98 / peak` (clip prevention)
+///    - multiply by `10^(-1.0/20) ≈ 0.891` (ISP safety margin)
+/// 2. Track has `track_gain_db` but no peak:
+///    - `base = 10^(track_gain_db / 20) * 0.891`
+/// 3. No RG tags: return `10^(-3/20) ≈ 0.7079` (fixed `-3 dB` fallback)
+///
+/// The final product `gain * user_volume * sample` is guaranteed to stay in
+/// `[-1.0, +1.0]` for well-behaved masters.
+fn compute_track_gain(info: &TrackInfo) -> f32 {
+    const ISP_SAFETY_DB: f32 = -1.0;
+    const FALLBACK_DB: f32 = -3.0;
+    const CLIP_PREVENTION_SAFETY: f32 = 0.98;
+
+    let isp_safety = 10f32.powf(ISP_SAFETY_DB / 20.0);
+
+    match (info.track_gain_db, info.track_peak) {
+        (Some(gain_db), Some(peak)) if peak > 0.0 => {
+            let base = 10f32.powf(gain_db / 20.0);
+            let limited = if base * peak > 1.0 {
+                CLIP_PREVENTION_SAFETY / peak
+            } else {
+                base
+            };
+            (limited * isp_safety).clamp(0.0, 1.0)
+        }
+        (Some(gain_db), _) => (10f32.powf(gain_db / 20.0) * isp_safety).clamp(0.0, 1.0),
+        _ => 10f32.powf(FALLBACK_DB / 20.0),
+    }
 }
 
 /// True when two StreamFormats can share an output stream (no reconfigure).
@@ -859,6 +908,98 @@ mod tests {
         assert!(result.is_err());
     }
 
+    fn track_info_with_rg(track_gain_db: Option<f32>, track_peak: Option<f32>) -> TrackInfo {
+        TrackInfo {
+            handle: TrackHandle(0),
+            path: std::path::PathBuf::from("/tmp/x.flac"),
+            sample_rate: 44_100,
+            channels: 2,
+            bit_depth: Some(16),
+            total_frames: None,
+            duration: None,
+            track_gain_db,
+            album_gain_db: None,
+            track_peak,
+            album_peak: None,
+        }
+    }
+
+    /// Fallback when no ReplayGain tags: fixed `-3 dB` attenuation.
+    #[test]
+    fn compute_track_gain_fallback_is_minus_three_db() {
+        let info = track_info_with_rg(None, None);
+        let gain = compute_track_gain(&info);
+        // 10^(-3/20) ≈ 0.70794578
+        assert!((gain - 0.707_945_8).abs() < 1e-5, "got {gain}");
+    }
+
+    /// Typical ReplayGain case: `-6 dB` gain, `0.9` peak. `base * peak = 0.45`
+    /// is well below `1.0`, so clip prevention does not kick in. Result is
+    /// `base * isp_safety`.
+    #[test]
+    fn compute_track_gain_rg_below_clip_threshold() {
+        let info = track_info_with_rg(Some(-6.0), Some(0.9));
+        let gain = compute_track_gain(&info);
+        let base = 10f32.powf(-6.0 / 20.0);
+        let isp = 10f32.powf(-1.0 / 20.0);
+        let expected = base * isp;
+        assert!(
+            (gain - expected).abs() < 1e-5,
+            "got {gain}, expected {expected}"
+        );
+    }
+
+    /// Positive gain with a near-full-scale peak: `base * peak > 1.0` triggers
+    /// clip prevention. Expected: `(0.98 / peak) * isp_safety`.
+    #[test]
+    fn compute_track_gain_clip_prevention_engages() {
+        let info = track_info_with_rg(Some(2.0), Some(0.99));
+        let gain = compute_track_gain(&info);
+        let isp = 10f32.powf(-1.0 / 20.0);
+        let expected = (0.98_f32 / 0.99) * isp;
+        assert!(
+            (gain - expected).abs() < 1e-5,
+            "got {gain}, expected {expected}"
+        );
+        // Sanity: always <= 1.0 and > 0.
+        assert!(gain > 0.0 && gain <= 1.0);
+    }
+
+    /// Gain tag present but no peak: just apply gain * isp safety, no clip
+    /// prevention. For a negative gain this is always `<= 1.0`.
+    #[test]
+    fn compute_track_gain_no_peak() {
+        let info = track_info_with_rg(Some(-6.0), None);
+        let gain = compute_track_gain(&info);
+        let base = 10f32.powf(-6.0 / 20.0);
+        let isp = 10f32.powf(-1.0 / 20.0);
+        let expected = base * isp;
+        assert!(
+            (gain - expected).abs() < 1e-5,
+            "got {gain}, expected {expected}"
+        );
+    }
+
+    /// Calling `compute_track_gain` twice on the same `TrackInfo` produces
+    /// the same value (pure function, no hidden state).
+    #[test]
+    fn compute_track_gain_is_idempotent() {
+        let info = track_info_with_rg(Some(-5.5), Some(0.95));
+        let a = compute_track_gain(&info);
+        let b = compute_track_gain(&info);
+        assert_eq!(a, b);
+    }
+
+    /// Peak `<= 0` is treated as missing (guards against bad tags) and
+    /// falls through the gain-only branch.
+    #[test]
+    fn compute_track_gain_ignores_non_positive_peak() {
+        let info = track_info_with_rg(Some(-6.0), Some(0.0));
+        let gain = compute_track_gain(&info);
+        let expected = 10f32.powf(-6.0 / 20.0) * 10f32.powf(-1.0 / 20.0);
+        assert!((gain - expected).abs() < 1e-5, "got {gain}");
+    }
+
     /// Cheap smoke test: the engine thread spins up, reports `Idle`, and
     /// responds to `Shutdown`. No audio device needed.
     #[test]
@@ -873,9 +1014,7 @@ mod tests {
             StateUpdate::StateChanged(PlaybackState::Idle) => {}
             other => panic!("expected initial Idle, got {other:?}"),
         }
-        handle
-            .send(Command::Shutdown)
-            .expect("shutdown send ok");
+        handle.send(Command::Shutdown).expect("shutdown send ok");
         // Drain any further state updates that arrive before the engine exits.
         while updates.recv_timeout(Duration::from_millis(200)).is_ok() {}
     }

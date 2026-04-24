@@ -25,7 +25,7 @@ use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_FLAC};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
-use symphonia::core::meta::{Limit, MetadataOptions};
+use symphonia::core::meta::{Limit, MetadataOptions, StandardTagKey, Tag, Value};
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Time;
 
@@ -78,7 +78,9 @@ impl FlacDecoder {
             .format(&hint, mss, &format_opts, &metadata_opts)
             .map_err(|err| map_probe_error(err, path))?;
 
-        let reader = probed.format;
+        let mut reader = probed.format;
+
+        let replaygain = extract_replaygain(reader.as_mut());
 
         let track = reader
             .default_track()
@@ -97,9 +99,8 @@ impl FlacDecoder {
         let channels = codec_params
             .channels
             .ok_or(EngineError::UnsupportedFormat)?;
-        let channel_count = u16::try_from(channels.count()).map_err(|_| {
-            EngineError::Decode("channel count does not fit in u16".to_string())
-        })?;
+        let channel_count = u16::try_from(channels.count())
+            .map_err(|_| EngineError::Decode("channel count does not fit in u16".to_string()))?;
 
         let total_frames = codec_params.n_frames;
         let duration = total_frames.map(|n| {
@@ -129,6 +130,10 @@ impl FlacDecoder {
             bit_depth,
             total_frames,
             duration,
+            track_gain_db: replaygain.track_gain_db,
+            album_gain_db: replaygain.album_gain_db,
+            track_peak: replaygain.track_peak,
+            album_peak: replaygain.album_peak,
         };
 
         let stream_format = StreamFormat {
@@ -171,10 +176,7 @@ impl FlacDecoder {
     /// multiple of channel count), `Ok(None)` on end-of-stream, and propagates
     /// any other error. Recoverable `ResetRequired` from symphonia is handled
     /// transparently by resetting the decoder and trying the next packet.
-    pub(crate) fn next_chunk(
-        &mut self,
-        out: &mut Vec<f32>,
-    ) -> Result<Option<usize>, EngineError> {
+    pub(crate) fn next_chunk(&mut self, out: &mut Vec<f32>) -> Result<Option<usize>, EngineError> {
         let channels = u64::from(self.info.channels);
 
         loop {
@@ -283,6 +285,135 @@ impl FlacDecoder {
     pub(crate) fn position_samples(&self) -> u64 {
         self.position_samples
     }
+}
+
+/// ReplayGain tag values extracted from the FLAC's Vorbis comments.
+///
+/// All fields are optional — a file may carry any subset. Gains are `dB`,
+/// peaks are linear samples (well-behaved masters stay `<= 1.0` but some
+/// taggers emit values `> 1.0` when intersample peaks exceed full-scale).
+#[derive(Debug, Default, Clone, Copy)]
+struct ReplayGainTags {
+    track_gain_db: Option<f32>,
+    album_gain_db: Option<f32>,
+    track_peak: Option<f32>,
+    album_peak: Option<f32>,
+}
+
+/// Walk every metadata revision exposed by the reader and pull the
+/// ReplayGain tags. Tolerant of exotic taggers that skip symphonia's
+/// `StandardTagKey` mapping by also matching raw Vorbis keys
+/// (`REPLAYGAIN_TRACK_GAIN`, etc.) case-insensitively.
+///
+/// Total: never panics, never errors; missing tags remain `None`.
+fn extract_replaygain(reader: &mut dyn FormatReader) -> ReplayGainTags {
+    let mut rg = ReplayGainTags::default();
+
+    let mut meta = reader.metadata();
+    // Walk from oldest to newest: `current()` is the latest revision; older
+    // revisions are reached by `pop()`. Later revisions overwrite earlier
+    // ones so the newest value wins.
+    let mut revisions: Vec<Vec<Tag>> = Vec::new();
+    if let Some(rev) = meta.current() {
+        revisions.push(rev.tags().to_vec());
+    }
+    while meta.pop().is_some() {
+        if let Some(rev) = meta.current() {
+            revisions.push(rev.tags().to_vec());
+        }
+    }
+
+    // Apply oldest-first so newer revisions win on overwrite.
+    for tags in revisions.into_iter().rev() {
+        apply_replaygain_tags(&mut rg, &tags);
+    }
+
+    rg
+}
+
+fn apply_replaygain_tags(rg: &mut ReplayGainTags, tags: &[Tag]) {
+    for tag in tags {
+        let value = match &tag.value {
+            Value::String(s) => s.clone(),
+            Value::Float(f) => f.to_string(),
+            Value::SignedInt(i) => i.to_string(),
+            Value::UnsignedInt(u) => u.to_string(),
+            _ => continue,
+        };
+        if value.trim().is_empty() {
+            continue;
+        }
+
+        // Prefer StandardTagKey when symphonia recognizes it.
+        if let Some(std_key) = tag.std_key {
+            match std_key {
+                StandardTagKey::ReplayGainTrackGain => {
+                    if let Some(v) = parse_db(&value) {
+                        rg.track_gain_db = Some(v);
+                    }
+                    continue;
+                }
+                StandardTagKey::ReplayGainAlbumGain => {
+                    if let Some(v) = parse_db(&value) {
+                        rg.album_gain_db = Some(v);
+                    }
+                    continue;
+                }
+                StandardTagKey::ReplayGainTrackPeak => {
+                    if let Ok(v) = value.trim().parse::<f32>() {
+                        rg.track_peak = Some(v);
+                    }
+                    continue;
+                }
+                StandardTagKey::ReplayGainAlbumPeak => {
+                    if let Ok(v) = value.trim().parse::<f32>() {
+                        rg.album_peak = Some(v);
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
+        // Fallback: raw Vorbis key, case-insensitive. Only apply if the
+        // standard-key branch did not already fill the slot in this tag.
+        let key = tag.key.to_ascii_uppercase();
+        match key.as_str() {
+            "REPLAYGAIN_TRACK_GAIN" if rg.track_gain_db.is_none() => {
+                if let Some(v) = parse_db(&value) {
+                    rg.track_gain_db = Some(v);
+                }
+            }
+            "REPLAYGAIN_ALBUM_GAIN" if rg.album_gain_db.is_none() => {
+                if let Some(v) = parse_db(&value) {
+                    rg.album_gain_db = Some(v);
+                }
+            }
+            "REPLAYGAIN_TRACK_PEAK" if rg.track_peak.is_none() => {
+                if let Ok(v) = value.trim().parse::<f32>() {
+                    rg.track_peak = Some(v);
+                }
+            }
+            "REPLAYGAIN_ALBUM_PEAK" if rg.album_peak.is_none() => {
+                if let Ok(v) = value.trim().parse::<f32>() {
+                    rg.album_peak = Some(v);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Parse ReplayGain dB values like `"-6.28 dB"`, `"-6.28"`, `"+2.00 dB"`.
+/// Tolerates case variants (`dB`, `db`, `DB`) and surrounding whitespace.
+fn parse_db(s: &str) -> Option<f32> {
+    let cleaned = s
+        .trim()
+        .trim_end_matches("dB")
+        .trim_end_matches("db")
+        .trim_end_matches("DB")
+        .trim();
+    cleaned.parse::<f32>().ok()
 }
 
 /// Classifies probe errors: an `Unsupported` coming from the format probe is

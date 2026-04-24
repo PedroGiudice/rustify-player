@@ -38,7 +38,6 @@ impl Engine {
     pub fn start() -> Result<EngineHandle, EngineError> {
         engine::spawn()
     }
-
 }
 
 /// Handle to a running engine. Clone-able, `Send`-safe.
