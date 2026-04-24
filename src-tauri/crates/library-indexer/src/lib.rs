@@ -29,7 +29,7 @@ pub mod lyrics;
 pub use embed_client::EmbedClient;
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
-pub use search::FolderPlaylist;
+pub use search::{FolderPlaylist, Recommendations};
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
     IndexerEvent, IndexerSnapshot, SearchResults, Tag, Track, TrackFilter, TrackOrder,
@@ -71,13 +71,14 @@ impl Indexer {
             cache_dir: config.cache_dir.clone(),
             embed_client: config.embed_client.clone(),
         };
-        let (cmd_tx, evt_rx, state, pool, _handles) = pipeline::start(db, pipeline_cfg);
+        let (cmd_tx, evt_rx, state, pool, write_pool, _handles) = pipeline::start(db, pipeline_cfg);
         Ok(IndexerHandle {
             inner: Arc::new(HandleInner {
                 cmd_tx,
                 evt_rx,
                 state,
                 pool,
+                write_pool,
             }),
         })
     }
@@ -88,6 +89,7 @@ struct HandleInner {
     evt_rx: Receiver<IndexerEvent>,
     state: Arc<pipeline::SharedState>,
     pool: db::ReadPool,
+    write_pool: db::WritePool,
 }
 
 /// Handle to a running indexer. Clone-able, Send-safe.
@@ -197,11 +199,15 @@ impl IndexerHandle {
     }
 
     pub fn record_play(&self, track_id: i64) -> Result<(), IndexerError> {
-        self.inner.pool.with(|conn| search::record_play(conn, track_id))
+        self.inner.write_pool.with(|conn| search::record_play(conn, track_id))
     }
 
     pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
         self.inner.pool.with(|conn| search::list_history(conn, limit))
+    }
+
+    pub fn recommendations(&self) -> Result<search::Recommendations, IndexerError> {
+        self.inner.pool.with(|conn| search::recommendations(conn))
     }
 
     /// True when migration 003 has been applied during a previous or the

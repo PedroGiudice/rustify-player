@@ -1,0 +1,2 @@
+- [Manter consistencia com recomendacao aprovada](feedback_plan_consistency.md) — nao pivotar de abordagem aprovada pelo usuario durante o plano
+- [Cork PipeWire fix para xruns na pausa](project_cork_xruns_fix.md) — raw pointer resolve lifetime, set_cork closure no ActiveStream

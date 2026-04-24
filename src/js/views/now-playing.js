@@ -54,18 +54,27 @@ async function load(view) {
       album_title: lib?.album_title ?? "—",
       album_cover_path: lib?.album_cover_path ?? null,
       lrc_path: lib?.lrc_path ?? null,
-      // audio fields
+      // audio fields (from engine TrackInfo)
       sample_rate: audio.sample_rate,
       bit_depth: audio.bit_depth,
-      duration_secs: audio.duration_secs || lib?.duration_secs || 0,
+      channels: audio.channels,
     };
 
     const coverHTML = track.album_cover_path
       ? `<img src="${convertFileSrc(track.album_cover_path)}" alt="">`
       : "";
 
-    const depth = track.bit_depth ? `${track.bit_depth} bit` : "—";
+    const depth = track.bit_depth ? `${track.bit_depth}-bit` : "—";
     const rate = track.sample_rate ? `${track.sample_rate / 1000} kHz` : "—";
+    const chanStr = (() => {
+      switch (track.channels) {
+        case 1: return "Mono";
+        case 2: return "Stereo";
+        case 6: return "5.1";
+        case 8: return "7.1";
+        default: return track.channels ? `${track.channels}ch` : "—";
+      }
+    })();
 
     root.innerHTML = `
       <div class="np__cover">
@@ -86,9 +95,7 @@ async function load(view) {
           <span class="np__tech-sep">·</span>
           <span class="np__tech-val">FLAC</span>
           <span class="np__tech-sep">·</span>
-          <span class="np__tech-val">Stereo</span>
-          <span class="np__tech-sep">·</span>
-          <span class="np__tech-val">Bit-Perfect</span>
+          <span class="np__tech-val">${chanStr}</span>
           <span class="np__tech-sep">·</span>
           <span class="np__tech-val">PipeWire</span>
         </div>

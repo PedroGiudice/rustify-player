@@ -88,6 +88,23 @@ async function load(view) {
         </div>
       </section>
 
+      <section class="settings-section" id="st-ee-section" hidden>
+        <h3 class="settings-section__title">EasyEffects</h3>
+
+        <div class="settings-row">
+          <label class="settings-row__label" for="st-ee-preset">Preset</label>
+          <div class="settings-row__control">
+            <select id="st-ee-preset" class="settings-input"></select>
+            <span class="settings-row__hint" id="st-ee-current"></span>
+          </div>
+        </div>
+
+        <p class="settings-section__note">
+          EasyEffects presets live in ~/.config/easyeffects/output/. Changes
+          take effect immediately — the running EE daemon handles the switch.
+        </p>
+      </section>
+
       <section class="settings-section">
         <h3 class="settings-section__title">Embedding</h3>
 
@@ -212,6 +229,9 @@ async function load(view) {
         console.error("[player] set_volume failed:", err)
       );
     });
+
+    // EasyEffects presets — graceful: hides the section when EE is absent.
+    await hydrateEEPresets(body);
   } catch (err) {
     body.innerHTML = `
       <div class="empty-state">
@@ -294,4 +314,56 @@ function esc(s) {
   const d = document.createElement("div");
   d.textContent = s ?? "";
   return d.innerHTML;
+}
+
+async function hydrateEEPresets(body) {
+  const section = body.querySelector("#st-ee-section");
+  const select = body.querySelector("#st-ee-preset");
+  const currentEl = body.querySelector("#st-ee-current");
+  if (!section || !select) return;
+
+  let presets = [];
+  try {
+    presets = await invoke("ee_list_presets");
+  } catch (_) {
+    // EE not installed or no config dir — keep section hidden.
+    return;
+  }
+  if (!Array.isArray(presets) || presets.length === 0) {
+    return;
+  }
+
+  let current = "";
+  try {
+    current = await invoke("ee_get_current_preset");
+  } catch (_) {
+    current = "";
+  }
+
+  const renderOptions = (cur) => {
+    select.innerHTML = presets
+      .map(
+        (name) =>
+          `<option value="${esc(name)}"${name === cur ? " selected" : ""}>${esc(name)}</option>`
+      )
+      .join("");
+    currentEl.textContent = cur ? `Active: ${cur}` : "";
+  };
+  renderOptions(current);
+  section.hidden = false;
+
+  select.addEventListener("change", async (e) => {
+    const name = e.target.value;
+    if (!name) return;
+    select.disabled = true;
+    try {
+      await invoke("ee_apply_preset", { name });
+      const refreshed = await invoke("ee_get_current_preset").catch(() => name);
+      renderOptions(refreshed);
+    } catch (err) {
+      currentEl.textContent = `Failed: ${String(err)}`;
+    } finally {
+      select.disabled = false;
+    }
+  });
 }

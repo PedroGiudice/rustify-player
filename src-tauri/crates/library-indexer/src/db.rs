@@ -74,11 +74,29 @@ impl ReadPool {
     }
 }
 
+/// A lightweight write connection for the handle to run small mutations
+/// (record_play, etc.) without touching the pipeline's writer.
+#[derive(Clone)]
+pub struct WritePool {
+    inner: Arc<Mutex<Connection>>,
+}
+
+impl WritePool {
+    pub fn with<F, R>(&self, f: F) -> Result<R, IndexerError>
+    where
+        F: FnOnce(&Connection) -> Result<R, IndexerError>,
+    {
+        let guard = self.inner.lock().map_err(|_| IndexerError::Shutdown)?;
+        f(&guard)
+    }
+}
+
 /// Result of opening + migrating the DB. The writer connection is
 /// consumed by the coordinator thread.
 pub struct OpenedDb {
     pub writer: Connection,
     pub pool: ReadPool,
+    pub write_pool: WritePool,
 }
 
 pub fn open_and_migrate(db_path: &Path) -> Result<OpenedDb, IndexerError> {
@@ -93,11 +111,20 @@ pub fn open_and_migrate(db_path: &Path) -> Result<OpenedDb, IndexerError> {
 
     let reader = open_read_only(db_path)?;
 
+    // Separate read-write connection for lightweight handle mutations
+    // (record_play, etc.). WAL mode allows concurrent writers — SQLite
+    // serializes them internally with a short busy-wait.
+    let handle_writer = Connection::open(db_path)?;
+    configure_connection(&handle_writer)?;
+
     Ok(OpenedDb {
         writer,
         pool: ReadPool {
             inner: Arc::new(Mutex::new(reader)),
             db_path: db_path.to_path_buf(),
+        },
+        write_pool: WritePool {
+            inner: Arc::new(Mutex::new(handle_writer)),
         },
     })
 }

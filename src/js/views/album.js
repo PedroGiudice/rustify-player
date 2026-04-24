@@ -1,6 +1,7 @@
 // Album detail view — hero with cover + metadata, track table.
 import { playTrack, setQueue } from "../components/player-bar.js";
 import { navigate } from "../router.js";
+import { formatMs } from "../utils/format.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
@@ -29,8 +30,8 @@ async function load(view, albumId) {
       ? `<img src="${convertFileSrc(album.cover_path)}" alt="${esc(album.title)}">`
       : `<span style="font-size:var(--text-display-lg);font-weight:var(--fw-bold);color:var(--primary)">${initials(album.title)}</span>`;
 
-    const totalDur = tracks.reduce((s, t) => s + (t.duration_secs || 0), 0);
-    const durStr = `${Math.floor(totalDur / 60)}m`;
+    const totalMs = tracks.reduce((s, t) => s + (t.duration_ms || 0), 0);
+    const durStr = `${Math.floor(totalMs / 60000)}m`;
 
     container.innerHTML = `
       <div class="album-detail__hero">
@@ -77,7 +78,7 @@ async function load(view, albumId) {
       tr.innerHTML = `
         <td class="track-table__td track-table__td--num">${t.track_number || i + 1}</td>
         <td class="track-table__td track-table__td--title">${esc(t.title || "\u2014")}</td>
-        <td class="track-table__td track-table__td--dur">${fmtDur(t.duration_secs)}</td>
+        <td class="track-table__td track-table__td--dur">${formatMs(t.duration_ms)}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -105,13 +106,6 @@ async function load(view, albumId) {
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><p class="empty-state__title">Failed to load</p><p class="empty-state__hint">${err}</p></div>`;
   }
-}
-
-function fmtDur(secs) {
-  if (!secs) return "\u2014";
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function initials(name) {

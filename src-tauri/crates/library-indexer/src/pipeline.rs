@@ -114,12 +114,14 @@ pub(crate) fn start(
     Receiver<IndexerEvent>,
     Arc<SharedState>,
     ReadPool,
+    db::WritePool,
     Handles,
 ) {
     let (cmd_tx, cmd_rx) = unbounded::<IndexerCommand>();
     let (evt_tx, evt_rx) = unbounded::<IndexerEvent>();
     let state = Arc::new(SharedState::default());
     let pool = db.pool.clone();
+    let write_pool = db.write_pool.clone();
 
     // Embed pipeline: optional, only spawned when a client is provided.
     let (embed_job_tx, embed_job_rx) = unbounded::<EmbedJob>();
@@ -156,6 +158,7 @@ pub(crate) fn start(
         evt_rx,
         state,
         pool,
+        write_pool,
         Handles {
             coordinator,
             embed_worker,

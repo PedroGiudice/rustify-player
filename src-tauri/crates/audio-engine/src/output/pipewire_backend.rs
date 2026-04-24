@@ -33,7 +33,7 @@ use std::time::Duration;
 
 use pipewire as pw;
 use pw::spa;
-use pw::{properties::properties, stream::StreamFlags};
+use pw::stream::StreamFlags;
 use rtrb::{Consumer, RingBuffer};
 use spa::pod::Pod;
 
@@ -70,6 +70,7 @@ struct UserData {
     consumer: Consumer<f32>,
     xruns: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
+    logged_buffer_sizes: bool,
     last_error: Arc<Mutex<Option<OutputError>>>,
     actual_format: Arc<Mutex<Option<StreamFormat>>>,
     requested_format: StreamFormat,
@@ -242,6 +243,7 @@ fn run_mainloop(
         last_error: last_error.clone(),
         actual_format: actual_format.clone(),
         requested_format: format,
+        logged_buffer_sizes: false,
     };
 
     // Build the object graph. Any failure here is reported through boot_tx
@@ -270,17 +272,24 @@ fn run_mainloop(
         }
     };
 
-    let stream = match pw::stream::StreamBox::new(
-        &core,
-        "rustify-player",
-        properties! {
-            *pw::keys::APP_NAME => "rustify-player",
-            *pw::keys::NODE_NAME => "rustify-player",
-            *pw::keys::MEDIA_TYPE => "Audio",
-            *pw::keys::MEDIA_CATEGORY => "Playback",
-            *pw::keys::MEDIA_ROLE => "Music",
-        },
-    ) {
+    // Request explicit latency to prevent PipeWire from allocating huge
+    // buffers that don't align with sink quantum. Without this hint, a
+    // 44.1kHz stream into a 96kHz/8192-quantum sink gets ~170ms buffers,
+    // double the sink tick — causing timing artifacts that sound like
+    // crackling even with clean sample data. 1024 frames at source rate
+    // matches what mpv/pulseaudio-compat apps negotiate by default.
+    let latency = format!("1024/{}", format.sample_rate);
+    let rate = format!("1/{}", format.sample_rate);
+    let mut props = pw::properties::PropertiesBox::new();
+    props.insert(*pw::keys::APP_NAME, "rustify-player");
+    props.insert(*pw::keys::NODE_NAME, "rustify-player");
+    props.insert(*pw::keys::MEDIA_TYPE, "Audio");
+    props.insert(*pw::keys::MEDIA_CATEGORY, "Playback");
+    props.insert(*pw::keys::MEDIA_ROLE, "Music");
+    props.insert(*pw::keys::NODE_LATENCY, latency.as_str());
+    props.insert("node.rate", rate.as_str());
+
+    let stream = match pw::stream::StreamBox::new(&core, "rustify-player", props) {
         Ok(s) => s,
         Err(err) => {
             let _ = boot_tx.send(Err(OutputError::PipewireInit(err.to_string())));
@@ -374,22 +383,70 @@ fn run_mainloop(
             let channels = usize::from(user_data.requested_format.output_channels.max(1));
             let stride = channels * std::mem::size_of::<f32>();
 
+            // Read chunk hint BEFORE taking the mutable borrow on data.
+            // chunk.size() may indicate the quantum size PipeWire wants.
+            let chunk_hint = data.chunk().size() as usize;
+
             let Some(slice) = data.data() else {
                 return;
             };
+            // Log buffer geometry once per stream for diagnostics.
+            if !user_data.logged_buffer_sizes {
+                user_data.logged_buffer_sizes = true;
+                tracing::info!(
+                    maxsize = slice.len(),
+                    chunk_hint,
+                    channels,
+                    stride,
+                    "pipewire process: buffer geometry (first callback)"
+                );
+            }
 
-            let capacity_bytes = slice.len();
-            let capacity_frames = capacity_bytes / stride;
-            let capacity_samples = capacity_frames * channels;
+            let target_bytes = if chunk_hint > 0 && chunk_hint <= slice.len() {
+                chunk_hint
+            } else {
+                slice.len()
+            };
 
-            // Reinterpret the u8 slice as a f32 slice. PipeWire guarantees
-            // 32-bit alignment for F32LE buffers, but defensively round down
-            // to whole samples.
-            let usable_bytes = capacity_samples * std::mem::size_of::<f32>();
+            let target_frames = target_bytes / stride;
+            let target_samples = target_frames * channels;
+
+            let usable_bytes = target_samples * std::mem::size_of::<f32>();
             let (f32_slice, _tail) = slice[..usable_bytes]
                 .as_chunks_mut_layout();
 
             let written = fill_f32_from_ring(f32_slice, &mut user_data.consumer);
+
+            // Kept for diagnostics: sample integrity check on first batch.
+            #[cfg(debug_assertions)]
+            if written > 0 {
+                static CHECKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if !CHECKED.load(Ordering::Relaxed) {
+                    CHECKED.store(true, Ordering::Relaxed);
+                    let mut nan_count = 0u32;
+                    let mut inf_count = 0u32;
+                    let mut clip_count = 0u32;
+                    let mut max_abs: f32 = 0.0;
+                    for &s in &f32_slice[..written] {
+                        if s.is_nan() { nan_count += 1; }
+                        else if s.is_infinite() { inf_count += 1; }
+                        else {
+                            let a = s.abs();
+                            if a > 1.0 { clip_count += 1; }
+                            if a > max_abs { max_abs = a; }
+                        }
+                    }
+                    tracing::info!(
+                        written,
+                        nan_count,
+                        inf_count,
+                        clip_count,
+                        max_abs,
+                        "pipewire process: sample integrity check"
+                    );
+                }
+            }
+
             if written < f32_slice.len() {
                 // Underrun: pad silence, bump counter.
                 let missing = f32_slice.len() - written;
@@ -397,11 +454,6 @@ fn run_mainloop(
                     *s = 0.0;
                 }
                 let prev = user_data.xruns.fetch_add(1, Ordering::Relaxed);
-                // Log the first underrun of a burst. Emitting from the RT
-                // callback is not ideal, but tracing's macros short-circuit
-                // when the level is disabled, and warn-level underruns are
-                // rare enough that any formatting cost is acceptable when
-                // diagnosing issues.
                 if prev == 0 {
                     tracing::warn!(
                         missing_samples = missing,
@@ -415,7 +467,7 @@ fn run_mainloop(
             let chunk = data.chunk_mut();
             *chunk.offset_mut() = 0;
             *chunk.stride_mut() = stride as i32;
-            *chunk.size_mut() = (capacity_frames * stride) as u32;
+            *chunk.size_mut() = (target_frames * stride) as u32;
         })
         .register();
 
@@ -450,18 +502,19 @@ fn run_mainloop(
         }
     };
 
-    let Some(pod_param) = Pod::from_bytes(&pod_bytes) else {
+    let Some(format_pod) = Pod::from_bytes(&pod_bytes) else {
         let _ = boot_tx.send(Err(OutputError::PipewireInit(
-            "failed to wrap POD bytes".to_string(),
+            "failed to wrap format POD bytes".to_string(),
         )));
         return;
     };
-    let mut params = [pod_param];
+
+    let mut params = [format_pod];
 
     if let Err(err) = stream.connect(
         spa::utils::Direction::Output,
         None,
-        StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS,
+        StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS | StreamFlags::INACTIVE,
         &mut params,
     ) {
         let _ = boot_tx.send(Err(OutputError::PipewireInit(err.to_string())));

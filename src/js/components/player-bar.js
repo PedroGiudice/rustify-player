@@ -1,5 +1,17 @@
 // Player bar — three-block layout: left (cover+meta), center (transport+seek), right (tech+volume).
 // Preserves all Tauri IPC contracts. Adds shuffle, repeat, volume, drag-to-seek.
+//
+// Time-unit convention:
+//   • Library `Track` objects use `duration_ms` (matches backend serde).
+//   • Engine `TrackInfo.duration` arrives as a Rust `Duration`, which serde
+//     serializes as `{ secs, nanos }`. We read `.secs` directly.
+//   • Internal state (`durationSecs`, `currentSecs`) and the local
+//     `formatDuration` helper work in SECONDS, aligned with `PositionUpdate`
+//     events (`samples_played / sample_rate`) and the scrub math.
+//   • Conversions happen at the boundary: `track.duration_ms / 1000` before
+//     writing to `durationSecs` or feeding `formatDuration`.
+// Other views use `formatMs` from `utils/format.js`; the player-bar is the
+// one place that stays in seconds because the engine itself does.
 
 const { listen } = window.__TAURI__.event;
 const { invoke, convertFileSrc } = window.__TAURI__.core;
@@ -12,10 +24,48 @@ let isPlaying = false;
 let durationSecs = 0;
 let currentSecs = 0;
 let isScrubbing = false;
+let autoplayEnabled = true;
+const recentlyPlayedIds = new Set();
 
 export function setQueue(tracks, startIndex) {
   trackQueue = tracks;
   queueIndex = startIndex;
+}
+
+export function getQueue() {
+  return { tracks: trackQueue, position: queueIndex };
+}
+
+export function setAutoplay(enabled) {
+  autoplayEnabled = enabled;
+}
+
+async function autoplayNext(seedTrack) {
+  try {
+    let candidates = await invoke("lib_similar", { trackId: seedTrack.id, limit: 10 });
+    // lib_similar returns [{track, score}]
+    let tracks = candidates
+      .map((c) => c.track)
+      .filter((t) => !recentlyPlayedIds.has(t.id));
+
+    // Fallback to shuffle if no similar tracks (missing embeddings)
+    if (tracks.length === 0) {
+      tracks = await invoke("lib_shuffle", { limit: 10 });
+      tracks = tracks.filter((t) => !recentlyPlayedIds.has(t.id));
+    }
+
+    if (tracks.length === 0) return;
+
+    // Append to queue and advance
+    const nextBatch = tracks.slice(0, 5);
+    trackQueue.push(...nextBatch);
+    queueIndex++;
+    currentTrack = trackQueue[queueIndex];
+
+    playTrack(currentTrack);
+  } catch (err) {
+    console.error("[autoplay] failed:", err);
+  }
 }
 
 export function mountPlayerBar(root) {
@@ -137,8 +187,18 @@ function bindTransport() {
   });
 
   ui.shuffleBtn.addEventListener("click", () => {
-    ui.shuffleBtn.classList.toggle("is-active");
-    invoke("toggle_shuffle").catch(() => {});
+    const active = ui.shuffleBtn.classList.toggle("is-active");
+    if (active && trackQueue.length > 1) {
+      // Shuffle remaining tracks (keep current track in place)
+      const current = trackQueue[queueIndex];
+      const remaining = trackQueue.filter((_, i) => i !== queueIndex);
+      for (let i = remaining.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+      }
+      trackQueue = [current, ...remaining];
+      queueIndex = 0;
+    }
   });
 
   ui.repeatBtn.addEventListener("click", () => {
@@ -247,6 +307,11 @@ function listenEngine() {
       if (endedTrack?.id) {
         invoke("lib_record_play", { trackId: endedTrack.id })
           .catch((err) => console.error("[history] record_play failed:", err));
+        recentlyPlayedIds.add(endedTrack.id);
+        if (recentlyPlayedIds.size > 30) {
+          const first = recentlyPlayedIds.values().next().value;
+          recentlyPlayedIds.delete(first);
+        }
       }
       // Auto-advance to the next queue entry.
       if (queueIndex < trackQueue.length - 1) {
@@ -254,10 +319,12 @@ function listenEngine() {
         currentTrack = trackQueue[queueIndex];
         ui.title.textContent = currentTrack.title || "Unknown Title";
         ui.artist.textContent = currentTrack.artist_name || "Unknown Artist";
-        ui.timeTotal.textContent = formatDuration(currentTrack.duration_secs || 0);
+        ui.timeTotal.textContent = formatDuration((currentTrack.duration_ms || 0) / 1000);
         updateProgressUI(0);
         ui.timeCurrent.textContent = "0:00";
         updateNavButtons();
+      } else if (autoplayEnabled && endedTrack?.id) {
+        autoplayNext(endedTrack);
       }
     }
   });
@@ -302,7 +369,7 @@ function updateTechInfo(info) {
 
 export async function playTrack(track) {
   currentTrack = track;
-  durationSecs = track.duration_secs || 0;
+  durationSecs = (track.duration_ms || 0) / 1000;
   currentSecs = 0;
 
   ui.title.textContent = track.title || "Unknown Title";

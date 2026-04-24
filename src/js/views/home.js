@@ -23,11 +23,12 @@ async function load(view) {
   const stats = view.querySelector("#home-stats");
   const body = view.querySelector("#home-body");
   try {
-    const [snap, genres, recentTracks, albums] = await Promise.all([
+    const [snap, genres, recentTracks, albums, recs] = await Promise.all([
       invoke("lib_snapshot"),
       invoke("lib_list_genres"),
-      invoke("lib_recent_plays", { limit: 8 }).catch(() => []),
+      invoke("lib_list_history", { limit: 8 }).catch(() => []),
       invoke("lib_list_albums", { limit: 8 }).catch(() => []),
+      invoke("lib_recommendations").catch(() => ({ most_played: [], based_on_top: [], discover: [] })),
     ]);
     const populated = genres.filter((g) => g.track_count > 0);
 
@@ -66,6 +67,20 @@ async function load(view) {
         <section class="home-section">
           <h2 class="home-section__title">Recently Played</h2>
           <div class="recent-grid" id="home-recent"></div>
+        </section>
+      ` : ""}
+
+      ${recs.based_on_top.length > 0 ? `
+        <section class="home-section">
+          <h2 class="home-section__title">Based on Your Favorites</h2>
+          <div class="recent-grid" id="home-recs-top"></div>
+        </section>
+      ` : ""}
+
+      ${recs.discover.length > 0 ? `
+        <section class="home-section">
+          <h2 class="home-section__title">Discover</h2>
+          <div class="recent-grid" id="home-recs-discover"></div>
         </section>
       ` : ""}
 
@@ -137,6 +152,10 @@ async function load(view) {
       });
     }
 
+    // Recommendation grids
+    populateRecGrid(body, "#home-recs-top", recs.based_on_top);
+    populateRecGrid(body, "#home-recs-discover", recs.discover);
+
     // Albums cards
     const albumsGrid = body.querySelector("#home-albums");
     if (albumsGrid && albums.length > 0) {
@@ -199,6 +218,28 @@ async function load(view) {
   } catch (err) {
     body.innerHTML = `<div class="empty-state"><p class="empty-state__title">Failed to load</p><p class="empty-state__hint">${err}</p></div>`;
   }
+}
+
+function populateRecGrid(body, selector, tracks) {
+  const grid = body.querySelector(selector);
+  if (!grid || tracks.length === 0) return;
+
+  tracks.forEach((t) => {
+    const item = document.createElement("button");
+    item.className = "recent-item";
+    item.innerHTML = `
+      <div class="recent-item__cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</div>
+      <div class="recent-item__meta">
+        <div class="recent-item__title">${esc(t.title || "—")}</div>
+        <div class="recent-item__sub">${esc(t.artist_name || "—")}</div>
+      </div>
+    `;
+    item.addEventListener("click", () => {
+      setQueue(tracks, tracks.indexOf(t));
+      playTrack(t);
+    });
+    grid.appendChild(item);
+  });
 }
 
 function initials(name) {

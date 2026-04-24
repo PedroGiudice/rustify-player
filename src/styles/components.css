@@ -1412,7 +1412,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .queue-list { display: flex; flex-direction: column; }
 .queue-row {
   display: grid;
-  grid-template-columns: 32px 1fr auto 24px;
+  grid-template-columns: 32px 1fr auto;
   gap: var(--space-3);
   padding: 10px var(--space-3);
   align-items: center;

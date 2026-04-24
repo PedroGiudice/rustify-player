@@ -266,10 +266,18 @@ impl EngineState {
     }
 
     fn cmd_play(&mut self) {
+        // If a Load is in progress (new track prepare pending), defer the
+        // actual Play to install_current by flagging play_on_load. This
+        // handles both: (a) Play on an empty engine after Load, and (b)
+        // track switch mid-playback — Load is dispatched, Play arrives
+        // before prepare finishes, and without this branch the old track
+        // gets a phantom Playing state that install_current later misreads
+        // as "not Loading" and so the new track lands in Paused.
+        if let PlaybackState::Loading { track, .. } = &self.state {
+            self.set_state(PlaybackState::Loading { track: *track, play_on_load: true });
+            return;
+        }
         if self.current.is_none() {
-            if let PlaybackState::Loading { track, .. } = &self.state {
-                self.set_state(PlaybackState::Loading { track: *track, play_on_load: true });
-            }
             return;
         }
         if self.active_stream.is_none() {
@@ -295,6 +303,24 @@ impl EngineState {
     }
 
     fn cmd_pause(&mut self) {
+        // Symmetric to cmd_play: if a Load is in progress, the user's Pause
+        // cancels any auto-play intent. Without this, a sequence of
+        // Load → Play → Pause-before-prepare-completes would still
+        // auto-play when install_current fires, ignoring the user's Pause.
+        //
+        // Mid-playback track switch: the old track's stream is still active
+        // while the new track's prepare runs. Cork it here so the user
+        // stops hearing audio immediately; install_current will replace or
+        // reconfigure the stream when it installs the new track.
+        if let PlaybackState::Loading { track, .. } = &self.state {
+            self.set_state(PlaybackState::Loading { track: *track, play_on_load: false });
+            if let Some(stream) = &self.active_stream {
+                if let Some(set_cork) = &stream.set_cork {
+                    (set_cork)(true);
+                }
+            }
+            return;
+        }
         if let Some(t) = &self.current {
             // Cork the output stream to stop callbacks and prevent phantom xruns.
             if let Some(stream) = &self.active_stream {
@@ -436,11 +462,13 @@ impl EngineState {
         if self.current.is_none() {
             return;
         }
+        let mut just_created_stream = false;
         if self.active_stream.is_none() {
             if let Err(err) = self.reconfigure_stream() {
                 self.emit_error(err);
                 return;
             }
+            just_created_stream = true;
         }
 
         // Detect disconnect from the output callback thread.
@@ -465,6 +493,18 @@ impl EngineState {
                 Err(err) => {
                     self.emit_error(err);
                     break;
+                }
+            }
+        }
+
+        // Uncork AFTER the first decode pass has filled the ring buffer.
+        // The INACTIVE flag prevents PipeWire's process callback from firing
+        // on an empty buffer; we only activate the stream once there is real
+        // audio data to consume.
+        if just_created_stream {
+            if let Some(stream) = &self.active_stream {
+                if let Some(set_cork) = &stream.set_cork {
+                    (set_cork)(false);
                 }
             }
         }

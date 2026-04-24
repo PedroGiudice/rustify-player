@@ -1,3 +1,5 @@
+mod easyeffects;
+
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
@@ -282,6 +284,25 @@ fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Tra
     Ok(tracks)
 }
 
+#[tauri::command]
+fn lib_recommendations(
+    lib: State<Library>,
+) -> Result<library_indexer::Recommendations, String> {
+    let mut recs = lib.handle.recommendations().map_err(err)?;
+    // Resolve cover paths to absolute
+    for track in recs
+        .most_played
+        .iter_mut()
+        .chain(recs.based_on_top.iter_mut())
+        .chain(recs.discover.iter_mut())
+    {
+        if let Some(rel) = &track.album_cover_path {
+            track.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(recs)
+}
+
 // ---------------------------------------------------------------------------
 // Player commands
 // ---------------------------------------------------------------------------
@@ -348,6 +369,25 @@ fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String
 fn get_state(snapshot: State<Snapshot>) -> Result<serde_json::Value, String> {
     let snap = snapshot.0.lock().map_err(err)?;
     serde_json::to_value(&*snap).map_err(err)
+}
+
+// ---------------------------------------------------------------------------
+// EasyEffects preset commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn ee_list_presets() -> Result<Vec<String>, String> {
+    easyeffects::list_presets()
+}
+
+#[tauri::command]
+fn ee_get_current_preset() -> Result<String, String> {
+    easyeffects::get_current_preset()
+}
+
+#[tauri::command]
+fn ee_apply_preset(name: String) -> Result<(), String> {
+    easyeffects::apply_preset(&name)
 }
 
 // ---------------------------------------------------------------------------
@@ -848,6 +888,7 @@ pub fn run() {
             lib_list_folder_tracks,
             lib_record_play,
             lib_list_history,
+            lib_recommendations,
             player_play,
             player_pause,
             player_resume,
@@ -856,6 +897,9 @@ pub fn run() {
             player_set_volume,
             player_enqueue_next,
             get_state,
+            ee_list_presets,
+            ee_get_current_preset,
+            ee_apply_preset,
             get_system_resources,
             check_for_update,
             install_update,

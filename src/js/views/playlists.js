@@ -1,4 +1,5 @@
 import { playTrack, setQueue } from "../components/player-bar.js";
+import { formatMs } from "../utils/format.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
@@ -169,18 +170,10 @@ function renderRows(tbody, tracks) {
       <td class="track-table__td">${esc(t.artist_name || "\u2014")}</td>
       <td class="track-table__td">${esc(t.album_title || "\u2014")}</td>
       <td class="track-table__td">${esc(t.genre_name || "\u2014")}</td>
-      <td class="track-table__td track-table__td--dur">${formatDuration(t.duration_ms)}</td>
+      <td class="track-table__td track-table__td--dur">${formatMs(t.duration_ms)}</td>
     </tr>`
     )
     .join("");
-}
-
-function formatDuration(ms) {
-  if (!ms || ms <= 0) return "\u2014";
-  const total = Math.floor(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function esc(s) {

@@ -634,6 +634,77 @@ pub fn list_history(conn: &Connection, limit: usize) -> Result<Vec<Track>, Index
 }
 
 // ---------------------------------------------------------------------------
+// Recommendations
+// ---------------------------------------------------------------------------
+
+/// Recommendations payload for the home view.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Recommendations {
+    /// Tracks with highest play_count.
+    pub most_played: Vec<Track>,
+    /// Tracks similar to the most-played (excluding the seeds themselves).
+    pub based_on_top: Vec<Track>,
+    /// Unplayed tracks that are similar to user's favorites (discovery).
+    pub discover: Vec<Track>,
+}
+
+/// Generate personalized recommendations from play history and embeddings.
+pub fn recommendations(conn: &Connection) -> Result<Recommendations, IndexerError> {
+    // Most played (top 10)
+    let most_played_sql = format!(
+        "{TRACK_SELECT} WHERE t.play_count > 0 ORDER BY t.play_count DESC LIMIT 10"
+    );
+    let most_played: Vec<Track> = conn
+        .prepare(&most_played_sql)?
+        .query_map([], map_track)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Based on top: use top 5 most-played as seeds, get similar, deduplicate
+    let seed_ids: Vec<i64> = most_played.iter().take(5).map(|t| t.id).collect();
+    let mut based_on_ids: std::collections::HashSet<i64> =
+        seed_ids.iter().copied().collect();
+    let mut based_on_top: Vec<Track> = Vec::new();
+
+    for &seed_id in &seed_ids {
+        if let Ok(sim) = similar(conn, seed_id, 5) {
+            for (track, _score) in sim {
+                if based_on_ids.insert(track.id) {
+                    based_on_top.push(track);
+                }
+            }
+        }
+        if based_on_top.len() >= 10 {
+            break;
+        }
+    }
+    based_on_top.truncate(10);
+
+    // Discover: unplayed tracks with embeddings, similar to top played
+    let mut discover: Vec<Track> = Vec::new();
+    let mut discover_ids: std::collections::HashSet<i64> =
+        seed_ids.iter().copied().collect();
+    for &seed_id in &seed_ids {
+        if let Ok(sim) = similar(conn, seed_id, 10) {
+            for (track, _score) in sim {
+                if track.play_count == 0 && discover_ids.insert(track.id) {
+                    discover.push(track);
+                }
+            }
+        }
+        if discover.len() >= 10 {
+            break;
+        }
+    }
+    discover.truncate(10);
+
+    Ok(Recommendations {
+        most_played,
+        based_on_top,
+        discover,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Lyrics
 // ---------------------------------------------------------------------------
 
