@@ -25,7 +25,7 @@
 //! through EasyEffects automatically. No device picker, no bit-perfect mode.
 
 use std::any::Any;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -53,6 +53,31 @@ const MIN_RING_SAMPLES: usize = 8192;
 /// Timeout for the bootstrap handshake. If pipewire takes longer than this to
 /// come up, something is wrong (daemon down, broken env) and we give up.
 const BOOT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// How often the realtime callback emits an integrity telemetry log line.
+/// At ~86 callbacks/sec (1024 frames @ 88.2 kHz), 10_000 callbacks is roughly
+/// every two minutes — low enough to not spam, frequent enough to catch
+/// regressions quickly during A/B testing.
+const LOG_EVERY_N_CALLBACKS: u64 = 10_000;
+
+/// EMA smoothing factor for the running `max_abs` estimate. With `alpha = 0.02`
+/// the estimate decays to ~86% of the previous value after 100 callbacks, so
+/// transient clip spikes stay visible for ~1 second at typical quantum rates.
+const MAX_ABS_EMA_ALPHA: f32 = 0.02;
+
+/// Monotonic counter for the realtime integrity check. Bumped once per
+/// non-empty callback; the log fires when `counter % LOG_EVERY_N_CALLBACKS`
+/// hits zero.
+static CALLBACK_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Exponential moving average of the per-callback `max_abs` sample, stored as
+/// the raw bits of an `f32` so we can update it lock-free via CAS. Initialized
+/// to `0.0f32.to_bits() == 0`.
+static MAX_ABS_EMA_BITS: AtomicU32 = AtomicU32::new(0);
+
+/// Sticky flag: becomes `true` on the first NaN/Inf seen and never resets.
+/// Used to upgrade the next periodic log from `info` to `warn`.
+static HAS_SEEN_PATHOLOGICAL: AtomicBool = AtomicBool::new(false);
 
 /// Control-plane command sent from the engine thread to the mainloop thread.
 enum Cmd {
@@ -415,38 +440,66 @@ fn run_mainloop(
             let target_samples = target_frames * channels;
 
             let usable_bytes = target_samples * std::mem::size_of::<f32>();
-            let (f32_slice, _tail) = slice[..usable_bytes]
-                .as_chunks_mut_layout();
+            let (f32_slice, _tail) = slice[..usable_bytes].as_chunks_mut_layout();
 
             let written = fill_f32_from_ring(f32_slice, &mut user_data.consumer);
 
-            // Kept for diagnostics: sample integrity check on first batch.
-            #[cfg(debug_assertions)]
+            // Sample integrity telemetry. Kept enabled in release builds so we
+            // can validate ReplayGain fixes and catch regressions empirically.
+            // Cost per callback: one O(written) scan (no allocs, already-hot
+            // bytes) plus one lock-free CAS loop. Log fires at most every
+            // LOG_EVERY_N_CALLBACKS callbacks so string formatting stays off
+            // the RT hot path.
             if written > 0 {
-                static CHECKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                if !CHECKED.load(Ordering::Relaxed) {
-                    CHECKED.store(true, Ordering::Relaxed);
-                    let mut nan_count = 0u32;
-                    let mut inf_count = 0u32;
-                    let mut clip_count = 0u32;
-                    let mut max_abs: f32 = 0.0;
-                    for &s in &f32_slice[..written] {
-                        if s.is_nan() { nan_count += 1; }
-                        else if s.is_infinite() { inf_count += 1; }
-                        else {
-                            let a = s.abs();
-                            if a > 1.0 { clip_count += 1; }
-                            if a > max_abs { max_abs = a; }
-                        }
+                let (max_abs_batch, nan_count, inf_count, clip_count) =
+                    scan_batch(&f32_slice[..written]);
+
+                // Lock-free EMA update: decay the stored value and fold in the
+                // current batch max. We tolerate CAS retries because contention
+                // is near-zero (this callback runs single-threaded per stream).
+                let mut current_bits = MAX_ABS_EMA_BITS.load(Ordering::Relaxed);
+                loop {
+                    let current = f32::from_bits(current_bits);
+                    let new_ema =
+                        current.mul_add(1.0 - MAX_ABS_EMA_ALPHA, max_abs_batch * MAX_ABS_EMA_ALPHA);
+                    let new_bits = new_ema.to_bits();
+                    match MAX_ABS_EMA_BITS.compare_exchange_weak(
+                        current_bits,
+                        new_bits,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => break,
+                        Err(actual) => current_bits = actual,
                     }
-                    tracing::info!(
-                        written,
-                        nan_count,
-                        inf_count,
-                        clip_count,
-                        max_abs,
-                        "pipewire process: sample integrity check"
-                    );
+                }
+
+                if nan_count > 0 || inf_count > 0 {
+                    HAS_SEEN_PATHOLOGICAL.store(true, Ordering::Relaxed);
+                }
+
+                let n = CALLBACK_COUNTER.fetch_add(1, Ordering::Relaxed);
+                if n % LOG_EVERY_N_CALLBACKS == 0 {
+                    let ema = f32::from_bits(MAX_ABS_EMA_BITS.load(Ordering::Relaxed));
+                    if HAS_SEEN_PATHOLOGICAL.load(Ordering::Relaxed) {
+                        tracing::warn!(
+                            callback_n = n,
+                            max_abs_ema = ema,
+                            clip_count_batch = clip_count,
+                            nan_count_batch = nan_count,
+                            inf_count_batch = inf_count,
+                            "pipewire integrity check (pathological samples seen since start)"
+                        );
+                    } else {
+                        tracing::info!(
+                            callback_n = n,
+                            max_abs_ema = ema,
+                            clip_count_batch = clip_count,
+                            nan_count_batch = nan_count,
+                            inf_count_batch = inf_count,
+                            "pipewire integrity check"
+                        );
+                    }
                 }
             }
 
@@ -517,7 +570,10 @@ fn run_mainloop(
     if let Err(err) = stream.connect(
         spa::utils::Direction::Output,
         None,
-        StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS | StreamFlags::INACTIVE,
+        StreamFlags::AUTOCONNECT
+            | StreamFlags::MAP_BUFFERS
+            | StreamFlags::RT_PROCESS
+            | StreamFlags::INACTIVE,
         &mut params,
     ) {
         let _ = boot_tx.send(Err(OutputError::PipewireInit(err.to_string())));
@@ -554,6 +610,41 @@ fn run_mainloop(
     // of declaration) handles teardown: _cmd_attached → _listener → stream →
     // core → context → mainloop.
     alive.store(false, Ordering::Release);
+}
+
+/// Single-pass integrity scan over a batch of samples.
+///
+/// Returns `(max_abs, nan_count, inf_count, clip_count)` where `clip_count`
+/// counts samples with `|s| > 1.0` (i.e. would clip once the sink or any
+/// downstream f32->iN conversion clamps to [-1, 1]). Pathological samples
+/// (NaN/Inf) are counted and skipped from the abs/clip logic.
+///
+/// Called from the realtime callback on every non-empty batch. Must stay
+/// allocation-free and branch-cheap.
+#[inline]
+fn scan_batch(samples: &[f32]) -> (f32, u32, u32, u32) {
+    let mut max_abs = 0.0_f32;
+    let mut nan_count = 0_u32;
+    let mut inf_count = 0_u32;
+    let mut clip_count = 0_u32;
+    for &s in samples {
+        if s.is_nan() {
+            nan_count += 1;
+            continue;
+        }
+        if s.is_infinite() {
+            inf_count += 1;
+            continue;
+        }
+        let a = s.abs();
+        if a > 1.0 {
+            clip_count += 1;
+        }
+        if a > max_abs {
+            max_abs = a;
+        }
+    }
+    (max_abs, nan_count, inf_count, clip_count)
 }
 
 /// Copy up to `out.len()` samples from `consumer` into `out`.
