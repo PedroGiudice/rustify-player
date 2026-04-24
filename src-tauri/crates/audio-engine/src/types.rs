@@ -139,6 +139,51 @@ pub enum Command {
     EnqueueNext(PathBuf),
     /// Drop the pre-loaded next track without affecting the current one.
     ClearQueue,
+
+    // -- DSP control ----------------------------------------------------------
+
+    /// Set a single EQ band (band 0-15, freq Hz, gain dB, Q factor).
+    DspSetEqBand {
+        band: u8,
+        freq: f32,
+        gain_db: f32,
+        q: f32,
+    },
+    /// Set EQ filter type for a band.
+    DspSetEqFilterType { band: u8, filter_type: i32 },
+    /// Set EQ operating mode (0=IIR, 1=FIR, 2=FFT, 3=SPM).
+    DspSetEqMode(i32),
+    /// Set EQ global input/output gain (linear).
+    DspSetEqGain { input: f32, output: f32 },
+    /// Set limiter threshold in dB.
+    DspSetLimiterThreshold(f32),
+    /// Set limiter knee.
+    DspSetLimiterKnee(f32),
+    /// Set limiter lookahead.
+    DspSetLimiterLookahead(f32),
+    /// Set limiter mode.
+    DspSetLimiterMode(i32),
+    /// Set limiter input/output gain (linear).
+    DspSetLimiterGain { input: f32, output: f32 },
+    /// Set limiter boost.
+    DspSetLimiterBoost(f32),
+    /// Set bass enhancer amount.
+    DspSetBassAmount(f32),
+    /// Set bass enhancer drive.
+    DspSetBassDrive(f32),
+    /// Set bass enhancer blend.
+    DspSetBassBlend(f32),
+    /// Set bass enhancer frequency.
+    DspSetBassFreq(f32),
+    /// Set bass enhancer floor.
+    DspSetBassFloor(f32),
+    /// Set bass enhancer bypass.
+    DspSetBassBypass(bool),
+    /// Set bass enhancer input/output levels.
+    DspSetBassLevels { input: f32, output: f32 },
+    /// Global DSP bypass.
+    DspSetBypass(bool),
+
     /// Cleanly stop the engine thread and release resources.
     Shutdown,
 }

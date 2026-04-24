@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Rustify — Signal</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #151513;
+  --bg-raised: #1b1b19;
+  --bg-hover: #222220;
+  --border: rgba(237,234,227,0.06);
+  --border-hi: rgba(237,234,227,0.12);
+  --accent: #c6633d;
+  --accent-dim: rgba(198,99,61,0.12);
+  --accent-ghost: rgba(198,99,61,0.05);
+  --text: #edeae3;
+  --text-2: #b5b1a8;
+  --text-3: #908c83;
+  --text-4: #6e6a62;
+  --green: #7ea977;
+  --amber: #cfa560;
+  --red: #c46b58;
+  --sans: "Inter", system-ui, sans-serif;
+  --display: "Fraunces", Georgia, serif;
+  --r: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 13px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { display: flex; height: 100vh; }
+
+/* Sidebar */
+.side { width: 56px; flex-shrink: 0; background: #111110; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 18px; }
+.sd { width: 20px; height: 20px; border-radius: 5px; background: var(--text-4); opacity: .35; }
+.sd.on { background: var(--accent); opacity: 1; }
+
+/* Main */
+.main { flex: 1; overflow-y: auto; padding: 32px 40px 100px; }
+
+/* Header */
+.hdr { display: flex; align-items: center; margin-bottom: 24px; }
+.hdr h1 { font: italic 700 26px/1.2 var(--display); letter-spacing: -.02em; }
+.hdr .sub { font-size: 12px; color: var(--text-3); margin-left: 14px; }
+.hdr .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.hdr .right span { font-size: 12px; font-weight: 500; color: var(--text-2); }
+
+/* Toggle */
+.tog { width: 36px; height: 19px; border-radius: 10px; background: #302f2b; cursor: pointer; position: relative; transition: background .12s; }
+.tog.on { background: var(--accent); }
+.tog::after { content: ''; position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  top: 3px; left: 3px; background: var(--text-2); transition: transform .12s; }
+.tog.on::after { transform: translateX(17px); background: #111; }
+.tog-sm { width: 30px; height: 16px; }
+.tog-sm::after { width: 10px; height: 10px; top: 3px; left: 3px; }
+.tog-sm.on::after { transform: translateX(14px); }
+
+/* Chain */
+.chain { display: flex; align-items: center; gap: 6px; margin-bottom: 22px; }
+.ch-n { font-size: 11px; font-weight: 500; color: var(--text-3); padding: 4px 12px; border-radius: 6px; background: var(--bg-raised); }
+.ch-n.on { color: var(--accent); background: var(--accent-ghost); }
+.ch-a { color: var(--text-4); font-size: 10px; }
+
+/* Presets */
+.presets { display: flex; gap: 6px; margin-bottom: 28px; }
+.pre { font-size: 12px; font-weight: 500; color: var(--text-2); padding: 5px 14px; border-radius: 6px;
+  background: var(--bg-raised); border: 1px solid transparent; cursor: pointer; transition: all .12s; }
+.pre:hover { border-color: var(--border-hi); color: var(--text); }
+.pre.on { border-color: var(--accent); color: var(--accent); background: var(--accent-ghost); }
+
+/* ===== SECTION ===== */
+.sec { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 16px; }
+.sec-h { display: flex; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--border); }
+.sec-t { font-size: 13px; font-weight: 600; flex: 1; }
+.sec-badge { font-size: 10px; color: var(--text-3); margin-right: 12px; }
+.sec-b { padding: 20px; }
+
+/* ===== EQ CANVAS ===== */
+.eq-wrap { position: relative; height: 170px; background: rgba(0,0,0,.15); border-radius: 6px; overflow: hidden; }
+.eq-wrap canvas { width: 100%; height: 100%; display: block; }
+.eq-yaxis { position: absolute; top: 0; left: 0; height: 100%; display: flex; flex-direction: column;
+  justify-content: space-between; padding: 6px 8px; pointer-events: none; }
+.eq-yaxis span { font-size: 9px; color: var(--text-4); }
+.eq-xaxis { display: flex; justify-content: space-between; padding: 3px 8px; font-size: 9px; color: var(--text-4); }
+
+/* ===== FADERS — continuous strip like EasyEffects ===== */
+.faders {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 20px 8px 0;
+  gap: 0;
+}
+.fader {
+  display: flex; flex-direction: column; align-items: center;
+  flex: 1; min-width: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  position: relative;
+}
+.fader:hover .f-track { background: #333; }
+.fader.active .f-val { color: var(--accent); }
+.fader.active .f-thumb { background: var(--accent); box-shadow: 0 0 8px rgba(198,99,61,.4); }
+
+.f-hz { font-size: 10px; color: var(--text-3); font-weight: 500; margin-bottom: 8px; white-space: nowrap; }
+
+.f-track {
+  width: 4px; height: 110px; border-radius: 2px;
+  background: #262622; position: relative;
+  transition: background .1s;
+}
+.f-zero { position: absolute; top: 50%; left: -4px; right: -4px; height: 1px; background: var(--text-4); opacity: .2; }
+.f-fill {
+  position: absolute; width: 100%; border-radius: 2px;
+  background: var(--accent); opacity: .7;
+}
+.f-fill.up { bottom: 50%; }
+.f-fill.dn { top: 50%; background: var(--amber); opacity: .6; }
+.f-thumb {
+  position: absolute; left: 50%; transform: translate(-50%, -50%);
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--text); cursor: grab;
+  transition: box-shadow .15s;
+}
+.f-thumb:hover { box-shadow: 0 0 6px rgba(237,234,227,.25); }
+
+.f-val { font-size: 10px; color: var(--text-3); margin-top: 8px; font-weight: 500;
+  font-variant-numeric: tabular-nums; }
+
+/* EQ foot */
+.eq-foot { display: flex; align-items: center; gap: 28px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.eq-foot-lbl { font-size: 11px; color: var(--text-3); font-weight: 500; margin-bottom: 5px; }
+.modes { display: flex; border-radius: 6px; overflow: hidden; }
+.md { font-size: 11px; font-weight: 500; padding: 4px 13px; background: var(--bg-hover); color: var(--text-3);
+  border: none; cursor: pointer; transition: all .1s; }
+.md + .md { border-left: 1px solid var(--border); }
+.md:hover { color: var(--text-2); }
+.md.on { background: var(--accent); color: #111; }
+
+/* Meter */
+.mtr { display: flex; align-items: center; gap: 6px; }
+.mtr-lbl { font-size: 10px; color: var(--text-4); width: 30px; }
+.mtr-bar { width: 90px; height: 3px; border-radius: 2px; background: #262622; overflow: hidden; }
+.mtr-fill { height: 100%; border-radius: 2px; background: var(--green); }
+.mtr-fill.warm { background: var(--amber); }
+.mtr-v { font-size: 10px; color: var(--text-3); width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ===== KNOBS — inline row ===== */
+.knobs { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+.knob { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.kr { width: 50px; height: 50px; position: relative; }
+.kr svg { width: 100%; height: 100%; }
+.k-bg { fill: none; stroke: #262622; stroke-width: 2.5; stroke-linecap: round; }
+.k-v { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.k-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.k-lbl { font-size: 11px; color: var(--text-3); font-weight: 500; }
+
+.extras { display: flex; flex-direction: column; gap: 8px; margin-left: 8px; justify-content: center; }
+.ext-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-3); font-weight: 500; }
+
+/* Player */
+.player { position: fixed; bottom: 0; left: 0; right: 0; height: 72px; background: #111110;
+  border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 14px; }
+.p-art { width: 46px; height: 46px; border-radius: 5px; background: #262622; }
+.p-title { font-size: 13px; font-weight: 500; }
+.p-sub { font-size: 11px; color: var(--text-3); }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="side">
+    <div class="sd"></div><div class="sd"></div><div class="sd"></div>
+    <div class="sd"></div><div class="sd"></div><div class="sd"></div>
+    <div style="flex:1"></div>
+    <div class="sd on"></div><div class="sd"></div>
+  </div>
+  <div class="main">
+
+    <div class="hdr">
+      <h1>Signal</h1>
+      <span class="sub">DSP Chain</span>
+      <div class="right">
+        <span>Master</span>
+        <div class="tog on" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+
+    <div class="chain">
+      <span class="ch-n">Source</span><span class="ch-a">→</span>
+      <span class="ch-n">Decode</span><span class="ch-a">→</span>
+      <span class="ch-n on">Parametric EQ</span><span class="ch-a">→</span>
+      <span class="ch-n on">Limiter</span><span class="ch-a">→</span>
+      <span class="ch-n on">Bass Enhance</span><span class="ch-a">→</span>
+      <span class="ch-n">PipeWire</span>
+    </div>
+
+    <div class="presets">
+      <span class="pre on">Flat</span>
+      <span class="pre">Night Mode</span>
+      <span class="pre">Bass Boost</span>
+      <span class="pre">Loudness</span>
+      <span class="pre">Vocal Clarity</span>
+    </div>
+
+    <!-- EQ -->
+    <div class="sec">
+      <div class="sec-h">
+        <span class="sec-t">Parametric Equalizer</span>
+        <span class="sec-badge">LSP x16 Stereo</span>
+        <div class="tog on tog-sm" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="sec-b">
+        <div class="eq-wrap">
+          <canvas id="cv"></canvas>
+          <div class="eq-yaxis"><span>+12</span><span>+6</span><span>0</span><span>−6</span><span>−12</span></div>
+        </div>
+        <div class="eq-xaxis"><span>20</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span></div>
+
+        <!-- Continuous fader strip -->
+        <div class="faders" id="faders"></div>
+
+        <div class="eq-foot">
+          <div>
+            <div class="eq-foot-lbl">Mode</div>
+            <div class="modes">
+              <button class="md on">IIR</button><button class="md">FIR</button><button class="md">FFT</button><button class="md">SPM</button>
+            </div>
+          </div>
+          <div>
+            <div class="eq-foot-lbl">Input</div>
+            <div class="mtr"><div class="mtr-bar"><div class="mtr-fill" style="width:58%"></div></div><span class="mtr-v">−3.5 dB</span></div>
+          </div>
+          <div>
+            <div class="eq-foot-lbl">Output</div>
+            <div class="mtr"><div class="mtr-bar"><div class="mtr-fill" style="width:52%"></div></div><span class="mtr-v">−0.1 dB</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Limiter -->
+    <div class="sec">
+      <div class="sec-h">
+        <span class="sec-t">Limiter</span>
+        <span class="sec-badge">LSP Stereo</span>
+        <div class="tog on tog-sm" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="sec-b" style="display:flex;gap:12px">
+        <div class="knobs">
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="55" transform="rotate(135 25 25)"/></svg><span class="k-num">−6</span></div><span class="k-lbl">Threshold</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="75" transform="rotate(135 25 25)"/></svg><span class="k-num">3</span></div><span class="k-lbl">Knee</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="65" transform="rotate(135 25 25)"/></svg><span class="k-num">5</span></div><span class="k-lbl">Lookahead</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="50" transform="rotate(135 25 25)"/></svg><span class="k-num">0</span></div><span class="k-lbl">Boost</span></div>
+        </div>
+        <div class="extras">
+          <div class="ext-row"><div class="tog on tog-sm" onclick="this.classList.toggle('on')"></div> ALR</div>
+          <div style="margin-top:4px">
+            <div class="eq-foot-lbl">Gain reduction</div>
+            <div class="mtr"><div class="mtr-bar" style="width:80px"><div class="mtr-fill warm" style="width:35%"></div></div><span class="mtr-v">−2.1 dB</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bass Enhancer -->
+    <div class="sec">
+      <div class="sec-h">
+        <span class="sec-t">Bass Enhancer</span>
+        <span class="sec-badge">Calf</span>
+        <div class="tog on tog-sm" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="sec-b" style="display:flex;gap:12px">
+        <div class="knobs">
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="60" transform="rotate(135 25 25)"/></svg><span class="k-num">4.2</span></div><span class="k-lbl">Amount</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="65" transform="rotate(135 25 25)"/></svg><span class="k-num">5</span></div><span class="k-lbl">Drive</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="50" transform="rotate(135 25 25)"/></svg><span class="k-num">0.5</span></div><span class="k-lbl">Blend</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="56" transform="rotate(135 25 25)"/></svg><span class="k-num">120</span></div><span class="k-lbl">Freq</span></div>
+          <div class="knob"><div class="kr"><svg viewBox="0 0 50 50"><circle class="k-bg" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="-33" transform="rotate(135 25 25)"/><circle class="k-v" cx="25" cy="25" r="21" stroke-dasharray="99" stroke-dashoffset="75" transform="rotate(135 25 25)"/></svg><span class="k-num">20</span></div><span class="k-lbl">Floor</span></div>
+        </div>
+        <div class="extras">
+          <div class="mtr"><span class="mtr-lbl">In</span><div class="mtr-bar" style="width:80px"><div class="mtr-fill" style="width:55%"></div></div><span class="mtr-v">0.0 dB</span></div>
+          <div class="mtr" style="margin-top:4px"><span class="mtr-lbl">Out</span><div class="mtr-bar" style="width:80px"><div class="mtr-fill" style="width:64%"></div></div><span class="mtr-v">+1.2 dB</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="player">
+  <div class="p-art"></div>
+  <div><div class="p-title">ATM</div><div class="p-sub">J. Cole — KOD</div></div>
+</div>
+
+<script>
+// Band data
+const BANDS = [
+  { hz: '20', db: 1.9 },  { hz: '26', db: 1.6 },  { hz: '38', db: 2.4 },
+  { hz: '55', db: 2.1 },  { hz: '72', db: 1.0 },  { hz: '110', db: 1.8 },
+  { hz: '160', db: 0.9 },  { hz: '220', db: -0.3 },
+  { hz: '300', db: -0.1 },  { hz: '400', db: -0.2 },
+  { hz: '560', db: 0.1 },  { hz: '800', db: 0.2 },
+  { hz: '1.1k', db: 0.3 },  { hz: '1.6k', db: 0.3 },
+  { hz: '2.3k', db: 0.6 },  { hz: '3.3k', db: 0.5 },
+];
+
+// Build faders
+const strip = document.getElementById('faders');
+BANDS.forEach((b, i) => {
+  const pct = Math.abs(b.db) / 12 * 50;
+  const thumbPos = 50 + (b.db / 12 * 50);
+  const cls = i === 0 ? 'fader active' : 'fader';
+  const fillCls = b.db >= 0 ? 'f-fill up' : 'f-fill dn';
+  const fillH = b.db !== 0 ? `height:${pct}%` : 'height:0';
+  strip.innerHTML += `
+    <div class="${cls}">
+      <span class="f-hz">${b.hz}</span>
+      <div class="f-track">
+        <div class="f-zero"></div>
+        ${b.db !== 0 ? `<div class="${fillCls}" style="${fillH}"></div>` : ''}
+        <div class="f-thumb" style="bottom:${thumbPos}%"></div>
+      </div>
+      <span class="f-val">${b.db >= 0 ? '+' : ''}${b.db.toFixed(1)}</span>
+    </div>`;
+});
+
+// Canvas
+const cv = document.getElementById('cv');
+if (cv) {
+  const ctx = cv.getContext('2d'), dpr = devicePixelRatio || 1;
+  function draw() {
+    const r = cv.parentElement.getBoundingClientRect();
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    ctx.scale(dpr, dpr);
+    const w = r.width, h = r.height, mid = h / 2;
+
+    ctx.strokeStyle = 'rgba(237,234,227,.03)'; ctx.lineWidth = 1;
+    for (let i = 1; i < 5; i++) { ctx.beginPath(); ctx.moveTo(0,h/5*i); ctx.lineTo(w,h/5*i); ctx.stroke(); }
+    [.05,.12,.2,.3,.42,.53,.64,.76,.88,.97].forEach(p => { ctx.beginPath(); ctx.moveTo(w*p,0); ctx.lineTo(w*p,h); ctx.stroke(); });
+    ctx.strokeStyle = 'rgba(237,234,227,.07)'; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke();
+
+    // Smooth curve through band values
+    const pts = BANDS.map((b, i) => {
+      const x = (i / (BANDS.length - 1)) * w;
+      const y = mid - (b.db / 12) * (h / 2) * .85;
+      return [x, y];
+    });
+
+    // Catmull-rom to bezier
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(i-1, 0)], p1 = pts[i], p2 = pts[i+1], p3 = pts[Math.min(i+2, pts.length-1)];
+      const cp1x = p1[0] + (p2[0]-p0[0])/6, cp1y = p1[1] + (p2[1]-p0[1])/6;
+      const cp2x = p2[0] - (p3[0]-p1[0])/6, cp2y = p2[1] - (p3[1]-p1[1])/6;
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2[0], p2[1]);
+    }
+
+    // Fill
+    const curvePath = new Path2D();
+    curvePath.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(i-1,0)], p1 = pts[i], p2 = pts[i+1], p3 = pts[Math.min(i+2,pts.length-1)];
+      curvePath.bezierCurveTo(p1[0]+(p2[0]-p0[0])/6, p1[1]+(p2[1]-p0[1])/6, p2[0]-(p3[0]-p1[0])/6, p2[1]-(p3[1]-p1[1])/6, p2[0], p2[1]);
+    }
+    curvePath.lineTo(w, mid); curvePath.lineTo(0, mid); curvePath.closePath();
+    ctx.fillStyle = 'rgba(198,99,61,.06)'; ctx.fill(curvePath);
+
+    ctx.strokeStyle = 'rgba(198,99,61,.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Dots
+    pts.forEach(([x,y], i) => {
+      ctx.beginPath(); ctx.arc(x, y, BANDS[i].db !== 0 ? 3.5 : 2, 0, Math.PI*2);
+      ctx.fillStyle = BANDS[i].db !== 0 ? 'rgba(198,99,61,.8)' : 'rgba(142,138,130,.3)';
+      ctx.fill();
+    });
+  }
+  draw(); addEventListener('resize', () => { ctx.setTransform(1,0,0,1,0,0); draw(); });
+}
+
+// Interactivity
+document.querySelectorAll('.modes').forEach(t => t.addEventListener('click', e => {
+  if (e.target.classList.contains('md')) { t.querySelectorAll('.md').forEach(b=>b.classList.remove('on')); e.target.classList.add('on'); }
+}));
+strip.addEventListener('click', e => {
+  const f = e.target.closest('.fader');
+  if (f) { strip.querySelectorAll('.fader').forEach(x=>x.classList.remove('active')); f.classList.add('active'); }
+});
+document.querySelectorAll('.pre').forEach(p => p.addEventListener('click', () => {
+  document.querySelectorAll('.pre').forEach(x=>x.classList.remove('on')); p.classList.add('on');
+}));
+</script>
+</body>
+</html>

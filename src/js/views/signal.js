@@ -1,0 +1,642 @@
+// Signal — DSP chain view: Parametric EQ, Limiter, Bass Enhancer.
+// Presets with import/export compatible with EasyEffects JSON format.
+
+const { invoke } = window.__TAURI__.core;
+
+const STORAGE_KEY = "rustify-dsp-presets";
+const ACTIVE_KEY = "rustify-dsp-active";
+const DB_RANGE = 12;
+
+// Default 16 bands (LSP x16 log-spaced)
+const DEFAULT_BANDS = [
+  { freq: 20, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 26, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 38, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 55, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 72, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 110, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 160, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 220, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 300, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 400, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 560, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 800, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 1100, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 1600, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 2300, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 3300, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+];
+
+function defaultState() {
+  return {
+    bypass: false,
+    eq: {
+      mode: 0, // 0=IIR, 1=FIR, 2=FFT, 3=SPM
+      input_gain: 0,
+      output_gain: 0,
+      bands: DEFAULT_BANDS.map((b) => ({ ...b })),
+    },
+    limiter: { threshold: 0, knee: 0, lookahead: 5, boost: 0, alr: true },
+    bass: { amount: 0, drive: 0, blend: 0, freq: 120, floor: 20 },
+  };
+}
+
+let state = defaultState();
+let activeBand = 0;
+let canvas, ctx;
+
+// ─── Presets ──────────────────────────────────────
+function loadPresets() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+}
+
+function getActivePresetName() {
+  return localStorage.getItem(ACTIVE_KEY) || "";
+}
+
+function setActivePresetName(name) {
+  localStorage.setItem(ACTIVE_KEY, name);
+}
+
+// ─── Format helpers ──────────────────────────────
+function fmtHz(hz) {
+  return hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k` : String(hz);
+}
+
+function fmtDb(db) {
+  const sign = db > 0 ? "+" : "";
+  return `${sign}${db.toFixed(1)}`;
+}
+
+// ─── Knob SVG ────────────────────────────────────
+function knobSvg(value, min, max) {
+  const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  const arcLen = 99;
+  const offset = arcLen - pct * (arcLen - 33);
+  return `<svg viewBox="0 0 50 50">
+    <circle class="sig-k-bg" cx="25" cy="25" r="21" stroke-dasharray="${arcLen}" stroke-dashoffset="-33" transform="rotate(135 25 25)"/>
+    <circle class="sig-k-val" cx="25" cy="25" r="21" stroke-dasharray="${arcLen}" stroke-dashoffset="${offset}" transform="rotate(135 25 25)"/>
+  </svg>`;
+}
+
+// ─── IPC ─────────────────────────────────────────
+let _ipcTimer = null;
+function ipcDebounced(cmd, args, delay = 50) {
+  clearTimeout(_ipcTimer);
+  _ipcTimer = setTimeout(() => invoke(cmd, args).catch(console.error), delay);
+}
+
+async function applyFullState() {
+  const { eq, limiter, bass, bypass } = state;
+  try {
+    await invoke("dsp_set_bypass", { bypass });
+    await invoke("dsp_set_eq_mode", { mode: eq.mode });
+    await invoke("dsp_set_eq_gain", { input: eq.input_gain, output: eq.output_gain });
+    for (let i = 0; i < eq.bands.length; i++) {
+      const b = eq.bands[i];
+      await invoke("dsp_set_eq_band", { band: i, freq: b.freq, gainDb: b.gain_db, q: b.q });
+    }
+    await invoke("dsp_set_limiter_threshold", { thresholdDb: limiter.threshold });
+    await invoke("dsp_set_limiter_knee", { knee: limiter.knee });
+    await invoke("dsp_set_limiter_lookahead", { lookahead: limiter.lookahead });
+    await invoke("dsp_set_limiter_boost", { boost: limiter.boost });
+    await invoke("dsp_set_bass_amount", { amount: bass.amount });
+    await invoke("dsp_set_bass_drive", { drive: bass.drive });
+    await invoke("dsp_set_bass_blend", { blend: bass.blend });
+    await invoke("dsp_set_bass_freq", { freq: bass.freq });
+    await invoke("dsp_set_bass_floor", { floor: bass.floor });
+  } catch (e) {
+    console.error("[signal] apply state failed:", e);
+  }
+}
+
+// ─── EasyEffects import/export ───────────────────
+function parseEasyEffects(json, name) {
+  const o = json.output || json;
+  const preset = {
+    name,
+    eq: { mode: "IIR", input_gain: 0, output_gain: 0, bands: [] },
+    limiter: { threshold: 0, knee: 0, lookahead: 5, boost: 0, alr: true },
+    bass_enhancer: { amount: 0, drive: 0, blend: 0, freq: 120, floor: 20 },
+  };
+
+  // EQ
+  const eq = o["equalizer#0"];
+  if (eq) {
+    preset.eq.mode = eq.mode || "IIR";
+    preset.eq.input_gain = eq["input-gain"] || 0;
+    preset.eq.output_gain = eq["output-gain"] || 0;
+    const left = eq.left || {};
+    const numBands = eq["num-bands"] || Object.keys(left).length;
+    for (let i = 0; i < numBands; i++) {
+      const b = left[`band${i}`];
+      if (b) {
+        preset.eq.bands.push({
+          freq: b.frequency || 100,
+          gain_db: b.gain || 0,
+          q: b.q || 2.21,
+          type: b.type || "Bell",
+          mode: b.mode || "APO",
+          slope: b.slope || "x1",
+        });
+      }
+    }
+  }
+
+  // Bass enhancer
+  const be = o["bass_enhancer#0"];
+  if (be) {
+    preset.bass_enhancer = {
+      amount: be.amount || 0,
+      drive: be.harmonics || 0,
+      blend: be.blend || 0,
+      freq: be.scope || 120,
+      floor: be.floor || 20,
+    };
+  }
+
+  // Limiter
+  const lim = o["limiter#0"];
+  if (lim) {
+    preset.limiter = {
+      threshold: lim.threshold || 0,
+      knee: lim.knee || 0,
+      lookahead: lim.lookahead || 5,
+      boost: lim.boost || 0,
+      alr: lim.alr !== false,
+    };
+  }
+
+  return preset;
+}
+
+function toEasyEffects(preset) {
+  const bands = preset.eq?.bands || state.eq.bands;
+  const left = {};
+  const right = {};
+  bands.forEach((b, i) => {
+    const band = {
+      frequency: b.freq,
+      gain: b.gain_db,
+      mode: "APO (DR)",
+      mute: false,
+      q: b.q,
+      slope: b.slope || "x1",
+      solo: false,
+      type: b.type || "Bell",
+      width: 4.0,
+    };
+    left[`band${i}`] = { ...band };
+    right[`band${i}`] = { ...band };
+  });
+
+  const be = preset.bass_enhancer || state.bass;
+  const lim = preset.limiter || state.limiter;
+
+  return {
+    output: {
+      "bass_enhancer#0": {
+        amount: be.amount || 0,
+        blend: be.blend || 0,
+        bypass: false,
+        floor: be.floor || 20,
+        "floor-active": true,
+        harmonics: be.drive || 0,
+        "input-gain": 0,
+        "output-gain": 0,
+        scope: be.freq || 120,
+      },
+      blocklist: [],
+      "equalizer#0": {
+        balance: 0,
+        bypass: false,
+        "input-gain": preset.eq?.input_gain || 0,
+        left,
+        mode: preset.eq?.mode || "IIR",
+        "num-bands": bands.length,
+        "output-gain": preset.eq?.output_gain || 0,
+        right,
+      },
+      plugins_order: ["equalizer#0", "bass_enhancer#0"],
+    },
+  };
+}
+
+function applyPresetToState(preset) {
+  // Map EQ bands (may differ in count from our 16)
+  const bands = preset.eq?.bands || [];
+  for (let i = 0; i < 16; i++) {
+    if (i < bands.length) {
+      state.eq.bands[i] = { ...DEFAULT_BANDS[i], ...bands[i] };
+    } else {
+      state.eq.bands[i] = { ...DEFAULT_BANDS[i] };
+    }
+  }
+
+  const modeMap = { IIR: 0, FIR: 1, FFT: 2, SPM: 3 };
+  state.eq.mode = modeMap[preset.eq?.mode] ?? 0;
+  state.eq.input_gain = preset.eq?.input_gain ?? 0;
+  state.eq.output_gain = preset.eq?.output_gain ?? 0;
+
+  if (preset.limiter) Object.assign(state.limiter, preset.limiter);
+  if (preset.bass_enhancer) Object.assign(state.bass, preset.bass_enhancer);
+}
+
+// ─── Canvas ──────────────────────────────────────
+function drawCurve() {
+  if (!canvas || !ctx) return;
+  const dpr = devicePixelRatio || 1;
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * dpr;
+  canvas.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = r.width, h = r.height, mid = h / 2;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = "rgba(237,234,227,.03)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 5; i++) {
+    ctx.beginPath(); ctx.moveTo(0, (h / 5) * i); ctx.lineTo(w, (h / 5) * i); ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(237,234,227,.07)";
+  ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+
+  // Points from bands
+  const pts = state.eq.bands.map((b, i) => [
+    (i / (state.eq.bands.length - 1)) * w,
+    mid - (b.gain_db / DB_RANGE) * (h / 2) * 0.85,
+  ]);
+
+  // Catmull-Rom spline
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(i + 2, pts.length - 1)];
+    ctx.bezierCurveTo(
+      p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
+      p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6,
+      p2[0], p2[1]
+    );
+  }
+
+  // Fill
+  const path = new Path2D();
+  path.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+    path.bezierCurveTo(
+      p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
+      p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6,
+      p2[0], p2[1]
+    );
+  }
+  path.lineTo(w, mid); path.lineTo(0, mid); path.closePath();
+  ctx.fillStyle = "rgba(198,99,61,.06)";
+  ctx.fill(path);
+  ctx.strokeStyle = "rgba(198,99,61,.6)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Dots
+  pts.forEach(([x, y], i) => {
+    const active = state.eq.bands[i].gain_db !== 0;
+    ctx.beginPath();
+    ctx.arc(x, y, active ? 3.5 : 2, 0, Math.PI * 2);
+    ctx.fillStyle = i === activeBand
+      ? "rgba(198,99,61,1)"
+      : active ? "rgba(198,99,61,.7)" : "rgba(142,138,130,.3)";
+    ctx.fill();
+  });
+}
+
+// ─── Render ──────────────────────────────────────
+export function render() {
+  const view = document.createElement("article");
+  view.className = "view";
+
+  const MODE_NAMES = ["IIR", "FIR", "FFT", "SPM"];
+
+  const fadersHtml = state.eq.bands.map((b, i) => {
+    const pct = Math.abs(b.gain_db) / DB_RANGE * 50;
+    const thumbPos = 50 + (b.gain_db / DB_RANGE) * 50;
+    const fillCls = b.gain_db >= 0 ? "sig-f-fill sig-f-up" : "sig-f-fill sig-f-dn";
+    const act = i === activeBand ? " sig-fader--active" : "";
+    return `<div class="sig-fader${act}" data-band="${i}">
+      <span class="sig-f-hz">${fmtHz(b.freq)}</span>
+      <div class="sig-f-track">
+        <div class="sig-f-zero"></div>
+        ${b.gain_db !== 0 ? `<div class="${fillCls}" style="height:${pct}%"></div>` : ""}
+        <div class="sig-f-thumb" style="bottom:${thumbPos}%"></div>
+      </div>
+      <span class="sig-f-val">${fmtDb(b.gain_db)}</span>
+    </div>`;
+  }).join("");
+
+  const presets = loadPresets();
+  const activePreset = getActivePresetName();
+  const presetChips = presets.map((p) =>
+    `<span class="sig-pre${p.name === activePreset ? " sig-pre--on" : ""}" data-preset="${p.name}">${p.name}</span>`
+  ).join("");
+
+  const limiterKnobs = [
+    { key: "threshold", label: "Threshold", min: -60, max: 0, val: state.limiter.threshold },
+    { key: "knee", label: "Knee", min: 0, max: 12, val: state.limiter.knee },
+    { key: "lookahead", label: "Lookahead", min: 0, max: 20, val: state.limiter.lookahead },
+    { key: "boost", label: "Boost", min: 0, max: 12, val: state.limiter.boost },
+  ].map((k) => `<div class="sig-knob">
+    <div class="sig-kr">${knobSvg(k.val, k.min, k.max)}<span class="sig-k-num">${k.val}</span></div>
+    <span class="sig-k-lbl">${k.label}</span>
+  </div>`).join("");
+
+  const bassKnobs = [
+    { key: "amount", label: "Amount", min: 0, max: 10, val: state.bass.amount },
+    { key: "drive", label: "Drive", min: 0, max: 10, val: state.bass.drive },
+    { key: "blend", label: "Blend", min: -10, max: 10, val: state.bass.blend },
+    { key: "freq", label: "Freq", min: 10, max: 250, val: state.bass.freq },
+    { key: "floor", label: "Floor", min: 10, max: 120, val: state.bass.floor },
+  ].map((k) => `<div class="sig-knob">
+    <div class="sig-kr">${knobSvg(k.val, k.min, k.max)}<span class="sig-k-num">${k.val}</span></div>
+    <span class="sig-k-lbl">${k.label}</span>
+  </div>`).join("");
+
+  view.innerHTML = `
+    <header class="view__header">
+      <h1 class="view__title">Signal</h1>
+      <div class="view__stats"><span class="view__stats-item">DSP Chain</span></div>
+      <div class="sig-master">
+        <span class="sig-master-lbl">Master</span>
+        <div class="sig-tog${state.bypass ? "" : " sig-tog--on"}" id="sig-bypass"></div>
+      </div>
+    </header>
+
+    <div class="sig-chain">
+      <span class="sig-ch-n">Source</span><span class="sig-ch-a">→</span>
+      <span class="sig-ch-n">Decode</span><span class="sig-ch-a">→</span>
+      <span class="sig-ch-n sig-ch-n--on">Parametric EQ</span><span class="sig-ch-a">→</span>
+      <span class="sig-ch-n sig-ch-n--on">Limiter</span><span class="sig-ch-a">→</span>
+      <span class="sig-ch-n sig-ch-n--on">Bass Enhance</span><span class="sig-ch-a">→</span>
+      <span class="sig-ch-n">PipeWire</span>
+    </div>
+
+    <div class="sig-presets" id="sig-presets">
+      <span class="sig-pre sig-pre--on" data-preset="Flat">Flat</span>
+      ${presetChips}
+      <button class="sig-pre-btn" id="sig-save" title="Save current as preset">Save</button>
+      <button class="sig-pre-btn" id="sig-import" title="Import EasyEffects preset">Import</button>
+      <button class="sig-pre-btn" id="sig-export" title="Export as EasyEffects preset">Export</button>
+    </div>
+
+    <div class="sig-sec">
+      <div class="sig-sec-h">
+        <span class="sig-sec-t">Parametric Equalizer</span>
+        <span class="sig-sec-badge">LSP x16 Stereo</span>
+        <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-eq-tog"></div>
+      </div>
+      <div class="sig-sec-b">
+        <div class="sig-eq-wrap"><canvas id="sig-canvas"></canvas>
+          <div class="sig-eq-yaxis"><span>+12</span><span>+6</span><span>0</span><span>−6</span><span>−12</span></div>
+        </div>
+        <div class="sig-eq-xaxis"><span>20</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span></div>
+        <div class="sig-faders" id="sig-faders">${fadersHtml}</div>
+        <div class="sig-eq-foot">
+          <div>
+            <div class="sig-foot-lbl">Mode</div>
+            <div class="sig-modes" id="sig-modes">
+              ${MODE_NAMES.map((m, i) => `<button class="sig-md${i === state.eq.mode ? " sig-md--on" : ""}" data-mode="${i}">${m}</button>`).join("")}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sig-sec">
+      <div class="sig-sec-h">
+        <span class="sig-sec-t">Limiter</span>
+        <span class="sig-sec-badge">LSP Stereo</span>
+        <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-lim-tog"></div>
+      </div>
+      <div class="sig-sec-b sig-sec-b--row">
+        <div class="sig-knobs">${limiterKnobs}</div>
+        <div class="sig-extras">
+          <div class="sig-ext-row">
+            <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-alr-tog"></div>
+            <span>ALR</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sig-sec">
+      <div class="sig-sec-h">
+        <span class="sig-sec-t">Bass Enhancer</span>
+        <span class="sig-sec-badge">Calf</span>
+        <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-bass-tog"></div>
+      </div>
+      <div class="sig-sec-b sig-sec-b--row">
+        <div class="sig-knobs">${bassKnobs}</div>
+      </div>
+    </div>
+  `;
+
+  // ─── Bind events ───────────────────────────────
+  requestAnimationFrame(() => {
+    canvas = view.querySelector("#sig-canvas");
+    ctx = canvas?.getContext("2d");
+    drawCurve();
+    window.addEventListener("resize", drawCurve);
+  });
+
+  // Master bypass
+  view.querySelector("#sig-bypass")?.addEventListener("click", (e) => {
+    state.bypass = !state.bypass;
+    e.currentTarget.classList.toggle("sig-tog--on", !state.bypass);
+    invoke("dsp_set_bypass", { bypass: state.bypass }).catch(console.error);
+  });
+
+  // EQ fader drag
+  const fadersEl = view.querySelector("#sig-faders");
+  fadersEl?.addEventListener("mousedown", (e) => {
+    const thumb = e.target.closest(".sig-f-thumb");
+    const fader = e.target.closest(".sig-fader");
+    if (!fader) return;
+
+    const band = parseInt(fader.dataset.band);
+    activeBand = band;
+    fadersEl.querySelectorAll(".sig-fader").forEach((f) => f.classList.remove("sig-fader--active"));
+    fader.classList.add("sig-fader--active");
+
+    if (!thumb) { drawCurve(); return; }
+
+    const track = fader.querySelector(".sig-f-track");
+    const trackRect = track.getBoundingClientRect();
+
+    const onMove = (ev) => {
+      const relY = 1 - (ev.clientY - trackRect.top) / trackRect.height;
+      const db = Math.round(((relY - 0.5) * 2 * DB_RANGE) * 10) / 10;
+      const clamped = Math.max(-DB_RANGE, Math.min(DB_RANGE, db));
+      state.eq.bands[band].gain_db = clamped;
+      updateFader(fader, band);
+      drawCurve();
+      ipcDebounced("dsp_set_eq_band", {
+        band, freq: state.eq.bands[band].freq, gainDb: clamped, q: state.eq.bands[band].q,
+      });
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
+  // Mode selector
+  view.querySelector("#sig-modes")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".sig-md");
+    if (!btn) return;
+    const mode = parseInt(btn.dataset.mode);
+    state.eq.mode = mode;
+    view.querySelectorAll(".sig-md").forEach((b) => b.classList.remove("sig-md--on"));
+    btn.classList.add("sig-md--on");
+    invoke("dsp_set_eq_mode", { mode }).catch(console.error);
+  });
+
+  // Preset selection
+  view.querySelector("#sig-presets")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".sig-pre");
+    if (!chip) return;
+    const name = chip.dataset.preset;
+    view.querySelectorAll(".sig-pre").forEach((c) => c.classList.remove("sig-pre--on"));
+    chip.classList.add("sig-pre--on");
+
+    if (name === "Flat") {
+      state = defaultState();
+      setActivePresetName("Flat");
+    } else {
+      const presets = loadPresets();
+      const p = presets.find((x) => x.name === name);
+      if (p) {
+        applyPresetToState(p);
+        setActivePresetName(name);
+      }
+    }
+    applyFullState();
+    rerender(view);
+  });
+
+  // Save
+  view.querySelector("#sig-save")?.addEventListener("click", async () => {
+    const name = prompt("Preset name:");
+    if (!name) return;
+    const presets = loadPresets();
+    const existing = presets.findIndex((p) => p.name === name);
+    const preset = {
+      name,
+      eq: JSON.parse(JSON.stringify(state.eq)),
+      limiter: { ...state.limiter },
+      bass_enhancer: { ...state.bass },
+    };
+    if (existing >= 0) presets[existing] = preset;
+    else presets.push(preset);
+    savePresets(presets);
+    setActivePresetName(name);
+    rerender(view);
+  });
+
+  // Import
+  view.querySelector("#sig-import")?.addEventListener("click", async () => {
+    try {
+      const { open } = window.__TAURI__.dialog;
+      const path = await open({
+        filters: [{ name: "EasyEffects Preset", extensions: ["json"] }],
+        defaultPath: "~/.config/easyeffects/output",
+      });
+      if (!path) return;
+      const { readTextFile } = window.__TAURI__.fs;
+      const text = await readTextFile(path);
+      const json = JSON.parse(text);
+      const fileName = path.split("/").pop().replace(".json", "");
+      const preset = parseEasyEffects(json, fileName);
+      const presets = loadPresets();
+      const existing = presets.findIndex((p) => p.name === preset.name);
+      if (existing >= 0) presets[existing] = preset;
+      else presets.push(preset);
+      savePresets(presets);
+      applyPresetToState(preset);
+      setActivePresetName(preset.name);
+      applyFullState();
+      rerender(view);
+    } catch (e) {
+      console.error("[signal] import failed:", e);
+    }
+  });
+
+  // Export
+  view.querySelector("#sig-export")?.addEventListener("click", async () => {
+    try {
+      const { save } = window.__TAURI__.dialog;
+      const path = await save({
+        filters: [{ name: "EasyEffects Preset", extensions: ["json"] }],
+        defaultPath: `${getActivePresetName() || "rustify-preset"}.json`,
+      });
+      if (!path) return;
+      const eePreset = toEasyEffects({
+        name: getActivePresetName(),
+        eq: state.eq,
+        limiter: state.limiter,
+        bass_enhancer: state.bass,
+      });
+      const { writeTextFile } = window.__TAURI__.fs;
+      await writeTextFile(path, JSON.stringify(eePreset, null, 4));
+    } catch (e) {
+      console.error("[signal] export failed:", e);
+    }
+  });
+
+  return view;
+}
+
+function updateFader(el, band) {
+  const b = state.eq.bands[band];
+  const pct = Math.abs(b.gain_db) / DB_RANGE * 50;
+  const thumbPos = 50 + (b.gain_db / DB_RANGE) * 50;
+
+  const track = el.querySelector(".sig-f-track");
+  // Remove old fill
+  track.querySelectorAll(".sig-f-fill").forEach((f) => f.remove());
+
+  if (b.gain_db !== 0) {
+    const fill = document.createElement("div");
+    fill.className = b.gain_db > 0 ? "sig-f-fill sig-f-up" : "sig-f-fill sig-f-dn";
+    fill.style.height = `${pct}%`;
+    track.appendChild(fill);
+  }
+
+  const thumb = track.querySelector(".sig-f-thumb");
+  thumb.style.bottom = `${thumbPos}%`;
+
+  el.querySelector(".sig-f-val").textContent = fmtDb(b.gain_db);
+}
+
+function rerender(view) {
+  const parent = view.parentElement;
+  if (parent) {
+    const newView = render();
+    parent.replaceChildren(newView);
+  }
+}

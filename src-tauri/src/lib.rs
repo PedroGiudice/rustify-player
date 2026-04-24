@@ -356,6 +356,180 @@ fn player_set_volume(player: State<Player>, volume: f32) -> Result<(), String> {
     handle.send(EngineCommand::SetVolume(volume)).map_err(err)
 }
 
+// ---------------------------------------------------------------------------
+// DSP commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn dsp_set_eq_band(
+    player: State<Player>,
+    band: u8,
+    freq: f32,
+    gain_db: f32,
+    q: f32,
+) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqBand { band, freq, gain_db, q })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_eq_filter_type(
+    player: State<Player>,
+    band: u8,
+    filter_type: i32,
+) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqFilterType { band, filter_type })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_eq_mode(player: State<Player>, mode: i32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle.send(EngineCommand::DspSetEqMode(mode)).map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_eq_gain(player: State<Player>, input: f32, output: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqGain { input, output })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_threshold(player: State<Player>, threshold_db: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterThreshold(threshold_db))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_knee(player: State<Player>, knee: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterKnee(knee))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_lookahead(player: State<Player>, lookahead: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterLookahead(lookahead))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_mode(player: State<Player>, mode: i32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterMode(mode))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_gain(player: State<Player>, input: f32, output: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterGain { input, output })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_boost(player: State<Player>, boost: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterBoost(boost))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_amount(player: State<Player>, amount: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassAmount(amount))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_drive(player: State<Player>, drive: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassDrive(drive))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_blend(player: State<Player>, blend: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassBlend(blend))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_freq(player: State<Player>, freq: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassFreq(freq))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_floor(player: State<Player>, floor: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassFloor(floor))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_bypass(player: State<Player>, bypass: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassBypass(bypass))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_levels(player: State<Player>, input: f32, output: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassLevels { input, output })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bypass(player: State<Player>, bypass: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBypass(bypass))
+        .map_err(err)
+}
+
 #[tauri::command]
 fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
@@ -896,6 +1070,24 @@ pub fn run() {
             player_seek,
             player_set_volume,
             player_enqueue_next,
+            dsp_set_eq_band,
+            dsp_set_eq_filter_type,
+            dsp_set_eq_mode,
+            dsp_set_eq_gain,
+            dsp_set_limiter_threshold,
+            dsp_set_limiter_knee,
+            dsp_set_limiter_lookahead,
+            dsp_set_limiter_mode,
+            dsp_set_limiter_gain,
+            dsp_set_limiter_boost,
+            dsp_set_bass_amount,
+            dsp_set_bass_drive,
+            dsp_set_bass_blend,
+            dsp_set_bass_freq,
+            dsp_set_bass_floor,
+            dsp_set_bass_bypass,
+            dsp_set_bass_levels,
+            dsp_set_bypass,
             get_state,
             ee_list_presets,
             ee_get_current_preset,

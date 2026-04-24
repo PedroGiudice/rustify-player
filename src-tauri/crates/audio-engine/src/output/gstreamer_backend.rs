@@ -13,12 +13,14 @@ use gstreamer::prelude::*;
 use gstreamer_play as gst_play;
 
 use crate::error::OutputError;
+use super::dsp::DspFilterBin;
 
 pub(crate) struct GstreamerPlayer {
     player: gst_play::Play,
     adapter: gst_play::PlaySignalAdapter,
     position_samples: Arc<AtomicU64>,
     sample_rate: u32,
+    pub(crate) dsp: Option<DspFilterBin>,
 }
 
 impl GstreamerPlayer {
@@ -31,11 +33,32 @@ impl GstreamerPlayer {
         // Audio-only: disable video.
         player.set_video_track_enabled(false);
 
+        // Build the DSP filter bin and attach to playbin's audio-filter.
+        let dsp = match DspFilterBin::try_new() {
+            Ok(Some(dsp_bin)) => {
+                // gst_play::Play wraps a playbin internally. Access it via
+                // the pipeline property to set the audio-filter.
+                let pipeline = player.pipeline();
+                pipeline.set_property("audio-filter", &dsp_bin.bin);
+                tracing::info!("DSP filter bin attached to playbin audio-filter");
+                Some(dsp_bin)
+            }
+            Ok(None) => {
+                tracing::info!("DSP plugins not available; running without DSP");
+                None
+            }
+            Err(e) => {
+                tracing::warn!(?e, "failed to create DSP filter bin; running without DSP");
+                None
+            }
+        };
+
         Ok(Self {
             player,
             adapter,
             position_samples: Arc::new(AtomicU64::new(0)),
             sample_rate: 44100,
+            dsp,
         })
     }
 

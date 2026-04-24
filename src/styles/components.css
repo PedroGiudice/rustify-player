@@ -1664,3 +1664,186 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .nav-back[hidden] {
   display: none;
 }
+
+/* ========================================================================
+ * SIGNAL — DSP chain view (EQ, Limiter, Bass Enhancer)
+ * Softer radius (8px) overrides the global 0px for this view.
+ * ====================================================================== */
+
+.sig-master {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sig-master-lbl {
+  font-size: var(--text-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--on-surface-variant);
+}
+
+/* Toggle */
+.sig-tog {
+  width: 36px; height: 19px; border-radius: 10px;
+  background: var(--surface-container-highest);
+  cursor: pointer; position: relative;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.sig-tog--on { background: var(--primary); }
+.sig-tog::after {
+  content: ''; position: absolute;
+  width: 13px; height: 13px; border-radius: 50%;
+  top: 3px; left: 3px;
+  background: var(--on-surface-variant);
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+.sig-tog--on::after { transform: translateX(17px); background: var(--surface-lowest); }
+.sig-tog--sm { width: 30px; height: 16px; }
+.sig-tog--sm::after { width: 10px; height: 10px; }
+.sig-tog--sm.sig-tog--on::after { transform: translateX(14px); }
+
+/* Signal chain */
+.sig-chain {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 22px;
+}
+.sig-ch-n {
+  font-size: var(--text-label-md); font-weight: var(--fw-medium);
+  color: var(--on-surface-mute); padding: 4px 12px;
+  border-radius: 6px; background: var(--surface-container-low);
+}
+.sig-ch-n--on { color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.sig-ch-a { color: var(--on-surface-mute); font-size: var(--text-label-sm); opacity: 0.5; }
+
+/* Presets */
+.sig-presets { display: flex; align-items: center; gap: 6px; margin-bottom: 28px; flex-wrap: wrap; }
+.sig-pre {
+  font-size: var(--text-body-sm); font-weight: var(--fw-medium);
+  color: var(--on-surface-variant); padding: 5px 14px;
+  border-radius: 6px; background: var(--surface-container-low);
+  border: 1px solid transparent; cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-standard);
+}
+.sig-pre:hover { border-color: var(--divider-hi); color: var(--on-surface); }
+.sig-pre--on { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.sig-pre-btn {
+  font-size: var(--text-label-md); font-weight: var(--fw-medium);
+  color: var(--on-surface-mute); padding: 4px 10px;
+  border-radius: 6px; background: transparent;
+  border: 1px solid var(--divider); cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-standard);
+}
+.sig-pre-btn:hover { border-color: var(--on-surface-mute); color: var(--on-surface-variant); }
+
+/* Section card */
+.sig-sec {
+  background: var(--surface-container-low);
+  border: 1px solid var(--divider);
+  border-radius: 8px; margin-bottom: 16px; overflow: hidden;
+}
+.sig-sec-h {
+  display: flex; align-items: center; padding: 10px 20px;
+  border-bottom: 1px solid var(--divider); gap: 12px;
+}
+.sig-sec-t { font-size: var(--text-body-lg); font-weight: var(--fw-bold); flex: 1; }
+.sig-sec-badge { font-size: var(--text-label-sm); color: var(--on-surface-mute); }
+.sig-sec-b { padding: 20px; }
+.sig-sec-b--row { display: flex; gap: 16px; align-items: flex-start; }
+
+/* EQ canvas */
+.sig-eq-wrap {
+  position: relative; height: 170px;
+  background: rgba(0,0,0,.15); border-radius: 6px; overflow: hidden;
+}
+.sig-eq-wrap canvas { width: 100%; height: 100%; display: block; }
+.sig-eq-yaxis {
+  position: absolute; top: 0; left: 0; height: 100%;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 6px 8px; pointer-events: none;
+  font-size: 9px; color: var(--on-surface-mute);
+}
+.sig-eq-xaxis {
+  display: flex; justify-content: space-between;
+  padding: 3px 8px; font-size: 9px; color: var(--on-surface-mute);
+}
+
+/* Fader strip */
+.sig-faders {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 20px 8px 0; gap: 0;
+}
+.sig-fader {
+  display: flex; flex-direction: column; align-items: center;
+  flex: 1; min-width: 0; padding: 0 2px; cursor: pointer;
+}
+.sig-fader:hover .sig-f-track { background: var(--surface-container-high); }
+.sig-fader--active .sig-f-val { color: var(--primary); }
+.sig-fader--active .sig-f-thumb { background: var(--primary); box-shadow: 0 0 8px rgba(198,99,61,.4); }
+
+.sig-f-hz {
+  font-size: var(--text-label-sm); color: var(--on-surface-mute);
+  font-weight: var(--fw-medium); margin-bottom: 8px; white-space: nowrap;
+}
+.sig-f-track {
+  width: 4px; height: 110px; border-radius: 2px;
+  background: var(--surface-container-highest); position: relative;
+  transition: background var(--dur-fast);
+}
+.sig-f-zero {
+  position: absolute; top: 50%; left: -4px; right: -4px;
+  height: 1px; background: var(--on-surface-mute); opacity: .2;
+}
+.sig-f-fill {
+  position: absolute; width: 100%; border-radius: 2px; background: var(--primary); opacity: .7;
+}
+.sig-f-up { bottom: 50%; }
+.sig-f-dn { top: 50%; background: var(--sig-warn); opacity: .6; }
+.sig-f-thumb {
+  position: absolute; left: 50%; transform: translate(-50%, -50%);
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--on-surface); cursor: grab;
+  transition: box-shadow var(--dur-fast);
+}
+.sig-f-thumb:hover { box-shadow: 0 0 6px rgba(237,234,227,.25); }
+.sig-f-val {
+  font-size: var(--text-label-sm); color: var(--on-surface-mute);
+  margin-top: 8px; font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+/* EQ foot */
+.sig-eq-foot {
+  display: flex; align-items: center; gap: 28px;
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--divider);
+}
+.sig-foot-lbl { font-size: var(--text-label-md); color: var(--on-surface-mute); font-weight: var(--fw-medium); margin-bottom: 5px; }
+.sig-modes { display: flex; border-radius: 6px; overflow: hidden; }
+.sig-md {
+  font-size: var(--text-label-md); font-weight: var(--fw-medium);
+  padding: 4px 13px; background: var(--surface-container-high); color: var(--on-surface-mute);
+  border: none; cursor: pointer; transition: all var(--dur-fast) var(--ease-standard);
+}
+.sig-md + .sig-md { border-left: 1px solid var(--divider); }
+.sig-md:hover { color: var(--on-surface-variant); }
+.sig-md--on { background: var(--primary); color: var(--surface-lowest); }
+
+/* Knobs */
+.sig-knobs { display: flex; gap: 28px; flex-wrap: wrap; }
+.sig-knob { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.sig-kr { width: 50px; height: 50px; position: relative; }
+.sig-kr svg { width: 100%; height: 100%; }
+.sig-k-bg { fill: none; stroke: var(--surface-container-highest); stroke-width: 2.5; stroke-linecap: round; }
+.sig-k-val { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linecap: round; }
+.sig-k-num {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-label-md); font-weight: var(--fw-medium); color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+.sig-k-lbl { font-size: var(--text-label-md); color: var(--on-surface-mute); font-weight: var(--fw-medium); }
+
+/* Extras (ALR toggle, meters) */
+.sig-extras { display: flex; flex-direction: column; gap: 8px; margin-left: 8px; justify-content: center; }
+.sig-ext-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--text-label-md); color: var(--on-surface-mute); font-weight: var(--fw-medium);
+}

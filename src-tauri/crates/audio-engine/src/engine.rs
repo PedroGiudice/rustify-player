@@ -154,6 +154,99 @@ impl EngineState {
             Command::ClearQueue => {
                 self.next_path = None;
             }
+
+            // -- DSP commands -------------------------------------------------
+            Command::DspSetEqBand { band, freq, gain_db, q } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_band(band, freq, gain_db, q);
+                }
+            }
+            Command::DspSetEqFilterType { band, filter_type } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_filter_type(band, filter_type);
+                }
+            }
+            Command::DspSetEqMode(mode) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_mode(mode);
+                }
+            }
+            Command::DspSetEqGain { input, output } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_gain(input, output);
+                }
+            }
+            Command::DspSetLimiterThreshold(th) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_threshold(th);
+                }
+            }
+            Command::DspSetLimiterKnee(knee) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_knee(knee);
+                }
+            }
+            Command::DspSetLimiterLookahead(lk) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_lookahead(lk);
+                }
+            }
+            Command::DspSetLimiterMode(mode) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_mode(mode);
+                }
+            }
+            Command::DspSetLimiterGain { input, output } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_gain(input, output);
+                }
+            }
+            Command::DspSetLimiterBoost(boost) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_boost(boost);
+                }
+            }
+            Command::DspSetBassAmount(amount) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_amount(amount);
+                }
+            }
+            Command::DspSetBassDrive(drive) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_drive(drive);
+                }
+            }
+            Command::DspSetBassBlend(blend) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_blend(blend);
+                }
+            }
+            Command::DspSetBassFreq(freq) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_freq(freq);
+                }
+            }
+            Command::DspSetBassFloor(floor) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_floor(floor);
+                }
+            }
+            Command::DspSetBassBypass(bypass) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_bypass(bypass);
+                }
+            }
+            Command::DspSetBassLevels { input, output } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_levels(input, output);
+                }
+            }
+            Command::DspSetBypass(bypass) => {
+                if let Some(dsp) = &mut self.player.dsp {
+                    dsp.set_bypassed(bypass);
+                }
+            }
+
             Command::Shutdown => {}
         }
     }

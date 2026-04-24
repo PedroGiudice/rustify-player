@@ -15,6 +15,7 @@ const routes = {
   "/playlists":  () => import("./views/playlists.js"),
   "/queue":      () => import("./views/queue.js"),
   "/now-playing": () => import("./views/now-playing.js"),
+  "/signal":     () => import("./views/signal.js"),
   "/settings":   () => import("./views/settings.js"),
 };
 

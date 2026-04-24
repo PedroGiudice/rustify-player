@@ -14,6 +14,7 @@ const NAV_ITEMS = [
 
 const FOOTER_ITEMS = [
   { route: "/now-playing", icon: "music-note", label: "Now Playing" },
+  { route: "/signal",      icon: "sliders",    label: "Signal" },
   { route: "/settings",    icon: "settings",   label: "Settings" },
 ];
 
