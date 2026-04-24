@@ -1,7 +1,7 @@
 [package]
 name = "audio-engine"
 version = "0.1.0"
-description = "Audio decoding and playback engine for rustify-player (FLAC + native PipeWire)"
+description = "Audio decoding and playback engine for rustify-player (GStreamer backend)"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -11,18 +11,16 @@ name = "audio_engine"
 path = "src/lib.rs"
 
 [dependencies]
+gstreamer = { workspace = true }
+gstreamer-play = { workspace = true }
+gstreamer-audio = { workspace = true }
 symphonia = { workspace = true }
-pipewire = { workspace = true }
-libspa = { workspace = true }
-rtrb = { workspace = true }
 crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-thread-priority = "1.2"
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
-# Used by integration tests and examples.
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 

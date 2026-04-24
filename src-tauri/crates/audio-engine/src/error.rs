@@ -3,8 +3,6 @@
 use std::path::PathBuf;
 use thiserror::Error;
 
-/// Top-level engine error. All public functions on [`crate::Engine`]/[`crate::EngineHandle`]
-/// return this type (or the engine emits it as a [`crate::StateUpdate::Error`]).
 #[derive(Debug, Error)]
 pub enum EngineError {
     #[error("failed to open file: {path}")]
@@ -36,7 +34,6 @@ impl From<symphonia::core::errors::Error> for EngineError {
     }
 }
 
-/// Errors raised by the output backend trait implementations.
 #[derive(Debug, Error)]
 pub enum OutputError {
     #[error("no output devices available")]
@@ -48,26 +45,16 @@ pub enum OutputError {
     #[error("requested format not supported by device: {detail}")]
     FormatNotSupported { detail: String },
 
-    #[error(
-        "downmix not allowed in bit-perfect mode ({source_channels}ch -> {target_channels}ch)"
-    )]
-    DownmixNotAllowed {
-        source_channels: u16,
-        target_channels: u16,
-    },
-
     #[error("device disconnected")]
     Disconnected,
 
-    #[error("pipewire stream error: {0}")]
-    PipewireStream(String),
+    #[error("GStreamer error: {0}")]
+    GstreamerError(String),
 
-    #[error("pipewire init error: {0}")]
+    // Keep for compatibility with existing code that uses this variant.
+    #[error("init error: {0}")]
     PipewireInit(String),
-}
 
-impl From<pipewire::Error> for OutputError {
-    fn from(err: pipewire::Error) -> Self {
-        OutputError::PipewireInit(err.to_string())
-    }
+    #[error("stream error: {0}")]
+    PipewireStream(String),
 }

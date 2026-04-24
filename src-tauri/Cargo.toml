@@ -15,6 +15,9 @@ pipewire = "0.9"
 libspa = "0.9"
 rtrb = "0.3"
 crossbeam-channel = "0.5"
+gstreamer = { version = "0.25", features = ["v1_20"] }
+gstreamer-play = { version = "0.25", features = ["v1_22"] }
+gstreamer-audio = "0.25"
 
 # Foundational
 thiserror = "2"

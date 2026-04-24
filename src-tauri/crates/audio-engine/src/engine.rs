@@ -1,25 +1,9 @@
-//! Engine thread: main loop, state machine, and coordination between the
-//! decoder, the output backend, and the consumer (UI or CLI).
+//! Engine thread: state machine driven by GStreamer Play.
 //!
-//! Responsibilities:
-//!
-//! - Own `current_decoder` and `next_decoder`.
-//! - Pump decoded samples into the ring buffer owned by the active output
-//!   stream (the callback thread drains it).
-//! - Apply per-chunk transformations: channel remap (mono upmix only) and
-//!   optional volume scaling.
-//! - React to `Command`s from the consumer, and emit `StateUpdate`s back.
-//! - Detect end-of-stream and either perform a gapless swap (same format)
-//!   or stop (different format / no next decoder).
-//!
-//! First-iteration notes:
-//!
-//! - Scheduled events (defer `TrackStarted` by the ring-buffer fill) are not
-//!   yet implemented; we emit immediately. The UI will be a few hundred
-//!   milliseconds ahead of the DAC on track boundaries. Acceptable for v1.
-//! - Format-change drain (mid-track reconfigure of the output stream) is not yet
-//!   implemented; same-format gapless swap only. Different-format next
-//!   tracks are handled by stopping and re-configuring from the top.
+//! GStreamer handles decode, resampling, volume, and output. The engine
+//! thread processes commands from the consumer (UI/CLI) and translates
+//! them into GStreamer Play API calls. Position updates and state
+//! changes come from GStreamer signals via PlaySignalAdapter.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,29 +13,16 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{select, tick, Receiver, Sender};
 
-use crate::decoder::FlacDecoder;
-use crate::error::{EngineError, OutputError};
-use crate::output::{ActiveStream, AudioOutput, PipewireBackend};
-use crate::position::EventScheduler;
-use crate::queue::{spawn_prepare, PrepareTarget, PreparedDecoder, PreparedMessage};
+use crate::error::EngineError;
+use crate::output::GstreamerPlayer;
 use crate::types::{
-    Command, EngineMetrics, PlaybackState, PositionUpdate, StateUpdate, StreamFormat, TrackHandle,
-    TrackInfo,
+    Command, EngineMetrics, PlaybackState, PositionUpdate, StateUpdate, TrackHandle, TrackInfo,
 };
 use crate::EngineHandle;
 
-/// How often the engine loop wakes up to pump samples and evaluate state.
-const PUMP_INTERVAL: Duration = Duration::from_millis(5);
-
-/// How often we emit a `PositionUpdate` to the consumer (approximate).
 const POSITION_INTERVAL: Duration = Duration::from_millis(100);
+const TICK_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Intermediate scratch buffer size per iteration (samples, not frames).
-/// 4096 f32s = 16 KB; fits L1 on any modern CPU.
-const DECODE_SCRATCH: usize = 8192;
-
-/// Counters shared with the output backend (xruns) and exposed to the
-/// consumer via `EngineHandle::metrics`.
 pub(crate) struct SharedMetrics {
     pub xrun_count: AtomicU64,
     pub decoded_samples_total: AtomicU64,
@@ -76,100 +47,61 @@ impl SharedMetrics {
     }
 }
 
-/// Full engine state. Lives on the engine thread; never shared.
 struct EngineState {
-    // Output backend (PipeWire AUTOCONNECT, no device picker).
-    output: Box<dyn AudioOutput>,
-    active_stream: Option<ActiveStream>,
-
-    // Decoders.
-    current: Option<LoadedTrack>,
-    next: Option<LoadedTrack>,
-
-    // Playback state machine.
+    player: GstreamerPlayer,
+    current: Option<CurrentTrack>,
+    next_path: Option<PathBuf>,
     state: PlaybackState,
-    volume: f32,
+    volume: f64,
     next_track_id: u64,
-
-    // Channels.
     state_tx: Sender<StateUpdate>,
-    prepared_tx: Sender<PreparedMessage>,
-
-    // Scratch buffers reused across iterations to avoid allocation.
-    decode_scratch: Vec<f32>,
-    output_scratch: Vec<f32>,
-
-    // Housekeeping.
-    scheduler: EventScheduler,
     metrics: Arc<SharedMetrics>,
     last_position_emit: Instant,
 }
 
-struct LoadedTrack {
-    decoder: FlacDecoder,
+struct CurrentTrack {
     info: TrackInfo,
-    format: StreamFormat,
-    /// Effective per-track linear gain applied before user volume. Guaranteed
-    /// in `(0.0, 1.0]`. See [`compute_track_gain`] for the derivation from
-    /// ReplayGain tags (with a fixed `-3 dB` fallback when tags are absent).
-    effective_gain: f32,
 }
 
-/// Spawn the engine thread and return a clone-able handle.
 pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     let (command_tx, command_rx) = crossbeam_channel::unbounded::<Command>();
     let (state_tx, state_rx) = crossbeam_channel::unbounded::<StateUpdate>();
-    let (prepared_tx, prepared_rx) = crossbeam_channel::unbounded::<PreparedMessage>();
     let metrics = Arc::new(SharedMetrics::new());
 
-    // Publish the initial Idle state right away so consumers that subscribe
-    // before the first command don't sit on an empty channel.
     state_tx
         .send(StateUpdate::StateChanged(PlaybackState::Idle))
         .ok();
 
     let metrics_thread = metrics.clone();
     let state_tx_thread = state_tx.clone();
-    let prepared_tx_thread = prepared_tx.clone();
 
     thread::Builder::new()
         .name("audio-engine".to_string())
         .spawn(move || {
-            // DIAGNOSTIC: SCHED_FIFO temporarily disabled to isolate whether
-            // the realtime scheduling on the pump thread is interacting
-            // poorly with PipeWire's own RT thread. Symptoms: stream delivers
-            // clean samples (telemetry: zero xruns, zero clip, max_abs_period
-            // well below 1.0) but audible crackling persists, with pw-play
-            // through the exact same graph playing cleanly. The pump +
-            // rtrb + SCHED_FIFO combination is the main structural
-            // difference vs pw-play/mpv. If leaving the pump at default
-            // scheduling eliminates crackling, the next step is to
-            // reconsider the SCHED_FIFO priority (50 vs 20) or drop the
-            // policy entirely. Revert this block if the test is
-            // inconclusive — default scheduling raises xrun risk under
-            // heavy CPU load.
-            tracing::info!(
-                "audio-engine thread: default scheduling (SCHED_FIFO diagnostic disabled)"
-            );
+            let player = match GstreamerPlayer::new() {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!(?e, "failed to init GStreamer player");
+                    let _ = state_tx_thread.send(StateUpdate::Error(e.to_string()));
+                    return;
+                }
+            };
+
+            tracing::info!("audio-engine started (GStreamer backend)");
 
             let mut engine = EngineState {
-                output: Box::new(PipewireBackend::new()),
-                active_stream: None,
+                player,
                 current: None,
-                next: None,
+                next_path: None,
                 state: PlaybackState::Idle,
                 volume: 1.0,
                 next_track_id: 1,
                 state_tx: state_tx_thread,
-                prepared_tx: prepared_tx_thread,
-                decode_scratch: Vec::with_capacity(DECODE_SCRATCH),
-                output_scratch: Vec::with_capacity(DECODE_SCRATCH * 2),
-                scheduler: EventScheduler::default(),
                 metrics: metrics_thread,
                 last_position_emit: Instant::now(),
             };
 
-            engine.run(command_rx, prepared_rx);
+            engine.run(command_rx);
         })
         .map_err(|err| EngineError::Decode(format!("failed to spawn engine thread: {err}")))?;
 
@@ -181,44 +113,32 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
 }
 
 impl EngineState {
-    fn run(&mut self, command_rx: Receiver<Command>, prepared_rx: Receiver<PreparedMessage>) {
-        let ticker = tick(PUMP_INTERVAL);
+    fn run(&mut self, command_rx: Receiver<Command>) {
+        let ticker = tick(TICK_INTERVAL);
 
         loop {
             select! {
                 recv(command_rx) -> msg => {
                     match msg {
                         Ok(Command::Shutdown) => {
-                            self.teardown();
-                            tracing::info!("engine shutdown requested");
+                            self.player.stop();
+                            tracing::info!("engine shutdown");
                             return;
                         }
                         Ok(cmd) => self.handle_command(cmd),
                         Err(_) => {
-                            // Consumer dropped all senders; exit cleanly.
-                            self.teardown();
-                            tracing::info!("engine command channel closed; exiting");
+                            self.player.stop();
+                            tracing::info!("engine command channel closed");
                             return;
                         }
                     }
                 }
-                recv(prepared_rx) -> msg => {
-                    if let Ok(prep) = msg {
-                        self.handle_prepared(prep);
-                    }
-                }
                 recv(ticker) -> _ => {
-                    self.pump();
+                    self.tick();
                 }
             }
-
-            self.drain_scheduled();
         }
     }
-
-    // ---------------------------------------------------------------------
-    //  Command handlers
-    // ---------------------------------------------------------------------
 
     fn handle_command(&mut self, cmd: Command) {
         match cmd {
@@ -228,400 +148,144 @@ impl EngineState {
             Command::Stop => self.cmd_stop(),
             Command::Seek(pos) => self.cmd_seek(pos),
             Command::SetVolume(v) => self.cmd_set_volume(v),
-            Command::EnqueueNext(path) => self.cmd_enqueue_next(path),
+            Command::EnqueueNext(path) => {
+                self.next_path = Some(path);
+            }
             Command::ClearQueue => {
-                self.next = None;
+                self.next_path = None;
             }
-            Command::Shutdown => {
-                // Handled in `run` directly so we can `return`.
-            }
+            Command::Shutdown => {}
         }
     }
 
     fn cmd_load(&mut self, path: PathBuf) {
         let handle = self.fresh_handle();
-        self.set_state(PlaybackState::Loading {
-            track: handle,
-            play_on_load: false,
-        });
-        spawn_prepare(
-            path,
-            handle,
-            PrepareTarget::Current,
-            self.prepared_tx.clone(),
-        );
-    }
 
-    fn cmd_enqueue_next(&mut self, path: PathBuf) {
-        let handle = self.fresh_handle();
-        spawn_prepare(path, handle, PrepareTarget::Next, self.prepared_tx.clone());
-    }
-
-    fn cmd_play(&mut self) {
-        // If a Load is in progress (new track prepare pending), defer the
-        // actual Play to install_current by flagging play_on_load. This
-        // handles both: (a) Play on an empty engine after Load, and (b)
-        // track switch mid-playback — Load is dispatched, Play arrives
-        // before prepare finishes, and without this branch the old track
-        // gets a phantom Playing state that install_current later misreads
-        // as "not Loading" and so the new track lands in Paused.
-        if let PlaybackState::Loading { track, .. } = &self.state {
-            self.set_state(PlaybackState::Loading { track: *track, play_on_load: true });
-            return;
-        }
-        if self.current.is_none() {
-            return;
-        }
-        if self.active_stream.is_none() {
-            if let Err(err) = self.reconfigure_stream() {
+        // Extract metadata via symphonia before handing off to GStreamer.
+        let info = match extract_track_info(handle, &path) {
+            Ok(info) => info,
+            Err(err) => {
                 self.emit_error(err);
                 return;
             }
-        }
-        // Uncork the output stream when resuming from pause.
-        if let Some(stream) = &self.active_stream {
-            if let Some(set_cork) = &stream.set_cork {
-                (set_cork)(false);
-            }
-        }
-        let (handle, pos) = match &self.current {
-            Some(t) => (t.info.handle, t.decoder.position_samples()),
-            None => return,
         };
+
+        self.player.set_sample_rate(info.sample_rate);
+        self.player.load(&path);
+        self.player.set_volume(self.volume);
+
+        let _ = self.state_tx.send(StateUpdate::TrackStarted(info.clone()));
+        self.current = Some(CurrentTrack { info });
+        self.set_state(PlaybackState::Paused {
+            track: handle,
+            position_samples: 0,
+        });
+    }
+
+    fn cmd_play(&mut self) {
+        let Some(track) = &self.current else { return };
+        let handle = track.info.handle;
+        self.player.play();
         self.set_state(PlaybackState::Playing {
             track: handle,
-            position_samples: pos,
+            position_samples: self.player.position_samples(),
         });
     }
 
     fn cmd_pause(&mut self) {
-        // Symmetric to cmd_play: if a Load is in progress, the user's Pause
-        // cancels any auto-play intent. Without this, a sequence of
-        // Load → Play → Pause-before-prepare-completes would still
-        // auto-play when install_current fires, ignoring the user's Pause.
-        //
-        // Mid-playback track switch: the old track's stream is still active
-        // while the new track's prepare runs. Cork it here so the user
-        // stops hearing audio immediately; install_current will replace or
-        // reconfigure the stream when it installs the new track.
-        if let PlaybackState::Loading { track, .. } = &self.state {
-            self.set_state(PlaybackState::Loading { track: *track, play_on_load: false });
-            if let Some(stream) = &self.active_stream {
-                if let Some(set_cork) = &stream.set_cork {
-                    (set_cork)(true);
-                }
-            }
-            return;
-        }
-        if let Some(t) = &self.current {
-            // Cork the output stream to stop callbacks and prevent phantom xruns.
-            if let Some(stream) = &self.active_stream {
-                if let Some(set_cork) = &stream.set_cork {
-                    (set_cork)(true);
-                }
-            }
-            let handle = t.info.handle;
-            let pos = t.decoder.position_samples();
-            self.set_state(PlaybackState::Paused {
-                track: handle,
-                position_samples: pos,
-            });
-        }
+        let Some(track) = &self.current else { return };
+        let handle = track.info.handle;
+        self.player.pause();
+        self.set_state(PlaybackState::Paused {
+            track: handle,
+            position_samples: self.player.position_samples(),
+        });
     }
 
     fn cmd_stop(&mut self) {
+        self.player.stop();
         self.current = None;
-        self.next = None;
-        self.active_stream = None;
-        self.output.stop();
-        self.scheduler.clear();
+        self.next_path = None;
         self.set_state(PlaybackState::Stopped);
     }
 
     fn cmd_seek(&mut self, pos: Duration) {
-        let Some(track) = self.current.as_mut() else {
-            return;
-        };
-        let target_samples = (pos.as_secs_f64() * f64::from(track.info.sample_rate)) as u64;
-        if let Err(err) = track.decoder.seek(target_samples) {
-            self.emit_error(err);
-            return;
-        }
-        // Drop the active stream so the next pump reconfigures it. This is
-        // the simplest correct implementation: it guarantees that no stale
-        // samples from before the seek leak to the DAC.
-        self.active_stream = None;
-
-        let handle = track.info.handle;
-        let new_pos = track.decoder.position_samples();
-        match &self.state {
-            PlaybackState::Playing { .. } => {
-                self.set_state(PlaybackState::Playing {
-                    track: handle,
-                    position_samples: new_pos,
-                });
+        self.player.seek(pos);
+        if let Some(track) = &self.current {
+            let handle = track.info.handle;
+            let pos_samples =
+                (pos.as_secs_f64() * f64::from(track.info.sample_rate)) as u64;
+            match &self.state {
+                PlaybackState::Playing { .. } => {
+                    self.set_state(PlaybackState::Playing {
+                        track: handle,
+                        position_samples: pos_samples,
+                    });
+                }
+                PlaybackState::Paused { .. } => {
+                    self.set_state(PlaybackState::Paused {
+                        track: handle,
+                        position_samples: pos_samples,
+                    });
+                }
+                _ => {}
             }
-            PlaybackState::Paused { .. } => {
-                self.set_state(PlaybackState::Paused {
-                    track: handle,
-                    position_samples: new_pos,
-                });
-            }
-            _ => {}
         }
     }
 
     fn cmd_set_volume(&mut self, v: f32) {
-        self.volume = v.clamp(0.0, 1.0);
-        let _ = self.state_tx.send(StateUpdate::VolumeChanged(self.volume));
+        self.volume = f64::from(v).clamp(0.0, 1.0);
+        self.player.set_volume(self.volume);
+        let _ = self
+            .state_tx
+            .send(StateUpdate::VolumeChanged(self.volume as f32));
     }
 
-    fn handle_prepared(&mut self, msg: PreparedMessage) {
-        match (msg.target, msg.result) {
-            (PrepareTarget::Current, Ok(prep)) => {
-                self.install_current(prep);
-            }
-            (PrepareTarget::Next, Ok(prep)) => {
-                let effective_gain = compute_track_gain(&prep.info);
-                self.next = Some(LoadedTrack {
-                    decoder: prep.decoder,
-                    info: prep.info,
-                    format: prep.format,
-                    effective_gain,
-                });
-            }
-            (_, Err(err)) => {
-                self.emit_error(err);
-            }
-        }
-    }
-
-    fn install_current(&mut self, prep: PreparedDecoder) {
-        // Drop the active stream if the new track's format differs (e.g.
-        // switching from 96kHz to 44.1kHz). The next pump() will call
-        // reconfigure_stream() which creates a stream matching the new format.
-        let needs_reconfigure = self
-            .active_stream
-            .as_ref()
-            .is_some_and(|s| !format_matches(&prep.format, &s.actual_format));
-        if needs_reconfigure {
-            self.active_stream = None;
-        }
-
-        let effective_gain = compute_track_gain(&prep.info);
-        self.current = Some(LoadedTrack {
-            decoder: prep.decoder,
-            info: prep.info.clone(),
-            format: prep.format,
-            effective_gain,
-        });
-
-        let handle = prep.info.handle;
-        let _ = self.state_tx.send(StateUpdate::TrackStarted(prep.info));
-
-        let should_play = if let PlaybackState::Loading { play_on_load, .. } = self.state {
-            play_on_load
-        } else {
-            false
-        };
-
-        if should_play {
-            self.set_state(PlaybackState::Playing {
-                track: handle,
-                position_samples: 0,
-            });
-        } else {
-            // Entering Paused preserves the "Load loads but does not play" contract.
-            self.set_state(PlaybackState::Paused {
-                track: handle,
-                position_samples: 0,
-            });
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    //  Pump: decode samples and push to the ring buffer
-    // ---------------------------------------------------------------------
-
-    fn pump(&mut self) {
-        // Emit a position update on a steady cadence independent of whether
-        // we have anything to do. The consumer uses these to drive progress
-        // bars and interpolates with RAF between them.
+    fn tick(&mut self) {
         self.maybe_emit_position();
-
-        let playing = matches!(self.state, PlaybackState::Playing { .. });
-        if !playing {
-            return;
-        }
-        if self.current.is_none() {
-            return;
-        }
-        let mut just_created_stream = false;
-        if self.active_stream.is_none() {
-            if let Err(err) = self.reconfigure_stream() {
-                self.emit_error(err);
-                return;
-            }
-            just_created_stream = true;
-        }
-
-        // Detect disconnect from the output callback thread.
-        if let Some(stream) = &self.active_stream {
-            if !stream.alive.load(Ordering::Acquire) {
-                self.active_stream = None;
-                self.emit_disconnect();
-                return;
-            }
-        }
-
-        // Keep decoding until the ring buffer has no more space for a chunk.
-        // We break out once we can't fit a full `DECODE_SCRATCH` frame; the
-        // tick loop will come back shortly.
-        loop {
-            if !self.can_push_more() {
-                break;
-            }
-            match self.decode_and_push_one() {
-                Ok(ControlFlow::Continue) => continue,
-                Ok(ControlFlow::Stop) => break,
-                Err(err) => {
-                    self.emit_error(err);
-                    break;
-                }
-            }
-        }
-
-        // Uncork AFTER the first decode pass has filled the ring buffer.
-        // The INACTIVE flag prevents PipeWire's process callback from firing
-        // on an empty buffer; we only activate the stream once there is real
-        // audio data to consume.
-        if just_created_stream {
-            if let Some(stream) = &self.active_stream {
-                if let Some(set_cork) = &stream.set_cork {
-                    (set_cork)(false);
-                }
-            }
-        }
+        self.check_eos();
     }
 
-    fn can_push_more(&self) -> bool {
-        let Some(stream) = &self.active_stream else {
-            return false;
-        };
-        stream.producer.slots() >= DECODE_SCRATCH
-    }
+    fn check_eos(&mut self) {
+        // Poll GStreamer messages for end-of-stream.
+        let _adapter = self.player.signal_adapter();
+        // GStreamer Play uses GLib signals — we check position to detect EOS.
+        // If we have a track and duration is known and position >= duration,
+        // the track ended.
+        if let Some(track) = &self.current {
+            if let (Some(pos), Some(dur)) = (self.player.position(), self.player.duration()) {
+                if pos >= dur && dur > Duration::ZERO {
+                    let handle = track.info.handle;
+                    let _ = self.state_tx.send(StateUpdate::TrackEnded(handle));
 
-    fn decode_and_push_one(&mut self) -> Result<ControlFlow, EngineError> {
-        let Some(track) = self.current.as_mut() else {
-            return Ok(ControlFlow::Stop);
-        };
-        let Some(stream) = self.active_stream.as_mut() else {
-            return Ok(ControlFlow::Stop);
-        };
-
-        self.decode_scratch.clear();
-        let decoded = track.decoder.next_chunk(&mut self.decode_scratch)?;
-
-        match decoded {
-            None => {
-                // End of current track. Try gapless swap.
-                self.on_current_end()?;
-                Ok(ControlFlow::Stop)
-            }
-            Some(_count) => {
-                let src_channels = track.format.source_channels;
-                let out_channels = stream.actual_format.output_channels;
-
-                // Remap channels into `output_scratch`.
-                self.output_scratch.clear();
-                remap_channels(
-                    &self.decode_scratch,
-                    src_channels,
-                    out_channels,
-                    &mut self.output_scratch,
-                )?;
-
-                // Apply ReplayGain-derived track gain combined with user
-                // volume. `effective_gain` is precomputed per track and is
-                // always in `(0.0, 1.0]`, so the combined factor is always
-                // `<= 1.0`. Branch away the multiply when it is exactly 1.0.
-                let combined = self.volume * track.effective_gain;
-                if (combined - 1.0).abs() > f32::EPSILON {
-                    for sample in self.output_scratch.iter_mut() {
-                        *sample *= combined;
+                    // Gapless: load next if queued.
+                    if let Some(next_path) = self.next_path.take() {
+                        self.cmd_load(next_path);
+                        self.cmd_play();
+                    } else {
+                        self.current = None;
+                        self.set_state(PlaybackState::Stopped);
                     }
                 }
-
-                // Push to ring buffer. If we somehow can't write the whole
-                // chunk, writing what fits and coming back is safer than
-                // failing the command.
-                push_samples(&mut stream.producer, &self.output_scratch);
-
-                self.metrics
-                    .decoded_samples_total
-                    .fetch_add(self.output_scratch.len() as u64, Ordering::Relaxed);
-                Ok(ControlFlow::Continue)
             }
         }
     }
 
-    fn on_current_end(&mut self) -> Result<(), EngineError> {
-        let ended = self.current.take().map(|t| t.info.handle);
-        if let Some(handle) = ended {
-            let _ = self.state_tx.send(StateUpdate::TrackEnded(handle));
+    fn maybe_emit_position(&mut self) {
+        let now = Instant::now();
+        if now.duration_since(self.last_position_emit) < POSITION_INTERVAL {
+            return;
         }
+        self.last_position_emit = now;
 
-        if let Some(next) = self.next.take() {
-            let same_format = self
-                .active_stream
-                .as_ref()
-                .is_some_and(|s| format_matches(&next.format, &s.actual_format));
-
-            if same_format {
-                // Gapless swap: promote next to current, keep stream running.
-                let info = next.info.clone();
-                self.current = Some(next);
-                let handle = info.handle;
-                let _ = self.state_tx.send(StateUpdate::TrackStarted(info));
-                self.set_state(PlaybackState::Playing {
-                    track: handle,
-                    position_samples: 0,
-                });
-                return Ok(());
-            }
-
-            // Different format: tear down, reconfigure on next pump.
-            let info = next.info.clone();
-            self.current = Some(next);
-            self.active_stream = None;
-            let handle = info.handle;
-            let _ = self.state_tx.send(StateUpdate::TrackStarted(info));
-            self.set_state(PlaybackState::Playing {
-                track: handle,
-                position_samples: 0,
-            });
-            return Ok(());
-        }
-
-        // Nothing queued: stop.
-        self.active_stream = None;
-        self.output.stop();
-        self.set_state(PlaybackState::Stopped);
-        Ok(())
+        let Some(track) = &self.current else { return };
+        let _ = self.state_tx.send(StateUpdate::Position(PositionUpdate {
+            track: track.info.handle,
+            samples_played: self.player.position_samples(),
+            sample_rate: track.info.sample_rate,
+            channels: track.info.channels,
+        }));
     }
-
-    fn reconfigure_stream(&mut self) -> Result<(), OutputError> {
-        let Some(track) = &self.current else {
-            return Err(OutputError::NoDevices);
-        };
-        let stream = self.output.configure(track.format)?;
-        self.active_stream = Some(stream);
-        Ok(())
-    }
-
-    // ---------------------------------------------------------------------
-    //  Housekeeping
-    // ---------------------------------------------------------------------
 
     fn fresh_handle(&mut self) -> TrackHandle {
         let h = TrackHandle(self.next_track_id);
@@ -638,370 +302,23 @@ impl EngineState {
         let err = err.into();
         tracing::warn!(?err, "engine error");
         let _ = self.state_tx.send(StateUpdate::Error(err.to_string()));
+        self.player.stop();
         self.current = None;
-        self.next = None;
-        self.active_stream = None;
-        self.set_state(PlaybackState::Stopped);
-    }
-
-    fn emit_disconnect(&mut self) {
-        tracing::warn!("output device disconnected");
-        let _ = self.state_tx.send(StateUpdate::DeviceDisconnected);
-        self.current = None;
-        self.next = None;
-        self.output.stop();
-        self.set_state(PlaybackState::Stopped);
-    }
-
-    fn maybe_emit_position(&mut self) {
-        let now = Instant::now();
-        if now.duration_since(self.last_position_emit) < POSITION_INTERVAL {
-            return;
-        }
-        self.last_position_emit = now;
-
-        let Some(track) = &self.current else {
-            return;
-        };
-        let Some(stream) = &self.active_stream else {
-            return;
-        };
-        // Subtract the samples still unplayed in the ring buffer so the
-        // reported position matches what's actually leaving the DAC.
-        let buffered = stream.producer.buffer().capacity() - stream.producer.slots();
-        let buffered_frames =
-            buffered as u64 / u64::from(stream.actual_format.output_channels.max(1));
-        let reported_samples = track
-            .decoder
-            .position_samples()
-            .saturating_sub(buffered_frames);
-
-        let _ = self.state_tx.send(StateUpdate::Position(PositionUpdate {
-            track: track.info.handle,
-            samples_played: reported_samples,
-            sample_rate: track.info.sample_rate,
-            channels: track.info.channels,
-        }));
-
-        // Also surface xrun counts when they change.
-        let xruns = self.output.xrun_count();
-        let prev = self.metrics.xrun_count.load(Ordering::Relaxed);
-        if xruns > prev {
-            let delta = xruns - prev;
-            self.metrics.xrun_count.store(xruns, Ordering::Relaxed);
-            tracing::warn!(
-                xrun_delta = delta,
-                xrun_total = xruns,
-                sample_rate = track.info.sample_rate,
-                "pipewire xrun (underrun) detected"
-            );
-            let _ = self.state_tx.send(StateUpdate::Xrun { total: xruns });
-        }
-    }
-
-    fn drain_scheduled(&mut self) {
-        let now = Instant::now();
-        let mut scratch = Vec::new();
-        for update in self.scheduler.drain_ready(now) {
-            scratch.push(update);
-        }
-        for u in scratch {
-            let _ = self.state_tx.send(u);
-        }
-    }
-
-    fn teardown(&mut self) {
-        self.current = None;
-        self.next = None;
-        self.active_stream = None;
-        self.output.stop();
+        self.next_path = None;
         self.set_state(PlaybackState::Stopped);
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ControlFlow {
-    Continue,
-    Stop,
-}
-
-/// Compute the effective linear gain to apply to samples for a given track.
-///
-/// Uses ReplayGain 2.0 Track mode with clip prevention. Falls back to `-3 dB`
-/// fixed attenuation for tracks without RG tags. Always returns a value in
-/// `(0.0, 1.0]` — the gain is always protective (never amplifies).
-///
-/// Strategy:
-///
-/// 1. Track has `track_gain_db` and `track_peak`:
-///    - `base = 10^(track_gain_db / 20)`
-///    - if `base * peak > 1.0`, reduce base to `0.98 / peak` (clip prevention)
-///    - multiply by `10^(-1.0/20) ≈ 0.891` (ISP safety margin)
-/// 2. Track has `track_gain_db` but no peak:
-///    - `base = 10^(track_gain_db / 20) * 0.891`
-/// 3. No RG tags: return `10^(-3/20) ≈ 0.7079` (fixed `-3 dB` fallback)
-///
-/// The final product `gain * user_volume * sample` is guaranteed to stay in
-/// `[-1.0, +1.0]` for well-behaved masters.
-fn compute_track_gain(info: &TrackInfo) -> f32 {
-    const ISP_SAFETY_DB: f32 = -1.0;
-    const FALLBACK_DB: f32 = -3.0;
-    const CLIP_PREVENTION_SAFETY: f32 = 0.98;
-
-    let isp_safety = 10f32.powf(ISP_SAFETY_DB / 20.0);
-
-    match (info.track_gain_db, info.track_peak) {
-        (Some(gain_db), Some(peak)) if peak > 0.0 => {
-            let base = 10f32.powf(gain_db / 20.0);
-            let limited = if base * peak > 1.0 {
-                CLIP_PREVENTION_SAFETY / peak
-            } else {
-                base
-            };
-            (limited * isp_safety).clamp(0.0, 1.0)
-        }
-        (Some(gain_db), _) => (10f32.powf(gain_db / 20.0) * isp_safety).clamp(0.0, 1.0),
-        _ => 10f32.powf(FALLBACK_DB / 20.0),
-    }
-}
-
-/// True when two StreamFormats can share an output stream (no reconfigure).
-fn format_matches(a: &StreamFormat, b: &StreamFormat) -> bool {
-    a.sample_rate == b.sample_rate && a.output_channels == b.output_channels
-}
-
-/// Remap source samples into `out` to match the output channel count.
-///
-/// MVP handles three cases:
-/// - source == output: copy
-/// - source == 1, output == 2: duplicate each sample
-/// - otherwise: error (downmix and N→M mapping are out of scope here)
-fn remap_channels(
-    src: &[f32],
-    source_channels: u16,
-    output_channels: u16,
-    out: &mut Vec<f32>,
-) -> Result<(), EngineError> {
-    if source_channels == output_channels {
-        out.extend_from_slice(src);
-        return Ok(());
-    }
-    if source_channels == 1 && output_channels == 2 {
-        out.reserve(src.len() * 2);
-        for sample in src {
-            out.push(*sample);
-            out.push(*sample);
-        }
-        return Ok(());
-    }
-    Err(EngineError::Output(OutputError::FormatNotSupported {
-        detail: format!(
-            "cannot map {source_channels}ch source to {output_channels}ch output in engine"
-        ),
-    }))
-}
-
-/// Push as many samples as fit from `src` into the ring-buffer producer.
-/// If the buffer is too full, the remainder is dropped — callers must only
-/// invoke this when `producer.slots() >= src.len()`, which `pump` enforces
-/// via `can_push_more`.
-fn push_samples(producer: &mut rtrb::Producer<f32>, src: &[f32]) {
-    let to_write = src.len().min(producer.slots());
-    if to_write == 0 {
-        return;
-    }
-    if let Ok(mut chunk) = producer.write_chunk_uninit(to_write) {
-        let (a, b) = chunk.as_mut_slices();
-        let first = a.len().min(to_write);
-        // SAFETY: write_chunk_uninit gives us MaybeUninit slots; writing f32
-        // into them is trivially safe because f32 has no drop glue and
-        // overwriting uninitialized memory is defined for primitive types.
-        for (dst, s) in a.iter_mut().zip(&src[..first]) {
-            dst.write(*s);
-        }
-        if to_write > first {
-            let rest = &src[first..to_write];
-            for (dst, s) in b.iter_mut().zip(rest) {
-                dst.write(*s);
-            }
-        }
-        // SAFETY: we wrote exactly `to_write` slots sequentially.
-        unsafe {
-            chunk.commit_all();
-        }
-    }
+/// Extract track metadata using symphonia (GStreamer handles decode, but
+/// we still need metadata upfront for the UI).
+fn extract_track_info(handle: TrackHandle, path: &std::path::Path) -> Result<TrackInfo, EngineError> {
+    use crate::decoder::FlacDecoder;
+    let decoder = FlacDecoder::open(handle, path)?;
+    Ok(decoder.info().clone())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn format_matches_ignores_source_channels() {
-        let a = StreamFormat {
-            sample_rate: 44_100,
-            source_channels: 2,
-            output_channels: 2,
-            sample_format: crate::types::SampleFormat::F32,
-        };
-        let b = StreamFormat {
-            sample_rate: 44_100,
-            source_channels: 1,
-            output_channels: 2,
-            sample_format: crate::types::SampleFormat::F32,
-        };
-        assert!(format_matches(&a, &b));
-    }
-
-    #[test]
-    fn format_matches_detects_sr_change() {
-        let a = StreamFormat {
-            sample_rate: 44_100,
-            source_channels: 2,
-            output_channels: 2,
-            sample_format: crate::types::SampleFormat::F32,
-        };
-        let b = StreamFormat {
-            sample_rate: 96_000,
-            source_channels: 2,
-            output_channels: 2,
-            sample_format: crate::types::SampleFormat::F32,
-        };
-        assert!(!format_matches(&a, &b));
-    }
-
-    #[test]
-    fn remap_mono_to_stereo_duplicates() {
-        let src = vec![0.1, 0.2, 0.3];
-        let mut out = Vec::new();
-        remap_channels(&src, 1, 2, &mut out).unwrap();
-        assert_eq!(out, vec![0.1, 0.1, 0.2, 0.2, 0.3, 0.3]);
-    }
-
-    #[test]
-    fn remap_stereo_passthrough() {
-        let src = vec![0.1, 0.2, 0.3, 0.4];
-        let mut out = Vec::new();
-        remap_channels(&src, 2, 2, &mut out).unwrap();
-        assert_eq!(out, src);
-    }
-
-    #[test]
-    fn remap_unsupported_errors() {
-        let src = vec![0.0; 6];
-        let mut out = Vec::new();
-        let result = remap_channels(&src, 5, 2, &mut out);
-        assert!(result.is_err());
-    }
-
-    fn track_info_with_rg(track_gain_db: Option<f32>, track_peak: Option<f32>) -> TrackInfo {
-        TrackInfo {
-            handle: TrackHandle(0),
-            path: std::path::PathBuf::from("/tmp/x.flac"),
-            sample_rate: 44_100,
-            channels: 2,
-            bit_depth: Some(16),
-            total_frames: None,
-            duration: None,
-            track_gain_db,
-            album_gain_db: None,
-            track_peak,
-            album_peak: None,
-        }
-    }
-
-    /// Fallback when no ReplayGain tags: fixed `-3 dB` attenuation.
-    #[test]
-    fn compute_track_gain_fallback_is_minus_three_db() {
-        let info = track_info_with_rg(None, None);
-        let gain = compute_track_gain(&info);
-        // 10^(-3/20) ≈ 0.70794578
-        assert!((gain - 0.707_945_8).abs() < 1e-5, "got {gain}");
-    }
-
-    /// Typical ReplayGain case: `-6 dB` gain, `0.9` peak. `base * peak = 0.45`
-    /// is well below `1.0`, so clip prevention does not kick in. Result is
-    /// `base * isp_safety`.
-    #[test]
-    fn compute_track_gain_rg_below_clip_threshold() {
-        let info = track_info_with_rg(Some(-6.0), Some(0.9));
-        let gain = compute_track_gain(&info);
-        let base = 10f32.powf(-6.0 / 20.0);
-        let isp = 10f32.powf(-1.0 / 20.0);
-        let expected = base * isp;
-        assert!(
-            (gain - expected).abs() < 1e-5,
-            "got {gain}, expected {expected}"
-        );
-    }
-
-    /// Positive gain with a near-full-scale peak: `base * peak > 1.0` triggers
-    /// clip prevention. Expected: `(0.98 / peak) * isp_safety`.
-    #[test]
-    fn compute_track_gain_clip_prevention_engages() {
-        let info = track_info_with_rg(Some(2.0), Some(0.99));
-        let gain = compute_track_gain(&info);
-        let isp = 10f32.powf(-1.0 / 20.0);
-        let expected = (0.98_f32 / 0.99) * isp;
-        assert!(
-            (gain - expected).abs() < 1e-5,
-            "got {gain}, expected {expected}"
-        );
-        // Sanity: always <= 1.0 and > 0.
-        assert!(gain > 0.0 && gain <= 1.0);
-    }
-
-    /// Gain tag present but no peak: just apply gain * isp safety, no clip
-    /// prevention. For a negative gain this is always `<= 1.0`.
-    #[test]
-    fn compute_track_gain_no_peak() {
-        let info = track_info_with_rg(Some(-6.0), None);
-        let gain = compute_track_gain(&info);
-        let base = 10f32.powf(-6.0 / 20.0);
-        let isp = 10f32.powf(-1.0 / 20.0);
-        let expected = base * isp;
-        assert!(
-            (gain - expected).abs() < 1e-5,
-            "got {gain}, expected {expected}"
-        );
-    }
-
-    /// Calling `compute_track_gain` twice on the same `TrackInfo` produces
-    /// the same value (pure function, no hidden state).
-    #[test]
-    fn compute_track_gain_is_idempotent() {
-        let info = track_info_with_rg(Some(-5.5), Some(0.95));
-        let a = compute_track_gain(&info);
-        let b = compute_track_gain(&info);
-        assert_eq!(a, b);
-    }
-
-    /// Peak `<= 0` is treated as missing (guards against bad tags) and
-    /// falls through the gain-only branch.
-    #[test]
-    fn compute_track_gain_ignores_non_positive_peak() {
-        let info = track_info_with_rg(Some(-6.0), Some(0.0));
-        let gain = compute_track_gain(&info);
-        let expected = 10f32.powf(-6.0 / 20.0) * 10f32.powf(-1.0 / 20.0);
-        assert!((gain - expected).abs() < 1e-5, "got {gain}");
-    }
-
-    /// Cheap smoke test: the engine thread spins up, reports `Idle`, and
-    /// responds to `Shutdown`. No audio device needed.
-    #[test]
-    fn engine_starts_and_shuts_down() {
-        let handle = spawn().expect("spawn ok");
-        let updates = handle.subscribe();
-        // Expect an initial Idle state.
-        let first = updates
-            .recv_timeout(Duration::from_secs(1))
-            .expect("initial state");
-        match first {
-            StateUpdate::StateChanged(PlaybackState::Idle) => {}
-            other => panic!("expected initial Idle, got {other:?}"),
-        }
-        handle.send(Command::Shutdown).expect("shutdown send ok");
-        // Drain any further state updates that arrive before the engine exits.
-        while updates.recv_timeout(Duration::from_millis(200)).is_ok() {}
-    }
+    use crate::types::SampleFormat;
 }
