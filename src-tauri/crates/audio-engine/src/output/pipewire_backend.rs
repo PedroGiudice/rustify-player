@@ -112,6 +112,10 @@ struct UserData {
     last_error: Arc<Mutex<Option<OutputError>>>,
     actual_format: Arc<Mutex<Option<StreamFormat>>>,
     requested_format: StreamFormat,
+    /// Preallocated f32 scratch used to read the ring before converting to
+    /// S32LE for the PipeWire buffer. Sized to the observed PipeWire maxsize
+    /// (131072 bytes ÷ 4 = 32768 samples). Never reallocated on the hot path.
+    scratch_f32: Vec<f32>,
 }
 
 /// Keepalive guard stored inside `ActiveStream::_keepalive`.
@@ -282,6 +286,10 @@ fn run_mainloop(
         actual_format: actual_format.clone(),
         requested_format: format,
         logged_buffer_sizes: false,
+        // 32_768 f32 samples = max PipeWire chunk we've observed on this
+        // hardware (maxsize 131_072 bytes ÷ 4 bytes per f32). Pre-sized so
+        // the realtime callback can resize() without allocating.
+        scratch_f32: vec![0.0f32; 32_768],
     };
 
     // Build the object graph. Any failure here is reported through boot_tx
@@ -310,13 +318,12 @@ fn run_mainloop(
         }
     };
 
-    // Request explicit latency to prevent PipeWire from allocating huge
-    // buffers that don't align with sink quantum. Without this hint, a
-    // 44.1kHz stream into a 96kHz/8192-quantum sink gets ~170ms buffers,
-    // double the sink tick — causing timing artifacts that sound like
-    // crackling even with clean sample data. 1024 frames at source rate
-    // matches what mpv/pulseaudio-compat apps negotiate by default.
-    let latency = format!("1024/{}", format.sample_rate);
+    // Mirror mpv's stream properties. mpv omits `node.latency` and sets
+    // `node.always-process = true`; empirical comparison showed mpv streams
+    // through the exact same graph play cleanly while our F32LE stream with
+    // an explicit latency hint produced crackling. Keeping our property set
+    // as narrow as mpv's eliminates behavioral differences in wireplumber
+    // policy and spa-audioconvert adapter choice.
     let rate = format!("1/{}", format.sample_rate);
     let mut props = pw::properties::PropertiesBox::new();
     props.insert(*pw::keys::APP_NAME, "rustify-player");
@@ -324,8 +331,8 @@ fn run_mainloop(
     props.insert(*pw::keys::MEDIA_TYPE, "Audio");
     props.insert(*pw::keys::MEDIA_CATEGORY, "Playback");
     props.insert(*pw::keys::MEDIA_ROLE, "Music");
-    props.insert(*pw::keys::NODE_LATENCY, latency.as_str());
     props.insert("node.rate", rate.as_str());
+    props.insert("node.always-process", "true");
 
     let stream = match pw::stream::StreamBox::new(&core, "rustify-player", props) {
         Ok(s) => s,
@@ -422,7 +429,10 @@ fn run_mainloop(
             let data = &mut datas[0];
 
             let channels = usize::from(user_data.requested_format.output_channels.max(1));
-            let stride = channels * std::mem::size_of::<f32>();
+            // S32LE and F32LE share the same sample size (4 bytes). We
+            // interpret the PipeWire buffer as i32 on write but the arithmetic
+            // for stride/target is identical.
+            let stride = channels * std::mem::size_of::<i32>();
 
             // Read chunk hint BEFORE taking the mutable borrow on data.
             // chunk.size() may indicate the quantum size PipeWire wants.
@@ -452,8 +462,20 @@ fn run_mainloop(
             let target_frames = target_bytes / stride;
             let target_samples = target_frames * channels;
 
-            let usable_bytes = target_samples * std::mem::size_of::<f32>();
-            let (f32_slice, _tail) = slice[..usable_bytes].as_chunks_mut_layout();
+            let usable_bytes = target_samples * std::mem::size_of::<i32>();
+
+            // Fill the interior f32 scratch from the ring, then convert to i32
+            // into the PipeWire buffer in a single pass. Keeping the internal
+            // representation as f32 preserves the existing volume/gain math
+            // and telemetry (scan_batch operates on f32). The final clamp →
+            // scale → cast is ~one SIMD pass in release.
+            let scratch = &mut user_data.scratch_f32;
+            // Grow in place if the graph ever exceeds our preallocated cap.
+            // This branch won't allocate for the observed maxsize (32768).
+            if target_samples > scratch.len() {
+                scratch.resize(target_samples, 0.0);
+            }
+            let f32_slice = &mut scratch[..target_samples];
 
             let written = fill_f32_from_ring(f32_slice, &mut user_data.consumer);
 
@@ -560,6 +582,32 @@ fn run_mainloop(
                 }
             }
 
+            // Convert the f32 scratch to i32 into the PipeWire buffer.
+            // Reinterpret the `[u8]` as `[i32]` — alignment is 4 bytes for
+            // S32LE by PipeWire contract, same as f32, so the existing
+            // AsChunksMutLayout (which validates f32 alignment) is safe to
+            // reuse and then cast.
+            let (aligned_f32, _tail) = slice[..usable_bytes].as_chunks_mut_layout();
+            // SAFETY: f32 and i32 share layout (4 bytes, 4-byte align). The
+            // pointer is from the PipeWire buffer which guarantees that
+            // alignment for F32/S32 audio streams.
+            let i32_slice: &mut [i32] = unsafe {
+                std::slice::from_raw_parts_mut(
+                    aligned_f32.as_mut_ptr().cast::<i32>(),
+                    aligned_f32.len(),
+                )
+            };
+            debug_assert_eq!(i32_slice.len(), f32_slice.len());
+
+            // Vectorizable pass: clamp to [-1, +1], scale to i32 full-scale,
+            // cast. f32 → i32 cast saturates by default on x86 but we clamp
+            // explicitly to be deterministic across targets.
+            const SCALE: f32 = i32::MAX as f32;
+            for (dst, &src) in i32_slice.iter_mut().zip(f32_slice.iter()) {
+                let clamped = src.clamp(-1.0, 1.0);
+                *dst = (clamped * SCALE) as i32;
+            }
+
             let chunk = data.chunk_mut();
             *chunk.offset_mut() = 0;
             *chunk.stride_mut() = stride as i32;
@@ -576,8 +624,20 @@ fn run_mainloop(
     };
 
     // Build the EnumFormat POD describing what we want to send.
+    //
+    // S32LE matches the native format of the target DAC (KINMAX HA01, also
+    // most modern USB DACs). When we negotiate F32LE, the graph inserts a
+    // spa-audioconvert stage to downconvert before the ALSA sink. That
+    // stage is `ERR=0` in pw-top but empirically produces audible artifacts
+    // on some graph configurations (observed with rustify + EasyEffects
+    // chain on this hardware). mpv negotiates S32LE directly and plays
+    // cleanly through the same graph. We match that choice.
+    //
+    // Interior data is still f32 (decoder output, volume/gain math, scan
+    // telemetry). The conversion to i32 happens once per callback, inside
+    // the process callback, via a single `clamp → mul → cast` pass.
     let mut audio_info = spa::param::audio::AudioInfoRaw::new();
-    audio_info.set_format(spa::param::audio::AudioFormat::F32LE);
+    audio_info.set_format(spa::param::audio::AudioFormat::S32LE);
     audio_info.set_rate(format.sample_rate);
     audio_info.set_channels(u32::from(format.source_channels));
 
