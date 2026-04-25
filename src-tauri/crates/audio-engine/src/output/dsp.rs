@@ -90,7 +90,7 @@ impl DspFilterBin {
             eq.set_property(&format!("g-{i}"), 1.0f32);
         }
         // Bass enhancer bypassed by default.
-        bass_enhancer.set_property("bypass", 1.0f32);
+        bass_enhancer.set_property("bypass", true);
 
         tracing::info!("DSP filter bin created (EQ + Limiter + Bass Enhancer)");
 
@@ -197,7 +197,7 @@ impl DspFilterBin {
 
     pub fn set_bass_bypass(&self, bypass: bool) {
         self.bass_enhancer
-            .set_property("bypass", if bypass { 1.0f32 } else { 0.0f32 });
+            .set_property("bypass", bypass);
     }
 
     pub fn set_bass_levels(&self, input: f32, output: f32) {
@@ -225,7 +225,7 @@ impl DspFilterBin {
             self.limiter.set_property("th", 1.0f32); // 0 dB = no limiting
             self.limiter.set_property("g-in", 1.0f32);
             self.limiter.set_property("g-out", 1.0f32);
-            self.bass_enhancer.set_property("bypass", 1.0f32);
+            self.bass_enhancer.set_property("bypass", true);
         }
         // When un-bypassing, the caller should re-apply their desired settings.
     }
