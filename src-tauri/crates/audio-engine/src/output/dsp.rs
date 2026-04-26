@@ -206,13 +206,15 @@ impl DspFilterBin {
 
     /// Set a single EQ band. `gain` is in dB (converted to linear for the plugin).
     ///
-    /// Filter types are pre-set to Bell at init — only freq/gain/Q change here
-    /// to avoid LV2 buffer reinitialization artifacts during playback.
+    /// Also ensures filter type is Bell (via set_property_from_str, safe for
+    /// GLib enums). Setting Bell→Bell is a no-op for the plugin.
     pub fn set_eq_band(&self, band: u8, freq: f32, gain_db: f32, q: f32) {
         if band >= 16 {
             return;
         }
         let gain_linear = 10.0f32.powf(gain_db / 20.0);
+        self.eq
+            .set_property_from_str(&format!("ft-{band}"), "Bell");
         self.eq.set_property(&format!("f-{band}"), freq);
         self.eq.set_property(&format!("g-{band}"), gain_linear);
         self.eq.set_property(&format!("q-{band}"), q);
