@@ -214,6 +214,14 @@ fn coordinator_loop(
     info!(target: "library_indexer::pipeline", "coordinator exiting");
 }
 
+/// RAII guard: clears `scan_in_progress` on drop (even on panic).
+struct ScanGuard(Arc<SharedState>);
+impl Drop for ScanGuard {
+    fn drop(&mut self) {
+        self.0.scan_in_progress.store(false, Ordering::Relaxed);
+    }
+}
+
 fn run_scan(
     writer: &mut Connection,
     config: &PipelineConfig,
@@ -222,6 +230,7 @@ fn run_scan(
     embed_job_tx: &Sender<EmbedJob>,
 ) -> Result<(), IndexerError> {
     state.scan_in_progress.store(true, Ordering::Relaxed);
+    let _guard = ScanGuard(Arc::clone(state));
     let _ = evt_tx.send(IndexerEvent::ScanStarted);
 
     // If migration 003 just introduced `embedded_lyrics`, existing tracks
@@ -241,6 +250,12 @@ fn run_scan(
     let entries: Vec<FileEntry> = scan::walk_music_root(&config.music_root)?.collect();
     let total = entries.len() as u64;
     let existing = load_existing(writer)?;
+    info!(
+        target: "library_indexer::pipeline",
+        files_on_disk = total,
+        tracks_in_db = existing.len(),
+        "scan diff starting"
+    );
 
     let mut added = 0u64;
     let mut updated = 0u64;
@@ -324,7 +339,7 @@ fn run_scan(
 
     let _ = evt_tx.send(IndexerEvent::ScanProgress { processed, total });
     state.refresh_from_db(writer);
-    state.scan_in_progress.store(false, Ordering::Relaxed);
+    // scan_in_progress is cleared by ScanGuard on drop (handles panics too).
 
     // A successful full scan backfills `embedded_lyrics` for every track,
     // so the one-shot migration-003 flag is satisfied.
@@ -335,6 +350,11 @@ fn run_scan(
             "failed to clear embedded-lyrics scan flag"
         );
     }
+
+    // Re-extract covers for albums whose cached file is missing on disk.
+    // This happens when the user clears their cache directory without
+    // re-indexing (mtime/size didn't change, so the rescan skips them).
+    regenerate_missing_covers(writer, config)?;
 
     let _ = evt_tx.send(IndexerEvent::ScanDone {
         added,
@@ -432,6 +452,11 @@ fn ingest_within_tx(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
+    // Denormalized FTS columns (migration 007).
+    let album_title_denorm = album_title.clone().unwrap_or_default();
+    let artist_name_denorm = artist_name.clone().unwrap_or_default();
+    let tags_denorm = md.tags.join(" ");
+
     let (track_id, is_new) = if let Some(id) = existing_id {
         tx.execute(
             "UPDATE tracks SET
@@ -441,7 +466,8 @@ fn ingest_within_tx(
                 sample_rate = ?, bit_depth = ?, channels = ?,
                 rg_track_gain = ?, rg_album_gain = ?, rg_track_peak = ?, rg_album_peak = ?,
                 embedding_status = 'pending', embedding = NULL, embedding_error = NULL,
-                indexed_at = ?, lrc_path = ?, embedded_lyrics = ?
+                indexed_at = ?, lrc_path = ?, embedded_lyrics = ?,
+                album_title = ?, artist_name = ?, tags = ?
              WHERE id = ?",
             params![
                 filename,
@@ -464,6 +490,9 @@ fn ingest_within_tx(
                 now,
                 lrc_path,
                 embedded_lyrics,
+                album_title_denorm,
+                artist_name_denorm,
+                tags_denorm,
                 id,
             ],
         )?;
@@ -476,8 +505,9 @@ fn ingest_within_tx(
                  album_id, artist_id, genre_id,
                  sample_rate, bit_depth, channels,
                  rg_track_gain, rg_album_gain, rg_track_peak, rg_album_peak,
-                 embedding_status, indexed_at, lrc_path, embedded_lyrics)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
+                 embedding_status, indexed_at, lrc_path, embedded_lyrics,
+                 album_title, artist_name, tags)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)",
             params![
                 path_str(&entry.path),
                 filename,
@@ -500,6 +530,9 @@ fn ingest_within_tx(
                 now,
                 lrc_path,
                 embedded_lyrics,
+                album_title_denorm,
+                artist_name_denorm,
+                tags_denorm,
             ],
         )?;
         (tx.last_insert_rowid(), true)
@@ -515,20 +548,12 @@ fn ingest_within_tx(
         )?;
     }
 
-    // FTS5 mirror.
-    let album_title_for_fts = album_title.clone().unwrap_or_default();
-    let artist_name_for_fts = artist_name.clone().unwrap_or_default();
-    let tags_concat = md.tags.join(" ");
+    // FTS5 mirror — content-synced (migration 007). DELETE is handled by
+    // a trigger. INSERT/UPDATE done here after denormalized columns are set.
     tx.execute(
         "INSERT OR REPLACE INTO tracks_fts (rowid, title, album_title, artist_name, tags) \
          VALUES (?, ?, ?, ?, ?)",
-        params![
-            track_id,
-            title,
-            album_title_for_fts,
-            artist_name_for_fts,
-            tags_concat
-        ],
+        params![track_id, title, album_title_denorm, artist_name_denorm, tags_denorm],
     )?;
 
     // Cover art: only process if we have an album row (one cover per album).
@@ -609,13 +634,8 @@ fn resolve_genre(
 }
 
 fn delete_track(conn: &mut Connection, id: i64) -> Result<(), IndexerError> {
-    let tx = conn.transaction()?;
-    tx.execute(
-        "DELETE FROM tracks_fts WHERE rowid = ?",
-        params![id],
-    )?;
-    tx.execute("DELETE FROM tracks WHERE id = ?", params![id])?;
-    tx.commit()?;
+    // FTS5 cleanup is handled by the AFTER DELETE trigger (migration 007).
+    conn.execute("DELETE FROM tracks WHERE id = ?", params![id])?;
     Ok(())
 }
 
@@ -705,6 +725,81 @@ fn apply_embed_result(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Re-extract covers for albums whose cached file is missing on disk.
+/// This repairs the cover cache after the user clears `~/.cache/` without
+/// triggering a full re-index (tracks haven't changed, so `needs_ingest`
+/// is false and the normal scan skips them).
+fn regenerate_missing_covers(
+    writer: &mut Connection,
+    config: &PipelineConfig,
+) -> Result<(), IndexerError> {
+    // Find albums that have a cover_path set but the file doesn't exist.
+    let mut stmt = writer.prepare(
+        "SELECT a.id, a.cover_path, t.path FROM albums a \
+         JOIN tracks t ON t.album_id = a.id \
+         WHERE a.cover_path IS NOT NULL \
+         GROUP BY a.id",
+    )?;
+    let rows: Vec<(i64, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut regenerated = 0u64;
+    for (album_id, rel_path, track_path) in &rows {
+        let full_cover = config.cache_dir.join(rel_path);
+        if full_cover.exists() {
+            continue;
+        }
+
+        // Parse the first track of this album to get cover source.
+        // Use a dedicated thread with a 5s timeout to avoid blocking the
+        // scan on FLACs with huge embedded art or broken metadata.
+        let track = PathBuf::from(track_path);
+        let aid = *album_id;
+        let cache = config.cache_dir.clone();
+        let (tx, rx) = crossbeam_channel::bounded::<Result<bool, String>>(1);
+        std::thread::spawn(move || {
+            let entry = scan::FileEntry {
+                path: track.clone(),
+                mtime: 0,
+                size: 0,
+                genre_from_path: None,
+                album_from_path: None,
+                album_artist_from_path: None,
+                year_from_path: None,
+                is_compilation: false,
+            };
+            let result = (|| {
+                let md = metadata::parse_flac(&track).map_err(|e| e.to_string())?;
+                let source = pick_cover_source(&entry, &md);
+                if let Some(src) = source {
+                    cover::process_album_cover(aid, src, &cache).map_err(|e| e.to_string())?;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            })();
+            let _ = tx.send(result);
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(Ok(true)) => regenerated += 1,
+            Ok(Ok(false)) => {}
+            Ok(Err(e)) => {
+                warn!(target: "library_indexer::pipeline", album_id, error = %e, "cover regen failed");
+            }
+            Err(_) => {
+                warn!(target: "library_indexer::pipeline", album_id, path = %track_path, "cover regen timed out (5s), skipping");
+            }
+        }
+    }
+
+    if regenerated > 0 {
+        info!(target: "library_indexer::pipeline", regenerated, "regenerated missing covers");
+    }
+    Ok(())
+}
 
 fn unix_now() -> i64 {
     SystemTime::now()
