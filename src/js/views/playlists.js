@@ -40,7 +40,35 @@ async function loadFolders(view) {
     const totalTracks = folders.reduce((sum, f) => sum + (f.track_count || 0), 0);
     stats.innerHTML = `<span class="view__stats-item">${folders.length} folders</span><span class="view__stats-item">${totalTracks} tracks</span>`;
 
-    body.innerHTML = `<div class="folder-list" id="pl-folders"></div>`;
+    // Fetch liked count
+    let likedCount = 0;
+    try {
+      const liked = await invoke("lib_list_liked", { limit: 1 });
+      // lib_list_liked returns array; use length as indicator, but we need total count
+      // For now just check if any exist
+      const allLiked = await invoke("lib_list_liked", {});
+      likedCount = allLiked.length;
+    } catch (_) {}
+
+    body.innerHTML = `
+      ${likedCount > 0 ? `
+        <button class="folder-item folder-item--liked" id="pl-liked" type="button">
+          <span class="folder-item__name">
+            <svg class="icon icon--sm" aria-hidden="true" style="color:var(--primary)"><use href="#icon-flame"></use></svg>
+            Liked Songs
+          </span>
+          <span class="folder-item__count">${likedCount} tracks</span>
+        </button>
+      ` : ""}
+      <div class="folder-list" id="pl-folders"></div>
+    `;
+
+    // Liked songs click
+    const likedBtn = body.querySelector("#pl-liked");
+    if (likedBtn) {
+      likedBtn.addEventListener("click", () => openLiked(view));
+    }
+
     const list = body.querySelector("#pl-folders");
 
     list.innerHTML = folders
@@ -153,6 +181,93 @@ async function openFolder(view, folder) {
     body.innerHTML = `
       <div class="empty-state">
         <p class="empty-state__title">Failed to load tracks</p>
+        <p class="empty-state__hint">${esc(String(err))}</p>
+      </div>
+    `;
+  }
+}
+
+async function openLiked(view) {
+  const stats = view.querySelector("#pl-stats");
+  const body = view.querySelector("#pl-body");
+  const title = view.querySelector(".view__title");
+
+  title.textContent = "Liked Songs";
+  stats.innerHTML = "";
+  body.innerHTML = `<div class="empty-state"><p class="empty-state__title">Loading...</p></div>`;
+
+  let backBtn = title.querySelector("#pl-back");
+  if (!backBtn) {
+    backBtn = document.createElement("button");
+    backBtn.id = "pl-back";
+    backBtn.className = "view__back";
+    backBtn.type = "button";
+    backBtn.setAttribute("aria-label", "Back to playlists");
+    backBtn.textContent = "←";
+    title.insertBefore(backBtn, title.firstChild);
+    backBtn.addEventListener("click", () => {
+      backBtn.remove();
+      title.textContent = "Playlists";
+      loadFolders(view);
+    });
+  }
+
+  try {
+    const tracks = await invoke("lib_list_liked", {});
+    stats.innerHTML = `<span class="view__stats-item">${tracks.length} tracks</span>`;
+
+    if (tracks.length === 0) {
+      body.innerHTML = `
+        <div class="empty-state">
+          <p class="empty-state__title">No liked tracks yet</p>
+          <p class="empty-state__hint">Click the flame icon on a track to like it</p>
+        </div>
+      `;
+      return;
+    }
+
+    body.innerHTML = `
+      <table class="track-table">
+        <thead>
+          <tr>
+            <th class="track-table__th track-table__th--cover"></th>
+            <th class="track-table__th track-table__th--num">#</th>
+            <th class="track-table__th">Title</th>
+            <th class="track-table__th">Artist</th>
+            <th class="track-table__th">Album</th>
+            <th class="track-table__th">Genre</th>
+            <th class="track-table__th track-table__th--dur">Duration</th>
+          </tr>
+        </thead>
+        <tbody id="pl-rows"></tbody>
+      </table>
+    `;
+
+    const tbody = body.querySelector("#pl-rows");
+    renderRows(tbody, tracks);
+
+    tbody.addEventListener("click", (e) => {
+      const row = e.target.closest(".track-row");
+      if (!row) return;
+      const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+      if (idx >= 0) {
+        setQueue(tracks, idx);
+        playTrack(tracks[idx]);
+      }
+    });
+
+    tbody.addEventListener("contextmenu", (e) => {
+      const row = e.target.closest(".track-row");
+      if (!row) return;
+      e.preventDefault();
+      invoke("player_enqueue_next", { path: row.dataset.path }).catch((err) =>
+        console.error("[player] enqueue failed:", err)
+      );
+    });
+  } catch (err) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <p class="empty-state__title">Failed to load liked tracks</p>
         <p class="empty-state__hint">${esc(String(err))}</p>
       </div>
     `;

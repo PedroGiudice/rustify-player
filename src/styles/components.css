@@ -2055,3 +2055,15 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .like-btn.is-liked .icon {
   filter: drop-shadow(0 0 4px var(--primary));
 }
+
+/* Liked songs special entry in playlists */
+.folder-item--liked {
+  border-left: 3px solid var(--primary);
+  margin-bottom: var(--space-3);
+}
+
+.folder-item--liked .folder-item__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
