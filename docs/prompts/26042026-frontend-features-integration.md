@@ -1,63 +1,77 @@
-# Retomada: Rustify Player — Frontend Polish & Remaining Features
+# Retomada: Rustify Player — Frontend Polish, Playback Bug, Remaining Features
 
 ## Contexto rapido
 
-Sessao frontend integrou 3 features novas no Rustify Player (Tauri 2.x, vanilla JS, Editorial HiFi design): **Stations** (mood radios com accent colors), **Like/Favorites** (chama pixel art toggle no player bar + Liked Songs em playlists), e **Search global** (titlebar, contextual por rota, Ctrl+K). Tambem: 9 accent colors, font picker via fc-list, zoom slider, transport lock contra race condition, fix de cover no auto-advance gapless, contraste AA corrigido.
+Sessao de ~3.5h integrou 3 features novas no Rustify Player (Tauri 2.x, vanilla JS, Editorial HiFi design):
+- **Stations** (mood radios com accent colors translucidas, grid responsivo, detail view com track table)
+- **Like/Favorites** (chama pixel art como icone, toggle no player bar, Liked Songs no topo de playlists)
+- **Search global** (titlebar, contextual por rota: global/playlist/filter/none, Ctrl+K, Esc, debounce 250ms)
 
-20 commits em main, tudo publicado via release.sh. App funcional na cmr-auto.
+Alem disso: 9 accent colors (4 novas), font picker via fc-list, zoom slider, contraste AA corrigido, VU bars movidas pra Now Playing, transport lock contra race condition, cover sync no gapless auto-advance, visibility sync quando app volta ao foco.
+
+25 commits em main, 6 releases publicados. Bug intermitente de playback em background identificado mas nao reproduzido em 30 min de monitoramento via Tauri MCP.
 
 ## Arquivos principais
 
-- `src/js/components/player-bar.js` -- transporte, like, cover, transition lock
+- `src/js/components/player-bar.js` -- transporte, like, cover, transition lock, visibility sync
 - `src/js/components/search-bar.js` -- search global contextual (313 linhas)
 - `src/js/components/tweaks.js` -- accent, density, sidebar, fonts, zoom
 - `src/js/views/stations.js` -- stations view completa
-- `src/styles/tokens.css` -- design tokens (cores, fontes, spacing)
+- `src/styles/tokens.css` -- design tokens (9 accent themes, contraste corrigido)
 - `src/styles/components.css` -- todos os estilos de componentes
-- `docs/contexto/26042026-frontend-features-integration.md` -- contexto detalhado
+- `docs/contexto/26042026-frontend-features-integration.md` -- contexto detalhado desta sessao
 
 ## Proximos passos (por prioridade)
 
-### 1. Like icon em track rows
-**Onde:** `src/js/views/tracks.js`, `playlists.js`, `stations.js` (funcao renderRows)
-**O que:** Adicionar coluna de flame icon nas track tables com toggle on click
+### 1. Investigar bug intermitente de playback em background
+**Onde:** `src/js/components/player-bar.js`, funcoes `listenEngine()`, `bindVisibilitySync()`
+**O que:** Adicionar `console.warn("[player] state event:", payload)` nos handlers de `player-state` para ter trace completo na proxima reproducao. O bug: apos >30 min em background, playback para, UI mostra estado errado, play button nao responde. `visibilitychange` sync pode estar ajudando mas nao eliminou.
+**Por que:** Bug de UX critico — app fica inutilizavel ate restart
+**Verificar:** Reproduzir: tocar playlist, ir pro Chrome, voltar apos 30+ min. Se bug ocorrer, console logs dao o trace.
+
+### 2. Like icon em track rows
+**Onde:** `src/js/views/tracks.js`, `playlists.js`, `stations.js` (funcoes de renderRows)
+**O que:** Adicionar coluna de flame icon nas track tables com toggle via `lib_toggle_like`. Reutilizar `.like-btn` CSS.
 **Por que:** Spec original previa like em track rows, nao so player bar
-**Verificar:** Clicar flame numa track row deve toggle estado + persistir
+**Verificar:** Click na flame numa track row deve toggle liked state + icone muda visualmente
 
-### 2. Station cover art
-**Onde:** `src/js/views/stations.js` (renderList), backend migration se necessario
-**O que:** Exibir cover_path como imagem de fundo no card quando disponivel
-**Por que:** Cards com cor solida funcionam, mas imagem daria mais identidade
-**Verificar:** Cards com cover_path mostram imagem; sem cover_path mantem color-mix
-
-### 3. Tweaks panel scroll
-**Onde:** `src/styles/components.css` (classe `.tweaks__body`)
-**O que:** Adicionar `overflow-y: auto; max-height: calc(100vh - 200px)` no body do tweaks
-**Por que:** Panel fica longo com 9 cores + font selects + sliders
-**Verificar:** Abrir tweaks em janela pequena, tudo acessivel via scroll
-
-### 4. Search UX refinements
-**Onde:** `src/js/components/search-bar.js`
-**O que:** Keyboard navigation no dropdown (arrow keys), highlight do item selecionado
+### 3. Search keyboard navigation
+**Onde:** `src/js/components/search-bar.js`, funcao de input keydown handler
+**O que:** Arrow up/down movem highlight entre items do dropdown, Enter seleciona item focado
 **Por que:** Power users esperam navegar resultados sem mouse
-**Verificar:** Ctrl+K, digitar, setas pra navegar, Enter pra selecionar
+**Verificar:** Ctrl+K → digitar → setas → Enter deve selecionar item
+
+### 4. Tweaks panel scroll
+**Onde:** `src/styles/components.css`, classe `.tweaks__body`
+**O que:** Adicionar `overflow-y: auto; max-height: calc(100vh - 200px)`
+**Por que:** Panel fica longo em janelas pequenas com 9 cores + font selects
+**Verificar:** Abrir tweaks em janela 800px, tudo acessivel via scroll
+
+### 5. Station cover art
+**Onde:** `src/js/views/stations.js` funcao `renderList()`, possivelmente backend
+**O que:** Se `cover_path` presente, usar como background-image no card. Fallback: color-mix atual.
+**Por que:** Identidade visual mais forte por station
+**Verificar:** Stations com cover_path mostram imagem; sem cover_path mantem cor translucida
 
 ## Como verificar
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml  # deve compilar limpo
-# Testar no app:
-# 1. Stations: sidebar > Stations > cards coloridos > click card > track table > play
-# 2. Like: tocar musica > flame ao lado do titulo > toggle > Playlists > Liked Songs
-# 3. Search: Ctrl+K > digitar "j cole" > dropdown com tracks/albums/artists > click
-# 4. Tweaks: sidebar > Tweaks > trocar accent/font/zoom > persistido apos restart
+# No app (cmr-auto):
+# 1. Stations: sidebar > Stations > 8 cards coloridos > click > track table > play
+# 2. Like: tocar musica > flame no player bar > toggle > Playlists > Liked Songs
+# 3. Search: Ctrl+K > "j cole" > dropdown com tracks/albums/artists > click track toca
+# 4. Tweaks: sidebar > Tweaks > 9 cores (2 linhas) > font picker > zoom slider
+# 5. Background: tocar playlist, ir pro Chrome 5 min, voltar > UI sincronizada
 ```
 
 <session_metadata>
 branch: main
-last_commit: ca4c93d
-total_commits_session: 20
-files_changed: 24
-lines_added: ~2849
-lines_removed: ~43
+last_commit: 196732a
+total_commits_session: 25
+files_changed: 21
+lines_added: ~2961
+lines_removed: ~53
+releases_published: 6
+open_bug: playback-background-desync (intermitente, nao reproduzido em 30min monitoring)
 </session_metadata>
