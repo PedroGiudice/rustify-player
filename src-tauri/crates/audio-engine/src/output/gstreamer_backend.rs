@@ -4,8 +4,6 @@
 //! channel mapping, volume, and output to PipeWire. We just drive it.
 
 use std::path::Path;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 use std::time::Duration;
 
 use gstreamer as gst;
@@ -18,7 +16,6 @@ use super::dsp::DspFilterBin;
 pub(crate) struct GstreamerPlayer {
     player: gst_play::Play,
     adapter: gst_play::PlaySignalAdapter,
-    position_samples: Arc<AtomicU64>,
     sample_rate: u32,
     pub(crate) dsp: Option<DspFilterBin>,
 }
@@ -56,7 +53,6 @@ impl GstreamerPlayer {
         Ok(Self {
             player,
             adapter,
-            position_samples: Arc::new(AtomicU64::new(0)),
             sample_rate: 44100,
             dsp,
         })

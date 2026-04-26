@@ -1829,6 +1829,70 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .sig-md:hover { color: var(--on-surface-variant); }
 .sig-md--on { background: var(--primary); color: var(--surface-lowest); }
 
+/* Band detail panel (per-band EQ controls) */
+.sig-bd {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-container);
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+.sig-bd__ctx {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-body-sm); color: var(--on-surface-variant);
+}
+.sig-bd__band { color: var(--on-surface); font-weight: var(--fw-medium); }
+.sig-bd__sep { color: var(--on-surface-mute); }
+.sig-bd__type { color: var(--on-surface); font-weight: var(--fw-medium); }
+.sig-bd__ctrls {
+  display: flex; align-items: center; gap: var(--space-4);
+}
+.sig-bd__lbl {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-label-md); color: var(--on-surface-mute);
+}
+.sig-bd-select {
+  appearance: none;
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  border: 1px solid var(--divider-hi);
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-label-md);
+  font-weight: var(--fw-medium);
+  cursor: pointer; outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a29e94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-1) center;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.sig-bd-select:focus { border-color: var(--primary); }
+.sig-bd-select option { background: var(--surface-container-highest); color: var(--on-surface); }
+.sig-bd__q {
+  font-size: var(--text-label-md); color: var(--on-surface-mute);
+  font-variant-numeric: tabular-nums;
+}
+.sig-bd__q b { color: var(--on-surface); font-weight: var(--fw-bold); }
+.sig-bd__toggles { display: flex; gap: var(--space-1); }
+.sig-bd-sm {
+  width: 26px; height: 26px;
+  background: transparent; border: 1px solid var(--divider-hi);
+  color: var(--on-surface-mute);
+  font-size: var(--text-label-sm); font-family: var(--font-body); font-weight: var(--fw-bold);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  transition: all var(--dur-fast) var(--ease-standard);
+}
+.sig-bd-sm:hover { border-color: var(--on-surface-variant); color: var(--on-surface); }
+.sig-bd-sm--solo.is-active {
+  border-color: var(--sig-warn); color: var(--sig-warn);
+  background: color-mix(in srgb, var(--sig-warn) 10%, transparent);
+}
+.sig-bd-sm--mute.is-active {
+  border-color: var(--sig-err); color: var(--sig-err);
+  background: color-mix(in srgb, var(--sig-err) 10%, transparent);
+}
+
 /* Parameter slider rows (Limiter, Bass Enhancer) */
 .sig-params { display: flex; flex-direction: column; }
 .sig-param {

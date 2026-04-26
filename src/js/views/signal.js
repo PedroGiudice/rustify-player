@@ -7,23 +7,27 @@ const STORAGE_KEY = "rustify-dsp-presets";
 const ACTIVE_KEY = "rustify-dsp-active";
 const DB_RANGE = 36;
 
+const FILTER_TYPES = ["Off", "Bell", "Hi-pass", "Hi-shelf", "Lo-pass", "Lo-shelf", "Notch", "Resonance", "Allpass", "Bandpass", "Ladder-pass", "Ladder-rej"];
+const FILTER_MODES = ["RLC (BT)", "RLC (MT)", "BWC (BT)", "BWC (MT)", "LRX (BT)", "LRX (MT)", "APO (DR)"];
+const SLOPES = ["x1", "x2", "x3", "x4"];
+
 const DEFAULT_BANDS = [
-  { freq: 20, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 26, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 38, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 55, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 72, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 110, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 160, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 220, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 300, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 400, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 560, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 800, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 1100, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 1600, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 2300, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
-  { freq: 3300, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
+  { freq: 20, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 26, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 38, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 55, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 72, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 110, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 160, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 220, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 400, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 560, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 800, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 1100, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 1600, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 2300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 3300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
 ];
 
 function defaultState() {
@@ -91,6 +95,11 @@ async function applyFullState() {
     for (let i = 0; i < eq.bands.length; i++) {
       const b = eq.bands[i];
       await invoke("dsp_set_eq_band", { band: i, freq: b.freq, gainDb: b.gain_db, q: b.q });
+      await invoke("dsp_set_eq_filter_type", { band: i, filterType: b.type });
+      await invoke("dsp_set_eq_filter_mode", { band: i, mode: b.filterMode }).catch(() => {});
+      await invoke("dsp_set_eq_slope", { band: i, slope: b.slope }).catch(() => {});
+      await invoke("dsp_set_eq_solo", { band: i, solo: b.solo }).catch(() => {});
+      await invoke("dsp_set_eq_mute", { band: i, mute: b.mute }).catch(() => {});
     }
     await invoke("dsp_set_limiter_threshold", { thresholdDb: limiter.threshold });
     await invoke("dsp_set_limiter_knee", { knee: limiter.knee });
@@ -125,13 +134,19 @@ function parseEasyEffects(json, name) {
     for (let i = 0; i < numBands; i++) {
       const b = left[`band${i}`];
       if (b) {
+        const typeIdx = FILTER_TYPES.indexOf(b.type || "Bell");
+        const modeStr = b.mode || "APO (DR)";
+        const modeIdx = FILTER_MODES.indexOf(modeStr) >= 0 ? FILTER_MODES.indexOf(modeStr) : 6;
+        const slopeIdx = SLOPES.indexOf(b.slope || "x1");
         preset.eq.bands.push({
           freq: b.frequency || 100,
           gain_db: b.gain || 0,
           q: b.q || 2.21,
-          type: b.type || "Bell",
-          mode: b.mode || "APO",
-          slope: b.slope || "x1",
+          type: typeIdx >= 0 ? typeIdx : 1,
+          filterMode: modeIdx,
+          slope: slopeIdx >= 0 ? slopeIdx : 0,
+          solo: b.solo || false,
+          mute: b.mute || false,
         });
       }
     }
@@ -170,12 +185,12 @@ function toEasyEffects(preset) {
     const band = {
       frequency: b.freq,
       gain: b.gain_db,
-      mode: "APO (DR)",
-      mute: false,
+      mode: FILTER_MODES[b.filterMode] || "APO (DR)",
+      mute: b.mute || false,
       q: b.q,
-      slope: b.slope || "x1",
-      solo: false,
-      type: b.type || "Bell",
+      slope: SLOPES[b.slope] || "x1",
+      solo: b.solo || false,
+      type: FILTER_TYPES[b.type] || "Bell",
       width: 4.0,
     };
     left[`band${i}`] = { ...band };
@@ -404,6 +419,37 @@ export function render() {
         </div>
         <div class="sig-eq-xaxis"><span>20</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span></div>
         <div class="sig-faders" id="sig-faders">${fadersHtml}</div>
+        <div class="sig-bd" id="sig-bd">
+          <div class="sig-bd__ctx">
+            <span class="sig-bd__band">Band ${activeBand + 1}</span>
+            <span class="sig-bd__sep">&middot;</span>
+            <span class="sig-bd__freq">${fmtHz(state.eq.bands[activeBand].freq)} Hz</span>
+            <span class="sig-bd__sep">&middot;</span>
+            <span class="sig-bd__type" id="sig-bd-type-label">${FILTER_TYPES[state.eq.bands[activeBand].type]}</span>
+          </div>
+          <div class="sig-bd__ctrls">
+            <label class="sig-bd__lbl">Type
+              <select class="sig-bd-select" id="sig-bd-type">
+                ${FILTER_TYPES.map((t, i) => `<option value="${i}"${i === state.eq.bands[activeBand].type ? " selected" : ""}>${t}</option>`).join("")}
+              </select>
+            </label>
+            <label class="sig-bd__lbl">Mode
+              <select class="sig-bd-select" id="sig-bd-mode">
+                ${FILTER_MODES.map((m, i) => `<option value="${i}"${i === state.eq.bands[activeBand].filterMode ? " selected" : ""}>${m}</option>`).join("")}
+              </select>
+            </label>
+            <label class="sig-bd__lbl">Slope
+              <select class="sig-bd-select" id="sig-bd-slope">
+                ${SLOPES.map((s, i) => `<option value="${i}"${i === state.eq.bands[activeBand].slope ? " selected" : ""}>${s}</option>`).join("")}
+              </select>
+            </label>
+            <span class="sig-bd__q">Q: <b>${state.eq.bands[activeBand].q.toFixed(2)}</b></span>
+            <div class="sig-bd__toggles">
+              <button class="sig-bd-sm sig-bd-sm--solo${state.eq.bands[activeBand].solo ? " is-active" : ""}" id="sig-bd-solo" title="Solo">S</button>
+              <button class="sig-bd-sm sig-bd-sm--mute${state.eq.bands[activeBand].mute ? " is-active" : ""}" id="sig-bd-mute" title="Mute">M</button>
+            </div>
+          </div>
+        </div>
         <div class="sig-eq-foot">
           <div>
             <div class="sig-foot-lbl">Mode</div>
@@ -468,7 +514,7 @@ export function render() {
     fadersEl.querySelectorAll(".sig-fader").forEach((f) => f.classList.remove("sig-fader--active"));
     fader.classList.add("sig-fader--active");
 
-    if (!thumb) { drawCurve(); return; }
+    if (!thumb) { drawCurve(); updateBandDetail(view); return; }
 
     const track = fader.querySelector(".sig-f-track");
     const trackRect = track.getBoundingClientRect();
@@ -492,6 +538,41 @@ export function render() {
 
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+  });
+
+  // Band detail panel controls
+  view.querySelector("#sig-bd-type")?.addEventListener("change", (e) => {
+    const val = parseInt(e.target.value);
+    state.eq.bands[activeBand].type = val;
+    const label = view.querySelector("#sig-bd-type-label");
+    if (label) label.textContent = FILTER_TYPES[val];
+    invoke("dsp_set_eq_filter_type", { band: activeBand, filterType: val }).catch(console.error);
+  });
+
+  view.querySelector("#sig-bd-mode")?.addEventListener("change", (e) => {
+    const val = parseInt(e.target.value);
+    state.eq.bands[activeBand].filterMode = val;
+    invoke("dsp_set_eq_filter_mode", { band: activeBand, mode: val }).catch(console.error);
+  });
+
+  view.querySelector("#sig-bd-slope")?.addEventListener("change", (e) => {
+    const val = parseInt(e.target.value);
+    state.eq.bands[activeBand].slope = val;
+    invoke("dsp_set_eq_slope", { band: activeBand, slope: val }).catch(console.error);
+  });
+
+  view.querySelector("#sig-bd-solo")?.addEventListener("click", (e) => {
+    const b = state.eq.bands[activeBand];
+    b.solo = !b.solo;
+    e.currentTarget.classList.toggle("is-active", b.solo);
+    invoke("dsp_set_eq_solo", { band: activeBand, solo: b.solo }).catch(console.error);
+  });
+
+  view.querySelector("#sig-bd-mute")?.addEventListener("click", (e) => {
+    const b = state.eq.bands[activeBand];
+    b.mute = !b.mute;
+    e.currentTarget.classList.toggle("is-active", b.mute);
+    invoke("dsp_set_eq_mute", { band: activeBand, mute: b.mute }).catch(console.error);
   });
 
   // Parameter slider drag (Limiter + Bass)
@@ -665,6 +746,30 @@ export function render() {
   });
 
   return view;
+}
+
+function updateBandDetail(view) {
+  const b = state.eq.bands[activeBand];
+  const ctx = view.querySelector(".sig-bd__ctx");
+  if (ctx) {
+    ctx.innerHTML = `<span class="sig-bd__band">Band ${activeBand + 1}</span>`
+      + `<span class="sig-bd__sep">&middot;</span>`
+      + `<span class="sig-bd__freq">${fmtHz(b.freq)} Hz</span>`
+      + `<span class="sig-bd__sep">&middot;</span>`
+      + `<span class="sig-bd__type" id="sig-bd-type-label">${FILTER_TYPES[b.type]}</span>`;
+  }
+  const typeEl = view.querySelector("#sig-bd-type");
+  if (typeEl) typeEl.value = b.type;
+  const modeEl = view.querySelector("#sig-bd-mode");
+  if (modeEl) modeEl.value = b.filterMode;
+  const slopeEl = view.querySelector("#sig-bd-slope");
+  if (slopeEl) slopeEl.value = b.slope;
+  const qEl = view.querySelector(".sig-bd__q");
+  if (qEl) qEl.innerHTML = `Q: <b>${b.q.toFixed(2)}</b>`;
+  const soloEl = view.querySelector("#sig-bd-solo");
+  if (soloEl) soloEl.classList.toggle("is-active", b.solo);
+  const muteEl = view.querySelector("#sig-bd-mute");
+  if (muteEl) muteEl.classList.toggle("is-active", b.mute);
 }
 
 function updateFader(el, band) {
