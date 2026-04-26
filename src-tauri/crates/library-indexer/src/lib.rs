@@ -29,7 +29,7 @@ pub mod lyrics;
 pub use embed_client::EmbedClient;
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
-pub use search::{FolderPlaylist, Recommendations};
+pub use search::{FolderPlaylist, PlaylistSearchResult, Recommendations};
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
     IndexerEvent, IndexerSnapshot, SearchResults, Tag, Track, TrackFilter, TrackOrder,
@@ -194,6 +194,17 @@ impl IndexerHandle {
         self.inner.pool.with(|conn| search::list_folder_tracks(conn, music_root, folder))
     }
 
+    pub fn search_playlists(
+        &self,
+        music_root: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<search::PlaylistSearchResult>, IndexerError> {
+        self.inner
+            .pool
+            .with(|conn| search::search_playlists(conn, music_root, query, limit))
+    }
+
     pub fn get_lyrics(&self, track_id: i64) -> Result<Vec<LyricLine>, IndexerError> {
         self.inner.pool.with(|conn| search::get_lyrics(conn, track_id))
     }
@@ -204,6 +215,18 @@ impl IndexerHandle {
 
     pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
         self.inner.pool.with(|conn| search::list_history(conn, limit))
+    }
+
+    pub fn toggle_like(&self, track_id: i64) -> Result<bool, IndexerError> {
+        self.inner.write_pool.with(|conn| search::toggle_like(conn, track_id))
+    }
+
+    pub fn list_liked(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
+        self.inner.pool.with(|conn| search::list_liked(conn, limit))
+    }
+
+    pub fn is_liked(&self, track_id: i64) -> Result<bool, IndexerError> {
+        self.inner.pool.with(|conn| search::is_liked(conn, track_id))
     }
 
     pub fn recommendations(&self) -> Result<search::Recommendations, IndexerError> {

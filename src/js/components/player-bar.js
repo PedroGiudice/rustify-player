@@ -186,6 +186,22 @@ function bindTransport() {
     }
   });
 
+  listen("mpris-command", (e) => {
+    if (e.payload === "next") {
+      if (queueIndex < trackQueue.length - 1) {
+        queueIndex++;
+        playTrack(trackQueue[queueIndex]);
+      } else if (autoplayEnabled && currentTrack?.id) {
+        autoplayNext(currentTrack);
+      }
+    } else if (e.payload === "previous") {
+      if (queueIndex > 0) {
+        queueIndex--;
+        playTrack(trackQueue[queueIndex]);
+      }
+    }
+  });
+
   ui.shuffleBtn.addEventListener("click", () => {
     const active = ui.shuffleBtn.classList.toggle("is-active");
     if (active && trackQueue.length > 1) {

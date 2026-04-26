@@ -3,7 +3,7 @@ use audio_engine::{
 };
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
-    IndexerHandle, LyricLine, SearchResults, Track, TrackFilter, TrackOrder,
+    IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults, Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -243,6 +243,36 @@ fn lib_list_folder_tracks(lib: State<Library>, folder: String) -> Result<Vec<Tra
 }
 
 // ---------------------------------------------------------------------------
+// Playlist search
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_search_playlists(
+    lib: State<Library>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<PlaylistSearchResult>, String> {
+    let mut results = lib
+        .handle
+        .search_playlists(
+            lib.music_root.to_str().unwrap_or(""),
+            &query,
+            limit.unwrap_or(50),
+        )
+        .map_err(err)?;
+
+    for result in &mut results {
+        for t in &mut result.tracks {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+// ---------------------------------------------------------------------------
 // Library management
 // ---------------------------------------------------------------------------
 
@@ -281,6 +311,35 @@ fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Tra
     }
     Ok(tracks)
 }
+
+// ---------------------------------------------------------------------------
+// Likes / Favorites
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_toggle_like(lib: State<Library>, track_id: i64) -> Result<bool, String> {
+    lib.handle.toggle_like(track_id).map_err(err)
+}
+
+#[tauri::command]
+fn lib_list_liked(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let mut tracks = lib.handle.list_liked(limit.unwrap_or(200)).map_err(err)?;
+    for t in &mut tracks {
+        if let Some(rel) = &t.album_cover_path {
+            t.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(tracks)
+}
+
+#[tauri::command]
+fn lib_is_liked(lib: State<Library>, track_id: i64) -> Result<bool, String> {
+    lib.handle.is_liked(track_id).map_err(err)
+}
+
+// ---------------------------------------------------------------------------
+// Recommendations
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
 fn lib_recommendations(
@@ -1085,7 +1144,15 @@ pub fn run() {
                                 }
                             }
                             souvlaki::MediaControlEvent::Stop => Some(EngineCommand::Stop),
-                            _ => None, // Next/Previous handled by frontend queue
+                            souvlaki::MediaControlEvent::Next => {
+                                let _ = app_handle.emit("mpris-command", "next");
+                                None
+                            }
+                            souvlaki::MediaControlEvent::Previous => {
+                                let _ = app_handle.emit("mpris-command", "previous");
+                                None
+                            }
+                            _ => None,
                         };
                         if let Some(cmd) = cmd {
                             let _ = engine_tx_media.send(cmd);
@@ -1115,8 +1182,12 @@ pub fn run() {
             lib_get_lyrics,
             lib_list_folders,
             lib_list_folder_tracks,
+            lib_search_playlists,
             lib_record_play,
             lib_list_history,
+            lib_toggle_like,
+            lib_list_liked,
+            lib_is_liked,
             lib_recommendations,
             player_play,
             player_pause,

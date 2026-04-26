@@ -1,0 +1,1 @@
+ALTER TABLE tracks ADD COLUMN liked_at INTEGER;

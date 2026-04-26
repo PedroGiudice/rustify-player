@@ -54,7 +54,7 @@ const TRACK_SELECT: &str = "
            t.genre_id, g.name,
            t.sample_rate, t.bit_depth, t.channels,
            t.rg_track_gain, t.rg_album_gain, t.rg_track_peak, t.rg_album_peak,
-           t.embedding_status, t.play_count, t.last_played,
+           t.embedding_status, t.play_count, t.last_played, t.liked_at,
            (SELECT group_concat(tg.name, '||')
               FROM track_tags tt
               JOIN tags tg ON tg.id = tt.tag_id
@@ -87,7 +87,7 @@ fn map_track(row: &Row<'_>) -> rusqlite::Result<Track> {
     let embedding_status = EmbeddingStatus::parse(&embedding_status_str)
         .unwrap_or(EmbeddingStatus::Pending);
 
-    let tags_concat: Option<String> = row.get(25)?;
+    let tags_concat: Option<String> = row.get(26)?;
     let tags = tags_concat
         .as_deref()
         .map(|s| {
@@ -98,7 +98,7 @@ fn map_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         })
         .unwrap_or_default();
 
-    let lrc_path_str: Option<String> = row.get(26)?;
+    let lrc_path_str: Option<String> = row.get(27)?;
 
     Ok(Track {
         id: row.get(0)?,
@@ -135,6 +135,7 @@ fn map_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         embedding_status,
         play_count: row.get::<_, i64>(23)? as u32,
         last_played: row.get(24)?,
+        liked_at: row.get(25)?,
         lrc_path: lrc_path_str.map(Into::into),
     })
 }
@@ -609,6 +610,82 @@ pub fn list_folder_tracks(
 }
 
 // ---------------------------------------------------------------------------
+// Playlist search (FTS + folder grouping)
+// ---------------------------------------------------------------------------
+
+/// A folder playlist with the matching tracks inside it.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PlaylistSearchResult {
+    pub folder: String,
+    pub tracks: Vec<Track>,
+}
+
+/// Search tracks via FTS5 and group results by top-level folder relative to
+/// `music_root`. Returns one [`PlaylistSearchResult`] per folder that has at
+/// least one matching track.
+pub fn search_playlists(
+    conn: &Connection,
+    music_root: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<PlaylistSearchResult>, IndexerError> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let fts_query = build_fts_query(q);
+    if fts_query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let prefix = if music_root.ends_with('/') {
+        music_root.to_string()
+    } else {
+        format!("{}/", music_root)
+    };
+    let prefix_len = prefix.len();
+
+    // Find matching track IDs via FTS
+    let mut stmt = conn.prepare(
+        "SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ? ORDER BY rank LIMIT ?",
+    )?;
+    let track_ids: Vec<i64> = stmt
+        .query_map(params![fts_query, limit as i64], |r| r.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if track_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let tracks = fetch_tracks_by_ids(conn, &track_ids)?;
+
+    // Group by top-level folder
+    let mut folder_map: std::collections::BTreeMap<String, Vec<Track>> =
+        std::collections::BTreeMap::new();
+    for track in tracks {
+        let path_str = track.path.to_string_lossy();
+        let folder = if path_str.starts_with(&prefix) {
+            let rest = &path_str[prefix_len..];
+            match rest.find('/') {
+                Some(idx) => rest[..idx].to_string(),
+                None => String::new(),
+            }
+        } else {
+            String::new()
+        };
+        folder_map.entry(folder).or_default().push(track);
+    }
+
+    let results: Vec<PlaylistSearchResult> = folder_map
+        .into_iter()
+        .map(|(folder, tracks)| PlaylistSearchResult { folder, tracks })
+        .collect();
+
+    Ok(results)
+}
+
+// ---------------------------------------------------------------------------
 // Playback history
 // ---------------------------------------------------------------------------
 
@@ -631,6 +708,49 @@ pub fn list_history(conn: &Connection, limit: usize) -> Result<Vec<Track>, Index
         .query_map([limit as i64], map_track)?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Likes / Favorites
+// ---------------------------------------------------------------------------
+
+pub fn toggle_like(conn: &Connection, track_id: i64) -> Result<bool, IndexerError> {
+    let currently_liked: bool = conn.query_row(
+        "SELECT liked_at IS NOT NULL FROM tracks WHERE id = ?",
+        [track_id],
+        |row| row.get(0),
+    )?;
+
+    if currently_liked {
+        conn.execute("UPDATE tracks SET liked_at = NULL WHERE id = ?", [track_id])?;
+        Ok(false)
+    } else {
+        conn.execute(
+            "UPDATE tracks SET liked_at = unixepoch() WHERE id = ?",
+            [track_id],
+        )?;
+        Ok(true)
+    }
+}
+
+pub fn list_liked(conn: &Connection, limit: usize) -> Result<Vec<Track>, IndexerError> {
+    let sql = format!(
+        "{TRACK_SELECT} WHERE t.liked_at IS NOT NULL ORDER BY t.liked_at DESC LIMIT ?"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([limit as i64], map_track)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn is_liked(conn: &Connection, track_id: i64) -> Result<bool, IndexerError> {
+    let liked: bool = conn.query_row(
+        "SELECT liked_at IS NOT NULL FROM tracks WHERE id = ?",
+        [track_id],
+        |row| row.get(0),
+    )?;
+    Ok(liked)
 }
 
 // ---------------------------------------------------------------------------
@@ -659,8 +779,21 @@ pub fn recommendations(conn: &Connection) -> Result<Recommendations, IndexerErro
         .query_map([], map_track)?
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Based on top: use top 5 most-played as seeds, get similar, deduplicate
-    let seed_ids: Vec<i64> = most_played.iter().take(5).map(|t| t.id).collect();
+    // Build seed pool: liked tracks first (explicit signal), then top played
+    let liked_ids: Vec<i64> = conn
+        .prepare("SELECT id FROM tracks WHERE liked_at IS NOT NULL ORDER BY liked_at DESC LIMIT 10")?
+        .query_map([], |r| r.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut seed_set: std::collections::HashSet<i64> = liked_ids.iter().copied().collect();
+    let mut seed_ids: Vec<i64> = liked_ids;
+    for t in most_played.iter().take(5) {
+        if seed_set.insert(t.id) {
+            seed_ids.push(t.id);
+        }
+    }
+    seed_ids.truncate(10);
+
     let mut based_on_ids: std::collections::HashSet<i64> =
         seed_ids.iter().copied().collect();
     let mut based_on_top: Vec<Track> = Vec::new();
