@@ -34,13 +34,14 @@ function defaultState() {
   return {
     bypass: false,
     eq: {
+      enabled: true,
       mode: 0,
       input_gain: 0,
       output_gain: 0,
       bands: DEFAULT_BANDS.map((b) => ({ ...b })),
     },
-    limiter: { threshold: 0, knee: 1, lookahead: 5, boost: false, alr: true },
-    bass: { amount: 0, drive: 1, blend: 0, freq: 120, floor: 20 },
+    limiter: { enabled: true, threshold: 0, knee: 1, lookahead: 5, boost: false, alr: true },
+    bass: { enabled: true, amount: 0, drive: 1, blend: 0, freq: 120, floor: 20 },
   };
 }
 
@@ -411,7 +412,7 @@ export function render() {
       <div class="sig-sec-h">
         <span class="sig-sec-t">Parametric Equalizer</span>
         <span class="sig-sec-badge">LSP x16 Stereo</span>
-        <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-eq-tog"></div>
+        <div class="sig-tog${state.eq.enabled ? " sig-tog--on" : ""} sig-tog--sm" id="sig-eq-tog"></div>
       </div>
       <div class="sig-sec-b">
         <div class="sig-eq-wrap"><canvas id="sig-canvas"></canvas>
@@ -465,7 +466,7 @@ export function render() {
       <div class="sig-sec-h">
         <span class="sig-sec-t">Limiter</span>
         <span class="sig-sec-badge">LSP Stereo</span>
-        <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-lim-tog"></div>
+        <div class="sig-tog${state.limiter.enabled ? " sig-tog--on" : ""} sig-tog--sm" id="sig-lim-tog"></div>
       </div>
       <div class="sig-sec-b">
         <div class="sig-params">${limiterParams}</div>
@@ -480,7 +481,7 @@ export function render() {
       <div class="sig-sec-h">
         <span class="sig-sec-t">Bass Enhancer</span>
         <span class="sig-sec-badge">Calf</span>
-        <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-bass-tog"></div>
+        <div class="sig-tog${state.bass.enabled ? " sig-tog--on" : ""} sig-tog--sm" id="sig-bass-tog"></div>
       </div>
       <div class="sig-sec-b">
         <div class="sig-params">${bassParams}</div>
@@ -538,6 +539,51 @@ export function render() {
 
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+  });
+
+  // Double-click gain value to type a precise number
+  fadersEl?.addEventListener("dblclick", (e) => {
+    const valEl = e.target.closest(".sig-f-val");
+    if (!valEl) return;
+    const fader = valEl.closest(".sig-fader");
+    if (!fader) return;
+    const band = parseInt(fader.dataset.band);
+
+    const current = state.eq.bands[band].gain_db;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "sig-f-input";
+    input.value = current.toFixed(1);
+    input.step = "0.1";
+    input.min = -DB_RANGE;
+    input.max = DB_RANGE;
+    valEl.textContent = "";
+    valEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      const val = parseFloat(input.value);
+      if (!isNaN(val)) {
+        const clamped = Math.max(-DB_RANGE, Math.min(DB_RANGE, Math.round(val * 10) / 10));
+        state.eq.bands[band].gain_db = clamped;
+        updateFader(fader, band);
+        drawCurve();
+        invoke("dsp_set_eq_band", {
+          band, freq: state.eq.bands[band].freq, gainDb: clamped, q: state.eq.bands[band].q,
+        }).catch(console.error);
+      } else {
+        valEl.textContent = fmtDb(current);
+      }
+      if (input.parentElement) input.remove();
+      if (!valEl.textContent) valEl.textContent = fmtDb(state.eq.bands[band].gain_db);
+    };
+
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); input.blur(); }
+      if (ev.key === "Escape") { input.value = current.toFixed(1); input.blur(); }
+    });
   });
 
   // Band detail panel controls
@@ -651,6 +697,27 @@ export function render() {
   view.querySelector("#sig-alr-tog")?.addEventListener("click", (e) => {
     state.limiter.alr = !state.limiter.alr;
     e.currentTarget.classList.toggle("sig-tog--on", state.limiter.alr);
+  });
+
+  // Section toggles (EQ, Limiter, Bass Enhancer enable/disable)
+  view.querySelector("#sig-eq-tog")?.addEventListener("click", (e) => {
+    state.eq.enabled = !state.eq.enabled;
+    e.currentTarget.classList.toggle("sig-tog--on", state.eq.enabled);
+    // When EQ is disabled, set all bands to type Off (0); when enabled, restore to Bell (1)
+    // For now just toggle bypass — the backend handles enabled state per-plugin
+    invoke("dsp_set_bypass", { bypass: state.bypass }).catch(console.error);
+  });
+
+  view.querySelector("#sig-lim-tog")?.addEventListener("click", (e) => {
+    state.limiter.enabled = !state.limiter.enabled;
+    e.currentTarget.classList.toggle("sig-tog--on", state.limiter.enabled);
+    invoke("dsp_set_limiter_bypass", { bypass: !state.limiter.enabled }).catch(() => {});
+  });
+
+  view.querySelector("#sig-bass-tog")?.addEventListener("click", (e) => {
+    state.bass.enabled = !state.bass.enabled;
+    e.currentTarget.classList.toggle("sig-tog--on", state.bass.enabled);
+    invoke("dsp_set_bass_bypass", { bypass: !state.bass.enabled }).catch(() => {});
   });
 
   // Preset selection

@@ -1813,6 +1813,20 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   font-variant-numeric: tabular-nums;
 }
 
+.sig-f-input {
+  width: 42px; height: 18px;
+  background: var(--surface-container-highest);
+  border: 1px solid var(--primary);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--text-label-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 0;
+  outline: none;
+}
+.sig-f-input::-webkit-inner-spin-button { display: none; }
+
 /* EQ foot */
 .sig-eq-foot {
   display: flex; align-items: center; gap: 28px;
