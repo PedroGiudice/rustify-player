@@ -13,6 +13,7 @@ const routes = {
   "/history":    () => import("./views/history.js"),
   "/tracks":     () => import("./views/tracks.js"),
   "/playlists":  () => import("./views/playlists.js"),
+  "/stations":   () => import("./views/stations.js"),
   "/queue":      () => import("./views/queue.js"),
   "/now-playing": () => import("./views/now-playing.js"),
   "/signal":     () => import("./views/signal.js"),

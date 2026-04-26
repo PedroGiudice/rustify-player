@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { route: "/albums",    icon: "album",       label: "Albums" },
   { route: "/tracks",    icon: "audiotrack",  label: "Tracks" },
   { route: "/playlists", icon: "queue-music", label: "Playlists" },
+  { route: "/stations",  icon: "radio",       label: "Stations" },
   { route: "/queue",     icon: "queue-music", label: "Queue" },
   { route: "/history",   icon: "history",     label: "History" },
 ];
