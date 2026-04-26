@@ -80,6 +80,9 @@ export function mountPlayerBar(root) {
         <span class="player-bar__track-title" id="pb-title">\u2014</span>
         <span class="player-bar__track-artist" id="pb-artist">\u2014</span>
       </div>
+      <button class="icon-btn like-btn" id="pb-like" aria-label="Like" aria-pressed="false" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
+      </button>
     </div>
 
     <div class="player-bar__block player-bar__block--center">
@@ -133,6 +136,7 @@ export function mountPlayerBar(root) {
   bindTransport();
   bindSeek();
   bindVolume();
+  bindLike();
   listenEngine();
 }
 
@@ -157,6 +161,7 @@ function cacheUI(root) {
     volBtn: root.querySelector("#pb-vol-btn"),
     volProgress: root.querySelector("#pb-vol-progress"),
     volFill: root.querySelector("#pb-vol-fill"),
+    likeBtn: root.querySelector("#pb-like"),
   };
 }
 
@@ -286,6 +291,23 @@ function bindVolume() {
   });
 }
 
+function bindLike() {
+  ui.likeBtn.addEventListener("click", async () => {
+    if (!currentTrack?.id) return;
+    try {
+      const liked = await invoke("lib_toggle_like", { trackId: currentTrack.id });
+      updateLikeUI(liked);
+    } catch (err) {
+      console.error("[like] toggle failed:", err);
+    }
+  });
+}
+
+function updateLikeUI(liked) {
+  ui.likeBtn.setAttribute("aria-pressed", liked ? "true" : "false");
+  ui.likeBtn.classList.toggle("is-liked", liked);
+}
+
 function listenEngine() {
   listen("player-state", (e) => {
     const payload = e.payload;
@@ -398,6 +420,17 @@ export async function playTrack(track) {
   updateNavButtons();
   updateProgressUI(0);
   ui.timeCurrent.textContent = "0:00";
+
+  // Sync like state
+  if (track.id) {
+    ui.likeBtn.hidden = false;
+    invoke("lib_is_liked", { trackId: track.id })
+      .then((liked) => updateLikeUI(liked))
+      .catch(() => updateLikeUI(false));
+  } else {
+    ui.likeBtn.hidden = true;
+    updateLikeUI(false);
+  }
 
   if (track.album_id) {
     try {

@@ -2035,3 +2035,23 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   transform: scale(1.05);
   filter: brightness(1.1);
 }
+
+/* ===== Like button ===== */
+.like-btn {
+  flex-shrink: 0;
+  color: var(--on-surface-mute);
+  transition: color var(--dur-fast) var(--ease-standard),
+              transform var(--dur-fast) var(--ease-standard);
+}
+
+.like-btn:hover {
+  color: var(--on-surface-variant);
+}
+
+.like-btn.is-liked {
+  color: var(--primary);
+}
+
+.like-btn.is-liked .icon {
+  filter: drop-shadow(0 0 4px var(--primary));
+}
