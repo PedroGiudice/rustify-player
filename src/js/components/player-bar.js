@@ -25,6 +25,8 @@ let durationSecs = 0;
 let currentSecs = 0;
 let isScrubbing = false;
 let autoplayEnabled = true;
+let isTransitioning = false;
+let transitionTimeout = null;
 const recentlyPlayedIds = new Set();
 
 export function setQueue(tracks, startIndex) {
@@ -177,6 +179,7 @@ function bindTransport() {
 
   ui.prevBtn.addEventListener("click", () => {
     if (ui.prevBtn.getAttribute("aria-disabled") === "true") return;
+    if (isTransitioning) return;
     if (queueIndex > 0) {
       queueIndex--;
       playTrack(trackQueue[queueIndex]);
@@ -185,6 +188,7 @@ function bindTransport() {
 
   ui.nextBtn.addEventListener("click", () => {
     if (ui.nextBtn.getAttribute("aria-disabled") === "true") return;
+    if (isTransitioning) return;
     if (queueIndex < trackQueue.length - 1) {
       queueIndex++;
       playTrack(trackQueue[queueIndex]);
@@ -192,6 +196,7 @@ function bindTransport() {
   });
 
   listen("mpris-command", (e) => {
+    if (isTransitioning) return;
     if (e.payload === "next") {
       if (queueIndex < trackQueue.length - 1) {
         queueIndex++;
@@ -330,8 +335,9 @@ function listenEngine() {
         durationSecs = info.duration.secs;
         ui.timeTotal.textContent = formatDuration(durationSecs);
       }
-      // Audio is now actually flowing — re-enable the play/pause button
-      // (playTrack disabled it to avoid the 2-click race).
+      // Audio is now actually flowing — unlock transport and re-enable controls.
+      isTransitioning = false;
+      clearTimeout(transitionTimeout);
       ui.playPauseBtn.removeAttribute("aria-disabled");
       // Pre-load next track for gapless playback (ONE decoder, not N).
       const nextTrack = trackQueue[queueIndex + 1];
@@ -406,6 +412,9 @@ function updateTechInfo(info) {
 }
 
 export async function playTrack(track) {
+  isTransitioning = true;
+  clearTimeout(transitionTimeout);
+  transitionTimeout = setTimeout(() => { isTransitioning = false; }, 3000);
   currentTrack = track;
   durationSecs = (track.duration_ms || 0) / 1000;
   currentSecs = 0;
