@@ -55,6 +55,7 @@ struct EngineState {
     volume: f64,
     next_track_id: u64,
     state_tx: Sender<StateUpdate>,
+    #[allow(dead_code)]
     metrics: Arc<SharedMetrics>,
     last_position_emit: Instant,
 }
@@ -74,6 +75,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
 
     let metrics_thread = metrics.clone();
     let state_tx_thread = state_tx.clone();
+    let state_tx_panic = state_tx.clone();
 
     thread::Builder::new()
         .name("audio-engine".to_string())
@@ -101,7 +103,17 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 last_position_emit: Instant::now(),
             };
 
-            engine.run(command_rx);
+            if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                engine.run(command_rx);
+            })) {
+                let msg = panic
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or_else(|| panic.downcast_ref::<&str>().copied())
+                    .unwrap_or("unknown panic");
+                tracing::error!("engine thread panicked: {msg}");
+                let _ = state_tx_panic.send(StateUpdate::Error(format!("engine panic: {msg}")));
+            }
         })
         .map_err(|err| EngineError::Decode(format!("failed to spawn engine thread: {err}")))?;
 
@@ -408,10 +420,4 @@ fn extract_track_info(handle: TrackHandle, path: &std::path::Path) -> Result<Tra
     use crate::decoder::FlacDecoder;
     let decoder = FlacDecoder::open(handle, path)?;
     Ok(decoder.info().clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::SampleFormat;
 }

@@ -7,7 +7,6 @@ const STORAGE_KEY = "rustify-dsp-presets";
 const ACTIVE_KEY = "rustify-dsp-active";
 const DB_RANGE = 12;
 
-// Default 16 bands (LSP x16 log-spaced)
 const DEFAULT_BANDS = [
   { freq: 20, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
   { freq: 26, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
@@ -31,7 +30,7 @@ function defaultState() {
   return {
     bypass: false,
     eq: {
-      mode: 0, // 0=IIR, 1=FIR, 2=FFT, 3=SPM
+      mode: 0,
       input_gain: 0,
       output_gain: 0,
       bands: DEFAULT_BANDS.map((b) => ({ ...b })),
@@ -45,7 +44,6 @@ let state = defaultState();
 let activeBand = 0;
 let canvas, ctx;
 
-// ─── Presets ──────────────────────────────────────
 function loadPresets() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
@@ -66,7 +64,6 @@ function setActivePresetName(name) {
   localStorage.setItem(ACTIVE_KEY, name);
 }
 
-// ─── Format helpers ──────────────────────────────
 function fmtHz(hz) {
   return hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k` : String(hz);
 }
@@ -76,18 +73,10 @@ function fmtDb(db) {
   return `${sign}${db.toFixed(1)}`;
 }
 
-// ─── Knob SVG ────────────────────────────────────
-function knobSvg(value, min, max) {
-  const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
-  const arcLen = 99;
-  const offset = arcLen - pct * (arcLen - 33);
-  return `<svg viewBox="0 0 50 50">
-    <circle class="sig-k-bg" cx="25" cy="25" r="21" stroke-dasharray="${arcLen}" stroke-dashoffset="-33" transform="rotate(135 25 25)"/>
-    <circle class="sig-k-val" cx="25" cy="25" r="21" stroke-dasharray="${arcLen}" stroke-dashoffset="${offset}" transform="rotate(135 25 25)"/>
-  </svg>`;
+function fmtVal(val, decimals = 1) {
+  return Number(val).toFixed(decimals);
 }
 
-// ─── IPC ─────────────────────────────────────────
 let _ipcTimer = null;
 function ipcDebounced(cmd, args, delay = 50) {
   clearTimeout(_ipcTimer);
@@ -98,7 +87,6 @@ async function applyFullState() {
   const { eq, limiter, bass, bypass } = state;
   try {
     await invoke("dsp_set_bypass", { bypass });
-    await invoke("dsp_set_eq_mode", { mode: eq.mode });
     await invoke("dsp_set_eq_gain", { input: eq.input_gain, output: eq.output_gain });
     for (let i = 0; i < eq.bands.length; i++) {
       const b = eq.bands[i];
@@ -118,7 +106,6 @@ async function applyFullState() {
   }
 }
 
-// ─── EasyEffects import/export ───────────────────
 function parseEasyEffects(json, name) {
   const o = json.output || json;
   const preset = {
@@ -128,7 +115,6 @@ function parseEasyEffects(json, name) {
     bass_enhancer: { amount: 0, drive: 0, blend: 0, freq: 120, floor: 20 },
   };
 
-  // EQ
   const eq = o["equalizer#0"];
   if (eq) {
     preset.eq.mode = eq.mode || "IIR";
@@ -151,7 +137,6 @@ function parseEasyEffects(json, name) {
     }
   }
 
-  // Bass enhancer
   const be = o["bass_enhancer#0"];
   if (be) {
     preset.bass_enhancer = {
@@ -163,7 +148,6 @@ function parseEasyEffects(json, name) {
     };
   }
 
-  // Limiter
   const lim = o["limiter#0"];
   if (lim) {
     preset.limiter = {
@@ -231,7 +215,6 @@ function toEasyEffects(preset) {
 }
 
 function applyPresetToState(preset) {
-  // Map EQ bands (may differ in count from our 16)
   const bands = preset.eq?.bands || [];
   for (let i = 0; i < 16; i++) {
     if (i < bands.length) {
@@ -250,7 +233,6 @@ function applyPresetToState(preset) {
   if (preset.bass_enhancer) Object.assign(state.bass, preset.bass_enhancer);
 }
 
-// ─── Canvas ──────────────────────────────────────
 function drawCurve() {
   if (!canvas || !ctx) return;
   const dpr = devicePixelRatio || 1;
@@ -262,7 +244,6 @@ function drawCurve() {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Grid
   ctx.strokeStyle = "rgba(237,234,227,.03)";
   ctx.lineWidth = 1;
   for (let i = 1; i < 5; i++) {
@@ -271,13 +252,11 @@ function drawCurve() {
   ctx.strokeStyle = "rgba(237,234,227,.07)";
   ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
 
-  // Points from bands
   const pts = state.eq.bands.map((b, i) => [
     (i / (state.eq.bands.length - 1)) * w,
     mid - (b.gain_db / DB_RANGE) * (h / 2) * 0.85,
   ]);
 
-  // Catmull-Rom spline
   if (pts.length < 2) return;
   ctx.beginPath();
   ctx.moveTo(pts[0][0], pts[0][1]);
@@ -293,7 +272,6 @@ function drawCurve() {
     );
   }
 
-  // Fill
   const path = new Path2D();
   path.moveTo(pts[0][0], pts[0][1]);
   for (let i = 0; i < pts.length - 1; i++) {
@@ -311,7 +289,6 @@ function drawCurve() {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Dots
   pts.forEach(([x, y], i) => {
     const active = state.eq.bands[i].gain_db !== 0;
     ctx.beginPath();
@@ -323,7 +300,24 @@ function drawCurve() {
   });
 }
 
-// ─── Render ──────────────────────────────────────
+function sliderPct(val, min, max) {
+  return ((val - min) / (max - min)) * 100;
+}
+
+function paramRowHtml(key, label, val, min, max, unit, section, decimals = 1) {
+  const pct = sliderPct(val, min, max);
+  return `<div class="sig-param" data-key="${key}" data-min="${min}" data-max="${max}" data-section="${section}">
+    <span class="sig-param__label">${label}</span>
+    <div class="sig-param__slider">
+      <div class="sig-param__track">
+        <div class="sig-param__fill" style="width:${pct}%"></div>
+        <div class="sig-param__thumb" style="left:${pct}%"></div>
+      </div>
+    </div>
+    <span class="sig-param__val">${fmtVal(val, decimals)}<span class="sig-param__unit">${unit}</span></span>
+  </div>`;
+}
+
 export function render() {
   const view = document.createElement("article");
   view.className = "view";
@@ -352,36 +346,42 @@ export function render() {
     `<span class="sig-pre${p.name === activePreset ? " sig-pre--on" : ""}" data-preset="${p.name}">${p.name}</span>`
   ).join("");
 
-  const limiterKnobs = [
-    { key: "threshold", label: "Threshold", min: -60, max: 0, val: state.limiter.threshold },
-    { key: "knee", label: "Knee", min: 0, max: 12, val: state.limiter.knee },
-    { key: "lookahead", label: "Lookahead", min: 0, max: 20, val: state.limiter.lookahead },
-    { key: "boost", label: "Boost", min: 0, max: 12, val: state.limiter.boost },
-  ].map((k) => `<div class="sig-knob">
-    <div class="sig-kr">${knobSvg(k.val, k.min, k.max)}<span class="sig-k-num">${k.val}</span></div>
-    <span class="sig-k-lbl">${k.label}</span>
-  </div>`).join("");
+  const limiterParams = [
+    paramRowHtml("threshold", "Threshold", state.limiter.threshold, -60, 0, "dBFS", "limiter"),
+    paramRowHtml("knee", "Knee", state.limiter.knee, 0, 12, "dB", "limiter"),
+    paramRowHtml("lookahead", "Lookahead", state.limiter.lookahead, 0, 20, "ms", "limiter"),
+    paramRowHtml("boost", "Boost", state.limiter.boost, 0, 12, "dB", "limiter"),
+  ].join("");
 
-  const bassKnobs = [
-    { key: "amount", label: "Amount", min: 0, max: 10, val: state.bass.amount },
-    { key: "drive", label: "Drive", min: 0, max: 10, val: state.bass.drive },
-    { key: "blend", label: "Blend", min: -10, max: 10, val: state.bass.blend },
-    { key: "freq", label: "Freq", min: 10, max: 250, val: state.bass.freq },
-    { key: "floor", label: "Floor", min: 10, max: 120, val: state.bass.floor },
-  ].map((k) => `<div class="sig-knob">
-    <div class="sig-kr">${knobSvg(k.val, k.min, k.max)}<span class="sig-k-num">${k.val}</span></div>
-    <span class="sig-k-lbl">${k.label}</span>
-  </div>`).join("");
+  const bassParams = [
+    paramRowHtml("amount", "Amount", state.bass.amount, 0, 10, "", "bass"),
+    paramRowHtml("drive", "Drive", state.bass.drive, 0, 10, "", "bass"),
+    paramRowHtml("blend", "Blend", state.bass.blend, -10, 10, "", "bass"),
+    paramRowHtml("freq", "Freq", state.bass.freq, 10, 250, "Hz", "bass", 0),
+    paramRowHtml("floor", "Floor", state.bass.floor, 10, 120, "Hz", "bass", 0),
+  ].join("");
 
   view.innerHTML = `
     <header class="view__header">
       <h1 class="view__title">Signal</h1>
-      <div class="view__stats"><span class="view__stats-item">DSP Chain</span></div>
+      <div class="view__stats"><span>DSP Chain</span></div>
       <div class="sig-master">
         <span class="sig-master-lbl">Master</span>
         <div class="sig-tog${state.bypass ? "" : " sig-tog--on"}" id="sig-bypass"></div>
       </div>
     </header>
+
+    <div class="sig-presets" id="sig-presets">
+      <div class="sig-presets__chips">
+        <span class="sig-pre${!activePreset || activePreset === "Flat" ? " sig-pre--on" : ""}" data-preset="Flat">Flat</span>
+        ${presetChips}
+      </div>
+      <div class="sig-presets__actions">
+        <button class="sig-pre-btn" id="sig-save">Save</button>
+        <button class="sig-pre-btn" id="sig-import">Import</button>
+        <button class="sig-pre-btn" id="sig-export">Export</button>
+      </div>
+    </div>
 
     <div class="sig-chain">
       <span class="sig-ch-n">Source</span><span class="sig-ch-a">→</span>
@@ -390,14 +390,6 @@ export function render() {
       <span class="sig-ch-n sig-ch-n--on">Limiter</span><span class="sig-ch-a">→</span>
       <span class="sig-ch-n sig-ch-n--on">Bass Enhance</span><span class="sig-ch-a">→</span>
       <span class="sig-ch-n">PipeWire</span>
-    </div>
-
-    <div class="sig-presets" id="sig-presets">
-      <span class="sig-pre sig-pre--on" data-preset="Flat">Flat</span>
-      ${presetChips}
-      <button class="sig-pre-btn" id="sig-save" title="Save current as preset">Save</button>
-      <button class="sig-pre-btn" id="sig-import" title="Import EasyEffects preset">Import</button>
-      <button class="sig-pre-btn" id="sig-export" title="Export as EasyEffects preset">Export</button>
     </div>
 
     <div class="sig-sec">
@@ -429,13 +421,11 @@ export function render() {
         <span class="sig-sec-badge">LSP Stereo</span>
         <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-lim-tog"></div>
       </div>
-      <div class="sig-sec-b sig-sec-b--row">
-        <div class="sig-knobs">${limiterKnobs}</div>
-        <div class="sig-extras">
-          <div class="sig-ext-row">
-            <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-alr-tog"></div>
-            <span>ALR</span>
-          </div>
+      <div class="sig-sec-b">
+        <div class="sig-params">${limiterParams}</div>
+        <div class="sig-alr">
+          <span class="sig-alr__label">ALR</span>
+          <div class="sig-tog sig-tog--on sig-tog--sm${state.limiter.alr ? " sig-tog--on" : ""}" id="sig-alr-tog"></div>
         </div>
       </div>
     </div>
@@ -446,13 +436,12 @@ export function render() {
         <span class="sig-sec-badge">Calf</span>
         <div class="sig-tog sig-tog--on sig-tog--sm" id="sig-bass-tog"></div>
       </div>
-      <div class="sig-sec-b sig-sec-b--row">
-        <div class="sig-knobs">${bassKnobs}</div>
+      <div class="sig-sec-b">
+        <div class="sig-params">${bassParams}</div>
       </div>
     </div>
   `;
 
-  // ─── Bind events ───────────────────────────────
   requestAnimationFrame(() => {
     canvas = view.querySelector("#sig-canvas");
     ctx = canvas?.getContext("2d");
@@ -505,6 +494,67 @@ export function render() {
     document.addEventListener("mouseup", onUp);
   });
 
+  // Parameter slider drag (Limiter + Bass)
+  view.querySelectorAll(".sig-param").forEach((row) => {
+    const slider = row.querySelector(".sig-param__slider");
+    if (!slider) return;
+
+    const startDrag = (e) => {
+      const key = row.dataset.key;
+      const min = parseFloat(row.dataset.min);
+      const max = parseFloat(row.dataset.max);
+      const section = row.dataset.section;
+      const track = slider.querySelector(".sig-param__track");
+
+      const update = (ev) => {
+        const rect = track.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const val = Math.round((min + pct * (max - min)) * 10) / 10;
+
+        if (section === "limiter") {
+          state.limiter[key] = val;
+          const ipcMap = {
+            threshold: ["dsp_set_limiter_threshold", { thresholdDb: val }],
+            knee: ["dsp_set_limiter_knee", { knee: val }],
+            lookahead: ["dsp_set_limiter_lookahead", { lookahead: val }],
+            boost: ["dsp_set_limiter_boost", { boost: val }],
+          };
+          if (ipcMap[key]) ipcDebounced(...ipcMap[key]);
+        } else if (section === "bass") {
+          state.bass[key] = val;
+          const ipcMap = {
+            amount: ["dsp_set_bass_amount", { amount: val }],
+            drive: ["dsp_set_bass_drive", { drive: val }],
+            blend: ["dsp_set_bass_blend", { blend: val }],
+            freq: ["dsp_set_bass_freq", { freq: val }],
+            floor: ["dsp_set_bass_floor", { floor: val }],
+          };
+          if (ipcMap[key]) ipcDebounced(...ipcMap[key]);
+        }
+
+        const fill = row.querySelector(".sig-param__fill");
+        const thumb = row.querySelector(".sig-param__thumb");
+        const valEl = row.querySelector(".sig-param__val");
+        const unit = valEl.querySelector(".sig-param__unit")?.textContent || "";
+        const decimals = (key === "freq" || key === "floor") ? 0 : 1;
+        fill.style.width = `${pct * 100}%`;
+        thumb.style.left = `${pct * 100}%`;
+        valEl.innerHTML = `${fmtVal(val, decimals)}<span class="sig-param__unit">${unit}</span>`;
+      };
+
+      update(e);
+      const onMove = (ev) => update(ev);
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
+
+    slider.addEventListener("pointerdown", startDrag);
+  });
+
   // Mode selector
   view.querySelector("#sig-modes")?.addEventListener("click", (e) => {
     const btn = e.target.closest(".sig-md");
@@ -514,6 +564,12 @@ export function render() {
     view.querySelectorAll(".sig-md").forEach((b) => b.classList.remove("sig-md--on"));
     btn.classList.add("sig-md--on");
     invoke("dsp_set_eq_mode", { mode }).catch(console.error);
+  });
+
+  // ALR toggle
+  view.querySelector("#sig-alr-tog")?.addEventListener("click", (e) => {
+    state.limiter.alr = !state.limiter.alr;
+    e.currentTarget.classList.toggle("sig-tog--on", state.limiter.alr);
   });
 
   // Preset selection
@@ -617,7 +673,6 @@ function updateFader(el, band) {
   const thumbPos = 50 + (b.gain_db / DB_RANGE) * 50;
 
   const track = el.querySelector(".sig-f-track");
-  // Remove old fill
   track.querySelectorAll(".sig-f-fill").forEach((f) => f.remove());
 
   if (b.gain_db !== 0) {
