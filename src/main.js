@@ -4,6 +4,7 @@ import { mountSidebar } from "./js/components/sidebar.js";
 import { mountPlayerBar } from "./js/components/player-bar.js";
 import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
 import { mountResources, toggleResources } from "./js/components/resources.js";
+import { mountSearchBar } from "./js/components/search-bar.js";
 import { initRouter } from "./js/router.js";
 
 async function loadIconSprite() {
@@ -95,6 +96,10 @@ async function boot() {
   mountPlayerBar(playerBar);
   mountTweaks();
   mountResources();
+
+  // 4b. Mount search bar in titlebar
+  const titlebarCenter = document.getElementById("titlebar-center");
+  if (titlebarCenter) mountSearchBar(titlebarCenter);
 
   // Wire RES button in titlebar
   document.getElementById("titlebar-res")?.addEventListener("click", toggleResources);
