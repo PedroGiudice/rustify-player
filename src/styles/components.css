@@ -121,8 +121,8 @@ html[data-sidebar="expanded"] .sidebar__logo { justify-content: flex-start; }
   background: var(--primary);
 }
 .sidebar-item.active .icon {
-  fill: currentColor;
-  stroke-width: 1.2;
+  color: var(--primary);
+  stroke-width: 1.8;
 }
 
 .sidebar-item__label {
@@ -1706,21 +1706,24 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .sig-chain {
   display: flex; align-items: center; gap: 6px;
   margin-bottom: 22px;
+  padding: 0 var(--space-10);
 }
 .sig-ch-n {
   font-size: var(--text-label-md); font-weight: var(--fw-medium);
   color: var(--on-surface-mute); padding: 4px 12px;
-  border-radius: 6px; background: var(--surface-container-low);
+  background: var(--surface-container-low);
 }
 .sig-ch-n--on { color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, transparent); }
 .sig-ch-a { color: var(--on-surface-mute); font-size: var(--text-label-sm); opacity: 0.5; }
 
 /* Presets */
-.sig-presets { display: flex; align-items: center; gap: 6px; margin-bottom: 28px; flex-wrap: wrap; }
+.sig-presets { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 20px; padding: 0 var(--space-10); }
+.sig-presets__chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.sig-presets__actions { display: flex; gap: 4px; flex-shrink: 0; }
 .sig-pre {
   font-size: var(--text-body-sm); font-weight: var(--fw-medium);
   color: var(--on-surface-variant); padding: 5px 14px;
-  border-radius: 6px; background: var(--surface-container-low);
+  background: var(--surface-container-low);
   border: 1px solid transparent; cursor: pointer;
   transition: all var(--dur-fast) var(--ease-standard);
 }
@@ -1729,7 +1732,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .sig-pre-btn {
   font-size: var(--text-label-md); font-weight: var(--fw-medium);
   color: var(--on-surface-mute); padding: 4px 10px;
-  border-radius: 6px; background: transparent;
+  background: transparent;
   border: 1px solid var(--divider); cursor: pointer;
   transition: all var(--dur-fast) var(--ease-standard);
 }
@@ -1739,7 +1742,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .sig-sec {
   background: var(--surface-container-low);
   border: 1px solid var(--divider);
-  border-radius: 8px; margin-bottom: 16px; overflow: hidden;
+  margin: 0 var(--space-10) 16px; overflow: hidden;
 }
 .sig-sec-h {
   display: flex; align-items: center; padding: 10px 20px;
@@ -1747,13 +1750,12 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 }
 .sig-sec-t { font-size: var(--text-body-lg); font-weight: var(--fw-bold); flex: 1; }
 .sig-sec-badge { font-size: var(--text-label-sm); color: var(--on-surface-mute); }
-.sig-sec-b { padding: 20px; }
-.sig-sec-b--row { display: flex; gap: 16px; align-items: flex-start; }
+.sig-sec-b { padding: 16px 20px; }
 
 /* EQ canvas */
 .sig-eq-wrap {
   position: relative; height: 170px;
-  background: rgba(0,0,0,.15); border-radius: 6px; overflow: hidden;
+  background: rgba(0,0,0,.15); overflow: hidden;
 }
 .sig-eq-wrap canvas { width: 100%; height: 100%; display: block; }
 .sig-eq-yaxis {
@@ -1817,7 +1819,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--divider);
 }
 .sig-foot-lbl { font-size: var(--text-label-md); color: var(--on-surface-mute); font-weight: var(--fw-medium); margin-bottom: 5px; }
-.sig-modes { display: flex; border-radius: 6px; overflow: hidden; }
+.sig-modes { display: flex; overflow: hidden; }
 .sig-md {
   font-size: var(--text-label-md); font-weight: var(--fw-medium);
   padding: 4px 13px; background: var(--surface-container-high); color: var(--on-surface-mute);
@@ -1827,23 +1829,60 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .sig-md:hover { color: var(--on-surface-variant); }
 .sig-md--on { background: var(--primary); color: var(--surface-lowest); }
 
-/* Knobs */
-.sig-knobs { display: flex; gap: 28px; flex-wrap: wrap; }
-.sig-knob { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.sig-kr { width: 50px; height: 50px; position: relative; }
-.sig-kr svg { width: 100%; height: 100%; }
-.sig-k-bg { fill: none; stroke: var(--surface-container-highest); stroke-width: 2.5; stroke-linecap: round; }
-.sig-k-val { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linecap: round; }
-.sig-k-num {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: var(--text-label-md); font-weight: var(--fw-medium); color: var(--on-surface-variant);
+/* Parameter slider rows (Limiter, Bass Enhancer) */
+.sig-params { display: flex; flex-direction: column; }
+.sig-param {
+  display: flex; align-items: center; height: 32px;
+}
+.sig-param__label {
+  width: 100px; flex-shrink: 0;
+  font-size: var(--text-body-sm); color: var(--on-surface-variant);
+}
+.sig-param__slider {
+  flex: 1; height: 24px;
+  display: flex; align-items: center;
+  margin: 0 var(--space-4);
+  cursor: pointer; position: relative;
+  touch-action: none;
+}
+.sig-param__track {
+  width: 100%; height: 2px;
+  background: var(--surface-container-highest);
+  position: relative;
+  transition: height var(--dur-fast) var(--ease-standard);
+}
+.sig-param__slider:hover .sig-param__track { height: 4px; }
+.sig-param__fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--primary);
+}
+.sig-param__thumb {
+  position: absolute; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px; height: 10px;
+  background: var(--on-surface);
+  border-radius: 50%;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.sig-param__slider:hover .sig-param__thumb { opacity: 1; }
+.sig-param__val {
+  width: 64px; flex-shrink: 0; text-align: right;
+  font-size: var(--text-body-sm); color: var(--on-surface);
   font-variant-numeric: tabular-nums;
 }
-.sig-k-lbl { font-size: var(--text-label-md); color: var(--on-surface-mute); font-weight: var(--fw-medium); }
+.sig-param__unit {
+  font-size: var(--text-label-xs); color: var(--on-surface-mute);
+  margin-left: 2px;
+}
 
-/* Extras (ALR toggle, meters) */
-.sig-extras { display: flex; flex-direction: column; gap: 8px; margin-left: 8px; justify-content: center; }
-.sig-ext-row {
-  display: flex; align-items: center; gap: 8px;
-  font-size: var(--text-label-md); color: var(--on-surface-mute); font-weight: var(--fw-medium);
+/* ALR row */
+.sig-alr {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: var(--space-3); padding-top: var(--space-3);
+  border-top: 1px solid var(--divider);
+}
+.sig-alr__label {
+  font-size: var(--text-body-sm); color: var(--on-surface-variant);
+  font-weight: var(--fw-medium);
 }
