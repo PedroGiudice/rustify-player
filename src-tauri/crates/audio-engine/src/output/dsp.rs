@@ -308,9 +308,17 @@ impl DspFilterBin {
         self.eq.set_property_from_str("mode", nick);
     }
 
+    pub fn set_eq_enabled(&self, enabled: bool) {
+        self.eq.set_property("enabled", enabled);
+    }
+
     // -----------------------------------------------------------------------
     // Limiter
     // -----------------------------------------------------------------------
+
+    pub fn set_limiter_enabled(&self, enabled: bool) {
+        self.limiter.set_property("enabled", enabled);
+    }
 
     /// Set limiter threshold in dB (linear for the plugin: 10^(dB/20)).
     pub fn set_limiter_threshold(&self, threshold_db: f32) {

@@ -455,6 +455,24 @@ fn dsp_set_eq_gain(player: State<Player>, input: f32, output: f32) -> Result<(),
 }
 
 #[tauri::command]
+fn dsp_set_eq_enabled(player: State<Player>, enabled: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqEnabled(enabled))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_enabled(player: State<Player>, enabled: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterEnabled(enabled))
+        .map_err(err)
+}
+
+#[tauri::command]
 fn dsp_set_limiter_threshold(player: State<Player>, threshold_db: f32) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
@@ -1114,7 +1132,9 @@ pub fn run() {
             dsp_set_eq_solo,
             dsp_set_eq_mute,
             dsp_set_eq_mode,
+            dsp_set_eq_enabled,
             dsp_set_eq_gain,
+            dsp_set_limiter_enabled,
             dsp_set_limiter_threshold,
             dsp_set_limiter_knee,
             dsp_set_limiter_lookahead,

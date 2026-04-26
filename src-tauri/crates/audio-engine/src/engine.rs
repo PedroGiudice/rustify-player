@@ -203,9 +203,19 @@ impl EngineState {
                     dsp.set_eq_mode(mode);
                 }
             }
+            Command::DspSetEqEnabled(enabled) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_enabled(enabled);
+                }
+            }
             Command::DspSetEqGain { input, output } => {
                 if let Some(dsp) = &self.player.dsp {
                     dsp.set_eq_gain(input, output);
+                }
+            }
+            Command::DspSetLimiterEnabled(enabled) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_enabled(enabled);
                 }
             }
             Command::DspSetLimiterThreshold(th) => {

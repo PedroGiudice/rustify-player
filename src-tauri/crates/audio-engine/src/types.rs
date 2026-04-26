@@ -161,8 +161,12 @@ pub enum Command {
     DspSetEqMute { band: u8, mute: bool },
     /// Set EQ operating mode (0=IIR, 1=FIR, 2=FFT, 3=SPM).
     DspSetEqMode(i32),
+    /// Set EQ enabled (true = processing, false = passthrough).
+    DspSetEqEnabled(bool),
     /// Set EQ global input/output gain (linear).
     DspSetEqGain { input: f32, output: f32 },
+    /// Set limiter enabled (true = processing, false = passthrough).
+    DspSetLimiterEnabled(bool),
     /// Set limiter threshold in dB.
     DspSetLimiterThreshold(f32),
     /// Set limiter knee.
