@@ -140,6 +140,7 @@ export function mountPlayerBar(root) {
   bindVolume();
   bindLike();
   listenEngine();
+  bindVisibilitySync();
 }
 
 function cacheUI(root) {
@@ -441,6 +442,39 @@ function updateTechInfo(info) {
   const depth = info.bit_depth != null ? `${info.bit_depth}bit` : "\u2014";
   const rate = info.sample_rate ? `${info.sample_rate / 1000}kHz` : "\u2014";
   ui.techLine.textContent = `${depth} / ${rate}`;
+}
+
+function bindVisibilitySync() {
+  // WebKitGTK throttles/suspends JS when the window is not visible.
+  // Events from the backend (player-state) can be missed, leaving
+  // the UI out of sync. Re-sync when the page becomes visible again.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (!currentTrack) return;
+
+    // Re-sync metadata (cover, title, like state)
+    ui.title.textContent = currentTrack.title || "Unknown Title";
+    ui.artist.textContent = currentTrack.artist_name || "Unknown Artist";
+    updateNavButtons();
+    updateTrackMeta(currentTrack);
+
+    // Re-sync playing state from GStreamer via a position probe.
+    // If we get a Position event within 500ms, we're still playing.
+    // If not, assume paused/stopped.
+    let gotPosition = false;
+    const onState = (e) => {
+      const p = e.payload;
+      if (p.Position) gotPosition = true;
+    };
+    listen("player-state", onState);
+    setTimeout(() => {
+      // We can't unlisten a Tauri event easily, but the flag is enough.
+      // If no position arrived, sync to paused state.
+      if (!gotPosition && isPlaying) {
+        setPlayingState(false);
+      }
+    }, 500);
+  });
 }
 
 export async function playTrack(track) {
