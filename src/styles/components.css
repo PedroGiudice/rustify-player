@@ -2147,8 +2147,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 .search-bar__dropdown {
   position: absolute;
   top: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
   width: 400px;
   max-height: 420px;
   overflow-y: auto;
@@ -2156,6 +2155,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   border: 1px solid var(--divider-hi);
   z-index: 100;
   scrollbar-width: thin;
+  text-align: left;
 }
 
 .search-section {

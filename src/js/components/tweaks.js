@@ -10,6 +10,7 @@ const DEFAULTS = {
   npLayout: "left",
   type: "body",
   glow: 0.15,
+  zoom: 1.0,
 };
 
 let state = { ...DEFAULTS };
@@ -35,6 +36,7 @@ export function applyTweaks() {
   html.dataset.npLayout = state.npLayout || "left";
   html.dataset.type = state.type === "mono" ? "mono" : "";
   html.style.setProperty("--glow", String(state.glow));
+  html.style.zoom = String(state.zoom);
   save();
 }
 
@@ -114,6 +116,11 @@ function renderPanel() {
       <input type="range" class="settings-range" id="tweaks-glow"
         min="0" max="1" step="0.05" value="${state.glow}">
     </div>
+    <div class="tweaks__row">
+      <span class="tweaks__label">Zoom ${Math.round(state.zoom * 100)}%</span>
+      <input type="range" class="settings-range" id="tweaks-zoom"
+        min="0.85" max="1.25" step="0.05" value="${state.zoom}">
+    </div>
     </div>
   `;
 
@@ -133,5 +140,11 @@ function renderPanel() {
   const glowInput = panelEl.querySelector("#tweaks-glow");
   glowInput.addEventListener("input", (e) => {
     setVal("glow", parseFloat(e.target.value));
+  });
+
+  // Bind zoom slider
+  const zoomInput = panelEl.querySelector("#tweaks-zoom");
+  zoomInput.addEventListener("input", (e) => {
+    setVal("zoom", parseFloat(e.target.value));
   });
 }
