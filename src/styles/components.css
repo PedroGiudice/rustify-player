@@ -962,7 +962,8 @@ html[data-density="compact"] .album-cover-empty {
 
 /* Segmented control (tweaks panel) */
 .segmented {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .segmented__btn {
