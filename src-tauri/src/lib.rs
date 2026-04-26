@@ -367,7 +367,13 @@ fn lib_recommendations(
 
 #[tauri::command]
 fn lib_list_moods(lib: State<Library>) -> Result<Vec<MoodPlaylist>, String> {
-    lib.handle.list_moods().map_err(err)
+    let mut moods = lib.handle.list_moods().map_err(err)?;
+    for m in &mut moods {
+        if let Some(rel) = &m.cover_path {
+            m.cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(moods)
 }
 
 #[tauri::command]

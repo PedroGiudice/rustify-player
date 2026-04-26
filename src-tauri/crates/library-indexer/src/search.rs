@@ -843,17 +843,20 @@ pub fn recommendations(conn: &Connection) -> Result<Recommendations, IndexerErro
 
 pub fn list_moods(conn: &Connection) -> Result<Vec<MoodPlaylist>, IndexerError> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, track_count, created_at, updated_at \
+        "SELECT id, name, track_count, accent_color, cover_path, created_at, updated_at \
          FROM mood_playlists ORDER BY name",
     )?;
     let rows = stmt
         .query_map([], |row| {
+            let cover_str: Option<String> = row.get(4)?;
             Ok(MoodPlaylist {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 track_count: row.get::<_, i64>(2)? as u32,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
+                accent_color: row.get(3)?,
+                cover_path: cover_str.map(Into::into),
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

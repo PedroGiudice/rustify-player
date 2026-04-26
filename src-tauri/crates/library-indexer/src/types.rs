@@ -171,6 +171,8 @@ pub struct MoodPlaylist {
     pub id: i64,
     pub name: String,
     pub track_count: u32,
+    pub accent_color: Option<String>,
+    pub cover_path: Option<PathBuf>,
     pub created_at: i64,
     pub updated_at: i64,
 }
