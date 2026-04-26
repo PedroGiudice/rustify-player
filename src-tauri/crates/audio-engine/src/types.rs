@@ -179,6 +179,24 @@ pub enum Command {
     DspSetLimiterGain { input: f32, output: f32 },
     /// Set limiter boost.
     DspSetLimiterBoost(bool),
+    /// Set limiter attack time (ms).
+    DspSetLimiterAttack(f32),
+    /// Set limiter release time (ms).
+    DspSetLimiterRelease(f32),
+    /// Set limiter stereo link (0–100 %).
+    DspSetLimiterStereoLink(f32),
+    /// Set limiter sidechain preamp (linear).
+    DspSetLimiterScPreamp(f32),
+    /// Set limiter oversampling mode (enum).
+    DspSetLimiterOversampling(i32),
+    /// Set limiter dithering mode (enum).
+    DspSetLimiterDither(i32),
+    /// Set limiter ALR enabled.
+    DspSetLimiterAlr(bool),
+    /// Set limiter ALR attack time (ms).
+    DspSetLimiterAlrAttack(f32),
+    /// Set limiter ALR release time (ms).
+    DspSetLimiterAlrRelease(f32),
     /// Set bass enhancer amount.
     DspSetBassAmount(f32),
     /// Set bass enhancer drive.
@@ -193,6 +211,10 @@ pub enum Command {
     DspSetBassBypass(bool),
     /// Set bass enhancer input/output levels.
     DspSetBassLevels { input: f32, output: f32 },
+    /// Set bass enhancer floor-active toggle.
+    DspSetBassFloorActive(bool),
+    /// Set bass enhancer listen (solo harmonics).
+    DspSetBassListen(bool),
     /// Global DSP bypass.
     DspSetBypass(bool),
 

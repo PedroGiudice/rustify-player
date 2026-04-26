@@ -10,6 +10,9 @@ const DB_RANGE = 36;
 const FILTER_TYPES = ["Off", "Bell", "Hi-pass", "Hi-shelf", "Lo-pass", "Lo-shelf", "Notch", "Resonance", "Allpass", "Bandpass", "Ladder-pass", "Ladder-rej"];
 const FILTER_MODES = ["RLC (BT)", "RLC (MT)", "BWC (BT)", "BWC (MT)", "LRX (BT)", "LRX (MT)", "APO (DR)"];
 const SLOPES = ["x1", "x2", "x3", "x4"];
+const LIMITER_MODES = ["Herm Thin", "Herm Wide", "Herm Tail", "Herm Duck", "Exp Thin", "Exp Wide", "Exp Tail", "Exp Duck"];
+const LIMITER_OVS = ["None", "Half x2/16", "Half x2/24", "Half x3/16", "Half x3/24", "Half x4/16", "Half x4/24", "Half x6/16", "Half x6/24", "Half x8/16", "Half x8/24", "Full x2/16", "Full x2/24", "Full x3/16", "Full x3/24", "Full x4/16", "Full x4/24", "Full x6/16", "Full x6/24", "Full x8/16", "Full x8/24"];
+const LIMITER_DITHER = ["None", "7bit", "8bit", "11bit", "12bit"];
 
 const DEFAULT_BANDS = [
   { freq: 20, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
@@ -40,14 +43,49 @@ function defaultState() {
       output_gain: 0,
       bands: DEFAULT_BANDS.map((b) => ({ ...b })),
     },
-    limiter: { enabled: true, threshold: 0, knee: 1, lookahead: 5, boost: false, alr: true },
-    bass: { enabled: true, amount: 0, drive: 1, blend: 0, freq: 120, floor: 20 },
+    limiter: {
+      enabled: false, mode: 0, ovs: 0, dither: 0,
+      threshold: -6, knee: 3, lookahead: 5, attack: 5, release: 20,
+      sc_preamp: 1, stereo_link: 100, boost: false,
+      alr: false, alr_attack: 5, alr_release: 50,
+      input_gain: 0, output_gain: 0,
+    },
+    bass: {
+      enabled: false, amount: 0, drive: 1, blend: 0,
+      freq: 120, floor: 20, floor_active: true, listen: false,
+      input_gain: 0, output_gain: 0,
+    },
   };
 }
 
-let state = defaultState();
+const STATE_KEY = "rustify-dsp-state";
+
+let state = loadState();
 let activeBand = 0;
 let canvas, ctx;
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STATE_KEY));
+    if (saved) {
+      // Merge with defaults to fill any missing keys from older saves
+      const def = defaultState();
+      return {
+        bypass: saved.bypass ?? def.bypass,
+        eq: { ...def.eq, ...saved.eq, bands: (saved.eq?.bands || def.eq.bands).map((b, i) => ({ ...def.eq.bands[i], ...b })) },
+        limiter: { ...def.limiter, ...saved.limiter },
+        bass: { ...def.bass, ...saved.bass },
+      };
+    }
+  } catch {}
+  return defaultState();
+}
+
+function persistState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch {}
+}
 
 function loadPresets() {
   try {
@@ -85,13 +123,21 @@ function fmtVal(val, decimals = 1) {
 let _ipcTimer = null;
 function ipcDebounced(cmd, args, delay = 50) {
   clearTimeout(_ipcTimer);
-  _ipcTimer = setTimeout(() => invoke(cmd, args).catch(console.error), delay);
+  _ipcTimer = setTimeout(() => {
+    invoke(cmd, args).catch(console.error);
+    persistState();
+  }, delay);
 }
 
-async function applyFullState() {
+/** Apply persisted DSP state to the backend. Called on Signal view mount
+ * and also exported for app startup (main.js). */
+export async function applyFullState() {
+  persistState();
   const { eq, limiter, bass, bypass } = state;
   try {
     await invoke("dsp_set_bypass", { bypass });
+    await invoke("dsp_set_eq_enabled", { enabled: eq.enabled });
+    await invoke("dsp_set_eq_mode", { mode: eq.mode });
     await invoke("dsp_set_eq_gain", { input: eq.input_gain, output: eq.output_gain });
     for (let i = 0; i < eq.bands.length; i++) {
       const b = eq.bands[i];
@@ -102,15 +148,31 @@ async function applyFullState() {
       await invoke("dsp_set_eq_solo", { band: i, solo: b.solo }).catch(() => {});
       await invoke("dsp_set_eq_mute", { band: i, mute: b.mute }).catch(() => {});
     }
+    await invoke("dsp_set_limiter_enabled", { enabled: limiter.enabled });
+    await invoke("dsp_set_limiter_mode", { mode: limiter.mode });
+    await invoke("dsp_set_limiter_oversampling", { ovs: limiter.ovs });
+    await invoke("dsp_set_limiter_dither", { dither: limiter.dither });
     await invoke("dsp_set_limiter_threshold", { thresholdDb: limiter.threshold });
     await invoke("dsp_set_limiter_knee", { knee: limiter.knee });
     await invoke("dsp_set_limiter_lookahead", { lookahead: limiter.lookahead });
+    await invoke("dsp_set_limiter_attack", { attack: limiter.attack });
+    await invoke("dsp_set_limiter_release", { release: limiter.release });
+    await invoke("dsp_set_limiter_sc_preamp", { preamp: limiter.sc_preamp });
+    await invoke("dsp_set_limiter_stereo_link", { link: limiter.stereo_link });
     await invoke("dsp_set_limiter_boost", { boost: limiter.boost });
+    await invoke("dsp_set_limiter_gain", { input: limiter.input_gain, output: limiter.output_gain });
+    await invoke("dsp_set_limiter_alr", { alr: limiter.alr });
+    await invoke("dsp_set_limiter_alr_attack", { attack: limiter.alr_attack });
+    await invoke("dsp_set_limiter_alr_release", { release: limiter.alr_release });
+    await invoke("dsp_set_bass_bypass", { bypass: !bass.enabled });
     await invoke("dsp_set_bass_amount", { amount: bass.amount });
     await invoke("dsp_set_bass_drive", { drive: bass.drive });
     await invoke("dsp_set_bass_blend", { blend: bass.blend });
     await invoke("dsp_set_bass_freq", { freq: bass.freq });
     await invoke("dsp_set_bass_floor", { floor: bass.floor });
+    await invoke("dsp_set_bass_floor_active", { active: bass.floor_active });
+    await invoke("dsp_set_bass_listen", { listen: bass.listen });
+    await invoke("dsp_set_bass_levels", { input: bass.input_gain, output: bass.output_gain });
   } catch (e) {
     console.error("[signal] apply state failed:", e);
   }
@@ -121,8 +183,16 @@ function parseEasyEffects(json, name) {
   const preset = {
     name,
     eq: { mode: "IIR", input_gain: 0, output_gain: 0, bands: [] },
-    limiter: { threshold: 0, knee: 0, lookahead: 5, boost: 0, alr: true },
-    bass_enhancer: { amount: 0, drive: 0, blend: 0, freq: 120, floor: 20 },
+    limiter: {
+      mode: 0, ovs: 0, dither: 0, threshold: 0, knee: 0, lookahead: 5,
+      attack: 5, release: 20, sc_preamp: 1, stereo_link: 100,
+      boost: false, alr: true, alr_attack: 5, alr_release: 50,
+      input_gain: 0, output_gain: 0,
+    },
+    bass_enhancer: {
+      amount: 0, drive: 0, blend: 0, freq: 120, floor: 20,
+      floor_active: true, listen: false, input_gain: 0, output_gain: 0,
+    },
   };
 
   const eq = o["equalizer#0"];
@@ -161,17 +231,32 @@ function parseEasyEffects(json, name) {
       blend: be.blend || 0,
       freq: be.scope || 120,
       floor: be.floor || 20,
+      floor_active: be["floor-active"] !== false,
+      listen: be.listen || false,
+      input_gain: be["input-gain"] || 0,
+      output_gain: be["output-gain"] || 0,
     };
   }
 
   const lim = o["limiter#0"];
   if (lim) {
     preset.limiter = {
+      mode: LIMITER_MODES.indexOf(lim.mode) >= 0 ? LIMITER_MODES.indexOf(lim.mode) : 0,
+      ovs: lim.ovs || 0,
+      dither: lim.dither || 0,
       threshold: lim.threshold || 0,
       knee: lim.knee || 0,
       lookahead: lim.lookahead || 5,
-      boost: lim.boost || 0,
+      attack: lim.attack || 5,
+      release: lim.release || 20,
+      sc_preamp: lim["sidechain-preamp"] || 1,
+      stereo_link: lim["stereo-link"] ?? 100,
+      boost: !!lim.boost,
       alr: lim.alr !== false,
+      alr_attack: lim["alr-attack"] || 5,
+      alr_release: lim["alr-release"] || 50,
+      input_gain: lim["input-gain"] || 0,
+      output_gain: lim["output-gain"] || 0,
     };
   }
 
@@ -208,11 +293,31 @@ function toEasyEffects(preset) {
         blend: be.blend || 0,
         bypass: false,
         floor: be.floor || 20,
-        "floor-active": true,
+        "floor-active": be.floor_active !== false,
         harmonics: be.drive || 0,
-        "input-gain": 0,
-        "output-gain": 0,
+        listen: be.listen || false,
+        "input-gain": be.input_gain || 0,
+        "output-gain": be.output_gain || 0,
         scope: be.freq || 120,
+      },
+      "limiter#0": {
+        mode: LIMITER_MODES[lim.mode] || "Herm Thin",
+        ovs: lim.ovs || 0,
+        dither: lim.dither || 0,
+        threshold: lim.threshold || 0,
+        knee: lim.knee || 0,
+        lookahead: lim.lookahead || 5,
+        attack: lim.attack || 5,
+        release: lim.release || 20,
+        "sidechain-preamp": lim.sc_preamp || 1,
+        "stereo-link": lim.stereo_link ?? 100,
+        boost: !!lim.boost,
+        alr: lim.alr || false,
+        "alr-attack": lim.alr_attack || 5,
+        "alr-release": lim.alr_release || 50,
+        "input-gain": lim.input_gain || 0,
+        "output-gain": lim.output_gain || 0,
+        bypass: false,
       },
       blocklist: [],
       "equalizer#0": {
@@ -225,7 +330,7 @@ function toEasyEffects(preset) {
         "output-gain": preset.eq?.output_gain || 0,
         right,
       },
-      plugins_order: ["equalizer#0", "bass_enhancer#0"],
+      plugins_order: ["equalizer#0", "limiter#0", "bass_enhancer#0"],
     },
   };
 }
@@ -245,6 +350,7 @@ function applyPresetToState(preset) {
   state.eq.input_gain = preset.eq?.input_gain ?? 0;
   state.eq.output_gain = preset.eq?.output_gain ?? 0;
 
+  if (preset.bypass != null) state.bypass = preset.bypass;
   if (preset.limiter) Object.assign(state.limiter, preset.limiter);
   if (preset.bass_enhancer) Object.assign(state.bass, preset.bass_enhancer);
 }
@@ -363,18 +469,25 @@ export function render() {
   ).join("");
 
   const limiterParams = [
-    paramRowHtml("threshold", "Threshold", state.limiter.threshold, -60, 0, "dBFS", "limiter"),
+    paramRowHtml("threshold", "Threshold", state.limiter.threshold, -60, 0, "dB", "limiter"),
     paramRowHtml("knee", "Knee", state.limiter.knee, 0, 12, "dB", "limiter"),
-    paramRowHtml("lookahead", "Lookahead", state.limiter.lookahead, 0, 20, "ms", "limiter"),
-    paramRowHtml("boost", "Boost", state.limiter.boost, 0, 12, "dB", "limiter"),
+    paramRowHtml("lookahead", "Lookahead", state.limiter.lookahead, 0.1, 20, "ms", "limiter"),
+    paramRowHtml("attack", "Attack", state.limiter.attack, 0.25, 20, "ms", "limiter"),
+    paramRowHtml("release", "Release", state.limiter.release, 0.25, 20, "ms", "limiter"),
+    paramRowHtml("sc_preamp", "SC PreAmp", state.limiter.sc_preamp, -20, 40, "dB", "limiter"),
+    paramRowHtml("stereo_link", "Stereo Link", state.limiter.stereo_link, 0, 100, "%", "limiter", 0),
+    paramRowHtml("input_gain", "Input", state.limiter.input_gain, -24, 24, "dB", "limiter"),
+    paramRowHtml("output_gain", "Output", state.limiter.output_gain, -24, 24, "dB", "limiter"),
   ].join("");
 
   const bassParams = [
-    paramRowHtml("amount", "Amount", state.bass.amount, 0, 10, "", "bass"),
-    paramRowHtml("drive", "Drive", state.bass.drive, 0, 10, "", "bass"),
+    paramRowHtml("amount", "Amount", state.bass.amount, 0, 64, "dB", "bass"),
+    paramRowHtml("drive", "Harmonics", state.bass.drive, 0.1, 10, "", "bass"),
     paramRowHtml("blend", "Blend", state.bass.blend, -10, 10, "", "bass"),
-    paramRowHtml("freq", "Freq", state.bass.freq, 10, 250, "Hz", "bass", 0),
+    paramRowHtml("freq", "Scope", state.bass.freq, 10, 250, "Hz", "bass", 0),
     paramRowHtml("floor", "Floor", state.bass.floor, 10, 120, "Hz", "bass", 0),
+    paramRowHtml("input_gain", "Input", state.bass.input_gain, -36, 36, "dB", "bass"),
+    paramRowHtml("output_gain", "Output", state.bass.output_gain, -36, 36, "dB", "bass"),
   ].join("");
 
   view.innerHTML = `
@@ -394,6 +507,8 @@ export function render() {
       </div>
       <div class="sig-presets__actions">
         <button class="sig-pre-btn" id="sig-save">Save</button>
+        <button class="sig-pre-btn" id="sig-rename">Rename</button>
+        <button class="sig-pre-btn" id="sig-delete">Delete</button>
         <button class="sig-pre-btn" id="sig-import">Import</button>
         <button class="sig-pre-btn" id="sig-export">Export</button>
       </div>
@@ -458,6 +573,10 @@ export function render() {
               ${MODE_NAMES.map((m, i) => `<button class="sig-md${i === state.eq.mode ? " sig-md--on" : ""}" data-mode="${i}">${m}</button>`).join("")}
             </div>
           </div>
+          <div class="sig-eq-gains">
+            ${paramRowHtml("input_gain", "Input", state.eq.input_gain, -12, 12, "dB", "eq-gain")}
+            ${paramRowHtml("output_gain", "Output", state.eq.output_gain, -12, 12, "dB", "eq-gain")}
+          </div>
         </div>
       </div>
     </div>
@@ -469,10 +588,37 @@ export function render() {
         <div class="sig-tog${state.limiter.enabled ? " sig-tog--on" : ""} sig-tog--sm" id="sig-lim-tog"></div>
       </div>
       <div class="sig-sec-b">
+        <div class="sig-lim-selects">
+          <label class="sig-bd__lbl">Mode
+            <select class="sig-bd-select" id="sig-lim-mode">
+              ${LIMITER_MODES.map((m, i) => `<option value="${i}"${i === state.limiter.mode ? " selected" : ""}>${m}</option>`).join("")}
+            </select>
+          </label>
+          <label class="sig-bd__lbl">Oversampling
+            <select class="sig-bd-select" id="sig-lim-ovs">
+              ${LIMITER_OVS.map((m, i) => `<option value="${i}"${i === state.limiter.ovs ? " selected" : ""}>${m}</option>`).join("")}
+            </select>
+          </label>
+          <label class="sig-bd__lbl">Dither
+            <select class="sig-bd-select" id="sig-lim-dither">
+              ${LIMITER_DITHER.map((m, i) => `<option value="${i}"${i === state.limiter.dither ? " selected" : ""}>${m}</option>`).join("")}
+            </select>
+          </label>
+          <div class="sig-lim-toggles">
+            <span class="sig-alr__label">Boost</span>
+            <div class="sig-tog${state.limiter.boost ? " sig-tog--on" : ""} sig-tog--sm" id="sig-lim-boost"></div>
+          </div>
+        </div>
         <div class="sig-params">${limiterParams}</div>
-        <div class="sig-alr">
-          <span class="sig-alr__label">ALR</span>
-          <div class="sig-tog sig-tog--on sig-tog--sm${state.limiter.alr ? " sig-tog--on" : ""}" id="sig-alr-tog"></div>
+        <div class="sig-alr-section">
+          <div class="sig-alr">
+            <span class="sig-alr__label">Auto Leveling</span>
+            <div class="sig-tog${state.limiter.alr ? " sig-tog--on" : ""} sig-tog--sm" id="sig-alr-tog"></div>
+          </div>
+          <div class="sig-params sig-alr-params">
+            ${paramRowHtml("alr_attack", "ALR Attack", state.limiter.alr_attack, 0.1, 200, "ms", "limiter")}
+            ${paramRowHtml("alr_release", "ALR Release", state.limiter.alr_release, 10, 1000, "ms", "limiter", 0)}
+          </div>
         </div>
       </div>
     </div>
@@ -484,6 +630,16 @@ export function render() {
         <div class="sig-tog${state.bass.enabled ? " sig-tog--on" : ""} sig-tog--sm" id="sig-bass-tog"></div>
       </div>
       <div class="sig-sec-b">
+        <div class="sig-bass-toggles">
+          <div class="sig-alr">
+            <span class="sig-alr__label">Listen</span>
+            <div class="sig-tog${state.bass.listen ? " sig-tog--on" : ""} sig-tog--sm" id="sig-bass-listen"></div>
+          </div>
+          <div class="sig-alr">
+            <span class="sig-alr__label">Floor</span>
+            <div class="sig-tog${state.bass.floor_active ? " sig-tog--on" : ""} sig-tog--sm" id="sig-bass-floor-active"></div>
+          </div>
+        </div>
         <div class="sig-params">${bassParams}</div>
       </div>
     </div>
@@ -494,6 +650,8 @@ export function render() {
     ctx = canvas?.getContext("2d");
     drawCurve();
     window.addEventListener("resize", drawCurve);
+    // Sync backend with persisted state on first mount
+    applyFullState();
   });
 
   // Master bypass
@@ -501,6 +659,7 @@ export function render() {
     state.bypass = !state.bypass;
     e.currentTarget.classList.toggle("sig-tog--on", !state.bypass);
     invoke("dsp_set_bypass", { bypass: state.bypass }).catch(console.error);
+    persistState();
   });
 
   // EQ fader drag
@@ -593,18 +752,21 @@ export function render() {
     const label = view.querySelector("#sig-bd-type-label");
     if (label) label.textContent = FILTER_TYPES[val];
     invoke("dsp_set_eq_filter_type", { band: activeBand, filterType: val }).catch(console.error);
+    persistState();
   });
 
   view.querySelector("#sig-bd-mode")?.addEventListener("change", (e) => {
     const val = parseInt(e.target.value);
     state.eq.bands[activeBand].filterMode = val;
     invoke("dsp_set_eq_filter_mode", { band: activeBand, mode: val }).catch(console.error);
+    persistState();
   });
 
   view.querySelector("#sig-bd-slope")?.addEventListener("change", (e) => {
     const val = parseInt(e.target.value);
     state.eq.bands[activeBand].slope = val;
     invoke("dsp_set_eq_slope", { band: activeBand, slope: val }).catch(console.error);
+    persistState();
   });
 
   view.querySelector("#sig-bd-solo")?.addEventListener("click", (e) => {
@@ -612,6 +774,7 @@ export function render() {
     b.solo = !b.solo;
     e.currentTarget.classList.toggle("is-active", b.solo);
     invoke("dsp_set_eq_solo", { band: activeBand, solo: b.solo }).catch(console.error);
+    persistState();
   });
 
   view.querySelector("#sig-bd-mute")?.addEventListener("click", (e) => {
@@ -619,6 +782,7 @@ export function render() {
     b.mute = !b.mute;
     e.currentTarget.classList.toggle("is-active", b.mute);
     invoke("dsp_set_eq_mute", { band: activeBand, mute: b.mute }).catch(console.error);
+    persistState();
   });
 
   // Parameter slider drag (Limiter + Bass)
@@ -644,7 +808,14 @@ export function render() {
             threshold: ["dsp_set_limiter_threshold", { thresholdDb: val }],
             knee: ["dsp_set_limiter_knee", { knee: val }],
             lookahead: ["dsp_set_limiter_lookahead", { lookahead: val }],
-            boost: ["dsp_set_limiter_boost", { boost: val }],
+            attack: ["dsp_set_limiter_attack", { attack: val }],
+            release: ["dsp_set_limiter_release", { release: val }],
+            sc_preamp: ["dsp_set_limiter_sc_preamp", { preamp: val }],
+            stereo_link: ["dsp_set_limiter_stereo_link", { link: val }],
+            input_gain: ["dsp_set_limiter_gain", { input: val, output: state.limiter.output_gain }],
+            output_gain: ["dsp_set_limiter_gain", { input: state.limiter.input_gain, output: val }],
+            alr_attack: ["dsp_set_limiter_alr_attack", { attack: val }],
+            alr_release: ["dsp_set_limiter_alr_release", { release: val }],
           };
           if (ipcMap[key]) ipcDebounced(...ipcMap[key]);
         } else if (section === "bass") {
@@ -655,8 +826,13 @@ export function render() {
             blend: ["dsp_set_bass_blend", { blend: val }],
             freq: ["dsp_set_bass_freq", { freq: val }],
             floor: ["dsp_set_bass_floor", { floor: val }],
+            input_gain: ["dsp_set_bass_levels", { input: val, output: state.bass.output_gain }],
+            output_gain: ["dsp_set_bass_levels", { input: state.bass.input_gain, output: val }],
           };
           if (ipcMap[key]) ipcDebounced(...ipcMap[key]);
+        } else if (section === "eq-gain") {
+          state.eq[key] = val;
+          ipcDebounced("dsp_set_eq_gain", { input: state.eq.input_gain, output: state.eq.output_gain });
         }
 
         const fill = row.querySelector(".sig-param__fill");
@@ -691,12 +867,40 @@ export function render() {
     view.querySelectorAll(".sig-md").forEach((b) => b.classList.remove("sig-md--on"));
     btn.classList.add("sig-md--on");
     invoke("dsp_set_eq_mode", { mode }).catch(console.error);
+    persistState();
+  });
+
+  // Limiter mode/ovs/dither selects
+  view.querySelector("#sig-lim-mode")?.addEventListener("change", (e) => {
+    state.limiter.mode = parseInt(e.target.value);
+    invoke("dsp_set_limiter_mode", { mode: state.limiter.mode }).catch(console.error);
+    persistState();
+  });
+  view.querySelector("#sig-lim-ovs")?.addEventListener("change", (e) => {
+    state.limiter.ovs = parseInt(e.target.value);
+    invoke("dsp_set_limiter_oversampling", { ovs: state.limiter.ovs }).catch(console.error);
+    persistState();
+  });
+  view.querySelector("#sig-lim-dither")?.addEventListener("change", (e) => {
+    state.limiter.dither = parseInt(e.target.value);
+    invoke("dsp_set_limiter_dither", { dither: state.limiter.dither }).catch(console.error);
+    persistState();
+  });
+
+  // Limiter boost toggle
+  view.querySelector("#sig-lim-boost")?.addEventListener("click", (e) => {
+    state.limiter.boost = !state.limiter.boost;
+    e.currentTarget.classList.toggle("sig-tog--on", state.limiter.boost);
+    invoke("dsp_set_limiter_boost", { boost: state.limiter.boost }).catch(console.error);
+    persistState();
   });
 
   // ALR toggle
   view.querySelector("#sig-alr-tog")?.addEventListener("click", (e) => {
     state.limiter.alr = !state.limiter.alr;
     e.currentTarget.classList.toggle("sig-tog--on", state.limiter.alr);
+    invoke("dsp_set_limiter_alr", { alr: state.limiter.alr }).catch(console.error);
+    persistState();
   });
 
   // Section toggles (EQ, Limiter, Bass Enhancer enable/disable)
@@ -704,18 +908,35 @@ export function render() {
     state.eq.enabled = !state.eq.enabled;
     e.currentTarget.classList.toggle("sig-tog--on", state.eq.enabled);
     invoke("dsp_set_eq_enabled", { enabled: state.eq.enabled }).catch(console.error);
+    persistState();
   });
 
   view.querySelector("#sig-lim-tog")?.addEventListener("click", (e) => {
     state.limiter.enabled = !state.limiter.enabled;
     e.currentTarget.classList.toggle("sig-tog--on", state.limiter.enabled);
     invoke("dsp_set_limiter_enabled", { enabled: state.limiter.enabled }).catch(console.error);
+    persistState();
   });
 
   view.querySelector("#sig-bass-tog")?.addEventListener("click", (e) => {
     state.bass.enabled = !state.bass.enabled;
     e.currentTarget.classList.toggle("sig-tog--on", state.bass.enabled);
     invoke("dsp_set_bass_bypass", { bypass: !state.bass.enabled }).catch(() => {});
+    persistState();
+  });
+
+  view.querySelector("#sig-bass-listen")?.addEventListener("click", (e) => {
+    state.bass.listen = !state.bass.listen;
+    e.currentTarget.classList.toggle("sig-tog--on", state.bass.listen);
+    invoke("dsp_set_bass_listen", { listen: state.bass.listen }).catch(console.error);
+    persistState();
+  });
+
+  view.querySelector("#sig-bass-floor-active")?.addEventListener("click", (e) => {
+    state.bass.floor_active = !state.bass.floor_active;
+    e.currentTarget.classList.toggle("sig-tog--on", state.bass.floor_active);
+    invoke("dsp_set_bass_floor_active", { active: state.bass.floor_active }).catch(console.error);
+    persistState();
   });
 
   // Preset selection
@@ -727,7 +948,7 @@ export function render() {
     chip.classList.add("sig-pre--on");
 
     if (name === "Flat") {
-      state = defaultState();
+      Object.assign(state, defaultState());
       setActivePresetName("Flat");
     } else {
       const presets = loadPresets();
@@ -749,6 +970,7 @@ export function render() {
     const existing = presets.findIndex((p) => p.name === name);
     const preset = {
       name,
+      bypass: state.bypass,
       eq: JSON.parse(JSON.stringify(state.eq)),
       limiter: { ...state.limiter },
       bass_enhancer: { ...state.bass },
@@ -757,6 +979,36 @@ export function render() {
     else presets.push(preset);
     savePresets(presets);
     setActivePresetName(name);
+    rerender(view);
+  });
+
+  // Rename active preset
+  view.querySelector("#sig-rename")?.addEventListener("click", () => {
+    const current = getActivePresetName();
+    if (!current || current === "Flat") return;
+    const newName = prompt("Rename preset:", current);
+    if (!newName || newName === current) return;
+    const presets = loadPresets();
+    const idx = presets.findIndex((p) => p.name === current);
+    if (idx >= 0) {
+      presets[idx].name = newName;
+      savePresets(presets);
+      setActivePresetName(newName);
+      rerender(view);
+    }
+  });
+
+  // Delete active preset
+  view.querySelector("#sig-delete")?.addEventListener("click", () => {
+    const current = getActivePresetName();
+    if (!current || current === "Flat") return;
+    if (!confirm(`Delete preset "${current}"?`)) return;
+    const presets = loadPresets();
+    const filtered = presets.filter((p) => p.name !== current);
+    savePresets(filtered);
+    setActivePresetName("Flat");
+    Object.assign(state, defaultState());
+    applyFullState();
     rerender(view);
   });
 

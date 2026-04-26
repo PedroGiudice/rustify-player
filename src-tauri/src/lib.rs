@@ -613,6 +613,87 @@ fn dsp_set_limiter_boost(player: State<Player>, boost: bool) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn dsp_set_limiter_attack(player: State<Player>, attack: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterAttack(attack))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_release(player: State<Player>, release: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterRelease(release))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_stereo_link(player: State<Player>, link: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterStereoLink(link))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_sc_preamp(player: State<Player>, preamp: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterScPreamp(preamp))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_oversampling(player: State<Player>, ovs: i32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterOversampling(ovs))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_dither(player: State<Player>, dither: i32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterDither(dither))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_alr(player: State<Player>, alr: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterAlr(alr))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_alr_attack(player: State<Player>, attack: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterAlrAttack(attack))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_limiter_alr_release(player: State<Player>, release: f32) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetLimiterAlrRelease(release))
+        .map_err(err)
+}
+
+#[tauri::command]
 fn dsp_set_bass_amount(player: State<Player>, amount: f32) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
@@ -672,6 +753,24 @@ fn dsp_set_bass_levels(player: State<Player>, input: f32, output: f32) -> Result
     let handle = guard.as_ref().ok_or("engine not started")?;
     handle
         .send(EngineCommand::DspSetBassLevels { input, output })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_floor_active(player: State<Player>, active: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassFloorActive(active))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_bass_listen(player: State<Player>, listen: bool) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetBassListen(listen))
         .map_err(err)
 }
 
@@ -979,7 +1078,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,audio_engine=debug,rustify_player=debug".into()),
+                .unwrap_or_else(|_| "info,audio_engine=debug,rustify_player=debug,library_indexer=debug".into()),
         )
         .init();
 
@@ -1090,71 +1189,124 @@ pub fn run() {
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
             let mc_reader = media_controls.clone();
-            std::thread::spawn(move || {
+            std::thread::Builder::new()
+                .name("event-listener".to_string())
+                .spawn(move || {
+                    tracing::info!("event-listener thread started");
+                    loop {
+                        let result = std::panic::catch_unwind(
+                            std::panic::AssertUnwindSafe(|| {
+                                event_loop(
+                                    &rx,
+                                    &app_handle,
+                                    &snap_writer,
+                                    &mc_reader,
+                                    &indexer_for_events,
+                                    &cache_dir_for_events,
+                                    &media_cmd_rx,
+                                    &engine_tx_media,
+                                )
+                            }),
+                        );
+                        match result {
+                            Ok(()) => {
+                                // recv returned Err = channel closed.
+                                tracing::warn!("event-listener: channel closed, exiting");
+                                break;
+                            }
+                            Err(panic) => {
+                                let msg = panic
+                                    .downcast_ref::<String>()
+                                    .map(|s| s.as_str())
+                                    .or_else(|| panic.downcast_ref::<&str>().copied())
+                                    .unwrap_or("unknown");
+                                tracing::error!(
+                                    "event-listener panicked: {msg} — restarting loop"
+                                );
+                                // Small pause to avoid hot-looping on repeated panics.
+                                std::thread::sleep(std::time::Duration::from_millis(50));
+                            }
+                        }
+                    }
+                })
+                .ok();
+
+            _app.manage(Snapshot(snapshot));
+            _app.manage(Player(Mutex::new(Some(engine))));
+
+            #[allow(clippy::too_many_arguments)]
+            fn event_loop(
+                rx: &crossbeam_channel::Receiver<StateUpdate>,
+                app_handle: &tauri::AppHandle,
+                snap_writer: &Arc<Mutex<PlayerSnapshot>>,
+                mc_reader: &Arc<Mutex<Option<souvlaki::MediaControls>>>,
+                indexer: &library_indexer::IndexerHandle,
+                cache_dir: &std::path::Path,
+                media_cmd_rx: &crossbeam_channel::Receiver<souvlaki::MediaControlEvent>,
+                engine_tx: &crossbeam_channel::Sender<EngineCommand>,
+            ) {
                 while let Ok(event) = rx.recv() {
-                    // Update snapshot + MPRIS2 metadata.
                     if let Ok(mut s) = snap_writer.lock() {
                         match &event {
                             StateUpdate::TrackStarted(info) => {
                                 s.current_track = Some(info.clone());
-                                // Resolve library metadata by path. The engine
-                                // has no awareness of the library; looking up
-                                // here keeps the snapshot self-contained for
-                                // the frontend. Miss is expected for files
-                                // played outside the indexed root.
-                                let lib_track = match indexer_for_events
-                                    .get_track_by_path(&info.path)
-                                {
-                                    Ok(Some(mut t)) => {
-                                        if let Some(rel) = &t.album_cover_path {
-                                            t.album_cover_path =
-                                                Some(cache_dir_for_events.join(rel));
+                                let lib_track =
+                                    match indexer.get_track_by_path(&info.path) {
+                                        Ok(Some(mut t)) => {
+                                            if let Some(rel) = &t.album_cover_path {
+                                                t.album_cover_path =
+                                                    Some(cache_dir.join(rel));
+                                            }
+                                            Some(t)
                                         }
-                                        Some(t)
-                                    }
-                                    Ok(None) => None,
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            ?e,
-                                            path = %info.path.display(),
-                                            "failed to resolve library track by path"
-                                        );
-                                        None
-                                    }
-                                };
+                                        Ok(None) => None,
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                ?e,
+                                                path = %info.path.display(),
+                                                "failed to resolve library track"
+                                            );
+                                            None
+                                        }
+                                    };
                                 s.current_library_track = lib_track;
-                                // Push metadata to MPRIS2.
                                 if let Ok(mut mc) = mc_reader.lock() {
                                     if let Some(mc) = mc.as_mut() {
                                         let title = info
                                             .path
                                             .file_stem()
-                                            .and_then(|s| s.to_str())
+                                            .and_then(|os| os.to_str())
                                             .unwrap_or("Unknown");
-                                        let dur = info.duration;
                                         let _ = mc.set_metadata(souvlaki::MediaMetadata {
                                             title: Some(title),
-                                            duration: dur,
+                                            duration: info.duration,
                                             ..Default::default()
                                         });
                                     }
                                 }
                             }
                             StateUpdate::StateChanged(ps) => {
-                                s.is_playing = matches!(ps, PlaybackState::Playing { .. });
-                                if matches!(ps, PlaybackState::Idle | PlaybackState::Stopped) {
+                                s.is_playing =
+                                    matches!(ps, PlaybackState::Playing { .. });
+                                if matches!(
+                                    ps,
+                                    PlaybackState::Idle | PlaybackState::Stopped
+                                ) {
                                     s.current_track = None;
                                     s.current_library_track = None;
                                 }
-                                // Push playback status to MPRIS2.
                                 if let Ok(mut mc) = mc_reader.lock() {
                                     if let Some(mc) = mc.as_mut() {
                                         let pb = match ps {
                                             PlaybackState::Playing { .. } => {
-                                                souvlaki::MediaPlayback::Playing { progress: None }
+                                                souvlaki::MediaPlayback::Playing {
+                                                    progress: None,
+                                                }
                                             }
                                             PlaybackState::Paused { .. } => {
-                                                souvlaki::MediaPlayback::Paused { progress: None }
+                                                souvlaki::MediaPlayback::Paused {
+                                                    progress: None,
+                                                }
                                             }
                                             _ => souvlaki::MediaPlayback::Stopped,
                                         };
@@ -1168,16 +1320,17 @@ pub fn run() {
                             _ => {}
                         }
                     }
-                    let _ = app_handle.emit("player-state", event);
+                    let _ = app_handle.emit("player-state", &event);
 
-                    // Drain any pending media key events and translate to
-                    // engine commands.
                     while let Ok(mev) = media_cmd_rx.try_recv() {
                         let cmd = match mev {
-                            souvlaki::MediaControlEvent::Play => Some(EngineCommand::Play),
-                            souvlaki::MediaControlEvent::Pause => Some(EngineCommand::Pause),
+                            souvlaki::MediaControlEvent::Play => {
+                                Some(EngineCommand::Play)
+                            }
+                            souvlaki::MediaControlEvent::Pause => {
+                                Some(EngineCommand::Pause)
+                            }
                             souvlaki::MediaControlEvent::Toggle => {
-                                // Check current state to decide.
                                 let playing = snap_writer
                                     .lock()
                                     .map(|s| s.is_playing)
@@ -1188,26 +1341,26 @@ pub fn run() {
                                     Some(EngineCommand::Play)
                                 }
                             }
-                            souvlaki::MediaControlEvent::Stop => Some(EngineCommand::Stop),
+                            souvlaki::MediaControlEvent::Stop => {
+                                Some(EngineCommand::Stop)
+                            }
                             souvlaki::MediaControlEvent::Next => {
                                 let _ = app_handle.emit("mpris-command", "next");
                                 None
                             }
                             souvlaki::MediaControlEvent::Previous => {
-                                let _ = app_handle.emit("mpris-command", "previous");
+                                let _ =
+                                    app_handle.emit("mpris-command", "previous");
                                 None
                             }
                             _ => None,
                         };
                         if let Some(cmd) = cmd {
-                            let _ = engine_tx_media.send(cmd);
+                            let _ = engine_tx.send(cmd);
                         }
                     }
                 }
-            });
-
-            _app.manage(Snapshot(snapshot));
-            _app.manage(Player(Mutex::new(Some(engine))));
+            }
 
             Ok(())
         })
@@ -1259,6 +1412,15 @@ pub fn run() {
             dsp_set_limiter_mode,
             dsp_set_limiter_gain,
             dsp_set_limiter_boost,
+            dsp_set_limiter_attack,
+            dsp_set_limiter_release,
+            dsp_set_limiter_stereo_link,
+            dsp_set_limiter_sc_preamp,
+            dsp_set_limiter_oversampling,
+            dsp_set_limiter_dither,
+            dsp_set_limiter_alr,
+            dsp_set_limiter_alr_attack,
+            dsp_set_limiter_alr_release,
             dsp_set_bass_amount,
             dsp_set_bass_drive,
             dsp_set_bass_blend,
@@ -1266,6 +1428,8 @@ pub fn run() {
             dsp_set_bass_floor,
             dsp_set_bass_bypass,
             dsp_set_bass_levels,
+            dsp_set_bass_floor_active,
+            dsp_set_bass_listen,
             dsp_set_bypass,
             get_state,
             get_system_resources,

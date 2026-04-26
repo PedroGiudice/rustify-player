@@ -248,6 +248,51 @@ impl EngineState {
                     dsp.set_limiter_boost(boost);
                 }
             }
+            Command::DspSetLimiterAttack(at) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_attack(at);
+                }
+            }
+            Command::DspSetLimiterRelease(rt) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_release(rt);
+                }
+            }
+            Command::DspSetLimiterStereoLink(link) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_stereo_link(link);
+                }
+            }
+            Command::DspSetLimiterScPreamp(preamp) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_sc_preamp(preamp);
+                }
+            }
+            Command::DspSetLimiterOversampling(ovs) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_oversampling(ovs);
+                }
+            }
+            Command::DspSetLimiterDither(dith) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_dither(dith);
+                }
+            }
+            Command::DspSetLimiterAlr(alr) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_alr(alr);
+                }
+            }
+            Command::DspSetLimiterAlrAttack(at) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_alr_attack(at);
+                }
+            }
+            Command::DspSetLimiterAlrRelease(rt) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_limiter_alr_release(rt);
+                }
+            }
             Command::DspSetBassAmount(amount) => {
                 if let Some(dsp) = &self.player.dsp {
                     dsp.set_bass_amount(amount);
@@ -281,6 +326,16 @@ impl EngineState {
             Command::DspSetBassLevels { input, output } => {
                 if let Some(dsp) = &self.player.dsp {
                     dsp.set_bass_levels(input, output);
+                }
+            }
+            Command::DspSetBassFloorActive(active) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_floor_active(active);
+                }
+            }
+            Command::DspSetBassListen(listen) => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_bass_listen(listen);
                 }
             }
             Command::DspSetBypass(bypass) => {

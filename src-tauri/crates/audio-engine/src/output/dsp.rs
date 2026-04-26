@@ -94,6 +94,40 @@ const LIMITER_MODE_NICKS: &[&str] = &[
     "Exp Duck",  // 7
 ];
 
+/// LSP Limiter oversampling modes.
+const LIMITER_OVS_NICKS: &[&str] = &[
+    "None",             // 0
+    "Half x2/16 bit",   // 1
+    "Half x2/24 bit",   // 2
+    "Half x3/16 bit",   // 3
+    "Half x3/24 bit",   // 4
+    "Half x4/16 bit",   // 5
+    "Half x4/24 bit",   // 6
+    "Half x6/16 bit",   // 7
+    "Half x6/24 bit",   // 8
+    "Half x8/16 bit",   // 9
+    "Half x8/24 bit",   // 10
+    "Full x2/16 bit",   // 11
+    "Full x2/24 bit",   // 12
+    "Full x3/16 bit",   // 13
+    "Full x3/24 bit",   // 14
+    "Full x4/16 bit",   // 15
+    "Full x4/24 bit",   // 16
+    "Full x6/16 bit",   // 17
+    "Full x6/24 bit",   // 18
+    "Full x8/16 bit",   // 19
+    "Full x8/24 bit",   // 20
+];
+
+/// LSP Limiter dithering modes.
+const LIMITER_DITHER_NICKS: &[&str] = &[
+    "None",  // 0
+    "7bit",  // 1
+    "8bit",  // 2
+    "11bit", // 3
+    "12bit", // 4
+];
+
 /// Look up the nick string for a numeric enum value.
 /// Returns `None` if `value` is out of range.
 fn enum_nick(table: &[&'static str], value: i32) -> Option<&'static str> {
@@ -176,7 +210,10 @@ impl DspFilterBin {
         // LSP plugins have `enabled = false` by default (passthrough). We must
         // explicitly enable them or they will not process audio at all.
         eq.set_property("enabled", true);
-        limiter.set_property("enabled", true);
+        // Limiter starts disabled — the frontend persists DSP state and
+        // re-applies on mount via applyFullState(). Starting disabled
+        // avoids unwanted gain pumping when the user hasn't configured it.
+        limiter.set_property("enabled", false);
 
         // All EQ bands: Bell filter type, flat gain (0 dB = 1.0 linear).
         // Filter types are set once here and never changed during playback
@@ -362,6 +399,71 @@ impl DspFilterBin {
         self.limiter.set_property("boost", boost);
     }
 
+    /// Set limiter attack time in ms (clamped to plugin range 0.25–20).
+    pub fn set_limiter_attack(&self, attack: f32) {
+        self.limiter
+            .set_property("at", attack.clamp(0.25, 20.0));
+    }
+
+    /// Set limiter release time in ms (clamped to plugin range 0.25–20).
+    pub fn set_limiter_release(&self, release: f32) {
+        self.limiter
+            .set_property("rt", release.clamp(0.25, 20.0));
+    }
+
+    /// Set limiter stereo link percentage (0–100).
+    pub fn set_limiter_stereo_link(&self, link: f32) {
+        self.limiter
+            .set_property("slink", link.clamp(0.0, 100.0));
+    }
+
+    /// Set limiter sidechain preamp in dB (converted to linear, plugin range 0–100).
+    pub fn set_limiter_sc_preamp(&self, preamp_db: f32) {
+        let linear = 10.0f32.powf(preamp_db / 20.0).clamp(0.0, 100.0);
+        self.limiter.set_property("scp", linear);
+    }
+
+    /// Set limiter oversampling mode.
+    ///
+    /// Accepted values: 0=None .. 20=Full x8/24 bit.
+    /// Out-of-range values are logged and ignored.
+    pub fn set_limiter_oversampling(&self, ovs: i32) {
+        let Some(nick) = enum_nick(LIMITER_OVS_NICKS, ovs) else {
+            tracing::warn!(ovs, "invalid limiter oversampling; ignoring");
+            return;
+        };
+        self.limiter.set_property_from_str("ovs", nick);
+    }
+
+    /// Set limiter dithering mode.
+    ///
+    /// Accepted values: 0=None, 1=7bit, 2=8bit, 3=11bit, 4=12bit.
+    /// Out-of-range values are logged and ignored.
+    pub fn set_limiter_dither(&self, dither: i32) {
+        let Some(nick) = enum_nick(LIMITER_DITHER_NICKS, dither) else {
+            tracing::warn!(dither, "invalid limiter dither; ignoring");
+            return;
+        };
+        self.limiter.set_property_from_str("dith", nick);
+    }
+
+    /// Set automatic level regulation (ALR) enabled.
+    pub fn set_limiter_alr(&self, alr: bool) {
+        self.limiter.set_property("alr", alr);
+    }
+
+    /// Set ALR attack time in ms (clamped to plugin range 0.1–200).
+    pub fn set_limiter_alr_attack(&self, attack: f32) {
+        self.limiter
+            .set_property("alr-at", attack.clamp(0.1, 200.0));
+    }
+
+    /// Set ALR release time in ms (clamped to plugin range 10–1000).
+    pub fn set_limiter_alr_release(&self, release: f32) {
+        self.limiter
+            .set_property("alr-rt", release.clamp(10.0, 1000.0));
+    }
+
     // -----------------------------------------------------------------------
     // Bass Enhancer
     // -----------------------------------------------------------------------
@@ -391,9 +493,22 @@ impl DspFilterBin {
         self.bass_enhancer.set_property("bypass", bypass);
     }
 
+    /// Set bass enhancer input/output gain in dB (converted to linear for the plugin).
     pub fn set_bass_levels(&self, input: f32, output: f32) {
-        self.bass_enhancer.set_property("level-in", input);
-        self.bass_enhancer.set_property("level-out", output);
+        let g_in = 10.0f32.powf(input / 20.0);
+        let g_out = 10.0f32.powf(output / 20.0);
+        self.bass_enhancer.set_property("level-in", g_in);
+        self.bass_enhancer.set_property("level-out", g_out);
+    }
+
+    /// Set bass enhancer floor-active toggle.
+    pub fn set_bass_floor_active(&self, active: bool) {
+        self.bass_enhancer.set_property("floor-active", active);
+    }
+
+    /// Set bass enhancer listen mode (solo harmonics signal).
+    pub fn set_bass_listen(&self, listen: bool) {
+        self.bass_enhancer.set_property("listen", listen);
     }
 
     // -----------------------------------------------------------------------
