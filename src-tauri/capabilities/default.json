@@ -16,10 +16,7 @@
     "mcp-bridge:default",
     {
       "identifier": "fs:allow-read",
-      "allow": [
-        { "path": "$HOME/.cache/rustify-player/**" },
-        { "path": "$HOME/.config/easyeffects/**" }
-      ]
+      "allow": [{ "path": "$HOME/**" }]
     },
     {
       "identifier": "fs:allow-write",
