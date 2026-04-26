@@ -129,10 +129,12 @@ impl DspFilterBin {
         self.eq.set_property(&format!("ft-{band}"), filter_type);
     }
 
-    /// Set EQ global input/output gain (linear).
+    /// Set EQ global input/output gain in dB (converted to linear for the plugin).
     pub fn set_eq_gain(&self, input: f32, output: f32) {
-        self.eq.set_property("g-in", input);
-        self.eq.set_property("g-out", output);
+        let g_in = 10.0f32.powf(input / 20.0);
+        let g_out = 10.0f32.powf(output / 20.0);
+        self.eq.set_property("g-in", g_in);
+        self.eq.set_property("g-out", g_out);
     }
 
     /// Set EQ operating mode. 0=IIR, 1=FIR, 2=FFT, 3=SPM.
@@ -163,8 +165,10 @@ impl DspFilterBin {
     }
 
     pub fn set_limiter_gain(&self, input: f32, output: f32) {
-        self.limiter.set_property("g-in", input);
-        self.limiter.set_property("g-out", output);
+        let g_in = 10.0f32.powf(input / 20.0);
+        let g_out = 10.0f32.powf(output / 20.0);
+        self.limiter.set_property("g-in", g_in);
+        self.limiter.set_property("g-out", g_out);
     }
 
     pub fn set_limiter_boost(&self, boost: f32) {
