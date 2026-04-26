@@ -10,9 +10,6 @@ export function render() {
     <header class="view__header">
       <h1 class="view__title">Tracks</h1>
       <div class="view__stats" id="tr-stats"></div>
-      <div class="view__toolbar">
-        <input type="search" class="search-input" id="tr-search" placeholder="Search title, artist, album…" autocomplete="off" spellcheck="false" />
-      </div>
     </header>
     <div class="view__body" id="tr-body">
       <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
@@ -25,8 +22,6 @@ export function render() {
 async function load(view) {
   const stats = view.querySelector("#tr-stats");
   const body = view.querySelector("#tr-body");
-  const search = view.querySelector("#tr-search");
-
   try {
     const tracks = await invoke("lib_list_tracks", { limit: 5000 });
     stats.innerHTML = `<span class="view__stats-item">${tracks.length} tracks</span>`;
@@ -79,8 +74,8 @@ async function load(view) {
       );
     });
 
-    search.addEventListener("input", (e) => {
-      const q = e.target.value.trim().toLowerCase();
+    const filterHandler = (e) => {
+      const q = (e.detail?.query || "").toLowerCase();
       if (!q) {
         renderRows(tbody, tracks);
         return;
@@ -90,7 +85,15 @@ async function load(view) {
         return hay.includes(q);
       });
       renderRows(tbody, filtered);
-    });
+    };
+    window.addEventListener("search-filter", filterHandler);
+
+    // Cleanup on route change
+    const cleanup = () => {
+      window.removeEventListener("search-filter", filterHandler);
+      window.removeEventListener("route-changed", cleanup);
+    };
+    window.addEventListener("route-changed", cleanup, { once: true });
   } catch (err) {
     body.innerHTML = `
       <div class="empty-state">

@@ -10,9 +10,6 @@ export function render() {
     <header class="view__header">
       <h1 class="view__title">Albums</h1>
       <div class="view__stats" id="al-stats"></div>
-      <div class="view__toolbar">
-        <input class="search-input" id="al-search" placeholder="Search albums..." type="text">
-      </div>
     </header>
     <div class="view__body" id="al-body"><p class="empty-state__hint">Loading...</p></div>
   `;
@@ -23,8 +20,6 @@ export function render() {
 async function load(view) {
   const stats = view.querySelector("#al-stats");
   const body = view.querySelector("#al-body");
-  const search = view.querySelector("#al-search");
-
   try {
     const albums = await invoke("lib_list_albums", { limit: 500 });
     stats.innerHTML = `<span>${albums.length} albums</span>`;
@@ -72,11 +67,22 @@ async function load(view) {
 
     renderGrid(albums);
 
-    // Search
-    search.addEventListener("input", () => {
-      const q = search.value.toLowerCase();
-      renderGrid(albums.filter((a) => a.title.toLowerCase().includes(q)));
-    });
+    const filterHandler = (e) => {
+      const q = (e.detail?.query || "").toLowerCase();
+      const cards = body.querySelectorAll(".card");
+      cards.forEach((card) => {
+        const label = card.querySelector(".card__label");
+        const sub = card.querySelector(".card__sub");
+        const text = `${label?.textContent || ""} ${sub?.textContent || ""}`.toLowerCase();
+        card.style.display = !q || text.includes(q) ? "" : "none";
+      });
+    };
+    window.addEventListener("search-filter", filterHandler);
+    const cleanup = () => {
+      window.removeEventListener("search-filter", filterHandler);
+      window.removeEventListener("route-changed", cleanup);
+    };
+    window.addEventListener("route-changed", cleanup, { once: true });
 
     // Click card → album detail; click play FAB → play
     body.addEventListener("click", async (e) => {
