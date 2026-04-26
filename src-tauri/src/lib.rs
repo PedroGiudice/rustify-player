@@ -387,6 +387,58 @@ fn dsp_set_eq_filter_type(
 }
 
 #[tauri::command]
+fn dsp_set_eq_filter_mode(
+    player: State<Player>,
+    band: u8,
+    mode: i32,
+) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqFilterMode { band, mode })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_eq_slope(
+    player: State<Player>,
+    band: u8,
+    slope: i32,
+) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqSlope { band, slope })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_eq_solo(
+    player: State<Player>,
+    band: u8,
+    solo: bool,
+) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqSolo { band, solo })
+        .map_err(err)
+}
+
+#[tauri::command]
+fn dsp_set_eq_mute(
+    player: State<Player>,
+    band: u8,
+    mute: bool,
+) -> Result<(), String> {
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetEqMute { band, mute })
+        .map_err(err)
+}
+
+#[tauri::command]
 fn dsp_set_eq_mode(player: State<Player>, mode: i32) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
@@ -1057,6 +1109,10 @@ pub fn run() {
             player_enqueue_next,
             dsp_set_eq_band,
             dsp_set_eq_filter_type,
+            dsp_set_eq_filter_mode,
+            dsp_set_eq_slope,
+            dsp_set_eq_solo,
+            dsp_set_eq_mute,
             dsp_set_eq_mode,
             dsp_set_eq_gain,
             dsp_set_limiter_threshold,

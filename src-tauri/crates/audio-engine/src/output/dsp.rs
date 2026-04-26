@@ -55,6 +55,25 @@ const EQ_FILTER_TYPE_NICKS: &[&str] = &[
     "Ladder-rej",  // 11
 ];
 
+/// LSP Para EQ filter modes for `fm-N` properties.
+const EQ_FILTER_MODE_NICKS: &[&str] = &[
+    "RLC (BT)", // 0
+    "RLC (MT)", // 1
+    "BWC (BT)", // 2
+    "BWC (MT)", // 3
+    "LRX (BT)", // 4
+    "LRX (MT)", // 5
+    "APO (DR)", // 6
+];
+
+/// LSP Para EQ slope values for `s-N` properties.
+const EQ_SLOPE_NICKS: &[&str] = &[
+    "x1", // 0
+    "x2", // 1
+    "x3", // 2
+    "x4", // 3
+];
+
 /// LSP Para EQ operating modes.
 const EQ_MODE_NICKS: &[&str] = &[
     "IIR", // 0
@@ -216,6 +235,57 @@ impl DspFilterBin {
         };
         self.eq
             .set_property_from_str(&format!("ft-{band}"), nick);
+    }
+
+    /// Set EQ filter mode for a band.
+    ///
+    /// Accepted values: 0=RLC (BT), 1=RLC (MT), 2=BWC (BT), 3=BWC (MT),
+    /// 4=LRX (BT), 5=LRX (MT), 6=APO (DR).
+    ///
+    /// Out-of-range values are logged and ignored (no panic).
+    pub fn set_eq_filter_mode(&self, band: u8, mode: i32) {
+        if band >= 16 {
+            return;
+        }
+        let Some(nick) = enum_nick(EQ_FILTER_MODE_NICKS, mode) else {
+            tracing::warn!(band, mode, "invalid EQ filter mode; ignoring");
+            return;
+        };
+        self.eq
+            .set_property_from_str(&format!("fm-{band}"), nick);
+    }
+
+    /// Set EQ slope for a band.
+    ///
+    /// Accepted values: 0=x1, 1=x2, 2=x3, 3=x4.
+    ///
+    /// Out-of-range values are logged and ignored (no panic).
+    pub fn set_eq_slope(&self, band: u8, slope: i32) {
+        if band >= 16 {
+            return;
+        }
+        let Some(nick) = enum_nick(EQ_SLOPE_NICKS, slope) else {
+            tracing::warn!(band, slope, "invalid EQ slope; ignoring");
+            return;
+        };
+        self.eq
+            .set_property_from_str(&format!("s-{band}"), nick);
+    }
+
+    /// Set EQ band solo (xs-N property).
+    pub fn set_eq_solo(&self, band: u8, solo: bool) {
+        if band >= 16 {
+            return;
+        }
+        self.eq.set_property(&format!("xs-{band}"), solo);
+    }
+
+    /// Set EQ band mute (xm-N property).
+    pub fn set_eq_mute(&self, band: u8, mute: bool) {
+        if band >= 16 {
+            return;
+        }
+        self.eq.set_property(&format!("xm-{band}"), mute);
     }
 
     /// Set EQ global input/output gain in dB (converted to linear for the plugin).

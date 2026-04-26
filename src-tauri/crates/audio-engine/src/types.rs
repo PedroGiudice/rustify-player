@@ -151,6 +151,14 @@ pub enum Command {
     },
     /// Set EQ filter type for a band.
     DspSetEqFilterType { band: u8, filter_type: i32 },
+    /// Set EQ filter mode for a band (0=RLC BT .. 6=APO DR).
+    DspSetEqFilterMode { band: u8, mode: i32 },
+    /// Set EQ slope for a band (0=x1, 1=x2, 2=x3, 3=x4).
+    DspSetEqSlope { band: u8, slope: i32 },
+    /// Set EQ band solo (xs-N).
+    DspSetEqSolo { band: u8, solo: bool },
+    /// Set EQ band mute (xm-N).
+    DspSetEqMute { band: u8, mute: bool },
     /// Set EQ operating mode (0=IIR, 1=FIR, 2=FFT, 3=SPM).
     DspSetEqMode(i32),
     /// Set EQ global input/output gain (linear).

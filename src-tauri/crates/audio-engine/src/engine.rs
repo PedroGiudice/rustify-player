@@ -178,6 +178,26 @@ impl EngineState {
                     dsp.set_eq_filter_type(band, filter_type);
                 }
             }
+            Command::DspSetEqFilterMode { band, mode } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_filter_mode(band, mode);
+                }
+            }
+            Command::DspSetEqSlope { band, slope } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_slope(band, slope);
+                }
+            }
+            Command::DspSetEqSolo { band, solo } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_solo(band, solo);
+                }
+            }
+            Command::DspSetEqMute { band, mute } => {
+                if let Some(dsp) = &self.player.dsp {
+                    dsp.set_eq_mute(band, mute);
+                }
+            }
             Command::DspSetEqMode(mode) => {
                 if let Some(dsp) = &self.player.dsp {
                     dsp.set_eq_mode(mode);
