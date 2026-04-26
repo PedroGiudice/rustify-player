@@ -1,5 +1,3 @@
-mod easyeffects;
-
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
@@ -546,25 +544,6 @@ fn get_state(snapshot: State<Snapshot>) -> Result<serde_json::Value, String> {
 }
 
 // ---------------------------------------------------------------------------
-// EasyEffects preset commands
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn ee_list_presets() -> Result<Vec<String>, String> {
-    easyeffects::list_presets()
-}
-
-#[tauri::command]
-fn ee_get_current_preset() -> Result<String, String> {
-    easyeffects::get_current_preset()
-}
-
-#[tauri::command]
-fn ee_apply_preset(name: String) -> Result<(), String> {
-    easyeffects::apply_preset(&name)
-}
-
-// ---------------------------------------------------------------------------
 // System resources — reads /proc directly, zero external dependencies.
 // ---------------------------------------------------------------------------
 
@@ -832,7 +811,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("100.102.249.9")
+                .build(),
+        )
         .setup(|_app| {
             let home = dirs_home();
             let data_dir = home.join(".local/share/rustify-player");
@@ -1089,9 +1074,6 @@ pub fn run() {
             dsp_set_bass_levels,
             dsp_set_bypass,
             get_state,
-            ee_list_presets,
-            ee_get_current_preset,
-            ee_apply_preset,
             get_system_resources,
             check_for_update,
             install_update,

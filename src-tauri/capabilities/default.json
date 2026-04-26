@@ -12,9 +12,18 @@
     "core:window:allow-is-maximized",
     "core:window:allow-start-dragging",
     "opener:default",
+    "dialog:default",
+    "mcp-bridge:default",
     {
       "identifier": "fs:allow-read",
-      "allow": [{ "path": "$HOME/.cache/rustify-player/**" }]
+      "allow": [
+        { "path": "$HOME/.cache/rustify-player/**" },
+        { "path": "$HOME/.config/easyeffects/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write",
+      "allow": [{ "path": "$HOME/**" }]
     }
   ]
 }
