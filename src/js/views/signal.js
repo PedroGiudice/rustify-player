@@ -35,8 +35,8 @@ function defaultState() {
       output_gain: 0,
       bands: DEFAULT_BANDS.map((b) => ({ ...b })),
     },
-    limiter: { threshold: 0, knee: 0, lookahead: 5, boost: 0, alr: true },
-    bass: { amount: 0, drive: 0, blend: 0, freq: 120, floor: 20 },
+    limiter: { threshold: 0, knee: 1, lookahead: 5, boost: false, alr: true },
+    bass: { amount: 0, drive: 1, blend: 0, freq: 120, floor: 20 },
   };
 }
 

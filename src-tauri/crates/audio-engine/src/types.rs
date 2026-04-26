@@ -166,7 +166,7 @@ pub enum Command {
     /// Set limiter input/output gain (linear).
     DspSetLimiterGain { input: f32, output: f32 },
     /// Set limiter boost.
-    DspSetLimiterBoost(f32),
+    DspSetLimiterBoost(bool),
     /// Set bass enhancer amount.
     DspSetBassAmount(f32),
     /// Set bass enhancer drive.

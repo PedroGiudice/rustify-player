@@ -153,11 +153,11 @@ impl DspFilterBin {
     }
 
     pub fn set_limiter_knee(&self, knee: f32) {
-        self.limiter.set_property("knee", knee);
+        self.limiter.set_property("knee", knee.clamp(0.25119, 3.98107));
     }
 
     pub fn set_limiter_lookahead(&self, lookahead: f32) {
-        self.limiter.set_property("lk", lookahead);
+        self.limiter.set_property("lk", lookahead.clamp(0.1, 20.0));
     }
 
     pub fn set_limiter_mode(&self, mode: i32) {
@@ -171,7 +171,7 @@ impl DspFilterBin {
         self.limiter.set_property("g-out", g_out);
     }
 
-    pub fn set_limiter_boost(&self, boost: f32) {
+    pub fn set_limiter_boost(&self, boost: bool) {
         self.limiter.set_property("boost", boost);
     }
 
@@ -184,7 +184,7 @@ impl DspFilterBin {
     }
 
     pub fn set_bass_drive(&self, drive: f32) {
-        self.bass_enhancer.set_property("drive", drive);
+        self.bass_enhancer.set_property("drive", drive.clamp(0.1, 10.0));
     }
 
     pub fn set_bass_blend(&self, blend: f32) {
@@ -212,10 +212,6 @@ impl DspFilterBin {
     // -----------------------------------------------------------------------
     // Global bypass
     // -----------------------------------------------------------------------
-
-    pub fn is_bypassed(&self) -> bool {
-        self.bypassed
-    }
 
     /// Bypass is implemented by setting all EQ bands to flat, limiter threshold
     /// to max, and bass enhancer to bypass. We don't remove/re-add the bin

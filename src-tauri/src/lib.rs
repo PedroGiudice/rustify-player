@@ -448,7 +448,7 @@ fn dsp_set_limiter_gain(player: State<Player>, input: f32, output: f32) -> Resul
 }
 
 #[tauri::command]
-fn dsp_set_limiter_boost(player: State<Player>, boost: f32) -> Result<(), String> {
+fn dsp_set_limiter_boost(player: State<Player>, boost: bool) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
     handle
