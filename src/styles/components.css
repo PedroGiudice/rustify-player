@@ -1404,6 +1404,16 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+.tweaks__select {
+  background: var(--surface-container);
+  border: 1px solid var(--divider-hi);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--text-body-sm);
+  padding: var(--space-1) var(--space-2);
+  width: 100%;
+  appearance: auto;
+}
 
 /* ========================================================================
  * QUEUE view

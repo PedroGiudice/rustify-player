@@ -880,6 +880,24 @@ fn run_updater(args: &[&str]) -> Result<std::process::Output, String> {
 }
 
 #[tauri::command]
+fn list_system_fonts() -> Result<Vec<String>, String> {
+    let output = std::process::Command::new("fc-list")
+        .args([":", "family"])
+        .output()
+        .map_err(|e| format!("fc-list failed: {e}"))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut families: Vec<String> = text
+        .lines()
+        .flat_map(|line| line.split(','))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    families.sort_unstable();
+    families.dedup();
+    Ok(families)
+}
+
+#[tauri::command]
 fn check_for_update() -> Result<UpdateCheckResult, String> {
     let output = run_updater(&["--check-json"])?;
     if !output.status.success() {
@@ -1253,6 +1271,7 @@ pub fn run() {
             get_system_resources,
             check_for_update,
             install_update,
+            list_system_fonts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

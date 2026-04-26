@@ -1,5 +1,7 @@
-// Tweaks panel — floating bottom-right panel for accent, density, sidebar, NP layout, type, glow.
+// Tweaks panel — floating bottom-right panel for accent, density, sidebar, NP layout, type, glow, zoom, fonts.
 // Persists to localStorage. Applied on boot before any render.
+
+const { invoke } = window.__TAURI__.core;
 
 const STORAGE_KEY = "kv-tweaks";
 
@@ -11,10 +13,13 @@ const DEFAULTS = {
   type: "body",
   glow: 0.15,
   zoom: 1.0,
+  fontUI: "",
+  fontDisplay: "",
 };
 
 let state = { ...DEFAULTS };
 let panelEl = null;
+let systemFonts = null; // cached after first load
 
 export function loadTweaks() {
   try {
@@ -37,6 +42,19 @@ export function applyTweaks() {
   html.dataset.type = state.type === "mono" ? "mono" : "";
   html.style.setProperty("--glow", String(state.glow));
   html.style.zoom = String(state.zoom);
+
+  // Custom fonts
+  if (state.fontUI) {
+    html.style.setProperty("--font-body", `"${state.fontUI}", sans-serif`);
+  } else {
+    html.style.removeProperty("--font-body");
+  }
+  if (state.fontDisplay) {
+    html.style.setProperty("--font-display", `"${state.fontDisplay}", serif`);
+  } else {
+    html.style.removeProperty("--font-display");
+  }
+
   save();
 }
 
@@ -64,6 +82,32 @@ export function mountTweaks() {
   });
 }
 
+async function loadFonts() {
+  if (systemFonts) return systemFonts;
+  try {
+    systemFonts = await invoke("list_system_fonts");
+  } catch (err) {
+    console.error("[tweaks] font list failed:", err);
+    systemFonts = [];
+  }
+  return systemFonts;
+}
+
+function fontSelect(label, key, fonts) {
+  const opts = fonts
+    .map((f) => `<option value="${esc(f)}" ${state[key] === f ? "selected" : ""}>${esc(f)}</option>`)
+    .join("");
+  return `
+    <div class="tweaks__row">
+      <span class="tweaks__label">${label}</span>
+      <select class="tweaks__select" data-font-key="${key}">
+        <option value="">Default</option>
+        ${opts}
+      </select>
+    </div>
+  `;
+}
+
 function segmented(label, key, options) {
   const btns = options
     .map(
@@ -79,8 +123,11 @@ function segmented(label, key, options) {
   `;
 }
 
-function renderPanel() {
+async function renderPanel() {
   if (!panelEl) return;
+
+  const fonts = await loadFonts();
+
   panelEl.innerHTML = `
     <div class="tweaks__header">
       <span class="tweaks__title">Tweaks</span>
@@ -115,6 +162,8 @@ function renderPanel() {
       ["body", "Inter"],
       ["mono", "Mono"],
     ])}
+    ${fontSelect("UI Font", "fontUI", fonts)}
+    ${fontSelect("Display Font", "fontDisplay", fonts)}
     <div class="tweaks__row">
       <span class="tweaks__label">Glow ${state.glow.toFixed(2)}</span>
       <input type="range" class="settings-range" id="tweaks-glow"
@@ -140,6 +189,13 @@ function renderPanel() {
     });
   });
 
+  // Bind font selects
+  panelEl.querySelectorAll(".tweaks__select").forEach((sel) => {
+    sel.addEventListener("change", (e) => {
+      setVal(e.target.dataset.fontKey, e.target.value);
+    });
+  });
+
   // Bind glow slider
   const glowInput = panelEl.querySelector("#tweaks-glow");
   glowInput.addEventListener("input", (e) => {
@@ -151,4 +207,10 @@ function renderPanel() {
   zoomInput.addEventListener("input", (e) => {
     setVal("zoom", parseFloat(e.target.value));
   });
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
 }
