@@ -182,9 +182,32 @@ fn apply_migrations(conn: &mut Connection) -> Result<(), IndexerError> {
                 params![META_NEEDS_EMBEDDED_LYRICS_SCAN],
             )?;
         }
+        if version == 6 {
+            add_column_if_missing(&tx, "mood_playlists", "accent_color", "TEXT")?;
+            add_column_if_missing(&tx, "mood_playlists", "cover_path", "TEXT")?;
+        }
         tx.commit()?;
     }
 
+    Ok(())
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    col_type: &str,
+) -> Result<(), IndexerError> {
+    let exists: bool = conn
+        .prepare(&format!("PRAGMA table_info({})", table))?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .any(|name| name.as_deref() == Ok(column));
+    if !exists {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {} ADD COLUMN {} {}",
+            table, column, col_type
+        ))?;
+    }
     Ok(())
 }
 
