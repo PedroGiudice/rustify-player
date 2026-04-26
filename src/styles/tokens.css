@@ -146,6 +146,38 @@ html[data-accent="slate"] {
   --on-primary-container: #1a1a18;
 }
 
+html[data-accent="gold"] {
+  --primary: #d4a054;
+  --primary-container: #e0b46e;
+  --primary-fixed-dim: #e0b46e;
+  --on-primary: #1a1a18;
+  --on-primary-container: #1a1a18;
+}
+
+html[data-accent="teal"] {
+  --primary: #4a9e8e;
+  --primary-container: #66b5a5;
+  --primary-fixed-dim: #66b5a5;
+  --on-primary: #1a1a18;
+  --on-primary-container: #1a1a18;
+}
+
+html[data-accent="violet"] {
+  --primary: #9b7fc0;
+  --primary-container: #b298d4;
+  --primary-fixed-dim: #b298d4;
+  --on-primary: #1a1a18;
+  --on-primary-container: #1a1a18;
+}
+
+html[data-accent="coral"] {
+  --primary: #d47070;
+  --primary-container: #e08888;
+  --primary-fixed-dim: #e08888;
+  --on-primary: #1a1a18;
+  --on-primary-container: #1a1a18;
+}
+
 /* Legacy aliases for JS that references old accent names */
 html[data-accent="amber"] {
   --primary: #c6633d;

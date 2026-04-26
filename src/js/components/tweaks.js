@@ -93,6 +93,10 @@ function renderPanel() {
       ["rust", "Rust"],
       ["slate", "Slate"],
       ["ink", "Ink"],
+      ["gold", "Gold"],
+      ["teal", "Teal"],
+      ["violet", "Violet"],
+      ["coral", "Coral"],
     ])}
     ${segmented("Density", "density", [
       ["normal", "Normal"],
