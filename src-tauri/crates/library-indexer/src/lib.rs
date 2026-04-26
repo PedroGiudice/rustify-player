@@ -32,7 +32,8 @@ pub use lyrics::LyricLine;
 pub use search::{FolderPlaylist, PlaylistSearchResult, Recommendations};
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
-    IndexerEvent, IndexerSnapshot, SearchResults, Tag, Track, TrackFilter, TrackOrder,
+    IndexerEvent, IndexerSnapshot, MoodPlaylist, SearchResults, Tag, Track, TrackFilter,
+    TrackOrder,
 };
 
 use crossbeam_channel::{Receiver, Sender};
@@ -231,6 +232,14 @@ impl IndexerHandle {
 
     pub fn recommendations(&self) -> Result<search::Recommendations, IndexerError> {
         self.inner.pool.with(|conn| search::recommendations(conn))
+    }
+
+    pub fn list_moods(&self) -> Result<Vec<types::MoodPlaylist>, IndexerError> {
+        self.inner.pool.with(|conn| search::list_moods(conn))
+    }
+
+    pub fn list_mood_tracks(&self, mood_id: i64) -> Result<Vec<Track>, IndexerError> {
+        self.inner.pool.with(|conn| search::list_mood_tracks(conn, mood_id))
     }
 
     /// True when migration 003 has been applied during a previous or the

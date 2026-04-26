@@ -38,8 +38,8 @@ use rusqlite::{params, params_from_iter, Connection, Row};
 
 use crate::error::IndexerError;
 use crate::types::{
-    Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, SearchResults,
-    Track, TrackFilter, TrackOrder,
+    Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, MoodPlaylist,
+    SearchResults, Track, TrackFilter, TrackOrder,
 };
 
 // ---------------------------------------------------------------------------
@@ -835,6 +835,43 @@ pub fn recommendations(conn: &Connection) -> Result<Recommendations, IndexerErro
         based_on_top,
         discover,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Mood Playlists
+// ---------------------------------------------------------------------------
+
+pub fn list_moods(conn: &Connection) -> Result<Vec<MoodPlaylist>, IndexerError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, track_count, created_at, updated_at \
+         FROM mood_playlists ORDER BY name",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(MoodPlaylist {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                track_count: row.get::<_, i64>(2)? as u32,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn list_mood_tracks(conn: &Connection, mood_id: i64) -> Result<Vec<Track>, IndexerError> {
+    let sql = format!(
+        "{TRACK_SELECT} \
+         JOIN mood_playlist_tracks mpt ON mpt.track_id = t.id \
+         WHERE mpt.mood_playlist_id = ? \
+         ORDER BY mpt.distance ASC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([mood_id], map_track)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,8 @@ use audio_engine::{
 };
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
-    IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults, Track, TrackFilter, TrackOrder,
+    IndexerHandle, LyricLine, MoodPlaylist, PlaylistSearchResult, SearchResults, Track,
+    TrackFilter, TrackOrder,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -358,6 +359,26 @@ fn lib_recommendations(
         }
     }
     Ok(recs)
+}
+
+// ---------------------------------------------------------------------------
+// Mood playlists
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn lib_list_moods(lib: State<Library>) -> Result<Vec<MoodPlaylist>, String> {
+    lib.handle.list_moods().map_err(err)
+}
+
+#[tauri::command]
+fn lib_list_mood_tracks(lib: State<Library>, mood_id: i64) -> Result<Vec<Track>, String> {
+    let mut tracks = lib.handle.list_mood_tracks(mood_id).map_err(err)?;
+    for t in &mut tracks {
+        if let Some(rel) = &t.album_cover_path {
+            t.album_cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(tracks)
 }
 
 // ---------------------------------------------------------------------------
@@ -1189,6 +1210,8 @@ pub fn run() {
             lib_list_liked,
             lib_is_liked,
             lib_recommendations,
+            lib_list_moods,
+            lib_list_mood_tracks,
             player_play,
             player_pause,
             player_resume,

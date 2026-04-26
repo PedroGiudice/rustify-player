@@ -166,6 +166,15 @@ pub struct SearchResults {
     pub artists: Vec<Artist>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoodPlaylist {
+    pub id: i64,
+    pub name: String,
+    pub track_count: u32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 /// Commands driving the indexer.
 #[derive(Debug, Clone)]
 pub enum IndexerCommand {

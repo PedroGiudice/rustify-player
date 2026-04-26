@@ -26,6 +26,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (2, include_str!("../migrations/002_add_lrc_path.sql")),
     (3, include_str!("../migrations/003_add_embedded_lyrics.sql")),
     (4, include_str!("../migrations/004_add_liked_at.sql")),
+    (5, include_str!("../migrations/005_mood_playlists.sql")),
 ];
 
 /// Flag set in the `meta` table when migration 003 promotes the schema.
