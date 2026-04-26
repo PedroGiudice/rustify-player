@@ -367,6 +367,7 @@ function listenEngine() {
         updateProgressUI(0);
         ui.timeCurrent.textContent = "0:00";
         updateNavButtons();
+        updateTrackMeta(currentTrack);
       } else if (autoplayEnabled && endedTrack?.id) {
         autoplayNext(endedTrack);
       }
@@ -401,6 +402,37 @@ function updatePosition(pos) {
 function updateProgressUI(pct) {
   ui.progressFill.style.width = `${pct}%`;
   ui.progressThumb.style.left = `${pct}%`;
+}
+
+async function updateTrackMeta(track) {
+  // Update cover
+  if (track.album_id) {
+    try {
+      const album = await invoke("lib_get_album", { id: track.album_id });
+      if (album && album.cover_path) {
+        const assetUrl = convertFileSrc(album.cover_path);
+        ui.cover.innerHTML = `<img src="${assetUrl}" alt="">`;
+        ui.cover.classList.remove("album-cover-empty");
+      } else {
+        ui.cover.innerHTML = "";
+        ui.cover.classList.add("album-cover-empty");
+      }
+    } catch (_) {}
+  } else {
+    ui.cover.innerHTML = "";
+    ui.cover.classList.add("album-cover-empty");
+  }
+
+  // Sync like state
+  if (track.id) {
+    ui.likeBtn.hidden = false;
+    invoke("lib_is_liked", { trackId: track.id })
+      .then((liked) => updateLikeUI(liked))
+      .catch(() => updateLikeUI(false));
+  } else {
+    ui.likeBtn.hidden = true;
+    updateLikeUI(false);
+  }
 }
 
 function updateTechInfo(info) {
