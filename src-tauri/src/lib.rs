@@ -815,7 +815,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_mcp_bridge::Builder::new()
-                .bind_address("100.102.249.9")
+                .bind_address("0.0.0.0")
                 .build(),
         )
         .setup(|_app| {

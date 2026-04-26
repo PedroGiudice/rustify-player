@@ -68,7 +68,7 @@ library-indexer = { path = "crates/library-indexer" }
 audio-engine = { path = "crates/audio-engine", features = ["serde"] }
 tauri-plugin-fs = "2.5.0"
 tauri-plugin-dialog = "2"
-tauri-plugin-mcp-bridge = "0.11"
+tauri-plugin-mcp-bridge = "0.11.1"
 souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] }
 crossbeam-channel = { workspace = true }
 tracing = { workspace = true }
