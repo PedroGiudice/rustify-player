@@ -75,7 +75,7 @@ html[data-sidebar="expanded"] .sidebar__logo { justify-content: flex-start; }
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--divider);
 }
-/* VU bars in sidebar footer */
+/* VU bars — inline in Now Playing sidebar item */
 .sidebar__vu {
   display: flex;
   gap: 1px;
@@ -83,12 +83,16 @@ html[data-sidebar="expanded"] .sidebar__logo { justify-content: flex-start; }
   height: 12px;
   width: 22px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 .sidebar__vu span {
   width: 2px;
   background: var(--primary);
   opacity: 0.7;
+  transition: height 180ms ease;
 }
+/* Hide VU when sidebar is collapsed (no room) */
+html:not([data-sidebar="expanded"]) .sidebar__vu { display: none; }
 
 .sidebar-item {
   position: relative;

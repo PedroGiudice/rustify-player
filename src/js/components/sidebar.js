@@ -13,11 +13,8 @@ const NAV_ITEMS = [
   { route: "/history",   icon: "history",     label: "History" },
 ];
 
-const FOOTER_ITEMS = [
-  { route: "/now-playing", icon: "music-note", label: "Now Playing" },
-  { route: "/signal",      icon: "sliders",    label: "Signal" },
-  { route: "/settings",    icon: "settings",   label: "Settings" },
-];
+// Footer items are rendered inline (not from array) because Now Playing
+// has the VU bars embedded inside its sidebar-item.
 
 function navItemHTML({ route, icon, label }) {
   return `
@@ -39,19 +36,33 @@ export function mountSidebar(root) {
       ${NAV_ITEMS.map(navItemHTML).join("")}
     </nav>
     <div class="sidebar__footer">
-      ${FOOTER_ITEMS.map(navItemHTML).join("")}
+      <a class="sidebar-item" href="#/now-playing" data-route="/now-playing" title="Now Playing">
+        <svg class="icon" aria-hidden="true"><use href="#icon-music-note"></use></svg>
+        <span class="sidebar-item__label">Now Playing</span>
+        <span class="sidebar-item__tooltip">Now Playing</span>
+        <div class="sidebar__vu" id="sidebar-vu">
+          <span style="height:4px"></span>
+          <span style="height:7px"></span>
+          <span style="height:10px"></span>
+          <span style="height:6px"></span>
+          <span style="height:8px"></span>
+        </div>
+      </a>
+      <a class="sidebar-item" href="#/signal" data-route="/signal" title="Signal">
+        <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+        <span class="sidebar-item__label">Signal</span>
+        <span class="sidebar-item__tooltip">Signal</span>
+      </a>
+      <a class="sidebar-item" href="#/settings" data-route="/settings" title="Settings">
+        <svg class="icon" aria-hidden="true"><use href="#icon-settings"></use></svg>
+        <span class="sidebar-item__label">Settings</span>
+        <span class="sidebar-item__tooltip">Settings</span>
+      </a>
       <button class="sidebar-item" id="tweaks-toggle" title="Tweaks">
         <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
         <span class="sidebar-item__label">Tweaks</span>
         <span class="sidebar-item__tooltip">Tweaks</span>
       </button>
-      <div class="sidebar__vu" id="sidebar-vu">
-        <span style="height:4px"></span>
-        <span style="height:7px"></span>
-        <span style="height:10px"></span>
-        <span style="height:6px"></span>
-        <span style="height:8px"></span>
-      </div>
     </div>
   `;
 
