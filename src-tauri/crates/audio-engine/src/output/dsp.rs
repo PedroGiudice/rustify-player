@@ -1,9 +1,28 @@
 //! DSP filter bin: LV2 plugins wired as a GStreamer audio-filter.
 //!
 //! Creates a GstBin with:
-//!   audioconvert → LSP Para EQ x16 Stereo → LSP Limiter Stereo → Calf Bass Enhancer → audioconvert
+//!   audioconvert -> LSP Para EQ x16 Stereo -> LSP Limiter Stereo -> Calf Bass Enhancer -> audioconvert
 //!
 //! The bin is set as the `audio-filter` property on `playbin` inside `gst_play::Play`.
+//!
+//! # Enum properties
+//!
+//! LV2 plugins expose enum parameters (filter type, mode) as GLib Enum types
+//! with custom `GType`s. Setting them via `set_property("prop", i32_value)`
+//! panics because GLib expects the exact enum `GType`, not a plain `i32`.
+//!
+//! We use [`GObjectExtManualGst::set_property_from_str`] instead, which
+//! resolves the string nick (e.g. `"Bell"`) to the correct typed value via
+//! `gst_util_set_object_arg`. This is the only safe path for LV2 enum props.
+//!
+//! # Plugin bypass
+//!
+//! All three plugins have native bypass/enable properties:
+//! - LSP EQ / Limiter: `enabled` (bool, default **false** = passthrough)
+//! - Calf Bass Enhancer: `bypass` (bool, default false = active)
+//!
+//! Global bypass toggles these properties instead of flattening parameters,
+//! achieving true signal passthrough with zero processing overhead.
 
 use gstreamer as gst;
 use gstreamer::prelude::*;
@@ -14,6 +33,55 @@ use crate::error::OutputError;
 const EQ_ELEMENT: &str = "lsp-plug-in-plugins-lv2-para-equalizer-x16-stereo";
 const LIMITER_ELEMENT: &str = "lsp-plug-in-plugins-lv2-limiter-stereo";
 const BASS_ENHANCER_ELEMENT: &str = "calf-sourceforge-net-plugins-BassEnhancer";
+
+// ---------------------------------------------------------------------------
+// Enum nick tables — map numeric IDs (used by the Tauri IPC layer) to the
+// GLib enum nick strings expected by `set_property_from_str`.
+// ---------------------------------------------------------------------------
+
+/// LSP Para EQ filter types for `ft-N` properties.
+const EQ_FILTER_TYPE_NICKS: &[&str] = &[
+    "Off",         // 0
+    "Bell",        // 1
+    "Hi-pass",     // 2
+    "Hi-shelf",    // 3
+    "Lo-pass",     // 4
+    "Lo-shelf",    // 5
+    "Notch",       // 6
+    "Resonance",   // 7
+    "Allpass",     // 8
+    "Bandpass",    // 9
+    "Ladder-pass", // 10
+    "Ladder-rej",  // 11
+];
+
+/// LSP Para EQ operating modes.
+const EQ_MODE_NICKS: &[&str] = &[
+    "IIR", // 0
+    "FIR", // 1
+    "FFT", // 2
+    "SPM", // 3
+];
+
+/// LSP Limiter operating modes.
+const LIMITER_MODE_NICKS: &[&str] = &[
+    "Herm Thin", // 0
+    "Herm Wide", // 1
+    "Herm Tail", // 2
+    "Herm Duck", // 3
+    "Exp Thin",  // 4
+    "Exp Wide",  // 5
+    "Exp Tail",  // 6
+    "Exp Duck",  // 7
+];
+
+/// Look up the nick string for a numeric enum value.
+/// Returns `None` if `value` is out of range.
+fn enum_nick(table: &[&'static str], value: i32) -> Option<&'static str> {
+    usize::try_from(value)
+        .ok()
+        .and_then(|idx| table.get(idx).copied())
+}
 
 /// Wraps the DSP filter bin and provides typed access to plugin properties.
 pub(crate) struct DspFilterBin {
@@ -26,7 +94,7 @@ pub(crate) struct DspFilterBin {
 
 impl DspFilterBin {
     /// Build the filter bin. Returns `None` if any LV2 element is missing
-    /// (graceful degradation — playback works without DSP).
+    /// (graceful degradation -- playback works without DSP).
     pub fn try_new() -> Result<Option<Self>, OutputError> {
         // Try creating each element; if any is missing, skip DSP entirely.
         let eq = match gst::ElementFactory::make(EQ_ELEMENT).build() {
@@ -84,11 +152,19 @@ impl DspFilterBin {
         bin.add_pad(&ghost_src)
             .map_err(|e| OutputError::PipewireInit(format!("add ghost src: {e}")))?;
 
-        // Sane defaults: all EQ bands flat (0 dB gain), limiter at 0 dB, bass off.
-        // LSP gain is linear (1.0 = 0 dB).
+        // ---- Sane defaults ----
+        //
+        // LSP plugins have `enabled = false` by default (passthrough). We must
+        // explicitly enable them or they will not process audio at all.
+        eq.set_property("enabled", true);
+        limiter.set_property("enabled", true);
+
+        // All EQ bands flat (0 dB gain = 1.0 linear). Filter types stay "Off"
+        // until the caller configures them via `set_eq_band`.
         for i in 0..16u8 {
             eq.set_property(&format!("g-{i}"), 1.0f32);
         }
+
         // Bass enhancer bypassed by default.
         bass_enhancer.set_property("bypass", true);
 
@@ -108,25 +184,40 @@ impl DspFilterBin {
     // -----------------------------------------------------------------------
 
     /// Set a single EQ band. `gain` is in dB (converted to linear for the plugin).
+    ///
+    /// Automatically sets the filter type to Bell. Use [`set_eq_filter_type`]
+    /// afterwards if a different type is needed.
     pub fn set_eq_band(&self, band: u8, freq: f32, gain_db: f32, q: f32) {
         if band >= 16 {
             return;
         }
         let gain_linear = 10.0f32.powf(gain_db / 20.0);
+
+        // ft-N is a GLib Enum — must use string nick, not i32.
+        self.eq
+            .set_property_from_str(&format!("ft-{band}"), "Bell");
         self.eq.set_property(&format!("f-{band}"), freq);
         self.eq.set_property(&format!("g-{band}"), gain_linear);
         self.eq.set_property(&format!("q-{band}"), q);
     }
 
     /// Set EQ filter type for a band.
-    /// LSP types: 0=Off, 1=Bell, 2=Hi-pass, 3=Hi-shelf, 4=Lo-pass,
-    ///            5=Lo-shelf, 6=Notch, 7=Resonance, 8=Allpass, 9=Bandpass,
-    ///            10=Ladder-pass, 11=Ladder-rej
+    ///
+    /// Accepted values: 0=Off, 1=Bell, 2=Hi-pass, 3=Hi-shelf, 4=Lo-pass,
+    /// 5=Lo-shelf, 6=Notch, 7=Resonance, 8=Allpass, 9=Bandpass,
+    /// 10=Ladder-pass, 11=Ladder-rej.
+    ///
+    /// Out-of-range values are logged and ignored (no panic).
     pub fn set_eq_filter_type(&self, band: u8, filter_type: i32) {
         if band >= 16 {
             return;
         }
-        self.eq.set_property(&format!("ft-{band}"), filter_type);
+        let Some(nick) = enum_nick(EQ_FILTER_TYPE_NICKS, filter_type) else {
+            tracing::warn!(band, filter_type, "invalid EQ filter type; ignoring");
+            return;
+        };
+        self.eq
+            .set_property_from_str(&format!("ft-{band}"), nick);
     }
 
     /// Set EQ global input/output gain in dB (converted to linear for the plugin).
@@ -137,9 +228,16 @@ impl DspFilterBin {
         self.eq.set_property("g-out", g_out);
     }
 
-    /// Set EQ operating mode. 0=IIR, 1=FIR, 2=FFT, 3=SPM.
+    /// Set EQ operating mode.
+    ///
+    /// Accepted values: 0=IIR, 1=FIR, 2=FFT, 3=SPM.
+    /// Out-of-range values are logged and ignored.
     pub fn set_eq_mode(&self, mode: i32) {
-        self.eq.set_property("mode", mode);
+        let Some(nick) = enum_nick(EQ_MODE_NICKS, mode) else {
+            tracing::warn!(mode, "invalid EQ mode; ignoring");
+            return;
+        };
+        self.eq.set_property_from_str("mode", nick);
     }
 
     // -----------------------------------------------------------------------
@@ -153,15 +251,26 @@ impl DspFilterBin {
     }
 
     pub fn set_limiter_knee(&self, knee: f32) {
-        self.limiter.set_property("knee", knee.clamp(0.25119, 3.98107));
+        self.limiter
+            .set_property("knee", knee.clamp(0.25119, 3.98107));
     }
 
     pub fn set_limiter_lookahead(&self, lookahead: f32) {
-        self.limiter.set_property("lk", lookahead.clamp(0.1, 20.0));
+        self.limiter
+            .set_property("lk", lookahead.clamp(0.1, 20.0));
     }
 
+    /// Set limiter operating mode.
+    ///
+    /// Accepted values: 0=Herm Thin, 1=Herm Wide, 2=Herm Tail, 3=Herm Duck,
+    /// 4=Exp Thin, 5=Exp Wide, 6=Exp Tail, 7=Exp Duck.
+    /// Out-of-range values are logged and ignored.
     pub fn set_limiter_mode(&self, mode: i32) {
-        self.limiter.set_property("mode", mode);
+        let Some(nick) = enum_nick(LIMITER_MODE_NICKS, mode) else {
+            tracing::warn!(mode, "invalid limiter mode; ignoring");
+            return;
+        };
+        self.limiter.set_property_from_str("mode", nick);
     }
 
     pub fn set_limiter_gain(&self, input: f32, output: f32) {
@@ -184,7 +293,8 @@ impl DspFilterBin {
     }
 
     pub fn set_bass_drive(&self, drive: f32) {
-        self.bass_enhancer.set_property("drive", drive.clamp(0.1, 10.0));
+        self.bass_enhancer
+            .set_property("drive", drive.clamp(0.1, 10.0));
     }
 
     pub fn set_bass_blend(&self, blend: f32) {
@@ -200,8 +310,7 @@ impl DspFilterBin {
     }
 
     pub fn set_bass_bypass(&self, bypass: bool) {
-        self.bass_enhancer
-            .set_property("bypass", bypass);
+        self.bass_enhancer.set_property("bypass", bypass);
     }
 
     pub fn set_bass_levels(&self, input: f32, output: f32) {
@@ -213,20 +322,34 @@ impl DspFilterBin {
     // Global bypass
     // -----------------------------------------------------------------------
 
-    /// Bypass is implemented by setting all EQ bands to flat, limiter threshold
-    /// to max, and bass enhancer to bypass. We don't remove/re-add the bin
-    /// because that requires pipeline state changes and risks glitches.
+    /// Toggle real bypass using native plugin properties.
+    ///
+    /// - LSP EQ / Limiter: `enabled = false` puts the plugin in passthrough
+    ///   mode (zero processing, no latency contribution).
+    /// - Calf Bass Enhancer: `bypass = true` does the same.
+    ///
+    /// When un-bypassing, plugins are re-enabled and the caller should
+    /// re-apply their desired DSP settings if they were changed while
+    /// bypassed.
     pub fn set_bypassed(&mut self, bypass: bool) {
         self.bypassed = bypass;
         if bypass {
-            for i in 0..16u8 {
-                self.eq.set_property(&format!("g-{i}"), 1.0f32);
-            }
-            self.limiter.set_property("th", 1.0f32); // 0 dB = no limiting
-            self.limiter.set_property("g-in", 1.0f32);
-            self.limiter.set_property("g-out", 1.0f32);
+            self.eq.set_property("enabled", false);
+            self.limiter.set_property("enabled", false);
             self.bass_enhancer.set_property("bypass", true);
+            tracing::debug!("DSP bypassed (plugins in passthrough)");
+        } else {
+            self.eq.set_property("enabled", true);
+            self.limiter.set_property("enabled", true);
+            // Bass enhancer stays bypassed until explicitly un-bypassed by
+            // the caller via set_bass_bypass(false) — it's off by default.
+            tracing::debug!("DSP un-bypassed (plugins re-enabled)");
         }
-        // When un-bypassing, the caller should re-apply their desired settings.
+    }
+
+    /// Returns `true` if the DSP chain is currently bypassed.
+    #[allow(dead_code)]
+    pub fn is_bypassed(&self) -> bool {
+        self.bypassed
     }
 }
