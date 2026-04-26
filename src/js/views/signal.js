@@ -5,7 +5,7 @@ const { invoke } = window.__TAURI__.core;
 
 const STORAGE_KEY = "rustify-dsp-presets";
 const ACTIVE_KEY = "rustify-dsp-active";
-const DB_RANGE = 12;
+const DB_RANGE = 36;
 
 const DEFAULT_BANDS = [
   { freq: 20, gain_db: 0, q: 2.21, type: "Bell", mode: "APO", slope: "x1" },
@@ -400,7 +400,7 @@ export function render() {
       </div>
       <div class="sig-sec-b">
         <div class="sig-eq-wrap"><canvas id="sig-canvas"></canvas>
-          <div class="sig-eq-yaxis"><span>+12</span><span>+6</span><span>0</span><span>−6</span><span>−12</span></div>
+          <div class="sig-eq-yaxis"><span>+36</span><span>+18</span><span>0</span><span>−18</span><span>−36</span></div>
         </div>
         <div class="sig-eq-xaxis"><span>20</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span></div>
         <div class="sig-faders" id="sig-faders">${fadersHtml}</div>
