@@ -703,15 +703,13 @@ export function render() {
   view.querySelector("#sig-eq-tog")?.addEventListener("click", (e) => {
     state.eq.enabled = !state.eq.enabled;
     e.currentTarget.classList.toggle("sig-tog--on", state.eq.enabled);
-    // When EQ is disabled, set all bands to type Off (0); when enabled, restore to Bell (1)
-    // For now just toggle bypass — the backend handles enabled state per-plugin
-    invoke("dsp_set_bypass", { bypass: state.bypass }).catch(console.error);
+    invoke("dsp_set_eq_enabled", { enabled: state.eq.enabled }).catch(console.error);
   });
 
   view.querySelector("#sig-lim-tog")?.addEventListener("click", (e) => {
     state.limiter.enabled = !state.limiter.enabled;
     e.currentTarget.classList.toggle("sig-tog--on", state.limiter.enabled);
-    invoke("dsp_set_limiter_bypass", { bypass: !state.limiter.enabled }).catch(() => {});
+    invoke("dsp_set_limiter_enabled", { enabled: state.limiter.enabled }).catch(console.error);
   });
 
   view.querySelector("#sig-bass-tog")?.addEventListener("click", (e) => {
