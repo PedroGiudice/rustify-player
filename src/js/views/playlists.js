@@ -1,4 +1,5 @@
 import { playTrack, setQueue } from "../components/player-bar.js";
+import { showTrackMenu } from "../components/context-menu.js";
 import { formatMs } from "../utils/format.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
@@ -150,6 +151,7 @@ async function openFolder(view, folder) {
             <th class="track-table__th">Album</th>
             <th class="track-table__th">Genre</th>
             <th class="track-table__th track-table__th--dur">Duration</th>
+            <th class="track-table__th track-table__th--more"></th>
           </tr>
         </thead>
         <tbody id="pl-rows"></tbody>
@@ -160,6 +162,14 @@ async function openFolder(view, folder) {
     renderRows(tbody, tracks);
 
     tbody.addEventListener("click", (e) => {
+      const moreBtn = e.target.closest(".more-btn");
+      if (moreBtn) {
+        const row = moreBtn.closest(".track-row");
+        if (!row) return;
+        const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+        if (idx >= 0) showTrackMenu(e, tracks[idx], tracks, idx);
+        return;
+      }
       const row = e.target.closest(".track-row");
       if (!row) return;
       const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
@@ -172,10 +182,8 @@ async function openFolder(view, folder) {
     tbody.addEventListener("contextmenu", (e) => {
       const row = e.target.closest(".track-row");
       if (!row) return;
-      e.preventDefault();
-      invoke("player_enqueue_next", { path: row.dataset.path }).catch((err) =>
-        console.error("[player] enqueue failed:", err)
-      );
+      const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+      if (idx >= 0) showTrackMenu(e, tracks[idx], tracks, idx);
     });
   } catch (err) {
     body.innerHTML = `
@@ -237,6 +245,7 @@ async function openLiked(view) {
             <th class="track-table__th">Album</th>
             <th class="track-table__th">Genre</th>
             <th class="track-table__th track-table__th--dur">Duration</th>
+            <th class="track-table__th track-table__th--more"></th>
           </tr>
         </thead>
         <tbody id="pl-rows"></tbody>
@@ -247,6 +256,14 @@ async function openLiked(view) {
     renderRows(tbody, tracks);
 
     tbody.addEventListener("click", (e) => {
+      const moreBtn = e.target.closest(".more-btn");
+      if (moreBtn) {
+        const row = moreBtn.closest(".track-row");
+        if (!row) return;
+        const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+        if (idx >= 0) showTrackMenu(e, tracks[idx], tracks, idx);
+        return;
+      }
       const row = e.target.closest(".track-row");
       if (!row) return;
       const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
@@ -259,10 +276,8 @@ async function openLiked(view) {
     tbody.addEventListener("contextmenu", (e) => {
       const row = e.target.closest(".track-row");
       if (!row) return;
-      e.preventDefault();
-      invoke("player_enqueue_next", { path: row.dataset.path }).catch((err) =>
-        console.error("[player] enqueue failed:", err)
-      );
+      const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+      if (idx >= 0) showTrackMenu(e, tracks[idx], tracks, idx);
     });
   } catch (err) {
     body.innerHTML = `
@@ -279,13 +294,14 @@ function renderRows(tbody, tracks) {
     .map(
       (t, i) => `
     <tr class="track-row" data-track-id="${t.id}" data-path="${escAttr(t.path)}">
-      <td class="track-table__td track-table__td--cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</td>
+      <td class="track-table__td track-table__td--cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" loading="lazy" alt="">` : ""}</td>
       <td class="track-table__td track-table__td--num">${i + 1}</td>
       <td class="track-table__td track-table__td--title">${esc(t.title)}</td>
       <td class="track-table__td">${esc(t.artist_name || "\u2014")}</td>
       <td class="track-table__td">${esc(t.album_title || "\u2014")}</td>
       <td class="track-table__td">${esc(t.genre_name || "\u2014")}</td>
       <td class="track-table__td track-table__td--dur">${formatMs(t.duration_ms)}</td>
+      <td class="track-table__td track-table__td--more"><button class="more-btn" aria-label="More"><svg class="icon icon--sm"><use href="#icon-more-vertical"></use></svg></button></td>
     </tr>`
     )
     .join("");

@@ -13,6 +13,8 @@
 // Other views use `formatMs` from `utils/format.js`; the player-bar is the
 // one place that stays in seconds because the engine itself does.
 
+import { showPlayerMenu } from "./context-menu.js";
+
 const { listen } = window.__TAURI__.event;
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
@@ -40,6 +42,19 @@ export function getQueue() {
 
 export function setAutoplay(enabled) {
   autoplayEnabled = enabled;
+}
+
+export function enqueueNext(track) {
+  // Insert after current position in the queue.
+  trackQueue.splice(queueIndex + 1, 0, track);
+  // Tell the engine to pre-load if this is the immediate next track.
+  if (queueIndex + 1 === trackQueue.length - 1 || trackQueue.length === 1) {
+    invoke("player_enqueue_next", { path: track.path }).catch(() => {});
+  }
+}
+
+export function enqueueEnd(track) {
+  trackQueue.push(track);
 }
 
 async function autoplayNext(seedTrack) {
@@ -84,6 +99,9 @@ export function mountPlayerBar(root) {
       </div>
       <button class="icon-btn like-btn" id="pb-like" aria-label="Like" aria-pressed="false" hidden>
         <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
+      </button>
+      <button class="icon-btn" id="pb-more" aria-label="More options" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-more-vertical"></use></svg>
       </button>
     </div>
 
@@ -139,6 +157,7 @@ export function mountPlayerBar(root) {
   bindSeek();
   bindVolume();
   bindLike();
+  bindMore();
   listenEngine();
   bindVisibilitySync();
 }
@@ -165,6 +184,7 @@ function cacheUI(root) {
     volProgress: root.querySelector("#pb-vol-progress"),
     volFill: root.querySelector("#pb-vol-fill"),
     likeBtn: root.querySelector("#pb-like"),
+    moreBtn: root.querySelector("#pb-more"),
   };
 }
 
@@ -309,6 +329,13 @@ function bindLike() {
   });
 }
 
+function bindMore() {
+  ui.moreBtn.addEventListener("click", (e) => {
+    if (!currentTrack) return;
+    showPlayerMenu(e, currentTrack);
+  });
+}
+
 function updateLikeUI(liked) {
   ui.likeBtn.setAttribute("aria-pressed", liked ? "true" : "false");
   ui.likeBtn.classList.toggle("is-liked", liked);
@@ -359,6 +386,10 @@ function listenEngine() {
         }
       }
       // Auto-advance to the next queue entry.
+      // The engine may have already started the next track via gapless
+      // pre-load (enqueue_next). If not, we explicitly play it here as
+      // a fallback — this covers cases where the pre-load was skipped
+      // or failed (race condition, queue change after TrackStarted).
       if (queueIndex < trackQueue.length - 1) {
         queueIndex++;
         currentTrack = trackQueue[queueIndex];
@@ -369,6 +400,18 @@ function listenEngine() {
         ui.timeCurrent.textContent = "0:00";
         updateNavButtons();
         updateTrackMeta(currentTrack);
+        // Fallback: if the engine didn't auto-advance via gapless pre-load,
+        // explicitly play the next track after a short delay. The delay
+        // allows a TrackStarted event from gapless to arrive first; if it
+        // does, isPlaying will be true and we skip the redundant load.
+        setTimeout(() => {
+          if (!isPlaying && currentTrack) {
+            console.warn("[player] gapless miss — explicit play:", currentTrack.path);
+            invoke("player_play", { path: currentTrack.path }).catch((err) =>
+              console.error("[player] auto-advance play failed:", err)
+            );
+          }
+        }, 200);
       } else if (autoplayEnabled && endedTrack?.id) {
         autoplayNext(endedTrack);
       }
@@ -424,14 +467,16 @@ async function updateTrackMeta(track) {
     ui.cover.classList.add("album-cover-empty");
   }
 
-  // Sync like state
+  // Sync like state + more button
   if (track.id) {
     ui.likeBtn.hidden = false;
+    ui.moreBtn.hidden = false;
     invoke("lib_is_liked", { trackId: track.id })
       .then((liked) => updateLikeUI(liked))
       .catch(() => updateLikeUI(false));
   } else {
     ui.likeBtn.hidden = true;
+    ui.moreBtn.hidden = true;
     updateLikeUI(false);
   }
 }
@@ -447,33 +492,50 @@ function updateTechInfo(info) {
 function bindVisibilitySync() {
   // WebKitGTK throttles/suspends JS when the window is not visible.
   // Events from the backend (player-state) can be missed, leaving
-  // the UI out of sync. Re-sync when the page becomes visible again.
-  document.addEventListener("visibilitychange", () => {
+  // the UI out of sync — especially during gapless auto-advance
+  // or media key commands while in background.
+  //
+  // Fix: query the backend snapshot (get_state) for the actual
+  // current track and playing state, then reconcile.
+  document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible") return;
-    if (!currentTrack) return;
 
-    // Re-sync metadata (cover, title, like state)
-    ui.title.textContent = currentTrack.title || "Unknown Title";
-    ui.artist.textContent = currentTrack.artist_name || "Unknown Artist";
-    updateNavButtons();
-    updateTrackMeta(currentTrack);
+    try {
+      const snap = await invoke("get_state");
+      const backendTrack = snap.current_library_track;
+      const backendPlaying = snap.is_playing;
 
-    // Re-sync playing state from GStreamer via a position probe.
-    // If we get a Position event within 500ms, we're still playing.
-    // If not, assume paused/stopped.
-    let gotPosition = false;
-    const onState = (e) => {
-      const p = e.payload;
-      if (p.Position) gotPosition = true;
-    };
-    listen("player-state", onState);
-    setTimeout(() => {
-      // We can't unlisten a Tauri event easily, but the flag is enough.
-      // If no position arrived, sync to paused state.
-      if (!gotPosition && isPlaying) {
-        setPlayingState(false);
+      if (!backendTrack) {
+        // Nothing playing in the backend — reset UI if we thought something was playing.
+        if (currentTrack) {
+          setPlayingState(false);
+        }
+        return;
       }
-    }, 500);
+
+      // Reconcile: if the backend is playing a different track than what the
+      // frontend thinks, update currentTrack and the full UI.
+      const trackChanged = !currentTrack || currentTrack.id !== backendTrack.id;
+
+      if (trackChanged) {
+        currentTrack = backendTrack;
+        durationSecs = (backendTrack.duration_ms || 0) / 1000;
+        ui.title.textContent = backendTrack.title || "Unknown Title";
+        ui.artist.textContent = backendTrack.artist_name || "Unknown Artist";
+        ui.timeTotal.textContent = formatDuration(durationSecs);
+
+        // Try to find the track in the current queue and update queueIndex.
+        const qIdx = trackQueue.findIndex((t) => t.id === backendTrack.id);
+        if (qIdx >= 0) queueIndex = qIdx;
+      }
+
+      // Always re-sync playing state, cover, like, and nav buttons.
+      setPlayingState(backendPlaying);
+      updateNavButtons();
+      updateTrackMeta(currentTrack);
+    } catch (err) {
+      console.warn("[player] visibility sync failed:", err);
+    }
   });
 }
 
@@ -496,14 +558,16 @@ export async function playTrack(track) {
   updateProgressUI(0);
   ui.timeCurrent.textContent = "0:00";
 
-  // Sync like state
+  // Sync like state + more button
   if (track.id) {
     ui.likeBtn.hidden = false;
+    ui.moreBtn.hidden = false;
     invoke("lib_is_liked", { trackId: track.id })
       .then((liked) => updateLikeUI(liked))
       .catch(() => updateLikeUI(false));
   } else {
     ui.likeBtn.hidden = true;
+    ui.moreBtn.hidden = true;
     updateLikeUI(false);
   }
 

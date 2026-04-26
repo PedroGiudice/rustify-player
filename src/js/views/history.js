@@ -1,4 +1,5 @@
 import { playTrack, setQueue } from "../components/player-bar.js";
+import { showTrackMenu } from "../components/context-menu.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
@@ -45,6 +46,7 @@ async function load(view) {
             <th class="track-table__th">Artist</th>
             <th class="track-table__th">Album</th>
             <th class="track-table__th track-table__th--dur">Played</th>
+            <th class="track-table__th track-table__th--more"></th>
           </tr>
         </thead>
         <tbody id="hist-rows"></tbody>
@@ -56,16 +58,25 @@ async function load(view) {
       .map(
         (t) => `
       <tr class="track-row" data-track-id="${t.id}" data-path="${escAttr(t.path)}">
-        <td class="track-table__td track-table__td--cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</td>
+        <td class="track-table__td track-table__td--cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" loading="lazy" alt="">` : ""}</td>
         <td class="track-table__td track-table__td--title">${esc(t.title)}</td>
         <td class="track-table__td">${esc(t.artist_name || "—")}</td>
         <td class="track-table__td">${esc(t.album_title || "—")}</td>
         <td class="track-table__td track-table__td--dur">${formatAgo(t.last_played)}</td>
+        <td class="track-table__td track-table__td--more"><button class="more-btn" aria-label="More"><svg class="icon icon--sm"><use href="#icon-more-vertical"></use></svg></button></td>
       </tr>`
       )
       .join("");
 
     tbody.addEventListener("click", (e) => {
+      const moreBtn = e.target.closest(".more-btn");
+      if (moreBtn) {
+        const row = moreBtn.closest(".track-row");
+        if (!row) return;
+        const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+        if (idx >= 0) showTrackMenu(e, tracks[idx], tracks, idx);
+        return;
+      }
       const row = e.target.closest(".track-row");
       if (!row) return;
       const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
@@ -73,6 +84,13 @@ async function load(view) {
         setQueue(tracks, idx);
         playTrack(tracks[idx]);
       }
+    });
+
+    tbody.addEventListener("contextmenu", (e) => {
+      const row = e.target.closest(".track-row");
+      if (!row) return;
+      const idx = tracks.findIndex((t) => t.id == row.dataset.trackId);
+      if (idx >= 0) showTrackMenu(e, tracks[idx], tracks, idx);
     });
   } catch (err) {
     body.innerHTML = `

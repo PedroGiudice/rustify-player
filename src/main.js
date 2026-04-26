@@ -5,6 +5,7 @@ import { mountPlayerBar } from "./js/components/player-bar.js";
 import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
 import { mountResources, toggleResources } from "./js/components/resources.js";
 import { mountSearchBar } from "./js/components/search-bar.js";
+import { applyFullState as applyDspState } from "./js/views/signal.js";
 import { initRouter } from "./js/router.js";
 
 async function loadIconSprite() {
@@ -104,7 +105,10 @@ async function boot() {
   // Wire RES button in titlebar
   document.getElementById("titlebar-res")?.addEventListener("click", toggleResources);
 
-  // 5. Start router
+  // 5. Apply persisted DSP state to backend (limiter, EQ, bass settings)
+  applyDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
+
+  // 6. Start router
   initRouter(main);
 }
 

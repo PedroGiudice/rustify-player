@@ -1,5 +1,6 @@
 // Album detail view — hero with cover + metadata, track table.
 import { playTrack, setQueue } from "../components/player-bar.js";
+import { showTrackMenu } from "../components/context-menu.js";
 import { navigate } from "../router.js";
 import { formatMs } from "../utils/format.js";
 
@@ -65,6 +66,7 @@ async function load(view, albumId) {
           <th class="track-table__th track-table__th--num">#</th>
           <th class="track-table__th">Title</th>
           <th class="track-table__th track-table__th--dur">Dur</th>
+          <th class="track-table__th track-table__th--more"></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -79,6 +81,7 @@ async function load(view, albumId) {
         <td class="track-table__td track-table__td--num">${t.track_number || i + 1}</td>
         <td class="track-table__td track-table__td--title">${esc(t.title || "\u2014")}</td>
         <td class="track-table__td track-table__td--dur">${formatMs(t.duration_ms)}</td>
+        <td class="track-table__td track-table__td--more"><button class="more-btn" aria-label="More"><svg class="icon icon--sm"><use href="#icon-more-vertical"></use></svg></button></td>
       `;
       tbody.appendChild(tr);
     });
@@ -96,12 +99,28 @@ async function load(view, albumId) {
       if (shuffled.length) { setQueue(shuffled, 0); playTrack(shuffled[0]); }
     });
     tbody.addEventListener("click", (e) => {
+      const moreBtn = e.target.closest(".more-btn");
+      if (moreBtn) {
+        const row = moreBtn.closest(".track-row");
+        if (row) {
+          const idx = Number(row.dataset.idx);
+          showTrackMenu(e, tracks[idx], tracks, idx);
+        }
+        return;
+      }
       const row = e.target.closest(".track-row");
       if (row) {
         const idx = Number(row.dataset.idx);
         setQueue(tracks, idx);
         playTrack(tracks[idx]);
       }
+    });
+
+    tbody.addEventListener("contextmenu", (e) => {
+      const row = e.target.closest(".track-row");
+      if (!row) return;
+      const idx = Number(row.dataset.idx);
+      showTrackMenu(e, tracks[idx], tracks, idx);
     });
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><p class="empty-state__title">Failed to load</p><p class="empty-state__hint">${err}</p></div>`;

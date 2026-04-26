@@ -1,4 +1,5 @@
 import { playTrack, setQueue } from "../components/player-bar.js";
+import { showTrackMenu } from "../components/context-menu.js";
 import { formatMs } from "../utils/format.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
@@ -64,6 +65,16 @@ export function render() {
       return;
     }
 
+    const moreBtn = e.target.closest(".more-btn");
+    if (moreBtn) {
+      const row = moreBtn.closest(".track-row");
+      if (row) {
+        const idx = state.tracks.findIndex((t) => t.id == row.dataset.trackId);
+        if (idx >= 0) showTrackMenu(e, state.tracks[idx], state.tracks, idx);
+      }
+      return;
+    }
+
     const trackRow = e.target.closest(".track-row");
     if (trackRow) {
       const idx = state.tracks.findIndex((t) => t.id == trackRow.dataset.trackId);
@@ -78,10 +89,8 @@ export function render() {
   el.addEventListener("contextmenu", (e) => {
     const row = e.target.closest(".track-row");
     if (!row) return;
-    e.preventDefault();
-    invoke("player_enqueue_next", { path: row.dataset.path }).catch((err) =>
-      console.error("[stations] enqueue failed:", err)
-    );
+    const idx = state.tracks.findIndex((t) => t.id == row.dataset.trackId);
+    if (idx >= 0) showTrackMenu(e, state.tracks[idx], state.tracks, idx);
   });
 
   load(el);
@@ -153,11 +162,13 @@ function renderDetail() {
     .map(
       (t, i) => `
       <tr class="track-row" data-track-id="${t.id}" data-path="${escAttr(t.path)}">
+        <td class="track-table__td track-table__td--cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" loading="lazy" alt="">` : ""}</td>
         <td class="track-table__td track-table__td--num">${i + 1}</td>
         <td class="track-table__td track-table__td--title">${esc(t.title)}</td>
         <td class="track-table__td">${esc(t.artist_name || "—")}</td>
         <td class="track-table__td">${esc(t.album_title || "—")}</td>
         <td class="track-table__td track-table__td--dur">${formatMs(t.duration_ms)}</td>
+        <td class="track-table__td track-table__td--more"><button class="more-btn" aria-label="More"><svg class="icon icon--sm"><use href="#icon-more-vertical"></use></svg></button></td>
       </tr>`
     )
     .join("");
@@ -180,11 +191,13 @@ function renderDetail() {
       <table class="track-table">
         <thead>
           <tr>
+            <th class="track-table__th track-table__th--cover"></th>
             <th class="track-table__th track-table__th--num">#</th>
             <th class="track-table__th">Title</th>
             <th class="track-table__th">Artist</th>
             <th class="track-table__th">Album</th>
             <th class="track-table__th track-table__th--dur">Duration</th>
+            <th class="track-table__th track-table__th--more"></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
