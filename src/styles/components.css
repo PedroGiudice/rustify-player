@@ -1977,15 +1977,17 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-5);
-  background: linear-gradient(135deg, var(--station-color, transparent) 8%, var(--surface-container) 60%);
-  border: 1px solid var(--divider);
+  background: color-mix(in srgb, var(--station-color, var(--primary)) 12%, var(--surface-container));
+  border: 1px solid color-mix(in srgb, var(--station-color, var(--primary)) 20%, transparent);
   border-left: 3px solid var(--station-color, var(--primary));
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-standard);
+  transition: background var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard);
 }
 
 .station-card:hover {
-  border-color: color-mix(in srgb, var(--station-color, var(--primary)) 50%, transparent);
+  background: color-mix(in srgb, var(--station-color, var(--primary)) 18%, var(--surface-container));
+  border-color: color-mix(in srgb, var(--station-color, var(--primary)) 30%, transparent);
   border-left-color: var(--station-color, var(--primary));
 }
 
@@ -2013,8 +2015,8 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: var(--station-color, var(--primary));
-  color: var(--on-primary);
+  background: var(--on-surface);
+  color: var(--surface-lowest);
   display: flex;
   align-items: center;
   justify-content: center;
