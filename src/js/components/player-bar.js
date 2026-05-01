@@ -79,7 +79,7 @@ async function autoplayNext(seedTrack) {
     queueIndex++;
     currentTrack = trackQueue[queueIndex];
 
-    playTrack(currentTrack);
+    playTrack(currentTrack, "autoplay");
   } catch (err) {
     console.error("[autoplay] failed:", err);
   }
@@ -203,7 +203,7 @@ function bindTransport() {
     if (isTransitioning) return;
     if (queueIndex > 0) {
       queueIndex--;
-      playTrack(trackQueue[queueIndex]);
+      playTrack(trackQueue[queueIndex], "queue");
     }
   });
 
@@ -212,7 +212,7 @@ function bindTransport() {
     if (isTransitioning) return;
     if (queueIndex < trackQueue.length - 1) {
       queueIndex++;
-      playTrack(trackQueue[queueIndex]);
+      playTrack(trackQueue[queueIndex], "queue");
     }
   });
 
@@ -221,14 +221,14 @@ function bindTransport() {
     if (e.payload === "next") {
       if (queueIndex < trackQueue.length - 1) {
         queueIndex++;
-        playTrack(trackQueue[queueIndex]);
+        playTrack(trackQueue[queueIndex], "queue");
       } else if (autoplayEnabled && currentTrack?.id) {
         autoplayNext(currentTrack);
       }
     } else if (e.payload === "previous") {
       if (queueIndex > 0) {
         queueIndex--;
-        playTrack(trackQueue[queueIndex]);
+        playTrack(trackQueue[queueIndex], "queue");
       }
     }
   });
@@ -393,6 +393,7 @@ function listenEngine() {
       if (queueIndex < trackQueue.length - 1) {
         queueIndex++;
         currentTrack = trackQueue[queueIndex];
+        invoke("player_set_origin", { origin: "album_seq", trackId: currentTrack.id || null }).catch(() => {});
         ui.title.textContent = currentTrack.title || "Unknown Title";
         ui.artist.textContent = currentTrack.artist_name || "Unknown Artist";
         ui.timeTotal.textContent = formatDuration((currentTrack.duration_ms || 0) / 1000);
@@ -407,7 +408,7 @@ function listenEngine() {
         setTimeout(() => {
           if (!isPlaying && currentTrack) {
             console.warn("[player] gapless miss — explicit play:", currentTrack.path);
-            invoke("player_play", { path: currentTrack.path }).catch((err) =>
+            invoke("player_play", { path: currentTrack.path, origin: "album_seq", trackId: currentTrack.id || null }).catch((err) =>
               console.error("[player] auto-advance play failed:", err)
             );
           }
@@ -539,7 +540,7 @@ function bindVisibilitySync() {
   });
 }
 
-export async function playTrack(track) {
+export async function playTrack(track, origin = "manual") {
   isTransitioning = true;
   clearTimeout(transitionTimeout);
   transitionTimeout = setTimeout(() => { isTransitioning = false; }, 3000);
@@ -587,7 +588,7 @@ export async function playTrack(track) {
     }
   }
 
-  invoke("player_play", { path: track.path }).catch((err) =>
+  invoke("player_play", { path: track.path, origin, trackId: track.id || null }).catch((err) =>
     console.error("[player] play failed:", err)
   );
 
