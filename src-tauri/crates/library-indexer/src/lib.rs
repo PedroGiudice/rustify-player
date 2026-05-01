@@ -15,7 +15,7 @@
 pub mod error;
 pub mod types;
 
-mod db;
+pub mod db;
 mod scan;
 mod metadata;
 mod cover;
@@ -25,6 +25,7 @@ mod embed_client;
 mod pipeline;
 
 pub mod lyrics;
+pub mod play_events;
 
 pub use embed_client::EmbedClient;
 pub use error::IndexerError;
@@ -212,6 +213,39 @@ impl IndexerHandle {
 
     pub fn record_play(&self, track_id: i64) -> Result<(), IndexerError> {
         self.inner.write_pool.with(|conn| search::record_play(conn, track_id))
+    }
+
+    pub fn insert_play_event(
+        &self,
+        track_id: i64,
+        origin: &str,
+        started_at: &str,
+        ended_at: Option<&str>,
+        end_position_ms: Option<i64>,
+        duration_ms: i64,
+    ) -> Result<(), IndexerError> {
+        self.inner.write_pool.with(|conn| {
+            play_events::insert_play_event(
+                conn,
+                track_id,
+                origin,
+                started_at,
+                ended_at,
+                end_position_ms,
+                duration_ms,
+            )
+        })
+    }
+
+    pub fn autoplay_next(
+        &self,
+        seed_track_id: i64,
+        exclude_ids: &[i64],
+        limit: usize,
+    ) -> Result<Vec<(i64, f64)>, IndexerError> {
+        self.inner.pool.with(|conn| {
+            play_events::autoplay_next(conn, seed_track_id, exclude_ids, limit)
+        })
     }
 
     pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
