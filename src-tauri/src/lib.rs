@@ -37,6 +37,10 @@ struct PlayerSnapshot {
     current_library_track: Option<Track>,
     is_playing: bool,
     volume: f32,
+    current_origin: Option<String>,
+    current_track_id: Option<i64>,
+    started_at: Option<String>,
+    last_position_ms: Option<i64>,
 }
 struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
@@ -46,6 +50,14 @@ struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
+}
+
+fn unix_now() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -392,13 +404,41 @@ fn lib_list_mood_tracks(lib: State<Library>, mood_id: i64) -> Result<Vec<Track>,
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn player_play(player: State<Player>, path: String) -> Result<(), String> {
+fn player_play(
+    player: State<Player>,
+    snapshot: State<Snapshot>,
+    path: String,
+    origin: Option<String>,
+    track_id: Option<i64>,
+) -> Result<(), String> {
+    if let Ok(mut s) = snapshot.0.lock() {
+        s.current_origin = origin.or_else(|| Some("manual".to_string()));
+        s.current_track_id = track_id;
+        s.started_at = None;
+        s.last_position_ms = None;
+    }
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
     handle
         .send(EngineCommand::Load(PathBuf::from(&path)))
         .map_err(err)?;
     handle.send(EngineCommand::Play).map_err(err)
+}
+
+#[tauri::command]
+fn player_set_origin(
+    snapshot: State<Snapshot>,
+    origin: String,
+    track_id: Option<i64>,
+) -> Result<(), String> {
+    if let Ok(mut s) = snapshot.0.lock() {
+        s.current_origin = Some(origin);
+        s.current_track_id = track_id;
+        if s.started_at.is_none() {
+            s.started_at = Some(unix_now());
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1390,6 +1430,7 @@ pub fn run() {
             lib_list_moods,
             lib_list_mood_tracks,
             player_play,
+            player_set_origin,
             player_pause,
             player_resume,
             player_stop,
