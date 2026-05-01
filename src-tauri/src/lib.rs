@@ -1,3 +1,5 @@
+mod qdrant_process;
+
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
@@ -22,6 +24,10 @@ struct Library {
 }
 struct Player(Mutex<Option<EngineHandle>>);
 struct Qdrant(Option<QdrantClient>);
+/// Keeps the Qdrant child process alive for the duration of the app.
+/// Drop impl kills the process on app exit.
+#[allow(dead_code)]
+struct QdrantSidecar(Mutex<Option<qdrant_process::QdrantProcess>>);
 
 /// Snapshot of engine state, updated by the event-listener thread.
 /// Read by the `get_state` command so the frontend can hydrate views
@@ -1286,6 +1292,8 @@ pub fn run() {
             // issue a separate lookup.
             let indexer_for_events = indexer.clone();
             let cache_dir_for_events = cache_dir.clone();
+            // Clone for the Qdrant background sync thread.
+            let indexer_for_sync = indexer.clone();
             _app.manage(Library {
                 handle: indexer,
                 cache_dir,
@@ -1395,14 +1403,32 @@ pub fn run() {
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
 
+            // Qdrant sidecar — spawn if binary available, otherwise try
+            // connecting to an already-running instance.
+            let qdrant_proc = qdrant_process::QdrantProcess::spawn(&data_dir);
+            _app.manage(QdrantSidecar(Mutex::new(qdrant_proc)));
+
             let qdrant_client = QdrantClient::new("http://localhost:6333");
             if qdrant_client.is_healthy() {
-                tracing::info!("Qdrant available — enabling vector sync");
+                tracing::info!("Qdrant available — enabling vector recommendations");
                 if let Err(e) = qdrant_client.ensure_collection() {
                     tracing::warn!(?e, "failed to ensure Qdrant collection");
                 }
+                // Background sync: upsert embeddings to Qdrant without
+                // blocking app startup.
+                let indexer_clone = indexer_for_sync.clone();
+                let client_clone = qdrant_client.clone();
+                std::thread::Builder::new()
+                    .name("qdrant-sync".to_string())
+                    .spawn(move || {
+                        match indexer_clone.sync_to_qdrant(&client_clone) {
+                            Ok(n) => tracing::info!(n, "Qdrant sync complete"),
+                            Err(e) => tracing::warn!(?e, "Qdrant sync failed"),
+                        }
+                    })
+                    .ok();
             } else {
-                tracing::info!("Qdrant not available — recommendations will use brute-force fallback");
+                tracing::info!("Qdrant not available — using brute-force similarity fallback");
             }
             _app.manage(Qdrant(Some(qdrant_client)));
 
