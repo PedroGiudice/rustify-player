@@ -229,6 +229,65 @@ fn lib_shuffle(
 }
 
 #[tauri::command]
+fn lib_autoplay_next(
+    lib: State<Library>,
+    track_id: i64,
+    exclude_ids: Vec<i64>,
+    limit: Option<usize>,
+) -> Result<Vec<Track>, String> {
+    let lim = limit.unwrap_or(5);
+
+    // Try pre-computed recommendations first
+    let recs = lib.handle.autoplay_next(track_id, &exclude_ids, lim).map_err(err)?;
+    if !recs.is_empty() {
+        let mut tracks = Vec::new();
+        for (rec_id, _score) in recs {
+            if let Ok(Some(mut t)) = lib.handle.track(rec_id) {
+                if let Some(rel) = &t.album_cover_path {
+                    t.album_cover_path = Some(lib.cache_dir.join(rel));
+                }
+                tracks.push(t);
+            }
+        }
+        if !tracks.is_empty() {
+            return Ok(tracks);
+        }
+    }
+
+    // Fallback: brute-force similar via MERT embeddings
+    let similar = lib.handle.similar(track_id, lim + exclude_ids.len()).map_err(err)?;
+    let mut tracks: Vec<Track> = similar
+        .into_iter()
+        .filter(|(t, _)| !exclude_ids.contains(&t.id))
+        .take(lim)
+        .map(|(mut t, _)| {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+            t
+        })
+        .collect();
+
+    // Last resort: shuffle
+    if tracks.is_empty() {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        tracks = lib.handle
+            .shuffle(TrackFilter::default(), seed, lim)
+            .map_err(err)?;
+        for t in &mut tracks {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+        }
+    }
+
+    Ok(tracks)
+}
+
+#[tauri::command]
 fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
     lib.handle.snapshot()
 }
@@ -1459,6 +1518,7 @@ pub fn run() {
             lib_get_artist,
             lib_similar,
             lib_shuffle,
+            lib_autoplay_next,
             lib_snapshot,
             lib_rescan,
             lib_get_lyrics,

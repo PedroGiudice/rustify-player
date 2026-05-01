@@ -59,26 +59,18 @@ export function enqueueEnd(track) {
 
 async function autoplayNext(seedTrack) {
   try {
-    let candidates = await invoke("lib_similar", { trackId: seedTrack.id, limit: 10 });
-    // lib_similar returns [{track, score}]
-    let tracks = candidates
-      .map((c) => c.track)
-      .filter((t) => !recentlyPlayedIds.has(t.id));
-
-    // Fallback to shuffle if no similar tracks (missing embeddings)
-    if (tracks.length === 0) {
-      tracks = await invoke("lib_shuffle", { limit: 10 });
-      tracks = tracks.filter((t) => !recentlyPlayedIds.has(t.id));
-    }
+    const excludeIds = [...recentlyPlayedIds];
+    const tracks = await invoke("lib_autoplay_next", {
+      trackId: seedTrack.id,
+      excludeIds,
+      limit: 5,
+    });
 
     if (tracks.length === 0) return;
 
-    // Append to queue and advance
-    const nextBatch = tracks.slice(0, 5);
-    trackQueue.push(...nextBatch);
+    trackQueue.push(...tracks);
     queueIndex++;
     currentTrack = trackQueue[queueIndex];
-
     playTrack(currentTrack, "autoplay");
   } catch (err) {
     console.error("[autoplay] failed:", err);
