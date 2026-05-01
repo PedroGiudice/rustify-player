@@ -38,3 +38,6 @@ data/
 
 # Python
 __pycache__/
+
+# Qdrant sidecar binary (downloaded, not committed)
+src-tauri/binaries/
