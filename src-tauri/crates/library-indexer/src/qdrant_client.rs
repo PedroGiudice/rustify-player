@@ -10,7 +10,9 @@
 //! embedding worker thread, never on the main thread.
 
 use crate::error::IndexerError;
+use rusqlite::Connection;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::time::Duration;
 
 /// Name of the Qdrant collection.
@@ -249,4 +251,91 @@ impl QdrantClient {
 
         Ok(results)
     }
+
+    /// Sync all tracks with MERT embeddings from SQLite to Qdrant.
+    ///
+    /// Incremental: fetches all point IDs already present in Qdrant and skips
+    /// those, so repeated calls are cheap. Upserts in batches of 100.
+    ///
+    /// Returns the number of points actually upserted.
+    pub fn sync_embeddings(&self, conn: &Connection) -> Result<usize, IndexerError> {
+        self.ensure_collection()?;
+
+        let existing: HashSet<i64> = self.scroll_ids()?.into_iter().collect();
+
+        let mut stmt = conn.prepare(
+            "SELECT t.id, t.title, t.duration_ms, t.embedding,
+                    a.name, g.name
+             FROM tracks t
+             LEFT JOIN artists a ON t.artist_id = a.id
+             LEFT JOIN genres g ON t.genre_id = g.id
+             WHERE t.embedding_status = 'done' AND t.embedding IS NOT NULL",
+        )?;
+
+        let rows: Vec<(i64, String, i64, Vec<u8>, Option<String>, Option<String>)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let new_rows: Vec<_> = rows
+            .into_iter()
+            .filter(|(id, ..)| !existing.contains(id))
+            .collect();
+
+        if new_rows.is_empty() {
+            return Ok(0);
+        }
+
+        let mut total = 0usize;
+        for chunk in new_rows.chunks(100) {
+            let mut points: Vec<(i64, Vec<f32>, Value)> = Vec::new();
+            for (id, title, duration_ms, embedding_blob, artist, genre) in chunk {
+                let vec = bytes_to_f32(embedding_blob);
+                if vec.len() != VECTOR_SIZE {
+                    tracing::warn!(
+                        track_id = id,
+                        got = vec.len(),
+                        expected = VECTOR_SIZE,
+                        "skipping track: unexpected embedding dimension"
+                    );
+                    continue;
+                }
+                let payload = json!({
+                    "title": title,
+                    "artist": artist.as_deref().unwrap_or(""),
+                    "genre": genre.as_deref().unwrap_or(""),
+                    "duration_ms": duration_ms,
+                });
+                points.push((*id, vec, payload));
+            }
+
+            let refs: Vec<(i64, &[f32], Value)> = points
+                .iter()
+                .map(|(id, vec, payload)| (*id, vec.as_slice(), payload.clone()))
+                .collect();
+
+            self.upsert_batch(&refs)?;
+            total += refs.len();
+        }
+
+        Ok(total)
+    }
+}
+
+/// Convert a little-endian `f32` byte blob (as stored in SQLite) to a vector
+/// of floats. Trailing bytes that don't form a complete `f32` are silently
+/// discarded.
+fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }

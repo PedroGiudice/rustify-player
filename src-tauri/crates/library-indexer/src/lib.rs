@@ -292,4 +292,12 @@ impl IndexerHandle {
             })
             .unwrap_or(false)
     }
+
+    /// Sync all tracks with MERT embeddings from SQLite into Qdrant.
+    ///
+    /// Delegates to [`QdrantClient::sync_embeddings`]. Acquires a read
+    /// connection from the pool for the duration of the sync.
+    pub fn sync_to_qdrant(&self, qdrant: &QdrantClient) -> Result<usize, IndexerError> {
+        self.inner.pool.with(|conn| qdrant.sync_embeddings(conn))
+    }
 }

@@ -3,8 +3,8 @@ use audio_engine::{
 };
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
-    IndexerHandle, LyricLine, MoodPlaylist, PlaylistSearchResult, SearchResults, Track,
-    TrackFilter, TrackOrder,
+    IndexerHandle, LyricLine, MoodPlaylist, PlaylistSearchResult, QdrantClient, SearchResults,
+    Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -21,6 +21,7 @@ struct Library {
     music_root: PathBuf,
 }
 struct Player(Mutex<Option<EngineHandle>>);
+struct Qdrant(Option<QdrantClient>);
 
 /// Snapshot of engine state, updated by the event-listener thread.
 /// Read by the `get_state` command so the frontend can hydrate views
@@ -456,6 +457,16 @@ fn lib_list_mood_tracks(lib: State<Library>, mood_id: i64) -> Result<Vec<Track>,
         }
     }
     Ok(tracks)
+}
+
+// ---------------------------------------------------------------------------
+// Qdrant sync
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn qdrant_sync(lib: State<Library>, qdrant: State<Qdrant>) -> Result<usize, String> {
+    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    lib.handle.sync_to_qdrant(client).map_err(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -1333,6 +1344,17 @@ pub fn run() {
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
 
+            let qdrant_client = QdrantClient::new("http://localhost:6333");
+            if qdrant_client.is_healthy() {
+                tracing::info!("Qdrant available — enabling vector sync");
+                if let Err(e) = qdrant_client.ensure_collection() {
+                    tracing::warn!(?e, "failed to ensure Qdrant collection");
+                }
+            } else {
+                tracing::info!("Qdrant not available — recommendations will use brute-force fallback");
+            }
+            _app.manage(Qdrant(Some(qdrant_client)));
+
             #[allow(clippy::too_many_arguments)]
             fn event_loop(
                 rx: &crossbeam_channel::Receiver<StateUpdate>,
@@ -1533,6 +1555,7 @@ pub fn run() {
             lib_recommendations,
             lib_list_moods,
             lib_list_mood_tracks,
+            qdrant_sync,
             player_play,
             player_set_origin,
             player_pause,
