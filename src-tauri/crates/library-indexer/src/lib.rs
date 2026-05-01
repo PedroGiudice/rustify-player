@@ -26,8 +26,10 @@ mod pipeline;
 
 pub mod lyrics;
 pub mod play_events;
+pub mod qdrant_client;
 
 pub use embed_client::EmbedClient;
+pub use qdrant_client::QdrantClient;
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use search::{FolderPlaylist, PlaylistSearchResult, Recommendations};
