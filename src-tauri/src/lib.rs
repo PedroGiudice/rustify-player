@@ -1310,6 +1310,7 @@ pub fn run() {
                                         }
                                     };
                                 s.current_library_track = lib_track;
+                                s.started_at = Some(unix_now());
                                 if let Ok(mut mc) = mc_reader.lock() {
                                     if let Some(mc) = mc.as_mut() {
                                         let title = info
@@ -1356,6 +1357,49 @@ pub fn run() {
                             }
                             StateUpdate::VolumeChanged(v) => {
                                 s.volume = *v;
+                            }
+                            StateUpdate::Position(pos) => {
+                                let ms = (pos.samples_played as f64
+                                    / pos.sample_rate as f64
+                                    * 1000.0) as i64;
+                                s.last_position_ms = Some(ms);
+                            }
+                            StateUpdate::TrackEnded(_) => {
+                                if let (
+                                    Some(track_id),
+                                    Some(origin),
+                                    Some(started_at),
+                                    Some(duration),
+                                ) = (
+                                    s.current_track_id,
+                                    s.current_origin.clone(),
+                                    s.started_at.clone(),
+                                    s.current_track
+                                        .as_ref()
+                                        .and_then(|t| t.duration)
+                                        .map(|d| d.as_millis() as i64),
+                                ) {
+                                    let ended_at = unix_now();
+                                    let end_pos = s.last_position_ms;
+                                    if let Err(e) = indexer.insert_play_event(
+                                        track_id,
+                                        &origin,
+                                        &started_at,
+                                        Some(&ended_at),
+                                        end_pos,
+                                        duration,
+                                    ) {
+                                        tracing::warn!(
+                                            ?e,
+                                            track_id,
+                                            "failed to record play event"
+                                        );
+                                    }
+                                }
+                                s.current_origin = None;
+                                s.current_track_id = None;
+                                s.started_at = None;
+                                s.last_position_ms = None;
                             }
                             _ => {}
                         }
