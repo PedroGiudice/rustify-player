@@ -29,6 +29,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (5, include_str!("../migrations/005_mood_playlists.sql")),
     (6, include_str!("../migrations/006_mood_accent_cover.sql")),
     (7, include_str!("../migrations/007_fts_content_synced.sql")),
+    (8, include_str!("../migrations/008_play_events.sql")),
 ];
 
 /// Flag set in the `meta` table when migration 003 promotes the schema.
