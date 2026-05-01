@@ -26,6 +26,16 @@ NOTES="v${VERSION}  ·  Branch: $BRANCH  ·  Commit: $COMMIT  ·  $(date -u +%Y-
 mkdir -p src-tauri/build-metadata
 echo "$VERSION · $COMMIT" > src-tauri/build-metadata/VERSION
 
+# Ensure Qdrant sidecar binary exists
+QDRANT_BIN="src-tauri/binaries/qdrant-x86_64-unknown-linux-gnu"
+if [ ! -f "$QDRANT_BIN" ]; then
+  echo "[release] downloading Qdrant sidecar binary..."
+  mkdir -p src-tauri/binaries
+  curl -sL "https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz" \
+    | tar xz -C src-tauri/binaries
+  mv src-tauri/binaries/qdrant "$QDRANT_BIN"
+fi
+
 echo "[release] build v${VERSION}"
 cargo tauri build --bundles deb >/dev/null
 
