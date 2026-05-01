@@ -250,6 +250,12 @@ impl IndexerHandle {
         })
     }
 
+    /// Returns `(positives, negatives)` track ID lists derived from
+    /// `play_events` for use with the Qdrant Recommendations API.
+    pub fn behavioral_signals(&self) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
+        self.inner.pool.with(|conn| play_events::behavioral_signals(conn))
+    }
+
     pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
         self.inner.pool.with(|conn| search::list_history(conn, limit))
     }

@@ -232,13 +232,62 @@ fn lib_shuffle(
 #[tauri::command]
 fn lib_autoplay_next(
     lib: State<Library>,
+    qdrant: State<Qdrant>,
     track_id: i64,
     exclude_ids: Vec<i64>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let lim = limit.unwrap_or(5);
 
-    // Try pre-computed recommendations first
+    // Layer 1: Qdrant Recommendations API (live, uses behavioral signals)
+    if let Some(client) = qdrant.0.as_ref() {
+        if client.is_healthy() {
+            match lib.handle.behavioral_signals() {
+                Ok((mut positives, negatives)) => {
+                    // Seed track is always in positives
+                    if !positives.contains(&track_id) {
+                        positives.insert(0, track_id);
+                    }
+                    match client.recommend(&positives, &negatives, lim + exclude_ids.len()) {
+                        Ok(recs) => {
+                            let filtered: Vec<(i64, f64)> = recs
+                                .into_iter()
+                                .filter(|(id, _)| !exclude_ids.contains(id))
+                                .take(lim)
+                                .collect();
+                            if !filtered.is_empty() {
+                                let mut tracks = Vec::new();
+                                for (rec_id, _score) in &filtered {
+                                    if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
+                                        if let Some(rel) = &t.album_cover_path {
+                                            t.album_cover_path = Some(lib.cache_dir.join(rel));
+                                        }
+                                        tracks.push(t);
+                                    }
+                                }
+                                if !tracks.is_empty() {
+                                    tracing::debug!(
+                                        track_id,
+                                        count = tracks.len(),
+                                        "autoplay: Qdrant recommendations"
+                                    );
+                                    return Ok(tracks);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(track_id, error = %e, "autoplay: Qdrant recommend failed");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(track_id, error = %e, "autoplay: behavioral_signals failed");
+                }
+            }
+        }
+    }
+
+    // Layer 2: Pre-computed recommendations from track_recommendations table
     let recs = lib.handle.autoplay_next(track_id, &exclude_ids, lim).map_err(err)?;
     if !recs.is_empty() {
         let mut tracks = Vec::new();
@@ -251,11 +300,12 @@ fn lib_autoplay_next(
             }
         }
         if !tracks.is_empty() {
+            tracing::debug!(track_id, count = tracks.len(), "autoplay: pre-computed recommendations");
             return Ok(tracks);
         }
     }
 
-    // Fallback: brute-force similar via MERT embeddings
+    // Layer 3: Brute-force similar via MERT embeddings
     let similar = lib.handle.similar(track_id, lim + exclude_ids.len()).map_err(err)?;
     let mut tracks: Vec<Track> = similar
         .into_iter()
@@ -269,8 +319,9 @@ fn lib_autoplay_next(
         })
         .collect();
 
-    // Last resort: shuffle
+    // Layer 4: Shuffle as last resort
     if tracks.is_empty() {
+        tracing::debug!(track_id, "autoplay: shuffle fallback");
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
