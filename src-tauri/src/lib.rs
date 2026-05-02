@@ -51,6 +51,11 @@ struct PlayerSnapshot {
 }
 struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
+/// Port on which the local media HTTP server is listening.
+/// Bound to 127.0.0.1:0 at startup; frontend discovers the port via
+/// the `get_media_port` command.
+struct MediaServerPort(u16);
+
 // ---------------------------------------------------------------------------
 // Error bridging — Tauri commands return Result<T, String>
 // ---------------------------------------------------------------------------
@@ -179,6 +184,32 @@ fn lib_semantic_search(
 
     let mut tracks = Vec::new();
     for (track_id, _score) in results {
+        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+            tracks.push(t);
+        }
+    }
+    Ok(tracks)
+}
+
+#[tauri::command]
+fn lib_mood_search(
+    lib: State<Library>,
+    qdrant: State<Qdrant>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<Track>, String> {
+    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    let filters = library_indexer::MoodFilters::parse(&query);
+    if filters.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = client.mood_search(&filters, limit.unwrap_or(20)).map_err(err)?;
+
+    let mut tracks = Vec::new();
+    for track_id in ids {
         if let Ok(Some(mut t)) = lib.handle.track(track_id) {
             if let Some(rel) = &t.album_cover_path {
                 t.album_cover_path = Some(lib.cache_dir.join(rel));
@@ -563,6 +594,21 @@ fn qdrant_sync_lyrics(
         return Err("TEI BGE-M3 not available".to_string());
     }
     lib.handle.sync_lyrics_to_qdrant(client, &lyrics_client).map_err(err)
+}
+
+#[tauri::command]
+fn log_event(qdrant: State<Qdrant>, payload: serde_json::Value) -> Result<(), String> {
+    let event_type = payload
+        .get("event_type")
+        .and_then(|v| v.as_str())
+        .ok_or("missing event_type")?;
+    if event_type.is_empty() {
+        return Err("empty event_type".into());
+    }
+    payload.get("timestamp").ok_or("missing timestamp")?;
+
+    let client = qdrant.0.as_ref().ok_or("Qdrant not available")?;
+    client.insert_raw_event(&payload).map_err(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -1276,6 +1322,231 @@ async fn install_update() -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Local media HTTP server (range-request capable)
+// ---------------------------------------------------------------------------
+
+/// Spawns a blocking HTTP server on 127.0.0.1:0 that serves files from
+/// `media_dir`. Supports `Range` requests so `<video>` elements work on
+/// WebKitGTK. Returns the bound port.
+///
+/// Security: only files directly inside `media_dir` are served. Any path
+/// that would escape the directory (e.g. `../`) is rejected with 403.
+fn start_media_server(media_dir: std::path::PathBuf) -> std::io::Result<u16> {
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    tracing::info!(port, "media HTTP server listening");
+
+    std::thread::Builder::new()
+        .name("media-server".to_string())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let dir = media_dir.clone();
+                std::thread::Builder::new()
+                    .name("media-conn".to_string())
+                    .spawn(move || {
+                        if let Err(e) = handle_media_request(&mut stream, &dir) {
+                            tracing::debug!(?e, "media-server connection error");
+                        }
+                    })
+                    .ok();
+            }
+        })?;
+
+    Ok(port)
+}
+
+fn handle_media_request(
+    stream: &mut std::net::TcpStream,
+    media_dir: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::io::{Read as IoRead, Write};
+
+    // Read request headers (stop at blank line).
+    let mut buf = [0u8; 8192];
+    let mut total = 0usize;
+    loop {
+        let n = stream.read(&mut buf[total..])?;
+        if n == 0 {
+            break;
+        }
+        total += n;
+        if buf[..total].windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+        if total >= buf.len() {
+            break;
+        }
+    }
+
+    let request = std::str::from_utf8(&buf[..total]).unwrap_or("");
+    let first_line = request.lines().next().unwrap_or("");
+
+    // Only GET is needed for media playback.
+    if !first_line.starts_with("GET ") {
+        let _ = stream.write_all(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n");
+        return Ok(());
+    }
+
+    // Extract path from "GET /filename HTTP/1.1"
+    let path_raw = first_line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or("/");
+
+    // URL-decode percent-encoded sequences (basic, handles %20 etc.)
+    let path_decoded = percent_decode(path_raw);
+
+    // Strip leading slash, reject anything with ".."
+    let rel = path_decoded.trim_start_matches('/');
+    if rel.contains("..") || rel.contains('\0') {
+        let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\n\r\n");
+        return Ok(());
+    }
+
+    let file_path = media_dir.join(rel);
+
+    // Confirm the resolved path is still inside media_dir.
+    let canonical = match file_path.canonicalize() {
+        Ok(c) => c,
+        Err(_) => {
+            let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n");
+            return Ok(());
+        }
+    };
+    let canonical_dir = match media_dir.canonicalize() {
+        Ok(c) => c,
+        Err(_) => {
+            let _ = stream.write_all(b"HTTP/1.1 500 Internal Server Error\r\n\r\n");
+            return Ok(());
+        }
+    };
+    if !canonical.starts_with(&canonical_dir) {
+        let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\n\r\n");
+        return Ok(());
+    }
+
+    let mut file = match std::fs::File::open(&canonical) {
+        Ok(f) => f,
+        Err(_) => {
+            let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n");
+            return Ok(());
+        }
+    };
+
+    let file_size = file.metadata()?.len();
+
+    // Parse Range header if present.
+    let range_header = request
+        .lines()
+        .find(|l| l.to_ascii_lowercase().starts_with("range:"))
+        .and_then(|l| l.splitn(2, ':').nth(1))
+        .map(|v| v.trim().to_string());
+
+    let (start, end, is_range) = if let Some(ref range) = range_header {
+        // Expected format: "bytes=START-END" or "bytes=START-"
+        if let Some(bytes) = range.strip_prefix("bytes=") {
+            let parts: Vec<&str> = bytes.splitn(2, '-').collect();
+            let s: u64 = parts.first().and_then(|v| v.parse().ok()).unwrap_or(0);
+            let e: u64 = parts
+                .get(1)
+                .and_then(|v| if v.is_empty() { None } else { v.parse().ok() })
+                .unwrap_or(file_size.saturating_sub(1));
+            (s, e.min(file_size.saturating_sub(1)), true)
+        } else {
+            (0, file_size.saturating_sub(1), false)
+        }
+    } else {
+        (0, file_size.saturating_sub(1), false)
+    };
+
+    let content_length = end.saturating_sub(start) + 1;
+
+    let mime = mime_for_path(&canonical);
+
+    let header = if is_range {
+        format!(
+            "HTTP/1.1 206 Partial Content\r\nContent-Type: {mime}\r\nContent-Length: {content_length}\r\nContent-Range: bytes {start}-{end}/{file_size}\r\nAccept-Ranges: bytes\r\nAccess-Control-Allow-Origin: *\r\n\r\n"
+        )
+    } else {
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {content_length}\r\nAccept-Ranges: bytes\r\nAccess-Control-Allow-Origin: *\r\n\r\n"
+        )
+    };
+
+    stream.write_all(header.as_bytes())?;
+
+    // Seek to the requested offset.
+    use std::io::Seek;
+    file.seek(std::io::SeekFrom::Start(start))?;
+
+    // Stream in 64 KiB chunks.
+    let mut remaining = content_length;
+    let mut chunk = vec![0u8; 65536];
+    while remaining > 0 {
+        let to_read = (remaining as usize).min(chunk.len());
+        let n = file.read(&mut chunk[..to_read])?;
+        if n == 0 {
+            break;
+        }
+        stream.write_all(&chunk[..n])?;
+        remaining -= n as u64;
+    }
+
+    Ok(())
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                out.push(h << 4 | l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn mime_for_path(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "mp4" | "m4v" => "video/mp4",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "mp3" => "audio/mpeg",
+        "flac" => "audio/flac",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "m4a" | "aac" => "audio/aac",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        _ => "application/octet-stream",
+    }
+}
+
+#[tauri::command]
+fn get_media_port(port: State<MediaServerPort>) -> u16 {
+    port.0
+}
+
+// ---------------------------------------------------------------------------
 // App bootstrap
 // ---------------------------------------------------------------------------
 
@@ -1303,6 +1574,22 @@ pub fn run() {
             let cache_dir = home.join(".cache/rustify-player");
             std::fs::create_dir_all(&data_dir).ok();
             std::fs::create_dir_all(&cache_dir).ok();
+
+            // Media directory: served over localhost HTTP so WebKitGTK can
+            // play <video> elements (asset:// protocol doesn't support ranges).
+            let media_dir = data_dir.join("media");
+            std::fs::create_dir_all(&media_dir).ok();
+            let media_port = match start_media_server(media_dir) {
+                Ok(p) => {
+                    tracing::info!(port = p, "media HTTP server started");
+                    p
+                }
+                Err(e) => {
+                    tracing::error!(?e, "failed to start media HTTP server");
+                    0
+                }
+            };
+            _app.manage(MediaServerPort(media_port));
 
             let db_path = data_dir.join("library.db");
             let music_root = dirs_home().join("Music");
@@ -1412,12 +1699,6 @@ pub fn run() {
                 tracing::info!("Qdrant not available — using brute-force similarity fallback");
             }
 
-            let qdrant_for_events: Option<QdrantClient> = if qdrant_healthy {
-                Some(qdrant_client.clone())
-            } else {
-                None
-            };
-
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
@@ -1438,7 +1719,6 @@ pub fn run() {
                                     &cache_dir_for_events,
                                     &media_cmd_rx,
                                     &engine_tx_media,
-                                    &qdrant_for_events,
                                 )
                             }),
                         );
@@ -1495,7 +1775,6 @@ pub fn run() {
                 cache_dir: &std::path::Path,
                 media_cmd_rx: &crossbeam_channel::Receiver<souvlaki::MediaControlEvent>,
                 engine_tx: &crossbeam_channel::Sender<EngineCommand>,
-                qdrant_for_events: &Option<QdrantClient>,
             ) {
                 while let Ok(event) = rx.recv() {
                     if let Ok(mut s) = snap_writer.lock() {
@@ -1594,11 +1873,10 @@ pub fn run() {
                                     let ended_at = unix_now();
                                     let end_pos = s.last_position_ms;
                                     if let Err(e) = indexer.insert_play_event(
-                                        qdrant_for_events.as_ref(),
                                         track_id,
                                         &origin,
                                         &started_at,
-                                        Some(&ended_at),
+                                        Some(ended_at.as_str()),
                                         end_pos,
                                         duration,
                                     ) {
@@ -1668,6 +1946,7 @@ pub fn run() {
             lib_list_artists,
             lib_search,
             lib_semantic_search,
+            lib_mood_search,
             lib_get_track,
             lib_get_album,
             lib_get_artist,
@@ -1690,6 +1969,7 @@ pub fn run() {
             lib_list_mood_tracks,
             qdrant_sync,
             qdrant_sync_lyrics,
+            log_event,
             player_play,
             player_set_origin,
             player_pause,
@@ -1738,6 +2018,7 @@ pub fn run() {
             check_for_update,
             install_update,
             list_system_fonts,
+            get_media_port,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
