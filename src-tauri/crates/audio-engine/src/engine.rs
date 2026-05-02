@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{select, tick, Receiver, Sender};
+use crossbeam_channel::{select, tick, Receiver, Sender, TryRecvError};
+
+use gstreamer::glib;
 
 use crate::error::EngineError;
 use crate::output::GstreamerPlayer;
@@ -58,6 +60,7 @@ struct EngineState {
     #[allow(dead_code)]
     metrics: Arc<SharedMetrics>,
     last_position_emit: Instant,
+    eos_rx: Receiver<()>,
 }
 
 struct CurrentTrack {
@@ -91,6 +94,16 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
 
             tracing::info!("audio-engine started (GStreamer backend)");
 
+            // Connect GStreamer's end-of-stream signal via the PlaySignalAdapter.
+            // GLib signals require MainContext iteration — we do that in tick().
+            let (eos_tx, eos_rx) = crossbeam_channel::bounded::<()>(4);
+            {
+                let adapter = player.signal_adapter();
+                adapter.connect_end_of_stream(move |_| {
+                    let _ = eos_tx.try_send(());
+                });
+            }
+
             let mut engine = EngineState {
                 player,
                 current: None,
@@ -101,6 +114,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 state_tx: state_tx_thread,
                 metrics: metrics_thread,
                 last_position_emit: Instant::now(),
+                eos_rx,
             };
 
             if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -432,31 +446,34 @@ impl EngineState {
     }
 
     fn tick(&mut self) {
+        // Pump GLib MainContext so PlaySignalAdapter signals are dispatched.
+        let ctx = glib::MainContext::default();
+        ctx.iteration(false);
+
         self.maybe_emit_position();
         self.check_eos();
     }
 
     fn check_eos(&mut self) {
-        // Poll GStreamer messages for end-of-stream.
-        let _adapter = self.player.signal_adapter();
-        // GStreamer Play uses GLib signals — we check position to detect EOS.
-        // If we have a track and duration is known and position >= duration,
-        // the track ended.
-        if let Some(track) = &self.current {
-            if let (Some(pos), Some(dur)) = (self.player.position(), self.player.duration()) {
-                if pos >= dur && dur > Duration::ZERO {
-                    let handle = track.info.handle;
-                    let _ = self.state_tx.send(StateUpdate::TrackEnded(handle));
+        // Drain the EOS channel — the signal adapter fires connect_end_of_stream
+        // which sends on eos_tx. We handle it here in the engine loop.
+        match self.eos_rx.try_recv() {
+            Ok(()) => {}
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => return,
+        }
 
-                    // Gapless: load next if queued.
-                    if let Some(next_path) = self.next_path.take() {
-                        self.cmd_load(next_path);
-                        self.cmd_play();
-                    } else {
-                        self.current = None;
-                        self.set_state(PlaybackState::Stopped);
-                    }
-                }
+        if let Some(track) = &self.current {
+            let handle = track.info.handle;
+            let _ = self.state_tx.send(StateUpdate::TrackEnded(handle));
+
+            // Gapless: load next if queued.
+            if let Some(next_path) = self.next_path.take() {
+                self.cmd_load(next_path);
+                self.cmd_play();
+            } else {
+                self.current = None;
+                self.set_state(PlaybackState::Stopped);
             }
         }
     }

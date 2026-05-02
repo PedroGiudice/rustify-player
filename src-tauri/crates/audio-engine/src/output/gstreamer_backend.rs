@@ -90,6 +90,7 @@ impl GstreamerPlayer {
         })
     }
 
+    #[allow(dead_code)]
     pub fn duration(&self) -> Option<Duration> {
         self.player.duration().map(|ct| {
             Duration::from_nanos(ct.nseconds())
