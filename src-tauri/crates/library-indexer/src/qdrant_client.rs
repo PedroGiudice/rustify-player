@@ -18,11 +18,15 @@ use std::time::Duration;
 /// Name of the Qdrant collection.
 const COLLECTION: &str = "rustify_tracks";
 
-/// Named vector identifier. Must match the collection schema.
-const VECTOR_NAME: &str = "mert";
+/// Named vector identifiers. Must match the collection schema.
+const VEC_MERT: &str = "mert";
+const VEC_LYRICS: &str = "lyrics";
 
 /// MERT-v1-95M output dimensionality.
-const VECTOR_SIZE: usize = 768;
+const MERT_DIM: usize = 768;
+
+/// BGE-M3 output dimensionality for lyrics embeddings.
+const LYRICS_DIM: usize = 1024;
 
 /// Synchronous HTTP client for the Qdrant REST API.
 ///
@@ -61,17 +65,25 @@ impl QdrantClient {
             .is_ok()
     }
 
-    /// Ensure the `rustify_tracks` collection exists with the correct schema.
+    /// Ensure the `rustify_tracks` collection exists with the full schema
+    /// (named vectors: "mert" 768d + "lyrics" 1024d, both cosine).
     ///
-    /// - If the collection already exists, returns `Ok(())` immediately.
-    /// - If it does not exist (404), creates it with a single named vector
-    ///   `"mert"` of size 768 with cosine distance.
-    /// - Any other HTTP error is surfaced as [`IndexerError::Embedding`].
+    /// If the collection exists but is missing the "lyrics" vector (older
+    /// schema), it is deleted and recreated. Data is re-synced on next startup.
     pub fn ensure_collection(&self) -> Result<(), IndexerError> {
         let url = format!("{}/collections/{COLLECTION}", self.base_url);
 
         match self.agent.get(&url).call() {
-            Ok(_) => return Ok(()),
+            Ok(resp) => {
+                let info: Value = resp.into_json()
+                    .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+                let vectors = &info["result"]["config"]["params"]["vectors"];
+                if vectors.get(VEC_LYRICS).is_some() {
+                    return Ok(());
+                }
+                tracing::info!("Qdrant collection missing 'lyrics' vector — recreating");
+                let _ = self.agent.delete(&url).call();
+            }
             Err(ureq::Error::Status(404, _)) => {}
             Err(e) => {
                 return Err(IndexerError::Embedding(format!(
@@ -82,8 +94,12 @@ impl QdrantClient {
 
         let body = json!({
             "vectors": {
-                VECTOR_NAME: {
-                    "size": VECTOR_SIZE,
+                VEC_MERT: {
+                    "size": MERT_DIM,
+                    "distance": "Cosine"
+                },
+                VEC_LYRICS: {
+                    "size": LYRICS_DIM,
                     "distance": "Cosine"
                 }
             }
@@ -179,7 +195,7 @@ impl QdrantClient {
             .map(|(id, vec, payload)| {
                 json!({
                     "id": id,
-                    "vector": { VECTOR_NAME: vec },
+                    "vector": { VEC_MERT: vec },
                     "payload": payload
                 })
             })
@@ -195,6 +211,29 @@ impl QdrantClient {
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant upsert: {e}")))?;
 
+        Ok(())
+    }
+
+    /// Upsert lyrics embeddings for existing points.
+    /// Updates only the "lyrics" named vector — other vectors and payload untouched.
+    pub fn upsert_lyrics_batch(&self, points: &[(i64, &[f32])]) -> Result<(), IndexerError> {
+        if points.is_empty() {
+            return Ok(());
+        }
+        let pts: Vec<Value> = points
+            .iter()
+            .map(|(id, vec)| {
+                json!({
+                    "id": id,
+                    "vector": { VEC_LYRICS: vec }
+                })
+            })
+            .collect();
+        let body = json!({ "points": pts });
+        self.agent
+            .put(&format!("{}/collections/{COLLECTION}/points", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant upsert lyrics: {e}")))?;
         Ok(())
     }
 
@@ -224,7 +263,7 @@ impl QdrantClient {
 
         let body = json!({
             "query": { "recommend": recommend },
-            "using": VECTOR_NAME,
+            "using": VEC_MERT,
             "limit": limit,
             "with_payload": false
         });
@@ -299,11 +338,11 @@ impl QdrantClient {
             let mut points: Vec<(i64, Vec<f32>, Value)> = Vec::new();
             for (id, title, duration_ms, embedding_blob, artist, genre) in chunk {
                 let vec = bytes_to_f32(embedding_blob);
-                if vec.len() != VECTOR_SIZE {
+                if vec.len() != MERT_DIM {
                     tracing::warn!(
                         track_id = id,
                         got = vec.len(),
-                        expected = VECTOR_SIZE,
+                        expected = MERT_DIM,
                         "skipping track: unexpected embedding dimension"
                     );
                     continue;
