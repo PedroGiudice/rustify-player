@@ -498,6 +498,21 @@ impl QdrantClient {
         Ok(ids)
     }
 
+    pub fn get_payload(&self, point_id: i64) -> Result<Value, IndexerError> {
+        let resp: Value = self
+            .agent
+            .get(&format!(
+                "{}/collections/{COLLECTION}/points/{point_id}",
+                self.base_url
+            ))
+            .call()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant get point: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        Ok(resp["result"]["payload"].clone())
+    }
+
     /// Sync all tracks with MERT embeddings from SQLite to Qdrant.
     ///
     /// Incremental: fetches all point IDs already present in Qdrant and skips

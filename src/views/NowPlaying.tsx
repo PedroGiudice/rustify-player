@@ -1,15 +1,47 @@
 /* ============================================================
-   views/NowPlaying.tsx — Migra now-playing.js para Solid.
-   Video de fundo via HTTP media server local (workaround WebKitGTK).
+   views/NowPlaying.tsx
    ============================================================ */
 
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { player } from "../store/player";
-import { libGetLyrics, coverUrl, channelLabel, onPlayerState } from "../tauri";
+import { libGetLyrics, coverUrl, channelLabel, getTrackColor } from "../tauri";
 import { navigate } from "../router";
 import type { LyricLine } from "../tauri";
 
-const { invoke } = window.__TAURI__.core;
+const MEDIA_BASE = "http://127.0.0.1:19876/bg";
+
+type PaletteMap = Record<string, [number, number, number]>;
+
+let paletteCache: [string, number, number, number][] | null = null;
+
+async function loadPalette(): Promise<[string, number, number, number][]> {
+  if (paletteCache) return paletteCache;
+  try {
+    const resp = await fetch(`${MEDIA_BASE}/palette.json`);
+    const map: PaletteMap = await resp.json();
+    paletteCache = Object.entries(map).map(([name, rgb]) => [
+      `${MEDIA_BASE}/${name}.webp`, rgb[0], rgb[1], rgb[2],
+    ]);
+  } catch {
+    paletteCache = [];
+  }
+  return paletteCache;
+}
+
+function pickBg(palette: [string, number, number, number][], hex: string): string | null {
+  if (!palette.length || !hex) return null;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < palette.length; i++) {
+    const [, pr, pg, pb] = palette[i];
+    const d = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+    if (d < bestDist) { bestDist = d; best = i; }
+  }
+  return palette[best][0];
+}
 
 export default function NowPlaying() {
   const [bgUrl, setBgUrl] = createSignal("");
@@ -17,9 +49,20 @@ export default function NowPlaying() {
   const [activeLyric, setActiveLyric] = createSignal(-1);
   const [lyricsMode, setLyricsMode] = createSignal<"timed" | "plain" | "empty">("empty");
 
-  // Background video served by the fixed-port local media server
-  onMount(() => {
-    setBgUrl("http://127.0.0.1:19876/bg-video.mp4");
+  createEffect(async () => {
+    const track = player.currentTrack;
+    const palette = await loadPalette();
+    if (!palette.length) return;
+    if (!track?.id) {
+      setBgUrl(palette[0][0]);
+      return;
+    }
+    try {
+      const hex = await getTrackColor(track.id);
+      setBgUrl(hex ? pickBg(palette, hex) ?? palette[0][0] : palette[0][0]);
+    } catch {
+      setBgUrl(palette[0][0]);
+    }
   });
 
   // Load lyrics when track changes
@@ -66,19 +109,9 @@ export default function NowPlaying() {
 
   return (
     <article class="view view--hero">
-      {/* Video background via HTTP local server */}
-      <Show when={bgUrl()}>
-        <div class="np-bg-video">
-          <video
-            class="np-bg-video__el"
-            src={bgUrl()}
-            autoplay
-            loop
-            muted
-            playsinline
-          />
-        </div>
-      </Show>
+      <div class="np-bg">
+        <img class="np-bg__el" src={bgUrl()} alt="" />
+      </div>
 
       <Show
         when={player.currentTrack}

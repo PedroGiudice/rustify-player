@@ -156,6 +156,10 @@ export const dspSetLimiterThreshold = (thresholdDb: number) =>
 export const dspSetBassBypass = (bypass: boolean) => invoke<void>("dsp_set_bass_bypass", { bypass });
 export const dspSetBassAmount = (amount: number) => invoke<void>("dsp_set_bass_amount", { amount });
 
+export const listBackgrounds = () => invoke<string[]>("list_backgrounds");
+export const getTrackColor = (trackId: number) =>
+  invoke<string>("get_track_color", { trackId });
+
 // ── Event listeners ────────────────────────────────────────────
 
 export const onPlayerState = (cb: (payload: PlayerStatePayload) => void) =>

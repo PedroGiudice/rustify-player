@@ -15,6 +15,12 @@ const DEFAULTS = {
   zoom: 1.0,
   fontUI: "",
   fontDisplay: "",
+  fontMono: "",
+  fontTechnical: "",
+  scaleDisplay: 1.0,
+  scaleHeading: 1.0,
+  scaleBody: 1.0,
+  scaleLabel: 1.0,
 };
 
 let state = { ...DEFAULTS };
@@ -54,6 +60,22 @@ export function applyTweaks() {
   } else {
     html.style.removeProperty("--font-display");
   }
+  if (state.fontMono) {
+    html.style.setProperty("--font-mono", `"${state.fontMono}", monospace`);
+  } else {
+    html.style.removeProperty("--font-mono");
+  }
+  if (state.fontTechnical) {
+    html.style.setProperty("--font-technical", `"${state.fontTechnical}", sans-serif`);
+  } else {
+    html.style.removeProperty("--font-technical");
+  }
+
+  // Font size scale multipliers
+  html.style.setProperty("--text-scale-display", String(state.scaleDisplay));
+  html.style.setProperty("--text-scale-heading", String(state.scaleHeading));
+  html.style.setProperty("--text-scale-body", String(state.scaleBody));
+  html.style.setProperty("--text-scale-label", String(state.scaleLabel));
 
   save();
 }
@@ -106,6 +128,21 @@ function fontSelect(label, key, fonts) {
       </select>
     </div>
   `;
+}
+
+function scaleSlider(label, key) {
+  const pct = Math.round(state[key] * 100);
+  return `
+    <div class="tweaks__row">
+      <span class="tweaks__label">${label} ${pct}%</span>
+      <input type="range" class="settings-range" data-scale-key="${key}"
+        min="0.8" max="1.4" step="0.05" value="${state[key]}">
+    </div>
+  `;
+}
+
+function sectionHeader(text) {
+  return `<div class="tweaks__section">${text}</div>`;
 }
 
 function segmented(label, key, options) {
@@ -162,8 +199,16 @@ async function renderPanel() {
       ["body", "Inter"],
       ["mono", "Mono"],
     ])}
-    ${fontSelect("UI Font", "fontUI", fonts)}
+    ${sectionHeader("Fonts")}
+    ${fontSelect("Body Font", "fontUI", fonts)}
     ${fontSelect("Display Font", "fontDisplay", fonts)}
+    ${fontSelect("Mono Font", "fontMono", fonts)}
+    ${fontSelect("Technical Font", "fontTechnical", fonts)}
+    ${sectionHeader("Font Size")}
+    ${scaleSlider("Display", "scaleDisplay")}
+    ${scaleSlider("Headings", "scaleHeading")}
+    ${scaleSlider("Body", "scaleBody")}
+    ${scaleSlider("Labels", "scaleLabel")}
     <div class="tweaks__row">
       <span class="tweaks__label">Glow ${state.glow.toFixed(2)}</span>
       <input type="range" class="settings-range" id="tweaks-glow"
@@ -193,6 +238,13 @@ async function renderPanel() {
   panelEl.querySelectorAll(".tweaks__select").forEach((sel) => {
     sel.addEventListener("change", (e) => {
       setVal(e.target.dataset.fontKey, e.target.value);
+    });
+  });
+
+  // Bind scale sliders
+  panelEl.querySelectorAll("[data-scale-key]").forEach((slider) => {
+    slider.addEventListener("input", (e) => {
+      setVal(e.target.dataset.scaleKey, parseFloat(e.target.value));
     });
   });
 

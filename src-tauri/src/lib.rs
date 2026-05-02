@@ -575,6 +575,30 @@ fn lib_list_mood_tracks(lib: State<Library>, mood_id: i64) -> Result<Vec<Track>,
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+fn list_backgrounds() -> Result<Vec<String>, String> {
+    let bg_dir = dirs_home()
+        .join(".local/share/rustify-player/media/bg");
+    let mut names = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&bg_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".webp") || name.ends_with(".png") || name.ends_with(".jpg") {
+                names.push(name);
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+#[tauri::command]
+fn get_track_color(qdrant: State<Qdrant>, track_id: i64) -> Result<String, String> {
+    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    let payload = client.get_payload(track_id).map_err(err)?;
+    Ok(payload["dominant_color"].as_str().unwrap_or("").to_string())
+}
+
+#[tauri::command]
 fn qdrant_sync(lib: State<Library>, qdrant: State<Qdrant>) -> Result<usize, String> {
     let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
     lib.handle.sync_to_qdrant(client).map_err(err)
@@ -1536,6 +1560,7 @@ fn mime_for_path(path: &std::path::Path) -> &'static str {
         "m4a" | "aac" => "audio/aac",
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
+        "webp" => "image/webp",
         _ => "application/octet-stream",
     }
 }
@@ -1966,6 +1991,8 @@ pub fn run() {
             lib_recommendations,
             lib_list_moods,
             lib_list_mood_tracks,
+            list_backgrounds,
+            get_track_color,
             qdrant_sync,
             qdrant_sync_lyrics,
             log_event,

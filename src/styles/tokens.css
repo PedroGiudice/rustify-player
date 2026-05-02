@@ -48,22 +48,28 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-technical: var(--font-body);
 
+  /* Scale multipliers (set by tweaks panel, default 1) */
+  --text-scale-display: 1;
+  --text-scale-heading: 1;
+  --text-scale-body: 1;
+  --text-scale-label: 1;
+
   /* Scale — px-based, slightly reduced per user request */
-  --text-display-lg: 48px;
-  --text-display-md: 34px;
-  --text-display-sm: 28px;
-  --text-headline-lg: 22px;
-  --text-headline-md: 20px;
-  --text-headline-sm: 18px;
-  --text-title-lg: 16px;
-  --text-title-md: 14px;
-  --text-body-lg: 14px;
-  --text-body-md: 13px;
-  --text-body-sm: 12px;
-  --text-label-lg: 12px;
-  --text-label-md: 11px;
-  --text-label-sm: 10.5px;
-  --text-label-xs: 10px;
+  --text-display-lg: calc(48px * var(--text-scale-display));
+  --text-display-md: calc(34px * var(--text-scale-display));
+  --text-display-sm: calc(28px * var(--text-scale-display));
+  --text-headline-lg: calc(22px * var(--text-scale-heading));
+  --text-headline-md: calc(20px * var(--text-scale-heading));
+  --text-headline-sm: calc(18px * var(--text-scale-heading));
+  --text-title-lg: calc(16px * var(--text-scale-body));
+  --text-title-md: calc(14px * var(--text-scale-body));
+  --text-body-lg: calc(14px * var(--text-scale-body));
+  --text-body-md: calc(13px * var(--text-scale-body));
+  --text-body-sm: calc(12px * var(--text-scale-body));
+  --text-label-lg: calc(12px * var(--text-scale-label));
+  --text-label-md: calc(11px * var(--text-scale-label));
+  --text-label-sm: calc(10.5px * var(--text-scale-label));
+  --text-label-xs: calc(10px * var(--text-scale-label));
 
   --tracking-tighter: -0.035em;
   --tracking-tight: -0.015em;
