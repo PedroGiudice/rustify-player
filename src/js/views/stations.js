@@ -1,4 +1,4 @@
-import { playTrack, setQueue } from "../components/player-bar.js";
+import { playTrack, setQueue, startSmartStation, stopSmartStation, isSmartStation } from "../components/player-bar.js";
 import { showTrackMenu } from "../components/context-menu.js";
 import { formatMs } from "../utils/format.js";
 
@@ -25,12 +25,29 @@ export function render() {
       return;
     }
 
+    const smartBtn = e.target.closest(".js-smart-station");
+    if (smartBtn) {
+      e.stopPropagation();
+      try {
+        const tracks = await invoke("lib_autoplay_next", { trackId: 0, excludeIds: [], limit: 5 });
+        if (tracks.length > 0) {
+          setQueue(tracks, 0);
+          startSmartStation();
+          playTrack(tracks[0], "autoplay");
+        }
+      } catch (err) {
+        console.error("[stations] smart station start failed:", err);
+      }
+      return;
+    }
+
     const playBtn = e.target.closest(".station-card__play");
     if (playBtn) {
       e.stopPropagation();
       const card = playBtn.closest(".station-card");
       const id = Number(card.dataset.id);
       try {
+        stopSmartStation();
         const tracks = await invoke("lib_list_mood_tracks", { moodId: id });
         if (tracks.length > 0) {
           // Shuffle
@@ -123,6 +140,18 @@ function updateDOM(el) {
 }
 
 function renderList() {
+  const smartCard = `
+    <div class="station-card station-card--smart js-smart-station" style="--station-color: var(--accent)">
+      <div class="station-card__info">
+        <div class="station-card__title">Your Mix</div>
+        <div class="station-card__count">Infinite &middot; Based on your taste</div>
+      </div>
+      <button class="station-card__play js-smart-station" aria-label="Play Your Mix">
+        <svg class="icon icon--filled"><use href="#icon-play"></use></svg>
+      </button>
+    </div>
+  `;
+
   const cards = state.stations
     .map((s) => {
       const color = s.accent_color || "";
@@ -151,7 +180,7 @@ function renderList() {
       </div>
     </header>
     <div class="view__body">
-      <div class="station-grid">${cards}</div>
+      <div class="station-grid">${smartCard}${cards}</div>
     </div>
   `;
 }

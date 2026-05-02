@@ -27,6 +27,7 @@ let durationSecs = 0;
 let currentSecs = 0;
 let isScrubbing = false;
 let autoplayEnabled = true;
+let smartStationActive = false;
 let isTransitioning = false;
 let transitionTimeout = null;
 const recentlyPlayedIds = new Set();
@@ -42,6 +43,19 @@ export function getQueue() {
 
 export function setAutoplay(enabled) {
   autoplayEnabled = enabled;
+}
+
+export function startSmartStation() {
+  smartStationActive = true;
+  autoplayEnabled = true;
+}
+
+export function stopSmartStation() {
+  smartStationActive = false;
+}
+
+export function isSmartStation() {
+  return smartStationActive;
 }
 
 export function enqueueNext(track) {
@@ -74,6 +88,23 @@ async function autoplayNext(seedTrack) {
     playTrack(currentTrack, "autoplay");
   } catch (err) {
     console.error("[autoplay] failed:", err);
+  }
+}
+
+async function replenishSmartStation() {
+  if (!currentTrack?.id) return;
+  try {
+    const excludeIds = [...recentlyPlayedIds, ...trackQueue.slice(queueIndex).map(t => t.id)];
+    const tracks = await invoke("lib_autoplay_next", {
+      trackId: currentTrack.id,
+      excludeIds,
+      limit: 5,
+    });
+    if (tracks.length > 0) {
+      trackQueue.push(...tracks);
+    }
+  } catch (err) {
+    console.error("[smart-station] replenish failed:", err);
   }
 }
 
@@ -385,7 +416,8 @@ function listenEngine() {
       if (queueIndex < trackQueue.length - 1) {
         queueIndex++;
         currentTrack = trackQueue[queueIndex];
-        invoke("player_set_origin", { origin: "album_seq", trackId: currentTrack.id || null }).catch(() => {});
+        const origin = smartStationActive ? "autoplay" : "album_seq";
+        invoke("player_set_origin", { origin, trackId: currentTrack.id || null }).catch(() => {});
         ui.title.textContent = currentTrack.title || "Unknown Title";
         ui.artist.textContent = currentTrack.artist_name || "Unknown Artist";
         ui.timeTotal.textContent = formatDuration((currentTrack.duration_ms || 0) / 1000);
@@ -393,6 +425,10 @@ function listenEngine() {
         ui.timeCurrent.textContent = "0:00";
         updateNavButtons();
         updateTrackMeta(currentTrack);
+        // Replenish: when smart station is active and queue is running low, fetch more
+        if (smartStationActive && trackQueue.length - queueIndex <= 2) {
+          replenishSmartStation();
+        }
         // Fallback: if the engine didn't auto-advance via gapless pre-load,
         // explicitly play the next track after a short delay. The delay
         // allows a TrackStarted event from gapless to arrive first; if it
@@ -400,12 +436,12 @@ function listenEngine() {
         setTimeout(() => {
           if (!isPlaying && currentTrack) {
             console.warn("[player] gapless miss — explicit play:", currentTrack.path);
-            invoke("player_play", { path: currentTrack.path, origin: "album_seq", trackId: currentTrack.id || null }).catch((err) =>
+            invoke("player_play", { path: currentTrack.path, origin, trackId: currentTrack.id || null }).catch((err) =>
               console.error("[player] auto-advance play failed:", err)
             );
           }
         }, 200);
-      } else if (autoplayEnabled && endedTrack?.id) {
+      } else if ((smartStationActive || autoplayEnabled) && endedTrack?.id) {
         autoplayNext(endedTrack);
       }
     }

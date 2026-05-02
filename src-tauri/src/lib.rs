@@ -250,8 +250,8 @@ fn lib_autoplay_next(
         if client.is_healthy() {
             match lib.handle.behavioral_signals(qdrant.0.as_ref()) {
                 Ok((mut positives, negatives)) => {
-                    // Seed track is always in positives
-                    if !positives.contains(&track_id) {
+                    // Seed track is always in positives (if valid)
+                    if track_id > 0 && !positives.contains(&track_id) {
                         positives.insert(0, track_id);
                     }
                     match client.recommend(&positives, &negatives, lim + exclude_ids.len()) {
