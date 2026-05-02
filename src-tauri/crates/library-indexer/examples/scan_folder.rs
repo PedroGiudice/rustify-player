@@ -30,8 +30,8 @@ struct Args {
     #[arg(long, default_value = "~/Music")]
     music_root: String,
 
-    #[arg(long, default_value = "/tmp/rustify.db")]
-    db: String,
+    #[arg(long, default_value = "http://localhost:6333")]
+    qdrant_url: String,
 
     #[arg(long, default_value = "/tmp/rustify-cache")]
     cache: String,
@@ -53,13 +53,13 @@ struct Args {
     search: Option<String>,
 
     #[arg(long)]
-    similar: Option<i64>,
+    similar: Option<u64>,
 
     #[arg(long)]
     shuffle: bool,
 
     #[arg(long)]
-    genre_id: Option<i64>,
+    genre: Option<String>,
 
     #[arg(long, default_value_t = 20)]
     limit: usize,
@@ -79,11 +79,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let music_root = expand_tilde(&args.music_root);
-    let db_path = expand_tilde(&args.db);
     let cache_dir = expand_tilde(&args.cache);
 
     println!("[INFO] music_root: {}", music_root.display());
-    println!("[INFO] db:         {}", db_path.display());
+    println!("[INFO] qdrant:     {}", args.qdrant_url);
     println!("[INFO] cache:      {}", cache_dir.display());
     if let Some(url) = &args.embed_url {
         println!("[INFO] embed_url:  {}", url);
@@ -93,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     let config = IndexerConfig {
-        db_path,
+        qdrant_url: args.qdrant_url.clone(),
         music_root,
         cache_dir,
         embed_client: args.embed_url.as_deref().map(EmbedClient::new),
@@ -174,17 +173,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let genres = indexer.list_genres()?;
-    let populated: Vec<_> = genres
-        .iter()
-        .filter(|g| g.track_count.unwrap_or(0) > 0)
-        .collect();
+    let populated: Vec<_> = genres.iter().filter(|g| g.track_count > 0).collect();
     println!();
     println!("Genres (populated):");
     for g in populated {
-        println!("  [{:>3}] {:<30} {} tracks", g.id, g.name, g.track_count.unwrap_or(0));
+        println!("  {:<30} {} tracks", g.name, g.track_count);
     }
-
-    // --- Optional query dumps ---------------------------------------------
 
     if let Some(q) = args.search {
         println!("\n=== Search: {q:?} ===");
@@ -192,24 +186,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("tracks: {}", results.tracks.len());
         for t in results.tracks.iter().take(args.limit) {
             println!(
-                "  [{:>5}] {:<50} — {}",
-                t.id,
-                truncate(&t.title, 48),
-                t.artist_name.as_deref().unwrap_or("?")
+                "  [{}] {:<50} — {}",
+                t.id, truncate(&t.title, 48), t.artist_name.as_deref().unwrap_or("?")
             );
         }
         println!("albums: {}", results.albums.len());
         for a in results.albums.iter().take(args.limit) {
             println!(
-                "  [{:>5}] {:<50} — {}",
-                a.id,
-                truncate(&a.title, 48),
-                a.album_artist_name.as_deref().unwrap_or("?")
+                "  {:<50} — {}",
+                truncate(&a.title, 48), a.artist_name.as_deref().unwrap_or("?")
             );
         }
         println!("artists: {}", results.artists.len());
         for a in results.artists.iter().take(args.limit) {
-            println!("  [{:>5}] {}", a.id, a.name);
+            println!("  {}", a.name);
         }
     }
 
@@ -221,11 +211,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         for (t, score) in results {
             println!(
-                "  [{:>5}] score={:.3}  {:<40} — {}",
-                t.id,
-                score,
-                truncate(&t.title, 38),
-                t.artist_name.as_deref().unwrap_or("?")
+                "  [{}] score={:.3}  {:<40} — {}",
+                t.id, score, truncate(&t.title, 38), t.artist_name.as_deref().unwrap_or("?")
             );
         }
     }
@@ -233,7 +220,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.shuffle {
         println!("\n=== Shuffle (seed=42) ===");
         let filter = TrackFilter {
-            genre_id: args.genre_id,
+            genre: args.genre.clone(),
             order: TrackOrder::Random,
             limit: Some(args.limit),
             ..Default::default()
@@ -241,10 +228,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tracks = indexer.shuffle(filter, 42, args.limit)?;
         for t in tracks {
             println!(
-                "  [{:>5}] {:<50} — {}",
-                t.id,
-                truncate(&t.title, 48),
-                t.artist_name.as_deref().unwrap_or("?")
+                "  [{}] {:<50} — {}",
+                t.id, truncate(&t.title, 48), t.artist_name.as_deref().unwrap_or("?")
             );
         }
     }

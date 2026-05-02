@@ -65,6 +65,7 @@ impl EmbeddingStatus {
 /// Track point from Qdrant with denormalized metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
+    #[serde(serialize_with = "serialize_u64_as_string", deserialize_with = "deserialize_u64_from_string")]
     pub id: u64,
     pub path: PathBuf,
     pub filename: String,
@@ -203,6 +204,15 @@ pub struct IndexerSnapshot {
     pub embeddings_pending: u64,
     pub embeddings_failed: u64,
     pub scan_in_progress: bool,
+}
+
+fn serialize_u64_as_string<S: serde::Serializer>(val: &u64, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&val.to_string())
+}
+
+fn deserialize_u64_from_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    let s = String::deserialize(d)?;
+    s.parse::<u64>().map_err(serde::de::Error::custom)
 }
 
 /// Deterministic point ID from filesystem path.
