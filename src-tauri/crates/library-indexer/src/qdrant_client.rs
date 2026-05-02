@@ -367,6 +367,87 @@ impl QdrantClient {
 
         Ok(total)
     }
+    /// Embed lyrics via TEI BGE-M3 and upsert to Qdrant as "lyrics" named vector.
+    /// Incremental: skips tracks that already have a lyrics vector in Qdrant.
+    pub fn sync_lyrics(
+        &self,
+        conn: &Connection,
+        lyrics_client: &crate::embed_client::LyricsEmbedClient,
+    ) -> Result<usize, IndexerError> {
+        self.ensure_collection()?;
+
+        // Scroll existing points and check which have lyrics vectors
+        let mut has_lyrics: HashSet<i64> = HashSet::new();
+        let mut offset: Option<Value> = None;
+        loop {
+            let mut body = json!({
+                "limit": 1000,
+                "with_payload": false,
+                "with_vector": [VEC_LYRICS]
+            });
+            if let Some(off) = &offset {
+                body["offset"] = off.clone();
+            }
+            let resp: Value = self.agent
+                .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    let vec = &p["vector"][VEC_LYRICS];
+                    if vec.is_array() && !vec.as_array().unwrap().is_empty() {
+                        if let Some(id) = p["id"].as_i64() {
+                            has_lyrics.insert(id);
+                        }
+                    }
+                }
+            }
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+
+        // Get tracks with lyrics from SQLite
+        let mut stmt = conn.prepare(
+            "SELECT id, embedded_lyrics FROM tracks
+             WHERE embedded_lyrics IS NOT NULL AND LENGTH(embedded_lyrics) > 20"
+        )?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let new_rows: Vec<_> = rows.into_iter()
+            .filter(|(id, _)| !has_lyrics.contains(id))
+            .collect();
+
+        if new_rows.is_empty() {
+            return Ok(0);
+        }
+
+        tracing::info!(count = new_rows.len(), "embedding lyrics via TEI BGE-M3");
+        let mut total = 0;
+        for chunk in new_rows.chunks(50) {
+            let mut points: Vec<(i64, Vec<f32>)> = Vec::new();
+            for (id, lyrics) in chunk {
+                match lyrics_client.embed_text(lyrics) {
+                    Ok(vec) => points.push((*id, vec)),
+                    Err(e) => {
+                        tracing::warn!(track_id = id, ?e, "lyrics embed failed, skipping");
+                    }
+                }
+            }
+            let refs: Vec<(i64, &[f32])> = points.iter()
+                .map(|(id, vec)| (*id, vec.as_slice()))
+                .collect();
+            self.upsert_lyrics_batch(&refs)?;
+            total += refs.len();
+        }
+
+        Ok(total)
+    }
 }
 
 /// Convert a little-endian `f32` byte blob (as stored in SQLite) to a vector

@@ -28,7 +28,7 @@ pub mod lyrics;
 pub mod play_events;
 pub mod qdrant_client;
 
-pub use embed_client::EmbedClient;
+pub use embed_client::{EmbedClient, LyricsEmbedClient};
 pub use qdrant_client::QdrantClient;
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
@@ -305,5 +305,13 @@ impl IndexerHandle {
     /// connection from the pool for the duration of the sync.
     pub fn sync_to_qdrant(&self, qdrant: &QdrantClient) -> Result<usize, IndexerError> {
         self.inner.pool.with(|conn| qdrant.sync_embeddings(conn))
+    }
+
+    pub fn sync_lyrics_to_qdrant(
+        &self,
+        qdrant: &QdrantClient,
+        lyrics_client: &LyricsEmbedClient,
+    ) -> Result<usize, IndexerError> {
+        self.inner.pool.with(|conn| qdrant.sync_lyrics(conn, lyrics_client))
     }
 }

@@ -160,6 +160,50 @@ struct HealthResponse {
     model: String,
 }
 
+/// Client for TEI (Text Embeddings Inference) running BGE-M3.
+/// Embeds lyrics text into 1024d dense vectors for semantic search.
+#[derive(Clone, Debug)]
+pub struct LyricsEmbedClient {
+    agent: ureq::Agent,
+    base_url: String,
+}
+
+impl LyricsEmbedClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(5))
+            .timeout_read(Duration::from_secs(30))
+            .build();
+        Self {
+            agent,
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+        }
+    }
+
+    pub fn embed_text(&self, text: &str) -> Result<Vec<f32>, IndexerError> {
+        let body = serde_json::json!({ "inputs": text, "truncate": true });
+        let resp: Vec<Vec<f32>> = self
+            .agent
+            .post(&format!("{}/embed", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("TEI embed: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("TEI json: {e}")))?;
+
+        resp.into_iter()
+            .next()
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| IndexerError::Embedding("TEI returned empty vector".into()))
+    }
+
+    pub fn is_healthy(&self) -> bool {
+        self.agent
+            .get(&format!("{}/health", self.base_url))
+            .call()
+            .is_ok()
+    }
+}
+
 /// Decode a FLAC file, downmix to mono, resample to 24 kHz, trim to
 /// [`MAX_SAMPLES`] (center window), return f32 samples.
 fn decode_and_preprocess(path: &Path) -> Result<Vec<f32>, IndexerError> {

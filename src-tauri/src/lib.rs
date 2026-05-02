@@ -1422,8 +1422,20 @@ pub fn run() {
                     .name("qdrant-sync".to_string())
                     .spawn(move || {
                         match indexer_clone.sync_to_qdrant(&client_clone) {
-                            Ok(n) => tracing::info!(n, "Qdrant sync complete"),
-                            Err(e) => tracing::warn!(?e, "Qdrant sync failed"),
+                            Ok(n) => tracing::info!(n, "Qdrant MERT sync complete"),
+                            Err(e) => tracing::warn!(?e, "Qdrant MERT sync failed"),
+                        }
+                        // Lyrics sync: embed via TEI BGE-M3 if available
+                        let lyrics_client = library_indexer::LyricsEmbedClient::new(
+                            "http://100.123.73.128:8080"
+                        );
+                        if lyrics_client.is_healthy() {
+                            match indexer_clone.sync_lyrics_to_qdrant(&client_clone, &lyrics_client) {
+                                Ok(n) => tracing::info!(n, "Qdrant lyrics sync complete"),
+                                Err(e) => tracing::warn!(?e, "Qdrant lyrics sync failed"),
+                            }
+                        } else {
+                            tracing::info!("TEI not available — skipping lyrics embedding");
                         }
                     })
                     .ok();
