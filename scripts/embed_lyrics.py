@@ -77,13 +77,14 @@ def get_existing_lyrics_ids(qdrant_url: str) -> set[int]:
 
 
 def embed_text(tei_url: str, text: str) -> list[float]:
+    text = text[:8000]
     payload = json.dumps({"inputs": text, "truncate": True}).encode()
     req = urllib.request.Request(
         f"{tei_url}/embed",
         data=payload,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         result = json.loads(resp.read())
     return result[0]
 
@@ -97,7 +98,7 @@ def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
         headers={"Content-Type": "application/json"},
         method="PUT",
     )
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 
 
@@ -122,20 +123,26 @@ def main():
         return
 
     batch = []
+    skipped = 0
     for i, (track_id, lyrics) in enumerate(rows):
-        vec = embed_text(args.tei_url, lyrics)
-        batch.append((track_id, vec))
+        try:
+            vec = embed_text(args.tei_url, lyrics)
+            batch.append((track_id, vec))
+        except Exception as e:
+            print(f"  SKIP {track_id}: {e}", flush=True)
+            skipped += 1
+            continue
 
         if len(batch) >= BATCH_SIZE:
             result = upsert_lyrics(args.qdrant_url, batch)
-            print(f"  [{i+1}/{len(rows)}] upserted {len(batch)} — {result['status']}")
+            print(f"  [{i+1}/{len(rows)}] upserted {len(batch)} — {result['status']}", flush=True)
             batch = []
 
     if batch:
         result = upsert_lyrics(args.qdrant_url, batch)
-        print(f"  [{len(rows)}/{len(rows)}] upserted {len(batch)} — {result['status']}")
+        print(f"  [{len(rows)}/{len(rows)}] upserted {len(batch)} — {result['status']}", flush=True)
 
-    print(f"Done. Embedded {len(rows)} lyrics.")
+    print(f"Done. Embedded {len(rows) - skipped} lyrics, skipped {skipped}.")
 
 
 if __name__ == "__main__":
