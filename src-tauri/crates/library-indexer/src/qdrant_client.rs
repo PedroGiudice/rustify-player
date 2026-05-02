@@ -410,14 +410,40 @@ impl QdrantClient {
             }
         }
 
-        // Get tracks with lyrics from SQLite
+        // Get tracks with lyrics from SQLite (embedded text or LRC sidecar)
         let mut stmt = conn.prepare(
-            "SELECT id, embedded_lyrics FROM tracks
-             WHERE embedded_lyrics IS NOT NULL AND LENGTH(embedded_lyrics) > 20"
+            "SELECT id, embedded_lyrics, lrc_path FROM tracks
+             WHERE embedded_lyrics IS NOT NULL AND LENGTH(embedded_lyrics) > 20
+                OR lrc_path IS NOT NULL"
         )?;
         let rows: Vec<(i64, String)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<Vec<_>, _>>()?;
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let embedded: Option<String> = row.get(1)?;
+                let lrc_path: Option<String> = row.get(2)?;
+                // Prefer embedded_lyrics; fall back to LRC sidecar text
+                let text = if let Some(ref e) = embedded {
+                    if e.len() > 20 { Some(e.clone()) } else { None }
+                } else {
+                    None
+                };
+                let text = text.or_else(|| {
+                    lrc_path.and_then(|p| {
+                        let path = std::path::Path::new(&p);
+                        crate::lyrics::parse_lrc_file(path).ok().map(|lines| {
+                            lines.iter()
+                                .filter(|l| !l.header)
+                                .map(|l| l.line.as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                    })
+                    .filter(|t| t.len() > 20)
+                });
+                Ok(text.map(|t| (id, t)))
+            })?
+            .filter_map(|r| r.ok().flatten())
+            .collect::<Vec<(i64, String)>>();
 
         let new_rows: Vec<_> = rows.into_iter()
             .filter(|(id, _)| !has_lyrics.contains(id))
