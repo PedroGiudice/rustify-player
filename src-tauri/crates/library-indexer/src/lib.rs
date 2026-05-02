@@ -233,7 +233,7 @@ impl IndexerHandle {
 
     pub fn sync_lyrics_to_qdrant(
         &self,
-        lyrics_client: &LyricsEmbedClient,
+        _lyrics_client: &LyricsEmbedClient,
     ) -> Result<usize, IndexerError> {
         // Scroll tracks with lrc_path or embedded_lyrics that don't have lyrics vectors yet
         // For now, delegate to the existing QdrantClient method that takes a connection

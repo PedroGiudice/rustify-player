@@ -10,7 +10,6 @@
 //! embedding worker thread, never on the main thread.
 
 use crate::error::IndexerError;
-use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -515,82 +514,7 @@ impl QdrantClient {
         Ok(resp["result"]["payload"].clone())
     }
 
-    /// Sync all tracks with MERT embeddings from SQLite to Qdrant.
-    ///
-    /// Incremental: fetches all point IDs already present in Qdrant and skips
-    /// those, so repeated calls are cheap. Upserts in batches of 100.
-    ///
-    /// Returns the number of points actually upserted.
-    pub fn sync_embeddings(&self, conn: &Connection) -> Result<usize, IndexerError> {
-        self.ensure_collection()?;
-
-        let existing: HashSet<i64> = self.scroll_ids()?.into_iter().collect();
-
-        let mut stmt = conn.prepare(
-            "SELECT t.id, t.title, t.duration_ms, t.embedding,
-                    a.name, g.name
-             FROM tracks t
-             LEFT JOIN artists a ON t.artist_id = a.id
-             LEFT JOIN genres g ON t.genre_id = g.id
-             WHERE t.embedding_status = 'done' AND t.embedding IS NOT NULL",
-        )?;
-
-        let rows: Vec<(i64, String, i64, Vec<u8>, Option<String>, Option<String>)> = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let new_rows: Vec<_> = rows
-            .into_iter()
-            .filter(|(id, ..)| !existing.contains(id))
-            .collect();
-
-        if new_rows.is_empty() {
-            return Ok(0);
-        }
-
-        let mut total = 0usize;
-        for chunk in new_rows.chunks(100) {
-            let mut points: Vec<(i64, Vec<f32>, Value)> = Vec::new();
-            for (id, title, duration_ms, embedding_blob, artist, genre) in chunk {
-                let vec = bytes_to_f32(embedding_blob);
-                if vec.len() != MERT_DIM {
-                    tracing::warn!(
-                        track_id = id,
-                        got = vec.len(),
-                        expected = MERT_DIM,
-                        "skipping track: unexpected embedding dimension"
-                    );
-                    continue;
-                }
-                let payload = json!({
-                    "title": title,
-                    "artist": artist.as_deref().unwrap_or(""),
-                    "genre": genre.as_deref().unwrap_or(""),
-                    "duration_ms": duration_ms,
-                });
-                points.push((*id, vec, payload));
-            }
-
-            let refs: Vec<(i64, &[f32], Value)> = points
-                .iter()
-                .map(|(id, vec, payload)| (*id, vec.as_slice(), payload.clone()))
-                .collect();
-
-            self.upsert_batch(&refs)?;
-            total += refs.len();
-        }
-
-        Ok(total)
-    }
+    // sync_embeddings removed — pipeline writes directly to Qdrant.
     // ──────────────────────────────────────────────────────────────────────────
     // Full-metadata payload management
     // ──────────────────────────────────────────────────────────────────────────
@@ -1037,113 +961,7 @@ impl QdrantClient {
         Ok((positives, negatives))
     }
 
-    /// Embed lyrics via TEI BGE-M3 and upsert to Qdrant as "lyrics" named vector.
-    /// Incremental: skips tracks that already have a lyrics vector in Qdrant.
-    pub fn sync_lyrics(
-        &self,
-        conn: &Connection,
-        lyrics_client: &crate::embed_client::LyricsEmbedClient,
-    ) -> Result<usize, IndexerError> {
-        self.ensure_collection()?;
-
-        // Scroll existing points and check which have lyrics vectors
-        let mut has_lyrics: HashSet<i64> = HashSet::new();
-        let mut offset: Option<Value> = None;
-        loop {
-            let mut body = json!({
-                "limit": 1000,
-                "with_payload": false,
-                "with_vector": [VEC_LYRICS]
-            });
-            if let Some(off) = &offset {
-                body["offset"] = off.clone();
-            }
-            let resp: Value = self.agent
-                .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
-                .send_json(&body)
-                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll: {e}")))?
-                .into_json()
-                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
-            if let Some(points) = resp["result"]["points"].as_array() {
-                for p in points {
-                    let vec = &p["vector"][VEC_LYRICS];
-                    if vec.is_array() && !vec.as_array().unwrap().is_empty() {
-                        if let Some(id) = p["id"].as_i64() {
-                            has_lyrics.insert(id);
-                        }
-                    }
-                }
-            }
-            match resp["result"].get("next_page_offset") {
-                Some(Value::Null) | None => break,
-                Some(v) => offset = Some(v.clone()),
-            }
-        }
-
-        // Get tracks with lyrics from SQLite (embedded text or LRC sidecar)
-        let mut stmt = conn.prepare(
-            "SELECT id, embedded_lyrics, lrc_path FROM tracks
-             WHERE embedded_lyrics IS NOT NULL AND LENGTH(embedded_lyrics) > 20
-                OR lrc_path IS NOT NULL"
-        )?;
-        let rows: Vec<(i64, String)> = stmt
-            .query_map([], |row| {
-                let id: i64 = row.get(0)?;
-                let embedded: Option<String> = row.get(1)?;
-                let lrc_path: Option<String> = row.get(2)?;
-                // Prefer embedded_lyrics; fall back to LRC sidecar text
-                let text = if let Some(ref e) = embedded {
-                    if e.len() > 20 { Some(e.clone()) } else { None }
-                } else {
-                    None
-                };
-                let text = text.or_else(|| {
-                    lrc_path.and_then(|p| {
-                        let path = std::path::Path::new(&p);
-                        crate::lyrics::parse_lrc_file(path).ok().map(|lines| {
-                            lines.iter()
-                                .filter(|l| !l.header)
-                                .map(|l| l.line.as_str())
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        })
-                    })
-                    .filter(|t| t.len() > 20)
-                });
-                Ok(text.map(|t| (id, t)))
-            })?
-            .filter_map(|r| r.ok().flatten())
-            .collect::<Vec<(i64, String)>>();
-
-        let new_rows: Vec<_> = rows.into_iter()
-            .filter(|(id, _)| !has_lyrics.contains(id))
-            .collect();
-
-        if new_rows.is_empty() {
-            return Ok(0);
-        }
-
-        tracing::info!(count = new_rows.len(), "embedding lyrics via TEI BGE-M3");
-        let mut total = 0;
-        for chunk in new_rows.chunks(50) {
-            let mut points: Vec<(i64, Vec<f32>)> = Vec::new();
-            for (id, lyrics) in chunk {
-                match lyrics_client.embed_text(lyrics) {
-                    Ok(vec) => points.push((*id, vec)),
-                    Err(e) => {
-                        tracing::warn!(track_id = id, ?e, "lyrics embed failed, skipping");
-                    }
-                }
-            }
-            let refs: Vec<(i64, &[f32])> = points.iter()
-                .map(|(id, vec)| (*id, vec.as_slice()))
-                .collect();
-            self.upsert_lyrics_batch(&refs)?;
-            total += refs.len();
-        }
-
-        Ok(total)
-    }
+    // sync_lyrics removed — pipeline will handle lyrics embedding directly.
 }
 
 /// Convert a little-endian `f32` byte blob (as stored in SQLite) to a vector

@@ -5,7 +5,7 @@ use audio_engine::{
 };
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
-    IndexerHandle, LyricLine, MoodPlaylist, PlaylistSearchResult, SearchResults,
+    IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults,
     Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
@@ -229,11 +229,7 @@ fn lib_get_track(lib: State<Library>, id: u64) -> Result<Option<Track>, String> 
 }
 
 #[tauri::command]
-// lib_get_album and lib_get_artist removed — albums/artists are aggregated,
-// not individual entities. Use list_albums/list_artists with filters instead.
-
-#[tauri::command]
-fn lib_similar(
+fn lib_find_similar(
     lib: State<Library>,
     track_id: u64,
     limit: Option<usize>,
@@ -1779,15 +1775,14 @@ pub fn run() {
                                         .and_then(|t| t.duration)
                                         .map(|d| d.as_millis() as i64),
                                 ) {
-                                    let ended_at = unix_now();
+                                    let _ended_at = unix_now();
                                     let end_pos = s.last_position_ms;
-                                    if let Err(e) = indexer.insert_play_event(
-                                        track_id,
+                                    if let Err(e) = indexer.client().insert_play_event(
+                                        track_id as i64,
                                         &origin,
                                         &started_at,
-                                        Some(ended_at.as_str()),
-                                        end_pos,
-                                        duration,
+                                        end_pos.unwrap_or(0) as u64,
+                                        duration as u64,
                                     ) {
                                         tracing::warn!(
                                             ?e,
@@ -1857,7 +1852,7 @@ pub fn run() {
             lib_semantic_search,
             lib_mood_search,
             lib_get_track,
-            lib_similar,
+            lib_find_similar,
             lib_shuffle,
             lib_autoplay_next,
             lib_snapshot,
