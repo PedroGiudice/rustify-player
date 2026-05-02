@@ -5,7 +5,7 @@ use audio_engine::{
 };
 use library_indexer::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
-    IndexerHandle, LyricLine, MoodPlaylist, PlaylistSearchResult, QdrantClient, SearchResults,
+    IndexerHandle, LyricLine, MoodPlaylist, PlaylistSearchResult, SearchResults,
     Track, TrackFilter, TrackOrder,
 };
 use serde::Serialize;
@@ -23,7 +23,7 @@ struct Library {
     music_root: PathBuf,
 }
 struct Player(Mutex<Option<EngineHandle>>);
-struct Qdrant(Option<QdrantClient>);
+// Qdrant state removed — IndexerHandle now owns the QdrantClient.
 /// Keeps the Qdrant child process alive for the duration of the app.
 /// Drop impl kills the process on app exit.
 #[allow(dead_code)]
@@ -45,7 +45,7 @@ struct PlayerSnapshot {
     is_playing: bool,
     volume: f32,
     current_origin: Option<String>,
-    current_track_id: Option<i64>,
+    current_track_id: Option<u64>,
     started_at: Option<String>,
     last_position_ms: Option<i64>,
 }
@@ -83,15 +83,15 @@ fn lib_list_genres(lib: State<Library>) -> Result<Vec<Genre>, String> {
 #[tauri::command]
 fn lib_list_tracks(
     lib: State<Library>,
-    genre_id: Option<i64>,
-    artist_id: Option<i64>,
-    album_id: Option<i64>,
+    genre: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let filter = TrackFilter {
-        genre_id,
-        artist_id,
-        album_id,
+        genre,
+        artist,
+        album,
         limit,
         ..Default::default()
     };
@@ -107,13 +107,13 @@ fn lib_list_tracks(
 #[tauri::command]
 fn lib_list_albums(
     lib: State<Library>,
-    artist_id: Option<i64>,
-    genre_id: Option<i64>,
+    artist: Option<String>,
+    genre: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Album>, String> {
     let filter = AlbumFilter {
-        artist_id,
-        genre_id,
+        artist,
+        genre,
         limit,
     };
     let mut albums = lib.handle.list_albums(filter).map_err(err)?;
@@ -131,11 +131,11 @@ fn lib_list_albums(
 #[tauri::command]
 fn lib_list_artists(
     lib: State<Library>,
-    genre_id: Option<i64>,
+    genre: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Artist>, String> {
     let filter = ArtistFilter {
-        genre_id,
+        genre,
         limit,
     };
     lib.handle.list_artists(filter).map_err(err)
@@ -172,18 +172,17 @@ fn lib_search(
 #[tauri::command]
 fn lib_semantic_search(
     lib: State<Library>,
-    qdrant: State<Qdrant>,
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
-    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    let client = lib.handle.client();
     let tei = library_indexer::LyricsEmbedClient::new("http://100.123.73.128:8080");
     let vector = tei.embed_text(&query).map_err(err)?;
     let results = client.semantic_search(&vector, limit.unwrap_or(10)).map_err(err)?;
 
     let mut tracks = Vec::new();
     for (track_id, _score) in results {
-        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+        if let Ok(Some(mut t)) = lib.handle.track(track_id as u64) {
             if let Some(rel) = &t.album_cover_path {
                 t.album_cover_path = Some(lib.cache_dir.join(rel));
             }
@@ -196,11 +195,10 @@ fn lib_semantic_search(
 #[tauri::command]
 fn lib_mood_search(
     lib: State<Library>,
-    qdrant: State<Qdrant>,
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
-    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    let client = lib.handle.client();
     let filters = library_indexer::MoodFilters::parse(&query);
     if filters.is_empty() {
         return Ok(Vec::new());
@@ -209,7 +207,7 @@ fn lib_mood_search(
 
     let mut tracks = Vec::new();
     for track_id in ids {
-        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+        if let Ok(Some(mut t)) = lib.handle.track(track_id as u64) {
             if let Some(rel) = &t.album_cover_path {
                 t.album_cover_path = Some(lib.cache_dir.join(rel));
             }
@@ -220,7 +218,7 @@ fn lib_mood_search(
 }
 
 #[tauri::command]
-fn lib_get_track(lib: State<Library>, id: i64) -> Result<Option<Track>, String> {
+fn lib_get_track(lib: State<Library>, id: u64) -> Result<Option<Track>, String> {
     let track = lib.handle.track(id).map_err(err)?;
     Ok(track.map(|mut t| {
         if let Some(rel) = &t.album_cover_path {
@@ -231,25 +229,13 @@ fn lib_get_track(lib: State<Library>, id: i64) -> Result<Option<Track>, String> 
 }
 
 #[tauri::command]
-fn lib_get_album(lib: State<Library>, id: i64) -> Result<Option<Album>, String> {
-    let album = lib.handle.album(id).map_err(err)?;
-    Ok(album.map(|mut a| {
-        if let Some(rel) = &a.cover_path {
-            a.cover_path = Some(lib.cache_dir.join(rel));
-        }
-        a
-    }))
-}
-
-#[tauri::command]
-fn lib_get_artist(lib: State<Library>, id: i64) -> Result<Option<Artist>, String> {
-    lib.handle.artist(id).map_err(err)
-}
+// lib_get_album and lib_get_artist removed — albums/artists are aggregated,
+// not individual entities. Use list_albums/list_artists with filters instead.
 
 #[tauri::command]
 fn lib_similar(
     lib: State<Library>,
-    track_id: i64,
+    track_id: u64,
     limit: Option<usize>,
 ) -> Result<Vec<SimilarTrack>, String> {
     lib.handle
@@ -271,11 +257,11 @@ struct SimilarTrack {
 #[tauri::command]
 fn lib_shuffle(
     lib: State<Library>,
-    genre_id: Option<i64>,
+    genre: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let filter = TrackFilter {
-        genre_id,
+        genre,
         order: TrackOrder::Random,
         limit,
         ..Default::default()
@@ -292,62 +278,56 @@ fn lib_shuffle(
 #[tauri::command]
 fn lib_autoplay_next(
     lib: State<Library>,
-    qdrant: State<Qdrant>,
-    track_id: i64,
-    exclude_ids: Vec<i64>,
+    track_id: u64,
+    exclude_ids: Vec<u64>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let lim = limit.unwrap_or(5);
+    let client = lib.handle.client();
 
-    // Layer 1: Qdrant Recommendations API (live, uses behavioral signals)
-    if let Some(client) = qdrant.0.as_ref() {
-        if client.is_healthy() {
-            match lib.handle.behavioral_signals(qdrant.0.as_ref()) {
-                Ok((mut positives, negatives)) => {
-                    // Seed track is always in positives (if valid)
-                    if track_id > 0 && !positives.contains(&track_id) {
-                        positives.insert(0, track_id);
-                    }
-                    match client.recommend(&positives, &negatives, lim + exclude_ids.len()) {
-                        Ok(recs) => {
-                            let filtered: Vec<(i64, f64)> = recs
-                                .into_iter()
-                                .filter(|(id, _)| !exclude_ids.contains(id))
-                                .take(lim)
-                                .collect();
-                            if !filtered.is_empty() {
-                                let mut tracks = Vec::new();
-                                for (rec_id, _score) in &filtered {
-                                    if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
-                                        if let Some(rel) = &t.album_cover_path {
-                                            t.album_cover_path = Some(lib.cache_dir.join(rel));
-                                        }
-                                        tracks.push(t);
+    // Layer 1: Qdrant Recommendations API with behavioral signals
+    if client.is_healthy() {
+        match lib.handle.behavioral_signals() {
+            Ok((mut positives, negatives)) => {
+                let tid_i64 = track_id as i64;
+                if !positives.contains(&tid_i64) {
+                    positives.insert(0, tid_i64);
+                }
+                let excl_i64: Vec<i64> = exclude_ids.iter().map(|id| *id as i64).collect();
+                match client.recommend(&positives, &negatives, lim + exclude_ids.len()) {
+                    Ok(recs) => {
+                        let filtered: Vec<(i64, f64)> = recs
+                            .into_iter()
+                            .filter(|(id, _)| !excl_i64.contains(id))
+                            .take(lim)
+                            .collect();
+                        if !filtered.is_empty() {
+                            let mut tracks = Vec::new();
+                            for (rec_id, _score) in &filtered {
+                                if let Ok(Some(mut t)) = lib.handle.track(*rec_id as u64) {
+                                    if let Some(rel) = &t.album_cover_path {
+                                        t.album_cover_path = Some(lib.cache_dir.join(rel));
                                     }
-                                }
-                                if !tracks.is_empty() {
-                                    tracing::debug!(
-                                        track_id,
-                                        count = tracks.len(),
-                                        "autoplay: Qdrant recommendations"
-                                    );
-                                    return Ok(tracks);
+                                    tracks.push(t);
                                 }
                             }
-                        }
-                        Err(e) => {
-                            tracing::warn!(track_id, error = %e, "autoplay: Qdrant recommend failed");
+                            if !tracks.is_empty() {
+                                return Ok(tracks);
+                            }
                         }
                     }
+                    Err(e) => {
+                        tracing::warn!(track_id, error = %e, "autoplay: recommend failed");
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(track_id, error = %e, "autoplay: behavioral_signals failed");
-                }
+            }
+            Err(e) => {
+                tracing::warn!(track_id, error = %e, "autoplay: behavioral_signals failed");
             }
         }
     }
 
-    // Layer 2: Pre-computed recommendations from track_recommendations table
+    // Layer 2: Similar via Qdrant recommend
     let recs = lib.handle.autoplay_next(track_id, &exclude_ids, lim).map_err(err)?;
     if !recs.is_empty() {
         let mut tracks = Vec::new();
@@ -360,39 +340,21 @@ fn lib_autoplay_next(
             }
         }
         if !tracks.is_empty() {
-            tracing::debug!(track_id, count = tracks.len(), "autoplay: pre-computed recommendations");
             return Ok(tracks);
         }
     }
 
-    // Layer 3: Brute-force similar via MERT embeddings
-    let similar = lib.handle.similar(track_id, lim + exclude_ids.len()).map_err(err)?;
-    let mut tracks: Vec<Track> = similar
-        .into_iter()
-        .filter(|(t, _)| !exclude_ids.contains(&t.id))
-        .take(lim)
-        .map(|(mut t, _)| {
-            if let Some(rel) = &t.album_cover_path {
-                t.album_cover_path = Some(lib.cache_dir.join(rel));
-            }
-            t
-        })
-        .collect();
-
-    // Layer 4: Shuffle as last resort
-    if tracks.is_empty() {
-        tracing::debug!(track_id, "autoplay: shuffle fallback");
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        tracks = lib.handle
-            .shuffle(TrackFilter::default(), seed, lim)
-            .map_err(err)?;
-        for t in &mut tracks {
-            if let Some(rel) = &t.album_cover_path {
-                t.album_cover_path = Some(lib.cache_dir.join(rel));
-            }
+    // Layer 3: Shuffle fallback
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let mut tracks = lib.handle
+        .shuffle(TrackFilter::default(), seed, lim)
+        .map_err(err)?;
+    for t in &mut tracks {
+        if let Some(rel) = &t.album_cover_path {
+            t.album_cover_path = Some(lib.cache_dir.join(rel));
         }
     }
 
@@ -472,7 +434,7 @@ fn lib_rescan(lib: State<Library>) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_get_lyrics(lib: State<Library>, track_id: i64) -> Result<Vec<LyricLine>, String> {
+fn lib_get_lyrics(lib: State<Library>, track_id: u64) -> Result<Vec<LyricLine>, String> {
     lib.handle.get_lyrics(track_id).map_err(err)
 }
 
@@ -481,7 +443,7 @@ fn lib_get_lyrics(lib: State<Library>, track_id: i64) -> Result<Vec<LyricLine>, 
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_record_play(lib: State<Library>, track_id: i64) -> Result<(), String> {
+fn lib_record_play(lib: State<Library>, track_id: u64) -> Result<(), String> {
     lib.handle.record_play(track_id).map_err(err)
 }
 
@@ -501,7 +463,7 @@ fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Tra
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_toggle_like(lib: State<Library>, track_id: i64) -> Result<bool, String> {
+fn lib_toggle_like(lib: State<Library>, track_id: u64) -> Result<bool, String> {
     lib.handle.toggle_like(track_id).map_err(err)
 }
 
@@ -517,7 +479,7 @@ fn lib_list_liked(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track
 }
 
 #[tauri::command]
-fn lib_is_liked(lib: State<Library>, track_id: i64) -> Result<bool, String> {
+fn lib_is_liked(lib: State<Library>, track_id: u64) -> Result<bool, String> {
     lib.handle.is_liked(track_id).map_err(err)
 }
 
@@ -548,27 +510,7 @@ fn lib_recommendations(
 // Mood playlists
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-fn lib_list_moods(lib: State<Library>) -> Result<Vec<MoodPlaylist>, String> {
-    let mut moods = lib.handle.list_moods().map_err(err)?;
-    for m in &mut moods {
-        if let Some(rel) = &m.cover_path {
-            m.cover_path = Some(lib.cache_dir.join(rel));
-        }
-    }
-    Ok(moods)
-}
-
-#[tauri::command]
-fn lib_list_mood_tracks(lib: State<Library>, mood_id: i64) -> Result<Vec<Track>, String> {
-    let mut tracks = lib.handle.list_mood_tracks(mood_id).map_err(err)?;
-    for t in &mut tracks {
-        if let Some(rel) = &t.album_cover_path {
-            t.album_cover_path = Some(lib.cache_dir.join(rel));
-        }
-    }
-    Ok(tracks)
-}
+// Mood playlists: removed in Qdrant-only model (moods are search queries now).
 
 // ---------------------------------------------------------------------------
 // Qdrant sync
@@ -592,35 +534,16 @@ fn list_backgrounds() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn get_track_color(qdrant: State<Qdrant>, track_id: i64) -> Result<String, String> {
-    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
-    let payload = client.get_payload(track_id).map_err(err)?;
+fn get_track_color(lib: State<Library>, track_id: u64) -> Result<String, String> {
+    let client = lib.handle.client();
+    let payload = client.get_payload(track_id as i64).map_err(err)?;
     Ok(payload["dominant_color"].as_str().unwrap_or("").to_string())
 }
 
-#[tauri::command]
-fn qdrant_sync(lib: State<Library>, qdrant: State<Qdrant>) -> Result<usize, String> {
-    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
-    lib.handle.sync_to_qdrant(client).map_err(err)
-}
+// qdrant_sync removed — pipeline writes directly to Qdrant during scan.
 
 #[tauri::command]
-fn qdrant_sync_lyrics(
-    lib: State<Library>,
-    qdrant: State<Qdrant>,
-    tei_url: Option<String>,
-) -> Result<usize, String> {
-    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
-    let url = tei_url.unwrap_or_else(|| "http://100.123.73.128:8080".to_string());
-    let lyrics_client = library_indexer::LyricsEmbedClient::new(url);
-    if !lyrics_client.is_healthy() {
-        return Err("TEI BGE-M3 not available".to_string());
-    }
-    lib.handle.sync_lyrics_to_qdrant(client, &lyrics_client).map_err(err)
-}
-
-#[tauri::command]
-fn log_event(qdrant: State<Qdrant>, payload: serde_json::Value) -> Result<(), String> {
+fn log_event(lib: State<Library>, payload: serde_json::Value) -> Result<(), String> {
     let event_type = payload
         .get("event_type")
         .and_then(|v| v.as_str())
@@ -630,7 +553,7 @@ fn log_event(qdrant: State<Qdrant>, payload: serde_json::Value) -> Result<(), St
     }
     payload.get("timestamp").ok_or("missing timestamp")?;
 
-    let client = qdrant.0.as_ref().ok_or("Qdrant not available")?;
+    let client = lib.handle.client();
     client.insert_raw_event(&payload).map_err(err)
 }
 
@@ -644,7 +567,7 @@ fn player_play(
     snapshot: State<Snapshot>,
     path: String,
     origin: Option<String>,
-    track_id: Option<i64>,
+    track_id: Option<u64>,
 ) -> Result<(), String> {
     if let Ok(mut s) = snapshot.0.lock() {
         s.current_origin = origin.or_else(|| Some("manual".to_string()));
@@ -664,7 +587,7 @@ fn player_play(
 fn player_set_origin(
     snapshot: State<Snapshot>,
     origin: String,
-    track_id: Option<i64>,
+    track_id: Option<u64>,
 ) -> Result<(), String> {
     if let Ok(mut s) = snapshot.0.lock() {
         s.current_origin = Some(origin);
@@ -1615,35 +1538,24 @@ pub fn run() {
             };
             _app.manage(MediaServerPort(media_port));
 
-            let db_path = data_dir.join("library.db");
+            let qdrant_url = std::env::var("RUSTIFY_QDRANT_URL")
+                .unwrap_or_else(|_| "http://localhost:6333".to_string());
             let music_root = dirs_home().join("Music");
 
             let embed_url = std::env::var("RUSTIFY_EMBED_URL").ok().or_else(|| {
-                // Default to Tailscale endpoint on the dev VM
                 Some("https://extractlab.cormorant-alpha.ts.net:8448".to_string())
             });
 
             let config = IndexerConfig {
-                db_path,
+                qdrant_url,
                 music_root: music_root.clone(),
                 cache_dir: cache_dir.clone(),
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
             };
 
             let indexer = Indexer::open(config).expect("failed to open library indexer");
-            if indexer.needs_embedded_lyrics_scan() {
-                tracing::info!(
-                    "embedded-lyrics backfill pending; initial scan will re-ingest existing tracks"
-                );
-            }
-            // Clone for the event-listener thread: it looks up library
-            // metadata by path whenever a new track starts so the snapshot
-            // carries title/artist/cover/lrc without the frontend having to
-            // issue a separate lookup.
             let indexer_for_events = indexer.clone();
             let cache_dir_for_events = cache_dir.clone();
-            // Clone for the Qdrant background sync thread.
-            let indexer_for_sync = indexer.clone();
             _app.manage(Library {
                 handle: indexer,
                 cache_dir,
@@ -1709,19 +1621,7 @@ pub fn run() {
             let qdrant_proc = qdrant_process::QdrantProcess::spawn(&data_dir);
             _app.manage(QdrantSidecar(Mutex::new(qdrant_proc)));
 
-            let qdrant_client = QdrantClient::new("http://localhost:6333");
-            let qdrant_healthy = qdrant_client.is_healthy();
-            if qdrant_healthy {
-                tracing::info!("Qdrant available — enabling vector recommendations");
-                if let Err(e) = qdrant_client.ensure_collection() {
-                    tracing::warn!(?e, "failed to ensure Qdrant collection");
-                }
-                if let Err(e) = qdrant_client.ensure_play_events_collection() {
-                    tracing::warn!(?e, "failed to ensure play_events collection");
-                }
-            } else {
-                tracing::info!("Qdrant not available — using brute-force similarity fallback");
-            }
+            // Qdrant collections are ensured by Indexer::open above.
 
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
@@ -1772,22 +1672,7 @@ pub fn run() {
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
 
-            // Background sync: upsert embeddings to Qdrant without
-            // blocking app startup.
-            if qdrant_healthy {
-                let indexer_clone = indexer_for_sync.clone();
-                let client_clone = qdrant_client.clone();
-                std::thread::Builder::new()
-                    .name("qdrant-sync".to_string())
-                    .spawn(move || {
-                        match indexer_clone.sync_to_qdrant(&client_clone) {
-                            Ok(n) => tracing::info!(n, "Qdrant MERT sync complete"),
-                            Err(e) => tracing::warn!(?e, "Qdrant MERT sync failed"),
-                        }
-                    })
-                    .ok();
-            }
-            _app.manage(Qdrant(Some(qdrant_client)));
+            // Background sync removed — pipeline writes directly to Qdrant.
 
             #[allow(clippy::too_many_arguments)]
             fn event_loop(
@@ -1972,8 +1857,6 @@ pub fn run() {
             lib_semantic_search,
             lib_mood_search,
             lib_get_track,
-            lib_get_album,
-            lib_get_artist,
             lib_similar,
             lib_shuffle,
             lib_autoplay_next,
@@ -1989,12 +1872,8 @@ pub fn run() {
             lib_list_liked,
             lib_is_liked,
             lib_recommendations,
-            lib_list_moods,
-            lib_list_mood_tracks,
             list_backgrounds,
             get_track_color,
-            qdrant_sync,
-            qdrant_sync_lyrics,
             log_event,
             player_play,
             player_set_origin,
