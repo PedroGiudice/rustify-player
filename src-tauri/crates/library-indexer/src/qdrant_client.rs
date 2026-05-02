@@ -12,7 +12,7 @@
 use crate::error::IndexerError;
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 /// Name of the Qdrant collection.
@@ -27,6 +27,9 @@ const MERT_DIM: usize = 768;
 
 /// BGE-M3 output dimensionality for lyrics embeddings.
 const LYRICS_DIM: usize = 1024;
+
+/// Name of the play events collection (payload-only, dummy vectors).
+const PLAY_EVENTS_COLLECTION: &str = "play_events";
 
 /// Synchronous HTTP client for the Qdrant REST API.
 ///
@@ -367,6 +370,223 @@ impl QdrantClient {
 
         Ok(total)
     }
+    // ──────────────────────────────────────────────────────────────────────────
+    // Play Events collection (payload-only, dummy 1-d vector)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /// Ensure the `play_events` collection exists with a dummy 1-d vector config
+    /// and payload indices for efficient filtering/ordering.
+    pub fn ensure_play_events_collection(&self) -> Result<(), IndexerError> {
+        let url = format!(
+            "{}/collections/{PLAY_EVENTS_COLLECTION}",
+            self.base_url
+        );
+
+        match self.agent.get(&url).call() {
+            Ok(_) => return Ok(()),
+            Err(ureq::Error::Status(404, _)) => {}
+            Err(e) => {
+                return Err(IndexerError::Embedding(format!(
+                    "qdrant get play_events collection: {e}"
+                )));
+            }
+        }
+
+        // Create with dummy 1-d cosine vector (Qdrant requires at least one vector config)
+        let body = json!({
+            "vectors": {
+                "size": 1,
+                "distance": "Cosine"
+            }
+        });
+
+        self.agent
+            .put(&url)
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!(
+                "qdrant create play_events collection: {e}"
+            )))?;
+
+        // Create payload indices for filtering and ordering
+        let indices = [
+            ("track_id", json!({"type": "integer"})),
+            ("listen_pct", json!({"type": "float"})),
+            ("started_at", json!({"type": "keyword"})),
+            ("origin", json!({"type": "keyword"})),
+        ];
+
+        for (field, schema) in &indices {
+            let index_url = format!(
+                "{}/collections/{PLAY_EVENTS_COLLECTION}/index",
+                self.base_url
+            );
+            let index_body = json!({
+                "field_name": field,
+                "field_schema": schema
+            });
+            self.agent
+                .put(&index_url)
+                .send_json(&index_body)
+                .map_err(|e| IndexerError::Embedding(format!(
+                    "qdrant create index {field}: {e}"
+                )))?;
+        }
+
+        Ok(())
+    }
+
+    /// Insert a single play event into the `play_events` collection.
+    ///
+    /// Computes `listen_pct` from `end_position_ms / duration_ms` (clamped 0.0–1.0).
+    /// Uses a UUID v4 as point ID with a dummy `[0.0]` vector.
+    pub fn insert_play_event(
+        &self,
+        track_id: i64,
+        origin: &str,
+        started_at: &str,
+        end_position_ms: u64,
+        duration_ms: u64,
+    ) -> Result<(), IndexerError> {
+        let listen_pct = if duration_ms == 0 {
+            0.0_f64
+        } else {
+            (end_position_ms as f64 / duration_ms as f64).clamp(0.0, 1.0)
+        };
+
+        let point_id = uuid::Uuid::new_v4().to_string();
+
+        let body = json!({
+            "points": [{
+                "id": point_id,
+                "vector": [0.0],
+                "payload": {
+                    "track_id": track_id,
+                    "origin": origin,
+                    "started_at": started_at,
+                    "end_position_ms": end_position_ms,
+                    "duration_ms": duration_ms,
+                    "listen_pct": listen_pct
+                }
+            }]
+        });
+
+        self.agent
+            .put(&format!(
+                "{}/collections/{PLAY_EVENTS_COLLECTION}/points",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant insert play_event: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Scroll the `play_events` collection with a filter, ordered by `started_at` descending.
+    ///
+    /// Returns the payload of each matching point (up to `limit`).
+    pub fn scroll_play_events(
+        &self,
+        filter: Value,
+        limit: usize,
+    ) -> Result<Vec<Value>, IndexerError> {
+        let body = json!({
+            "filter": filter,
+            "limit": limit,
+            "with_payload": true,
+            "with_vector": false,
+            "order_by": {
+                "key": "started_at",
+                "direction": "desc"
+            }
+        });
+
+        let resp: Value = self
+            .agent
+            .post(&format!(
+                "{}/collections/{PLAY_EVENTS_COLLECTION}/points/scroll",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant scroll play_events: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut payloads = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                if let Some(payload) = p.get("payload") {
+                    payloads.push(payload.clone());
+                }
+            }
+        }
+
+        Ok(payloads)
+    }
+
+    /// Derive behavioral signals (positives and negatives) from play events.
+    ///
+    /// - **Positives:** top 30 distinct track_ids from the last 100 events with
+    ///   `listen_pct >= 0.8`. Tracks appearing 3+ times get an extra entry for weight.
+    /// - **Negatives:** up to 15 distinct track_ids from the last 50 events with
+    ///   `listen_pct < 0.15` AND `origin != "album_seq"`.
+    pub fn behavioral_signals(&self) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
+        // --- Positives ---
+        let pos_filter = json!({
+            "must": [{
+                "key": "listen_pct",
+                "range": { "gte": 0.8 }
+            }]
+        });
+        let pos_payloads = self.scroll_play_events(pos_filter, 100)?;
+
+        let mut track_counts: HashMap<i64, usize> = HashMap::new();
+        for p in &pos_payloads {
+            if let Some(tid) = p["track_id"].as_i64() {
+                *track_counts.entry(tid).or_default() += 1;
+            }
+        }
+
+        // Sort by count descending, take top 30 distinct
+        let mut sorted: Vec<(i64, usize)> = track_counts.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.truncate(30);
+
+        let mut positives: Vec<i64> = Vec::new();
+        for (tid, count) in &sorted {
+            positives.push(*tid);
+            // Extra weight for tracks with 3+ listens
+            if *count >= 3 {
+                positives.push(*tid);
+            }
+        }
+
+        // --- Negatives ---
+        let neg_filter = json!({
+            "must": [
+                { "key": "listen_pct", "range": { "lt": 0.15 } }
+            ],
+            "must_not": [
+                { "key": "origin", "match": { "value": "album_seq" } }
+            ]
+        });
+        let neg_payloads = self.scroll_play_events(neg_filter, 50)?;
+
+        let mut neg_seen: HashSet<i64> = HashSet::new();
+        let mut negatives: Vec<i64> = Vec::new();
+        for p in &neg_payloads {
+            if let Some(tid) = p["track_id"].as_i64() {
+                if neg_seen.insert(tid) {
+                    negatives.push(tid);
+                    if negatives.len() >= 15 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok((positives, negatives))
+    }
+
     /// Embed lyrics via TEI BGE-M3 and upsert to Qdrant as "lyrics" named vector.
     /// Incremental: skips tracks that already have a lyrics vector in Qdrant.
     pub fn sync_lyrics(
