@@ -1440,8 +1440,15 @@ pub fn run() {
                             Ok(n) => tracing::info!(n, "Qdrant MERT sync complete"),
                             Err(e) => tracing::warn!(?e, "Qdrant MERT sync failed"),
                         }
-                        // Lyrics sync disabled — data needs curation before embedding.
-                        // Trigger manually via qdrant_sync_lyrics IPC when ready.
+                        let lyrics_client = library_indexer::LyricsEmbedClient::new(
+                            "http://100.123.73.128:8080".to_string(),
+                        );
+                        if lyrics_client.is_healthy() {
+                            match indexer_clone.sync_lyrics_to_qdrant(&client_clone, &lyrics_client) {
+                                Ok(n) => tracing::info!(n, "Qdrant lyrics sync complete"),
+                                Err(e) => tracing::warn!(?e, "Qdrant lyrics sync failed"),
+                            }
+                        }
                     })
                     .ok();
             } else {
