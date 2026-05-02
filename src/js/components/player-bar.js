@@ -35,6 +35,7 @@ const recentlyPlayedIds = new Set();
 export function setQueue(tracks, startIndex) {
   trackQueue = tracks;
   queueIndex = startIndex;
+  smartStationActive = false;
 }
 
 export function getQueue() {
