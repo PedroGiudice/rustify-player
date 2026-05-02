@@ -5,9 +5,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum IndexerError {
-    #[error("database error: {0}")]
-    Database(#[from] rusqlite::Error),
-
     #[error("failed to walk music root: {0}")]
     Walk(#[from] walkdir::Error),
 
