@@ -19,8 +19,10 @@ impl QdrantProcess {
         );
 
         let child = Command::new(&binary)
-            .arg("--storage-path")
-            .arg(&storage_path)
+            .env("QDRANT__STORAGE__STORAGE_PATH", &storage_path)
+            .env("QDRANT__SERVICE__HTTP_PORT", "6333")
+            .env("QDRANT__SERVICE__GRPC_PORT", "6334")
+            .env("QDRANT__TELEMETRY_DISABLED", "true")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
