@@ -294,6 +294,44 @@ impl QdrantClient {
         Ok(results)
     }
 
+    /// Search tracks by semantic similarity using the lyrics named vector.
+    /// Takes a pre-computed query embedding (1024d BGE-M3) and returns
+    /// track IDs ordered by descending similarity score.
+    pub fn semantic_search(
+        &self,
+        query_vector: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(i64, f64)>, IndexerError> {
+        let body = json!({
+            "query": query_vector,
+            "using": VEC_LYRICS,
+            "limit": limit,
+            "with_payload": false
+        });
+
+        let resp: Value = self
+            .agent
+            .post(&format!(
+                "{}/collections/{COLLECTION}/points/query",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant semantic search: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut results = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                if let (Some(id), Some(score)) = (p["id"].as_i64(), p["score"].as_f64()) {
+                    results.push((id, score));
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Sync all tracks with MERT embeddings from SQLite to Qdrant.
     ///
     /// Incremental: fetches all point IDs already present in Qdrant and skips

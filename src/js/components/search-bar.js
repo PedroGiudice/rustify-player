@@ -188,8 +188,11 @@ async function handleQuery(q) {
 
   if (currentContext === "global") {
     try {
-      const results = await invoke("lib_search", { query: q, limit: 8 });
-      renderGlobalResults(results);
+      const [results, semantic] = await Promise.all([
+        invoke("lib_search", { query: q, limit: 8 }),
+        invoke("lib_semantic_search", { query: q, limit: 5 }).catch(() => []),
+      ]);
+      renderGlobalResults(results, semantic);
     } catch (err) {
       console.error("[search] global search failed:", err);
       renderError(err);
@@ -209,10 +212,10 @@ async function handleQuery(q) {
   }
 }
 
-function renderGlobalResults(results) {
+function renderGlobalResults(results, semantic = []) {
   const { tracks, albums, artists } = results;
 
-  if (!tracks.length && !albums.length && !artists.length) {
+  if (!tracks.length && !albums.length && !artists.length && !semantic.length) {
     ui.dropdown.innerHTML = `<div class="search-empty">No results</div>`;
     ui.dropdown.hidden = false;
     return;
@@ -261,6 +264,26 @@ function renderGlobalResults(results) {
         </div>
       `).join("")}
     </div>`;
+  }
+
+  if (semantic.length > 0) {
+    // Deduplicate: remove tracks already shown in textual results
+    const textIds = new Set(tracks.map((t) => t.id));
+    const unique = semantic.filter((t) => !textIds.has(t.id));
+    if (unique.length > 0) {
+      html += `<div class="search-section search-section--semantic">
+        <div class="search-section__label">By Lyrics</div>
+        ${unique.map((t) => `
+          <div class="search-item" data-track-id="${t.id}" data-track-json='${escJson(t)}'>
+            <div class="search-item__cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</div>
+            <div class="search-item__meta">
+              <div class="search-item__title">${esc(t.title)}</div>
+              <div class="search-item__sub">${esc(t.artist_name || "—")} &middot; ${formatMs(t.duration_ms)}</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>`;
+    }
   }
 
   ui.dropdown.innerHTML = html;

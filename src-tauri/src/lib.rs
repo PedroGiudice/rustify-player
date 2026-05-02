@@ -166,6 +166,30 @@ fn lib_search(
 }
 
 #[tauri::command]
+fn lib_semantic_search(
+    lib: State<Library>,
+    qdrant: State<Qdrant>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<Track>, String> {
+    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    let tei = library_indexer::LyricsEmbedClient::new("http://100.123.73.128:8080");
+    let vector = tei.embed_text(&query).map_err(err)?;
+    let results = client.semantic_search(&vector, limit.unwrap_or(10)).map_err(err)?;
+
+    let mut tracks = Vec::new();
+    for (track_id, _score) in results {
+        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+            tracks.push(t);
+        }
+    }
+    Ok(tracks)
+}
+
+#[tauri::command]
 fn lib_get_track(lib: State<Library>, id: i64) -> Result<Option<Track>, String> {
     let track = lib.handle.track(id).map_err(err)?;
     Ok(track.map(|mut t| {
@@ -1643,6 +1667,7 @@ pub fn run() {
             lib_list_albums,
             lib_list_artists,
             lib_search,
+            lib_semantic_search,
             lib_get_track,
             lib_get_album,
             lib_get_artist,
