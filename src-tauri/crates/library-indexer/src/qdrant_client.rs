@@ -227,6 +227,8 @@ impl QdrantClient {
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant create collection: {e}")))?;
 
+        self.create_payload_indices()?;
+
         Ok(())
     }
 
@@ -589,6 +591,215 @@ impl QdrantClient {
 
         Ok(total)
     }
+    // ──────────────────────────────────────────────────────────────────────────
+    // Full-metadata payload management
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /// Create payload indices for full-metadata storage.
+    /// Idempotent — Qdrant ignores duplicate index creation (409).
+    pub fn create_payload_indices(&self) -> Result<(), IndexerError> {
+        let indices: Vec<(&str, Value)> = vec![
+            ("path", json!({"type": "keyword"})),
+            ("title", json!({"type": "text", "tokenizer": "word", "lowercase": true})),
+            ("artist", json!({"type": "text", "tokenizer": "word", "lowercase": true})),
+            ("artist_exact", json!({"type": "keyword"})),
+            ("album_title", json!({"type": "text", "tokenizer": "word", "lowercase": true})),
+            ("album_title_exact", json!({"type": "keyword"})),
+            ("genre", json!({"type": "keyword"})),
+            ("tags", json!({"type": "keyword"})),
+            ("play_count", json!({"type": "integer"})),
+            ("last_played", json!({"type": "integer"})),
+            ("liked_at", json!({"type": "integer"})),
+            ("embedding_status", json!({"type": "keyword"})),
+            ("track_number", json!({"type": "integer"})),
+            ("disc_number", json!({"type": "integer"})),
+            ("mtime", json!({"type": "integer"})),
+            ("indexed_at", json!({"type": "integer"})),
+        ];
+
+        for (field, schema) in &indices {
+            let url = format!("{}/collections/{COLLECTION}/index", self.base_url);
+            let body = json!({
+                "field_name": field,
+                "field_schema": schema
+            });
+            match self.agent.put(&url).send_json(&body) {
+                Ok(_) | Err(ureq::Error::Status(409, _)) => {}
+                Err(e) => {
+                    return Err(IndexerError::Embedding(format!(
+                        "qdrant create index {field}: {e}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Partial update of payload fields on one or more points.
+    pub fn set_payload(&self, point_ids: &[u64], payload: Value) -> Result<(), IndexerError> {
+        if point_ids.is_empty() {
+            return Ok(());
+        }
+        let body = json!({
+            "payload": payload,
+            "points": point_ids
+        });
+        self.agent
+            .post(&format!("{}/collections/{COLLECTION}/points/payload", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant set_payload: {e}")))?;
+        Ok(())
+    }
+
+    /// Scroll points with optional filter, ordering, and field selection.
+    pub fn scroll_with_filter(
+        &self,
+        filter: Option<Value>,
+        order_by: Option<&str>,
+        limit: usize,
+        with_vector: bool,
+    ) -> Result<Vec<(u64, Value)>, IndexerError> {
+        let mut body = json!({
+            "limit": limit,
+            "with_payload": true,
+            "with_vector": with_vector
+        });
+        if let Some(f) = filter {
+            body["filter"] = f;
+        }
+        if let Some(key) = order_by {
+            body["order_by"] = json!({ "key": key, "direction": "desc" });
+        }
+
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant scroll: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut results = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                let id = p["id"].as_u64().unwrap_or(0);
+                let payload = p.get("payload").cloned().unwrap_or(Value::Null);
+                results.push((id, payload));
+            }
+        }
+        Ok(results)
+    }
+
+    /// Scroll ALL points returning only selected payload fields.
+    /// Used for client-side aggregation (list albums, artists, genres).
+    pub fn scroll_all_payloads(&self, fields: &[&str]) -> Result<Vec<(u64, Value)>, IndexerError> {
+        let mut all: Vec<(u64, Value)> = Vec::new();
+        let mut offset: Option<Value> = None;
+        let include = json!({ "include": fields });
+
+        loop {
+            let mut body = json!({
+                "limit": 1000,
+                "with_payload": include,
+                "with_vector": false
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+
+            let resp: Value = self
+                .agent
+                .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll_all: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    let id = p["id"].as_u64().unwrap_or(0);
+                    let payload = p.get("payload").cloned().unwrap_or(Value::Null);
+                    all.push((id, payload));
+                }
+            }
+
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+
+        Ok(all)
+    }
+
+    /// Get a single point by ID with full payload.
+    pub fn get_point(&self, id: u64) -> Result<Option<Value>, IndexerError> {
+        let url = format!("{}/collections/{COLLECTION}/points/{id}", self.base_url);
+        match self.agent.get(&url).call() {
+            Ok(resp) => {
+                let body: Value = resp.into_json()
+                    .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+                Ok(Some(body["result"].clone()))
+            }
+            Err(ureq::Error::Status(404, _)) => Ok(None),
+            Err(e) => Err(IndexerError::Embedding(format!("qdrant get_point: {e}"))),
+        }
+    }
+
+    /// Delete points by ID.
+    pub fn delete_points(&self, ids: &[u64]) -> Result<(), IndexerError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let body = json!({ "points": ids });
+        self.agent
+            .post(&format!("{}/collections/{COLLECTION}/points/delete", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant delete: {e}")))?;
+        Ok(())
+    }
+
+    /// Upsert tracks with full metadata payload and optional MERT vector.
+    pub fn upsert_tracks(&self, points: &[(u64, Value, Option<Vec<f32>>)]) -> Result<(), IndexerError> {
+        if points.is_empty() {
+            return Ok(());
+        }
+        let zero_vec = vec![0.0_f32; MERT_DIM];
+        for chunk in points.chunks(100) {
+            let pts: Vec<Value> = chunk.iter().map(|(id, payload, vector)| {
+                let mert_vec = vector.as_deref().unwrap_or(&zero_vec);
+                json!({
+                    "id": id,
+                    "vector": { VEC_MERT: mert_vec },
+                    "payload": payload
+                })
+            }).collect();
+
+            let body = json!({ "points": pts });
+            self.agent
+                .put(&format!("{}/collections/{COLLECTION}/points", self.base_url))
+                .query("wait", "true")
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant upsert_tracks: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Expose base_url for pipeline embed result upserts.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Raw PUT request (for vector updates from pipeline).
+    pub fn raw_put(&self, url: &str, body: &Value) -> Result<(), IndexerError> {
+        self.agent
+            .put(url)
+            .query("wait", "true")
+            .send_json(body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant raw_put: {e}")))?;
+        Ok(())
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Play Events collection (payload-only, dummy 1-d vector)
     // ──────────────────────────────────────────────────────────────────────────
