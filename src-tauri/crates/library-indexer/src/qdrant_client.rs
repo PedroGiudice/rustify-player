@@ -231,9 +231,9 @@ impl QdrantClient {
             .collect();
         let body = json!({ "points": pts });
         self.agent
-            .put(&format!("{}/collections/{COLLECTION}/points", self.base_url))
+            .put(&format!("{}/collections/{COLLECTION}/points/vectors", self.base_url))
             .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!("qdrant upsert lyrics: {e}")))?;
+            .map_err(|e| IndexerError::Embedding(format!("qdrant update lyrics vectors: {e}")))?;
         Ok(())
     }
 

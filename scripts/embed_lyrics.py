@@ -20,10 +20,33 @@ def get_lyrics(db_path: str) -> list[tuple[int, str]]:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA query_only = ON")
     rows = conn.execute(
-        "SELECT id, embedded_lyrics FROM tracks WHERE embedded_lyrics IS NOT NULL AND LENGTH(embedded_lyrics) > 20"
+        "SELECT id, embedded_lyrics, lrc_path FROM tracks"
     ).fetchall()
     conn.close()
-    return rows
+    result = []
+    for track_id, embedded, lrc_path in rows:
+        if embedded and len(embedded) > 20:
+            result.append((track_id, embedded))
+        elif lrc_path:
+            text = _read_lrc_text(lrc_path)
+            if text and len(text) > 20:
+                result.append((track_id, text))
+    return result
+
+
+def _read_lrc_text(path: str) -> str | None:
+    import re
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    plain = []
+    for line in lines:
+        line = re.sub(r"^\[\d+:\d+\.\d+\]", "", line).strip()
+        if line:
+            plain.append(line)
+    return "\n".join(plain) if plain else None
 
 
 def get_existing_lyrics_ids(qdrant_url: str) -> set[int]:
@@ -69,7 +92,7 @@ def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
     pts = [{"id": tid, "vector": {"lyrics": vec}} for tid, vec in points]
     payload = json.dumps({"points": pts}).encode()
     req = urllib.request.Request(
-        f"{qdrant_url}/collections/{COLLECTION}/points",
+        f"{qdrant_url}/collections/{COLLECTION}/points/vectors",
         data=payload,
         headers={"Content-Type": "application/json"},
         method="PUT",
