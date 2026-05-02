@@ -136,5 +136,7 @@ def fetch_letras(title: str, artist: str) -> LyricsResult | None:
     text = "\n\n".join(p.get_text("\n") for p in paragraphs).strip()
     if len(text) < 20:
         return None
+    if "não possui letra" in text.lower():
+        return None
 
     return LyricsResult(text=text, source="letras.com", synced=False)
