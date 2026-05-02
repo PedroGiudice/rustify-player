@@ -48,7 +48,8 @@ export function render() {
       const id = Number(card.dataset.id);
       try {
         stopSmartStation();
-        const tracks = await invoke("lib_list_mood_tracks", { moodId: id });
+        const station = state.stations[id];
+        const tracks = station ? await invoke("lib_mood_search", { query: station.query, limit: 50 }) : [];
         if (tracks.length > 0) {
           // Shuffle
           for (let i = tracks.length - 1; i > 0; i--) {
@@ -72,7 +73,9 @@ export function render() {
         state.activeStation = station;
         state.viewMode = "detail";
         try {
-          state.tracks = await invoke("lib_list_mood_tracks", { moodId: id });
+          state.tracks = station.query
+            ? await invoke("lib_mood_search", { query: station.query, limit: 50 })
+            : [];
         } catch (err) {
           console.error("[stations] load tracks failed:", err);
           state.tracks = [];
@@ -114,21 +117,27 @@ export function render() {
   return el;
 }
 
+const MOOD_PRESETS = [
+  { name: "Chill", query: "relaxar chill", accent_color: "#4a90d9" },
+  { name: "Workout", query: "malhar treino high energy", accent_color: "#e74c3c" },
+  { name: "Focus", query: "estudar focus", accent_color: "#2ecc71" },
+  { name: "Party", query: "festa party dançar", accent_color: "#f39c12" },
+  { name: "Road Trip", query: "dirigir road trip", accent_color: "#9b59b6" },
+  { name: "Sleep", query: "dormir sleep baixa energia", accent_color: "#1abc9c" },
+];
+
 async function load(el) {
-  try {
-    state.stations = await invoke("lib_list_moods");
-    state.viewMode = "list";
-    state.activeStation = null;
-    state.tracks = [];
-    updateDOM(el);
-  } catch (err) {
-    el.innerHTML = `
-      <div class="empty-state">
-        <p class="empty-state__title">Failed to load stations</p>
-        <p class="empty-state__hint">${esc(String(err))}</p>
-      </div>
-    `;
-  }
+  state.stations = MOOD_PRESETS.map((p, i) => ({
+    id: i,
+    name: p.name,
+    query: p.query,
+    accent_color: p.accent_color,
+    track_count: 0,
+  }));
+  state.viewMode = "list";
+  state.activeStation = null;
+  state.tracks = [];
+  updateDOM(el);
 }
 
 function updateDOM(el) {

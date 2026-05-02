@@ -10,34 +10,31 @@ const { listen } = window.__TAURI__.event;
 // ── Tipos (espelham o que o backend Rust serializa via serde) ──
 
 export interface Track {
-  id: number;
+  id: string;
   title: string;
-  artist_name: string;
-  artist_id: number | null;
-  album_title: string;
-  album_id: number | null;
+  artist_name: string | null;
+  album_title: string | null;
   album_cover_path: string | null;
+  album_year: number | null;
   duration_ms: number;
   path: string;
   lrc_path: string | null;
   track_number?: number | null;
   genre_name?: string | null;
   last_played?: number | null;
+  play_count?: number;
+  liked_at?: number | null;
 }
 
 export interface Album {
-  id: number;
   title: string;
-  artist_name: string;
-  album_artist_name?: string | null;
-  artist_id?: number | null;
+  artist_name: string | null;
   cover_path: string | null;
   year: number | null;
   track_count: number;
 }
 
 export interface Artist {
-  id: number;
   name: string;
   track_count: number;
   album_count: number;
@@ -89,7 +86,7 @@ export const playerPause = () => invoke<void>("player_pause");
 export const playerResume = () => invoke<void>("player_resume");
 export const playerSeek = (seconds: number) => invoke<void>("player_seek", { seconds });
 export const playerEnqueueNext = (path: string) => invoke<void>("player_enqueue_next", { path });
-export const playerSetOrigin = (origin: string, trackId: number | null) =>
+export const playerSetOrigin = (origin: string, trackId: string | null) =>
   invoke<void>("player_set_origin", { origin, trackId });
 export const cycleRepeat = () => invoke<void>("cycle_repeat");
 export const setVolume = (volume: number) => invoke<void>("player_set_volume", { volume });
@@ -97,22 +94,23 @@ export const setVolume = (volume: number) => invoke<void>("player_set_volume", {
 // ── Library commands ───────────────────────────────────────────
 
 export const getState = () => invoke<AppState>("get_state");
-export const libGetAlbum = (id: number) => invoke<Album>("lib_get_album", { id });
-export const libGetArtist = (id: number) => invoke<any>("lib_get_artist", { id });
-export const libGetAlbums = (limit?: number) => invoke<Album[]>("lib_list_albums", { limit: limit ?? 500 });
-export const libGetAlbumsByArtist = (artistId: number, limit?: number) => invoke<Album[]>("lib_list_albums", { artistId, limit: limit ?? 100 });
-export const libGetArtists = (limit?: number) => invoke<Artist[]>("lib_list_artists", { limit: limit ?? 500 });
-export const libGetTracks = (opts?: { albumId?: number; artistId?: number; genreId?: number; limit?: number }) =>
-  invoke<Track[]>("lib_list_tracks", { albumId: opts?.albumId, artistId: opts?.artistId, genreId: opts?.genreId, limit: opts?.limit ?? 5000 });
-export const libGetTracksByAlbum = (albumId: number, limit?: number) =>
-  invoke<Track[]>("lib_list_tracks", { albumId, limit: limit ?? 200 });
-export const libGetTracksByArtist = (artistId: number, limit?: number) =>
-  invoke<Track[]>("lib_list_tracks", { artistId, limit: limit ?? 200 });
-export const libToggleLike = (trackId: number) => invoke<boolean>("lib_toggle_like", { trackId });
-export const libIsLiked = (trackId: number) => invoke<boolean>("lib_is_liked", { trackId });
-export const libGetLyrics = (trackId: number) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
-export const libRecordPlay = (trackId: number) => invoke<void>("lib_record_play", { trackId });
-export const libAutoplayNext = (trackId: number, excludeIds: number[], limit: number) =>
+export const libGetAlbums = (opts?: { artist?: string; genre?: string; limit?: number }) =>
+  invoke<Album[]>("lib_list_albums", { artist: opts?.artist, genre: opts?.genre, limit: opts?.limit ?? 500 });
+export const libGetArtists = (opts?: { genre?: string; limit?: number }) =>
+  invoke<Artist[]>("lib_list_artists", { genre: opts?.genre, limit: opts?.limit ?? 500 });
+export const libGetTracks = (opts?: { album?: string; artist?: string; genre?: string; limit?: number }) =>
+  invoke<Track[]>("lib_list_tracks", { album: opts?.album, artist: opts?.artist, genre: opts?.genre, limit: opts?.limit ?? 5000 });
+export const libGetTracksByAlbum = (albumTitle: string, limit?: number) =>
+  invoke<Track[]>("lib_list_tracks", { album: albumTitle, limit: limit ?? 200 });
+export const libGetAlbumsByArtist = (artistName: string, limit?: number) =>
+  invoke<Album[]>("lib_list_albums", { artist: artistName, limit: limit ?? 100 });
+export const libGetTracksByArtist = (artistName: string, limit?: number) =>
+  invoke<Track[]>("lib_list_tracks", { artist: artistName, limit: limit ?? 200 });
+export const libToggleLike = (trackId: string) => invoke<boolean>("lib_toggle_like", { trackId });
+export const libIsLiked = (trackId: string) => invoke<boolean>("lib_is_liked", { trackId });
+export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
+export const libRecordPlay = (trackId: string) => invoke<void>("lib_record_play", { trackId });
+export const libAutoplayNext = (trackId: string, excludeIds: string[], limit: number) =>
   invoke<Track[]>("lib_autoplay_next", { trackId, excludeIds, limit });
 export const libListHistory = (limit?: number) => invoke<Track[]>("lib_list_history", { limit: limit ?? 50 });
 export const libSnapshot = () => invoke<any>("lib_snapshot");
@@ -126,8 +124,7 @@ export const getMediaPort = () => invoke<number>("get_media_port");
 export const libListFolders = () => invoke<any[]>("lib_list_folders");
 export const libListFolderTracks = (folder: string) => invoke<Track[]>("lib_list_folder_tracks", { folder });
 export const libListLiked = (limit?: number) => invoke<Track[]>("lib_list_liked", { limit: limit ?? 200 });
-export const libListMoods = () => invoke<any[]>("lib_list_moods");
-export const libListMoodTracks = (moodId: number) => invoke<Track[]>("lib_list_mood_tracks", { moodId });
+export const libMoodSearch = (query: string, limit?: number) => invoke<Track[]>("lib_mood_search", { query, limit: limit ?? 50 });
 export const checkForUpdate = () => invoke<any>("check_for_update");
 export const installUpdate = () => invoke<void>("install_update");
 
@@ -157,7 +154,7 @@ export const dspSetBassBypass = (bypass: boolean) => invoke<void>("dsp_set_bass_
 export const dspSetBassAmount = (amount: number) => invoke<void>("dsp_set_bass_amount", { amount });
 
 export const listBackgrounds = () => invoke<string[]>("list_backgrounds");
-export const getTrackColor = (trackId: number) =>
+export const getTrackColor = (trackId: string) =>
   invoke<string>("get_track_color", { trackId });
 
 // ── Event listeners ────────────────────────────────────────────

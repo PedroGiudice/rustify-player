@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { createResource, Show, For } from "solid-js";
-import { libGetArtist, libGetAlbumsByArtist, libGetTracksByAlbum, coverUrl } from "../tauri";
+import { libGetAlbumsByArtist, libGetTracksByAlbum, coverUrl } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate } from "../router";
@@ -17,12 +17,12 @@ function initials(name: string): string {
 }
 
 export default function Artist(props: Props) {
-  const artistId = () => props.param ? Number(props.param) : null;
-  const [artist] = createResource(artistId, (id) => libGetArtist(id));
-  const [albums] = createResource(artistId, (id) => libGetAlbumsByArtist(id));
+  const artistName = () => props.param ? decodeURIComponent(props.param) : null;
+  const artist = () => artistName() ? { name: artistName()!, track_count: 0, album_count: albums()?.length ?? 0 } : null;
+  const [albums] = createResource(artistName, (name) => libGetAlbumsByArtist(name));
 
-  async function playAlbum(albumId: number) {
-    const tracks = await libGetTracksByAlbum(albumId);
+  async function playAlbum(albumTitle: string) {
+    const tracks = await libGetTracksByAlbum(albumTitle);
     if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
   }
 
@@ -55,7 +55,7 @@ export default function Artist(props: Props) {
                           <Show when={album.cover_path} fallback={<span>{initials(album.title)}</span>}>
                             {(p) => <img src={coverUrl(p())!} alt="" />}
                           </Show>
-                          <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(album.id); }} aria-label="Play">
+                          <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(album.title); }} aria-label="Play">
                             <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play" /></svg>
                           </button>
                         </div>

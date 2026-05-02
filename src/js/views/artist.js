@@ -63,12 +63,12 @@ async function load(view, artistName) {
       const playBtn = e.target.closest("[data-play-album]");
       if (playBtn) {
         e.stopPropagation();
-        const tracks = await invoke("lib_list_tracks", { album: Number(playBtn.dataset.playAlbum), limit: 100 });
+        const tracks = await invoke("lib_list_tracks", { album: playBtn.dataset.playAlbum, limit: 100 });
         if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
         return;
       }
       const card = e.target.closest(".card");
-      if (card) navigate(`/album/${card.dataset.albumId}`);
+      if (card) navigate(`/album/${encodeURIComponent(card.dataset.albumId)}`);
     });
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><p class="empty-state__title">Failed to load</p><p class="empty-state__hint">${err}</p></div>`;

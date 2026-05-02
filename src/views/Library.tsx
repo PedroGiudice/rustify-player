@@ -28,15 +28,15 @@ export default function Library() {
   });
 
   const [filteredTracks, setFilteredTracks] = createSignal<Track[] | null>(null);
-  const [activeGenre, setActiveGenre] = createSignal<number | null>(null);
+  const [activeGenre, setActiveGenre] = createSignal<string | null>(null);
 
-  async function toggleGenre(genreId: number) {
-    if (activeGenre() === genreId) {
+  async function toggleGenre(genreName: string) {
+    if (activeGenre() === genreName) {
       setActiveGenre(null);
       setFilteredTracks(null);
     } else {
-      setActiveGenre(genreId);
-      const filtered = await libGetTracks({ genreId, limit: 200 });
+      setActiveGenre(genreName);
+      const filtered = await libGetTracks({ genre: genreName, limit: 200 });
       setFilteredTracks(filtered);
     }
   }

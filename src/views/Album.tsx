@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { createResource, createSignal, Show, For } from "solid-js";
-import { libGetAlbum, libGetTracksByAlbum, coverUrl, formatDuration } from "../tauri";
+import { libGetTracksByAlbum, coverUrl } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate } from "../router";
@@ -26,9 +26,13 @@ function initials(name: string): string {
 }
 
 export default function Album(props: Props) {
-  const albumId = () => props.param ? Number(props.param) : null;
-  const [album] = createResource(albumId, (id) => libGetAlbum(id));
-  const [tracks] = createResource(albumId, (id) => libGetTracksByAlbum(id));
+  const albumTitle = () => props.param ? decodeURIComponent(props.param) : null;
+  const [tracks] = createResource(albumTitle, (title) => libGetTracksByAlbum(title));
+  const album = () => {
+    const t = tracks();
+    if (!t || t.length === 0) return null;
+    return { title: albumTitle()!, artist_name: t[0].artist_name, year: t[0].album_year, cover_path: t[0].album_cover_path, track_count: t.length } as any;
+  };
 
   const totalDur = () => {
     const t = tracks();

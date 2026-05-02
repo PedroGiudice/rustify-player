@@ -89,8 +89,8 @@ async function load(view) {
       const playBtn = e.target.closest("[data-play-album]");
       if (playBtn) {
         e.stopPropagation();
-        const albumId = Number(playBtn.dataset.playAlbum);
-        const tracks = await invoke("lib_list_tracks", { album, limit: 100 });
+        const albumTitle = playBtn.dataset.playAlbum;
+        const tracks = await invoke("lib_list_tracks", { album: albumTitle, limit: 100 });
         if (tracks.length > 0) {
           setQueue(tracks, 0);
           playTrack(tracks[0]);
@@ -99,7 +99,7 @@ async function load(view) {
       }
       const card = e.target.closest(".card");
       if (card) {
-        navigate(`/album/${card.dataset.albumId}`);
+        navigate(`/album/${encodeURIComponent(card.dataset.albumId)}`);
       }
     });
   } catch (err) {

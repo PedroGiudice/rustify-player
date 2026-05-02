@@ -61,7 +61,7 @@ async function load(view) {
 
     body.addEventListener("click", (e) => {
       const card = e.target.closest(".card");
-      if (card) navigate(`/artist/${card.dataset.artistId}`);
+      if (card) navigate(`/artist/${encodeURIComponent(card.dataset.artistId)}`);
     });
   } catch (err) {
     body.innerHTML = `<div class="empty-state"><p class="empty-state__title">Failed to load</p><p class="empty-state__hint">${err}</p></div>`;

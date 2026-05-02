@@ -20,12 +20,12 @@ import {
   playerPlay, playerPause, playerResume, playerSeek,
   playerEnqueueNext, playerSetOrigin,
   setVolume, libIsLiked, libToggleLike, libRecordPlay,
-  libGetAlbum, libAutoplayNext, getState, cycleRepeat as ipcCycleRepeat,
+  libAutoplayNext, getState, cycleRepeat as ipcCycleRepeat,
   coverUrl, formatDuration, onPlayerState, onMprisCommand,
 } from "../tauri";
 import { showPlayerMenu } from "../js/components/context-menu.js";
 
-const recentlyPlayedIds = new Set<number>();
+const recentlyPlayedIds = new Set<string>();
 
 export function PlayerBar() {
   let seekBarRef!: HTMLDivElement;

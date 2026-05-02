@@ -15,10 +15,10 @@ function initials(name: string): string {
 }
 
 export default function Albums() {
-  const [albums] = createResource(() => libGetAlbums(500));
+  const [albums] = createResource(() => libGetAlbums({ limit: 500 }));
 
-  async function playAlbum(albumId: number) {
-    const tracks = await libGetTracksByAlbum(albumId);
+  async function playAlbum(albumTitle: string) {
+    const tracks = await libGetTracksByAlbum(albumTitle);
     if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
   }
 

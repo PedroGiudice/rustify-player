@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { createResource, Show, For } from "solid-js";
-import { libSnapshot, libListGenres, libListHistory, libGetAlbums, libRecommendations, libShuffle, libGetAlbum, libGetTracksByAlbum, coverUrl } from "../tauri";
+import { libSnapshot, libListGenres, libListHistory, libGetAlbums, libRecommendations, libShuffle, libGetTracksByAlbum, coverUrl } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate } from "../router";
@@ -21,7 +21,7 @@ export default function Home() {
       libSnapshot(),
       libListGenres(),
       libListHistory(8).catch(() => []),
-      libGetAlbums(8).catch(() => []),
+      libGetAlbums({ limit: 8 }).catch(() => []),
       libRecommendations().catch(() => ({ most_played: [], based_on_top: [], discover: [] })),
     ]);
     return { snap, genres, recentTracks, albums, recs };
@@ -37,8 +37,8 @@ export default function Home() {
     playTrack(t);
   }
 
-  async function playAlbum(albumId: number) {
-    const tracks = await libGetTracksByAlbum(albumId);
+  async function playAlbum(albumTitle: string) {
+    const tracks = await libGetTracksByAlbum(albumTitle);
     if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
   }
 

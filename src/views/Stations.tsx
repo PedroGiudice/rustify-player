@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { createResource, createSignal, Show, For } from "solid-js";
-import { libListMoods, libListMoodTracks, libAutoplayNext, coverUrl } from "../tauri";
+import { libMoodSearch, libAutoplayNext, coverUrl } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { showTrackMenu } from "../js/components/context-menu.js";
@@ -20,13 +20,22 @@ function formatMs(ms: number | null): string {
 }
 
 export default function Stations() {
-  const [stations] = createResource(() => libListMoods());
+  const MOOD_PRESETS = [
+    { name: "Chill", query: "relaxar chill", accent_color: "#4a90d9" },
+    { name: "Workout", query: "malhar treino high energy", accent_color: "#e74c3c" },
+    { name: "Focus", query: "estudar focus", accent_color: "#2ecc71" },
+    { name: "Party", query: "festa party dançar", accent_color: "#f39c12" },
+    { name: "Road Trip", query: "dirigir road trip", accent_color: "#9b59b6" },
+    { name: "Sleep", query: "dormir sleep baixa energia", accent_color: "#1abc9c" },
+  ];
+
+  const stations = () => MOOD_PRESETS;
   const [activeStation, setActiveStation] = createSignal<any>(null);
   const [stationTracks, setStationTracks] = createSignal<Track[]>([]);
 
   async function openStation(station: any) {
     try {
-      const tracks = await libListMoodTracks(station.id);
+      const tracks = await libMoodSearch(station.query, 50);
       setActiveStation(station);
       setStationTracks(tracks);
     } catch (err) {
@@ -40,9 +49,9 @@ export default function Stations() {
     setStationTracks([]);
   }
 
-  async function playStation(stationId: number) {
+  async function playStation(query: string) {
     try {
-      const tracks = await libListMoodTracks(stationId);
+      const tracks = await libMoodSearch(query, 50);
       if (tracks.length > 0) {
         // Shuffle
         for (let i = tracks.length - 1; i > 0; i--) {
@@ -116,7 +125,7 @@ export default function Stations() {
                         <div class="station-card__title">{s.name}</div>
                         <div class="station-card__count">{s.track_count} tracks</div>
                       </div>
-                      <button class="station-card__play" onClick={(e) => { e.stopPropagation(); playStation(s.id); }} aria-label={`Play ${s.name}`}>
+                      <button class="station-card__play" onClick={(e) => { e.stopPropagation(); playStation(s.query); }} aria-label={`Play ${s.name}`}>
                         <svg class="icon icon--filled"><use href="#icon-play" /></svg>
                       </button>
                     </div>

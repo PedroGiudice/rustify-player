@@ -80,13 +80,13 @@ async function loadLibrary(view) {
     chips.addEventListener("click", async (e) => {
       const btn = e.target.closest(".chip");
       if (!btn) return;
-      const genreId = Number(btn.dataset.genreId);
+      const genreName = btn.dataset.genreId;
       const active = btn.classList.contains("chip--active");
 
       chips.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--active"));
       if (!active) {
         btn.classList.add("chip--active");
-        const filtered = await invoke("lib_list_tracks", { genre, limit: 200 });
+        const filtered = await invoke("lib_list_tracks", { genre: genreName, limit: 200 });
         renderTracks(body.querySelector("#track-rows"), filtered);
       } else {
         renderTracks(body.querySelector("#track-rows"), tracks);

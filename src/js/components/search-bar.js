@@ -142,14 +142,14 @@ export function mountSearchBar(container) {
 
     const albumItem = e.target.closest("[data-album-id]");
     if (albumItem) {
-      navigate(`/album/${albumItem.dataset.albumId}`);
+      navigate(`/album/${encodeURIComponent(albumItem.dataset.albumId)}`);
       closeSearch();
       return;
     }
 
     const artistItem = e.target.closest("[data-artist-id]");
     if (artistItem) {
-      navigate(`/artist/${artistItem.dataset.artistId}`);
+      navigate(`/artist/${encodeURIComponent(artistItem.dataset.artistId)}`);
       closeSearch();
       return;
     }
