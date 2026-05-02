@@ -526,6 +526,21 @@ fn qdrant_sync(lib: State<Library>, qdrant: State<Qdrant>) -> Result<usize, Stri
     lib.handle.sync_to_qdrant(client).map_err(err)
 }
 
+#[tauri::command]
+fn qdrant_sync_lyrics(
+    lib: State<Library>,
+    qdrant: State<Qdrant>,
+    tei_url: Option<String>,
+) -> Result<usize, String> {
+    let client = qdrant.0.as_ref().ok_or("Qdrant not configured")?;
+    let url = tei_url.unwrap_or_else(|| "http://100.123.73.128:8080".to_string());
+    let lyrics_client = library_indexer::LyricsEmbedClient::new(url);
+    if !lyrics_client.is_healthy() {
+        return Err("TEI BGE-M3 not available".to_string());
+    }
+    lib.handle.sync_lyrics_to_qdrant(client, &lyrics_client).map_err(err)
+}
+
 // ---------------------------------------------------------------------------
 // Player commands
 // ---------------------------------------------------------------------------
@@ -1425,18 +1440,8 @@ pub fn run() {
                             Ok(n) => tracing::info!(n, "Qdrant MERT sync complete"),
                             Err(e) => tracing::warn!(?e, "Qdrant MERT sync failed"),
                         }
-                        // Lyrics sync: embed via TEI BGE-M3 if available
-                        let lyrics_client = library_indexer::LyricsEmbedClient::new(
-                            "http://100.123.73.128:8080"
-                        );
-                        if lyrics_client.is_healthy() {
-                            match indexer_clone.sync_lyrics_to_qdrant(&client_clone, &lyrics_client) {
-                                Ok(n) => tracing::info!(n, "Qdrant lyrics sync complete"),
-                                Err(e) => tracing::warn!(?e, "Qdrant lyrics sync failed"),
-                            }
-                        } else {
-                            tracing::info!("TEI not available — skipping lyrics embedding");
-                        }
+                        // Lyrics sync disabled — data needs curation before embedding.
+                        // Trigger manually via qdrant_sync_lyrics IPC when ready.
                     })
                     .ok();
             } else {
@@ -1645,6 +1650,7 @@ pub fn run() {
             lib_list_moods,
             lib_list_mood_tracks,
             qdrant_sync,
+            qdrant_sync_lyrics,
             player_play,
             player_set_origin,
             player_pause,
