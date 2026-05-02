@@ -36,6 +36,9 @@ if [ ! -f "$QDRANT_BIN" ]; then
   mv src-tauri/binaries/qdrant "$QDRANT_BIN"
 fi
 
+echo "[release] building frontend"
+bun run build
+
 echo "[release] build v${VERSION}"
 cargo tauri build --bundles deb >/dev/null
 

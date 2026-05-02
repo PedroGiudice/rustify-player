@@ -52,8 +52,7 @@ struct PlayerSnapshot {
 struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
 /// Port on which the local media HTTP server is listening.
-/// Bound to 127.0.0.1:0 at startup; frontend discovers the port via
-/// the `get_media_port` command.
+/// Fixed at 19876 so the Tauri CSP can allowlist it statically.
 struct MediaServerPort(u16);
 
 // ---------------------------------------------------------------------------
@@ -1334,7 +1333,7 @@ async fn install_update() -> Result<(), String> {
 fn start_media_server(media_dir: std::path::PathBuf) -> std::io::Result<u16> {
     use std::net::TcpListener;
 
-    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let listener = TcpListener::bind("127.0.0.1:19876")?;
     let port = listener.local_addr()?.port();
     tracing::info!(port, "media HTTP server listening");
 

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rustify</title>
+    <!-- CSS é importado via main.tsx pelo Vite -->
+    <!-- Scripts MCP dev — fora do bundle Vite, carregados diretamente -->
+    <script src="js/resolve-ref.js"></script>
+    <script src="js/mcp-aria-api.js"></script>
+    <script src="js/mcp-dom-snapshot.js"></script>
+    <!-- Entry point Solid — Vite injeta o bundle aqui -->
+    <script type="module" src="/src/main.tsx"></script>
+  </head>
+  <body>
+    <!-- Solid monta aqui via render(() => <App />, document.getElementById("app")) -->
+    <div id="app"></div>
+  </body>
+</html>

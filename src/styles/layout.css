@@ -6,7 +6,7 @@
  * Sidebar width driven by --sidebar-w token.
  */
 
-body {
+#app {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   grid-template-rows: 34px 1fr var(--player-bar-h);
@@ -16,6 +16,8 @@ body {
     "player-bar player-bar";
   transition: grid-template-columns var(--dur-normal) var(--ease-standard),
               grid-template-rows var(--dur-normal) var(--ease-standard);
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* ===== Custom titlebar (decorations: false) ===== */
@@ -217,3 +219,7 @@ html[data-density="compact"] .player-bar {
 
 /* Hide view title on routes where a hero replaces it */
 .view--hero .view__header { display: none; }
+.view--hero {
+  position: relative;
+  overflow: hidden;
+}

@@ -1,10 +1,8 @@
 use crate::error::IndexerError;
-use crate::qdrant_client::QdrantClient;
 use rusqlite::{params, Connection};
 
 pub fn insert_play_event(
     conn: &Connection,
-    qdrant: Option<&QdrantClient>,
     track_id: i64,
     origin: &str,
     started_at: &str,
@@ -17,15 +15,6 @@ pub fn insert_play_event(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![track_id, origin, started_at, ended_at, end_position_ms, duration_ms],
     )?;
-
-    if let Some(client) = qdrant {
-        let end_pos = end_position_ms.unwrap_or(0) as u64;
-        let dur = duration_ms as u64;
-        if let Err(e) = client.insert_play_event(track_id, origin, started_at, end_pos, dur) {
-            tracing::warn!(?e, track_id, "failed to insert play_event to Qdrant");
-        }
-    }
-
     Ok(())
 }
 

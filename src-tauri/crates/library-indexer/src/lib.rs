@@ -29,7 +29,7 @@ pub mod play_events;
 pub mod qdrant_client;
 
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
-pub use qdrant_client::QdrantClient;
+pub use qdrant_client::{MoodFilters, QdrantClient};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use search::{FolderPlaylist, PlaylistSearchResult, Recommendations};
@@ -219,7 +219,6 @@ impl IndexerHandle {
 
     pub fn insert_play_event(
         &self,
-        qdrant: Option<&QdrantClient>,
         track_id: i64,
         origin: &str,
         started_at: &str,
@@ -230,7 +229,6 @@ impl IndexerHandle {
         self.inner.write_pool.with(|conn| {
             play_events::insert_play_event(
                 conn,
-                qdrant,
                 track_id,
                 origin,
                 started_at,

@@ -1,5 +1,6 @@
 // Hash router — vanilla, supports parameterized routes (e.g. /album/123).
 // Views are dynamic imports. Each exposes render(params?).
+import { logEvent } from "./utils/events.js";
 
 const routes = {
   "":            () => import("./views/home.js"),
@@ -37,9 +38,14 @@ export function currentRoute() {
   return path in routes ? path : DEFAULT_ROUTE;
 }
 
+let lastRoute = null;
 async function resolve(mount) {
   const { path, param } = parseHash();
   const routePath = path in routes ? path : DEFAULT_ROUTE;
+  if (lastRoute !== null && lastRoute !== routePath) {
+    logEvent("view_change", { from_view: lastRoute, to_view: routePath });
+  }
+  lastRoute = routePath;
   const loader = routes[routePath];
 
   try {

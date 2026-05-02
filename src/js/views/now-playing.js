@@ -14,7 +14,27 @@ export function render() {
   view.className = "view view--hero";
   view.innerHTML = `<div class="np" id="np-root"><p class="empty-state__hint">Loading...</p></div>`;
   load(view);
+  mountBgVideo(view);
   return view;
+}
+
+async function mountBgVideo(view) {
+  try {
+    const url = "http://127.0.0.1:19876/bg-video.mp4";
+    const container = document.createElement("div");
+    container.className = "np-bg-video";
+    const video = document.createElement("video");
+    video.className = "np-bg-video__el";
+    video.src = url;
+    video.autoplay = true;
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    container.appendChild(video);
+    view.prepend(container);
+  } catch (err) {
+    console.warn("[now-playing] bg video failed:", err);
+  }
 }
 
 async function load(view) {

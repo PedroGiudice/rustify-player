@@ -15,6 +15,120 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+#[derive(Debug, Default)]
+pub struct MoodFilters {
+    pub mood_tags: Vec<String>,
+    pub activity_tags: Vec<String>,
+    pub genre: Option<String>,
+    pub energy_min: Option<f32>,
+    pub energy_max: Option<f32>,
+    pub valence_min: Option<f32>,
+    pub valence_max: Option<f32>,
+}
+
+impl MoodFilters {
+    pub fn is_empty(&self) -> bool {
+        self.mood_tags.is_empty()
+            && self.activity_tags.is_empty()
+            && self.genre.is_none()
+            && self.energy_min.is_none()
+            && self.energy_max.is_none()
+            && self.valence_min.is_none()
+            && self.valence_max.is_none()
+    }
+
+    pub fn parse(query: &str) -> Self {
+        let q = query.to_lowercase();
+        let mut f = MoodFilters::default();
+
+        // Bigrams first (order matters — "road trip" before "road")
+        let bigram_map: &[(&str, Box<dyn Fn(&mut MoodFilters)>)] = &[
+            ("road trip", Box::new(|f: &mut MoodFilters| f.activity_tags.push("road_trip".into()))),
+            ("hip hop", Box::new(|f: &mut MoodFilters| f.genre = Some("Rap & Hip-Hop".into()))),
+            ("hip-hop", Box::new(|f: &mut MoodFilters| f.genre = Some("Rap & Hip-Hop".into()))),
+            ("alta energia", Box::new(|f: &mut MoodFilters| f.energy_min = Some(0.7))),
+            ("high energy", Box::new(|f: &mut MoodFilters| f.energy_min = Some(0.7))),
+            ("baixa energia", Box::new(|f: &mut MoodFilters| f.energy_max = Some(0.3))),
+            ("low energy", Box::new(|f: &mut MoodFilters| f.energy_max = Some(0.3))),
+            ("funk br", Box::new(|f: &mut MoodFilters| f.genre = Some("Funk Brasileiro".into()))),
+            ("funk soul", Box::new(|f: &mut MoodFilters| f.genre = Some("Funk & Soul".into()))),
+            ("pra cima", Box::new(|f: &mut MoodFilters| f.valence_min = Some(0.7))),
+            ("pra baixo", Box::new(|f: &mut MoodFilters| f.valence_max = Some(0.3))),
+        ];
+
+        let mut consumed = q.clone();
+        for (bigram, apply) in bigram_map {
+            if consumed.contains(bigram) {
+                apply(&mut f);
+                consumed = consumed.replace(bigram, " ");
+            }
+        }
+
+        let tokens: Vec<&str> = consumed.split_whitespace().collect();
+        for tok in &tokens {
+            match *tok {
+                // Activity
+                "malhar" | "treino" | "workout" | "academia" => f.activity_tags.push("malhar".into()),
+                "relaxar" | "relax" | "chill" | "calmo" | "calma" => f.activity_tags.push("relaxar".into()),
+                "dirigir" | "drive" | "carro" => f.activity_tags.push("dirigir".into()),
+                "estudar" | "study" | "foco" | "focus" => f.activity_tags.push("estudar".into()),
+                "festa" | "party" => f.activity_tags.push("festa".into()),
+                "correr" | "run" | "running" => f.activity_tags.push("correr".into()),
+                "dançar" | "dance" | "dancing" => f.activity_tags.push("dançar".into()),
+                "acordar" | "morning" | "manhã" => f.activity_tags.push("acordar".into()),
+                "dormir" | "sleep" => f.activity_tags.push("dormir".into()),
+                "meditar" | "meditation" => f.activity_tags.push("meditar".into()),
+                "churrasco" | "bbq" => f.activity_tags.push("churrasco".into()),
+                "cozinhar" | "cooking" => f.activity_tags.push("cozinhar".into()),
+                "trabalhar" | "work" => f.activity_tags.push("trabalhar".into()),
+                // Mood
+                "triste" | "sad" => f.mood_tags.push("melancólico".into()),
+                "alegre" | "happy" | "feliz" => f.mood_tags.push("alegre".into()),
+                "animado" | "energia" | "energetic" | "energy" => f.mood_tags.push("energético".into()),
+                "agressivo" | "aggressive" | "pesado" | "heavy" => f.mood_tags.push("agressivo".into()),
+                "romântico" | "romantic" | "amor" | "love" => f.mood_tags.push("romântico".into()),
+                "sombrio" | "dark" => f.mood_tags.push("sombrio".into()),
+                "nostálgico" | "nostalgia" => f.mood_tags.push("nostálgico".into()),
+                "misterioso" | "mystery" => f.mood_tags.push("misterioso".into()),
+                "rebelde" | "rebel" => f.mood_tags.push("rebelde".into()),
+                "sensual" | "sexy" => f.mood_tags.push("sensual".into()),
+                "empoderador" | "empowering" => f.mood_tags.push("empoderador".into()),
+                "intenso" => f.energy_min = Some(0.7),
+                "suave" | "soft" => f.energy_max = Some(0.3),
+                // Genre (single tokens not caught by bigrams)
+                "funk" => {
+                    if f.genre.is_none() {
+                        f.genre = Some("Funk Brasileiro".into());
+                    }
+                }
+                "rock" => f.genre = Some("Rock".into()),
+                "mpb" => f.genre = Some("MPB".into()),
+                "rap" => {
+                    if f.genre.is_none() {
+                        f.genre = Some("Rap & Hip-Hop".into());
+                    }
+                }
+                "eletrônica" | "eletronica" | "electronic" => f.genre = Some("Eletrônica".into()),
+                "soul" => {
+                    if f.genre.is_none() {
+                        f.genre = Some("Funk & Soul".into());
+                    }
+                }
+                "trance" => f.genre = Some("Trance".into()),
+                _ => {}
+            }
+        }
+
+        // Deduplicate tags
+        f.mood_tags.sort();
+        f.mood_tags.dedup();
+        f.activity_tags.sort();
+        f.activity_tags.dedup();
+
+        f
+    }
+}
+
 /// Name of the Qdrant collection.
 const COLLECTION: &str = "rustify_tracks";
 
@@ -332,6 +446,58 @@ impl QdrantClient {
         Ok(results)
     }
 
+    pub fn mood_search(&self, filters: &MoodFilters, limit: usize) -> Result<Vec<i64>, IndexerError> {
+        let mut must = Vec::new();
+
+        for tag in &filters.mood_tags {
+            must.push(json!({"key": "mood_tags", "match": {"value": tag}}));
+        }
+        for tag in &filters.activity_tags {
+            must.push(json!({"key": "activity_tags", "match": {"value": tag}}));
+        }
+        if let Some(genre) = &filters.genre {
+            must.push(json!({"key": "genre", "match": {"value": genre}}));
+        }
+        if let Some(min) = filters.energy_min {
+            must.push(json!({"key": "energy", "range": {"gte": min}}));
+        }
+        if let Some(max) = filters.energy_max {
+            must.push(json!({"key": "energy", "range": {"lte": max}}));
+        }
+        if let Some(min) = filters.valence_min {
+            must.push(json!({"key": "valence", "range": {"gte": min}}));
+        }
+        if let Some(max) = filters.valence_max {
+            must.push(json!({"key": "valence", "range": {"lte": max}}));
+        }
+
+        let body = json!({
+            "filter": {"must": must},
+            "limit": limit,
+            "with_payload": false,
+            "with_vector": false
+        });
+
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant mood search: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut ids = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                if let Some(id) = p["id"].as_i64() {
+                    ids.push(id);
+                }
+            }
+        }
+
+        Ok(ids)
+    }
+
     /// Sync all tracks with MERT embeddings from SQLite to Qdrant.
     ///
     /// Incremental: fetches all point IDs already present in Qdrant and skips
@@ -519,6 +685,25 @@ impl QdrantClient {
         Ok(())
     }
 
+    pub fn insert_raw_event(&self, payload: &Value) -> Result<(), IndexerError> {
+        let point_id = uuid::Uuid::new_v4().to_string();
+        let body = json!({
+            "points": [{
+                "id": point_id,
+                "vector": [0.0],
+                "payload": payload
+            }]
+        });
+        self.agent
+            .put(&format!(
+                "{}/collections/{PLAY_EVENTS_COLLECTION}/points",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant insert event: {e}")))?;
+        Ok(())
+    }
+
     /// Scroll the `play_events` collection with a filter, ordered by `started_at` descending.
     ///
     /// Returns the payload of each matching point (up to `limit`).
@@ -570,10 +755,10 @@ impl QdrantClient {
     pub fn behavioral_signals(&self) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
         // --- Positives ---
         let pos_filter = json!({
-            "must": [{
-                "key": "listen_pct",
-                "range": { "gte": 0.8 }
-            }]
+            "must": [
+                { "key": "event_type", "match": { "value": "track_ended" } },
+                { "key": "listen_pct", "range": { "gte": 0.8 } }
+            ]
         });
         let pos_payloads = self.scroll_play_events(pos_filter, 100)?;
 
@@ -601,6 +786,7 @@ impl QdrantClient {
         // --- Negatives ---
         let neg_filter = json!({
             "must": [
+                { "key": "event_type", "match": { "value": "track_ended" } },
                 { "key": "listen_pct", "range": { "lt": 0.15 } }
             ],
             "must_not": [

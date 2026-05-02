@@ -14,6 +14,7 @@
 // one place that stays in seconds because the engine itself does.
 
 import { showPlayerMenu } from "./context-menu.js";
+import { logEvent } from "../utils/events.js";
 
 const { listen } = window.__TAURI__.event;
 const { invoke, convertFileSrc } = window.__TAURI__.core;
@@ -60,9 +61,8 @@ export function isSmartStation() {
 }
 
 export function enqueueNext(track) {
-  // Insert after current position in the queue.
   trackQueue.splice(queueIndex + 1, 0, track);
-  // Tell the engine to pre-load if this is the immediate next track.
+  logEvent("queue_add", { track_id: track.id, source: "manual" });
   if (queueIndex + 1 === trackQueue.length - 1 || trackQueue.length === 1) {
     invoke("player_enqueue_next", { path: track.path }).catch(() => {});
   }
@@ -70,6 +70,7 @@ export function enqueueNext(track) {
 
 export function enqueueEnd(track) {
   trackQueue.push(track);
+  logEvent("queue_add", { track_id: track.id, source: "manual" });
 }
 
 async function autoplayNext(seedTrack) {
@@ -184,6 +185,10 @@ export function mountPlayerBar(root) {
   bindMore();
   listenEngine();
   bindVisibilitySync();
+  logEvent("session_start");
+  window.addEventListener("beforeunload", () => {
+    logEvent("session_end", { tracks_played: recentlyPlayedIds.size });
+  });
 }
 
 function cacheUI(root) {
@@ -217,8 +222,10 @@ function bindTransport() {
     if (ui.playPauseBtn.getAttribute("aria-disabled") === "true") return;
     if (isPlaying) {
       invoke("player_pause");
+      logEvent("pause", { track_id: currentTrack?.id, position_ms: Math.round(currentSecs * 1000) });
     } else {
       invoke("player_resume");
+      logEvent("resume", { track_id: currentTrack?.id, position_ms: Math.round(currentSecs * 1000) });
     }
   });
 
@@ -226,6 +233,7 @@ function bindTransport() {
     if (ui.prevBtn.getAttribute("aria-disabled") === "true") return;
     if (isTransitioning) return;
     if (queueIndex > 0) {
+      logEvent("previous", { track_id: currentTrack?.id, position_ms: Math.round(currentSecs * 1000), prev_track_id: trackQueue[queueIndex - 1]?.id });
       queueIndex--;
       playTrack(trackQueue[queueIndex], "queue");
     }
@@ -235,6 +243,7 @@ function bindTransport() {
     if (ui.nextBtn.getAttribute("aria-disabled") === "true") return;
     if (isTransitioning) return;
     if (queueIndex < trackQueue.length - 1) {
+      logEvent("skip", { track_id: currentTrack?.id, position_ms: Math.round(currentSecs * 1000), duration_ms: Math.round(durationSecs * 1000), origin: smartStationActive ? "autoplay" : "queue", next_track_id: trackQueue[queueIndex + 1]?.id });
       queueIndex++;
       playTrack(trackQueue[queueIndex], "queue");
     }
@@ -244,6 +253,7 @@ function bindTransport() {
     if (isTransitioning) return;
     if (e.payload === "next") {
       if (queueIndex < trackQueue.length - 1) {
+        logEvent("skip", { track_id: currentTrack?.id, position_ms: Math.round(currentSecs * 1000), duration_ms: Math.round(durationSecs * 1000), origin: "mpris", next_track_id: trackQueue[queueIndex + 1]?.id });
         queueIndex++;
         playTrack(trackQueue[queueIndex], "queue");
       } else if (autoplayEnabled && currentTrack?.id) {
@@ -251,6 +261,7 @@ function bindTransport() {
       }
     } else if (e.payload === "previous") {
       if (queueIndex > 0) {
+        logEvent("previous", { track_id: currentTrack?.id, position_ms: Math.round(currentSecs * 1000), prev_track_id: trackQueue[queueIndex - 1]?.id });
         queueIndex--;
         playTrack(trackQueue[queueIndex], "queue");
       }
@@ -259,6 +270,7 @@ function bindTransport() {
 
   ui.shuffleBtn.addEventListener("click", () => {
     const active = ui.shuffleBtn.classList.toggle("is-active");
+    logEvent("shuffle_toggle", { enabled: active, queue_size: trackQueue.length });
     if (active && trackQueue.length > 1) {
       // Shuffle remaining tracks (keep current track in place)
       const current = trackQueue[queueIndex];
@@ -278,6 +290,7 @@ function bindTransport() {
     const next = modes[(modes.indexOf(cur) + 1) % modes.length];
     ui.repeatBtn.dataset.mode = next;
     ui.repeatBtn.classList.toggle("is-active", next !== "off");
+    logEvent("repeat_change", { mode: next });
     invoke("cycle_repeat").catch(() => {});
   });
 }
@@ -287,6 +300,7 @@ function bindSeek() {
     if (!currentTrack || !durationSecs) return;
     isScrubbing = true;
     ui.progressBar.classList.add("is-scrubbing");
+    const seekFromMs = Math.round(currentSecs * 1000);
     updateSeekFromEvent(e);
 
     const onMove = (ev) => updateSeekFromEvent(ev);
@@ -294,6 +308,8 @@ function bindSeek() {
       isScrubbing = false;
       ui.progressBar.classList.remove("is-scrubbing");
       updateSeekFromEvent(ev);
+      const toMs = Math.round(currentSecs * 1000);
+      logEvent("seek", { track_id: currentTrack?.id, from_ms: seekFromMs, to_ms: toMs, direction: toMs >= seekFromMs ? "fwd" : "bwd" });
       invoke("player_seek", { seconds: currentSecs }).catch(() => {});
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
@@ -315,15 +331,18 @@ function updateSeekFromEvent(e) {
 
 function bindVolume() {
   ui.volProgress.addEventListener("pointerdown", (e) => {
+    const startPct = parseFloat(ui.volFill.style.width) / 100 || 0.78;
+    let lastPct = startPct;
     const update = (ev) => {
       const rect = ui.volProgress.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-      ui.volFill.style.width = `${pct * 100}%`;
-      invoke("set_volume", { volume: pct }).catch(() => {});
+      lastPct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      ui.volFill.style.width = `${lastPct * 100}%`;
+      invoke("set_volume", { volume: lastPct }).catch(() => {});
     };
     update(e);
     const onMove = (ev) => update(ev);
     const onUp = () => {
+      logEvent("volume_change", { old_vol: Math.round(startPct * 100), new_vol: Math.round(lastPct * 100) });
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -401,6 +420,9 @@ function listenEngine() {
     } else if (payload.TrackEnded != null) {
       const endedTrack = currentTrack;
       if (endedTrack?.id) {
+        const durMs = Math.round(durationSecs * 1000);
+        const endPosMs = Math.round(currentSecs * 1000) || durMs;
+        logEvent("track_ended", { track_id: endedTrack.id, duration_ms: durMs, end_position_ms: endPosMs, listen_pct: durMs > 0 ? Math.min(1, endPosMs / durMs) : 0, origin: smartStationActive ? "autoplay" : "album_seq" });
         invoke("lib_record_play", { trackId: endedTrack.id })
           .catch((err) => console.error("[history] record_play failed:", err));
         recentlyPlayedIds.add(endedTrack.id);

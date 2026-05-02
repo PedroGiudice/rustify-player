@@ -10,6 +10,7 @@
 import { playTrack, setQueue } from "./player-bar.js";
 import { navigate } from "../router.js";
 import { formatMs } from "../utils/format.js";
+import { logEvent } from "../utils/events.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
@@ -130,6 +131,9 @@ export function mountSearchBar(container) {
     const trackItem = e.target.closest("[data-track-id]");
     if (trackItem) {
       const trackData = JSON.parse(trackItem.dataset.trackJson);
+      const items = ui.dropdown.querySelectorAll("[data-track-id]");
+      const pos = Array.from(items).indexOf(trackItem);
+      logEvent("search_click", { track_id: trackData.id, query_text: ui.input.value, result_position: pos });
       setQueue([trackData], 0);
       playTrack(trackData);
       closeSearch();
@@ -188,11 +192,14 @@ async function handleQuery(q) {
 
   if (currentContext === "global") {
     try {
-      const [results, semantic] = await Promise.all([
+      const [results, semantic, mood] = await Promise.all([
         invoke("lib_search", { query: q, limit: 8 }),
         invoke("lib_semantic_search", { query: q, limit: 5 }).catch(() => []),
+        invoke("lib_mood_search", { query: q, limit: 10 }).catch(() => []),
       ]);
-      renderGlobalResults(results, semantic);
+      const total = (results.tracks?.length || 0) + (results.albums?.length || 0) + (results.artists?.length || 0) + semantic.length + mood.length;
+      logEvent("search_query", { query_text: q, results_count: total });
+      renderGlobalResults(results, semantic, mood);
     } catch (err) {
       console.error("[search] global search failed:", err);
       renderError(err);
@@ -212,10 +219,10 @@ async function handleQuery(q) {
   }
 }
 
-function renderGlobalResults(results, semantic = []) {
+function renderGlobalResults(results, semantic = [], mood = []) {
   const { tracks, albums, artists } = results;
 
-  if (!tracks.length && !albums.length && !artists.length && !semantic.length) {
+  if (!tracks.length && !albums.length && !artists.length && !semantic.length && !mood.length) {
     ui.dropdown.innerHTML = `<div class="search-empty">No results</div>`;
     ui.dropdown.hidden = false;
     return;
@@ -273,6 +280,28 @@ function renderGlobalResults(results, semantic = []) {
     if (unique.length > 0) {
       html += `<div class="search-section search-section--semantic">
         <div class="search-section__label">By Lyrics</div>
+        ${unique.map((t) => `
+          <div class="search-item" data-track-id="${t.id}" data-track-json='${escJson(t)}'>
+            <div class="search-item__cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</div>
+            <div class="search-item__meta">
+              <div class="search-item__title">${esc(t.title)}</div>
+              <div class="search-item__sub">${esc(t.artist_name || "—")} &middot; ${formatMs(t.duration_ms)}</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>`;
+    }
+  }
+
+  if (mood.length > 0) {
+    const shownIds = new Set([
+      ...tracks.map((t) => t.id),
+      ...semantic.map((t) => t.id),
+    ]);
+    const unique = mood.filter((t) => !shownIds.has(t.id));
+    if (unique.length > 0) {
+      html += `<div class="search-section search-section--mood">
+        <div class="search-section__label">By Mood</div>
         ${unique.map((t) => `
           <div class="search-item" data-track-id="${t.id}" data-track-json='${escJson(t)}'>
             <div class="search-item__cover">${t.album_cover_path ? `<img src="${convertFileSrc(t.album_cover_path)}" alt="">` : ""}</div>

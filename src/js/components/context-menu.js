@@ -46,6 +46,15 @@ export function showTrackMenu(e, track, tracks, trackIndex) {
       }
       playTrack(track);
     }},
+    ...(tracks && tracks.length > 1 ? [{ label: "Shuffle", icon: "icon-shuffle", action: () => {
+      const remaining = tracks.filter((_, i) => i !== trackIndex);
+      for (let i = remaining.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+      }
+      setQueue([track, ...remaining], 0);
+      playTrack(track);
+    }}] : []),
     { label: "Play Next", icon: "icon-skip-next", action: () => {
       enqueueNext(track);
     }},

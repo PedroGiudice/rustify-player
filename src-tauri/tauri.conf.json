@@ -4,7 +4,8 @@
   "version": "0.2.0",
   "identifier": "dev.cmr.rustifyplayer",
   "build": {
-    "frontendDist": "../src"
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420"
   },
   "app": {
     "withGlobalTauri": true,
@@ -21,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: http://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost; font-src 'self' data:",
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: http://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:19876; media-src 'self' http://127.0.0.1:19876; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["$HOME/.cache/rustify-player/**", "**/.cache/rustify-player/**"]
