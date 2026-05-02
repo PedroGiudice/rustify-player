@@ -6,21 +6,21 @@ import { formatMs } from "../utils/format.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
-export function render(albumId) {
+export function render(albumTitle) {
   const view = document.createElement("article");
   view.className = "view view--hero";
   view.innerHTML = `<div class="album-detail" id="album-detail"><p class="empty-state__hint">Loading...</p></div>`;
-  if (albumId) load(view, Number(albumId));
+  if (albumTitle) load(view, decodeURIComponent(albumTitle));
   return view;
 }
 
-async function load(view, albumId) {
+async function load(view, albumTitle) {
   const container = view.querySelector("#album-detail");
   try {
-    const [album, tracks] = await Promise.all([
-      invoke("lib_get_album", { id: albumId }),
-      invoke("lib_list_tracks", { albumId, limit: 200 }),
-    ]);
+    const tracks = await invoke("lib_list_tracks", { album: albumTitle, limit: 200 });
+    const album = tracks.length > 0
+      ? { title: albumTitle, cover_path: tracks[0].album_cover_path, artist_name: tracks[0].artist_name, year: tracks[0].album_year }
+      : null;
 
     if (!album) {
       container.innerHTML = `<div class="empty-state"><p class="empty-state__title">Album not found</p></div>`;
@@ -43,7 +43,7 @@ async function load(view, albumId) {
           </button>
           <div class="album-detail__eyebrow">Album${album.year ? ` \u2022 ${album.year}` : ""}</div>
           <h1 class="album-detail__title">${esc(album.title)}</h1>
-          <div class="album-detail__artist" id="album-artist">${esc(album.album_artist_name || "\u2014")}</div>
+          <div class="album-detail__artist" id="album-artist">${esc(album.artist_name || "\u2014")}</div>
           <div class="album-detail__stats">
             <span>${tracks.length} tracks</span>
             <span class="view__stats-sep">\u2022</span>
@@ -89,7 +89,7 @@ async function load(view, albumId) {
     // Events
     container.querySelector("#album-back").addEventListener("click", () => navigate("/albums"));
     container.querySelector("#album-artist").addEventListener("click", () => {
-      if (album.artist_id) navigate(`/artist/${album.artist_id}`);
+      if (album.artist_name) navigate(`/artist/${encodeURIComponent(album.artist_name)}`);
     });
     container.querySelector("#album-play-all").addEventListener("click", () => {
       if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }

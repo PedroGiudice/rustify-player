@@ -145,7 +145,7 @@ export default function NowPlaying() {
             <div
               class="np__artist"
               onClick={() => {
-                const id = player.currentTrack?.artist_id;
+                const id = player.currentTrack?.artist_name;
                 if (id) navigate(`/artist/${id}`);
               }}
             >
@@ -155,7 +155,7 @@ export default function NowPlaying() {
             <div
               class="np__album"
               onClick={() => {
-                const id = player.currentTrack?.album_id;
+                const id = player.currentTrack?.album_title;
                 if (id) navigate(`/album/${id}`);
               }}
             >

@@ -502,17 +502,11 @@ function updateProgressUI(pct) {
 
 async function updateTrackMeta(track) {
   // Update cover
-  if (track.album_id) {
+  if (track.album_cover_path) {
     try {
-      const album = await invoke("lib_get_album", { id: track.album_id });
-      if (album && album.cover_path) {
-        const assetUrl = convertFileSrc(album.cover_path);
-        ui.cover.innerHTML = `<img src="${assetUrl}" alt="">`;
-        ui.cover.classList.remove("album-cover-empty");
-      } else {
-        ui.cover.innerHTML = "";
-        ui.cover.classList.add("album-cover-empty");
-      }
+      const assetUrl = convertFileSrc(track.album_cover_path);
+      ui.cover.innerHTML = `<img src="${assetUrl}" alt="">`;
+      ui.cover.classList.remove("album-cover-empty");
     } catch (_) {}
   } else {
     ui.cover.innerHTML = "";
@@ -623,20 +617,12 @@ export async function playTrack(track, origin = "manual") {
     updateLikeUI(false);
   }
 
-  if (track.album_id) {
+  if (track.album_cover_path) {
     try {
-      const album = await invoke("lib_get_album", { id: track.album_id });
-      if (album && album.cover_path) {
-        const assetUrl = convertFileSrc(album.cover_path);
-        ui.cover.innerHTML = `<img src="${assetUrl}" alt="">`;
-        ui.cover.classList.remove("album-cover-empty");
-      } else {
-        ui.cover.innerHTML = "";
-        ui.cover.classList.add("album-cover-empty");
-      }
-    } catch (_) {
-      // album fetch failed — keep empty cover
-    }
+      const assetUrl = convertFileSrc(track.album_cover_path);
+      ui.cover.innerHTML = `<img src="${assetUrl}" alt="">`;
+      ui.cover.classList.remove("album-cover-empty");
+    } catch (_) {}
   }
 
   invoke("player_play", { path: track.path, origin, trackId: track.id || null }).catch((err) =>

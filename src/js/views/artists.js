@@ -31,7 +31,7 @@ async function load(view) {
       body.innerHTML = `
         <div class="card-grid">
           ${filtered.map((a) => `
-            <div class="card" data-artist-id="${a.id}">
+            <div class="card" data-artist-id="${a.name}">
               <div class="card__cover card__cover--initials">${initials(a.name)}</div>
               <div class="card__label">${esc(a.name)}</div>
               <div class="card__sub">${a.track_count || 0} tracks</div>

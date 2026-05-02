@@ -175,12 +175,12 @@ export default function Home() {
                   <div class="card-grid">
                     <For each={d().albums}>
                       {(a: Album) => (
-                        <div class="card" onClick={() => navigate(`/album/${a.id}`)}>
+                        <div class="card" onClick={() => navigate(`/album/${encodeURIComponent(a.title)}`)}>
                           <div class={`card__cover${a.cover_path ? "" : " card__cover--initials"}`}>
                             <Show when={a.cover_path} fallback={<span>{initials(a.title)}</span>}>
                               {(p) => <img src={coverUrl(p())!} alt="" />}
                             </Show>
-                            <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(a.id); }} aria-label="Play">
+                            <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(a.title); }} aria-label="Play">
                               <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play" /></svg>
                             </button>
                           </div>
@@ -223,7 +223,7 @@ export default function Home() {
                   <div class="genre-chips">
                     <For each={populated}>
                       {(g: any) => (
-                        <a class="chip" href={`#/library?genre=${g.id}`}>{g.name} ({g.track_count})</a>
+                        <a class="chip" href={`#/library?genre=${encodeURIComponent(g.name)}`}>{g.name} ({g.track_count})</a>
                       )}
                     </For>
                   </div>

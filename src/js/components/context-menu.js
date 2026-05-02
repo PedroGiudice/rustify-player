@@ -70,14 +70,14 @@ export function showTrackMenu(e, track, tracks, trackIndex) {
     { type: "separator" },
   ];
 
-  if (track.album_id) {
+  if (track.album_title) {
     items.push({ label: "Go to Album", icon: "icon-album", action: () => {
-      navigate(`/album/${track.album_id}`);
+      navigate(`/album/${encodeURIComponent(track.album_title)}`);
     }});
   }
-  if (track.artist_id) {
+  if (track.artist_name) {
     items.push({ label: "Go to Artist", icon: "icon-person", action: () => {
-      navigate(`/artist/${track.artist_id}`);
+      navigate(`/artist/${encodeURIComponent(track.artist_name)}`);
     }});
   }
 
@@ -96,14 +96,14 @@ export function showPlayerMenu(e, track) {
 
   const items = [];
 
-  if (track.album_id) {
+  if (track.album_title) {
     items.push({ label: "Go to Album", icon: "icon-album", action: () => {
-      navigate(`/album/${track.album_id}`);
+      navigate(`/album/${encodeURIComponent(track.album_title)}`);
     }});
   }
-  if (track.artist_id) {
+  if (track.artist_name) {
     items.push({ label: "Go to Artist", icon: "icon-person", action: () => {
-      navigate(`/artist/${track.artist_id}`);
+      navigate(`/artist/${encodeURIComponent(track.artist_name)}`);
     }});
   }
 

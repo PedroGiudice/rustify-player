@@ -73,7 +73,7 @@ async function loadLibrary(view) {
     const chips = body.querySelector("#genre-chips");
     chips.innerHTML = populated
       .map(
-        (g) => `<button class="chip" data-genre-id="${g.id}">${g.name} (${g.track_count})</button>`
+        (g) => `<button class="chip" data-genre-id="${g.name}">${g.name} (${g.track_count})</button>`
       )
       .join("");
 
@@ -86,7 +86,7 @@ async function loadLibrary(view) {
       chips.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--active"));
       if (!active) {
         btn.classList.add("chip--active");
-        const filtered = await invoke("lib_list_tracks", { genreId, limit: 200 });
+        const filtered = await invoke("lib_list_tracks", { genre, limit: 200 });
         renderTracks(body.querySelector("#track-rows"), filtered);
       } else {
         renderTracks(body.querySelector("#track-rows"), tracks);

@@ -40,12 +40,12 @@ export default function Albums() {
               <div class="card-grid">
                 <For each={list()}>
                   {(a) => (
-                    <div class="card" onClick={() => navigate(`/album/${a.id}`)}>
+                    <div class="card" onClick={() => navigate(`/album/${encodeURIComponent(a.title)}`)}>
                       <div class={`card__cover${a.cover_path ? "" : " card__cover--initials"}`}>
                         <Show when={a.cover_path} fallback={<span>{initials(a.title)}</span>}>
                           {(p) => <img src={coverUrl(p())!} alt="" />}
                         </Show>
-                        <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(a.id); }} aria-label="Play album">
+                        <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(a.title); }} aria-label="Play album">
                           <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play" /></svg>
                         </button>
                       </div>

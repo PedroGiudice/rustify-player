@@ -116,7 +116,7 @@ async function load(view) {
       <section class="home-section">
         <h2 class="home-section__title">Genres</h2>
         <div class="genre-chips">
-          ${populated.map((g) => `<a class="chip" href="#/library?genre=${g.id}">${g.name} (${g.track_count})</a>`).join("")}
+          ${populated.map((g) => `<a class="chip" href="#/library?genre=${encodeURIComponent(g.name)}">${g.name} (${g.track_count})</a>`).join("")}
         </div>
       </section>
     `;
@@ -141,13 +141,9 @@ async function load(view) {
         recentGrid.appendChild(item);
 
         // Load cover async
-        if (t.album_id) {
-          invoke("lib_get_album", { id: t.album_id }).then((album) => {
-            if (album?.cover_path) {
-              const coverEl = body.querySelector(`#recent-cover-${t.id}`);
-              if (coverEl) coverEl.innerHTML = `<img src="${convertFileSrc(album.cover_path)}" alt="">`;
-            }
-          }).catch(() => {});
+        if (t.album_cover_path) {
+          const coverEl = body.querySelector(`#recent-cover-${t.id}`);
+          if (coverEl) coverEl.innerHTML = `<img src="${convertFileSrc(t.album_cover_path)}" alt="">`;
         }
       });
     }
@@ -162,21 +158,21 @@ async function load(view) {
       albums.forEach((a) => {
         const card = document.createElement("div");
         card.className = "card";
-        card.dataset.albumId = a.id;
+        card.dataset.albumId = a.title;
         card.innerHTML = `
-          <div class="card__cover card__cover--initials" id="home-album-${a.id}">
+          <div class="card__cover card__cover--initials" id="home-album-${idx}">
             ${initials(a.title)}
-            <button class="card__cover-play" data-play-album="${a.id}" aria-label="Play">
+            <button class="card__cover-play" data-play-album="${a.title}" aria-label="Play">
               <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play"></use></svg>
             </button>
           </div>
           <div class="card__label">${esc(a.title)}</div>
-          <div class="card__sub">${esc(a.album_artist_name || "\u2014")}</div>
+          <div class="card__sub">${esc(a.artist_name || "\u2014")}</div>
         `;
         albumsGrid.appendChild(card);
 
         if (a.cover_path) {
-          const coverDiv = card.querySelector(`#home-album-${a.id}`);
+          const coverDiv = card.querySelector(`#home-album-${idx}`);
           const img = new Image();
           img.onload = () => {
             const playBtn = coverDiv.querySelector(".card__cover-play");
@@ -194,7 +190,7 @@ async function load(view) {
         const playBtn = e.target.closest("[data-play-album]");
         if (playBtn) {
           e.stopPropagation();
-          const tracks = await invoke("lib_list_tracks", { albumId: Number(playBtn.dataset.playAlbum), limit: 100 });
+          const tracks = await invoke("lib_list_tracks", { album: Number(playBtn.dataset.playAlbum), limit: 100 });
           if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
           return;
         }

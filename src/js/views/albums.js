@@ -32,10 +32,10 @@ async function load(view) {
       body.innerHTML = `
         <div class="card-grid">
           ${filtered.map((a) => `
-            <div class="card" data-album-id="${a.id}">
-              <div class="card__cover card__cover--initials" id="album-cover-${a.id}">
+            <div class="card" data-album-id="${a.title}">
+              <div class="card__cover card__cover--initials" id="album-cover-${idx}">
                 ${initials(a.title)}
-                <button class="card__cover-play" data-play-album="${a.id}" aria-label="Play album">
+                <button class="card__cover-play" data-play-album="${a.title}" aria-label="Play album">
                   <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play"></use></svg>
                 </button>
               </div>
@@ -49,7 +49,7 @@ async function load(view) {
       // Covers
       filtered.forEach(async (a) => {
         if (!a.cover_path) return;
-        const coverDiv = body.querySelector(`#album-cover-${a.id}`);
+        const coverDiv = body.querySelector(`#album-cover-${idx}`);
         if (!coverDiv) return;
         const img = new Image();
         img.onload = () => {
@@ -90,7 +90,7 @@ async function load(view) {
       if (playBtn) {
         e.stopPropagation();
         const albumId = Number(playBtn.dataset.playAlbum);
-        const tracks = await invoke("lib_list_tracks", { albumId, limit: 100 });
+        const tracks = await invoke("lib_list_tracks", { album, limit: 100 });
         if (tracks.length > 0) {
           setQueue(tracks, 0);
           playTrack(tracks[0]);

@@ -50,7 +50,7 @@ export default function Artist(props: Props) {
                 <div class="card-grid">
                   <For each={albums()!}>
                     {(album) => (
-                      <div class="card" onClick={() => navigate(`/album/${album.id}`)}>
+                      <div class="card" onClick={() => navigate(`/album/${encodeURIComponent(album.title)}`)}>
                         <div class={`card__cover${album.cover_path ? "" : " card__cover--initials"}`}>
                           <Show when={album.cover_path} fallback={<span>{initials(album.title)}</span>}>
                             {(p) => <img src={coverUrl(p())!} alt="" />}

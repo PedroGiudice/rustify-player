@@ -249,7 +249,7 @@ function renderGlobalResults(results, semantic = [], mood = []) {
     html += `<div class="search-section">
       <div class="search-section__label">Albums</div>
       ${albums.map((a) => `
-        <div class="search-item" data-album-id="${a.id}">
+        <div class="search-item" data-album-id="${a.title}">
           <div class="search-item__cover">${a.cover_path ? `<img src="${convertFileSrc(a.cover_path)}" alt="">` : ""}</div>
           <div class="search-item__meta">
             <div class="search-item__title">${esc(a.title)}</div>
@@ -264,7 +264,7 @@ function renderGlobalResults(results, semantic = [], mood = []) {
     html += `<div class="search-section">
       <div class="search-section__label">Artists</div>
       ${artists.map((a) => `
-        <div class="search-item" data-artist-id="${a.id}">
+        <div class="search-item" data-artist-id="${a.name}">
           <div class="search-item__meta">
             <div class="search-item__title">${esc(a.name)}</div>
           </div>

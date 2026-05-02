@@ -32,7 +32,7 @@ export default function Artists() {
               <div class="card-grid">
                 <For each={list()}>
                   {(a) => (
-                    <div class="card" onClick={() => navigate(`/artist/${a.id}`)}>
+                    <div class="card" onClick={() => navigate(`/artist/${encodeURIComponent(a.name)}`)}>
                       <div class="card__cover card__cover--initials">{initials(a.name)}</div>
                       <div class="card__label">{a.name}</div>
                       <div class="card__sub">{a.track_count || 0} tracks</div>

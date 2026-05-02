@@ -92,8 +92,8 @@ export default function Library() {
                     <For each={populated}>
                       {(g: any) => (
                         <button
-                          class={`chip${activeGenre() === g.id ? " chip--active" : ""}`}
-                          onClick={() => toggleGenre(g.id)}
+                          class={`chip${activeGenre() === g.name ? " chip--active" : ""}`}
+                          onClick={() => toggleGenre(g.name)}
                         >
                           {g.name} ({g.track_count})
                         </button>

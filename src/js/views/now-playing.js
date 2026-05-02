@@ -69,8 +69,8 @@ async function load(view) {
       id: lib?.id ?? null,
       title: lib?.title ?? fallbackTitle,
       artist_name: lib?.artist_name ?? "—",
-      artist_id: lib?.artist_id ?? null,
-      album_id: lib?.album_id ?? null,
+      artist_name: lib?.artist_name ?? null,
+      album_title: lib?.album_title ?? null,
       album_title: lib?.album_title ?? "—",
       album_cover_path: lib?.album_cover_path ?? null,
       lrc_path: lib?.lrc_path ?? null,
@@ -132,10 +132,10 @@ async function load(view) {
 
     // Nav links
     view.querySelector("#np-artist")?.addEventListener("click", () => {
-      if (track.artist_id) navigate(`/artist/${track.artist_id}`);
+      if (track.artist_name) navigate(`/artist/${encodeURIComponent(track.artist_name)}`);
     });
     view.querySelector("#np-album")?.addEventListener("click", () => {
-      if (track.album_id) navigate(`/album/${track.album_id}`);
+      if (track.album_title) navigate(`/album/${encodeURIComponent(track.album_title)}`);
     });
 
     // Player events: re-render the whole hero on TrackStarted (track

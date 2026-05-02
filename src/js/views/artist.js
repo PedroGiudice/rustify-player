@@ -4,26 +4,19 @@ import { navigate } from "../router.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 
-export function render(artistId) {
+export function render(artistName) {
   const view = document.createElement("article");
   view.className = "view view--hero";
   view.innerHTML = `<div class="artist-detail" id="artist-detail"><p class="empty-state__hint">Loading...</p></div>`;
-  if (artistId) load(view, Number(artistId));
+  if (artistName) load(view, decodeURIComponent(artistName));
   return view;
 }
 
-async function load(view, artistId) {
+async function load(view, artistName) {
   const container = view.querySelector("#artist-detail");
   try {
-    const [artist, albums] = await Promise.all([
-      invoke("lib_get_artist", { id: artistId }),
-      invoke("lib_list_albums", { artistId, limit: 100 }),
-    ]);
-
-    if (!artist) {
-      container.innerHTML = `<div class="empty-state"><p class="empty-state__title">Artist not found</p></div>`;
-      return;
-    }
+    const albums = await invoke("lib_list_albums", { artist: artistName, limit: 100 });
+    const artist = { name: artistName, track_count: 0, album_count: albums.length };
 
     container.innerHTML = `
       <div class="artist-detail__hero">
@@ -50,11 +43,11 @@ async function load(view, artistId) {
 
       const card = document.createElement("div");
       card.className = "card";
-      card.dataset.albumId = a.id;
+      card.dataset.albumId = a.title;
       card.innerHTML = `
         <div class="card__cover ${a.cover_path ? "" : "card__cover--initials"}">
           ${coverHTML}
-          <button class="card__cover-play" data-play-album="${a.id}" aria-label="Play">
+          <button class="card__cover-play" data-play-album="${a.title}" aria-label="Play">
             <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play"></use></svg>
           </button>
         </div>
@@ -70,7 +63,7 @@ async function load(view, artistId) {
       const playBtn = e.target.closest("[data-play-album]");
       if (playBtn) {
         e.stopPropagation();
-        const tracks = await invoke("lib_list_tracks", { albumId: Number(playBtn.dataset.playAlbum), limit: 100 });
+        const tracks = await invoke("lib_list_tracks", { album: Number(playBtn.dataset.playAlbum), limit: 100 });
         if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
         return;
       }

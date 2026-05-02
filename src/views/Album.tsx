@@ -77,7 +77,7 @@ export default function Album(props: Props) {
                 <div class="album-detail__eyebrow">Album{a().year ? ` • ${a().year}` : ""}</div>
                 <h1 class="album-detail__title">{a().title}</h1>
                 <div class="album-detail__artist" onClick={() => {
-                  if (a().artist_id) navigate(`/artist/${a().artist_id}`);
+                  if (a()?.artist_name) navigate(`/artist/${a()?.artist_name}`);
                 }}>{a().album_artist_name || a().artist_name || "—"}</div>
                 <div class="album-detail__stats">
                   <span>{tracks()?.length ?? 0} tracks</span>
