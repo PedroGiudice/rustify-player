@@ -2782,6 +2782,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "ureq",
+ "uuid",
  "walkdir",
  "zstd",
 ]

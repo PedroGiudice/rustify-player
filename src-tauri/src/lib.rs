@@ -248,7 +248,7 @@ fn lib_autoplay_next(
     // Layer 1: Qdrant Recommendations API (live, uses behavioral signals)
     if let Some(client) = qdrant.0.as_ref() {
         if client.is_healthy() {
-            match lib.handle.behavioral_signals() {
+            match lib.handle.behavioral_signals(qdrant.0.as_ref()) {
                 Ok((mut positives, negatives)) => {
                     // Seed track is always in positives
                     if !positives.contains(&track_id) {
@@ -1369,6 +1369,31 @@ pub fn run() {
                 })
                 .ok();
 
+            // Qdrant sidecar — spawn if binary available, otherwise try
+            // connecting to an already-running instance.
+            let qdrant_proc = qdrant_process::QdrantProcess::spawn(&data_dir);
+            _app.manage(QdrantSidecar(Mutex::new(qdrant_proc)));
+
+            let qdrant_client = QdrantClient::new("http://localhost:6333");
+            let qdrant_healthy = qdrant_client.is_healthy();
+            if qdrant_healthy {
+                tracing::info!("Qdrant available — enabling vector recommendations");
+                if let Err(e) = qdrant_client.ensure_collection() {
+                    tracing::warn!(?e, "failed to ensure Qdrant collection");
+                }
+                if let Err(e) = qdrant_client.ensure_play_events_collection() {
+                    tracing::warn!(?e, "failed to ensure play_events collection");
+                }
+            } else {
+                tracing::info!("Qdrant not available — using brute-force similarity fallback");
+            }
+
+            let qdrant_for_events: Option<QdrantClient> = if qdrant_healthy {
+                Some(qdrant_client.clone())
+            } else {
+                None
+            };
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
@@ -1389,6 +1414,7 @@ pub fn run() {
                                     &cache_dir_for_events,
                                     &media_cmd_rx,
                                     &engine_tx_media,
+                                    &qdrant_for_events,
                                 )
                             }),
                         );
@@ -1418,19 +1444,9 @@ pub fn run() {
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
 
-            // Qdrant sidecar — spawn if binary available, otherwise try
-            // connecting to an already-running instance.
-            let qdrant_proc = qdrant_process::QdrantProcess::spawn(&data_dir);
-            _app.manage(QdrantSidecar(Mutex::new(qdrant_proc)));
-
-            let qdrant_client = QdrantClient::new("http://localhost:6333");
-            if qdrant_client.is_healthy() {
-                tracing::info!("Qdrant available — enabling vector recommendations");
-                if let Err(e) = qdrant_client.ensure_collection() {
-                    tracing::warn!(?e, "failed to ensure Qdrant collection");
-                }
-                // Background sync: upsert embeddings to Qdrant without
-                // blocking app startup.
+            // Background sync: upsert embeddings to Qdrant without
+            // blocking app startup.
+            if qdrant_healthy {
                 let indexer_clone = indexer_for_sync.clone();
                 let client_clone = qdrant_client.clone();
                 std::thread::Builder::new()
@@ -1440,12 +1456,8 @@ pub fn run() {
                             Ok(n) => tracing::info!(n, "Qdrant MERT sync complete"),
                             Err(e) => tracing::warn!(?e, "Qdrant MERT sync failed"),
                         }
-                        // Lyrics sync via qdrant_sync_lyrics IPC — too slow for startup
-                        // (792 TEI requests over Tailscale). Run manually or via script.
                     })
                     .ok();
-            } else {
-                tracing::info!("Qdrant not available — using brute-force similarity fallback");
             }
             _app.manage(Qdrant(Some(qdrant_client)));
 
@@ -1459,6 +1471,7 @@ pub fn run() {
                 cache_dir: &std::path::Path,
                 media_cmd_rx: &crossbeam_channel::Receiver<souvlaki::MediaControlEvent>,
                 engine_tx: &crossbeam_channel::Sender<EngineCommand>,
+                qdrant_for_events: &Option<QdrantClient>,
             ) {
                 while let Ok(event) = rx.recv() {
                     if let Ok(mut s) = snap_writer.lock() {
@@ -1557,6 +1570,7 @@ pub fn run() {
                                     let ended_at = unix_now();
                                     let end_pos = s.last_position_ms;
                                     if let Err(e) = indexer.insert_play_event(
+                                        qdrant_for_events.as_ref(),
                                         track_id,
                                         &origin,
                                         &started_at,

@@ -1,8 +1,10 @@
 use crate::error::IndexerError;
+use crate::qdrant_client::QdrantClient;
 use rusqlite::{params, Connection};
 
 pub fn insert_play_event(
     conn: &Connection,
+    qdrant: Option<&QdrantClient>,
     track_id: i64,
     origin: &str,
     started_at: &str,
@@ -15,38 +17,16 @@ pub fn insert_play_event(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![track_id, origin, started_at, ended_at, end_position_ms, duration_ms],
     )?;
+
+    if let Some(client) = qdrant {
+        let end_pos = end_position_ms.unwrap_or(0) as u64;
+        let dur = duration_ms as u64;
+        if let Err(e) = client.insert_play_event(track_id, origin, started_at, end_pos, dur) {
+            tracing::warn!(?e, track_id, "failed to insert play_event to Qdrant");
+        }
+    }
+
     Ok(())
-}
-
-/// Extract positive and negative track IDs from play_events for Qdrant Recommendations.
-///
-/// Positives: completed plays from manual or autoplay-confirmed (up to 50, most recent first).
-/// Negatives: skipped early (< 5 s, excluding album_seq inertia, up to 20, most recent first).
-pub fn behavioral_signals(
-    conn: &Connection,
-) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
-    let mut pos_stmt = conn.prepare(
-        "SELECT DISTINCT track_id FROM play_events
-         WHERE completed = 1 AND origin IN ('manual', 'autoplay')
-         ORDER BY started_at DESC LIMIT 50",
-    )?;
-    let positives: Vec<i64> = pos_stmt
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let mut neg_stmt = conn.prepare(
-        "SELECT DISTINCT track_id FROM play_events
-         WHERE completed = 0
-           AND end_position_ms IS NOT NULL
-           AND end_position_ms < 5000
-           AND origin != 'album_seq'
-         ORDER BY started_at DESC LIMIT 20",
-    )?;
-    let negatives: Vec<i64> = neg_stmt
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok((positives, negatives))
 }
 
 /// Returns `Vec<(track_id, score)>` ordered by rank.

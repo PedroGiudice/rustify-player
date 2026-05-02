@@ -219,6 +219,7 @@ impl IndexerHandle {
 
     pub fn insert_play_event(
         &self,
+        qdrant: Option<&QdrantClient>,
         track_id: i64,
         origin: &str,
         started_at: &str,
@@ -229,6 +230,7 @@ impl IndexerHandle {
         self.inner.write_pool.with(|conn| {
             play_events::insert_play_event(
                 conn,
+                qdrant,
                 track_id,
                 origin,
                 started_at,
@@ -252,8 +254,41 @@ impl IndexerHandle {
 
     /// Returns `(positives, negatives)` track ID lists derived from
     /// `play_events` for use with the Qdrant Recommendations API.
-    pub fn behavioral_signals(&self) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
-        self.inner.pool.with(|conn| play_events::behavioral_signals(conn))
+    ///
+    /// When a Qdrant client is available, reads from the `play_events`
+    /// collection directly. Falls back to SQLite otherwise.
+    pub fn behavioral_signals(
+        &self,
+        qdrant: Option<&QdrantClient>,
+    ) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
+        if let Some(client) = qdrant {
+            return client.behavioral_signals();
+        }
+        // SQLite fallback
+        self.inner.pool.with(|conn| {
+            let mut pos_stmt = conn.prepare(
+                "SELECT DISTINCT track_id FROM play_events
+                 WHERE completed = 1 AND origin IN ('manual', 'autoplay')
+                 ORDER BY started_at DESC LIMIT 50",
+            )?;
+            let positives: Vec<i64> = pos_stmt
+                .query_map([], |row| row.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let mut neg_stmt = conn.prepare(
+                "SELECT DISTINCT track_id FROM play_events
+                 WHERE completed = 0
+                   AND end_position_ms IS NOT NULL
+                   AND end_position_ms < 5000
+                   AND origin != 'album_seq'
+                 ORDER BY started_at DESC LIMIT 20",
+            )?;
+            let negatives: Vec<i64> = neg_stmt
+                .query_map([], |row| row.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok((positives, negatives))
+        })
     }
 
     pub fn list_history(&self, limit: usize) -> Result<Vec<Track>, IndexerError> {
