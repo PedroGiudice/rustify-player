@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { createSignal, createResource, Show, onMount } from "solid-js";
-import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate } from "../tauri";
+import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp } from "../tauri";
 
 const APP_VERSION = "0.2.0";
 
@@ -209,7 +209,7 @@ export default function Settings() {
                     </Show>
                     <Show when={updateStatus() === "installed"}>
                       <span class="status-pill status-pill--ok">Installed</span>
-                      <span class="settings-row__hint">Update installed. Please restart Rustify.</span>
+                      <span class="settings-row__hint">Update installed — restart to apply.</span>
                     </Show>
                     <Show when={updateStatus() && !["update_available", "up_to_date", "installed"].includes(updateStatus()!)}>
                       <span class="settings-row__value settings-row__value--muted">{updateStatus()}</span>
@@ -222,6 +222,11 @@ export default function Settings() {
                 <div class="settings-row">
                   <label class="settings-row__label">Action</label>
                   <div class="settings-row__control">
+                    <Show when={updateStatus() === "installed"}>
+                      <button class="settings-button settings-button--primary" onClick={() => restartApp()}>
+                        Restart Now
+                      </button>
+                    </Show>
                     <Show when={updateStatus() === "update_available"}>
                       <button class="settings-button settings-button--primary" disabled={installing()} onClick={handleInstall}>
                         {installing() ? "Installing..." : "Install Update"}

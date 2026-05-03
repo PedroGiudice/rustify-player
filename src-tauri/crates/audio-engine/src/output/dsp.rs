@@ -136,6 +136,11 @@ fn enum_nick(table: &[&'static str], value: i32) -> Option<&'static str> {
         .and_then(|idx| table.get(idx).copied())
 }
 
+fn safe_db_to_linear(db: f32) -> f32 {
+    if db.is_nan() || db.is_infinite() { return 1.0; }
+    10.0f32.powf(db.clamp(-60.0, 24.0) / 20.0)
+}
+
 /// Wraps the DSP filter bin and provides typed access to plugin properties.
 pub(crate) struct DspFilterBin {
     pub bin: gst::Bin,
@@ -143,6 +148,9 @@ pub(crate) struct DspFilterBin {
     limiter: gst::Element,
     bass_enhancer: gst::Element,
     bypassed: bool,
+    eq_was_enabled: bool,
+    limiter_was_enabled: bool,
+    bass_was_bypassed: bool,
 }
 
 impl DspFilterBin {
@@ -175,16 +183,25 @@ impl DspFilterBin {
         let convert_in = gst::ElementFactory::make("audioconvert")
             .build()
             .map_err(|e| OutputError::PipewireInit(format!("audioconvert: {e}")))?;
+        let capsfilter = gst::ElementFactory::make("capsfilter")
+            .property(
+                "caps",
+                gst::Caps::builder("audio/x-raw")
+                    .field("format", "F32LE")
+                    .build(),
+            )
+            .build()
+            .map_err(|e| OutputError::PipewireInit(format!("capsfilter: {e}")))?;
         let convert_out = gst::ElementFactory::make("audioconvert")
             .build()
             .map_err(|e| OutputError::PipewireInit(format!("audioconvert: {e}")))?;
 
         let bin = gst::Bin::new();
 
-        bin.add_many([&convert_in, &eq, &limiter, &bass_enhancer, &convert_out])
+        bin.add_many([&convert_in, &capsfilter, &eq, &limiter, &bass_enhancer, &convert_out])
             .map_err(|e| OutputError::PipewireInit(format!("bin.add_many: {e}")))?;
 
-        gst::Element::link_many([&convert_in, &eq, &limiter, &bass_enhancer, &convert_out])
+        gst::Element::link_many([&convert_in, &capsfilter, &eq, &limiter, &bass_enhancer, &convert_out])
             .map_err(|e| OutputError::PipewireInit(format!("link_many: {e}")))?;
 
         // Ghost pads so the bin acts as a single filter element.
@@ -234,6 +251,9 @@ impl DspFilterBin {
             limiter,
             bass_enhancer,
             bypassed: false,
+            eq_was_enabled: true,
+            limiter_was_enabled: false,
+            bass_was_bypassed: true,
         }))
     }
 
@@ -249,7 +269,7 @@ impl DspFilterBin {
         if band >= 16 {
             return;
         }
-        let gain_linear = 10.0f32.powf(gain_db / 20.0);
+        let gain_linear = safe_db_to_linear(gain_db);
         self.eq
             .set_property_from_str(&format!("ft-{band}"), "Bell");
         self.eq.set_property(&format!("f-{band}"), freq);
@@ -329,8 +349,8 @@ impl DspFilterBin {
 
     /// Set EQ global input/output gain in dB (converted to linear for the plugin).
     pub fn set_eq_gain(&self, input: f32, output: f32) {
-        let g_in = 10.0f32.powf(input / 20.0);
-        let g_out = 10.0f32.powf(output / 20.0);
+        let g_in = safe_db_to_linear(input);
+        let g_out = safe_db_to_linear(output);
         self.eq.set_property("g-in", g_in);
         self.eq.set_property("g-out", g_out);
     }
@@ -347,21 +367,27 @@ impl DspFilterBin {
         self.eq.set_property_from_str("mode", nick);
     }
 
-    pub fn set_eq_enabled(&self, enabled: bool) {
-        self.eq.set_property("enabled", enabled);
+    pub fn set_eq_enabled(&mut self, enabled: bool) {
+        self.eq_was_enabled = enabled;
+        if !self.bypassed {
+            self.eq.set_property("enabled", enabled);
+        }
     }
 
     // -----------------------------------------------------------------------
     // Limiter
     // -----------------------------------------------------------------------
 
-    pub fn set_limiter_enabled(&self, enabled: bool) {
-        self.limiter.set_property("enabled", enabled);
+    pub fn set_limiter_enabled(&mut self, enabled: bool) {
+        self.limiter_was_enabled = enabled;
+        if !self.bypassed {
+            self.limiter.set_property("enabled", enabled);
+        }
     }
 
     /// Set limiter threshold in dB (linear for the plugin: 10^(dB/20)).
     pub fn set_limiter_threshold(&self, threshold_db: f32) {
-        let linear = 10.0f32.powf(threshold_db / 20.0);
+        let linear = safe_db_to_linear(threshold_db);
         self.limiter.set_property("th", linear);
     }
 
@@ -389,8 +415,8 @@ impl DspFilterBin {
     }
 
     pub fn set_limiter_gain(&self, input: f32, output: f32) {
-        let g_in = 10.0f32.powf(input / 20.0);
-        let g_out = 10.0f32.powf(output / 20.0);
+        let g_in = safe_db_to_linear(input);
+        let g_out = safe_db_to_linear(output);
         self.limiter.set_property("g-in", g_in);
         self.limiter.set_property("g-out", g_out);
     }
@@ -419,7 +445,7 @@ impl DspFilterBin {
 
     /// Set limiter sidechain preamp in dB (converted to linear, plugin range 0–100).
     pub fn set_limiter_sc_preamp(&self, preamp_db: f32) {
-        let linear = 10.0f32.powf(preamp_db / 20.0).clamp(0.0, 100.0);
+        let linear = safe_db_to_linear(preamp_db).clamp(0.0, 100.0);
         self.limiter.set_property("scp", linear);
     }
 
@@ -489,14 +515,17 @@ impl DspFilterBin {
         self.bass_enhancer.set_property("floor", floor);
     }
 
-    pub fn set_bass_bypass(&self, bypass: bool) {
-        self.bass_enhancer.set_property("bypass", bypass);
+    pub fn set_bass_bypass(&mut self, bypass: bool) {
+        self.bass_was_bypassed = bypass;
+        if !self.bypassed {
+            self.bass_enhancer.set_property("bypass", bypass);
+        }
     }
 
     /// Set bass enhancer input/output gain in dB (converted to linear for the plugin).
     pub fn set_bass_levels(&self, input: f32, output: f32) {
-        let g_in = 10.0f32.powf(input / 20.0);
-        let g_out = 10.0f32.powf(output / 20.0);
+        let g_in = safe_db_to_linear(input);
+        let g_out = safe_db_to_linear(output);
         self.bass_enhancer.set_property("level-in", g_in);
         self.bass_enhancer.set_property("level-out", g_out);
     }
@@ -532,11 +561,13 @@ impl DspFilterBin {
             self.bass_enhancer.set_property("bypass", true);
             tracing::debug!("DSP bypassed (plugins in passthrough)");
         } else {
-            self.eq.set_property("enabled", true);
-            self.limiter.set_property("enabled", true);
-            // Bass enhancer stays bypassed until explicitly un-bypassed by
-            // the caller via set_bass_bypass(false) — it's off by default.
-            tracing::debug!("DSP un-bypassed (plugins re-enabled)");
+            self.eq.set_property("enabled", self.eq_was_enabled);
+            self.limiter.set_property("enabled", self.limiter_was_enabled);
+            self.bass_enhancer.set_property("bypass", self.bass_was_bypassed);
+            tracing::debug!(
+                "DSP un-bypassed (eq={}, limiter={}, bass_bypass={})",
+                self.eq_was_enabled, self.limiter_was_enabled, self.bass_was_bypassed
+            );
         }
     }
 

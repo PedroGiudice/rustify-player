@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rustify Signal</title>
+    <!--
+        NOTE: This is a standalone prototype. In the actual app, these styles would be imported
+        from src/styles/tokens.css, base.css, layout.css, and components.css.
+        For a truly standalone demo, essential tokens and base styles are inlined here.
+        No CDN links are used, adhering to the "No CDN links" constraint.
+    -->
+    <style>
+        /* Minimal Design Tokens for Prototype */
+        :root {
+            /* Surfaces */
+            --surface-lowest: #111110;
+            --surface: #151513;
+            --surface-container-low: #1a1a18;
+            --surface-container: #1f1f1c;
+            --surface-container-high: #262622;
+            --surface-container-highest: #302f2b;
+
+            /* Borders */
+            --divider: rgba(237,234,227,0.08);
+            --divider-hi: rgba(237,234,227,0.16);
+
+            /* Accent (copper default) */
+            --primary: #c6633d;
+            --primary-container: #d87a52;
+            --on-primary: #1a1a18;
+
+            /* Text (bone tones) */
+            --on-surface: #edeae3;
+            --on-surface-variant: #a29e94;
+            --on-surface-mute: #66635d;
+
+            /* Typography */
+            --font-display: "Fraunces", serif;
+            --font-body: "Inter", sans-serif;
+            --font-mono: "JetBrains Mono", monospace;
+
+            --fw-regular: 400;
+            --fw-medium: 500;
+            --fw-bold: 600;
+            --fw-xbold: 700;
+
+            --tracking-tighter: -0.035em;
+            --tracking-tight: -0.015em;
+            --tracking-wide: 0.05em;
+            --tracking-widest: 0.12em;
+
+            /* Spacing (4px base grid) */
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-5: 20px;
+            --space-6: 24px;
+            --space-7: 28px;
+            --space-8: 32px;
+            --space-9: 36px;
+            --space-10: 40px;
+            --space-11: 44px;
+            --space-12: 48px;
+            --space-13: 52px;
+            --space-14: 56px;
+            --space-15: 60px;
+            --space-16: 64px;
+            --space-20: 80px;
+            --space-24: 96px;
+
+            /* Type Scale */
+            --text-display-lg: 48px;
+            --text-display-md: 34px;
+            --text-display-sm: 28px;
+            --text-headline-lg: 22px;
+            --text-headline-md: 20px;
+            --text-headline-sm: 18px;
+            --text-title-lg: 16px;
+            --text-title-md: 14px;
+            --text-body-lg: 14px;
+            --text-body-md: 13px;
+            --text-body-sm: 12px;
+            --text-label-lg: 12px;
+            --text-label-md: 11px;
+            --text-label-sm: 10.5px;
+            --text-label-xs: 10px;
+
+            /* Motion */
+            --dur-fast: 80ms;
+            --dur-normal: 120ms;
+            --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+            /* Layout */
+            --radius: 0; /* Brutalist/editorial style */
+            --player-bar-h: 76px;
+            --sidebar-w: 56px;
+        }
+
+        /* Base styles for dark theme and fonts */
+        html {
+            box-sizing: border-box;
+            background-color: var(--surface-lowest);
+            color: var(--on-surface);
+            font-family: var(--font-body);
+            font-size: 14px; /* Default body font size */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        *, *::before, *::after {
+            box-sizing: inherit;
+        }
+        body {
+            margin: 0;
+            line-height: 1.5;
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: var(--sidebar-w) 1fr;
+            grid-template-rows: 34px 1fr var(--player-bar-h);
+            grid-template-areas:
+                "titlebar titlebar"
+                "sidebar main"
+                "player-bar player-bar";
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-display);
+            font-weight: var(--fw-regular);
+            line-height: 1.2;
+            margin-top: 0;
+            margin-bottom: var(--space-4);
+        }
+        p {
+            margin-top: 0;
+            margin-bottom: var(--space-4);
+        }
+        a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        a:hover {
+            color: var(--primary-container);
+        }
+        button {
+            background: none;
+            border: none;
+            padding: 0;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+        }
+        select, input[type="text"], input[type="number"] {
+            background-color: var(--surface-container-high);
+            border: 1px solid var(--divider-hi);
+            color: var(--on-surface);
+            font-family: var(--font-body);
+            font-size: var(--text-body-md);
+            padding: var(--space-2) var(--space-3);
+            outline: none;
+            transition: border-color var(--dur-fast) var(--ease-standard);
+            border-radius: var(--radius);
+        }
+        select:focus, input[type="text"]:focus, input[type="number"]:focus {
+            border-color: var(--primary);
+        }
+
+        /* Layout */
+        .main {
+            grid-area: main;
+            overflow-y: auto;
+            background-color: var(--surface);
+        }
+
+        /* View common */
+        .view {
+            padding-bottom: var(--space-10); /* For scroll content */
+            background-color: var(--surface-lowest); /* Signal view specific override */
+        }
+        .view__header {
+            display: flex;
+            align-items: flex-end;
+            gap: var(--space-4);
+            padding: var(--space-7) var(--space-10) var(--space-5);
+            margin-bottom: var(--space-4); /* Standard section separator */
+            border-bottom: 1px solid var(--divider);
+        }
+        .view__title {
+            font-size: var(--text-display-md);
+            font-weight: var(--fw-medium);
+            color: var(--on-surface);
+            margin-bottom: 0;
+        }
+        .view__stats {
+            display: flex;
+            align-items: baseline;
+            gap: var(--space-2);
+            font-family: var(--font-body);
+            font-size: var(--text-body-md);
+            color: var(--on-surface-variant);
+        }
+        .view__stats-sep {
+            color: var(--on-surface-mute);
+        }
+        .view__body {
+            padding: var(--space-4) var(--space-10);
+        }
+
+        /* Component: Icon */
+        .icon {
+            width: 16px;
+            height: 16px;
+            stroke-width: 1.4;
+            stroke: currentColor;
+            fill: none;
+            vertical-align: middle;
+            transition: stroke var(--dur-fast) var(--ease-standard), fill var(--dur-fast) var(--ease-standard);
+        }
+        .icon--sm { width: 12px; height: 12px; stroke-width: 1.2; }
+        .icon--lg { width: 24px; height: 24px; stroke-width: 1.6; }
+        .icon--xl { width: 32px; height: 32px; stroke-width: 1.8; }
+        .icon--filled { fill: currentColor; stroke: none; }
+
+        /* Component: Toggle Switch */
+        .toggle-switch {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            gap: var(--space-2);
+            user-select: none;
+            font-size: var(--text-label-md);
+            color: var(--on-surface-variant);
+            line-height: 1;
+        }
+        .toggle-switch__input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-switch__slider {
+            width: var(--space-8); /* 32px */
+            height: var(--space-5); /* 20px */
+            background-color: var(--surface-container-high);
+            border: 1px solid var(--divider-hi);
+            transition: background-color var(--dur-normal) var(--ease-standard), border-color var(--dur-normal) var(--ease-standard);
+            position: relative;
+            border-radius: 999px; /* Pill shape */
+            flex-shrink: 0;
+        }
+        .toggle-switch__slider::before {
+            content: "";
+            position: absolute;
+            height: var(--space-4); /* 16px */
+            width: var(--space-4); /* 16px */
+            left: 1px;
+            bottom: 1px;
+            background-color: var(--on-surface-variant);
+            transition: transform var(--dur-normal) var(--ease-standard), background-color var(--dur-normal) var(--ease-standard);
+            border-radius: 50%;
+        }
+        .toggle-switch__input:checked + .toggle-switch__slider {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+        .toggle-switch__input:checked + .toggle-switch__slider::before {
+            transform: translateX(var(--space-4)); /* Move 16px to right */
+            background-color: var(--on-primary);
+        }
+        .toggle-switch__label {
+            transition: color var(--dur-normal) var(--ease-standard);
+        }
+        .toggle-switch__input:checked ~ .toggle-switch__label {
+            color: var(--on-surface);
+        }
+
+        /* Component: Button */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-4);
+            font-family: var(--font-body);
+            font-size: var(--text-body-md);
+            font-weight: var(--fw-medium);
+            line-height: 1;
+            border-radius: var(--radius);
+            transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+            border: 1px solid transparent;
+        }
+        .btn--primary {
+            background-color: var(--primary);
+            color: var(--on-primary);
+        }
+        .btn--primary:hover {
+            background-color: var(--primary-container);
+        }
+        .btn--ghost {
+            background-color: transparent;
+            color: var(--on-surface-variant);
+            border-color: var(--divider-hi);
+        }
+        .btn--ghost:hover {
+            background-color: var(--surface-container-high);
+            color: var(--on-surface);
+        }
+        .btn__icon {
+            margin-right: var(--space-1);
+        }
+        .btn--sm {
+            padding: var(--space-1) var(--space-2);
+            font-size: var(--text-body-sm);
+        }
+
+
+        /* New Signal View Specific Styles */
+        .signal-section {
+            margin-bottom: var(--space-6);
+        }
+        .signal-section__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-4);
+        }
+        .signal-section__title {
+            font-family: var(--font-display);
+            font-size: var(--text-headline-md);
+            font-weight: var(--fw-medium);
+            color: var(--on-surface);
+            margin: 0;
+        }
+
+        .signal-section__grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-4);
+        }
+
+        .signal-card {
+            background-color: #242220; /* Specific for this view */
+            border: 1px solid rgba(237,234,227,.06); /* Specific for this view */
+            border-radius: var(--radius);
+            padding: var(--space-5);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-4);
+        }
+
+        .signal-card__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-2);
+        }
+        .signal-card__title {
+            font-family: var(--font-display);
+            font-size: var(--text-headline-sm);
+            font-weight: var(--fw-medium);
+            color: var(--on-surface);
+            margin: 0;
+        }
+
+        .signal-param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); /* Adjust column width as needed */
+            gap: var(--space-4) var(--space-6);
+        }
+
+        .signal-param {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-1);
+        }
+        .signal-param__label {
+            font-size: var(--text-label-md);
+            color: var(--on-surface-variant);
+            white-space: nowrap;
+        }
+        .signal-param__control {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+        .signal-param__control select {
+            flex-grow: 1;
+            width: 100%; /* Ensure selects fill available space */
+            padding: var(--space-1) var(--space-2);
+            font-size: var(--text-body-sm);
+        }
+
+        /* Horizontal Slider */
+        .horizontal-slider {
+            display: grid;
+            grid-template-columns: auto 1fr auto; /* Label, Track, Value */
+            align-items: center;
+            gap: var(--space-2);
+            padding-top: var(--space-2); /* Space for thumb */
+            padding-bottom: var(--space-2);
+        }
+        .horizontal-slider__label {
+            font-size: var(--text-body-md);
+            color: var(--on-surface-variant);
+            white-space: nowrap;
+            padding-right: var(--space-1);
+        }
+        .horizontal-slider__track-wrapper {
+            position: relative;
+            height: var(--space-3); /* 12px height for visual track area */
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+        .horizontal-slider__track {
+            height: 4px; /* Actual track bar height */
+            background-color: #2a2826; /* Specific dark grey */
+            width: 100%;
+            position: relative;
+            border-radius: 999px; /* Slightly rounded track */
+        }
+        .horizontal-slider__fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background-color: color-mix(in srgb, var(--primary) 70%, transparent);
+            border-radius: 999px;
+            width: 0%; /* Controlled by JS */
+        }
+        .horizontal-slider__thumb {
+            width: var(--space-3); /* 12px */
+            height: var(--space-3); /* 12px */
+            background-color: var(--on-surface); /* White */
+            border-radius: 50%;
+            position: absolute;
+            left: 0%; /* Controlled by JS */
+            transform: translateX(-50%); /* Center thumb */
+            cursor: grab;
+            transition: transform var(--dur-fast) var(--ease-standard);
+            box-shadow: 0 0 0 2px var(--surface-container-high); /* Ring around thumb */
+        }
+        .horizontal-slider__thumb:active {
+            cursor: grabbing;
+        }
+        .horizontal-slider__value {
+            font-family: var(--font-mono);
+            font-size: var(--text-body-md);
+            color: var(--on-surface-variant);
+            text-align: right;
+            min-width: var(--space-9); /* 36px to prevent jumpy layout */
+        }
+        .horizontal-slider.is-dragging .horizontal-slider__thumb {
+            /* optional: slight scale up or shadow change on drag */
+        }
+
+
+        /* EQ Faders */
+        .eq-faders {
+            display: flex;
+            gap: var(--space-1); /* Small gap between faders */
+            justify-content: space-between;
+            align-items: flex-end; /* Align bottoms */
+            padding: var(--space-4) 0; /* Vertical padding */
+            background-color: var(--surface-container-low); /* Background for fader area */
+            border: 1px solid var(--divider);
+            border-radius: var(--radius);
+            margin-bottom: var(--space-4);
+        }
+        .eq-fader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: calc((100% - (var(--space-1) * 15)) / 16); /* Distribute width for 16 faders */
+            position: relative; /* For selection highlight */
+            padding: 0 var(--space-1); /* Internal padding for labels/track */
+            cursor: pointer;
+        }
+        .eq-fader--selected {
+            background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+            outline: 1px solid var(--primary); /* Highlight outline */
+            z-index: 1; /* Bring selected fader slightly forward */
+        }
+        .eq-fader__freq, .eq-fader__gain {
+            font-family: var(--font-body);
+            font-size: var(--text-label-xs);
+            color: var(--on-surface-mute);
+            line-height: 1;
+            height: var(--space-3); /* Fixed height to prevent layout shift */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: text;
+            min-width: var(--space-6); /* Prevent label shrinking too much */
+            text-align: center;
+            transition: color var(--dur-fast) var(--ease-standard);
+            user-select: none; /* Prevent accidental text selection */
+        }
+        .eq-fader--selected .eq-fader__freq,
+        .eq-fader--selected .eq-fader__gain {
+            color: var(--on-surface-variant);
+        }
+        .eq-fader__track-wrapper {
+            flex-grow: 1;
+            width: var(--space-3); /* Fixed width for the track area */
+            margin: var(--space-2) 0;
+            position: relative;
+            cursor: grab; /* Indicate draggable */
+            display: flex;
+            justify-content: center;
+        }
+        .eq-fader__track {
+            width: 4px;
+            height: 160px; /* Fixed height for EQ faders */
+            background-color: #2a2826;
+            position: relative;
+            border-radius: 999px; /* Slightly rounded track */
+        }
+        .eq-fader__fill {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background-color: color-mix(in srgb, var(--primary) 70%, transparent);
+        }
+        .eq-fader__thumb {
+            width: var(--space-4); /* 16px */
+            height: var(--space-4); /* 16px */
+            background-color: var(--on-surface); /* White */
+            border-radius: 50%;
+            position: absolute;
+            left: 50%;
+            transform: translate(-50%, 0);
+            cursor: grab;
+            box-shadow: 0 0 0 2px var(--surface-container-high);
+        }
+        .eq-fader__thumb:active {
+            cursor: grabbing;
+        }
+
+        /* EQ Band Detail */
+        .eq-band-detail {
+            background-color: #242220; /* Same as signal cards */
+            border: 1px solid rgba(237,234,227,.06);
+            border-radius: var(--radius);
+            padding: var(--space-4) var(--space-5);
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+            font-size: var(--text-body-md);
+            color: var(--on-surface-variant);
+        }
+        .eq-band-detail__info {
+            font-family: var(--font-body);
+            font-weight: var(--fw-medium);
+            color: var(--on-surface);
+            white-space: nowrap;
+        }
+        .eq-band-detail__control-group {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-left: var(--space-4);
+            flex-wrap: wrap;
+        }
+        .eq-band-detail__control-group span {
+            color: var(--on-surface-mute);
+            font-size: var(--text-label-md);
+        }
+        .eq-band-detail__control-group select {
+            padding: var(--space-1) var(--space-2);
+            font-size: var(--text-body-sm);
+        }
+        .eq-band-detail__q-value {
+            font-family: var(--font-mono);
+            font-size: var(--text-body-md);
+            color: var(--on-surface);
+            cursor: text;
+        }
+        .eq-band-detail__q-label {
+            font-size: var(--text-label-md);
+            color: var(--on-surface-mute);
+        }
+        .eq-band-detail__btn-group {
+            display: flex;
+            gap: var(--space-2);
+            margin-left: auto; /* Push to right */
+        }
+
+
+        /* Editable Input */
+        .editable-label-input {
+            background-color: var(--surface-container-highest);
+            border: 1px solid var(--primary);
+            color: var(--on-surface);
+            font-family: inherit; /* Use parent's font */
+            font-size: inherit; /* Use parent's font size */
+            padding: 0 var(--space-1);
+            height: var(--space-4); /* Match line height */
+            text-align: center;
+            min-width: var(--space-8);
+            outline: none;
+            border-radius: var(--radius);
+            box-shadow: 0 0 0 1px var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <header class="titlebar" style="grid-area: titlebar; background-color: var(--surface-lowest);"></header>
+    <aside class="sidebar" style="grid-area: sidebar; background-color: var(--surface-container-low);"></aside>
+    <main class="main">
+    </main>
+    <footer class="player-bar" style="grid-area: player-bar; background-color: var(--surface-container-low);"></footer>
+
+    <script type="module">
+        // Utility for escaping HTML content
+        function esc(s) {
+            const d = document.createElement("div");
+            d.textContent = s ?? "";
+            return d.innerHTML;
+        }
+
+        // Mock window.__TAURI__ for prototype
+        if (!window.__TAURI__) {
+            window.__TAURI__ = {
+                core: {
+                    invoke: async (command, args) => {
+                        console.log(`[TAURI MOCK] Invoking ${command} with args:`, args);
+                        // Simulate async delay
+                        return new Promise(resolve => setTimeout(() => resolve(), 50));
+                    },
+                },
+                event: {
+                    listen: (event, callback) => {
+                        console.log(`[TAURI MOCK] Listening for event: ${event}`);
+                    },
+                },
+            };
+        }
+
+        // Debounce utility for slider updates
+        function debounce(func, delay) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
+        }
+
+        const eqFrequencies = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000, 20000];
+        const eqDefaultGains = [0, 0, 1.5, 0, -2.5, -0.5, 0, 0.5, 2.0, 0, 2.5, -0.5, 0, 0, 1.0, 0];
+        const EQ_GAIN_MIN = -24; // dB
+        const EQ_GAIN_MAX = 24;  // dB
+        const Q_MIN = 0.1;
+        const Q_MAX = 10.0;
+
+        const state = {
+            eq: {
+                enabled: true,
+                bands: eqFrequencies.map((freq, i) => ({
+                    index: i,
+                    freq: freq,
+                    gain: eqDefaultGains[i],
+                    type: 'Bell', // Options: Bell, LowShelf, HighShelf, LowPass, HighPass, BandPass, Notch
+                    mode: 'APO (DR)', // Options: APO (DR), FFT (Real), IIR (Approx)
+                    slope: 'x1', // Options: x1, x2, x4
+                    q: 1.0,
+                    solo: false,
+                    mute: false,
+                })),
+                selectedBandIndex: 0,
+            },
+            limiter: {
+                enabled: true,
+                mode: 'Herm Thin', // Options: Herm Thin, Herm Wide, K-Weight, J-Weight
+                oversampling: 'None', // Options: None, x2, x4, x8
+                dither: 'None', // Options: None, Type 1, Type 2, Noise Shape
+                boost: false,
+                threshold: -6, // dB, range -60 to 0
+                knee: 3, // dB, range 0 to 20
+                lookahead: 5, // ms, range 0 to 50
+                attack: 5, // ms, range 0 to 500
+                release: 20, // ms, range 20 to 2000
+                scPreAmp: 1, // dB, range -10 to 10
+                stereoLink: 100, // %, range 0 to 100
+                input: 0, // dB, range -20 to 20
+                output: 0, // dB, range -20 to 20
+                autoLeveling: false,
+                alrAttack: 5, // ms, range 0 to 500
+                alrRelease: 50, // ms, range 20 to 2000
+            },
+            bass: {
+                enabled: true,
+                listen: false,
+                floorEnabled: false,
+                amount: 0, // dB, range -10 to 10
+                harmonics: 1.0, // multiplier, range 0 to 2.0
+                blend: 0, // %, range 0 to 100
+                scope: 120, // Hz, range 20 to 200
+                floorFreq: 20, // Hz, range 20 to 80
+                input: 0, // dB, range -20 to 20
+                output: 0, // dB, range -20 to 20
+            },
+        };
+
+        const ipcDebouncedEqSetGain = debounce((index, gain) => {
+            console.log(`[IPC] dsp_set_eq_gain: band=${index}, gain=${gain}`);
+            // window.__TAURI__.core.invoke('dsp_set_eq_gain', { band: index, gain: gain });
+        }, 50);
+        const ipcDebouncedDspSetParam = debounce((paramName, value) => {
+            console.log(`[IPC] dsp_set_${paramName}: value=${value}`);
+            // window.__TAURI__.core.invoke(`dsp_set_${paramName}`, { value: value });
+        }, 50);
+
+
+        // --- UI Rendering Functions ---
+
+        function getEqGainPosition(gain) {
+            // The 0dB mark is at 50% of the fader height.
+            const normalizedGainFromMin = (gain - EQ_GAIN_MIN) / (EQ_GAIN_MAX - EQ_GAIN_MIN); // 0 (min) to 1 (max)
+            const thumbTop = 100 - (normalizedGainFromMin * 100); // 100% (bottom) to 0% (top)
+
+            let fillTop, fillHeight;
+            const zeroDbNormalized = (0 - EQ_GAIN_MIN) / (EQ_GAIN_MAX - EQ_GAIN_MIN); // Normalized position of 0dB
+            const zeroDbTop = 100 - (zeroDbNormalized * 100); // Top percentage for 0dB mark
+
+            if (gain >= 0) {
+                fillTop = thumbTop;
+                fillHeight = zeroDbTop - thumbTop;
+            } else {
+                fillTop = zeroDbTop;
+                fillHeight = thumbTop - zeroDbTop;
+            }
+
+            return {
+                thumbTop: `${thumbTop}%`,
+                fillTop: `${fillTop}%`,
+                fillHeight: `${fillHeight}%`
+            };
+        }
+
+        function updateEqFader(index) {
+            const band = state.eq.bands[index];
+            const faderEl = document.querySelector(`.eq-fader[data-band-index="${index}"]`);
+            if (!faderEl) return;
+
+            faderEl.classList.toggle('eq-fader--selected', state.eq.selectedBandIndex === index);
+
+            const gainLabelSpan = faderEl.querySelector('.eq-fader__gain span');
+            if (gainLabelSpan && !gainLabelSpan.closest('.is-editing')) {
+                gainLabelSpan.textContent = esc(`${band.gain.toFixed(1)} dB`);
+            }
+
+            const { thumbTop, fillTop, fillHeight } = getEqGainPosition(band.gain);
+            faderEl.querySelector('.eq-fader__thumb').style.top = thumbTop;
+            faderEl.querySelector('.eq-fader__fill').style.top = fillTop;
+            faderEl.querySelector('.eq-fader__fill').style.height = fillHeight;
+        }
+
+        function updateAllEqFaders() {
+            state.eq.bands.forEach((_, i) => updateEqFader(i));
+        }
+
+        function formatFrequency(hz) {
+            if (hz >= 1000) return `${(hz / 1000).toFixed(1)}k Hz`;
+            return `${hz} Hz`;
+        }
+
+        function updateBandDetail() {
+            const detailEl = document.querySelector('.eq-band-detail');
+            const selectedBand = state.eq.bands[state.eq.selectedBandIndex];
+
+            if (!selectedBand) {
+                detailEl.innerHTML = '';
+                return;
+            }
+
+            // Update text elements
+            detailEl.querySelector('.eq-band-detail__info').textContent =
+                esc(`Band ${selectedBand.index + 1} · ${formatFrequency(selectedBand.freq)} · ${selectedBand.type}`);
+
+            const qValueSpan = detailEl.querySelector('.eq-band-detail__q-value span');
+            if (qValueSpan && !qValueSpan.closest('.is-editing')) {
+                qValueSpan.textContent = esc(selectedBand.q.toFixed(2));
+            }
+
+            // Update selects
+            detailEl.querySelector('select[name="eq-type"]').value = selectedBand.type;
+            detailEl.querySelector('select[name="eq-mode"]').value = selectedBand.mode;
+            detailEl.querySelector('select[name="eq-slope"]').value = selectedBand.slope;
+
+            // Update toggles
+            detailEl.querySelector('input[name="eq-solo"]').checked = selectedBand.solo;
+            detailEl.querySelector('input[name="eq-mute"]').checked = selectedBand.mute;
+        }
+
+        function getHorizontalSliderPosition(value, min, max) {
+            const range = max - min;
+            const normalizedValue = (value - min) / range;
+            const thumbLeft = normalizedValue * 100; // 0% to 100%
+            const fillWidth = normalizedValue * 100; // 0% to 100%
+            return { thumbLeft: `${thumbLeft}%`, fillWidth: `${fillWidth}%` };
+        }
+
+        function updateHorizontalSlider(id, value, min, max) {
+            const sliderEl = document.getElementById(id);
+            if (!sliderEl) return;
+
+            const valueElSpan = sliderEl.querySelector('.horizontal-slider__value span');
+            if (valueElSpan && !valueElSpan.closest('.is-editing')) {
+                valueElSpan.textContent = esc(value.toFixed(1));
+            }
+
+            const { thumbLeft, fillWidth } = getHorizontalSliderPosition(value, min, max);
+            sliderEl.querySelector('.horizontal-slider__thumb').style.left = thumbLeft;
+            sliderEl.querySelector('.horizontal-slider__fill').style.width = fillWidth;
+        }
+
+        function updateAllHorizontalSliders() {
+            // Limiter
+            updateHorizontalSlider('limiter-threshold', state.limiter.threshold, -60, 0);
+            updateHorizontalSlider('limiter-knee', state.limiter.knee, 0, 20);
+            updateHorizontalSlider('limiter-lookahead', state.limiter.lookahead, 0, 50);
+            updateHorizontalSlider('limiter-attack', state.limiter.attack, 0, 500);
+            updateHorizontalSlider('limiter-release', state.limiter.release, 20, 2000);
+            updateHorizontalSlider('limiter-sc-pre-amp', state.limiter.scPreAmp, -10, 10);
+            updateHorizontalSlider('limiter-stereo-link', state.limiter.stereoLink, 0, 100);
+            updateHorizontalSlider('limiter-input', state.limiter.input, -20, 20);
+            updateHorizontalSlider('limiter-output', state.limiter.output, -20, 20);
+            updateHorizontalSlider('limiter-alr-attack', state.limiter.alrAttack, 0, 500);
+            updateHorizontalSlider('limiter-alr-release', state.limiter.alrRelease, 20, 2000);
+
+            // Bass Enhancer
+            updateHorizontalSlider('bass-amount', state.bass.amount, -10, 10);
+            updateHorizontalSlider('bass-harmonics', state.bass.harmonics, 0, 2.0);
+            updateHorizontalSlider('bass-blend', state.bass.blend, 0, 100);
+            updateHorizontalSlider('bass-scope', state.bass.scope, 20, 200);
+            updateHorizontalSlider('bass-floor-freq', state.bass.floorFreq, 20, 80);
+            updateHorizontalSlider('bass-input', state.bass.input, -20, 20);
+            updateHorizontalSlider('bass-output', state.bass.output, -20, 20);
+        }
+
+        // --- Event Handlers ---
+
+        function handleEqFaderInteraction(e) {
+            const faderEl = e.target.closest('.eq-fader');
+            if (!faderEl) return;
+
+            const index = parseInt(faderEl.dataset.bandIndex);
+            
+            // Clicking labels only selects the band, no gain change
+            if (e.target.closest('.eq-fader__freq') || e.target.closest('.eq-fader__gain')) {
+                if (state.eq.selectedBandIndex !== index) {
+                    state.eq.selectedBandIndex = index;
+                    updateAllEqFaders();
+                    updateBandDetail();
+                }
+                return;
+            }
+
+            // For clicks on track or thumb, or drag
+            e.preventDefault(); // Prevent text selection etc.
+
+            const trackRect = faderEl.querySelector('.eq-fader__track').getBoundingClientRect();
+            const gainRange = EQ_GAIN_MAX - EQ_GAIN_MIN;
+
+            function calculateGain(clientY) {
+                const y = clientY - trackRect.top;
+                const normalizedY = Math.max(0, Math.min(1, y / trackRect.height)); // 0 (top) to 1 (bottom)
+                const newGain = EQ_GAIN_MAX - (normalizedY * gainRange); // Max at top, Min at bottom
+                return parseFloat(newGain.toFixed(1)); // Round to 1 decimal place
+            }
+
+            const startDrag = (initialClientY) => {
+                if (state.eq.selectedBandIndex !== index) {
+                    state.eq.selectedBandIndex = index;
+                    updateAllEqFaders();
+                }
+                
+                let currentGain = calculateGain(initialClientY);
+                state.eq.bands[index].gain = currentGain;
+                updateEqFader(index);
+                updateBandDetail();
+                ipcDebouncedEqSetGain(index, currentGain);
+
+                faderEl.querySelector('.eq-fader__track-wrapper').classList.add('is-dragging');
+
+                const onMouseMove = (moveEvent) => {
+                    moveEvent.preventDefault();
+                    currentGain = calculateGain(moveEvent.clientY);
+                    state.eq.bands[index].gain = currentGain;
+                    updateEqFader(index);
+                    updateBandDetail();
+                    ipcDebouncedEqSetGain(index, currentGain);
+                };
+
+                const onMouseUp = () => {
+                    faderEl.querySelector('.eq-fader__track-wrapper').classList.remove('is-dragging');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    console.log(`[DRAG END] Fader ${index} final gain: ${state.eq.bands[index].gain}`);
+                    // Ensure a final IPC call is made after drag ends
+                    window.__TAURI__.core.invoke('dsp_set_eq_gain', { band: index, gain: state.eq.bands[index].gain });
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            };
+            
+            // If the clicked element is part of the track or thumb, start drag
+            if (e.target.closest('.eq-fader__track') || e.target.closest('.eq-fader__thumb')) {
+                startDrag(e.clientY);
+            }
+        }
+
+        function handleHorizontalSliderInteraction(e) {
+            const sliderEl = e.target.closest('.horizontal-slider');
+            if (!sliderEl) return;
+
+            e.preventDefault(); // Prevent text selection etc.
+
+            const id = sliderEl.id;
+            let paramName, minVal, maxVal, stateObject, stateKey;
+
+            const parseSliderId = (prefix, paramMap) => {
+                const paramId = id.substring(prefix.length);
+                const paramInfo = paramMap[paramId];
+                if (paramInfo) {
+                    paramName = paramInfo.name;
+                    minVal = paramInfo.min;
+                    maxVal = paramInfo.max;
+                    stateKey = paramInfo.stateKey || paramId.replace(/-/g, '_').replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+                    return true;
+                }
+                return false;
+            };
+
+            const limiterParams = {
+                'threshold': { name: 'limiter_threshold', min: -60, max: 0, stateKey: 'threshold' },
+                'knee': { name: 'limiter_knee', min: 0, max: 20, stateKey: 'knee' },
+                'lookahead': { name: 'limiter_lookahead', min: 0, max: 50, stateKey: 'lookahead' },
+                'attack': { name: 'limiter_attack', min: 0, max: 500, stateKey: 'attack' },
+                'release': { name: 'limiter_release', min: 20, max: 2000, stateKey: 'release' },
+                'sc-pre-amp': { name: 'limiter_sc_pre_amp', min: -10, max: 10, stateKey: 'scPreAmp' },
+                'stereo-link': { name: 'limiter_stereo_link', min: 0, max: 100, stateKey: 'stereoLink' },
+                'input': { name: 'limiter_input', min: -20, max: 20, stateKey: 'input' },
+                'output': { name: 'limiter_output', min: -20, max: 20, stateKey: 'output' },
+                'alr-attack': { name: 'limiter_alr_attack', min: 0, max: 500, stateKey: 'alrAttack' },
+                'alr-release': { name: 'limiter_alr_release', min: 20, max: 2000, stateKey: 'alrRelease' },
+            };
+            const bassParams = {
+                'amount': { name: 'bass_amount', min: -10, max: 10, stateKey: 'amount' },
+                'harmonics': { name: 'bass_harmonics', min: 0, max: 2.0, stateKey: 'harmonics' },
+                'blend': { name: 'bass_blend', min: 0, max: 100, stateKey: 'blend' },
+                'scope': { name: 'bass_scope', min: 20, max: 200, stateKey: 'scope' },
+                'floor-freq': { name: 'bass_floor_freq', min: 20, max: 80, stateKey: 'floorFreq' },
+                'input': { name: 'bass_input', min: -20, max: 20, stateKey: 'input' },
+                'output': { name: 'bass_output', min: -20, max: 20, stateKey: 'output' },
+            };
+
+            if (id.startsWith('limiter-') && parseSliderId('limiter-', limiterParams)) {
+                stateObject = state.limiter;
+            } else if (id.startsWith('bass-') && parseSliderId('bass-', bassParams)) {
+                stateObject = state.bass;
+            } else {
+                console.warn('Unknown slider ID or missing parameter info:', id);
+                return;
+            }
+
+            const trackRect = sliderEl.querySelector('.horizontal-slider__track-wrapper').getBoundingClientRect();
+            const valueRange = maxVal - minVal;
+
+            function calculateValue(clientX) {
+                const x = clientX - trackRect.left;
+                const normalizedX = Math.max(0, Math.min(1, x / trackRect.width)); // 0 (left) to 1 (right)
+                const newValue = minVal + (normalizedX * valueRange);
+                return parseFloat(newValue.toFixed(1)); // Round to 1 decimal place
+            }
+
+            const startDrag = (initialClientX) => {
+                let currentValue = calculateValue(initialClientX);
+                stateObject[stateKey] = currentValue; // Update state
+                updateHorizontalSlider(id, currentValue, minVal, maxVal);
+                ipcDebouncedDspSetParam(paramName, currentValue);
+
+                sliderEl.classList.add('is-dragging');
+
+                const onMouseMove = (moveEvent) => {
+                    moveEvent.preventDefault();
+                    currentValue = calculateValue(moveEvent.clientX);
+                    stateObject[stateKey] = currentValue; // Update state
+                    updateHorizontalSlider(id, currentValue, minVal, maxVal);
+                    ipcDebouncedDspSetParam(paramName, currentValue);
+                };
+
+                const onMouseUp = () => {
+                    sliderEl.classList.remove('is-dragging');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    console.log(`[DRAG END] Slider ${id} final value: ${currentValue}`);
+                    // Final IPC call
+                    window.__TAURI__.core.invoke(`dsp_set_${paramName}`, { value: currentValue });
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            };
+
+            if (e.target.closest('.horizontal-slider__track-wrapper') || e.target.closest('.horizontal-slider__thumb')) {
+                startDrag(e.clientX);
+            }
+        }
+
+
+        function makeEditable(element, initialValue, onConfirmCallback, type = 'number', min = null, max = null) {
+            const originalElementContent = element.textContent;
+            const input = document.createElement('input');
+            input.type = 'text'; // Always text to handle comma input
+            input.className = 'editable-label-input';
+            input.value = String(initialValue);
+
+            element.parentNode.replaceChild(input, element);
+            input.focus();
+            input.select();
+            input.classList.add('is-editing'); // Mark as editing
+
+            const finalize = (confirm) => {
+                let finalValue = initialValue; // Default to original on cancel or invalid input
+
+                if (confirm) {
+                    const rawValue = input.value.replace(',', '.');
+                    let parsedValue = parseFloat(rawValue);
+
+                    if (!isNaN(parsedValue)) {
+                        // Apply min/max constraints if provided
+                        if (min !== null) parsedValue = Math.max(min, parsedValue);
+                        if (max !== null) parsedValue = Math.min(max, parsedValue);
+                        finalValue = parsedValue;
+                    }
+                }
+
+                onConfirmCallback(finalValue); // Callback to update state and trigger re-render
+                input.classList.remove('is-editing'); // Remove editing marker
+                
+                const newSpan = document.createElement('span'); // Recreate the span
+                newSpan.textContent = esc(type === 'number' ? finalValue.toFixed(type === 'q' ? 2 : 1) : String(finalValue));
+                input.parentNode.replaceChild(newSpan, input);
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    finalize(true);
+                } else if (e.key === 'Escape') {
+                    finalize(false);
+                }
+            });
+            input.addEventListener('blur', () => finalize(true)); // Confirm on blur
+        }
+
+        function handleEditableLabelClick(e) {
+            // Only proceed if the clicked element is not already an input (i.e., not in editing mode)
+            if (e.target.closest('.is-editing')) return;
+
+            const targetSpan = e.target.closest('.eq-fader__freq span, .eq-fader__gain span, .eq-band-detail__q-value span, .horizontal-slider__value span');
+            if (!targetSpan) return;
+
+            if (targetSpan.closest('.eq-fader__freq')) {
+                const faderEl = targetSpan.closest('.eq-fader');
+                const index = parseInt(faderEl.dataset.bandIndex);
+                // Freq is not editable, only highlights.
+                if (state.eq.selectedBandIndex !== index) {
+                    state.eq.selectedBandIndex = index;
+                    updateAllEqFaders();
+                    updateBandDetail();
+                }
+            } else if (targetSpan.closest('.eq-fader__gain')) {
+                const faderEl = targetSpan.closest('.eq-fader');
+                const index = parseInt(faderEl.dataset.bandIndex);
+                makeEditable(targetSpan, state.eq.bands[index].gain, (newGain) => {
+                    state.eq.bands[index].gain = newGain;
+                    updateEqFader(index);
+                    ipcDebouncedEqSetGain(index, newGain);
+                }, 'number', EQ_GAIN_MIN, EQ_GAIN_MAX);
+            } else if (targetSpan.closest('.eq-band-detail__q-value')) {
+                const selectedBand = state.eq.bands[state.eq.selectedBandIndex];
+                makeEditable(targetSpan, selectedBand.q, (newQ) => {
+                    selectedBand.q = newQ;
+                    updateBandDetail();
+                    console.log(`[IPC] dsp_set_eq_q: band=${selectedBand.index}, q=${newQ}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_q', { band: selectedBand.index, q: newQ });
+                }, 'q', Q_MIN, Q_MAX);
+            } else if (targetSpan.closest('.horizontal-slider__value')) {
+                const sliderEl = targetSpan.closest('.horizontal-slider');
+                const id = sliderEl.id;
+                let paramName, minVal, maxVal, stateObject, stateKey, paramMap;
+
+                const parseSliderId = (prefix, map) => {
+                    const paramId = id.substring(prefix.length);
+                    const paramInfo = map[paramId];
+                    if (paramInfo) {
+                        paramName = paramInfo.name;
+                        minVal = paramInfo.min;
+                        maxVal = paramInfo.max;
+                        stateKey = paramInfo.stateKey || paramId.replace(/-/g, '_').replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+                        return true;
+                    }
+                    return false;
+                };
+
+                const limiterParams = {
+                    'threshold': { name: 'limiter_threshold', min: -60, max: 0, stateKey: 'threshold' },
+                    'knee': { name: 'limiter_knee', min: 0, max: 20, stateKey: 'knee' },
+                    'lookahead': { name: 'limiter_lookahead', min: 0, max: 50, stateKey: 'lookahead' },
+                    'attack': { name: 'limiter_attack', min: 0, max: 500, stateKey: 'attack' },
+                    'release': { name: 'limiter_release', min: 20, max: 2000, stateKey: 'release' },
+                    'sc-pre-amp': { name: 'limiter_sc_pre_amp', min: -10, max: 10, stateKey: 'scPreAmp' },
+                    'stereo-link': { name: 'limiter_stereo_link', min: 0, max: 100, stateKey: 'stereoLink' },
+                    'input': { name: 'limiter_input', min: -20, max: 20, stateKey: 'input' },
+                    'output': { name: 'limiter_output', min: -20, max: 20, stateKey: 'output' },
+                    'alr-attack': { name: 'limiter_alr_attack', min: 0, max: 500, stateKey: 'alrAttack' },
+                    'alr-release': { name: 'limiter_alr_release', min: 20, max: 2000, stateKey: 'alrRelease' },
+                };
+                const bassParams = {
+                    'amount': { name: 'bass_amount', min: -10, max: 10, stateKey: 'amount' },
+                    'harmonics': { name: 'bass_harmonics', min: 0, max: 2.0, stateKey: 'harmonics' },
+                    'blend': { name: 'bass_blend', min: 0, max: 100, stateKey: 'blend' },
+                    'scope': { name: 'bass_scope', min: 20, max: 200, stateKey: 'scope' },
+                    'floor-freq': { name: 'bass_floor_freq', min: 20, max: 80, stateKey: 'floorFreq' },
+                    'input': { name: 'bass_input', min: -20, max: 20, stateKey: 'input' },
+                    'output': { name: 'bass_output', min: -20, max: 20, stateKey: 'output' },
+                };
+
+                if (id.startsWith('limiter-') && parseSliderId('limiter-', limiterParams)) {
+                    stateObject = state.limiter;
+                } else if (id.startsWith('bass-') && parseSliderId('bass-', bassParams)) {
+                    stateObject = state.bass;
+                } else {
+                    console.warn('Unknown slider for editable label:', id);
+                    return;
+                }
+
+                makeEditable(targetSpan, stateObject[stateKey], (newValue) => {
+                    stateObject[stateKey] = newValue;
+                    updateHorizontalSlider(id, newValue, minVal, maxVal);
+                    window.__TAURI__.core.invoke(`dsp_set_${paramName}`, { value: newValue });
+                }, 'number', minVal, maxVal);
+            }
+        }
+
+        function handleToggleChange(e) {
+            const toggleInput = e.target;
+            if (!toggleInput.matches('input[type="checkbox"]')) return;
+
+            const id = toggleInput.name;
+            const checked = toggleInput.checked;
+
+            switch (id) {
+                case 'master-bypass':
+                    state.eq.enabled = !checked; // If master bypass is ON, EQ/Limiter/Bass are OFF
+                    state.limiter.enabled = !checked;
+                    state.bass.enabled = !checked;
+                    renderSignalView(); // Re-render everything affected
+                    console.log(`[IPC] dsp_set_bypass: ${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_bypass', checked);
+                    break;
+                case 'eq-enabled':
+                    state.eq.enabled = checked;
+                    document.getElementById('eq-faders-container').classList.toggle('is-disabled', !checked);
+                    document.getElementById('eq-band-detail-container').classList.toggle('is-disabled', !checked);
+                    console.log(`[IPC] dsp_set_eq_bypass: ${!checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_bypass', !checked);
+                    break;
+                case 'limiter-enabled':
+                    state.limiter.enabled = checked;
+                    document.getElementById('limiter-card').classList.toggle('is-disabled', !checked);
+                    console.log(`[IPC] dsp_set_limiter_bypass: ${!checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_limiter_bypass', !checked);
+                    break;
+                case 'bass-enabled':
+                    state.bass.enabled = checked;
+                    document.getElementById('bass-card').classList.toggle('is-disabled', !checked);
+                    console.log(`[IPC] dsp_set_bass_bypass: ${!checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_bass_bypass', !checked);
+                    break;
+                case 'limiter-boost':
+                    state.limiter.boost = checked;
+                    console.log(`[IPC] dsp_set_limiter_boost: ${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_limiter_boost', checked);
+                    break;
+                case 'limiter-auto-leveling':
+                    state.limiter.autoLeveling = checked;
+                    // Also enable/disable the ALR sliders
+                    document.getElementById('limiter-alr-attack').style.pointerEvents = checked ? '' : 'none';
+                    document.getElementById('limiter-alr-release').style.pointerEvents = checked ? '' : 'none';
+                    document.getElementById('limiter-alr-attack').style.opacity = checked ? '1' : '0.5';
+                    document.getElementById('limiter-alr-release').style.opacity = checked ? '1' : '0.5';
+                    console.log(`[IPC] dsp_set_limiter_auto_leveling: ${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_limiter_auto_leveling', checked);
+                    break;
+                case 'bass-listen':
+                    state.bass.listen = checked;
+                    console.log(`[IPC] dsp_set_bass_listen: ${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_bass_listen', checked);
+                    break;
+                case 'bass-floor':
+                    state.bass.floorEnabled = checked;
+                    document.getElementById('bass-floor-freq').style.pointerEvents = checked ? '' : 'none';
+                    document.getElementById('bass-floor-freq').style.opacity = checked ? '1' : '0.5';
+                    console.log(`[IPC] dsp_set_bass_floor_enabled: ${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_bass_floor_enabled', checked);
+                    break;
+                case 'eq-solo':
+                    state.eq.bands[state.eq.selectedBandIndex].solo = checked;
+                    console.log(`[IPC] dsp_set_eq_solo: band=${state.eq.selectedBandIndex}, solo=${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_solo', { band: state.eq.selectedBandIndex, solo: checked });
+                    break;
+                case 'eq-mute':
+                    state.eq.bands[state.eq.selectedBandIndex].mute = checked;
+                    console.log(`[IPC] dsp_set_eq_mute: band=${state.eq.selectedBandIndex}, mute=${checked}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_mute', { band: state.eq.selectedBandIndex, mute: checked });
+                    break;
+            }
+            updateBandDetail(); // To reflect solo/mute changes
+        }
+
+        function handleSelectChange(e) {
+            const selectEl = e.target;
+            const name = selectEl.name;
+            const value = selectEl.value;
+
+            switch (name) {
+                case 'limiter-mode':
+                    state.limiter.mode = value;
+                    console.log(`[IPC] dsp_set_limiter_mode: ${value}`);
+                    // window.__TAURI__.core.invoke('dsp_set_limiter_mode', value);
+                    break;
+                case 'limiter-oversampling':
+                    state.limiter.oversampling = value;
+                    console.log(`[IPC] dsp_set_limiter_oversampling: ${value}`);
+                    // window.__TAURI__.core.invoke('dsp_set_limiter_oversampling', value);
+                    break;
+                case 'limiter-dither':
+                    state.limiter.dither = value;
+                    console.log(`[IPC] dsp_set_limiter_dither: ${value}`);
+                    // window.__TAURI__.core.invoke('dsp_set_limiter_dither', value);
+                    break;
+                case 'eq-type':
+                    state.eq.bands[state.eq.selectedBandIndex].type = value;
+                    updateBandDetail();
+                    console.log(`[IPC] dsp_set_eq_band_type: band=${state.eq.selectedBandIndex}, type=${value}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_band_type', { band: state.eq.selectedBandIndex, type: value });
+                    break;
+                case 'eq-mode':
+                    state.eq.bands[state.eq.selectedBandIndex].mode = value;
+                    updateBandDetail();
+                    console.log(`[IPC] dsp_set_eq_band_mode: band=${state.eq.selectedBandIndex}, mode=${value}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_band_mode', { band: state.eq.selectedBandIndex, mode: value });
+                    break;
+                case 'eq-slope':
+                    state.eq.bands[state.eq.selectedBandIndex].slope = value;
+                    updateBandDetail();
+                    console.log(`[IPC] dsp_set_eq_band_slope: band=${state.eq.selectedBandIndex}, slope=${value}`);
+                    // window.__TAURI__.core.invoke('dsp_set_eq_band_slope', { band: state.eq.selectedBandIndex, slope: value });
+                    break;
+            }
+        }
+
+
+        // --- View Render Function ---
+
+        export function render() {
+            const view = document.createElement('article');
+            view.className = 'view signal-view';
+
+            view.innerHTML = `
+                <svg width="0" height="0" style="position:absolute;z-index:-1;">
+                    <symbol id="icon-sliders" viewBox="0 0 24 24">
+                        <path d="M11 11H3V13H11V11ZM17 19H3V21H17V19ZM21 5H3V7H21V5ZM17 11V13H21V11H17ZM11 19V21H21V19H11ZM3 5V7H5V5H3ZM19 5V7H21V5H19Z"></path>
+                    </symbol>
+                </svg>
+                <header class="view__header">
+                    <h1 class="view__title">Signal</h1>
+                    <div class="view__stats">
+                        <span>DSP Chain</span>
+                    </div>
+                    <div class="view__header-actions" style="margin-left: auto;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="master-bypass" ${state.eq.enabled ? '' : 'checked'}>
+                            <span class="toggle-switch__slider"></span>
+                            <span class="toggle-switch__label">Master Bypass</span>
+                        </label>
+                    </div>
+                </header>
+                <div class="view__body">
+                    <section class="signal-section signal-section--limiter-bass">
+                        <div class="signal-section__header">
+                            <h2 class="signal-section__title">Dynamics & Enhancements</h2>
+                        </div>
+                        <div class="signal-section__grid">
+                            <div class="signal-card signal-card--limiter" id="limiter-card">
+                                <header class="signal-card__header">
+                                    <h3 class="signal-card__title">Limiter</h3>
+                                    <label class="toggle-switch toggle-switch--sm">
+                                        <input type="checkbox" name="limiter-enabled" ${state.limiter.enabled ? 'checked' : ''}>
+                                        <span class="toggle-switch__slider"></span>
+                                        <span class="toggle-switch__label">On</span>
+                                    </label>
+                                </header>
+                                <div class="signal-param-grid">
+                                    <div class="signal-param">
+                                        <span class="signal-param__label">Mode</span>
+                                        <div class="signal-param__control">
+                                            <select name="limiter-mode">
+                                                <option value="Herm Thin">Herm Thin</option>
+                                                <option value="Herm Wide">Herm Wide</option>
+                                                <option value="K-Weight">K-Weight</option>
+                                                <option value="J-Weight">J-Weight</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="signal-param">
+                                        <span class="signal-param__label">Oversampling</span>
+                                        <div class="signal-param__control">
+                                            <select name="limiter-oversampling">
+                                                <option value="None">None</option>
+                                                <option value="x2">x2</option>
+                                                <option value="x4">x4</option>
+                                                <option value="x8">x8</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="signal-param">
+                                        <span class="signal-param__label">Dither</span>
+                                        <div class="signal-param__control">
+                                            <select name="limiter-dither">
+                                                <option value="None">None</option>
+                                                <option value="Type 1">Type 1</option>
+                                                <option value="Type 2">Type 2</option>
+                                                <option value="Noise Shape">Noise Shape</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="signal-param">
+                                        <span class="signal-param__label">Boost</span>
+                                        <div class="signal-param__control">
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" name="limiter-boost" ${state.limiter.boost ? 'checked' : ''}>
+                                                <span class="toggle-switch__slider"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="sliders">
+                                    <div class="horizontal-slider" id="limiter-threshold">
+                                        <span class="horizontal-slider__label">Threshold</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>-6.0 dB</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-knee">
+                                        <span class="horizontal-slider__label">Knee</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>3.0 dB</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-lookahead">
+                                        <span class="horizontal-slider__label">Lookahead</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>5.0 ms</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-attack">
+                                        <span class="horizontal-slider__label">Attack</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>5.0 ms</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-release">
+                                        <span class="horizontal-slider__label">Release</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>20.0 ms</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-sc-pre-amp">
+                                        <span class="horizontal-slider__label">SC PreAmp</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>1.0 dB</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-stereo-link">
+                                        <span class="horizontal-slider__label">Stereo Link</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>100.0 %</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-input">
+                                        <span class="horizontal-slider__label">Input</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>0.0 dB</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-output">
+                                        <span class="horizontal-slider__label">Output</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>0.0 dB</span></span>
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: var(--space-2);">
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" name="limiter-auto-leveling" ${state.limiter.autoLeveling ? 'checked' : ''}>
+                                        <span class="toggle-switch__slider"></span>
+                                        <span class="toggle-switch__label">Auto Leveling</span>
+                                    </label>
+                                </div>
+                                <div class="sliders">
+                                    <div class="horizontal-slider" id="limiter-alr-attack" style="pointer-events: ${state.limiter.autoLeveling ? '' : 'none'}; opacity: ${state.limiter.autoLeveling ? '1' : '0.5'};">
+                                        <span class="horizontal-slider__label">ALR Attack</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>5.0 ms</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="limiter-alr-release" style="pointer-events: ${state.limiter.autoLeveling ? '' : 'none'}; opacity: ${state.limiter.autoLeveling ? '1' : '0.5'};">
+                                        <span class="horizontal-slider__label">ALR Release</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>50.0 ms</span></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="signal-card signal-card--bass" id="bass-card">
+                                <header class="signal-card__header">
+                                    <h3 class="signal-card__title">Bass Enhancer</h3>
+                                    <label class="toggle-switch toggle-switch--sm">
+                                        <input type="checkbox" name="bass-enabled" ${state.bass.enabled ? 'checked' : ''}>
+                                        <span class="toggle-switch__slider"></span>
+                                        <span class="toggle-switch__label">On</span>
+                                    </label>
+                                </header>
+                                <div class="signal-param-grid">
+                                    <div class="signal-param">
+                                        <span class="signal-param__label">Listen</span>
+                                        <div class="signal-param__control">
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" name="bass-listen" ${state.bass.listen ? 'checked' : ''}>
+                                                <span class="toggle-switch__slider"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="signal-param">
+                                        <span class="signal-param__label">Floor</span>
+                                        <div class="signal-param__control">
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" name="bass-floor" ${state.bass.floorEnabled ? 'checked' : ''}>
+                                                <span class="toggle-switch__slider"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="sliders">
+                                    <div class="horizontal-slider" id="bass-amount">
+                                        <span class="horizontal-slider__label">Amount</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>0.0 dB</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="bass-harmonics">
+                                        <span class="horizontal-slider__label">Harmonics</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>1.0</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="bass-blend">
+                                        <span class="horizontal-slider__label">Blend</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>0.0 %</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="bass-scope">
+                                        <span class="horizontal-slider__label">Scope</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>120.0 Hz</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="bass-floor-freq" style="pointer-events: ${state.bass.floorEnabled ? '' : 'none'}; opacity: ${state.bass.floorEnabled ? '1' : '0.5'};">
+                                        <span class="horizontal-slider__label">Floor</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>20.0 Hz</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="bass-input">
+                                        <span class="horizontal-slider__label">Input</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>0.0 dB</span></span>
+                                    </div>
+                                    <div class="horizontal-slider" id="bass-output">
+                                        <span class="horizontal-slider__label">Output</span>
+                                        <div class="horizontal-slider__track-wrapper">
+                                            <div class="horizontal-slider__track">
+                                                <div class="horizontal-slider__fill"></div>
+                                            </div>
+                                            <div class="horizontal-slider__thumb"></div>
+                                        </div>
+                                        <span class="horizontal-slider__value"><span>0.0 dB</span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="signal-section signal-section--eq">
+                        <div class="signal-section__header">
+                            <h2 class="signal-section__title">Equalizer</h2>
+                            <label class="toggle-switch toggle-switch--sm">
+                                <input type="checkbox" name="eq-enabled" ${state.eq.enabled ? 'checked' : ''}>
+                                <span class="toggle-switch__slider"></span>
+                                <span class="toggle-switch__label">On</span>
+                            </label>
+                        </div>
+                        <div class="eq-faders" id="eq-faders-container">
+                            ${state.eq.bands.map((band, i) => `
+                                <div class="eq-fader ${state.eq.selectedBandIndex === i ? 'eq-fader--selected' : ''}" data-band-index="${i}">
+                                    <div class="eq-fader__gain"><span class="editable-label">${band.gain.toFixed(1)} dB</span></div>
+                                    <div class="eq-fader__track-wrapper">
+                                        <div class="eq-fader__track">
+                                            <div class="eq-fader__fill"></div>
+                                        </div>
+                                        <div class="eq-fader__thumb"></div>
+                                    </div>
+                                    <div class="eq-fader__freq"><span class="editable-label">${formatFrequency(band.freq)}</span></div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="eq-band-detail" id="eq-band-detail-container">
+                            <span class="eq-band-detail__info"></span>
+                            <div class="eq-band-detail__control-group">
+                                <span>Type</span>
+                                <select name="eq-type">
+                                    <option value="Bell">Bell</option>
+                                    <option value="LowShelf">LowShelf</option>
+                                    <option value="HighShelf">HighShelf</option>
+                                    <option value="LowPass">LowPass</option>
+                                    <option value="HighPass">HighPass</option>
+                                    <option value="BandPass">BandPass</option>
+                                    <option value="Notch">Notch</option>
+                                </select>
+                                <span>Mode</span>
+                                <select name="eq-mode">
+                                    <option value="APO (DR)">APO (DR)</option>
+                                    <option value="FFT (Real)">FFT (Real)</option>
+                                    <option value="IIR (Approx)">IIR (Approx)</option>
+                                </select>
+                                <span>Slope</span>
+                                <select name="eq-slope">
+                                    <option value="x1">x1</option>
+                                    <option value="x2">x2</option>
+                                    <option value="x4">x4</option>
+                                </select>
+                                <span class="eq-band-detail__q-label">Q:</span>
+                                <span class="eq-band-detail__q-value editable-label"><span>${state.eq.bands[state.eq.selectedBandIndex]?.q.toFixed(2) || '1.00'}</span></span>
+                            </div>
+                            <div class="eq-band-detail__btn-group">
+                                <label class="toggle-switch toggle-switch--sm">
+                                    <input type="checkbox" name="eq-solo" ${state.eq.bands[state.eq.selectedBandIndex]?.solo ? 'checked' : ''}>
+                                    <span class="toggle-switch__slider"></span>
+                                    <span class="toggle-switch__label">Solo</span>
+                                </label>
+                                <label class="toggle-switch toggle-switch--sm">
+                                    <input type="checkbox" name="eq-mute" ${state.eq.bands[state.eq.selectedBandIndex]?.mute ? 'checked' : ''}>
+                                    <span class="toggle-switch__slider"></span>
+                                    <span class="toggle-switch__label">Mute</span>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            `;
+
+            // Initial render updates for all UI elements
+            const masterBypassCheckbox = view.querySelector('input[name="master-bypass"]');
+            masterBypassCheckbox.checked = !state.eq.enabled; // Master bypass is "ON" when EQ/Limiter/Bass are "OFF"
+
+            const toggleEqEnabled = (enabled) => {
+                const eqContainer = view.getElementById('eq-faders-container');
+                const detailContainer = view.getElementById('eq-band-detail-container');
+                eqContainer.classList.toggle('is-disabled', !enabled);
+                detailContainer.classList.toggle('is-disabled', !enabled);
+                eqContainer.style.pointerEvents = enabled ? '' : 'none';
+                detailContainer.style.pointerEvents = enabled ? '' : 'none';
+                eqContainer.style.opacity = enabled ? '1' : '0.5';
+                detailContainer.style.opacity = enabled ? '1' : '0.5';
+            };
+            toggleEqEnabled(state.eq.enabled);
+            view.querySelector('input[name="eq-enabled"]').checked = state.eq.enabled;
+
+            const toggleLimiterEnabled = (enabled) => {
+                const limiterCard = view.getElementById('limiter-card');
+                limiterCard.classList.toggle('is-disabled', !enabled);
+                limiterCard.style.pointerEvents = enabled ? '' : 'none';
+                limiterCard.style.opacity = enabled ? '1' : '0.5';
+            };
+            toggleLimiterEnabled(state.limiter.enabled);
+            view.querySelector('input[name="limiter-enabled"]').checked = state.limiter.enabled;
+
+            const toggleBassEnabled = (enabled) => {
+                const bassCard = view.getElementById('bass-card');
+                bassCard.classList.toggle('is-disabled', !enabled);
+                bassCard.style.pointerEvents = enabled ? '' : 'none';
+                bassCard.style.opacity = enabled ? '1' : '0.5';
+            };
+            toggleBassEnabled(state.bass.enabled);
+            view.querySelector('input[name="bass-enabled"]').checked = state.bass.enabled;
+
+
+            // Apply initial state to selects
+            view.querySelector('select[name="limiter-mode"]').value = state.limiter.mode;
+            view.querySelector('select[name="limiter-oversampling"]').value = state.limiter.oversampling;
+            view.querySelector('select[name="limiter-dither"]').value = state.limiter.dither;
+
+            // Update toggles for limiter/bass sub-features
+            view.querySelector('input[name="limiter-boost"]').checked = state.limiter.boost;
+            view.querySelector('input[name="limiter-auto-leveling"]').checked = state.limiter.autoLeveling;
+            view.querySelector('input[name="bass-listen"]').checked = state.bass.listen;
+            view.querySelector('input[name="bass-floor"]').checked = state.bass.floorEnabled;
+            // Also enable/disable the ALR sliders
+            view.getElementById('limiter-alr-attack').style.pointerEvents = state.limiter.autoLeveling ? '' : 'none';
+            view.getElementById('limiter-alr-release').style.pointerEvents = state.limiter.autoLeveling ? '' : 'none';
+            view.getElementById('limiter-alr-attack').style.opacity = state.limiter.autoLeveling ? '1' : '0.5';
+            view.getElementById('limiter-alr-release').style.opacity = state.limiter.autoLeveling ? '1' : '0.5';
+            view.getElementById('bass-floor-freq').style.pointerEvents = state.bass.floorEnabled ? '' : 'none';
+            view.getElementById('bass-floor-freq').style.opacity = state.bass.floorEnabled ? '1' : '0.5';
+
+
+            // Initial visual updates
+            updateAllEqFaders();
+            updateBandDetail();
+            updateAllHorizontalSliders();
+
+            // Event Listeners (delegated where possible)
+            view.addEventListener('mousedown', (e) => {
+                handleEqFaderInteraction(e);
+                handleHorizontalSliderInteraction(e);
+            });
+            view.addEventListener('click', handleEditableLabelClick);
+            view.addEventListener('change', handleToggleChange);
+            view.addEventListener('change', handleSelectChange); // For select elements
+
+            return view;
+        }
+
+        // Render the view into the main content area
+        document.addEventListener('DOMContentLoaded', () => {
+            const main = document.querySelector('.main');
+            if (main) {
+                main.replaceChildren(render());
+            }
+        });
+
+    </script>
+</body>
+</html>

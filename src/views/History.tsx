@@ -37,6 +37,12 @@ export default function History() {
       </header>
 
       <div class="view__body">
+        <Show when={!tracks.error} fallback={
+          <div class="empty-state">
+            <p class="empty-state__title">Could not load history</p>
+            <p class="empty-state__hint">{String(tracks.error)}</p>
+          </div>
+        }>
         <Show when={tracks()} fallback={
           <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
         }>
@@ -87,6 +93,7 @@ export default function History() {
               </table>
             </Show>
           )}
+        </Show>
         </Show>
       </div>
     </article>

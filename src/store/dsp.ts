@@ -76,25 +76,26 @@ export interface DspStore {
 // ── Defaults ───────────────────────────────────────────────────
 
 const DEFAULT_BANDS: EqBand[] = [
-  { freq: 20,   gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 26,   gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 38,   gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 55,   gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 72,   gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 110,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 160,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 220,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 300,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 400,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 560,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 800,  gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 1100, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 1600, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 2300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 3300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 25,    gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 40,    gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 63,    gain_db: 1.5,  q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 100,   gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 160,   gain_db: -2.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 250,   gain_db: -0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 400,   gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 630,   gain_db: 0.5,  q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 1000,  gain_db: 2,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 1600,  gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 2500,  gain_db: 2.5,  q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 4000,  gain_db: -0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 6300,  gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 10000, gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 16000, gain_db: 1,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 20000, gain_db: 0,    q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
 ];
 
 const STATE_KEY = "rustify-dsp-state";
+const DSP_STATE_VERSION = 2;
 
 function defaultState(): DspStore {
   return {
@@ -125,7 +126,7 @@ function defaultState(): DspStore {
 function loadPersistedState(): DspStore {
   try {
     const saved = JSON.parse(localStorage.getItem(STATE_KEY) ?? "null");
-    if (!saved) return defaultState();
+    if (!saved || saved._v !== DSP_STATE_VERSION) return defaultState();
     const def = defaultState();
     return {
       bypass: saved.bypass ?? def.bypass,
@@ -152,27 +153,33 @@ export const [dsp, setDsp] = createStore<DspStore>(loadPersistedState());
 
 export function persistDsp() {
   try {
-    // Não persistir activeBand — é UI state
     const { activeBand: _, ...toSave } = dsp;
-    localStorage.setItem(STATE_KEY, JSON.stringify(toSave));
+    localStorage.setItem(STATE_KEY, JSON.stringify({ _v: DSP_STATE_VERSION, ...toSave }));
   } catch {}
 }
 
 // ── Debounced IPC ──────────────────────────────────────────────
 
-let _debounceTimer: ReturnType<typeof setTimeout>;
-export function ipcDebounced(cmd: () => Promise<void>, delay = 50) {
-  clearTimeout(_debounceTimer);
-  _debounceTimer = setTimeout(() => {
+const _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export function ipcDebounced(cmd: () => Promise<void>, delay = 50, key = "default") {
+  const prev = _debounceTimers.get(key);
+  if (prev) clearTimeout(prev);
+  _debounceTimers.set(key, setTimeout(() => {
+    _debounceTimers.delete(key);
     cmd().catch(console.error);
     persistDsp();
-  }, delay);
+  }, delay));
 }
 
 // ── Apply full state to backend ───────────────────────────────
 // Chamado no boot do app (main.tsx) e no mount da view Signal.
 
+let _applyRunning = false;
+let _applyQueued = false;
+
 export async function applyFullDspState() {
+  if (_applyRunning) { _applyQueued = true; return; }
+  _applyRunning = true;
   persistDsp();
   const { eq, limiter, bass, bypass } = dsp;
   try {
@@ -191,10 +198,34 @@ export async function applyFullDspState() {
     }
     await ipc.dspSetLimiterEnabled(limiter.enabled);
     await ipc.dspSetLimiterThreshold(limiter.threshold);
+    await ipc.dspSetLimiterMode(limiter.mode);
+    await ipc.dspSetLimiterOversampling(limiter.ovs);
+    await ipc.dspSetLimiterDither(limiter.dither);
+    await ipc.dspSetLimiterKnee(limiter.knee);
+    await ipc.dspSetLimiterLookahead(limiter.lookahead);
+    await ipc.dspSetLimiterAttack(limiter.attack);
+    await ipc.dspSetLimiterRelease(limiter.release);
+    await ipc.dspSetLimiterScPreamp(limiter.sc_preamp);
+    await ipc.dspSetLimiterStereoLink(limiter.stereo_link);
+    await ipc.dspSetLimiterBoost(limiter.boost);
+    await ipc.dspSetLimiterGain(limiter.input_gain, limiter.output_gain);
+    await ipc.dspSetLimiterAlr(limiter.alr);
+    await ipc.dspSetLimiterAlrAttack(limiter.alr_attack);
+    await ipc.dspSetLimiterAlrRelease(limiter.alr_release);
     await ipc.dspSetBassBypass(!bass.enabled);
     await ipc.dspSetBassAmount(bass.amount);
+    await ipc.dspSetBassDrive(bass.drive);
+    await ipc.dspSetBassBlend(bass.blend);
+    await ipc.dspSetBassFreq(bass.freq);
+    await ipc.dspSetBassFloor(bass.floor);
+    await ipc.dspSetBassFloorActive(bass.floor_active);
+    await ipc.dspSetBassListen(bass.listen);
+    await ipc.dspSetBassLevels(bass.input_gain, bass.output_gain);
   } catch (e) {
     console.error("[dsp] apply state failed:", e);
+  } finally {
+    _applyRunning = false;
+    if (_applyQueued) { _applyQueued = false; applyFullDspState(); }
   }
 }
 
@@ -202,17 +233,17 @@ export async function applyFullDspState() {
 
 export function setEqBandGain(bandIdx: number, gainDb: number) {
   setDsp("eq", "bands", bandIdx, "gain_db", gainDb);
-  ipcDebounced(() => ipc.dspSetEqBand(bandIdx, dsp.eq.bands[bandIdx].freq, gainDb, dsp.eq.bands[bandIdx].q));
+  ipcDebounced(() => ipc.dspSetEqBand(bandIdx, dsp.eq.bands[bandIdx].freq, gainDb, dsp.eq.bands[bandIdx].q), 50, `eq-band-${bandIdx}`);
 }
 
 export function setEqBandType(bandIdx: number, type: number) {
   setDsp("eq", "bands", bandIdx, "type", type);
-  ipcDebounced(() => ipc.dspSetEqFilterType(bandIdx, type));
+  ipcDebounced(() => ipc.dspSetEqFilterType(bandIdx, type), 100, `eq-type-${bandIdx}`);
 }
 
 export function setEqBandMode(bandIdx: number, mode: number) {
   setDsp("eq", "bands", bandIdx, "filterMode", mode);
-  ipcDebounced(() => ipc.dspSetEqFilterMode(bandIdx, mode));
+  ipcDebounced(() => ipc.dspSetEqFilterMode(bandIdx, mode), 100, `eq-mode-${bandIdx}`);
 }
 
 export function setActiveBand(idx: number) {

@@ -16,6 +16,7 @@ import {
 const { invoke } = window.__TAURI__.core;
 
 const DB_RANGE = 36;
+const DSP_STATE_VERSION = 2;
 const FILTER_TYPES = ["Off", "Bell", "Hi-pass", "Hi-shelf", "Lo-pass", "Lo-shelf", "Notch", "Resonance", "Allpass", "Bandpass", "Ladder-pass", "Ladder-rej"];
 const FILTER_MODES = ["RLC (BT)", "RLC (MT)", "BWC (BT)", "BWC (MT)", "LRX (BT)", "LRX (MT)", "APO (DR)"];
 const SLOPES = ["x1", "x2", "x3", "x4"];
@@ -30,22 +31,22 @@ interface Band {
 }
 
 const DEFAULT_BANDS: Band[] = [
-  { freq: 20, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 26, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 38, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 55, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 72, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 110, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 160, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 220, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 25, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 40, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 63, gain_db: 1.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 100, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 160, gain_db: -2.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 250, gain_db: -0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
   { freq: 400, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 560, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 800, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 1100, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 630, gain_db: 0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 1000, gain_db: 2, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
   { freq: 1600, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 2300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 3300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 2500, gain_db: 2.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 4000, gain_db: -0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 6300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 10000, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 16000, gain_db: 1, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 20000, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
 ];
 
 const STORAGE_KEY = "rustify-dsp-presets";
@@ -59,6 +60,7 @@ function sliderPct(val: number, min: number, max: number) { return ((val - min) 
 
 function defaultState() {
   return {
+    _v: DSP_STATE_VERSION,
     bypass: false,
     eq: { enabled: true, mode: 0, input_gain: 0, output_gain: 0, bands: DEFAULT_BANDS.map(b => ({ ...b })) },
     limiter: {
@@ -79,9 +81,10 @@ function defaultState() {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
-    if (saved) {
+    if (saved && saved._v === DSP_STATE_VERSION) {
       const def = defaultState();
       return {
+        _v: DSP_STATE_VERSION,
         bypass: saved.bypass ?? def.bypass,
         eq: { ...def.eq, ...saved.eq, bands: (saved.eq?.bands || def.eq.bands).map((b: any, i: number) => ({ ...def.eq.bands[i], ...b })) },
         limiter: { ...def.limiter, ...saved.limiter },
@@ -97,6 +100,127 @@ function loadPresets(): any[] { try { return JSON.parse(localStorage.getItem(STO
 function savePresets(p: any[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
 function getActivePresetName() { return localStorage.getItem(ACTIVE_KEY) || ""; }
 function setActivePresetName(n: string) { localStorage.setItem(ACTIVE_KEY, n); }
+
+function parseEasyEffects(json: any, name: string) {
+  const o = json.output || json;
+  const preset: any = {
+    name,
+    eq: { mode: "IIR", input_gain: 0, output_gain: 0, bands: [] as Band[] },
+    limiter: {
+      mode: 0, ovs: 0, dither: 0, threshold: 0, knee: 0, lookahead: 5,
+      attack: 5, release: 20, sc_preamp: 1, stereo_link: 100,
+      boost: false, alr: true, alr_attack: 5, alr_release: 50,
+      input_gain: 0, output_gain: 0,
+    },
+    bass_enhancer: {
+      amount: 0, drive: 0, blend: 0, freq: 120, floor: 20,
+      floor_active: true, listen: false, input_gain: 0, output_gain: 0,
+    },
+  };
+  const eq = o["equalizer#0"];
+  if (eq) {
+    preset.eq.mode = eq.mode || "IIR";
+    preset.eq.input_gain = eq["input-gain"] || 0;
+    preset.eq.output_gain = eq["output-gain"] || 0;
+    const left = eq.left || {};
+    const numBands = eq["num-bands"] || Object.keys(left).length;
+    for (let i = 0; i < numBands; i++) {
+      const b = left[`band${i}`];
+      if (b) {
+        const typeIdx = FILTER_TYPES.indexOf(b.type || "Bell");
+        const modeStr = b.mode || "APO (DR)";
+        const modeIdx = FILTER_MODES.indexOf(modeStr) >= 0 ? FILTER_MODES.indexOf(modeStr) : 6;
+        const slopeIdx = SLOPES.indexOf(b.slope || "x1");
+        preset.eq.bands.push({
+          freq: b.frequency || 100, gain_db: b.gain || 0, q: b.q || 2.21,
+          type: typeIdx >= 0 ? typeIdx : 1, filterMode: modeIdx,
+          slope: slopeIdx >= 0 ? slopeIdx : 0, solo: b.solo || false, mute: b.mute || false,
+        });
+      }
+    }
+  }
+  const be = o["bass_enhancer#0"];
+  if (be) {
+    preset.bass_enhancer = {
+      amount: be.amount || 0, drive: be.harmonics || 0, blend: be.blend || 0,
+      freq: be.scope || 120, floor: be.floor || 20, floor_active: be["floor-active"] !== false,
+      listen: be.listen || false, input_gain: be["input-gain"] || 0, output_gain: be["output-gain"] || 0,
+    };
+  }
+  const lim = o["limiter#0"];
+  if (lim) {
+    preset.limiter = {
+      mode: LIMITER_MODES.indexOf(lim.mode) >= 0 ? LIMITER_MODES.indexOf(lim.mode) : 0,
+      ovs: lim.ovs || 0, dither: lim.dither || 0, threshold: lim.threshold || 0,
+      knee: lim.knee || 0, lookahead: lim.lookahead || 5, attack: lim.attack || 5,
+      release: lim.release || 20, sc_preamp: lim["sidechain-preamp"] || 1,
+      stereo_link: lim["stereo-link"] ?? 100, boost: !!lim.boost, alr: lim.alr !== false,
+      alr_attack: lim["alr-attack"] || 5, alr_release: lim["alr-release"] || 50,
+      input_gain: lim["input-gain"] || 0, output_gain: lim["output-gain"] || 0,
+    };
+  }
+  return preset;
+}
+
+function toEasyEffects(preset: any) {
+  const bands = preset.eq?.bands || [];
+  const left: any = {}, right: any = {};
+  bands.forEach((b: Band, i: number) => {
+    const band = {
+      frequency: b.freq, gain: b.gain_db, mode: FILTER_MODES[b.filterMode] || "APO (DR)",
+      mute: b.mute || false, q: b.q, slope: SLOPES[b.slope] || "x1",
+      solo: b.solo || false, type: FILTER_TYPES[b.type] || "Bell", width: 4.0,
+    };
+    left[`band${i}`] = { ...band };
+    right[`band${i}`] = { ...band };
+  });
+  const be = preset.bass_enhancer || {};
+  const lim = preset.limiter || {};
+  return {
+    output: {
+      "bass_enhancer#0": {
+        amount: be.amount || 0, blend: be.blend || 0, bypass: false,
+        floor: be.floor || 20, "floor-active": be.floor_active !== false,
+        harmonics: be.drive || 0, listen: be.listen || false,
+        "input-gain": be.input_gain || 0, "output-gain": be.output_gain || 0, scope: be.freq || 120,
+      },
+      "limiter#0": {
+        mode: LIMITER_MODES[lim.mode] || "Herm Thin", ovs: lim.ovs || 0, dither: lim.dither || 0,
+        threshold: lim.threshold || 0, knee: lim.knee || 0, lookahead: lim.lookahead || 5,
+        attack: lim.attack || 5, release: lim.release || 20, "sidechain-preamp": lim.sc_preamp || 1,
+        "stereo-link": lim.stereo_link ?? 100, boost: !!lim.boost, alr: lim.alr || false,
+        "alr-attack": lim.alr_attack || 5, "alr-release": lim.alr_release || 50,
+        "input-gain": lim.input_gain || 0, "output-gain": lim.output_gain || 0, bypass: false,
+      },
+      blocklist: [],
+      "equalizer#0": {
+        balance: 0, bypass: false, "input-gain": preset.eq?.input_gain || 0,
+        left, mode: preset.eq?.mode || "IIR", "num-bands": bands.length,
+        "output-gain": preset.eq?.output_gain || 0, right,
+      },
+      plugins_order: ["equalizer#0", "limiter#0", "bass_enhancer#0"],
+    },
+  };
+}
+
+function EditableValue(props: { value: string; onCommit: (raw: string) => void; class?: string; title?: string }) {
+  const [editing, setEditing] = createSignal(false);
+  let inputRef: HTMLInputElement | undefined;
+  const commit = () => {
+    if (!inputRef) return;
+    setEditing(false);
+    props.onCommit(inputRef.value.replace(",", "."));
+  };
+  return (
+    <Show when={editing()} fallback={
+      <span class={props.class} title={props.title ?? "Click to edit"} style="cursor:pointer" onClick={(e) => { e.stopPropagation(); setEditing(true); requestAnimationFrame(() => { inputRef?.select(); }); }}>{props.value}</span>
+    }>
+      <input ref={inputRef} class="sig-inline-input" type="text" value={props.value} onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+        onBlur={commit} />
+    </Show>
+  );
+}
 
 let _ipcTimer: any = null;
 function ipcDebounced(cmd: string, args: any, delay = 50) {
@@ -195,14 +319,12 @@ export default function Signal() {
     } catch (e) { console.error("[signal] apply state failed:", e); }
   }
 
-  // -- Fader pointerdown (FIXED: click-to-position + 1:1 drag) --
-  function handleFaderPointerDown(e: PointerEvent, bandIdx: number) {
-    const fader = (e.currentTarget as HTMLElement);
-    const track = fader.querySelector(".sig-f-track") as HTMLElement;
-    if (!track) return;
+  function handleTrackPointerDown(e: PointerEvent, bandIdx: number) {
+    const track = (e.currentTarget as HTMLElement);
     e.preventDefault();
-    fader.setPointerCapture(e.pointerId);
+    e.stopPropagation();
     setActiveBand(bandIdx);
+    track.setPointerCapture(e.pointerId);
 
     const rect = track.getBoundingClientRect();
     const updateValue = (ev: PointerEvent) => {
@@ -215,7 +337,7 @@ export default function Signal() {
     };
     updateValue(e);
     const onMove = (ev: PointerEvent) => updateValue(ev);
-    const onUp = () => { fader.releasePointerCapture(e.pointerId); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); save(); };
+    const onUp = () => { track.releasePointerCapture(e.pointerId); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); save(); };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }
@@ -289,18 +411,26 @@ export default function Signal() {
     );
   }
 
+  function applyPresetToState(preset: any) {
+    const bands = preset.eq?.bands || [];
+    for (let i = 0; i < 16; i++) setState("eq", "bands", i, { ...DEFAULT_BANDS[i], ...(bands[i] || {}) });
+    const modeMap: Record<string, number> = { IIR: 0, FIR: 1, FFT: 2, SPM: 3 };
+    const rawMode = preset.eq?.mode;
+    setState("eq", "mode", typeof rawMode === "number" ? rawMode : (modeMap[rawMode] ?? 0));
+    setState("eq", "input_gain", preset.eq?.input_gain ?? 0);
+    setState("eq", "output_gain", preset.eq?.output_gain ?? 0);
+    if (preset.bypass != null) setState("bypass", preset.bypass);
+    if (preset.limiter) setState("limiter", preset.limiter);
+    if (preset.bass_enhancer) setState("bass", preset.bass_enhancer);
+  }
+
   function selectPreset(name: string) {
     if (name === "Flat") {
       const def = defaultState();
       setState(def);
     } else {
       const p = presets().find(x => x.name === name);
-      if (p) {
-        const bands = p.eq?.bands || [];
-        for (let i = 0; i < 16; i++) setState("eq", "bands", i, { ...DEFAULT_BANDS[i], ...(bands[i] || {}) });
-        if (p.limiter) setState("limiter", p.limiter);
-        if (p.bass_enhancer) setState("bass", p.bass_enhancer);
-      }
+      if (p) applyPresetToState(p);
     }
     setActivePresetName(name);
     setActivePreset(name);
@@ -308,10 +438,27 @@ export default function Signal() {
   }
 
   function savePreset() {
-    const name = prompt("Preset name:");
+    const current = activePreset();
+    const name = (current && current !== "Flat") ? current : prompt("Preset name:");
     if (!name) return;
     const list = loadPresets();
-    const preset = { name, eq: JSON.parse(JSON.stringify(state.eq)), limiter: { ...state.limiter }, bass_enhancer: { ...state.bass } };
+    const preset = { name, bypass: state.bypass, eq: JSON.parse(JSON.stringify(state.eq)), limiter: { ...state.limiter }, bass_enhancer: { ...state.bass } };
+    const idx = list.findIndex((p: any) => p.name === name);
+    if (idx >= 0) list[idx] = preset; else list.push(preset);
+    savePresets(list);
+    setPresets(list);
+    setActivePresetName(name);
+    setActivePreset(name);
+  }
+
+  function createPreset() {
+    const name = prompt("New preset name:");
+    if (!name) return;
+    const list = loadPresets();
+    if (list.some((p: any) => p.name === name)) {
+      if (!confirm(`Preset "${name}" already exists. Overwrite?`)) return;
+    }
+    const preset = { name, bypass: state.bypass, eq: JSON.parse(JSON.stringify(state.eq)), limiter: { ...state.limiter }, bass_enhancer: { ...state.bass } };
     const idx = list.findIndex((p: any) => p.name === name);
     if (idx >= 0) list[idx] = preset; else list.push(preset);
     savePresets(list);
@@ -333,17 +480,21 @@ export default function Signal() {
   async function importPreset() {
     try {
       const { open } = window.__TAURI__.dialog;
-      const path = await open({ filters: [{ name: "EasyEffects Preset", extensions: ["json"] }], defaultPath: "~/.config/easyeffects/output" });
+      const path = await open({ filters: [{ name: "EasyEffects Preset", extensions: ["json"] }] });
       if (!path) return;
-      const { readTextFile } = window.__TAURI__.fs;
-      const text = await readTextFile(path);
+      const text: string = await invoke("fs_read_text", { path: String(path) });
       const json = JSON.parse(text);
-      const fileName = (path as string).split("/").pop()?.replace(".json", "") || "imported";
-      // Simplified import — full parseEasyEffects in signal.js
+      const fileName = String(path).split("/").pop()?.replace(".json", "") || "imported";
+      const preset = parseEasyEffects(json, fileName);
       const list = loadPresets();
-      list.push({ name: fileName, eq: json.output?.["equalizer#0"] ? { bands: [] } : state.eq });
+      const idx = list.findIndex((p: any) => p.name === preset.name);
+      if (idx >= 0) list[idx] = preset; else list.push(preset);
       savePresets(list);
       setPresets(list);
+      applyPresetToState(preset);
+      setActivePresetName(preset.name);
+      setActivePreset(preset.name);
+      applyFullState();
     } catch (e) { console.error("[signal] import failed:", e); }
   }
 
@@ -352,8 +503,8 @@ export default function Signal() {
       const { save: dlgSave } = window.__TAURI__.dialog;
       const path = await dlgSave({ filters: [{ name: "EasyEffects Preset", extensions: ["json"] }], defaultPath: `${activePreset() || "rustify-preset"}.json` });
       if (!path) return;
-      const { writeTextFile } = window.__TAURI__.fs;
-      await writeTextFile(path, JSON.stringify({ output: {} }, null, 4));
+      const eePreset = toEasyEffects({ name: activePreset(), eq: state.eq, limiter: state.limiter, bass_enhancer: state.bass });
+      await invoke("fs_write_text", { path: String(path), contents: JSON.stringify(eePreset, null, 4) });
     } catch (e) { console.error("[signal] export failed:", e); }
   }
 
@@ -379,6 +530,7 @@ export default function Signal() {
         </div>
         <div class="sig-presets__actions">
           <button class="sig-pre-btn" onClick={savePreset}>Save</button>
+          <button class="sig-pre-btn" onClick={createPreset}>New</button>
           <button class="sig-pre-btn" onClick={() => { const c = activePreset(); if (!c || c === "Flat") return; const n = prompt("Rename:", c); if (!n) return; const list = loadPresets(); const idx = list.findIndex((p: any) => p.name === c); if (idx >= 0) { list[idx].name = n; savePresets(list); setPresets(list); setActivePresetName(n); setActivePreset(n); } }}>Rename</button>
           <button class="sig-pre-btn" onClick={deletePreset}>Delete</button>
           <button class="sig-pre-btn" onClick={importPreset}>Import</button>
@@ -414,19 +566,30 @@ export default function Signal() {
           <div class="sig-faders">
             <For each={state.eq.bands}>
               {(b, i) => {
-                const thumbPos = () => 50 + (b.gain_db / DB_RANGE) * 50;
+                const thumbPos = () => { const raw = 50 + (b.gain_db / DB_RANGE) * 50; return 5 + raw * 0.9; };
                 const fillPct = () => Math.abs(b.gain_db) / DB_RANGE * 50;
                 return (
-                  <div class={`sig-fader${ab() === i() ? " sig-fader--active" : ""}`} onPointerDown={(e) => handleFaderPointerDown(e, i())}>
-                    <span class="sig-f-hz">{fmtHz(b.freq)}</span>
-                    <div class="sig-f-track">
+                  <div class={`sig-fader${ab() === i() ? " sig-fader--active" : ""}`} onClick={() => setActiveBand(i())}>
+                    <EditableValue class="sig-f-hz" value={fmtHz(b.freq)} title="Click to edit frequency" onCommit={(raw) => {
+                      let v = parseFloat(raw); if (isNaN(v)) return;
+                      if (raw.toLowerCase().endsWith("k")) v *= 1000;
+                      v = Math.max(10, Math.min(24000, Math.round(v)));
+                      setState("eq", "bands", i(), "freq", v);
+                      invoke("dsp_set_eq_band", { band: i(), freq: v, gainDb: b.gain_db, q: b.q }); save(); drawCurve();
+                    }} />
+                    <div class="sig-f-track" onPointerDown={(e) => handleTrackPointerDown(e, i())}>
                       <div class="sig-f-zero" />
                       <Show when={b.gain_db !== 0}>
                         <div class={b.gain_db >= 0 ? "sig-f-fill sig-f-up" : "sig-f-fill sig-f-dn"} style={`height:${fillPct()}%`} />
                       </Show>
                       <div class="sig-f-thumb" style={`bottom:${thumbPos()}%`} />
                     </div>
-                    <span class="sig-f-val">{fmtDb(b.gain_db)}</span>
+                    <EditableValue class="sig-f-val" value={fmtDb(b.gain_db)} title="Click to edit gain" onCommit={(raw) => {
+                      const v = parseFloat(raw); if (isNaN(v)) return;
+                      const clamped = Math.max(-DB_RANGE, Math.min(DB_RANGE, Math.round(v * 10) / 10));
+                      setState("eq", "bands", i(), "gain_db", clamped);
+                      invoke("dsp_set_eq_band", { band: i(), freq: b.freq, gainDb: clamped, q: b.q }); save(); drawCurve();
+                    }} />
                   </div>
                 );
               }}
@@ -458,7 +621,12 @@ export default function Signal() {
                   <For each={SLOPES}>{(s, i) => <option value={i()}>{s}</option>}</For>
                 </select>
               </label>
-              <span class="sig-bd__q">Q: <b>{band().q.toFixed(2)}</b></span>
+              <span class="sig-bd__q">Q: <EditableValue class="sig-bd__q-val" value={band().q.toFixed(2)} title="Click to edit Q" onCommit={(raw) => {
+                const v = parseFloat(raw); if (isNaN(v) || v <= 0) return;
+                const clamped = Math.max(0.01, Math.min(100, Math.round(v * 100) / 100));
+                setState("eq", "bands", ab(), "q", clamped);
+                invoke("dsp_set_eq_band", { band: ab(), freq: band().freq, gainDb: band().gain_db, q: clamped }); save();
+              }} /></span>
               <div class="sig-bd__toggles">
                 <button class={`sig-bd-sm sig-bd-sm--solo${band().solo ? " is-active" : ""}`} onClick={() => { setState("eq", "bands", ab(), "solo", !band().solo); invoke("dsp_set_eq_solo", { band: ab(), solo: band().solo }).catch(() => {}); save(); }}>S</button>
                 <button class={`sig-bd-sm sig-bd-sm--mute${band().mute ? " is-active" : ""}`} onClick={() => { setState("eq", "bands", ab(), "mute", !band().mute); invoke("dsp_set_eq_mute", { band: ab(), mute: band().mute }).catch(() => {}); save(); }}>M</button>
@@ -482,7 +650,8 @@ export default function Signal() {
         </div>
       </div>
 
-      {/* === Limiter Section === */}
+      {/* === Limiter + Bass side by side === */}
+      <div class="sig-duo">
       <div class="sig-sec">
         <div class="sig-sec-h">
           <span class="sig-sec-t">Limiter</span>
@@ -535,7 +704,6 @@ export default function Signal() {
         </div>
       </div>
 
-      {/* === Bass Enhancer Section === */}
       <div class="sig-sec">
         <div class="sig-sec-h">
           <span class="sig-sec-t">Bass Enhancer</span>
@@ -564,6 +732,7 @@ export default function Signal() {
           </div>
         </div>
       </div>
+      </div>{/* close sig-duo */}
     </article>
   );
 }

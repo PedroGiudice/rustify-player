@@ -55,6 +55,7 @@ struct EngineState {
     next_path: Option<PathBuf>,
     state: PlaybackState,
     volume: f64,
+    rg_gain: f64,
     next_track_id: u64,
     state_tx: Sender<StateUpdate>,
     #[allow(dead_code)]
@@ -110,6 +111,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 next_path: None,
                 state: PlaybackState::Idle,
                 volume: 1.0,
+                rg_gain: 1.0,
                 next_track_id: 1,
                 state_tx: state_tx_thread,
                 metrics: metrics_thread,
@@ -218,7 +220,7 @@ impl EngineState {
                 }
             }
             Command::DspSetEqEnabled(enabled) => {
-                if let Some(dsp) = &self.player.dsp {
+                if let Some(dsp) = &mut self.player.dsp {
                     dsp.set_eq_enabled(enabled);
                 }
             }
@@ -228,7 +230,7 @@ impl EngineState {
                 }
             }
             Command::DspSetLimiterEnabled(enabled) => {
-                if let Some(dsp) = &self.player.dsp {
+                if let Some(dsp) = &mut self.player.dsp {
                     dsp.set_limiter_enabled(enabled);
                 }
             }
@@ -333,7 +335,7 @@ impl EngineState {
                 }
             }
             Command::DspSetBassBypass(bypass) => {
-                if let Some(dsp) = &self.player.dsp {
+                if let Some(dsp) = &mut self.player.dsp {
                     dsp.set_bass_bypass(bypass);
                 }
             }
@@ -374,9 +376,10 @@ impl EngineState {
             }
         };
 
+        self.rg_gain = compute_rg_gain(&info);
         self.player.set_sample_rate(info.sample_rate);
         self.player.load(&path);
-        self.player.set_volume(self.volume);
+        self.player.set_volume(self.volume * self.rg_gain);
 
         let _ = self.state_tx.send(StateUpdate::TrackStarted(info.clone()));
         self.current = Some(CurrentTrack { info });
@@ -439,7 +442,7 @@ impl EngineState {
 
     fn cmd_set_volume(&mut self, v: f32) {
         self.volume = f64::from(v).clamp(0.0, 1.0);
-        self.player.set_volume(self.volume);
+        self.player.set_volume(self.volume * self.rg_gain);
         let _ = self
             .state_tx
             .send(StateUpdate::VolumeChanged(self.volume as f32));
@@ -513,6 +516,35 @@ impl EngineState {
         self.current = None;
         self.next_path = None;
         self.set_state(PlaybackState::Stopped);
+    }
+}
+
+/// Compute effective ReplayGain attenuation (always <= 1.0).
+/// Strategy: RG 2.0 Track mode + clip prevention + ISP margin.
+fn compute_rg_gain(info: &TrackInfo) -> f64 {
+    match (info.track_gain_db, info.track_peak) {
+        (Some(gain_db), Some(peak)) => {
+            let base = 10.0_f64.powf(f64::from(gain_db) / 20.0);
+            let capped = if base * f64::from(peak) > 1.0 {
+                0.98 / f64::from(peak)
+            } else {
+                base
+            };
+            // -1 dB ISP safety margin
+            (capped * 0.891).min(1.0)
+        }
+        (Some(gain_db), None) => {
+            let base = 10.0_f64.powf(f64::from(gain_db) / 20.0);
+            (base * 0.891).min(1.0)
+        }
+        _ => {
+            // No RG tags: -3 dB fallback for hi-res, unity for 16-bit
+            if info.bit_depth.unwrap_or(16) > 16 {
+                0.7079
+            } else {
+                1.0
+            }
+        }
     }
 }
 

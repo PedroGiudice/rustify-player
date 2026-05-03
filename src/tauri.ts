@@ -127,6 +127,7 @@ export const libListLiked = (limit?: number) => invoke<Track[]>("lib_list_liked"
 export const libMoodSearch = (query: string, limit?: number) => invoke<Track[]>("lib_mood_search", { query, limit: limit ?? 50 });
 export const checkForUpdate = () => invoke<any>("check_for_update");
 export const installUpdate = () => invoke<void>("install_update");
+export const restartApp = () => invoke<void>("restart_app");
 
 // ── DSP commands ───────────────────────────────────────────────
 
@@ -151,7 +152,28 @@ export const dspSetLimiterEnabled = (enabled: boolean) =>
 export const dspSetLimiterThreshold = (thresholdDb: number) =>
   invoke<void>("dsp_set_limiter_threshold", { thresholdDb });
 export const dspSetBassBypass = (bypass: boolean) => invoke<void>("dsp_set_bass_bypass", { bypass });
+export const dspSetLimiterMode = (mode: number) => invoke<void>("dsp_set_limiter_mode", { mode });
+export const dspSetLimiterKnee = (knee: number) => invoke<void>("dsp_set_limiter_knee", { knee });
+export const dspSetLimiterLookahead = (lookahead: number) => invoke<void>("dsp_set_limiter_lookahead", { lookahead });
+export const dspSetLimiterAttack = (attack: number) => invoke<void>("dsp_set_limiter_attack", { attack });
+export const dspSetLimiterRelease = (release: number) => invoke<void>("dsp_set_limiter_release", { release });
+export const dspSetLimiterGain = (input: number, output: number) => invoke<void>("dsp_set_limiter_gain", { input, output });
+export const dspSetLimiterBoost = (boost: boolean) => invoke<void>("dsp_set_limiter_boost", { boost });
+export const dspSetLimiterScPreamp = (preamp: number) => invoke<void>("dsp_set_limiter_sc_preamp", { preamp });
+export const dspSetLimiterStereoLink = (link: number) => invoke<void>("dsp_set_limiter_stereo_link", { link });
+export const dspSetLimiterOversampling = (ovs: number) => invoke<void>("dsp_set_limiter_oversampling", { ovs });
+export const dspSetLimiterDither = (dither: number) => invoke<void>("dsp_set_limiter_dither", { dither });
+export const dspSetLimiterAlr = (alr: boolean) => invoke<void>("dsp_set_limiter_alr", { alr });
+export const dspSetLimiterAlrAttack = (attack: number) => invoke<void>("dsp_set_limiter_alr_attack", { attack });
+export const dspSetLimiterAlrRelease = (release: number) => invoke<void>("dsp_set_limiter_alr_release", { release });
 export const dspSetBassAmount = (amount: number) => invoke<void>("dsp_set_bass_amount", { amount });
+export const dspSetBassDrive = (drive: number) => invoke<void>("dsp_set_bass_drive", { drive });
+export const dspSetBassBlend = (blend: number) => invoke<void>("dsp_set_bass_blend", { blend });
+export const dspSetBassFreq = (freq: number) => invoke<void>("dsp_set_bass_freq", { freq });
+export const dspSetBassFloor = (floor: number) => invoke<void>("dsp_set_bass_floor", { floor });
+export const dspSetBassFloorActive = (active: boolean) => invoke<void>("dsp_set_bass_floor_active", { active });
+export const dspSetBassListen = (listen: boolean) => invoke<void>("dsp_set_bass_listen", { listen });
+export const dspSetBassLevels = (input: number, output: number) => invoke<void>("dsp_set_bass_levels", { input, output });
 
 export const listBackgrounds = () => invoke<string[]>("list_backgrounds");
 export const getTrackColor = (trackId: string) =>

@@ -6,6 +6,7 @@ const { invoke } = window.__TAURI__.core;
 const STORAGE_KEY = "rustify-dsp-presets";
 const ACTIVE_KEY = "rustify-dsp-active";
 const DB_RANGE = 36;
+const DSP_STATE_VERSION = 2;
 
 const FILTER_TYPES = ["Off", "Bell", "Hi-pass", "Hi-shelf", "Lo-pass", "Lo-shelf", "Notch", "Resonance", "Allpass", "Bandpass", "Ladder-pass", "Ladder-rej"];
 const FILTER_MODES = ["RLC (BT)", "RLC (MT)", "BWC (BT)", "BWC (MT)", "LRX (BT)", "LRX (MT)", "APO (DR)"];
@@ -15,26 +16,27 @@ const LIMITER_OVS = ["None", "Half x2/16", "Half x2/24", "Half x3/16", "Half x3/
 const LIMITER_DITHER = ["None", "7bit", "8bit", "11bit", "12bit"];
 
 const DEFAULT_BANDS = [
-  { freq: 20, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 26, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 38, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 55, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 72, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 110, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 160, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 220, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 25, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 40, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 63, gain_db: 1.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 100, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 160, gain_db: -2.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 250, gain_db: -0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
   { freq: 400, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 560, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 800, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 1100, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 630, gain_db: 0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 1000, gain_db: 2, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
   { freq: 1600, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 2300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
-  { freq: 3300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 2500, gain_db: 2.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 4000, gain_db: -0.5, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 6300, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 10000, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 16000, gain_db: 1, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
+  { freq: 20000, gain_db: 0, q: 2.21, type: 1, filterMode: 6, slope: 0, solo: false, mute: false },
 ];
 
 function defaultState() {
   return {
+    _v: DSP_STATE_VERSION,
     bypass: false,
     eq: {
       enabled: true,
@@ -67,10 +69,10 @@ let canvas, ctx;
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STATE_KEY));
-    if (saved) {
-      // Merge with defaults to fill any missing keys from older saves
+    if (saved && saved._v === DSP_STATE_VERSION) {
       const def = defaultState();
       return {
+        _v: DSP_STATE_VERSION,
         bypass: saved.bypass ?? def.bypass,
         eq: { ...def.eq, ...saved.eq, bands: (saved.eq?.bands || def.eq.bands).map((b, i) => ({ ...def.eq.bands[i], ...b })) },
         limiter: { ...def.limiter, ...saved.limiter },
@@ -1018,13 +1020,11 @@ export function render() {
       const { open } = window.__TAURI__.dialog;
       const path = await open({
         filters: [{ name: "EasyEffects Preset", extensions: ["json"] }],
-        defaultPath: "~/.config/easyeffects/output",
       });
       if (!path) return;
-      const { readTextFile } = window.__TAURI__.fs;
-      const text = await readTextFile(path);
+      const text = await invoke("fs_read_text", { path: String(path) });
       const json = JSON.parse(text);
-      const fileName = path.split("/").pop().replace(".json", "");
+      const fileName = String(path).split("/").pop().replace(".json", "");
       const preset = parseEasyEffects(json, fileName);
       const presets = loadPresets();
       const existing = presets.findIndex((p) => p.name === preset.name);
@@ -1055,8 +1055,7 @@ export function render() {
         limiter: state.limiter,
         bass_enhancer: state.bass,
       });
-      const { writeTextFile } = window.__TAURI__.fs;
-      await writeTextFile(path, JSON.stringify(eePreset, null, 4));
+      await invoke("fs_write_text", { path: String(path), contents: JSON.stringify(eePreset, null, 4) });
     } catch (e) {
       console.error("[signal] export failed:", e);
     }
