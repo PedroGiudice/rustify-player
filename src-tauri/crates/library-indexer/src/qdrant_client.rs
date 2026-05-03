@@ -144,6 +144,10 @@ const LYRICS_DIM: usize = 1024;
 /// Name of the play events collection (payload-only, dummy vectors).
 const PLAY_EVENTS_COLLECTION: &str = "play_events";
 
+/// Name of the enrichments collection (mood tags, likes, play counts, etc.).
+/// Separated from rustify_tracks so library rescans never destroy user/enrichment data.
+const ENRICHMENTS_COLLECTION: &str = "track_enrichments";
+
 /// Synchronous HTTP client for the Qdrant REST API.
 ///
 /// Cheap to clone — the inner `ureq::Agent` shares connection pools via `Arc`.
@@ -195,6 +199,7 @@ impl QdrantClient {
                     .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
                 let vectors = &info["result"]["config"]["params"]["vectors"];
                 if vectors.get(VEC_LYRICS).is_some() {
+                    self.create_payload_indices()?;
                     return Ok(());
                 }
                 tracing::info!("Qdrant collection missing 'lyrics' vector — recreating");
@@ -247,14 +252,27 @@ impl QdrantClient {
         Ok(resp["result"]["points_count"].as_u64().unwrap_or(0))
     }
 
+    pub fn count_with_filter(&self, filter: Value) -> Result<u64, IndexerError> {
+        let url = format!("{}/collections/{COLLECTION}/points/count", self.base_url);
+        let body = json!({ "filter": filter, "exact": true });
+        let resp: Value = self
+            .agent
+            .post(&url)
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant count: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+        Ok(resp["result"]["count"].as_u64().unwrap_or(0))
+    }
+
     /// Scroll through all point IDs in the collection.
     ///
     /// Uses pagination (1 000 IDs per page) until `next_page_offset` is null.
-    /// Returns a flat `Vec<i64>` of all track IDs present in Qdrant, useful
+    /// Returns a flat `Vec<u64>` of all track IDs present in Qdrant, useful
     /// for diffing against the SQLite library to find tracks that need
     /// embedding or have been removed.
-    pub fn scroll_ids(&self) -> Result<Vec<i64>, IndexerError> {
-        let mut all_ids: Vec<i64> = Vec::new();
+    pub fn scroll_ids(&self) -> Result<Vec<u64>, IndexerError> {
+        let mut all_ids: Vec<u64> = Vec::new();
         let mut offset: Option<Value> = None;
 
         loop {
@@ -280,7 +298,7 @@ impl QdrantClient {
 
             if let Some(points) = resp["result"]["points"].as_array() {
                 for p in points {
-                    if let Some(id) = p["id"].as_i64() {
+                    if let Some(id) = p["id"].as_u64() {
                         all_ids.push(id);
                     }
                 }
@@ -303,7 +321,7 @@ impl QdrantClient {
     /// - `payload` is arbitrary JSON metadata (title, artist, etc.).
     ///
     /// A no-op if `points` is empty.
-    pub fn upsert_batch(&self, points: &[(i64, &[f32], Value)]) -> Result<(), IndexerError> {
+    pub fn upsert_batch(&self, points: &[(u64, &[f32], Value)]) -> Result<(), IndexerError> {
         if points.is_empty() {
             return Ok(());
         }
@@ -334,7 +352,7 @@ impl QdrantClient {
 
     /// Upsert lyrics embeddings for existing points.
     /// Updates only the "lyrics" named vector — other vectors and payload untouched.
-    pub fn upsert_lyrics_batch(&self, points: &[(i64, &[f32])]) -> Result<(), IndexerError> {
+    pub fn upsert_lyrics_batch(&self, points: &[(u64, &[f32])]) -> Result<(), IndexerError> {
         if points.is_empty() {
             return Ok(());
         }
@@ -364,10 +382,10 @@ impl QdrantClient {
     /// Returns an empty vec when `positive_ids` is empty (nothing to anchor on).
     pub fn recommend(
         &self,
-        positive_ids: &[i64],
-        negative_ids: &[i64],
+        positive_ids: &[u64],
+        negative_ids: &[u64],
         limit: usize,
-    ) -> Result<Vec<(i64, f64)>, IndexerError> {
+    ) -> Result<Vec<(u64, f64)>, IndexerError> {
         if positive_ids.is_empty() {
             return Ok(vec![]);
         }
@@ -400,7 +418,7 @@ impl QdrantClient {
         let mut results = Vec::new();
         if let Some(points) = resp["result"]["points"].as_array() {
             for p in points {
-                if let (Some(id), Some(score)) = (p["id"].as_i64(), p["score"].as_f64()) {
+                if let (Some(id), Some(score)) = (p["id"].as_u64(), p["score"].as_f64()) {
                     results.push((id, score));
                 }
             }
@@ -416,7 +434,7 @@ impl QdrantClient {
         &self,
         query_vector: &[f32],
         limit: usize,
-    ) -> Result<Vec<(i64, f64)>, IndexerError> {
+    ) -> Result<Vec<(u64, f64)>, IndexerError> {
         let body = json!({
             "query": query_vector,
             "using": VEC_LYRICS,
@@ -438,7 +456,7 @@ impl QdrantClient {
         let mut results = Vec::new();
         if let Some(points) = resp["result"]["points"].as_array() {
             for p in points {
-                if let (Some(id), Some(score)) = (p["id"].as_i64(), p["score"].as_f64()) {
+                if let (Some(id), Some(score)) = (p["id"].as_u64(), p["score"].as_f64()) {
                     results.push((id, score));
                 }
             }
@@ -447,59 +465,9 @@ impl QdrantClient {
         Ok(results)
     }
 
-    pub fn mood_search(&self, filters: &MoodFilters, limit: usize) -> Result<Vec<i64>, IndexerError> {
-        let mut must = Vec::new();
+    // mood_search removed — replaced by mood_search_enrichments (targets track_enrichments collection)
 
-        for tag in &filters.mood_tags {
-            must.push(json!({"key": "mood_tags", "match": {"value": tag}}));
-        }
-        for tag in &filters.activity_tags {
-            must.push(json!({"key": "activity_tags", "match": {"value": tag}}));
-        }
-        if let Some(genre) = &filters.genre {
-            must.push(json!({"key": "genre", "match": {"value": genre}}));
-        }
-        if let Some(min) = filters.energy_min {
-            must.push(json!({"key": "energy", "range": {"gte": min}}));
-        }
-        if let Some(max) = filters.energy_max {
-            must.push(json!({"key": "energy", "range": {"lte": max}}));
-        }
-        if let Some(min) = filters.valence_min {
-            must.push(json!({"key": "valence", "range": {"gte": min}}));
-        }
-        if let Some(max) = filters.valence_max {
-            must.push(json!({"key": "valence", "range": {"lte": max}}));
-        }
-
-        let body = json!({
-            "filter": {"must": must},
-            "limit": limit,
-            "with_payload": false,
-            "with_vector": false
-        });
-
-        let resp: Value = self
-            .agent
-            .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
-            .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!("qdrant mood search: {e}")))?
-            .into_json()
-            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
-
-        let mut ids = Vec::new();
-        if let Some(points) = resp["result"]["points"].as_array() {
-            for p in points {
-                if let Some(id) = p["id"].as_i64() {
-                    ids.push(id);
-                }
-            }
-        }
-
-        Ok(ids)
-    }
-
-    pub fn get_payload(&self, point_id: i64) -> Result<Value, IndexerError> {
+    pub fn get_payload(&self, point_id: u64) -> Result<Value, IndexerError> {
         let resp: Value = self
             .agent
             .get(&format!(
@@ -795,7 +763,7 @@ impl QdrantClient {
     /// Uses a UUID v4 as point ID with a dummy `[0.0]` vector.
     pub fn insert_play_event(
         &self,
-        track_id: i64,
+        track_id: u64,
         origin: &str,
         started_at: &str,
         end_position_ms: u64,
@@ -902,7 +870,7 @@ impl QdrantClient {
     ///   `listen_pct >= 0.8`. Tracks appearing 3+ times get an extra entry for weight.
     /// - **Negatives:** up to 15 distinct track_ids from the last 50 events with
     ///   `listen_pct < 0.15` AND `origin != "album_seq"`.
-    pub fn behavioral_signals(&self) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
+    pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
         // --- Positives ---
         let pos_filter = json!({
             "must": [
@@ -912,19 +880,19 @@ impl QdrantClient {
         });
         let pos_payloads = self.scroll_play_events(pos_filter, 100)?;
 
-        let mut track_counts: HashMap<i64, usize> = HashMap::new();
+        let mut track_counts: HashMap<u64, usize> = HashMap::new();
         for p in &pos_payloads {
-            if let Some(tid) = p["track_id"].as_i64() {
+            if let Some(tid) = p["track_id"].as_u64() {
                 *track_counts.entry(tid).or_default() += 1;
             }
         }
 
         // Sort by count descending, take top 30 distinct
-        let mut sorted: Vec<(i64, usize)> = track_counts.into_iter().collect();
+        let mut sorted: Vec<(u64, usize)> = track_counts.into_iter().collect();
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
         sorted.truncate(30);
 
-        let mut positives: Vec<i64> = Vec::new();
+        let mut positives: Vec<u64> = Vec::new();
         for (tid, count) in &sorted {
             positives.push(*tid);
             // Extra weight for tracks with 3+ listens
@@ -945,10 +913,10 @@ impl QdrantClient {
         });
         let neg_payloads = self.scroll_play_events(neg_filter, 50)?;
 
-        let mut neg_seen: HashSet<i64> = HashSet::new();
-        let mut negatives: Vec<i64> = Vec::new();
+        let mut neg_seen: HashSet<u64> = HashSet::new();
+        let mut negatives: Vec<u64> = Vec::new();
         for p in &neg_payloads {
-            if let Some(tid) = p["track_id"].as_i64() {
+            if let Some(tid) = p["track_id"].as_u64() {
                 if neg_seen.insert(tid) {
                     negatives.push(tid);
                     if negatives.len() >= 15 {
@@ -962,6 +930,203 @@ impl QdrantClient {
     }
 
     // sync_lyrics removed — pipeline will handle lyrics embedding directly.
+
+    // -----------------------------------------------------------------------
+    // Track enrichments collection
+    // -----------------------------------------------------------------------
+
+    pub fn ensure_enrichments_collection(&self) -> Result<(), IndexerError> {
+        let url = format!("{}/collections/{ENRICHMENTS_COLLECTION}", self.base_url);
+
+        match self.agent.get(&url).call() {
+            Ok(_) => {
+                self.create_enrichment_indices()?;
+                return Ok(());
+            }
+            Err(ureq::Error::Status(404, _)) => {}
+            Err(e) => {
+                return Err(IndexerError::Embedding(format!(
+                    "qdrant get enrichments collection: {e}"
+                )));
+            }
+        }
+
+        let body = json!({
+            "vectors": {
+                "size": 1,
+                "distance": "Cosine"
+            }
+        });
+
+        self.agent
+            .put(&url)
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!(
+                "qdrant create enrichments collection: {e}"
+            )))?;
+
+        self.create_enrichment_indices()?;
+        Ok(())
+    }
+
+    fn create_enrichment_indices(&self) -> Result<(), IndexerError> {
+        let indices: Vec<(&str, Value)> = vec![
+            ("play_count", json!({"type": "integer"})),
+            ("last_played", json!({"type": "integer"})),
+            ("liked_at", json!({"type": "integer"})),
+            ("mood_tags", json!({"type": "keyword"})),
+            ("activity_tags", json!({"type": "keyword"})),
+            ("energy", json!({"type": "float"})),
+            ("valence", json!({"type": "float"})),
+        ];
+
+        for (field, schema) in &indices {
+            let url = format!("{}/collections/{ENRICHMENTS_COLLECTION}/index", self.base_url);
+            let body = json!({
+                "field_name": field,
+                "field_schema": schema
+            });
+            match self.agent.put(&url).send_json(&body) {
+                Ok(_) | Err(ureq::Error::Status(409, _)) => {}
+                Err(e) => {
+                    return Err(IndexerError::Embedding(format!(
+                        "qdrant create enrichment index {field}: {e}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_enrichment(&self, track_id: u64) -> Result<Value, IndexerError> {
+        let url = format!(
+            "{}/collections/{ENRICHMENTS_COLLECTION}/points/{track_id}",
+            self.base_url
+        );
+        match self.agent.get(&url).call() {
+            Ok(resp) => {
+                let data: Value = resp
+                    .into_json()
+                    .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+                Ok(data["result"]["payload"].clone())
+            }
+            Err(ureq::Error::Status(404, _)) => Ok(json!({})),
+            Err(e) => Err(IndexerError::Embedding(format!("qdrant get enrichment: {e}"))),
+        }
+    }
+
+    pub fn set_enrichment(&self, track_id: u64, payload: Value) -> Result<(), IndexerError> {
+        let existing = self.get_enrichment(track_id)?;
+        let mut merged = existing;
+        if let (Some(base), Some(patch)) = (merged.as_object_mut(), payload.as_object()) {
+            for (k, v) in patch {
+                base.insert(k.clone(), v.clone());
+            }
+        }
+
+        let body = json!({
+            "points": [{
+                "id": track_id,
+                "vector": [0.0_f32],
+                "payload": merged
+            }]
+        });
+        self.agent
+            .put(&format!("{}/collections/{ENRICHMENTS_COLLECTION}/points", self.base_url))
+            .query("wait", "true")
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant set enrichment: {e}")))?;
+        Ok(())
+    }
+
+    pub fn scroll_enrichments(
+        &self,
+        filter: Option<Value>,
+        order_by: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(u64, Value)>, IndexerError> {
+        let mut body = json!({
+            "limit": limit,
+            "with_payload": true,
+            "with_vector": false
+        });
+        if let Some(f) = filter {
+            body["filter"] = f;
+        }
+        if let Some(key) = order_by {
+            body["order_by"] = json!({ "key": key, "direction": "desc" });
+        }
+
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{ENRICHMENTS_COLLECTION}/points/scroll", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant scroll enrichments: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut results = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                let id = p["id"].as_u64().unwrap_or(0);
+                let payload = p.get("payload").cloned().unwrap_or(Value::Null);
+                results.push((id, payload));
+            }
+        }
+        Ok(results)
+    }
+
+    pub fn mood_search_enrichments(&self, filters: &MoodFilters, limit: usize) -> Result<Vec<u64>, IndexerError> {
+        let mut must = Vec::new();
+
+        for tag in &filters.mood_tags {
+            must.push(json!({"key": "mood_tags", "match": {"value": tag}}));
+        }
+        for tag in &filters.activity_tags {
+            must.push(json!({"key": "activity_tags", "match": {"value": tag}}));
+        }
+        if let Some(min) = filters.energy_min {
+            must.push(json!({"key": "energy", "range": {"gte": min}}));
+        }
+        if let Some(max) = filters.energy_max {
+            must.push(json!({"key": "energy", "range": {"lte": max}}));
+        }
+        if let Some(min) = filters.valence_min {
+            must.push(json!({"key": "valence", "range": {"gte": min}}));
+        }
+        if let Some(max) = filters.valence_max {
+            must.push(json!({"key": "valence", "range": {"lte": max}}));
+        }
+
+        if must.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let body = json!({
+            "filter": {"must": must},
+            "limit": limit,
+            "with_payload": false,
+            "with_vector": false
+        });
+
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{ENRICHMENTS_COLLECTION}/points/scroll", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant mood search enrichments: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut ids = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                if let Some(id) = p["id"].as_u64() {
+                    ids.push(id);
+                }
+            }
+        }
+        Ok(ids)
+    }
 }
 
 /// Convert a little-endian `f32` byte blob (as stored in SQLite) to a vector

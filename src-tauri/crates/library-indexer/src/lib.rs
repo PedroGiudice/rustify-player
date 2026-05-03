@@ -26,6 +26,7 @@ pub mod qdrant_client;
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
 pub use qdrant_client::{MoodFilters, QdrantClient};
+pub use cover::{CoverSource, dominant_color};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};
@@ -62,6 +63,7 @@ impl Indexer {
         let client = QdrantClient::new(&config.qdrant_url);
         client.ensure_collection()?;
         client.ensure_play_events_collection()?;
+        client.ensure_enrichments_collection()?;
 
         let pipeline_cfg = pipeline::PipelineConfig {
             music_root: config.music_root.clone(),
@@ -227,7 +229,7 @@ impl IndexerHandle {
         query::autoplay_next(&self.inner.client, seed, exclude, limit)
     }
 
-    pub fn behavioral_signals(&self) -> Result<(Vec<i64>, Vec<i64>), IndexerError> {
+    pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
         self.inner.client.behavioral_signals()
     }
 

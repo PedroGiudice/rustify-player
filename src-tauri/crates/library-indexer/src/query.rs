@@ -226,6 +226,9 @@ pub fn list_albums(
             track_count: 0,
         });
         entry.track_count += 1;
+        if entry.cover_path.is_none() {
+            entry.cover_path = payload["cover_path"].as_str().map(PathBuf::from);
+        }
     }
 
     let mut albums: Vec<Album> = album_map.into_values().collect();
@@ -360,49 +363,56 @@ pub fn search(
 }
 
 // ---------------------------------------------------------------------------
-// Playback history & likes
+// Playback history & likes (backed by track_enrichments collection)
 // ---------------------------------------------------------------------------
 
+fn resolve_tracks_with_enrichments(
+    client: &QdrantClient,
+    enriched: &[(u64, Value)],
+) -> Vec<Track> {
+    let mut tracks = Vec::new();
+    for (id, enr) in enriched {
+        if let Ok(Some(point)) = client.get_point(*id) {
+            let payload = &point["payload"];
+            let mut track = payload_to_track(*id, payload);
+            track.play_count = enr["play_count"].as_u64().unwrap_or(0) as u32;
+            track.last_played = enr["last_played"].as_i64();
+            track.liked_at = enr["liked_at"].as_i64();
+            tracks.push(track);
+        }
+    }
+    tracks
+}
+
 pub fn record_play(client: &QdrantClient, track_id: u64) -> Result<(), IndexerError> {
-    let point = client.get_point(track_id)?;
-    let current_count = point
-        .as_ref()
-        .and_then(|p| p["payload"]["play_count"].as_u64())
-        .unwrap_or(0);
+    let existing = client.get_enrichment(track_id)?;
+    let current_count = existing["play_count"].as_u64().unwrap_or(0);
     let now = unix_now();
 
-    client.set_payload(
-        &[track_id],
-        json!({
-            "play_count": current_count + 1,
-            "last_played": now
-        }),
-    )
+    client.set_enrichment(track_id, json!({
+        "play_count": current_count + 1,
+        "last_played": now
+    }))
 }
 
 pub fn list_history(client: &QdrantClient, limit: usize) -> Result<Vec<Track>, IndexerError> {
     let filter = json!({
         "must": [{"key": "last_played", "range": {"gt": 0}}]
     });
-    let results = client.scroll_with_filter(Some(filter), Some("last_played"), limit, false)?;
-    Ok(results
-        .iter()
-        .map(|(id, p)| payload_to_track(*id, p))
-        .collect())
+    let enriched = client.scroll_enrichments(Some(filter), Some("last_played"), limit)?;
+    Ok(resolve_tracks_with_enrichments(client, &enriched))
 }
 
 pub fn toggle_like(client: &QdrantClient, track_id: u64) -> Result<bool, IndexerError> {
-    let point = client.get_point(track_id)?.ok_or_else(|| {
-        IndexerError::Embedding(format!("track {track_id} not found"))
-    })?;
-    let currently_liked = point["payload"]["liked_at"].as_i64().is_some();
+    let existing = client.get_enrichment(track_id)?;
+    let currently_liked = existing["liked_at"].as_i64().is_some();
 
     if currently_liked {
-        client.set_payload(&[track_id], json!({"liked_at": null}))?;
+        client.set_enrichment(track_id, json!({"liked_at": null}))?;
         Ok(false)
     } else {
         let now = unix_now();
-        client.set_payload(&[track_id], json!({"liked_at": now}))?;
+        client.set_enrichment(track_id, json!({"liked_at": now}))?;
         Ok(true)
     }
 }
@@ -411,18 +421,13 @@ pub fn list_liked(client: &QdrantClient, limit: usize) -> Result<Vec<Track>, Ind
     let filter = json!({
         "must": [{"key": "liked_at", "range": {"gt": 0}}]
     });
-    let results = client.scroll_with_filter(Some(filter), Some("liked_at"), limit, false)?;
-    Ok(results
-        .iter()
-        .map(|(id, p)| payload_to_track(*id, p))
-        .collect())
+    let enriched = client.scroll_enrichments(Some(filter), Some("liked_at"), limit)?;
+    Ok(resolve_tracks_with_enrichments(client, &enriched))
 }
 
 pub fn is_liked(client: &QdrantClient, track_id: u64) -> Result<bool, IndexerError> {
-    match client.get_point(track_id)? {
-        Some(point) => Ok(point["payload"]["liked_at"].as_i64().is_some()),
-        None => Ok(false),
-    }
+    let enr = client.get_enrichment(track_id)?;
+    Ok(enr["liked_at"].as_i64().is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -455,11 +460,11 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
     seed_ids.truncate(10);
 
     let based_on_top = if !seed_ids.is_empty() {
-        let positive: Vec<i64> = seed_ids.iter().map(|id| *id as i64).collect();
+        let positive: Vec<u64> = seed_ids.to_vec();
         let rec_ids = client.recommend(&positive, &[], 10)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
-            if let Some(t) = get_track(client, tid as u64)? {
+            if let Some(t) = get_track(client, tid)? {
                 if !seed_ids.contains(&t.id) {
                     tracks.push(t);
                 }
@@ -471,11 +476,11 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
     };
 
     let discover = if !seed_ids.is_empty() {
-        let positive: Vec<i64> = seed_ids.iter().map(|id| *id as i64).collect();
+        let positive: Vec<u64> = seed_ids.to_vec();
         let rec_ids = client.recommend(&positive, &[], 20)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
-            if let Some(t) = get_track(client, tid as u64)? {
+            if let Some(t) = get_track(client, tid)? {
                 if t.play_count == 0 && !seed_ids.contains(&t.id) {
                     tracks.push(t);
                 }
@@ -503,10 +508,10 @@ pub fn similar(
     track_id: u64,
     limit: usize,
 ) -> Result<Vec<(Track, f32)>, IndexerError> {
-    let recs = client.recommend(&[track_id as i64], &[], limit)?;
+    let recs = client.recommend(&[track_id], &[], limit)?;
     let mut results = Vec::new();
     for (tid, score) in recs {
-        if let Some(t) = get_track(client, tid as u64)? {
+        if let Some(t) = get_track(client, tid)? {
             results.push((t, score as f32));
         }
     }
@@ -542,6 +547,7 @@ pub fn shuffle(
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FolderPlaylist {
+    #[serde(rename = "name")]
     pub folder: String,
     pub track_count: u32,
     pub cover_path: Option<PathBuf>,
@@ -559,13 +565,17 @@ pub fn list_folders(
         let path_str = payload["path"].as_str().unwrap_or("");
         let path = std::path::Path::new(path_str);
         if let Ok(rel) = path.strip_prefix(root) {
-            if let Some(parent) = rel.parent() {
-                let folder = parent.to_string_lossy().to_string();
-                if !folder.is_empty() {
-                    let entry = folder_map.entry(folder).or_insert((0, None));
-                    entry.0 += 1;
-                    if entry.1.is_none() {
-                        entry.1 = payload["cover_path"].as_str().map(PathBuf::from);
+            let mut components = rel.components();
+            if let Some(first) = components.next() {
+                // Only use first-level directory as folder name
+                if components.next().is_some() {
+                    let folder = first.as_os_str().to_string_lossy().to_string();
+                    if !folder.is_empty() {
+                        let entry = folder_map.entry(folder).or_insert((0, None));
+                        entry.0 += 1;
+                        if entry.1.is_none() {
+                            entry.1 = payload["cover_path"].as_str().map(PathBuf::from);
+                        }
                     }
                 }
             }
@@ -685,9 +695,8 @@ pub fn autoplay_next(
     exclude_ids: &[u64],
     limit: usize,
 ) -> Result<Vec<(u64, f64)>, IndexerError> {
-    let neg: Vec<i64> = exclude_ids.iter().map(|id| *id as i64).collect();
-    let recs = client.recommend(&[seed_track_id as i64], &neg, limit)?;
-    Ok(recs.iter().map(|(id, score)| (*id as u64, *score)).collect())
+    let recs = client.recommend(&[seed_track_id], exclude_ids, limit)?;
+    Ok(recs)
 }
 
 // ---------------------------------------------------------------------------

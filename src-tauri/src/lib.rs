@@ -59,6 +59,10 @@ struct MediaServerPort(u16);
 // Error bridging — Tauri commands return Result<T, String>
 // ---------------------------------------------------------------------------
 
+fn parse_id(s: &str) -> Result<u64, String> {
+    s.parse::<u64>().map_err(|e| format!("invalid track id: {e}"))
+}
+
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -182,7 +186,7 @@ fn lib_semantic_search(
 
     let mut tracks = Vec::new();
     for (track_id, _score) in results {
-        if let Ok(Some(mut t)) = lib.handle.track(track_id as u64) {
+        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
             if let Some(rel) = &t.album_cover_path {
                 t.album_cover_path = Some(lib.cache_dir.join(rel));
             }
@@ -203,13 +207,22 @@ fn lib_mood_search(
     if filters.is_empty() {
         return Ok(Vec::new());
     }
-    let ids = client.mood_search(&filters, limit.unwrap_or(20)).map_err(err)?;
+    let ids = client.mood_search_enrichments(&filters, limit.unwrap_or(50)).map_err(err)?;
 
     let mut tracks = Vec::new();
     for track_id in ids {
-        if let Ok(Some(mut t)) = lib.handle.track(track_id as u64) {
+        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
             if let Some(rel) = &t.album_cover_path {
                 t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+            if let Some(ref genre_filter) = filters.genre {
+                if let Some(ref track_genre) = t.genre_name {
+                    if track_genre != genre_filter {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
             }
             tracks.push(t);
         }
@@ -231,11 +244,12 @@ fn lib_get_track(lib: State<Library>, id: u64) -> Result<Option<Track>, String> 
 #[tauri::command]
 fn lib_find_similar(
     lib: State<Library>,
-    track_id: u64,
+    track_id: String,
     limit: Option<usize>,
 ) -> Result<Vec<SimilarTrack>, String> {
+    let tid = parse_id(&track_id)?;
     lib.handle
-        .similar(track_id, limit.unwrap_or(10))
+        .similar(tid, limit.unwrap_or(10))
         .map(|v| {
             v.into_iter()
                 .map(|(t, s)| SimilarTrack { track: t, score: s })
@@ -274,10 +288,12 @@ fn lib_shuffle(
 #[tauri::command]
 fn lib_autoplay_next(
     lib: State<Library>,
-    track_id: u64,
-    exclude_ids: Vec<u64>,
+    track_id: String,
+    exclude_ids: Vec<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
+    let track_id = parse_id(&track_id)?;
+    let exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
     let lim = limit.unwrap_or(5);
     let client = lib.handle.client();
 
@@ -285,22 +301,20 @@ fn lib_autoplay_next(
     if client.is_healthy() {
         match lib.handle.behavioral_signals() {
             Ok((mut positives, negatives)) => {
-                let tid_i64 = track_id as i64;
-                if !positives.contains(&tid_i64) {
-                    positives.insert(0, tid_i64);
+                if !positives.contains(&track_id) {
+                    positives.insert(0, track_id);
                 }
-                let excl_i64: Vec<i64> = exclude_ids.iter().map(|id| *id as i64).collect();
                 match client.recommend(&positives, &negatives, lim + exclude_ids.len()) {
                     Ok(recs) => {
-                        let filtered: Vec<(i64, f64)> = recs
+                        let filtered: Vec<(u64, f64)> = recs
                             .into_iter()
-                            .filter(|(id, _)| !excl_i64.contains(id))
+                            .filter(|(id, _)| !exclude_ids.contains(id))
                             .take(lim)
                             .collect();
                         if !filtered.is_empty() {
                             let mut tracks = Vec::new();
                             for (rec_id, _score) in &filtered {
-                                if let Ok(Some(mut t)) = lib.handle.track(*rec_id as u64) {
+                                if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
                                     if let Some(rel) = &t.album_cover_path {
                                         t.album_cover_path = Some(lib.cache_dir.join(rel));
                                     }
@@ -430,8 +444,8 @@ fn lib_rescan(lib: State<Library>) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_get_lyrics(lib: State<Library>, track_id: u64) -> Result<Vec<LyricLine>, String> {
-    lib.handle.get_lyrics(track_id).map_err(err)
+fn lib_get_lyrics(lib: State<Library>, track_id: String) -> Result<Vec<LyricLine>, String> {
+    lib.handle.get_lyrics(parse_id(&track_id)?).map_err(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -439,8 +453,8 @@ fn lib_get_lyrics(lib: State<Library>, track_id: u64) -> Result<Vec<LyricLine>, 
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_record_play(lib: State<Library>, track_id: u64) -> Result<(), String> {
-    lib.handle.record_play(track_id).map_err(err)
+fn lib_record_play(lib: State<Library>, track_id: String) -> Result<(), String> {
+    lib.handle.record_play(parse_id(&track_id)?).map_err(err)
 }
 
 #[tauri::command]
@@ -459,8 +473,8 @@ fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Tra
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_toggle_like(lib: State<Library>, track_id: u64) -> Result<bool, String> {
-    lib.handle.toggle_like(track_id).map_err(err)
+fn lib_toggle_like(lib: State<Library>, track_id: String) -> Result<bool, String> {
+    lib.handle.toggle_like(parse_id(&track_id)?).map_err(err)
 }
 
 #[tauri::command]
@@ -475,8 +489,8 @@ fn lib_list_liked(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track
 }
 
 #[tauri::command]
-fn lib_is_liked(lib: State<Library>, track_id: u64) -> Result<bool, String> {
-    lib.handle.is_liked(track_id).map_err(err)
+fn lib_is_liked(lib: State<Library>, track_id: String) -> Result<bool, String> {
+    lib.handle.is_liked(parse_id(&track_id)?).map_err(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -530,10 +544,29 @@ fn list_backgrounds() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn get_track_color(lib: State<Library>, track_id: u64) -> Result<String, String> {
+fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, String> {
+    let tid = parse_id(&track_id)?;
     let client = lib.handle.client();
-    let payload = client.get_payload(track_id as i64).map_err(err)?;
-    Ok(payload["dominant_color"].as_str().unwrap_or("").to_string())
+
+    let enr = client.get_enrichment(tid).map_err(err)?;
+    if let Some(color) = enr["dominant_color"].as_str().filter(|s| !s.is_empty()) {
+        return Ok(color.to_string());
+    }
+
+    // Fallback: compute from cached cover, persist in enrichments
+    let payload = client.get_payload(tid).map_err(err)?;
+    if let Some(rel) = payload["cover_path"].as_str() {
+        let cover_file = lib.cache_dir.join(rel);
+        if cover_file.exists() {
+            let source = library_indexer::CoverSource::FolderFile(cover_file);
+            if let Some(hex) = library_indexer::dominant_color(&source) {
+                client.set_enrichment(tid, serde_json::json!({"dominant_color": hex})).ok();
+                return Ok(hex);
+            }
+        }
+    }
+
+    Ok(String::new())
 }
 
 // qdrant_sync removed — pipeline writes directly to Qdrant during scan.
@@ -563,11 +596,12 @@ fn player_play(
     snapshot: State<Snapshot>,
     path: String,
     origin: Option<String>,
-    track_id: Option<u64>,
+    track_id: Option<String>,
 ) -> Result<(), String> {
+    let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
     if let Ok(mut s) = snapshot.0.lock() {
         s.current_origin = origin.or_else(|| Some("manual".to_string()));
-        s.current_track_id = track_id;
+        s.current_track_id = tid;
         s.started_at = None;
         s.last_position_ms = None;
     }
@@ -583,11 +617,12 @@ fn player_play(
 fn player_set_origin(
     snapshot: State<Snapshot>,
     origin: String,
-    track_id: Option<u64>,
+    track_id: Option<String>,
 ) -> Result<(), String> {
+    let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
     if let Ok(mut s) = snapshot.0.lock() {
         s.current_origin = Some(origin);
-        s.current_track_id = track_id;
+        s.current_track_id = tid;
         if s.started_at.is_none() {
             s.started_at = Some(unix_now());
         }
@@ -1022,6 +1057,16 @@ fn read_file(path: &str) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
 }
 
+#[tauri::command]
+fn fs_read_text(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))
+}
+
+#[tauri::command]
+fn fs_write_text(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, &contents).map_err(|e| format!("{path}: {e}"))
+}
+
 type CpuSnapshot = (Vec<(u64, u64)>, (u64, u64));
 
 fn parse_cpu_cores() -> Result<CpuSnapshot, String> {
@@ -1261,6 +1306,11 @@ async fn install_update() -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("join error: {e}"))?
+}
+
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
 }
 
 // ---------------------------------------------------------------------------
@@ -1778,7 +1828,7 @@ pub fn run() {
                                     let _ended_at = unix_now();
                                     let end_pos = s.last_position_ms;
                                     if let Err(e) = indexer.client().insert_play_event(
-                                        track_id as i64,
+                                        track_id,
                                         &origin,
                                         &started_at,
                                         end_pos.unwrap_or(0) as u64,
@@ -1870,6 +1920,8 @@ pub fn run() {
             list_backgrounds,
             get_track_color,
             log_event,
+            fs_read_text,
+            fs_write_text,
             player_play,
             player_set_origin,
             player_pause,
@@ -1917,6 +1969,7 @@ pub fn run() {
             get_system_resources,
             check_for_update,
             install_update,
+            restart_app,
             list_system_fonts,
             get_media_port,
         ])

@@ -114,6 +114,15 @@ pub fn process_album_cover(
     Ok(target_path)
 }
 
+/// Extract the dominant color from a cover source as a hex string (e.g. "#a04f2c").
+/// Uses average-color via resize-to-1x1 for speed.
+pub fn dominant_color(source: &CoverSource) -> Option<String> {
+    let img = load_source(source).ok()?;
+    let tiny = img.resize_exact(1, 1, FilterType::Lanczos3);
+    let px = tiny.get_pixel(0, 0);
+    Some(format!("#{:02x}{:02x}{:02x}", px[0], px[1], px[2]))
+}
+
 fn load_source(source: &CoverSource) -> Result<DynamicImage, IndexerError> {
     match source {
         CoverSource::EmbeddedBytes { data, .. } => {

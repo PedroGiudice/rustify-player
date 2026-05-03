@@ -47,6 +47,16 @@ impl SharedState {
     pub fn refresh(&self, client: &QdrantClient) {
         let total = client.collection_point_count().unwrap_or(0);
         self.tracks_total.store(total, Ordering::Relaxed);
+
+        let done = client
+            .count_with_filter(json!({"must": [{"key": "embedding_status", "match": {"value": "done"}}]}))
+            .unwrap_or(0);
+        let failed = client
+            .count_with_filter(json!({"must": [{"key": "embedding_status", "match": {"value": "failed"}}]}))
+            .unwrap_or(0);
+        self.embeddings_done.store(done, Ordering::Relaxed);
+        self.embeddings_failed.store(failed, Ordering::Relaxed);
+        self.embeddings_pending.store(total.saturating_sub(done + failed), Ordering::Relaxed);
     }
 }
 
@@ -202,8 +212,8 @@ fn run_scan(
     // Deletions: in Qdrant but not on disk.
     let to_delete: Vec<u64> = existing
         .iter()
-        .filter(|(_, path, _, _)| !seen_paths.contains(path))
-        .map(|(id, _, _, _)| *id)
+        .filter(|(_, path, _, _, _)| !seen_paths.contains(path))
+        .map(|(id, _, _, _, _)| *id)
         .collect();
     if !to_delete.is_empty() {
         client.delete_points(&to_delete)?;
@@ -213,9 +223,9 @@ fn run_scan(
         }
     }
 
-    let by_path: std::collections::HashMap<PathBuf, (u64, u64, u64)> = existing
+    let by_path: std::collections::HashMap<PathBuf, (u64, u64, u64, bool)> = existing
         .into_iter()
-        .map(|(id, p, mt, sz)| (p, (id, mt, sz)))
+        .map(|(id, p, mt, sz, emb)| (p, (id, mt, sz, emb)))
         .collect();
 
     let mut batch: Vec<(u64, serde_json::Value, Option<Vec<f32>>)> = Vec::new();
@@ -226,7 +236,7 @@ fn run_scan(
         let prior = by_path.get(&entry.path);
         let needs_ingest = match prior {
             None => true,
-            Some((_, mt, sz)) => *mt != entry.mtime || *sz != entry.size,
+            Some((_, mt, sz, _)) => *mt != entry.mtime || *sz != entry.size,
         };
 
         if needs_ingest {
@@ -248,12 +258,13 @@ fn run_scan(
                     warn!(target: "library_indexer::pipeline", path = ?entry.path, error = %e, "ingest failed");
                 }
             }
-        } else if let Some((id, _, _)) = prior {
-            // Re-enqueue pending embeddings
-            let _ = embed_job_tx.send(EmbedJob {
-                track_id: *id,
-                path: entry.path.clone(),
-            });
+        } else if let Some((id, _, _, embedded)) = prior {
+            if !embedded {
+                let _ = embed_job_tx.send(EmbedJob {
+                    track_id: *id,
+                    path: entry.path.clone(),
+                });
+            }
         }
 
         if batch.len() >= 100 {
@@ -282,15 +293,16 @@ fn run_scan(
 
 fn load_existing_from_qdrant(
     client: &QdrantClient,
-) -> Result<Vec<(u64, PathBuf, u64, u64)>, IndexerError> {
-    let all = client.scroll_all_payloads(&["path", "mtime", "size_bytes"])?;
+) -> Result<Vec<(u64, PathBuf, u64, u64, bool)>, IndexerError> {
+    let all = client.scroll_all_payloads(&["path", "mtime", "size_bytes", "embedding_status"])?;
     Ok(all
         .into_iter()
         .map(|(id, payload)| {
             let path = PathBuf::from(payload["path"].as_str().unwrap_or(""));
             let mtime = payload["mtime"].as_u64().unwrap_or(0);
             let size = payload["size_bytes"].as_u64().unwrap_or(0);
-            (id, path, mtime, size)
+            let embedded = payload["embedding_status"].as_str() == Some("done");
+            (id, path, mtime, size, embedded)
         })
         .collect())
 }
@@ -330,8 +342,9 @@ fn build_track_payload(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    // Cover art
+    // Cover art + dominant color
     let cover_source = pick_cover_source(entry, &md);
+    // dominant_color now lives in track_enrichments — computed on-demand by get_track_color
     let cover_path = if let Some(src) = cover_source {
         let album_key = format!(
             "{}|{}",
@@ -383,9 +396,6 @@ fn build_track_payload(
         "rg_track_peak": md.rg_track_peak,
         "rg_album_peak": md.rg_album_peak,
         "embedding_status": "pending",
-        "play_count": 0,
-        "last_played": null,
-        "liked_at": null,
         "lrc_path": lrc_path,
         "embedded_lyrics": embedded_lyrics,
         "mtime": entry.mtime,
@@ -466,7 +476,7 @@ fn apply_embed_result(
                     "vector": { "mert": vector }
                 }]
             });
-            let url = format!("{}/collections/rustify_tracks/points", client.base_url());
+            let url = format!("{}/collections/rustify_tracks/points/vectors", client.base_url());
             match client.raw_put(&url, &body) {
                 Ok(_) => {
                     client
