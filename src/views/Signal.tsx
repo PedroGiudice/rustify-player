@@ -236,6 +236,7 @@ export default function Signal() {
 
   let canvasRef: HTMLCanvasElement | undefined;
   let canvasCtx: CanvasRenderingContext2D | null = null;
+  let columnsRef: HTMLDivElement | undefined;
 
   function save() { persistState(state); }
 
@@ -248,28 +249,41 @@ export default function Signal() {
     canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const w = r.width, h = r.height, mid = h / 2;
     canvasCtx.clearRect(0, 0, w, h);
+
+    // Grid lines
     canvasCtx.strokeStyle = "rgba(237,234,227,.03)";
     canvasCtx.lineWidth = 1;
     for (let i = 1; i < 5; i++) { canvasCtx.beginPath(); canvasCtx.moveTo(0, (h / 5) * i); canvasCtx.lineTo(w, (h / 5) * i); canvasCtx.stroke(); }
     canvasCtx.strokeStyle = "rgba(237,234,227,.07)";
     canvasCtx.beginPath(); canvasCtx.moveTo(0, mid); canvasCtx.lineTo(w, mid); canvasCtx.stroke();
 
-    const pts = state.eq.bands.map((b, i) => [
-      (i / (state.eq.bands.length - 1)) * w,
-      mid - (b.gain_db / DB_RANGE) * (h / 2) * 0.85,
-    ]);
+    // Align X positions with actual column centers
+    const canvasRect = canvasRef.parentElement!.getBoundingClientRect();
+    const cols = columnsRef?.querySelectorAll<HTMLElement>(".sig-col-wrap");
+    const pts = state.eq.bands.map((b, i) => {
+      let x: number;
+      if (cols && cols[i]) {
+        const cr = cols[i].getBoundingClientRect();
+        x = (cr.left + cr.width / 2) - canvasRect.left;
+      } else {
+        x = (i / (state.eq.bands.length - 1)) * w;
+      }
+      return [x, mid - (b.gain_db / DB_RANGE) * (h / 2) * 0.85];
+    });
     if (pts.length < 2) return;
 
+    // Fill area
     const path = new Path2D();
     path.moveTo(pts[0][0], pts[0][1]);
     for (let i = 0; i < pts.length - 1; i++) {
       const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
       path.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
     }
-    path.lineTo(w, mid); path.lineTo(0, mid); path.closePath();
+    path.lineTo(pts[pts.length - 1][0], mid); path.lineTo(pts[0][0], mid); path.closePath();
     canvasCtx.fillStyle = "rgba(198,99,61,.06)";
     canvasCtx.fill(path);
 
+    // Stroke curve
     canvasCtx.beginPath();
     canvasCtx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 0; i < pts.length - 1; i++) {
@@ -280,6 +294,7 @@ export default function Signal() {
     canvasCtx.lineWidth = 1.5;
     canvasCtx.stroke();
 
+    // Dots
     pts.forEach(([x, y], i) => {
       const active = state.eq.bands[i].gain_db !== 0;
       canvasCtx!.beginPath();
@@ -319,25 +334,64 @@ export default function Signal() {
     } catch (e) { console.error("[signal] apply state failed:", e); }
   }
 
-  function handleTrackPointerDown(e: PointerEvent, bandIdx: number) {
-    const track = (e.currentTarget as HTMLElement);
+  /* Smart Columns: click = select only, drag = adjust gain */
+  function handleColumnPointerDown(e: PointerEvent, bandIdx: number) {
     e.preventDefault();
     e.stopPropagation();
-    setActiveBand(bandIdx);
-    track.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let hasMoved = false;
 
-    const rect = track.getBoundingClientRect();
-    const updateValue = (ev: PointerEvent) => {
-      const ratio = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-      const db = Math.round((ratio * DB_RANGE * 2 - DB_RANGE) * 10) / 10;
-      const clamped = Math.max(-DB_RANGE, Math.min(DB_RANGE, db));
-      setState("eq", "bands", bandIdx, "gain_db", clamped);
-      drawCurve();
-      ipcDebounced("dsp_set_eq_band", { band: bandIdx, freq: state.eq.bands[bandIdx].freq, gainDb: clamped, q: state.eq.bands[bandIdx].q });
+    const columnsEl = columnsRef!;
+
+    const gainFromY = (clientY: number, col: HTMLElement) => {
+      const rect = col.getBoundingClientRect();
+      const y = Math.max(rect.top, Math.min(clientY, rect.bottom));
+      const pctFromTop = (y - rect.top) / rect.height;
+      const db = DB_RANGE - pctFromTop * DB_RANGE * 2;
+      return Math.max(-DB_RANGE, Math.min(DB_RANGE, Math.round(db * 10) / 10));
     };
-    updateValue(e);
-    const onMove = (ev: PointerEvent) => updateValue(ev);
-    const onUp = () => { track.releasePointerCapture(e.pointerId); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); save(); };
+
+    const columnFromX = (clientX: number): number => {
+      const wraps = columnsEl.querySelectorAll<HTMLElement>(".sig-col-wrap");
+      for (let i = 0; i < wraps.length; i++) {
+        const r = wraps[i].getBoundingClientRect();
+        if (clientX >= r.left && clientX <= r.right) return i;
+      }
+      const first = wraps[0].getBoundingClientRect();
+      const last = wraps[wraps.length - 1].getBoundingClientRect();
+      return clientX < first.left ? 0 : wraps.length - 1;
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (!hasMoved) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) <= 3) return;
+        hasMoved = true;
+      }
+      // Horizontal draw mode: detect which column the cursor is over
+      // Vertical-only drag: stay on the original bandIdx
+      const horizontalDelta = Math.abs(ev.clientX - startX);
+      const idx = horizontalDelta > 10 ? columnFromX(ev.clientX) : bandIdx;
+      setActiveBand(idx);
+      const col = columnsEl.querySelectorAll<HTMLElement>(".sig-col")[idx];
+      if (!col) return;
+      const clamped = gainFromY(ev.clientY, col);
+      setState("eq", "bands", idx, "gain_db", clamped);
+      drawCurve();
+      ipcDebounced("dsp_set_eq_band", { band: idx, freq: state.eq.bands[idx].freq, gainDb: clamped, q: state.eq.bands[idx].q });
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (!hasMoved) {
+        // Click only — select band, don't change gain
+        setActiveBand(bandIdx);
+      }
+      save();
+      drawCurve();
+    };
+
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }
@@ -562,34 +616,47 @@ export default function Signal() {
           </div>
           <div class="sig-eq-xaxis"><span>20</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span></div>
 
-          {/* Faders */}
-          <div class="sig-faders">
+          {/* Smart Columns */}
+          <div class="sig-columns" ref={columnsRef}>
             <For each={state.eq.bands}>
               {(b, i) => {
-                const thumbPos = () => { const raw = 50 + (b.gain_db / DB_RANGE) * 50; return 5 + raw * 0.9; };
-                const fillPct = () => Math.abs(b.gain_db) / DB_RANGE * 50;
+                const fillPct = () => (Math.abs(b.gain_db) / DB_RANGE) * 50;
+                const fillStyle = () => {
+                  const pct = fillPct();
+                  if (b.gain_db >= 0) return `bottom:50%;height:${pct}%`;
+                  return `top:50%;height:${pct}%`;
+                };
                 return (
-                  <div class={`sig-fader${ab() === i() ? " sig-fader--active" : ""}`} onClick={() => setActiveBand(i())}>
-                    <EditableValue class="sig-f-hz" value={fmtHz(b.freq)} title="Click to edit frequency" onCommit={(raw) => {
+                  <div class={`sig-col-wrap${ab() === i() ? " sig-col--active" : ""}`}>
+                    <EditableValue class="sig-col-hz" value={fmtHz(b.freq)} title="Click to edit frequency" onCommit={(raw) => {
                       let v = parseFloat(raw); if (isNaN(v)) return;
                       if (raw.toLowerCase().endsWith("k")) v *= 1000;
                       v = Math.max(10, Math.min(24000, Math.round(v)));
                       setState("eq", "bands", i(), "freq", v);
                       invoke("dsp_set_eq_band", { band: i(), freq: v, gainDb: b.gain_db, q: b.q }); save(); drawCurve();
                     }} />
-                    <div class="sig-f-track" onPointerDown={(e) => handleTrackPointerDown(e, i())}>
-                      <div class="sig-f-zero" />
+                    <div class="sig-col" onPointerDown={(e) => handleColumnPointerDown(e, i())}>
+                      <div class="sig-col-zero" />
                       <Show when={b.gain_db !== 0}>
-                        <div class={b.gain_db >= 0 ? "sig-f-fill sig-f-up" : "sig-f-fill sig-f-dn"} style={`height:${fillPct()}%`} />
+                        <div class={`sig-col-fill${b.gain_db < 0 ? " sig-col-fill--neg" : ""}`} style={fillStyle()} />
                       </Show>
-                      <div class="sig-f-thumb" style={`bottom:${thumbPos()}%`} />
                     </div>
-                    <EditableValue class="sig-f-val" value={fmtDb(b.gain_db)} title="Click to edit gain" onCommit={(raw) => {
-                      const v = parseFloat(raw); if (isNaN(v)) return;
-                      const clamped = Math.max(-DB_RANGE, Math.min(DB_RANGE, Math.round(v * 10) / 10));
-                      setState("eq", "bands", i(), "gain_db", clamped);
-                      invoke("dsp_set_eq_band", { band: i(), freq: b.freq, gainDb: clamped, q: b.q }); save(); drawCurve();
-                    }} />
+                    <input
+                      class="sig-col-input"
+                      type="number"
+                      step="0.1"
+                      value={b.gain_db.toFixed(1)}
+                      onFocus={() => setActiveBand(i())}
+                      onInput={(e) => {
+                        const v = parseFloat(e.currentTarget.value);
+                        if (isNaN(v)) return;
+                        const clamped = Math.max(-DB_RANGE, Math.min(DB_RANGE, Math.round(v * 10) / 10));
+                        setState("eq", "bands", i(), "gain_db", clamped);
+                        drawCurve();
+                        ipcDebounced("dsp_set_eq_band", { band: i(), freq: b.freq, gainDb: clamped, q: b.q });
+                      }}
+                      onBlur={(e) => { e.currentTarget.value = state.eq.bands[i()].gain_db.toFixed(1); save(); }}
+                    />
                   </div>
                 );
               }}

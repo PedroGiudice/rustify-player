@@ -77,14 +77,17 @@ Replace the traditional vertical slider faders with **large invisible rectangula
 
 ### Interactivity requirements (ALL must work)
 
-1. **Click anywhere in a column** → gain jumps to that Y position instantly
-2. **Click + drag horizontally** → draw mode: each column crossed updates its gain to cursor Y
-3. **Click + drag vertically within one column** → fine-adjust that band's gain
+1. **Single click on a column** → ONLY selects that band (highlights it, updates band detail panel). Does NOT change the gain. This is critical — first click is always just selection.
+2. **Click + drag vertically on the ALREADY SELECTED column** → adjusts that band's gain by following cursor Y position
+3. **Click + drag horizontally across multiple columns** → draw mode: selects the first column crossed, then each subsequent column crossed updates its gain to cursor Y. The first column touched also gets its gain set.
 4. **Hover a column** → subtle background highlight
-5. **Click a column** → selects that band (updates band detail panel)
-6. **Type in input field** → updates gain + fill bar + SVG curve
-7. **Tab between inputs** → moves focus to next band's input
-8. **SVG curve updates** in real-time as any gain value changes
+5. **Type in input field** → updates gain + fill bar + SVG curve (also selects that band)
+6. **Tab between inputs** → moves focus to next band's input
+7. **SVG curve updates** in real-time as any gain value changes
+
+### Key UX principle: Click = Select, Drag = Adjust
+
+A simple click (mousedown + mouseup without significant mouse movement) ONLY selects the band. The gain only changes when there is a deliberate drag gesture (mousedown + mousemove with >3px delta). This prevents accidental gain changes when the user just wants to inspect a band's settings in the detail panel.
 
 ### Critical: What makes this DIFFERENT from sliders
 
