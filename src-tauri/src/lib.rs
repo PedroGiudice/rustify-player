@@ -544,6 +544,23 @@ fn list_backgrounds() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+fn list_shapes() -> Result<Vec<String>, String> {
+    let shapes_dir = dirs_home().join(".local/share/rustify-player/media/shapes");
+    std::fs::create_dir_all(&shapes_dir).ok();
+    let mut names = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&shapes_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".png") || name.ends_with(".svg") || name.ends_with(".webp") {
+                names.push(name);
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+#[tauri::command]
 fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, String> {
     let tid = parse_id(&track_id)?;
     let client = lib.handle.client();
@@ -1669,6 +1686,25 @@ pub fn run() {
 
             // Qdrant collections are ensured by Indexer::open above.
 
+            // Dedicated spectrum thread — reads latest FFT data and emits at ~60Hz.
+            // No queue, no accumulation: sync handler overwrites, emitter reads latest.
+            let spectrum_buf = engine.spectrum_buffer();
+            let spectrum_handle = _app.handle().clone();
+            std::thread::Builder::new()
+                .name("spectrum-emitter".to_string())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(16));
+                        let data = spectrum_buf.lock().ok().and_then(|b| {
+                            if b.is_empty() { None } else { Some(b.clone()) }
+                        });
+                        if let Some(d) = data {
+                            let _ = spectrum_handle.emit("audio-fft", &d);
+                        }
+                    }
+                })
+                .ok();
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
@@ -1846,10 +1882,13 @@ pub fn run() {
                                 s.started_at = None;
                                 s.last_position_ms = None;
                             }
+                            StateUpdate::SpectrumData(_) => {}
                             _ => {}
                         }
                     }
-                    let _ = app_handle.emit("player-state", &event);
+                    if !matches!(&event, StateUpdate::SpectrumData(_)) {
+                        let _ = app_handle.emit("player-state", &event);
+                    }
 
                     while let Ok(mev) = media_cmd_rx.try_recv() {
                         let cmd = match mev {
@@ -1918,6 +1957,7 @@ pub fn run() {
             lib_is_liked,
             lib_recommendations,
             list_backgrounds,
+            list_shapes,
             get_track_color,
             log_event,
             fs_read_text,

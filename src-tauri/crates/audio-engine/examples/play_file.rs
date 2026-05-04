@@ -193,6 +193,7 @@ fn run_loop(
                     return 1;
                 }
                 StateUpdate::VolumeChanged(_) => {}
+                StateUpdate::SpectrumData(_) => {}
             },
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {

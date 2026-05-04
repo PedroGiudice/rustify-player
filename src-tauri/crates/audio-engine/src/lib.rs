@@ -16,6 +16,10 @@ pub use types::{
     Command, EngineMetrics, PlaybackState, PositionUpdate, SampleFormat, StateUpdate, StreamFormat,
     TrackHandle, TrackInfo,
 };
+pub use output::spectrum::SpectrumAnalyzer;
+
+// Re-export gstreamer types needed for bus message parsing.
+pub use gstreamer;
 
 use crossbeam_channel::Receiver;
 
@@ -33,6 +37,7 @@ pub struct EngineHandle {
     pub(crate) command_tx: crossbeam_channel::Sender<Command>,
     pub(crate) state_rx: Receiver<StateUpdate>,
     pub(crate) metrics: std::sync::Arc<engine::SharedMetrics>,
+    pub(crate) spectrum_buf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
 }
 
 impl EngineHandle {
@@ -52,5 +57,9 @@ impl EngineHandle {
 
     pub fn metrics(&self) -> EngineMetrics {
         self.metrics.snapshot()
+    }
+
+    pub fn spectrum_buffer(&self) -> std::sync::Arc<std::sync::Mutex<Vec<u8>>> {
+        self.spectrum_buf.clone()
     }
 }

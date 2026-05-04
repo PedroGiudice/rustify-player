@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{select, tick, Receiver, Sender, TryRecvError};
 
+use gstreamer as gst;
 use gstreamer::glib;
 
 use crate::error::EngineError;
@@ -81,6 +82,9 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     let state_tx_thread = state_tx.clone();
     let state_tx_panic = state_tx.clone();
 
+    let spectrum_latest = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    let spectrum_latest_pub = spectrum_latest.clone();
+
     thread::Builder::new()
         .name("audio-engine".to_string())
         .spawn(move || {
@@ -102,6 +106,20 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 let adapter = player.signal_adapter();
                 adapter.connect_end_of_stream(move |_| {
                     let _ = eos_tx.try_send(());
+                });
+            }
+
+            let spectrum_writer = spectrum_latest.clone();
+            if let Some(bus) = player.bus() {
+                bus.set_sync_handler(move |_bus, msg| {
+                    if msg.type_() == gst::MessageType::Element {
+                        if let Some(data) = crate::output::spectrum::SpectrumAnalyzer::parse_message(msg) {
+                            if let Ok(mut buf) = spectrum_writer.lock() {
+                                *buf = data;
+                            }
+                        }
+                    }
+                    gst::BusSyncReply::Pass
                 });
             }
 
@@ -137,6 +155,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
         command_tx,
         state_rx,
         metrics,
+        spectrum_buf: spectrum_latest_pub,
     })
 }
 
@@ -456,6 +475,7 @@ impl EngineState {
         self.maybe_emit_position();
         self.check_eos();
     }
+
 
     fn check_eos(&mut self) {
         // Drain the EOS channel — the signal adapter fires connect_end_of_stream

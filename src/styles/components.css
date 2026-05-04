@@ -1065,41 +1065,57 @@ html[data-density="compact"] .album-cover-empty {
   height: 100%;
   object-fit: cover;
   object-position: center center;
-  filter: blur(2px) brightness(0.35) contrast(1.1) saturate(1.2);
+}
+
+.np-shape-nav {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.view--hero:hover .np-shape-nav { opacity: 0.5; }
+.np-shape-nav:hover { opacity: 1 !important; }
+.np-shape-nav__btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.7);
+  padding: 4px 6px;
+  cursor: pointer;
+  line-height: 0;
+}
+.np-shape-nav__btn:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
 }
 
 /* --- Content layer (above video) --- */
 .np {
   position: relative;
   z-index: 1;
-  display: grid;
-  gap: var(--space-12);
-  padding: var(--space-12) var(--space-10);
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-10);
+  align-items: flex-start;
   min-height: 100%;
-}
-.np { grid-template-columns: 380px 1fr; }
-html[data-np-layout="top"] .np {
-  grid-template-columns: 1fr;
-  justify-items: center;
-  text-align: center;
-}
-html[data-np-layout="split"] .np {
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-16);
+  max-width: 420px;
 }
 
 .np__cover {
-  width: 100%;
+  width: 200px;
   aspect-ratio: 1 / 1;
   background: var(--surface-container-high);
   overflow: hidden;
   position: relative;
   box-shadow: none;
+  flex-shrink: 0;
 }
 .np__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-html[data-np-layout="top"] .np__cover { max-width: 340px; }
-html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
 
 .np__body {
   display: flex;
@@ -1194,6 +1210,7 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   gap: var(--space-2);
   margin-top: var(--space-4);
   flex: 1;
+  max-width: 320px;
   background: rgba(17, 17, 16, 0.55);
   padding: var(--space-4);
   border: 1px solid var(--divider);
@@ -1830,63 +1847,60 @@ html[data-np-layout="split"] .np__cover { max-width: 480px; margin: 0 auto; }
   padding: 3px 8px; font-size: 9px; color: var(--on-surface-mute);
 }
 
-/* Fader strip */
-.sig-faders {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  padding: 20px 8px 0; gap: 0;
+/* Smart Columns */
+.sig-columns {
+  display: flex; justify-content: space-between;
+  padding: 0 8px; gap: 2px;
 }
-.sig-fader {
+.sig-col-wrap {
   display: flex; flex-direction: column; align-items: center;
-  flex: 1; min-width: 0; padding: 0 2px; cursor: pointer;
+  flex: 1; min-width: 0;
 }
-.sig-fader:hover .sig-f-track { background: var(--surface-container-high); }
-.sig-fader--active .sig-f-val { color: var(--primary); }
-.sig-fader--active .sig-f-thumb { background: var(--primary); box-shadow: 0 0 8px rgba(198,99,61,.4); }
-
-.sig-f-hz {
+.sig-col-hz {
   font-size: var(--text-label-sm); color: var(--on-surface-mute);
-  font-weight: var(--fw-medium); margin-bottom: 12px; white-space: nowrap;
+  font-weight: var(--fw-medium); margin-bottom: 6px; white-space: nowrap;
+  cursor: pointer;
 }
-.sig-f-track {
-  width: 4px; height: 110px; border-radius: 2px;
-  background: var(--surface-container-highest); position: relative;
+.sig-col--active .sig-col-hz { color: var(--primary); font-weight: var(--fw-bold); }
+
+.sig-col {
+  width: 100%; height: 180px; position: relative;
+  cursor: crosshair; user-select: none;
   transition: background var(--dur-fast);
 }
-.sig-f-zero {
-  position: absolute; top: 50%; left: -4px; right: -4px;
-  height: 1px; background: var(--on-surface-mute); opacity: .2;
-}
-.sig-f-fill {
-  position: absolute; width: 100%; border-radius: 2px; background: var(--primary); opacity: .7;
-}
-.sig-f-up { bottom: 50%; }
-.sig-f-dn { top: 50%; background: var(--sig-warn); opacity: .6; }
-.sig-f-thumb {
-  position: absolute; left: 50%; transform: translate(-50%, -50%);
-  width: 12px; height: 12px; border-radius: 50%;
-  background: var(--on-surface); cursor: grab;
-  transition: box-shadow var(--dur-fast);
-}
-.sig-f-thumb:hover { box-shadow: 0 0 6px rgba(237,234,227,.25); }
-.sig-f-val {
-  font-size: var(--text-label-sm); color: var(--on-surface-mute);
-  margin-top: 8px; font-weight: var(--fw-medium);
-  font-variant-numeric: tabular-nums;
-}
+.sig-col:hover { background: var(--surface-container); }
+.sig-col--active .sig-col { background: var(--surface-container-high); }
 
-.sig-f-input {
-  width: 42px; height: 18px;
-  background: var(--surface-container-highest);
-  border: 1px solid var(--primary);
-  color: var(--on-surface);
-  font-family: var(--font-body);
-  font-size: var(--text-label-sm);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-  padding: 0;
-  outline: none;
+.sig-col-zero {
+  position: absolute; top: 50%; left: 0; right: 0;
+  height: 1px; background: var(--divider-hi);
 }
-.sig-f-input::-webkit-inner-spin-button { display: none; }
+.sig-col-fill {
+  position: absolute; left: 20%; right: 20%;
+  background: var(--primary); opacity: .6;
+  pointer-events: none;
+}
+.sig-col--active .sig-col-fill { opacity: .85; }
+.sig-col-fill--neg { background: var(--sig-warn); opacity: .5; }
+.sig-col--active .sig-col-fill--neg { opacity: .75; }
+
+.sig-col-input {
+  width: 42px; height: 20px; margin-top: 6px;
+  background: transparent; border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--on-surface-mute);
+  font-family: var(--font-mono, var(--font-body));
+  font-size: var(--text-label-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center; padding: 0;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.sig-col-input::-webkit-outer-spin-button,
+.sig-col-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sig-col-input:hover { color: var(--on-surface); background: var(--surface-container); }
+.sig-col-input:focus { color: var(--on-surface); border-bottom-color: var(--primary); background: var(--surface-container-high); }
+.sig-col--active .sig-col-input { color: var(--on-surface); font-weight: var(--fw-bold); }
 .sig-inline-input {
   width: 48px; height: 20px;
   background: var(--surface-container-highest);

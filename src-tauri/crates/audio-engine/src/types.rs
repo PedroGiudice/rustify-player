@@ -235,6 +235,8 @@ pub enum StateUpdate {
         total: u64,
     },
     VolumeChanged(f32),
+    /// FFT spectrum data: 128 magnitude bins normalized to 0-255.
+    SpectrumData(Vec<u8>),
     /// A recoverable error; engine returns to `Stopped` state.
     Error(String),
 }

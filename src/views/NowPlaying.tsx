@@ -4,65 +4,49 @@
 
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { player } from "../store/player";
-import { libGetLyrics, coverUrl, channelLabel, getTrackColor } from "../tauri";
+import { libGetLyrics, coverUrl, channelLabel, getTrackColor, listShapes } from "../tauri";
 import { navigate } from "../router";
+import SpectrumBackground from "../components/SpectrumBackground";
 import type { LyricLine } from "../tauri";
 
-const MEDIA_BASE = "http://127.0.0.1:19876/bg";
-
-type PaletteMap = Record<string, [number, number, number]>;
-
-let paletteCache: [string, number, number, number][] | null = null;
-
-async function loadPalette(): Promise<[string, number, number, number][]> {
-  if (paletteCache) return paletteCache;
-  try {
-    const resp = await fetch(`${MEDIA_BASE}/palette.json`);
-    const map: PaletteMap = await resp.json();
-    paletteCache = Object.entries(map).map(([name, rgb]) => [
-      `${MEDIA_BASE}/${name}.webp`, rgb[0], rgb[1], rgb[2],
-    ]);
-  } catch {
-    paletteCache = [];
-  }
-  return paletteCache;
-}
-
-function pickBg(palette: [string, number, number, number][], hex: string): string | null {
-  if (!palette.length || !hex) return null;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  let best = 0;
-  let bestDist = Infinity;
-  for (let i = 0; i < palette.length; i++) {
-    const [, pr, pg, pb] = palette[i];
-    const d = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
-    if (d < bestDist) { bestDist = d; best = i; }
-  }
-  return palette[best][0];
-}
+const SHAPES_BASE = "http://127.0.0.1:19876/shapes";
 
 export default function NowPlaying() {
-  const [bgUrl, setBgUrl] = createSignal("");
   const [lyrics, setLyrics] = createSignal<LyricLine[]>([]);
+  const [shapes, setShapes] = createSignal<string[]>([]);
+  const [shapeIdx, setShapeIdx] = createSignal(0);
   const [activeLyric, setActiveLyric] = createSignal(-1);
   const [lyricsMode, setLyricsMode] = createSignal<"timed" | "plain" | "empty">("empty");
 
-  createEffect(async () => {
-    const track = player.currentTrack;
-    const palette = await loadPalette();
-    if (!palette.length) return;
-    if (!track?.id) {
-      setBgUrl(palette[0][0]);
-      return;
-    }
+  const shapeUrl = () => {
+    const s = shapes();
+    if (!s.length) return null;
+    return `${SHAPES_BASE}/${s[shapeIdx() % s.length]}`;
+  };
+
+  const prevShape = () => {
+    const s = shapes();
+    if (s.length < 2) return;
+    const idx = (shapeIdx() - 1 + s.length) % s.length;
+    setShapeIdx(idx);
+    localStorage.setItem("rustify-shape-idx", String(idx));
+  };
+
+  const nextShape = () => {
+    const s = shapes();
+    if (s.length < 2) return;
+    const idx = (shapeIdx() + 1) % s.length;
+    setShapeIdx(idx);
+    localStorage.setItem("rustify-shape-idx", String(idx));
+  };
+
+  onMount(async () => {
     try {
-      const hex = await getTrackColor(track.id);
-      setBgUrl(hex ? pickBg(palette, hex) ?? palette[0][0] : palette[0][0]);
-    } catch {
-      setBgUrl(palette[0][0]);
-    }
+      const s = await listShapes();
+      setShapes(s);
+      const saved = localStorage.getItem("rustify-shape-idx");
+      if (saved) setShapeIdx(Math.min(Number(saved), s.length - 1));
+    } catch {}
   });
 
   // Load lyrics when track changes
@@ -110,8 +94,19 @@ export default function NowPlaying() {
   return (
     <article class="view view--hero">
       <div class="np-bg">
-        <img class="np-bg__el" src={bgUrl()} alt="" />
+        <SpectrumBackground shapeUrl={shapeUrl()} />
       </div>
+
+      <Show when={shapes().length > 1}>
+        <div class="np-shape-nav">
+          <button class="np-shape-nav__btn" onClick={prevShape} title="Previous shape">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button class="np-shape-nav__btn" onClick={nextShape} title="Next shape">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </Show>
 
       <Show
         when={player.currentTrack}
