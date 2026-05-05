@@ -1,5 +1,5 @@
 import { onMount, onCleanup, createEffect } from "solid-js";
-import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, getTrackColor } from "../tauri";
+import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, getTrackColor, FftPayload } from "../tauri";
 import { player } from "../store/player";
 
 const LINE_COUNT = 100;
@@ -8,6 +8,9 @@ const ATTACK = 0.35;
 const RELEASE = 0.06;
 const RAW_BANDS = 512;
 const LOG_BANDS = 128;
+
+// Ring buffer capacity — holds ~1-2s of frames at 60Hz
+const RING_CAPACITY = 90;
 
 const logBinMap: [number, number][] = (() => {
   const map: [number, number][] = [];
@@ -158,6 +161,27 @@ export default function SpectrumBackground(props: { shapeUrl?: string | null }) 
   let baseHue = 260;
   let hasNormalMap = false;
 
+  // ── Ring buffer for time-based presentation ──────────────────────
+  // Pre-allocated slots to avoid GC pressure
+  const ring: { streamTimeMs: number; magnitudes: Uint8Array; used: boolean }[] = Array.from({ length: RING_CAPACITY }, () => ({
+    streamTimeMs: 0,
+    magnitudes: new Uint8Array(RAW_BANDS),
+    used: false,
+  }));
+  let ringHead = 0; // next write position
+
+  // ── Playback clock ───────────────────────────────────────────────
+  // Reconstructs track position without polling the backend every frame.
+  // Synced from player store on play/pause/seek.
+  let clockAnchorPerf = 0; // performance.now() at last sync
+  let clockAnchorPos = 0; // track position (ms) at last sync
+  let clockPlaying = false;
+
+  function getPlaybackMs(): number {
+    if (!clockPlaying) return clockAnchorPos;
+    return clockAnchorPos + (performance.now() - clockAnchorPerf);
+  }
+
   createEffect(async () => {
     const track = player.currentTrack;
     if (!track) return;
@@ -165,6 +189,15 @@ export default function SpectrumBackground(props: { shapeUrl?: string | null }) 
       const hex = await getTrackColor(track.id);
       if (hex?.startsWith("#")) baseHue = hexToHue(hex);
     } catch {}
+  });
+
+  // Sync local playback clock from player store reactive state
+  createEffect(() => {
+    const playing = player.isPlaying;
+    const posSecs = player.positionSecs;
+    clockAnchorPerf = performance.now();
+    clockAnchorPos = posSecs * 1000; // secs → ms
+    clockPlaying = playing;
   });
 
   function initWebGL() {
@@ -288,6 +321,34 @@ export default function SpectrumBackground(props: { shapeUrl?: string | null }) 
     animId = requestAnimationFrame(draw);
     if (!gl || !program || !vao) return;
 
+    // ── Pick frame from ring buffer matching current playback clock ──
+    const nowMs = getPlaybackMs();
+    let bestIdx = -1;
+    let bestTime = -1;
+    // Scan from newest to oldest; first frame with streamTimeMs <= nowMs is the best match
+    for (let k = 0; k < RING_CAPACITY; k++) {
+      const idx = (ringHead - 1 - k + RING_CAPACITY) % RING_CAPACITY;
+      const frame = ring[idx];
+      if (!frame.used) continue;
+      if (frame.streamTimeMs <= nowMs) {
+        bestTime = frame.streamTimeMs;
+        bestIdx = idx;
+        break; // Newest-first traversal, first hit is closest to nowMs
+      }
+    }
+
+    // If we found a matching frame, copy its data and free consumed/older frames
+    if (bestIdx >= 0) {
+      rawFft.set(ring[bestIdx].magnitudes);
+      // Free all frames at or before the consumed timestamp
+      for (let k = 0; k < RING_CAPACITY; k++) {
+        if (ring[k].used && ring[k].streamTimeMs <= bestTime) {
+          ring[k].used = false;
+        }
+      }
+    }
+    // If no matching frame, rawFft retains last used data (smooth decay handles fade-out)
+
     // Smooth FFT
     for (let i = 0; i < LOG_BANDS; i++) {
       const [start, end] = logBinMap[i];
@@ -337,8 +398,15 @@ export default function SpectrumBackground(props: { shapeUrl?: string | null }) 
     resize();
     window.addEventListener("resize", resize);
 
-    onAudioFft((data) => {
-      for (let i = 0; i < Math.min(data.length, RAW_BANDS); i++) rawFft[i] = data[i];
+    onAudioFft((payload: FftPayload) => {
+      // Enqueue into ring buffer — do NOT render immediately
+      const slot = ring[ringHead];
+      slot.streamTimeMs = payload.stream_time_ms;
+      const len = Math.min(payload.magnitudes.length, RAW_BANDS);
+      for (let i = 0; i < len; i++) slot.magnitudes[i] = payload.magnitudes[i];
+      for (let i = len; i < RAW_BANDS; i++) slot.magnitudes[i] = 0;
+      slot.used = true;
+      ringHead = (ringHead + 1) % RING_CAPACITY;
     }).then(unsub => { unlisten = unsub; });
 
     setTimeout(() => {

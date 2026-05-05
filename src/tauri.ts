@@ -187,8 +187,13 @@ export const onPlayerState = (cb: (payload: PlayerStatePayload) => void) =>
 export const onMprisCommand = (cb: (cmd: string) => void) =>
   listen<string>("mpris-command", (e) => cb(e.payload));
 
-export const onAudioFft = (cb: (data: number[]) => void) =>
-  listen<number[]>("audio-fft", (e) => cb(e.payload));
+export interface FftPayload {
+  stream_time_ms: number;
+  magnitudes: number[];
+}
+
+export const onAudioFft = (cb: (payload: FftPayload) => void) =>
+  listen<FftPayload>("audio-fft", (e) => cb(e.payload));
 
 export const spectrumSubscribe = () => invoke("spectrum_subscribe");
 export const spectrumUnsubscribe = () => invoke("spectrum_unsubscribe");

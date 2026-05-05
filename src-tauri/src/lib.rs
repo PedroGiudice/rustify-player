@@ -30,6 +30,14 @@ struct Player(Mutex<Option<EngineHandle>>);
 #[allow(dead_code)]
 struct QdrantSidecar(Mutex<Option<qdrant_process::QdrantProcess>>);
 
+/// Payload emitted to frontend via "audio-fft" event.
+/// `stream_time_ms` is the track position (ms) this FFT frame belongs to.
+#[derive(Clone, Serialize)]
+struct FftPayload {
+    stream_time_ms: u64,
+    magnitudes: Vec<u8>,
+}
+
 #[derive(Clone, Serialize, serde::Deserialize)]
 struct SpectrumRange {
     label: String,
@@ -1926,7 +1934,6 @@ pub fn run() {
             _app.manage(SharedSpectrumConfig(spectrum_cfg.clone()));
 
             let spectrum_buf = engine.spectrum_buffer();
-            let spectrum_metrics = engine.shared_metrics();
             let spectrum_handle = _app.handle().clone();
             let spectrum_flag = spectrum_active.clone();
             _app.manage(SpectrumActive(spectrum_active));
@@ -1943,8 +1950,6 @@ pub fn run() {
                             continue;
                         }
 
-                        let now_ns = spectrum_metrics.live_running_time_ns();
-
                         // Grab latest frame if newer
                         if let Ok(buf) = spectrum_buf.lock() {
                             if !buf.1.is_empty() && buf.0 != last_emitted_ts {
@@ -1952,13 +1957,15 @@ pub fn run() {
                             }
                         }
 
-                        // Emit when frame timestamp <= playback position
-                        if let Some((ts, ref fft)) = held {
-                            if now_ns > 0 && ts <= now_ns {
-                                let _ = spectrum_handle.emit("audio-fft", fft);
-                                last_emitted_ts = ts;
-                                held = None;
-                            }
+                        // Emit immediately with stream_time_ms — the frontend
+                        // handles presentation timing via its ring buffer.
+                        if let Some((ts, fft)) = held.take() {
+                            let payload = FftPayload {
+                                stream_time_ms: ts / 1_000_000, // ns → ms
+                                magnitudes: fft,
+                            };
+                            let _ = spectrum_handle.emit("audio-fft", &payload);
+                            last_emitted_ts = ts;
                         }
                     }
                 })

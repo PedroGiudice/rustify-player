@@ -37,14 +37,18 @@ impl SpectrumAnalyzer {
         Ok(Some(Self { element: spectrum }))
     }
 
-    /// Parse a spectrum bus message into (running_time_ns, magnitudes).
+    /// Parse a spectrum bus message into (stream_time_ns, magnitudes).
+    /// Uses `stream-time` which is the position within the track (matches seek position),
+    /// as opposed to `running-time` which resets on pause/seek.
     pub fn parse_message(msg: &gst::Message) -> Option<(u64, Vec<u8>)> {
         let s = msg.structure()?;
         if s.name().as_str() != "spectrum" {
             return None;
         }
 
-        let running_time = s.get::<gst::ClockTime>("running-time")
+        // Prefer stream-time (track position), fall back to running-time
+        let running_time = s.get::<gst::ClockTime>("stream-time")
+            .or_else(|_| s.get::<gst::ClockTime>("running-time"))
             .map(|t| t.nseconds())
             .unwrap_or(0);
 
