@@ -37,13 +37,16 @@ impl SpectrumAnalyzer {
         Ok(Some(Self { element: spectrum }))
     }
 
-    /// Parse a spectrum bus message into normalized u8 magnitudes.
-    /// Returns None if the message is not from the spectrum element.
-    pub fn parse_message(msg: &gst::Message) -> Option<Vec<u8>> {
+    /// Parse a spectrum bus message into (running_time_ns, magnitudes).
+    pub fn parse_message(msg: &gst::Message) -> Option<(u64, Vec<u8>)> {
         let s = msg.structure()?;
         if s.name().as_str() != "spectrum" {
             return None;
         }
+
+        let running_time = s.get::<gst::ClockTime>("running-time")
+            .map(|t| t.nseconds())
+            .unwrap_or(0);
 
         let magnitudes = s.get::<gst::List>("magnitude").ok()?;
         let threshold = -80.0f32;
@@ -53,12 +56,11 @@ impl SpectrumAnalyzer {
             .iter()
             .map(|v| {
                 let db = v.get::<f32>().unwrap_or(threshold);
-                // Normalize: threshold..0 dB → 0..255
                 let normalized = ((db - threshold) / range).clamp(0.0, 1.0);
                 (normalized * 255.0) as u8
             })
             .collect();
 
-        Some(data)
+        Some((running_time, data))
     }
 }

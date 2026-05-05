@@ -33,6 +33,14 @@ import { applyFullDspState } from "./store/dsp";
 async function boot() {
   await loadIconSprite();
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
+
+  const savedTheme = localStorage.getItem("rustify-theme");
+  if (savedTheme) {
+    import("./tauri").then(({ applyThemeByName }) =>
+      applyThemeByName(savedTheme).catch(() => {})
+    );
+  }
+
   render(() => <App />, document.getElementById("app")!);
 }
 

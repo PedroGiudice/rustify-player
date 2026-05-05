@@ -44,7 +44,7 @@ tempfile = "3"
 
 [package]
 name = "rustify-player"
-version = "0.2.0"
+version = "0.2.1"
 description = "Player de musica audiofilo - Tauri shell"
 edition.workspace = true
 rust-version.workspace = true
@@ -72,3 +72,4 @@ souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] 
 crossbeam-channel = { workspace = true }
 tracing = { workspace = true }
 ureq = { workspace = true }
+serde_yaml = "0.9"

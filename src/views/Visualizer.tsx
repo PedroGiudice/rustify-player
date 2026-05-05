@@ -1,5 +1,5 @@
 import { onMount, onCleanup, createEffect } from "solid-js";
-import { onAudioFft, getTrackColor } from "../tauri";
+import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, getTrackColor } from "../tauri";
 import { player } from "../store/player";
 
 const LINE_COUNT = 120;
@@ -130,22 +130,22 @@ export default function Visualizer() {
     }
   }
 
-  onMount(async () => {
+  onMount(() => {
     resize();
     window.addEventListener("resize", resize);
 
-    unlisten = await onAudioFft((data) => {
-      for (let i = 0; i < Math.min(data.length, 128); i++) {
-        fftData[i] = data[i];
-      }
-    });
+    onAudioFft((data) => {
+      for (let i = 0; i < Math.min(data.length, 128); i++) fftData[i] = data[i];
+    }).then(unsub => { unlisten = unsub; });
 
+    setTimeout(() => spectrumSubscribe(), 200);
     draw();
   });
 
   onCleanup(() => {
     cancelAnimationFrame(animId);
     window.removeEventListener("resize", resize);
+    spectrumUnsubscribe();
     unlisten?.();
   });
 

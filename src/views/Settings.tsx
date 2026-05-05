@@ -3,10 +3,11 @@
    Markup identico ao settings.js vanilla.
    ============================================================ */
 
-import { createSignal, createResource, Show, onMount } from "solid-js";
-import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp } from "../tauri";
+import { createSignal, createResource, Show, For, onMount } from "solid-js";
+import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp, listThemes, applyThemeByName } from "../tauri";
+import type { ThemeInfo, ContrastCheck } from "../tauri";
 
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.2.1";
 
 function embedStatusClass(s: any): string {
   if (s.tracks_total === 0) return "status-pill--dim";
@@ -39,6 +40,79 @@ function relativeTime(isoStr: string): string {
     if (diffDays < 30) return `${diffDays}d ago`;
     return then.toLocaleDateString();
   } catch { return ""; }
+}
+
+function ThemeSection() {
+  const [themes] = createResource(listThemes);
+  const [active, setActive] = createSignal(localStorage.getItem("rustify-theme") || "");
+  const [contrast, setContrast] = createSignal<ContrastCheck[]>([]);
+
+  async function select(filename: string) {
+    const checks = await applyThemeByName(filename);
+    setActive(filename);
+    setContrast(checks);
+  }
+
+  function resetTheme() {
+    const root = document.documentElement;
+    root.removeAttribute("style");
+    localStorage.removeItem("rustify-theme");
+    setActive("");
+    setContrast([]);
+  }
+
+  const failingChecks = () => contrast().filter(c => !c.pass_aa);
+
+  return (
+    <section class="settings-section">
+      <h3 class="settings-section__title">Theme</h3>
+      <div class="settings-row">
+        <label class="settings-row__label">Active theme</label>
+        <div class="settings-row__control">
+          <Show when={themes()} fallback={<span>Loading...</span>}>
+            {(t) => (
+              <select
+                class="settings-input"
+                value={active()}
+                onChange={(e) => {
+                  const v = e.currentTarget.value;
+                  if (v) select(v); else resetTheme();
+                }}
+              >
+                <option value="">Default (Copper)</option>
+                <For each={t()}>
+                  {(theme) => <option value={theme.filename}>{theme.name}</option>}
+                </For>
+              </select>
+            )}
+          </Show>
+        </div>
+      </div>
+      <Show when={failingChecks().length > 0}>
+        <div class="settings-row">
+          <label class="settings-row__label">Contrast</label>
+          <div class="settings-row__control" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+            <For each={failingChecks()}>
+              {(c) => (
+                <span class="status-pill status-pill--warn" style="font-size: 10px;">
+                  {c.pair}: {c.ratio.toFixed(1)}:1 (needs 4.5:1)
+                </span>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+      <Show when={contrast().length > 0 && failingChecks().length === 0}>
+        <div class="settings-row">
+          <label class="settings-row__label">Contrast</label>
+          <span class="status-pill status-pill--ok">All pairs pass WCAG AA</span>
+        </div>
+      </Show>
+      <p class="settings-section__note">
+        Themes: ~/.local/share/rustify-player/themes/ — drop YAML files to add custom themes.
+      </p>
+    </section>
+  );
 }
 
 export default function Settings() {
@@ -155,6 +229,9 @@ export default function Settings() {
                   </div>
                 </div>
               </section>
+
+              {/* Theme */}
+              <ThemeSection />
 
               {/* Audio */}
               <section class="settings-section">

@@ -7,6 +7,7 @@ import { player } from "../store/player";
 import { libGetLyrics, coverUrl, channelLabel, getTrackColor, listShapes } from "../tauri";
 import { navigate } from "../router";
 import SpectrumBackground from "../components/SpectrumBackground";
+import SpectrumRangesPanel from "../components/SpectrumRangesPanel";
 import type { LyricLine } from "../tauri";
 
 const SHAPES_BASE = "http://127.0.0.1:19876/shapes";
@@ -17,6 +18,7 @@ export default function NowPlaying() {
   const [shapeIdx, setShapeIdx] = createSignal(0);
   const [activeLyric, setActiveLyric] = createSignal(-1);
   const [lyricsMode, setLyricsMode] = createSignal<"timed" | "plain" | "empty">("empty");
+  const [spectrumOpen, setSpectrumOpen] = createSignal(false);
 
   const shapeUrl = () => {
     const s = shapes();
@@ -97,16 +99,23 @@ export default function NowPlaying() {
         <SpectrumBackground shapeUrl={shapeUrl()} />
       </div>
 
-      <Show when={shapes().length > 1}>
-        <div class="np-shape-nav">
+      <div class="np-shape-nav">
+        <Show when={shapes().length > 1}>
           <button class="np-shape-nav__btn" onClick={prevShape} title="Previous shape">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <button class="np-shape-nav__btn" onClick={nextShape} title="Next shape">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-        </div>
-      </Show>
+        </Show>
+        <button class="np-shape-nav__btn" onClick={() => setSpectrumOpen(!spectrumOpen())} title="Spectrum settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+        </button>
+      </div>
+
+      <SpectrumRangesPanel open={spectrumOpen()} onClose={() => setSpectrumOpen(false)} />
 
       <Show
         when={player.currentTrack}

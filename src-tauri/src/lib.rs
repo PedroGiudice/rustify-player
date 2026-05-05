@@ -10,6 +10,7 @@ use library_indexer::{
 };
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 
@@ -28,6 +29,58 @@ struct Player(Mutex<Option<EngineHandle>>);
 /// Drop impl kills the process on app exit.
 #[allow(dead_code)]
 struct QdrantSidecar(Mutex<Option<qdrant_process::QdrantProcess>>);
+
+#[derive(Clone, Serialize, serde::Deserialize)]
+struct SpectrumRange {
+    label: String,
+    from_hz: f32,
+    to_hz: f32,
+    gain: f32,
+}
+
+#[derive(Clone, Serialize, serde::Deserialize)]
+struct SpectrumConfig {
+    ranges: Vec<SpectrumRange>,
+    sample_rate: u32,
+    bands: u32,
+}
+
+impl Default for SpectrumConfig {
+    fn default() -> Self {
+        Self {
+            ranges: vec![
+                SpectrumRange { label: "Sub-bass".into(), from_hz: 20.0, to_hz: 60.0, gain: 1.0 },
+                SpectrumRange { label: "Bass".into(), from_hz: 60.0, to_hz: 250.0, gain: 1.0 },
+                SpectrumRange { label: "Low-mid".into(), from_hz: 250.0, to_hz: 500.0, gain: 1.0 },
+                SpectrumRange { label: "Mid".into(), from_hz: 500.0, to_hz: 2000.0, gain: 1.0 },
+                SpectrumRange { label: "Upper-mid".into(), from_hz: 2000.0, to_hz: 4000.0, gain: 1.0 },
+                SpectrumRange { label: "Presence".into(), from_hz: 4000.0, to_hz: 8000.0, gain: 1.0 },
+                SpectrumRange { label: "Brilliance".into(), from_hz: 8000.0, to_hz: 20000.0, gain: 1.0 },
+            ],
+            sample_rate: 44100,
+            bands: 512,
+        }
+    }
+}
+
+impl SpectrumConfig {
+    fn regroup(&self, raw: &[u8]) -> Vec<f32> {
+        let hz_per_bin = self.sample_rate as f32 / (2.0 * self.bands as f32);
+        self.ranges.iter().map(|r| {
+            let start_bin = (r.from_hz / hz_per_bin).floor() as usize;
+            let end_bin = ((r.to_hz / hz_per_bin).ceil() as usize).min(raw.len());
+            if start_bin >= end_bin { return 0.0; }
+            let mut max: u8 = 0;
+            for &v in &raw[start_bin..end_bin] {
+                if v > max { max = v; }
+            }
+            (max as f32 / 255.0) * r.gain
+        }).collect()
+    }
+}
+
+struct SharedSpectrumConfig(Arc<Mutex<SpectrumConfig>>);
+struct SpectrumActive(Arc<AtomicBool>);
 
 /// Snapshot of engine state, updated by the event-listener thread.
 /// Read by the `get_state` command so the frontend can hydrate views
@@ -544,6 +597,187 @@ fn list_backgrounds() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+fn get_spectrum_config(config: State<SharedSpectrumConfig>) -> SpectrumConfig {
+    config.0.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn set_spectrum_config(config: State<SharedSpectrumConfig>, ranges: Vec<SpectrumRange>) {
+    let mut cfg = config.0.lock().unwrap();
+    cfg.ranges = ranges;
+}
+
+#[tauri::command]
+fn spectrum_subscribe(active: State<SpectrumActive>) {
+    active.0.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn spectrum_unsubscribe(active: State<SpectrumActive>) {
+    active.0.store(false, Ordering::Relaxed);
+}
+
+fn themes_dir() -> PathBuf {
+    dirs_home().join(".local/share/rustify-player/themes")
+}
+
+fn yaml_to_css_vars(val: &serde_yaml::Value, prefix: &str, out: &mut std::collections::HashMap<String, String>) {
+    match val {
+        serde_yaml::Value::Mapping(map) => {
+            for (k, v) in map {
+                let key = k.as_str().unwrap_or("");
+                if key == "name" || key == "author" { continue; }
+                let new_prefix = if prefix.is_empty() { key.to_string() } else { format!("{prefix}-{key}") };
+                yaml_to_css_vars(v, &new_prefix, out);
+            }
+        }
+        serde_yaml::Value::String(s) => {
+            let css_prop = match prefix {
+                "surfaces-lowest" => "--surface-lowest",
+                "surfaces-base" => "--surface",
+                "surfaces-container-low" => "--surface-container-low",
+                "surfaces-container" => "--surface-container",
+                "surfaces-container-high" => "--surface-container-high",
+                "surfaces-container-highest" => "--surface-container-highest",
+                "dividers-subtle" => "--divider",
+                "dividers-prominent" => "--divider-hi",
+                "accent-primary" => "--primary",
+                "accent-primary-container" => "--primary-container",
+                "accent-primary-fixed-dim" => "--primary-fixed-dim",
+                "accent-on-primary" => "--on-primary",
+                "accent-on-primary-container" => "--on-primary-container",
+                "text-primary" => "--on-surface",
+                "text-secondary" => "--on-surface-variant",
+                "text-muted" => "--on-surface-mute",
+                "text-outline" => "--outline-variant",
+                "signal-ok" => "--sig-ok",
+                "signal-warn" => "--sig-warn",
+                "signal-error" => "--sig-err",
+                "typography-body" => "--font-body",
+                "typography-display" => "--font-display",
+                "typography-mono" => "--font-mono",
+                "typography-technical" => "--font-technical",
+                "effects-glow" => "--glow",
+                "effects-surface-blur" => "--surface-blur",
+                "effects-surface-opacity" => "--surface-opacity",
+                _ => return,
+            };
+            out.insert(css_prop.to_string(), s.clone());
+        }
+        serde_yaml::Value::Number(n) => {
+            let css_prop = match prefix {
+                "effects-glow" => "--glow",
+                "effects-surface-blur" => "--surface-blur",
+                "effects-surface-opacity" => "--surface-opacity",
+                _ => return,
+            };
+            out.insert(css_prop.to_string(), n.to_string());
+        }
+        _ => {}
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct ThemeInfo {
+    filename: String,
+    name: String,
+    author: String,
+}
+
+#[tauri::command]
+fn list_themes() -> Vec<ThemeInfo> {
+    let dir = themes_dir();
+    std::fs::create_dir_all(&dir).ok();
+    let mut themes = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.ends_with(".yaml") && !fname.ends_with(".yml") { continue; }
+            if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                    themes.push(ThemeInfo {
+                        filename: fname,
+                        name: val["name"].as_str().unwrap_or("Untitled").to_string(),
+                        author: val["author"].as_str().unwrap_or("").to_string(),
+                    });
+                }
+            }
+        }
+    }
+    themes.sort_by(|a, b| a.name.cmp(&b.name));
+    themes
+}
+
+fn hex_to_rgb(hex: &str) -> Option<(f64, f64, f64)> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() < 6 { return None; }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f64 / 255.0;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f64 / 255.0;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f64 / 255.0;
+    Some((r, g, b))
+}
+
+fn relative_luminance(r: f64, g: f64, b: f64) -> f64 {
+    let linearize = |c: f64| if c <= 0.03928 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+    0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+}
+
+fn contrast_ratio(l1: f64, l2: f64) -> f64 {
+    let (lighter, darker) = if l1 > l2 { (l1, l2) } else { (l2, l1) };
+    (lighter + 0.05) / (darker + 0.05)
+}
+
+#[derive(Serialize)]
+struct ContrastCheck {
+    pair: String,
+    ratio: f64,
+    pass_aa: bool,
+    pass_aaa: bool,
+}
+
+#[derive(Serialize)]
+struct ThemeLoadResult {
+    vars: std::collections::HashMap<String, String>,
+    contrast: Vec<ContrastCheck>,
+}
+
+#[tauri::command]
+fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
+    let path = themes_dir().join(&filename);
+    let content = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read theme: {e}"))?;
+    let val: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| format!("Invalid YAML: {e}"))?;
+    let mut vars = std::collections::HashMap::new();
+    yaml_to_css_vars(&val, "", &mut vars);
+
+    let mut checks = Vec::new();
+    let pairs = [
+        ("text on surface", "--on-surface", "--surface-lowest"),
+        ("secondary on surface", "--on-surface-variant", "--surface-lowest"),
+        ("muted on surface", "--on-surface-mute", "--surface-lowest"),
+        ("text on container", "--on-surface", "--surface-container"),
+        ("accent on surface", "--primary", "--surface-lowest"),
+        ("text on accent", "--on-primary", "--primary"),
+    ];
+    for (label, fg_key, bg_key) in pairs {
+        if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key)) {
+            if let (Some(fg_rgb), Some(bg_rgb)) = (hex_to_rgb(fg), hex_to_rgb(bg)) {
+                let l1 = relative_luminance(fg_rgb.0, fg_rgb.1, fg_rgb.2);
+                let l2 = relative_luminance(bg_rgb.0, bg_rgb.1, bg_rgb.2);
+                let ratio = contrast_ratio(l1, l2);
+                checks.push(ContrastCheck {
+                    pair: label.to_string(),
+                    ratio: (ratio * 100.0).round() / 100.0,
+                    pass_aa: ratio >= 4.5,
+                    pass_aaa: ratio >= 7.0,
+                });
+            }
+        }
+    }
+
+    Ok(ThemeLoadResult { vars, contrast: checks })
+}
+
+#[tauri::command]
 fn list_shapes() -> Result<Vec<String>, String> {
     let shapes_dir = dirs_home().join(".local/share/rustify-player/media/shapes");
     std::fs::create_dir_all(&shapes_dir).ok();
@@ -551,7 +785,7 @@ fn list_shapes() -> Result<Vec<String>, String> {
     if let Ok(entries) = std::fs::read_dir(&shapes_dir) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".png") || name.ends_with(".svg") || name.ends_with(".webp") {
+            if name.ends_with(".png") || name.ends_with(".svg") || name.ends_with(".webp") || name.ends_with(".jpg") || name.ends_with(".jpeg") {
                 names.push(name);
             }
         }
@@ -1569,6 +1803,8 @@ pub fn run() {
         )
         .init();
 
+    let spectrum_active = Arc::new(AtomicBool::new(false));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1578,7 +1814,7 @@ pub fn run() {
                 .bind_address("0.0.0.0")
                 .build(),
         )
-        .setup(|_app| {
+        .setup(move |_app| {
             let home = dirs_home();
             let data_dir = home.join(".local/share/rustify-player");
             let cache_dir = home.join(".cache/rustify-player");
@@ -1686,20 +1922,43 @@ pub fn run() {
 
             // Qdrant collections are ensured by Indexer::open above.
 
-            // Dedicated spectrum thread — reads latest FFT data and emits at ~60Hz.
-            // No queue, no accumulation: sync handler overwrites, emitter reads latest.
+            let spectrum_cfg = Arc::new(Mutex::new(SpectrumConfig::default()));
+            _app.manage(SharedSpectrumConfig(spectrum_cfg.clone()));
+
             let spectrum_buf = engine.spectrum_buffer();
+            let spectrum_metrics = engine.shared_metrics();
             let spectrum_handle = _app.handle().clone();
+            let spectrum_flag = spectrum_active.clone();
+            _app.manage(SpectrumActive(spectrum_active));
+
             std::thread::Builder::new()
                 .name("spectrum-emitter".to_string())
                 .spawn(move || {
+                    let mut last_emitted_ts: u64 = 0;
+                    let mut held: Option<(u64, Vec<u8>)> = None;
+
                     loop {
                         std::thread::sleep(std::time::Duration::from_millis(16));
-                        let data = spectrum_buf.lock().ok().and_then(|b| {
-                            if b.is_empty() { None } else { Some(b.clone()) }
-                        });
-                        if let Some(d) = data {
-                            let _ = spectrum_handle.emit("audio-fft", &d);
+                        if !spectrum_flag.load(Ordering::Relaxed) {
+                            continue;
+                        }
+
+                        let now_ns = spectrum_metrics.live_running_time_ns();
+
+                        // Grab latest frame if newer
+                        if let Ok(buf) = spectrum_buf.lock() {
+                            if !buf.1.is_empty() && buf.0 != last_emitted_ts {
+                                held = Some((buf.0, buf.1.clone()));
+                            }
+                        }
+
+                        // Emit when frame timestamp <= playback position
+                        if let Some((ts, ref fft)) = held {
+                            if now_ns > 0 && ts <= now_ns {
+                                let _ = spectrum_handle.emit("audio-fft", fft);
+                                last_emitted_ts = ts;
+                                held = None;
+                            }
                         }
                     }
                 })
@@ -1958,6 +2217,12 @@ pub fn run() {
             lib_recommendations,
             list_backgrounds,
             list_shapes,
+            get_spectrum_config,
+            set_spectrum_config,
+            spectrum_subscribe,
+            spectrum_unsubscribe,
+            list_themes,
+            load_theme,
             get_track_color,
             log_event,
             fs_read_text,

@@ -128,6 +128,25 @@ impl GstreamerPlayer {
         })
     }
 
+    pub fn running_time_ns(&self) -> u64 {
+        let pipeline = self.player.pipeline();
+        let clock = match pipeline.clock() {
+            Some(c) => c,
+            None => return 0,
+        };
+        let now_ns = clock.time().nseconds();
+        let base_ns = pipeline.base_time().map_or(0, |t| t.nseconds());
+        now_ns.saturating_sub(base_ns)
+    }
+
+    pub fn pipeline_clock(&self) -> Option<gst::Clock> {
+        self.player.pipeline().clock()
+    }
+
+    pub fn pipeline_base_time_ns(&self) -> u64 {
+        self.player.pipeline().base_time().map_or(0, |t| t.nseconds())
+    }
+
     #[allow(dead_code)]
     pub fn duration(&self) -> Option<Duration> {
         self.player.duration().map(|ct| {
@@ -153,6 +172,48 @@ impl GstreamerPlayer {
 
     pub fn bus(&self) -> Option<gst::Bus> {
         self.player.pipeline().bus()
+    }
+
+    pub fn sink_latency_ms(&self) -> u64 {
+        // Try querying pipeline latency first
+        let pipeline = self.player.pipeline();
+        let mut q = gst::query::Latency::new();
+        if pipeline.query(&mut q) {
+            let (_, min, _) = q.result();
+            let ms = min.mseconds();
+            if ms > 5 {
+                tracing::info!(latency_ms = ms, "sink latency from pipeline query");
+                return ms;
+            }
+        }
+
+        // Fallback: read PipeWire quantum from pw-metadata
+        match std::process::Command::new("pw-metadata")
+            .args(["-n", "settings", "0"])
+            .output()
+        {
+            Ok(out) => {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let quantum = text.lines()
+                    .find(|l| l.contains("clock.quantum"))
+                    .and_then(|l| l.split('\'').nth(3))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+                    .unwrap_or(1024);
+                let rate = text.lines()
+                    .find(|l| l.contains("clock.rate") && !l.contains("allowed") && !l.contains("force"))
+                    .and_then(|l| l.split('\'').nth(3))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+                    .unwrap_or(48000);
+                // PipeWire uses ~2 quantum periods of buffering typically
+                let ms = (quantum * 1000 * 2) / rate;
+                tracing::info!(quantum, rate, latency_ms = ms, "sink latency from PipeWire metadata (2x quantum)");
+                ms
+            }
+            Err(_) => {
+                tracing::debug!("pw-metadata not available, defaulting to 85ms");
+                85
+            }
+        }
     }
 }
 

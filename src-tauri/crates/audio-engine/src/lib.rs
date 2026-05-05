@@ -37,7 +37,7 @@ pub struct EngineHandle {
     pub(crate) command_tx: crossbeam_channel::Sender<Command>,
     pub(crate) state_rx: Receiver<StateUpdate>,
     pub(crate) metrics: std::sync::Arc<engine::SharedMetrics>,
-    pub(crate) spectrum_buf: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    pub(crate) spectrum_buf: std::sync::Arc<std::sync::Mutex<(u64, Vec<u8>)>>,
 }
 
 impl EngineHandle {
@@ -59,7 +59,15 @@ impl EngineHandle {
         self.metrics.snapshot()
     }
 
-    pub fn spectrum_buffer(&self) -> std::sync::Arc<std::sync::Mutex<Vec<u8>>> {
+    pub fn spectrum_buffer(&self) -> std::sync::Arc<std::sync::Mutex<(u64, Vec<u8>)>> {
         self.spectrum_buf.clone()
+    }
+
+    pub fn sink_latency_ms(&self) -> u64 {
+        self.metrics.sink_latency_ms.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn shared_metrics(&self) -> std::sync::Arc<engine::SharedMetrics> {
+        self.metrics.clone()
     }
 }

@@ -222,4 +222,6 @@ html[data-density="compact"] .player-bar {
 .view--hero {
   position: relative;
   overflow: hidden;
+  height: 100%;
+  min-height: 0;
 }

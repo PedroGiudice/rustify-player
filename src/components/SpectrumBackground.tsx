@@ -1,20 +1,18 @@
 import { onMount, onCleanup, createEffect } from "solid-js";
-import { onAudioFft, getTrackColor } from "../tauri";
+import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, getTrackColor } from "../tauri";
 import { player } from "../store/player";
 
 const LINE_COUNT = 100;
-const POINTS_PER_LINE = 120;
-const SMOOTHING = 0.25;
+const POINTS_PER_LINE = 80;
+const ATTACK = 0.35;
+const RELEASE = 0.06;
 const RAW_BANDS = 512;
 const LOG_BANDS = 128;
 
-// Pre-compute log-spaced bin mapping: 128 perceptual bins from 512 linear bins.
-// Low frequencies get more resolution (bins 0-20 → ~40% of output).
 const logBinMap: [number, number][] = (() => {
   const map: [number, number][] = [];
   for (let i = 0; i < LOG_BANDS; i++) {
     const t = i / LOG_BANDS;
-    // Exponential mapping: more bins devoted to low freqs
     const startFrac = Math.pow(t, 2.5);
     const endFrac = Math.pow((i + 1) / LOG_BANDS, 2.5);
     const start = Math.floor(startFrac * RAW_BANDS);
@@ -38,63 +36,127 @@ function hexToHue(hex: string): number {
   return h * 360;
 }
 
-interface NormalMap {
-  brightness: Float32Array;
-  nx: Float32Array;
-  ny: Float32Array;
-  width: number;
-  height: number;
+const VERT_SRC = `#version 300 es
+precision highp float;
+in vec2 a_grid;
+uniform sampler2D u_normalMap;
+uniform sampler2D u_fft;
+uniform vec2 u_resolution;
+out float v_depth;
+
+void main() {
+    vec4 nm = texture(u_normalMap, a_grid);
+    float bright = nm.r;
+    float dirX = nm.g * 2.0 - 1.0;
+    float dirY = nm.b * 2.0 - 1.0;
+
+    float depth = a_grid.y;
+    float regionF = depth * 7.0;
+    int region = min(int(regionF), 6);
+
+    float starts[7] = float[7](0.0, 4.0, 12.0, 24.0, 40.0, 56.0, 80.0);
+    float ends[7] = float[7](4.0, 12.0, 24.0, 40.0, 56.0, 80.0, 128.0);
+    float mid = (starts[region] + ends[region]) * 0.5 / 128.0;
+    float energy = texture(u_fft, vec2(mid, 0.5)).r;
+
+    int prevR = max(region - 1, 0);
+    int nextR = min(region + 1, 6);
+    float prevE = texture(u_fft, vec2((starts[prevR] + ends[prevR]) * 0.5 / 128.0, 0.5)).r;
+    float nextE = texture(u_fft, vec2((starts[nextR] + ends[nextR]) * 0.5 / 128.0, 0.5)).r;
+    float blended = prevE * 0.2 + energy * 0.6 + nextE * 0.2;
+
+    float strength = (0.15 + bright * 0.85) * (10.0 + blended * 180.0);
+    vec2 base = a_grid * u_resolution;
+    vec2 displaced = base + vec2(dirX, dirY) * strength;
+
+    vec2 ndc = (displaced / u_resolution) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_depth = depth;
+}
+`;
+
+const FRAG_SRC = `#version 300 es
+precision highp float;
+in float v_depth;
+uniform float u_baseHue;
+out vec4 fragColor;
+
+vec3 hsl2rgb(float h, float s, float l) {
+    float c = (1.0 - abs(2.0 * l - 1.0)) * s;
+    float x = c * (1.0 - abs(mod(h / 60.0, 2.0) - 1.0));
+    float m = l - c * 0.5;
+    vec3 rgb;
+    if (h < 60.0) rgb = vec3(c, x, 0.0);
+    else if (h < 120.0) rgb = vec3(x, c, 0.0);
+    else if (h < 180.0) rgb = vec3(0.0, c, x);
+    else if (h < 240.0) rgb = vec3(0.0, x, c);
+    else if (h < 300.0) rgb = vec3(x, 0.0, c);
+    else rgb = vec3(c, 0.0, x);
+    return rgb + m;
 }
 
-function computeNormalMap(imgData: ImageData): NormalMap {
-  const w = imgData.width;
-  const h = imgData.height;
-  const brightness = new Float32Array(w * h);
-  const nx = new Float32Array(w * h);
-  const ny = new Float32Array(w * h);
+void main() {
+    float hue = mod(u_baseHue + v_depth * 15.0, 360.0);
+    float alpha = 0.15 + v_depth * 0.25;
+    float lightness = (40.0 + v_depth * 20.0) / 100.0;
+    vec3 color = hsl2rgb(hue, 0.8, lightness);
+    fragColor = vec4(color, alpha);
+}
+`;
 
-  // Extract luminance
-  for (let i = 0; i < w * h; i++) {
-    const idx = i * 4;
-    brightness[i] =
-      (0.2126 * imgData.data[idx] + 0.7152 * imgData.data[idx + 1] + 0.0722 * imgData.data[idx + 2]) / 255;
+function compileShader(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader | null {
+  const s = gl.createShader(type);
+  if (!s) return null;
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error("Shader compile:", gl.getShaderInfoLog(s));
+    gl.deleteShader(s);
+    return null;
   }
+  return s;
+}
 
-  // Sobel gradients → normal direction (perpendicular to contour)
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const idx = y * w + x;
-      // Sobel X
-      const gx =
-        -brightness[(y - 1) * w + (x - 1)] + brightness[(y - 1) * w + (x + 1)] +
-        -2 * brightness[y * w + (x - 1)] + 2 * brightness[y * w + (x + 1)] +
-        -brightness[(y + 1) * w + (x - 1)] + brightness[(y + 1) * w + (x + 1)];
-      // Sobel Y
-      const gy =
-        -brightness[(y - 1) * w + (x - 1)] - 2 * brightness[(y - 1) * w + x] - brightness[(y - 1) * w + (x + 1)] +
-        brightness[(y + 1) * w + (x - 1)] + 2 * brightness[(y + 1) * w + x] + brightness[(y + 1) * w + (x + 1)];
-
-      const mag = Math.sqrt(gx * gx + gy * gy);
-      if (mag > 0.01) {
-        nx[idx] = gx / mag;
-        ny[idx] = gy / mag;
-      }
-    }
+function createProgram(gl: WebGL2RenderingContext): WebGLProgram | null {
+  const vs = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SRC);
+  if (!vs || !fs) return null;
+  const prog = gl.createProgram()!;
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.bindAttribLocation(prog, 0, "a_grid");
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error("Program link:", gl.getProgramInfoLog(prog));
+    return null;
   }
-
-  return { brightness, nx, ny, width: w, height: h };
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  return prog;
 }
 
 export default function SpectrumBackground(props: { shapeUrl?: string | null }) {
   let canvas: HTMLCanvasElement | undefined;
-  let ctx: CanvasRenderingContext2D | null = null;
+  let gl: WebGL2RenderingContext | null = null;
+  let program: WebGLProgram | null = null;
+  let vao: WebGLVertexArrayObject | null = null;
+  let normalTex: WebGLTexture | null = null;
+  let fftTex: WebGLTexture | null = null;
   let animId = 0;
+  let destroyed = false;
   let unlisten: (() => void) | null = null;
+
+  let uResolution: WebGLUniformLocation | null = null;
+  let uBaseHue: WebGLUniformLocation | null = null;
+  let uNormalMap: WebGLUniformLocation | null = null;
+  let uFft: WebGLUniformLocation | null = null;
 
   const rawFft = new Uint8Array(RAW_BANDS);
   const smoothed = new Float32Array(LOG_BANDS);
+  const fftUpload = new Uint8Array(LOG_BANDS);
   let baseHue = 260;
-  let normalMap: NormalMap | null = null;
+  let hasNormalMap = false;
 
   createEffect(async () => {
     const track = player.currentTrack;
@@ -105,155 +167,198 @@ export default function SpectrumBackground(props: { shapeUrl?: string | null }) 
     } catch {}
   });
 
+  function initWebGL() {
+    if (!canvas) return;
+    gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
+    if (!gl) { console.error("WebGL2 not available"); return; }
+
+    program = createProgram(gl);
+    if (!program) return;
+
+    // Grid mesh
+    const verts = new Float32Array(LINE_COUNT * POINTS_PER_LINE * 2);
+    let idx = 0;
+    for (let j = 0; j < LINE_COUNT; j++) {
+      for (let i = 0; i < POINTS_PER_LINE; i++) {
+        verts[idx++] = i / (POINTS_PER_LINE - 1);
+        verts[idx++] = j / (LINE_COUNT - 1);
+      }
+    }
+    vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    // Textures
+    normalTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, normalTex);
+    // Default 1x1 neutral normal map
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE,
+      new Uint8Array([128, 128, 128]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    fftTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, fftTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, LOG_BANDS, 1, 0, gl.RED, gl.UNSIGNED_BYTE,
+      new Uint8Array(LOG_BANDS));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // Uniforms
+    uResolution = gl.getUniformLocation(program, "u_resolution");
+    uBaseHue = gl.getUniformLocation(program, "u_baseHue");
+    uNormalMap = gl.getUniformLocation(program, "u_normalMap");
+    uFft = gl.getUniformLocation(program, "u_fft");
+  }
+
   function loadShape(url: string) {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      if (!gl || !normalTex) return;
       const offscreen = document.createElement("canvas");
       offscreen.width = POINTS_PER_LINE;
       offscreen.height = LINE_COUNT;
       const octx = offscreen.getContext("2d")!;
-      octx.filter = "blur(4px)";
+      octx.filter = "blur(3px) contrast(4) saturate(0)";
       octx.drawImage(img, 0, 0, POINTS_PER_LINE, LINE_COUNT);
       const imgData = octx.getImageData(0, 0, POINTS_PER_LINE, LINE_COUNT);
-      normalMap = computeNormalMap(imgData);
+
+      const w = imgData.width, h = imgData.height;
+      const brightness = new Float32Array(w * h);
+      const packed = new Uint8Array(w * h * 3);
+
+      for (let i = 0; i < w * h; i++) {
+        const idx = i * 4;
+        brightness[i] = (0.2126 * imgData.data[idx] + 0.7152 * imgData.data[idx+1] + 0.0722 * imgData.data[idx+2]) / 255;
+      }
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x;
+          const gx = -brightness[(y-1)*w+(x-1)] + brightness[(y-1)*w+(x+1)]
+                    -2*brightness[y*w+(x-1)] + 2*brightness[y*w+(x+1)]
+                    -brightness[(y+1)*w+(x-1)] + brightness[(y+1)*w+(x+1)];
+          const gy = -brightness[(y-1)*w+(x-1)] - 2*brightness[(y-1)*w+x] - brightness[(y-1)*w+(x+1)]
+                    + brightness[(y+1)*w+(x-1)] + 2*brightness[(y+1)*w+x] + brightness[(y+1)*w+(x+1)];
+          const mag = Math.sqrt(gx*gx + gy*gy);
+          let nx = 0.5, ny = 0.5;
+          if (mag > 0.01) {
+            nx = (gx / mag) * 0.5 + 0.5;
+            ny = (gy / mag) * 0.5 + 0.5;
+          }
+          packed[i*3] = Math.floor(brightness[i] * 255);
+          packed[i*3+1] = Math.floor(nx * 255);
+          packed[i*3+2] = Math.floor(ny * 255);
+        }
+      }
+
+      gl!.activeTexture(gl!.TEXTURE0);
+      gl!.bindTexture(gl!.TEXTURE_2D, normalTex);
+      gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGB8, w, h, 0, gl!.RGB, gl!.UNSIGNED_BYTE, packed);
+      hasNormalMap = true;
     };
     img.src = url;
   }
 
   function resize() {
-    if (!canvas) return;
-    canvas.width = canvas.clientWidth * devicePixelRatio;
-    canvas.height = canvas.clientHeight * devicePixelRatio;
-    ctx = canvas.getContext("2d", { alpha: false });
-    ctx?.scale(devicePixelRatio, devicePixelRatio);
+    if (!canvas || !gl) return;
+    const w = canvas.clientWidth * devicePixelRatio;
+    const h = canvas.clientHeight * devicePixelRatio;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+    }
   }
 
   function draw() {
+    if (destroyed) return;
     animId = requestAnimationFrame(draw);
-    if (!ctx || !canvas) return;
+    if (!gl || !program || !vao) return;
 
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-
-    // Log-remap 512 linear bins → 128 perceptual bins, then smooth
+    // Smooth FFT
     for (let i = 0; i < LOG_BANDS; i++) {
       const [start, end] = logBinMap[i];
       let max = 0;
       for (let j = start; j < end && j < RAW_BANDS; j++) {
         if (rawFft[j] > max) max = rawFft[j];
       }
-      smoothed[i] += (max - smoothed[i]) * SMOOTHING;
+      const rate = max > smoothed[i] ? ATTACK : RELEASE;
+      smoothed[i] += (max - smoothed[i]) * rate;
+      fftUpload[i] = Math.min(255, Math.floor(smoothed[i]));
     }
 
-    ctx.fillStyle = "#080808";
-    ctx.fillRect(0, 0, w, h);
+    // Upload FFT texture
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, fftTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LOG_BANDS, 1, gl.RED, gl.UNSIGNED_BYTE, fftUpload);
 
-    const bassPulse = smoothed[2] / 255;
-    const midEnergy = (smoothed[8] + smoothed[12] + smoothed[16]) / (255 * 3);
+    // Clear
+    gl.clearColor(0.031, 0.031, 0.031, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
 
-    if (normalMap) {
-      drawWithShape(ctx, w, h, bassPulse, midEnergy);
-    } else {
-      drawBars(ctx, w, h, bassPulse, midEnergy);
-    }
-  }
+    // Draw lines
+    gl.useProgram(program);
+    gl.uniform2f(uResolution, canvas!.clientWidth, canvas!.clientHeight);
+    gl.uniform1f(uBaseHue, baseHue);
+    gl.uniform1i(uNormalMap, 0);
+    gl.uniform1i(uFft, 1);
 
-  function drawWithShape(c: CanvasRenderingContext2D, w: number, h: number, bassPulse: number, midEnergy: number) {
-    const nm = normalMap!;
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Frequency regions: sub-bass, bass, low-mid, mid, high-mid, presence, brilliance
-    const regions = [
-      { start: 0, end: 4, label: "sub" },
-      { start: 4, end: 12, label: "bass" },
-      { start: 12, end: 24, label: "lowmid" },
-      { start: 24, end: 40, label: "mid" },
-      { start: 40, end: 56, label: "himid" },
-      { start: 56, end: 80, label: "presence" },
-      { start: 80, end: 128, label: "brilliance" },
-    ];
-
-    // Pre-compute energy per region
-    const regionEnergy = regions.map(r => {
-      let sum = 0;
-      for (let i = r.start; i < r.end; i++) sum += smoothed[i];
-      return sum / ((r.end - r.start) * 255);
-    });
-
+    gl.bindVertexArray(vao);
     for (let j = 0; j < LINE_COUNT; j++) {
-      const depth = j / LINE_COUNT;
-      // Map line position to frequency region (bottom=sub-bass, top=brilliance)
-      const regionIdx = Math.min(Math.floor(depth * regions.length), regions.length - 1);
-      const bandEnergy = regionEnergy[regionIdx];
-      // Blend with neighbor regions for smoother transition
-      const prevEnergy = regionIdx > 0 ? regionEnergy[regionIdx - 1] : bandEnergy;
-      const nextEnergy = regionIdx < regions.length - 1 ? regionEnergy[regionIdx + 1] : bandEnergy;
-      const blendedEnergy = prevEnergy * 0.2 + bandEnergy * 0.6 + nextEnergy * 0.2;
-
-      const hue = baseHue + (bassPulse * 25) - 12;
-      const alpha = 0.12 + blendedEnergy * 0.75 + depth * 0.1;
-      const lightness = 40 + depth * 15 + blendedEnergy * 25;
-
-      c.strokeStyle = `hsla(${hue}, 80%, ${lightness}%, ${alpha})`;
-      c.lineWidth = 0.5 + blendedEnergy * 2.0;
-
-      c.beginPath();
-      for (let i = 0; i < POINTS_PER_LINE; i++) {
-        const nmIdx = j * nm.width + i;
-        const bright = nm.brightness[nmIdx];
-        const dirX = nm.nx[nmIdx];
-        const dirY = nm.ny[nmIdx];
-
-        const strength = bright * (10 + blendedEnergy * 180);
-
-        const baseX = (i / (POINTS_PER_LINE - 1)) * w;
-        const baseY = (j / (LINE_COUNT - 1)) * h;
-
-        const x = baseX + dirX * strength;
-        const y = baseY + dirY * strength;
-
-        if (i === 0) c.moveTo(x, y);
-        else c.lineTo(x, y);
-      }
-      c.stroke();
+      gl.drawArrays(gl.LINE_STRIP, j * POINTS_PER_LINE, POINTS_PER_LINE);
     }
-  }
-
-  function drawBars(c: CanvasRenderingContext2D, w: number, h: number, _bassPulse: number, _midEnergy: number) {
-    const barCount = 64;
-    const barW = w / barCount;
-    for (let i = 0; i < barCount; i++) {
-      const val = smoothed[i * 2] / 255;
-      const barH = val * h * 0.85;
-      const hue = baseHue + (val * 30);
-      c.fillStyle = `hsl(${hue}, 80%, ${35 + val * 30}%)`;
-      c.fillRect(i * barW + 1, h - barH, barW - 2, barH);
-    }
+    gl.bindVertexArray(null);
   }
 
   createEffect(() => {
     const url = props.shapeUrl;
     if (url) loadShape(url);
-    else normalMap = null;
+    else hasNormalMap = false;
   });
 
-  onMount(async () => {
+  onMount(() => {
+    initWebGL();
     resize();
     window.addEventListener("resize", resize);
 
-    unlisten = await onAudioFft((data) => {
-      for (let i = 0; i < Math.min(data.length, RAW_BANDS); i++) {
-        rawFft[i] = data[i];
-      }
-    });
+    onAudioFft((data) => {
+      for (let i = 0; i < Math.min(data.length, RAW_BANDS); i++) rawFft[i] = data[i];
+    }).then(unsub => { unlisten = unsub; });
+
+    setTimeout(() => {
+      if (!destroyed) spectrumSubscribe();
+    }, 200);
 
     draw();
   });
 
   onCleanup(() => {
+    destroyed = true;
     cancelAnimationFrame(animId);
     window.removeEventListener("resize", resize);
+    spectrumUnsubscribe();
     unlisten?.();
+    if (gl) {
+      gl.deleteProgram(program);
+      gl.deleteTexture(normalTex);
+      gl.deleteTexture(fftTex);
+    }
   });
 
   return (

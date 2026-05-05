@@ -190,7 +190,62 @@ export const onMprisCommand = (cb: (cmd: string) => void) =>
 export const onAudioFft = (cb: (data: number[]) => void) =>
   listen<number[]>("audio-fft", (e) => cb(e.payload));
 
+export const spectrumSubscribe = () => invoke("spectrum_subscribe");
+export const spectrumUnsubscribe = () => invoke("spectrum_unsubscribe");
+
+export interface SpectrumRange {
+  label: string;
+  from_hz: number;
+  to_hz: number;
+  gain: number;
+}
+
+export interface SpectrumConfig {
+  ranges: SpectrumRange[];
+  sample_rate: number;
+  bands: number;
+}
+
+export const getSpectrumConfig = () => invoke<SpectrumConfig>("get_spectrum_config");
+export const setSpectrumConfig = (ranges: SpectrumRange[]) =>
+  invoke("set_spectrum_config", { ranges });
+
 export const listShapes = () => invoke<string[]>("list_shapes");
+
+export interface ThemeInfo {
+  filename: string;
+  name: string;
+  author: string;
+}
+
+export const listThemes = () => invoke<ThemeInfo[]>("list_themes");
+export interface ContrastCheck {
+  pair: string;
+  ratio: number;
+  pass_aa: boolean;
+  pass_aaa: boolean;
+}
+
+export interface ThemeLoadResult {
+  vars: Record<string, string>;
+  contrast: ContrastCheck[];
+}
+
+export const loadTheme = (filename: string) => invoke<ThemeLoadResult>("load_theme", { filename });
+
+export function applyTheme(vars: Record<string, string>) {
+  const root = document.documentElement;
+  for (const [prop, val] of Object.entries(vars)) {
+    root.style.setProperty(prop, val);
+  }
+}
+
+export async function applyThemeByName(filename: string): Promise<ContrastCheck[]> {
+  const result = await loadTheme(filename);
+  applyTheme(result.vars);
+  localStorage.setItem("rustify-theme", filename);
+  return result.contrast;
+}
 
 // ── Helpers ────────────────────────────────────────────────────
 

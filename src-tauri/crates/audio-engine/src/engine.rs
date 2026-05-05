@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -15,6 +15,7 @@ use crossbeam_channel::{select, tick, Receiver, Sender, TryRecvError};
 
 use gstreamer as gst;
 use gstreamer::glib;
+use gstreamer::prelude::ClockExt;
 
 use crate::error::EngineError;
 use crate::output::GstreamerPlayer;
@@ -26,10 +27,14 @@ use crate::EngineHandle;
 const POSITION_INTERVAL: Duration = Duration::from_millis(100);
 const TICK_INTERVAL: Duration = Duration::from_millis(50);
 
-pub(crate) struct SharedMetrics {
+pub struct SharedMetrics {
     pub xrun_count: AtomicU64,
     pub decoded_samples_total: AtomicU64,
     pub started_at: Instant,
+    pub sink_latency_ms: AtomicU64,
+    pub running_time_ns: AtomicU64,
+    pub pipeline_clock: OnceLock<gst::Clock>,
+    pub pipeline_base_time_ns: AtomicU64,
 }
 
 impl SharedMetrics {
@@ -38,6 +43,21 @@ impl SharedMetrics {
             xrun_count: AtomicU64::new(0),
             decoded_samples_total: AtomicU64::new(0),
             started_at: Instant::now(),
+            sink_latency_ms: AtomicU64::new(50),
+            running_time_ns: AtomicU64::new(0),
+            pipeline_clock: OnceLock::new(),
+            pipeline_base_time_ns: AtomicU64::new(0),
+        }
+    }
+
+    pub fn live_running_time_ns(&self) -> u64 {
+        match self.pipeline_clock.get() {
+            Some(clock) => {
+                let now = clock.time().nseconds();
+                let base = self.pipeline_base_time_ns.load(Ordering::Relaxed);
+                now.saturating_sub(base)
+            }
+            None => self.running_time_ns.load(Ordering::Relaxed),
         }
     }
 
@@ -82,7 +102,8 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     let state_tx_thread = state_tx.clone();
     let state_tx_panic = state_tx.clone();
 
-    let spectrum_latest = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    // (running_time_ns, magnitudes) — timestamped spectrum data
+    let spectrum_latest = Arc::new(std::sync::Mutex::new((0u64, Vec::<u8>::new())));
     let spectrum_latest_pub = spectrum_latest.clone();
 
     thread::Builder::new()
@@ -113,9 +134,9 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
             if let Some(bus) = player.bus() {
                 bus.set_sync_handler(move |_bus, msg| {
                     if msg.type_() == gst::MessageType::Element {
-                        if let Some(data) = crate::output::spectrum::SpectrumAnalyzer::parse_message(msg) {
+                        if let Some((ts, data)) = crate::output::spectrum::SpectrumAnalyzer::parse_message(msg) {
                             if let Ok(mut buf) = spectrum_writer.lock() {
-                                *buf = data;
+                                *buf = (ts, data);
                             }
                         }
                     }
@@ -412,6 +433,22 @@ impl EngineState {
         let Some(track) = &self.current else { return };
         let handle = track.info.handle;
         self.player.play();
+        let latency = self.player.sink_latency_ms();
+        self.metrics.sink_latency_ms.store(latency, Ordering::Relaxed);
+
+        // Publish pipeline clock for direct access by spectrum emitter
+        let rt = self.player.running_time_ns();
+        if rt > 0 {
+            // Store clock + base from the player's own method
+            if self.metrics.pipeline_clock.get().is_none() {
+                if let Some(clock) = self.player.pipeline_clock() {
+                    let _ = self.metrics.pipeline_clock.set(clock);
+                }
+            }
+            let base = self.player.pipeline_base_time_ns();
+            self.metrics.pipeline_base_time_ns.store(base, Ordering::Relaxed);
+        }
+
         self.set_state(PlaybackState::Playing {
             track: handle,
             position_samples: self.player.position_samples(),
@@ -472,6 +509,10 @@ impl EngineState {
         let ctx = glib::MainContext::default();
         ctx.iteration(false);
 
+        self.metrics.running_time_ns.store(
+            self.player.running_time_ns(),
+            Ordering::Relaxed,
+        );
         self.maybe_emit_position();
         self.check_eos();
     }
