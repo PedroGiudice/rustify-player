@@ -1299,9 +1299,19 @@ html[data-density="compact"] .album-cover-empty {
   transition: color var(--dur-fast) var(--ease-standard);
 }
 .spectrum-panel__close-btn:hover { color: var(--primary); }
+.spectrum-panel__section {
+  margin-bottom: var(--space-4);
+}
+.spectrum-panel__label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--on-surface-mute);
+  margin-bottom: var(--space-2);
+}
 .spectrum-panel__chips {
   display: flex; flex-wrap: wrap; gap: var(--space-2);
-  margin-bottom: var(--space-4);
 }
 .spectrum-panel__ranges {
   flex: 1; overflow-y: auto;
@@ -2403,6 +2413,7 @@ html[data-density="compact"] .album-cover-empty {
   z-index: 100;
   scrollbar-width: thin;
   text-align: left;
+  -webkit-app-region: no-drag;
 }
 
 .search-section {
@@ -2430,6 +2441,7 @@ html[data-density="compact"] .album-cover-empty {
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   transition: background var(--dur-fast);
+  -webkit-app-region: no-drag;
 }
 
 .search-item:hover {

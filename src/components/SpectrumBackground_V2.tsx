@@ -33,7 +33,6 @@ function hexToHue(hex: string): number {
   return h * 360;
 }
 
-// Shader uses uniforms for all tunable parameters — no recompilation on config change
 const VERT_SRC = `#version 300 es
 precision highp float;
 in vec2 a_grid;
@@ -49,6 +48,9 @@ uniform float u_compBass;
 uniform float u_compDefault;
 uniform sampler2D u_regions; // 9×1 R32F texture with region boundaries
 uniform float u_logBands;   // number of log bands (texture width)
+uniform float u_brightnessRigidity; // how much bright areas resist audio (0=none, 1=full)
+uniform float u_bassReactivityBoost; // extra mult for bass regions
+uniform float u_invertDepth; // 1.0=inverted (bass at bottom), 0.0=normal
 
 out float v_depth;
 out float v_energy;
@@ -59,7 +61,7 @@ void main() {
     float dirX = nm.g * 2.0 - 1.0;
     float dirY = nm.b * 2.0 - 1.0;
 
-    float depth = a_grid.y;
+    float depth = mix(a_grid.y, 1.0 - a_grid.y, u_invertDepth);
     float regionF = depth * 9.0;
     int region = min(int(regionF), 8);
 
@@ -77,19 +79,23 @@ void main() {
     float nextE = texture(u_fft, vec2(nextMid, 0.5)).r;
     float blended = prevE * 0.2 + energy * 0.6 + nextE * 0.2;
 
-    // Compression ramps up for higher regions — hi-hats/vocals have much less FFT energy
-    // than bass, so they need stronger compression (lower exponent) to be visible
-    float regionT = float(region) / 8.0; // 0.0=bass, 1.0=high
-    float compression = mix(u_compBass, u_compDefault * 0.7, regionT); // bass=0.55, highs=~0.53
-    // Actually: bass needs less compression (louder signal), highs need MORE (quieter signal)
-    // Lower pow exponent = more boost for quiet values
-    float compHigh = min(u_compBass, u_compDefault) * 0.8; // ~0.44 for highs
+    float regionT = float(region) / 8.0; 
+    float compression = mix(u_compBass, u_compDefault * 0.7, regionT); 
+    float compHigh = min(u_compBass, u_compDefault) * 0.8; 
     compression = mix(u_compBass, compHigh, smoothstep(0.2, 0.8, regionT));
     float compressed = pow(max(blended, 0.001), compression);
 
-    // All regions get meaningful displacement — smooth falloff from bass to highs
+    // Bright areas = rigid anchor (shape holds form), dark areas = free to dance with audio
+    float reactivity = 1.0 - bright * u_brightnessRigidity;
+    // Bass regions get extra reactivity boost — they drive the visual pulse
+    float bassBoost = mix(u_bassReactivityBoost, 1.0, smoothstep(0.0, 0.3, regionT));
     float mult = mix(u_bassMult, 1.0, smoothstep(0.0, 0.5, regionT));
-    float strength = (0.15 + bright * 0.85) * (u_baseStrength + compressed * u_energyMult) * mult;
+    float strength = (0.15 + bright * 0.85) * (u_baseStrength + compressed * u_energyMult * reactivity * bassBoost) * mult;
+
+    // Fade displacement at grid edges to avoid hard cutoff at canvas borders
+    float edgeFade = smoothstep(0.0, 0.08, a_grid.y) * smoothstep(1.0, 0.92, a_grid.y)
+                   * smoothstep(0.0, 0.05, a_grid.x) * smoothstep(1.0, 0.95, a_grid.x);
+    strength *= edgeFade;
 
     vec2 base = a_grid * u_resolution;
     vec2 displaced = base + vec2(dirX, dirY) * strength;
@@ -97,6 +103,8 @@ void main() {
     vec2 ndc = (displaced / u_resolution) * 2.0 - 1.0;
     ndc.y = -ndc.y;
     gl_Position = vec4(ndc, 0.0, 1.0);
+    // Point size for dust mode — grows with energy, base 1.5px
+    gl_PointSize = 1.5 + compressed * 3.5;
     v_depth = depth;
     v_energy = compressed;
 }
@@ -115,6 +123,7 @@ uniform float u_energyAlpha;
 uniform float u_baseLightness;
 uniform float u_depthLightness;
 uniform float u_energyLightness;
+uniform float u_dustMode; // 1.0 = point particles with soft circle, 0.0 = lines
 out vec4 fragColor;
 
 vec3 hsl2rgb(float h, float s, float l) {
@@ -136,7 +145,42 @@ void main() {
     float alpha = u_baseAlpha + v_depth * u_depthAlpha + v_energy * u_energyAlpha;
     float lightness = (u_baseLightness + v_depth * u_depthLightness + v_energy * u_energyLightness) / 100.0;
     vec3 color = hsl2rgb(hue, u_saturation, lightness);
+
+    // Dust mode: soft circle from gl_PointCoord, discard corners
+    if (u_dustMode > 0.5) {
+        float dist = distance(gl_PointCoord, vec2(0.5));
+        if (dist > 0.5) discard;
+        alpha *= smoothstep(0.5, 0.1, dist); // soft glow falloff
+    }
+
     fragColor = vec4(color, alpha);
+}
+`;
+
+// Shaders para o Background Quad (A Imagem Original)
+const BG_VERT_SRC = `#version 300 es
+precision highp float;
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+    v_uv = a_pos * 0.5 + 0.5;
+    v_uv.y = 1.0 - v_uv.y; // Flip Y para a imagem
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+`;
+
+const BG_FRAG_SRC = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_colorMap;
+uniform float u_globalEnergy;
+uniform float u_bgDimming;
+uniform float u_bgPulseStrength;
+out vec4 fragColor;
+void main() {
+    vec4 color = texture(u_colorMap, v_uv);
+    float dimming = u_bgDimming - (u_globalEnergy * u_bgPulseStrength);
+    fragColor = vec4(color.rgb * dimming, 1.0);
 }
 `;
 
@@ -153,14 +197,14 @@ function compileShader(gl: WebGL2RenderingContext, type: number, src: string): W
   return s;
 }
 
-function linkProgram(gl: WebGL2RenderingContext): WebGLProgram | null {
-  const vs = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SRC);
+function linkProgram(gl: WebGL2RenderingContext, vSrc: string, fSrc: string, attribName: string = "a_grid"): WebGLProgram | null {
+  const vs = compileShader(gl, gl.VERTEX_SHADER, vSrc);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fSrc);
   if (!vs || !fs) return null;
   const prog = gl.createProgram()!;
   gl.attachShader(prog, vs);
   gl.attachShader(prog, fs);
-  gl.bindAttribLocation(prog, 0, "a_grid");
+  gl.bindAttribLocation(prog, 0, attribName);
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
     console.error("Program link:", gl.getProgramInfoLog(prog));
@@ -196,6 +240,17 @@ const DEFAULT_CONFIG: SpectrumVisualConfig = {
   depth_lightness: 18.0,
   energy_lightness: 12.0,
   regions: [[0,6],[6,16],[16,32],[32,56],[56,84],[84,120],[120,168],[168,216],[216,256]],
+  // V2 params
+  style: "exoskeleton",
+  brightness_rigidity: 0.7,
+  bass_reactivity_boost: 1.4,
+  bass_attack_scale: 0.43,
+  invert_depth: true,
+  bg_dimming: 0.45,
+  bg_pulse_strength: 0.25,
+  gravity_decay: 1.5,
+  agc_decay: 0.985,
+  agc_floor: 3.0,
 };
 
 interface Props {
@@ -207,30 +262,31 @@ export default function SpectrumBackground(props: Props) {
   let canvas: HTMLCanvasElement | undefined;
   let gl: WebGL2RenderingContext | null = null;
   let program: WebGLProgram | null = null;
+  let bgProgram: WebGLProgram | null = null;
   let vao: WebGLVertexArrayObject | null = null;
   let vbo: WebGLBuffer | null = null;
+  let quadVao: WebGLVertexArrayObject | null = null;
+  let quadVbo: WebGLBuffer | null = null;
   let normalTex: WebGLTexture | null = null;
   let fftTex: WebGLTexture | null = null;
   let regionsTex: WebGLTexture | null = null;
+  let colorTex: WebGLTexture | null = null; // A textura da imagem real
   let animId = 0;
   let destroyed = false;
   let unlisten: (() => void) | null = null;
 
-  // Uniform locations — resolved after program link
   const u: Record<string, WebGLUniformLocation | null> = {};
 
   const rawFft = new Uint8Array(RAW_BANDS);
-  const normalizedFft = new Float32Array(RAW_BANDS); // AGC-normalized raw bins
-  const runningAvg = new Float32Array(RAW_BANDS);    // per-bin running average for AGC
+  const normalizedFft = new Float32Array(RAW_BANDS);
+  const runningAvg = new Float32Array(RAW_BANDS);    
   const smoothed = new Float32Array(LOG_BANDS);
   const fftUpload = new Uint8Array(LOG_BANDS);
-  const AGC_DECAY = 0.985;  // how fast the running average adapts (~2s to halve at 60fps)
-  const AGC_FLOOR = 3.0;    // minimum average to avoid division by near-zero in silence
+  // AGC params now come from cfg.agc_decay / cfg.agc_floor
   let baseHue = 260;
   let hasNormalMap = false;
 
-  // Mutable config state — updated by createEffect when props.config changes
-  let cfg = { ...DEFAULT_CONFIG };
+  let cfg: typeof DEFAULT_CONFIG = { ...DEFAULT_CONFIG };
   let logBinMap = buildLogBinMap(cfg.log_exponent);
   let curLines = cfg.lines;
   let curPoints = cfg.points_per_line;
@@ -244,14 +300,14 @@ export default function SpectrumBackground(props: Props) {
     } catch {}
   });
 
-  // React to config changes
   createEffect(() => {
     const newCfg = props.config;
     if (!newCfg) return;
     const needsGridRebuild = newCfg.lines !== curLines || newCfg.points_per_line !== curPoints;
     const needsBinRebuild = newCfg.log_exponent !== cfg.log_exponent;
 
-    cfg = { ...newCfg };
+    cfg = { ...DEFAULT_CONFIG, ...newCfg };
+    console.log(`[spectrum] style="${cfg.style}" brightness_rigidity=${cfg.brightness_rigidity} invert_depth=${cfg.invert_depth}`);
 
     if (needsBinRebuild) {
       logBinMap = buildLogBinMap(cfg.log_exponent);
@@ -261,11 +317,9 @@ export default function SpectrumBackground(props: Props) {
       curPoints = cfg.points_per_line;
       rebuildGrid();
     }
-    // Upload new regions to texture
     if (gl && regionsTex) {
       uploadRegions();
     }
-    console.log(`[spectrum] config updated: ${cfg.name} (${cfg.lines}×${cfg.points_per_line})`);
   });
 
   function resolveUniforms() {
@@ -278,6 +332,8 @@ export default function SpectrumBackground(props: Props) {
       "u_hueSpread", "u_saturation",
       "u_baseAlpha", "u_depthAlpha", "u_energyAlpha",
       "u_baseLightness", "u_depthLightness", "u_energyLightness",
+      "u_brightnessRigidity", "u_bassReactivityBoost", "u_invertDepth",
+      "u_dustMode",
     ];
     for (const name of names) {
       u[name] = gl.getUniformLocation(program, name);
@@ -294,13 +350,9 @@ export default function SpectrumBackground(props: Props) {
         verts[idx++] = j / (curLines - 1);
       }
     }
-    if (!vao) {
-      vao = gl.createVertexArray();
-    }
+    if (!vao) vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
-    if (!vbo) {
-      vbo = gl.createBuffer();
-    }
+    if (!vbo) vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0);
@@ -310,7 +362,6 @@ export default function SpectrumBackground(props: Props) {
 
   function uploadRegions() {
     if (!gl || !regionsTex) return;
-    // Pack regions into RG32F texture: R = start, G = end
     const data = new Float32Array(cfg.regions.length * 2);
     for (let i = 0; i < cfg.regions.length; i++) {
       data[i * 2] = cfg.regions[i][0];
@@ -324,17 +375,33 @@ export default function SpectrumBackground(props: Props) {
   function initWebGL() {
     if (!canvas) return;
     gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
-    if (!gl) { console.error("WebGL2 not available"); return; }
+    if (!gl) return;
 
-    // Enable float textures for regions
     gl.getExtension("EXT_color_buffer_float");
 
-    program = linkProgram(gl);
-    if (!program) return;
+    program = linkProgram(gl, VERT_SRC, FRAG_SRC, "a_grid");
+    bgProgram = linkProgram(gl, BG_VERT_SRC, BG_FRAG_SRC, "a_pos");
+    if (!program || !bgProgram) return;
 
     resolveUniforms();
 
-    // Grid mesh
+    // Cache bgProgram uniform locations (resolved once, not per frame)
+    u["bg_u_colorMap"] = gl.getUniformLocation(bgProgram, "u_colorMap");
+    u["bg_u_globalEnergy"] = gl.getUniformLocation(bgProgram, "u_globalEnergy");
+    u["bg_u_bgDimming"] = gl.getUniformLocation(bgProgram, "u_bgDimming");
+    u["bg_u_bgPulseStrength"] = gl.getUniformLocation(bgProgram, "u_bgPulseStrength");
+
+    // Setup Quad para o Background Pass
+    const quadVerts = new Float32Array([-1, -1,  1, -1,  -1, 1,  1, 1]);
+    quadVao = gl.createVertexArray();
+    gl.bindVertexArray(quadVao);
+    quadVbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
     curLines = cfg.lines;
     curPoints = cfg.points_per_line;
     rebuildGrid();
@@ -343,8 +410,7 @@ export default function SpectrumBackground(props: Props) {
     normalTex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, normalTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE,
-      new Uint8Array([128, 128, 128]));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128]));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -354,8 +420,7 @@ export default function SpectrumBackground(props: Props) {
     fftTex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, fftTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, LOG_BANDS, 1, 0, gl.RED, gl.UNSIGNED_BYTE,
-      new Uint8Array(LOG_BANDS));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, LOG_BANDS, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(LOG_BANDS));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -377,21 +442,55 @@ export default function SpectrumBackground(props: Props) {
     img.crossOrigin = "anonymous";
     img.onload = () => {
       if (!gl || !normalTex) return;
+
+      // -- Passo 1: Upload da textura de Cor Original para o Background (Color Map) --
+      // Usa resolucao nativa da imagem — renderizado uma unica vez, sem custo recorrente.
+      // Esticar 120x150 pra fullscreen causa blur visivel; a nativa preserva detalhes.
+      const colorCanvas = document.createElement("canvas");
+      colorCanvas.width = img.naturalWidth;
+      colorCanvas.height = img.naturalHeight;
+      const colorCtx = colorCanvas.getContext("2d")!;
+      colorCtx.drawImage(img, 0, 0);
+
+      if (!colorTex) colorTex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, colorTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, colorCanvas);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      // -- Passo 2: Blur Aditivo para formar o Height Map --
+      // Normal map usa curPoints x curLines para alinhar com a grid de vertices.
       const offscreen = document.createElement("canvas");
       offscreen.width = curPoints;
       offscreen.height = curLines;
       const octx = offscreen.getContext("2d")!;
-      octx.filter = "blur(3px) contrast(4) saturate(0)";
+      octx.filter = "saturate(0)";
       octx.drawImage(img, 0, 0, curPoints, curLines);
+      
+      octx.globalCompositeOperation = 'lighter';
+      octx.globalAlpha = 0.5;
+      octx.filter = "blur(16px)";
+      octx.drawImage(img, 0, 0, curPoints, curLines);
+      
+      octx.globalAlpha = 0.7;
+      octx.filter = "blur(6px)";
+      octx.drawImage(img, 0, 0, curPoints, curLines);
+      
       const imgData = octx.getImageData(0, 0, curPoints, curLines);
-
       const w = imgData.width, h = imgData.height;
       const brightness = new Float32Array(w * h);
       const packed = new Uint8Array(w * h * 3);
 
       for (let i = 0; i < w * h; i++) {
         const idx = i * 4;
-        brightness[i] = (0.2126 * imgData.data[idx] + 0.7152 * imgData.data[idx+1] + 0.0722 * imgData.data[idx+2]) / 255;
+        let b = (0.2126 * imgData.data[idx] + 0.7152 * imgData.data[idx+1] + 0.0722 * imgData.data[idx+2]) / 255;
+        // Deterministic dithering — avoids non-reproducible output from Math.random()
+        const noise = ((Math.sin(i * 43758.5453) * 43758.5453) % 1) * 0.06 - 0.03;
+        b += noise;
+        brightness[i] = Math.max(0, Math.min(1, b));
       }
 
       for (let y = 1; y < h - 1; y++) {
@@ -403,10 +502,11 @@ export default function SpectrumBackground(props: Props) {
           const gy = -brightness[(y-1)*w+(x-1)] - 2*brightness[(y-1)*w+x] - brightness[(y-1)*w+(x+1)]
                     + brightness[(y+1)*w+(x-1)] + 2*brightness[(y+1)*w+x] + brightness[(y+1)*w+(x+1)];
           const mag = Math.sqrt(gx*gx + gy*gy);
+          
           let nx = 0.5, ny = 0.5;
-          if (mag > 0.01) {
-            nx = (gx / mag) * 0.5 + 0.5;
-            ny = (gy / mag) * 0.5 + 0.5;
+          if (mag > 0.005) {
+            nx = (-gy / mag) * 0.5 + 0.5;
+            ny = (gx / mag) * 0.5 + 0.5;
           }
           packed[i*3] = Math.floor(brightness[i] * 255);
           packed[i*3+1] = Math.floor(nx * 255);
@@ -414,9 +514,9 @@ export default function SpectrumBackground(props: Props) {
         }
       }
 
-      gl!.activeTexture(gl!.TEXTURE0);
-      gl!.bindTexture(gl!.TEXTURE_2D, normalTex);
-      gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGB8, w, h, 0, gl!.RGB, gl!.UNSIGNED_BYTE, packed);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, normalTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, w, h, 0, gl.RGB, gl.UNSIGNED_BYTE, packed);
       hasNormalMap = true;
     };
     img.src = url;
@@ -438,34 +538,49 @@ export default function SpectrumBackground(props: Props) {
     animId = requestAnimationFrame(draw);
     if (!gl || !program || !vao) return;
 
-    // Smooth FFT — bass bins get slower release for sustained visual impact
-    // Absolute floor decay (0.5/frame) ensures return to zero even without new FFT data
+    let bassEnergy = 0;
     for (let i = 0; i < LOG_BANDS; i++) {
       const [start, end] = logBinMap[i];
       let max = 0;
       for (let j = start; j < end && j < RAW_BANDS; j++) {
         if (rawFft[j] > max) max = rawFft[j];
       }
-      const release = i < cfg.bass_bin_threshold ? cfg.release_bass : cfg.release;
-      const rate = max > smoothed[i] ? cfg.attack : release;
+      const isBass = i < cfg.bass_bin_threshold;
+      const release = isBass ? cfg.release_bass : cfg.release;
+      // Bass attack slower (0.15 vs 0.35) — rises as a wave, not a spike
+      const attack = isBass ? cfg.attack * cfg.bass_attack_scale : cfg.attack;
+      const rate = max > smoothed[i] ? attack : release;
       smoothed[i] += (max - smoothed[i]) * rate;
-      // Continuous gravity: always pull toward zero, even during sustained notes.
-      // Creates a breathing oscillation — attack re-pushes each frame, gravity pulls back.
-      // 1.5/frame ≈ returns from 255 to 0 in ~2.8s if input stops entirely.
-      smoothed[i] = Math.max(0, smoothed[i] - 1.5);
+      smoothed[i] = Math.max(0, smoothed[i] - cfg.gravity_decay);
       fftUpload[i] = Math.min(255, Math.floor(smoothed[i]));
+      
+      // Accumulate sub-bass energy to pulse the background
+      if (i < 40) bassEnergy += smoothed[i];
     }
+    const globalEnergy = Math.min(1.0, bassEnergy / (40.0 * 255.0));
 
-    // Upload FFT texture
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, fftTex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LOG_BANDS, 1, gl.RED, gl.UNSIGNED_BYTE, fftUpload);
 
-    // Clear
-    gl.clearColor(0.031, 0.031, 0.031, 1.0);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // Draw
+    // --- Pass 1: Background Image Pass ---
+    if (cfg.style !== "wireframe" && hasNormalMap && bgProgram && quadVao && colorTex) {
+      gl.useProgram(bgProgram);
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, colorTex);
+      gl.uniform1i(u["bg_u_colorMap"], 3);
+      gl.uniform1f(u["bg_u_globalEnergy"], globalEnergy);
+      gl.uniform1f(u["bg_u_bgDimming"], cfg.bg_dimming);
+      gl.uniform1f(u["bg_u_bgPulseStrength"], cfg.bg_pulse_strength);
+      gl.disable(gl.BLEND);
+      gl.bindVertexArray(quadVao);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    // --- Pass 2: Foreground Grid Pass ---
     gl.useProgram(program);
     gl.uniform2f(u.u_resolution, canvas!.clientWidth, canvas!.clientHeight);
     gl.uniform1f(u.u_baseHue, baseHue);
@@ -474,7 +589,6 @@ export default function SpectrumBackground(props: Props) {
     gl.uniform1i(u.u_regions, 2);
     gl.uniform1f(u.u_logBands, LOG_BANDS);
 
-    // Tunable uniforms from config
     gl.uniform1f(u.u_baseStrength, cfg.base_strength);
     gl.uniform1f(u.u_energyMult, cfg.energy_multiplier);
     gl.uniform1f(u.u_bassMult, cfg.bass_multiplier);
@@ -489,13 +603,31 @@ export default function SpectrumBackground(props: Props) {
     gl.uniform1f(u.u_baseLightness, cfg.base_lightness);
     gl.uniform1f(u.u_depthLightness, cfg.depth_lightness);
     gl.uniform1f(u.u_energyLightness, cfg.energy_lightness);
+    gl.uniform1f(u.u_brightnessRigidity, cfg.brightness_rigidity);
+    gl.uniform1f(u.u_bassReactivityBoost, cfg.bass_reactivity_boost);
+    gl.uniform1f(u.u_invertDepth, cfg.invert_depth ? 1.0 : 0.0);
 
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    const isDust = cfg.style === "dust";
+    gl.uniform1f(u.u_dustMode, isDust ? 1.0 : 0.0);
+
+    if (cfg.style === "exoskeleton" || isDust) {
+      // Additive Blending: Neon glow for exoskeleton and dust
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    } else {
+      // Standard Alpha Blending for wireframe
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
 
     gl.bindVertexArray(vao);
-    for (let j = 0; j < curLines; j++) {
-      gl.drawArrays(gl.LINE_STRIP, j * curPoints, curPoints);
+    if (isDust) {
+      // Single draw call for all points — no need to draw line by line
+      gl.drawArrays(gl.POINTS, 0, curLines * curPoints);
+    } else {
+      for (let j = 0; j < curLines; j++) {
+        gl.drawArrays(gl.LINE_STRIP, j * curPoints, curPoints);
+      }
     }
     gl.bindVertexArray(null);
   }
@@ -514,25 +646,14 @@ export default function SpectrumBackground(props: Props) {
     let _fftCount = 0;
     onAudioFft((payload: FftPayload) => {
       const len = Math.min(payload.magnitudes.length, RAW_BANDS);
-      // AGC: normalize each bin by its running average so all frequencies
-      // contribute equally. Boosts/cuts happen downstream in the shader.
       for (let i = 0; i < len; i++) {
         const v = payload.magnitudes[i];
-        runningAvg[i] = runningAvg[i] * AGC_DECAY + v * (1 - AGC_DECAY);
-        const avg = Math.max(runningAvg[i], AGC_FLOOR);
-        // Normalize: ratio of current value to its running average, scaled to 0-255
+        runningAvg[i] = runningAvg[i] * cfg.agc_decay + v * (1 - cfg.agc_decay);
+        const avg = Math.max(runningAvg[i], cfg.agc_floor);
         normalizedFft[i] = Math.min(255, (v / avg) * 128);
         rawFft[i] = normalizedFft[i];
       }
       for (let i = len; i < RAW_BANDS; i++) rawFft[i] = 0;
-      if (++_fftCount % 120 === 1) {
-        // Log energy per frequency band to diagnose missing ranges
-        const bass = Math.max(...fftUpload.slice(0, 40));
-        const mid = Math.max(...fftUpload.slice(40, 120));
-        const high = Math.max(...fftUpload.slice(120, 200));
-        const air = Math.max(...fftUpload.slice(200, 256));
-        console.log(`[spectrum] #${_fftCount} bass=${bass} mid=${mid} high=${high} air=${air}`);
-      }
     }).then(unsub => { unlisten = unsub; });
 
     setTimeout(() => {
@@ -550,10 +671,15 @@ export default function SpectrumBackground(props: Props) {
     unlisten?.();
     if (gl) {
       gl.deleteProgram(program);
+      if (bgProgram) gl.deleteProgram(bgProgram);
       gl.deleteTexture(normalTex);
       gl.deleteTexture(fftTex);
       gl.deleteTexture(regionsTex);
+      if (colorTex) gl.deleteTexture(colorTex);
       gl.deleteBuffer(vbo);
+      if (quadVbo) gl.deleteBuffer(quadVbo);
+      gl.deleteVertexArray(vao);
+      if (quadVao) gl.deleteVertexArray(quadVao);
     }
   });
 

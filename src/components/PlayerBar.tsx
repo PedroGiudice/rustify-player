@@ -80,6 +80,15 @@ export function PlayerBar() {
       }
     });
 
+    // Bridge: vanilla search-bar dispatches this event to play a track
+    const onSearchPlay = (e: Event) => {
+      const { track, queue, index } = (e as CustomEvent).detail;
+      setQueue(queue, index);
+      playTrack(track, "search");
+    };
+    window.addEventListener("search-play-track", onSearchPlay);
+    onCleanup(() => window.removeEventListener("search-play-track", onSearchPlay));
+
     // Reconcilia estado quando janela volta ao foco
     document.addEventListener("visibilitychange", onVisibility);
     onCleanup(() => document.removeEventListener("visibilitychange", onVisibility));

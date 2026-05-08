@@ -1,6 +1,6 @@
 import { createSignal, For, Show, onMount } from "solid-js";
-import { getSpectrumConfig, setSpectrumConfig } from "../tauri";
-import type { SpectrumRange } from "../tauri";
+import { getSpectrumConfig, setSpectrumConfig, listSpectrumPresets, loadSpectrumPreset } from "../tauri";
+import type { SpectrumRange, SpectrumPresetInfo, SpectrumVisualConfig } from "../tauri";
 
 const PRESETS: Record<string, SpectrumRange[]> = {
   "Full Range": [
@@ -39,12 +39,17 @@ const PRESETS: Record<string, SpectrumRange[]> = {
 interface Props {
   open: boolean;
   onClose: () => void;
+  onConfigChange?: (cfg: SpectrumVisualConfig) => void;
 }
 
 export default function SpectrumRangesPanel(props: Props) {
   const [ranges, setRanges] = createSignal<SpectrumRange[]>([]);
   const [activePreset, setActivePreset] = createSignal("Full Range");
   const [savedRanges, setSavedRanges] = createSignal<SpectrumRange[]>([]);
+  const [visualPresets, setVisualPresets] = createSignal<SpectrumPresetInfo[]>([]);
+  const [activeVisualPreset, setActiveVisualPreset] = createSignal(
+    localStorage.getItem("rustify-spectrum-preset") || "default.yaml"
+  );
 
   onMount(async () => {
     try {
@@ -56,7 +61,26 @@ export default function SpectrumRangesPanel(props: Props) {
       setRanges(structuredClone(PRESETS["Full Range"]));
       setSavedRanges(structuredClone(PRESETS["Full Range"]));
     }
+
+    // Load visual presets list
+    try {
+      const presets = await listSpectrumPresets();
+      setVisualPresets(presets);
+    } catch {
+      // No presets available — section will be hidden
+    }
   });
+
+  async function selectVisualPreset(filename: string) {
+    try {
+      const cfg = await loadSpectrumPreset(filename);
+      setActiveVisualPreset(filename);
+      localStorage.setItem("rustify-spectrum-preset", filename);
+      props.onConfigChange?.(cfg);
+    } catch (e) {
+      console.warn("[spectrum] failed to load preset:", e);
+    }
+  }
 
   function detectPreset(r: SpectrumRange[]) {
     for (const [name, preset] of Object.entries(PRESETS)) {
@@ -127,18 +151,39 @@ export default function SpectrumRangesPanel(props: Props) {
         </button>
       </header>
 
-      <div class="spectrum-panel__chips">
-        <For each={[...Object.keys(PRESETS), "Custom"]}>
-          {(name) => (
-            <button
-              class={`chip${activePreset() === name ? " chip--active" : ""}`}
-              onClick={() => name !== "Custom" && applyPreset(name)}
-              disabled={name === "Custom"}
-            >
-              {name}
-            </button>
-          )}
-        </For>
+      <Show when={visualPresets().length > 0}>
+        <div class="spectrum-panel__section">
+          <span class="spectrum-panel__label">Visual Preset</span>
+          <div class="spectrum-panel__chips">
+            <For each={visualPresets()}>
+              {(preset) => (
+                <button
+                  class={`chip${activeVisualPreset() === preset.filename ? " chip--active" : ""}`}
+                  onClick={() => selectVisualPreset(preset.filename)}
+                >
+                  {preset.name}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+
+      <div class="spectrum-panel__section">
+        <span class="spectrum-panel__label">Frequency Ranges</span>
+        <div class="spectrum-panel__chips">
+          <For each={[...Object.keys(PRESETS), "Custom"]}>
+            {(name) => (
+              <button
+                class={`chip${activePreset() === name ? " chip--active" : ""}`}
+                onClick={() => name !== "Custom" && applyPreset(name)}
+                disabled={name === "Custom"}
+              >
+                {name}
+              </button>
+            )}
+          </For>
+        </div>
       </div>
 
       <div class="spectrum-panel__ranges">

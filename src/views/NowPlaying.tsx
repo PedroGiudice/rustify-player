@@ -4,11 +4,13 @@
 
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { player } from "../store/player";
-import { libGetLyrics, coverUrl, channelLabel, getTrackColor, listShapes } from "../tauri";
+import { libGetLyrics, coverUrl, channelLabel, getTrackColor, listShapes,
+         loadSpectrumPreset, listSpectrumPresets, onSpectrumConfigChanged, watchSpectrumPreset } from "../tauri";
+import type { LyricLine, SpectrumVisualConfig } from "../tauri";
 import { navigate } from "../router";
-import SpectrumBackground from "../components/SpectrumBackground";
+import SpectrumBackground from "../components/SpectrumBackground_V2";
+import FluidBackground from "../components/FluidBackground";
 import SpectrumRangesPanel from "../components/SpectrumRangesPanel";
-import type { LyricLine } from "../tauri";
 
 const SHAPES_BASE = "http://127.0.0.1:19876/shapes";
 
@@ -19,6 +21,7 @@ export default function NowPlaying() {
   const [activeLyric, setActiveLyric] = createSignal(-1);
   const [lyricsMode, setLyricsMode] = createSignal<"timed" | "plain" | "empty">("empty");
   const [spectrumOpen, setSpectrumOpen] = createSignal(false);
+  const [spectrumConfig, setSpectrumConfig] = createSignal<SpectrumVisualConfig | null>(null);
 
   const shapeUrl = () => {
     const s = shapes();
@@ -49,6 +52,24 @@ export default function NowPlaying() {
       const saved = localStorage.getItem("rustify-shape-idx");
       if (saved) setShapeIdx(Math.min(Number(saved), s.length - 1));
     } catch {}
+
+    // Load spectrum visual preset
+    const presetFile = localStorage.getItem("rustify-spectrum-preset") || "default.yaml";
+    try {
+      const cfg = await loadSpectrumPreset(presetFile);
+      setSpectrumConfig(cfg);
+      // Watch for external edits (hot-reload)
+      await watchSpectrumPreset(presetFile);
+      onSpectrumConfigChanged(async () => {
+        try {
+          const updated = await loadSpectrumPreset(presetFile);
+          setSpectrumConfig(updated);
+          console.log("[spectrum] config hot-reloaded");
+        } catch (e) { console.warn("[spectrum] hot-reload failed:", e); }
+      });
+    } catch {
+      // No preset file yet — use defaults (SpectrumBackground handles null config)
+    }
   });
 
   // Load lyrics when track changes
@@ -96,7 +117,11 @@ export default function NowPlaying() {
   return (
     <article class="view view--hero">
       <div class="np-bg">
-        <SpectrumBackground shapeUrl={shapeUrl()} />
+        <Show when={spectrumConfig()?.style === "fluid"} fallback={
+          <SpectrumBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />
+        }>
+          <FluidBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />
+        </Show>
       </div>
 
       <div class="np-shape-nav">
@@ -115,7 +140,7 @@ export default function NowPlaying() {
         </button>
       </div>
 
-      <SpectrumRangesPanel open={spectrumOpen()} onClose={() => setSpectrumOpen(false)} />
+      <SpectrumRangesPanel open={spectrumOpen()} onClose={() => setSpectrumOpen(false)} onConfigChange={setSpectrumConfig} />
 
       <Show
         when={player.currentTrack}

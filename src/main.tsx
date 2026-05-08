@@ -3,6 +3,7 @@
    ============================================================ */
 
 import { render } from "solid-js/web";
+import { attachConsole } from "@tauri-apps/plugin-log";
 import App from "./App";
 
 // CSS inalterado — importado aqui para o Vite bundlar
@@ -31,6 +32,7 @@ async function loadIconSprite() {
 import { applyFullDspState } from "./store/dsp";
 
 async function boot() {
+  attachConsole();
   await loadIconSprite();
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
 
