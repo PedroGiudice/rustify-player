@@ -14,6 +14,8 @@ symphonia = { version = "0.5.4", default-features = false, features = ["flac"] }
 pipewire = "0.9"
 libspa = "0.9"
 rtrb = "0.3"
+rustfft = "6"
+bytemuck = { version = "1", features = ["derive"] }
 crossbeam-channel = "0.5"
 gstreamer = { version = "0.25", features = ["v1_20"] }
 gstreamer-play = { version = "0.25", features = ["v1_22"] }
@@ -58,8 +60,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tauri-plugin-opener = "2"
+tauri-plugin-log = { version = "2", features = ["colored"] }
+log = "0.4"
 serde = { workspace = true }
 serde_json = "1"
 tracing-subscriber = { workspace = true }
@@ -73,3 +77,4 @@ crossbeam-channel = { workspace = true }
 tracing = { workspace = true }
 ureq = { workspace = true }
 serde_yaml = "0.9"
+notify = { workspace = true }

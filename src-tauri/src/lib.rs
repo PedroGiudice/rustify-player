@@ -71,21 +71,7 @@ impl Default for SpectrumConfig {
     }
 }
 
-impl SpectrumConfig {
-    fn regroup(&self, raw: &[u8]) -> Vec<f32> {
-        let hz_per_bin = self.sample_rate as f32 / (2.0 * self.bands as f32);
-        self.ranges.iter().map(|r| {
-            let start_bin = (r.from_hz / hz_per_bin).floor() as usize;
-            let end_bin = ((r.to_hz / hz_per_bin).ceil() as usize).min(raw.len());
-            if start_bin >= end_bin { return 0.0; }
-            let mut max: u8 = 0;
-            for &v in &raw[start_bin..end_bin] {
-                if v > max { max = v; }
-            }
-            (max as f32 / 255.0) * r.gain
-        }).collect()
-    }
-}
+impl SpectrumConfig {}
 
 struct SharedSpectrumConfig(Arc<Mutex<SpectrumConfig>>);
 struct SpectrumActive(Arc<AtomicBool>);
@@ -623,6 +609,241 @@ fn spectrum_subscribe(active: State<SpectrumActive>) {
 #[tauri::command]
 fn spectrum_unsubscribe(active: State<SpectrumActive>) {
     active.0.store(false, Ordering::Relaxed);
+}
+
+// ─── Spectrum Visual Presets ─────────────────────────────────────────────────
+
+fn spectrum_presets_dir() -> PathBuf {
+    dirs_home().join(".local/share/rustify-player/spectrum")
+}
+
+#[derive(Clone, Serialize, serde::Deserialize)]
+struct SpectrumVisualConfig {
+    name: String,
+    lines: u32,
+    points_per_line: u32,
+    attack: f32,
+    release: f32,
+    release_bass: f32,
+    log_exponent: f32,
+    bass_bin_threshold: u32,
+    base_strength: f32,
+    energy_multiplier: f32,
+    bass_multiplier: f32,
+    low_mid_multiplier: f32,
+    compression_bass: f32,
+    compression_default: f32,
+    hue_spread: f32,
+    saturation: f32,
+    base_alpha: f32,
+    depth_alpha: f32,
+    energy_alpha: f32,
+    base_lightness: f32,
+    depth_lightness: f32,
+    energy_lightness: f32,
+    regions: Vec<[f32; 2]>,
+    // V2 params — serde defaults for backward compat with existing YAMLs
+    #[serde(default = "default_style")]
+    style: String,
+    #[serde(default = "default_brightness_rigidity")]
+    brightness_rigidity: f32,
+    #[serde(default = "default_bass_reactivity_boost")]
+    bass_reactivity_boost: f32,
+    #[serde(default = "default_bass_attack_scale")]
+    bass_attack_scale: f32,
+    #[serde(default = "default_invert_depth")]
+    invert_depth: bool,
+    #[serde(default = "default_bg_dimming")]
+    bg_dimming: f32,
+    #[serde(default = "default_bg_pulse_strength")]
+    bg_pulse_strength: f32,
+    #[serde(default = "default_gravity_decay")]
+    gravity_decay: f32,
+    #[serde(default = "default_agc_decay")]
+    agc_decay: f32,
+    #[serde(default = "default_agc_floor")]
+    agc_floor: f32,
+    // Fluid params
+    #[serde(default = "default_fluid_density_dissipation")]
+    fluid_density_dissipation: f32,
+    #[serde(default = "default_fluid_velocity_dissipation")]
+    fluid_velocity_dissipation: f32,
+    #[serde(default = "default_fluid_curl")]
+    fluid_curl: f32,
+    #[serde(default = "default_fluid_splat_radius")]
+    fluid_splat_radius: f32,
+    #[serde(default = "default_fluid_splat_force")]
+    fluid_splat_force: f32,
+    #[serde(default = "default_fluid_color_intensity")]
+    fluid_color_intensity: f32,
+    #[serde(default = "default_fluid_sensitivity")]
+    fluid_sensitivity: f32,
+    #[serde(default = "default_fluid_pressure_iterations")]
+    fluid_pressure_iterations: u32,
+}
+
+fn default_style() -> String { "exoskeleton".into() }
+fn default_brightness_rigidity() -> f32 { 0.7 }
+fn default_bass_reactivity_boost() -> f32 { 1.4 }
+fn default_bass_attack_scale() -> f32 { 0.43 }
+fn default_invert_depth() -> bool { true }
+fn default_bg_dimming() -> f32 { 0.45 }
+fn default_bg_pulse_strength() -> f32 { 0.25 }
+fn default_gravity_decay() -> f32 { 1.5 }
+fn default_agc_decay() -> f32 { 0.985 }
+fn default_agc_floor() -> f32 { 3.0 }
+fn default_fluid_density_dissipation() -> f32 { 1.5 }    // Moderate decay
+fn default_fluid_velocity_dissipation() -> f32 { 0.3 }   // Velocity fades to prevent runaway
+fn default_fluid_curl() -> f32 { 30.0 }                   // Gentle vortices
+fn default_fluid_splat_radius() -> f32 { 0.15 }          // Small splats that blend as they move
+fn default_fluid_splat_force() -> f32 { 150.0 }          // Gentle push, not wind
+fn default_fluid_color_intensity() -> f32 { 5.0 }        // Moderate — builds through multiple splats
+fn default_fluid_sensitivity() -> f32 { 0.25 }
+fn default_fluid_pressure_iterations() -> u32 { 20 }
+
+impl Default for SpectrumVisualConfig {
+    fn default() -> Self {
+        Self {
+            name: "Default".into(),
+            lines: 150,
+            points_per_line: 120,
+            attack: 0.35,
+            release: 0.06,
+            release_bass: 0.043,
+            log_exponent: 1.5,
+            bass_bin_threshold: 40,
+            base_strength: 12.0,
+            energy_multiplier: 220.0,
+            bass_multiplier: 1.6,
+            low_mid_multiplier: 1.3,
+            compression_bass: 0.55,
+            compression_default: 0.75,
+            hue_spread: 20.0,
+            saturation: 0.85,
+            base_alpha: 0.12,
+            depth_alpha: 0.2,
+            energy_alpha: 0.15,
+            base_lightness: 38.0,
+            depth_lightness: 18.0,
+            energy_lightness: 12.0,
+            regions: vec![
+                [0.0, 6.0], [6.0, 16.0], [16.0, 32.0],
+                [32.0, 56.0], [56.0, 84.0], [84.0, 120.0],
+                [120.0, 168.0], [168.0, 216.0], [216.0, 256.0],
+            ],
+            style: default_style(),
+            brightness_rigidity: default_brightness_rigidity(),
+            bass_reactivity_boost: default_bass_reactivity_boost(),
+            bass_attack_scale: default_bass_attack_scale(),
+            invert_depth: default_invert_depth(),
+            bg_dimming: default_bg_dimming(),
+            bg_pulse_strength: default_bg_pulse_strength(),
+            gravity_decay: default_gravity_decay(),
+            agc_decay: default_agc_decay(),
+            agc_floor: default_agc_floor(),
+            fluid_density_dissipation: default_fluid_density_dissipation(),
+            fluid_velocity_dissipation: default_fluid_velocity_dissipation(),
+            fluid_curl: default_fluid_curl(),
+            fluid_splat_radius: default_fluid_splat_radius(),
+            fluid_splat_force: default_fluid_splat_force(),
+            fluid_color_intensity: default_fluid_color_intensity(),
+            fluid_sensitivity: default_fluid_sensitivity(),
+            fluid_pressure_iterations: default_fluid_pressure_iterations(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct SpectrumPresetInfo {
+    filename: String,
+    name: String,
+}
+
+#[tauri::command]
+fn list_spectrum_presets() -> Vec<SpectrumPresetInfo> {
+    let dir = spectrum_presets_dir();
+    std::fs::create_dir_all(&dir).ok();
+    let mut presets = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.ends_with(".yaml") && !fname.ends_with(".yml") { continue; }
+            if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                if let Ok(cfg) = serde_yaml::from_str::<SpectrumVisualConfig>(&content) {
+                    presets.push(SpectrumPresetInfo { filename: fname, name: cfg.name });
+                }
+            }
+        }
+    }
+    presets.sort_by(|a, b| a.name.cmp(&b.name));
+    presets
+}
+
+#[tauri::command]
+fn load_spectrum_preset(filename: String) -> Result<SpectrumVisualConfig, String> {
+    let path = spectrum_presets_dir().join(&filename);
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read preset: {e}"))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("Invalid YAML: {e}"))
+}
+
+#[tauri::command]
+fn save_spectrum_preset(filename: String, config: SpectrumVisualConfig) -> Result<(), String> {
+    let dir = spectrum_presets_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create dir: {e}"))?;
+    let path = dir.join(&filename);
+    let yaml = serde_yaml::to_string(&config)
+        .map_err(|e| format!("Failed to serialize: {e}"))?;
+    std::fs::write(&path, yaml)
+        .map_err(|e| format!("Failed to write: {e}"))
+}
+
+#[tauri::command]
+fn watch_spectrum_preset(app: tauri::AppHandle, filename: String) -> Result<(), String> {
+    let path = spectrum_presets_dir().join(&filename);
+    if !path.exists() {
+        return Err(format!("Preset not found: {filename}"));
+    }
+    let app_handle = app.clone();
+    std::thread::Builder::new()
+        .name("spectrum-watcher".into())
+        .spawn(move || {
+            let (tx, rx) = std::sync::mpsc::channel::<()>();
+            let mut watcher: notify::RecommendedWatcher = match notify::Watcher::new(
+                move |res: Result<notify::Event, notify::Error>| {
+                    if let Ok(event) = res {
+                        if matches!(event.kind, notify::EventKind::Modify(_)) {
+                            let _ = tx.send(());
+                        }
+                    }
+                },
+                notify::Config::default(),
+            ) {
+                Ok(w) => w,
+                Err(e) => { tracing::error!("Failed to create watcher: {e}"); return; }
+            };
+            if let Err(e) = notify::Watcher::watch(
+                &mut watcher, &path, notify::RecursiveMode::NonRecursive
+            ) {
+                tracing::error!("Failed to watch {}: {e}", path.display());
+                return;
+            }
+            tracing::info!("Watching spectrum preset: {}", path.display());
+            // Debounce: wait 500ms after last event before emitting
+            loop {
+                match rx.recv() {
+                    Ok(()) => {
+                        // Drain any rapid-fire events within 500ms
+                        while rx.recv_timeout(std::time::Duration::from_millis(500)).is_ok() {}
+                        let _ = app_handle.emit("spectrum-config-changed", ());
+                    }
+                    Err(_) => break,
+                }
+            }
+        })
+        .map_err(|e| format!("Failed to spawn watcher: {e}"))?;
+    Ok(())
 }
 
 fn themes_dir() -> PathBuf {
@@ -1804,16 +2025,19 @@ fn get_media_port(port: State<MediaServerPort>) -> u16 {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,audio_engine=debug,rustify_player=debug,library_indexer=debug".into()),
-        )
-        .init();
-
     let spectrum_active = Arc::new(AtomicBool::new(false));
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .level_for("audio_engine", log::LevelFilter::Debug)
+                .level_for("rustify_player", log::LevelFilter::Debug)
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview))
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }))
+                .build(),
+        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -1823,6 +2047,10 @@ pub fn run() {
                 .build(),
         )
         .setup(move |_app| {
+            if let Some(w) = _app.webview_windows().values().next() {
+                w.open_devtools();
+            }
+
             let home = dirs_home();
             let data_dir = home.join(".local/share/rustify-player");
             let cache_dir = home.join(".cache/rustify-player");
@@ -1941,32 +2169,48 @@ pub fn run() {
             std::thread::Builder::new()
                 .name("spectrum-emitter".to_string())
                 .spawn(move || {
-                    let mut last_emitted_ts: u64 = 0;
-                    let mut held: Option<(u64, Vec<u8>)> = None;
+                    let mut last_gen: u64 = 0;
+                    let mut tick_count: u64 = 0;
 
                     loop {
                         std::thread::sleep(std::time::Duration::from_millis(16));
+                        tick_count += 1;
+
                         if !spectrum_flag.load(Ordering::Relaxed) {
+                            if tick_count % 300 == 0 {
+                                tracing::debug!("spectrum-emitter: subscribe inactive");
+                            }
                             continue;
                         }
 
-                        // Grab latest frame if newer
-                        if let Ok(buf) = spectrum_buf.lock() {
-                            if !buf.1.is_empty() && buf.0 != last_emitted_ts {
-                                held = Some((buf.0, buf.1.clone()));
+                        let fft = if let Ok(buf) = spectrum_buf.lock() {
+                            if buf.1.is_empty() {
+                                if tick_count % 300 == 0 {
+                                    tracing::info!("spectrum-emitter: buffer empty (PW capture not producing)");
+                                }
+                                continue;
                             }
-                        }
+                            // PW capture writes (0, data) — detect change via content hash
+                            let gen = buf.1.len() as u64
+                                ^ (buf.1[0] as u64) << 8
+                                ^ (*buf.1.last().unwrap_or(&0) as u64) << 16;
+                            if gen == last_gen {
+                                continue;
+                            }
+                            last_gen = gen;
+                            buf.1.clone()
+                        } else {
+                            continue;
+                        };
 
-                        // Emit immediately with stream_time_ms — the frontend
-                        // handles presentation timing via its ring buffer.
-                        if let Some((ts, fft)) = held.take() {
-                            let payload = FftPayload {
-                                stream_time_ms: ts / 1_000_000, // ns → ms
-                                magnitudes: fft,
-                            };
-                            let _ = spectrum_handle.emit("audio-fft", &payload);
-                            last_emitted_ts = ts;
+                        if tick_count % 300 == 0 {
+                            tracing::info!("spectrum-emitter: emitting frame len={}", fft.len());
                         }
+                        let payload = FftPayload {
+                            stream_time_ms: 0,
+                            magnitudes: fft,
+                        };
+                        let _ = spectrum_handle.emit("audio-fft", &payload);
                     }
                 })
                 .ok();
@@ -2230,6 +2474,10 @@ pub fn run() {
             spectrum_unsubscribe,
             list_themes,
             load_theme,
+            list_spectrum_presets,
+            load_spectrum_preset,
+            save_spectrum_preset,
+            watch_spectrum_preset,
             get_track_color,
             log_event,
             fs_read_text,

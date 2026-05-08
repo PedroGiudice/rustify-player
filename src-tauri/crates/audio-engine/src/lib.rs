@@ -16,9 +16,7 @@ pub use types::{
     Command, EngineMetrics, PlaybackState, PositionUpdate, SampleFormat, StateUpdate, StreamFormat,
     TrackHandle, TrackInfo,
 };
-pub use output::spectrum::SpectrumAnalyzer;
-
-// Re-export gstreamer types needed for bus message parsing.
+// Re-export gstreamer types needed by the Tauri layer.
 pub use gstreamer;
 
 use crossbeam_channel::Receiver;

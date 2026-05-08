@@ -4,7 +4,7 @@
 //! mix → output). This module exists for structural consistency.
 
 pub(crate) mod dsp;
-pub mod spectrum;
+pub mod pw_capture;
 mod gstreamer_backend;
 
 pub(crate) use gstreamer_backend::GstreamerPlayer;

@@ -12,14 +12,12 @@ use gstreamer_play as gst_play;
 
 use crate::error::OutputError;
 use super::dsp::DspFilterBin;
-use super::spectrum::SpectrumAnalyzer;
 
 pub(crate) struct GstreamerPlayer {
     player: gst_play::Play,
     adapter: gst_play::PlaySignalAdapter,
     sample_rate: u32,
     pub(crate) dsp: Option<DspFilterBin>,
-    pub(crate) spectrum: Option<SpectrumAnalyzer>,
 }
 
 impl GstreamerPlayer {
@@ -45,46 +43,11 @@ impl GstreamerPlayer {
             }
         };
 
-        // Build spectrum analyzer (optional, graceful degradation).
-        let spectrum = match SpectrumAnalyzer::try_new() {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(?e, "failed to create spectrum analyzer");
-                None
-            }
-        };
-
-        // Assemble audio-filter: a wrapper bin containing [DSP] → [spectrum].
-        // If neither is available, no audio-filter is set.
+        // Set DSP as audio-filter if available.
         let pipeline = player.pipeline();
-
-        match (&dsp, &spectrum) {
-            (Some(dsp_bin), Some(spec)) => {
-                // Wrapper bin: dsp_bin → spectrum
-                let wrapper = gst::Bin::new();
-                wrapper.add_many([&dsp_bin.bin.clone().upcast(), &spec.element]).unwrap();
-                dsp_bin.bin.link(&spec.element).unwrap();
-
-                let sink_pad = dsp_bin.bin.static_pad("sink").unwrap();
-                let src_pad = spec.element.static_pad("src").unwrap();
-                wrapper.add_pad(&gst::GhostPad::with_target(&sink_pad).unwrap()).unwrap();
-                wrapper.add_pad(&gst::GhostPad::with_target(&src_pad).unwrap()).unwrap();
-
-                pipeline.set_property("audio-filter", &wrapper);
-                tracing::info!("DSP + spectrum attached to playbin audio-filter");
-            }
-            (Some(dsp_bin), None) => {
-                pipeline.set_property("audio-filter", &dsp_bin.bin);
-                tracing::info!("DSP filter bin attached to playbin audio-filter");
-            }
-            (None, Some(spec)) => {
-                // Standalone spectrum as audio-filter (passthrough analysis).
-                pipeline.set_property("audio-filter", &spec.element);
-                tracing::info!("Spectrum analyzer attached to playbin audio-filter");
-            }
-            (None, None) => {
-                tracing::info!("No audio-filter configured");
-            }
+        if let Some(ref dsp_bin) = dsp {
+            pipeline.set_property("audio-filter", &dsp_bin.bin);
+            tracing::info!("DSP filter bin attached to playbin audio-filter");
         }
 
         Ok(Self {
@@ -92,7 +55,6 @@ impl GstreamerPlayer {
             adapter,
             sample_rate: 44100,
             dsp,
-            spectrum,
         })
     }
 
@@ -168,10 +130,6 @@ impl GstreamerPlayer {
         } else {
             0
         }
-    }
-
-    pub fn bus(&self) -> Option<gst::Bus> {
-        self.player.pipeline().bus()
     }
 
     pub fn sink_latency_ms(&self) -> u64 {

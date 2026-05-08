@@ -19,6 +19,11 @@ crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true, optional = true }
+pipewire = { workspace = true }
+libspa = { workspace = true }
+rtrb = { workspace = true }
+rustfft = { workspace = true }
+bytemuck = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

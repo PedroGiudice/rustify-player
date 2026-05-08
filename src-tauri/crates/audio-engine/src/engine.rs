@@ -130,18 +130,14 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 });
             }
 
-            let spectrum_writer = spectrum_latest.clone();
-            if let Some(bus) = player.bus() {
-                bus.set_sync_handler(move |_bus, msg| {
-                    if msg.type_() == gst::MessageType::Element {
-                        if let Some((ts, data)) = crate::output::spectrum::SpectrumAnalyzer::parse_message(msg) {
-                            if let Ok(mut buf) = spectrum_writer.lock() {
-                                *buf = (ts, data);
-                            }
-                        }
-                    }
-                    gst::BusSyncReply::Pass
-                });
+            // PipeWire capture for spectrum — captures from our own sink monitor,
+            // inherently synchronized with audio output (no pipeline delay).
+            let _pw_capture = crate::output::pw_capture::start(
+                "rustify-player",
+                spectrum_latest.clone(),
+            );
+            if _pw_capture.is_none() {
+                tracing::warn!("PipeWire capture unavailable — spectrum will be silent");
             }
 
             let mut engine = EngineState {
