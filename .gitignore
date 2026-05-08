@@ -43,3 +43,10 @@ __pycache__/
 
 # Qdrant sidecar binary (downloaded, not committed)
 src-tauri/binaries/
+
+# Agent tooling (Aix, Gemini, Claude agent memory)
+.aix/
+.gemini/
+GEMINI.md
+ai.json
+.claude/agent-memory/

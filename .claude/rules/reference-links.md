@@ -16,6 +16,11 @@ Se não souber com certeza, sempre consultar:
 - https://v2.tauri.app/plugin/persisted-scope/
 - https://v2.tauri.app/plugin/updater/
 - https://github.com/tauri-apps/awesome-tauri
+- https://v2.tauri.app/plugin/logging/
+- https://v2.tauri.app/plugin/os-info/
+- https://v2.tauri.app/plugin/process/
+- https://git.kaki87.net/KaKi87/tauri-update-server
+- https://github.com/ku9nov/faynoSync
 
 ## MCP Bridge / Automation
 

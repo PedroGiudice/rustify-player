@@ -7,7 +7,6 @@
 //   "filter"   — client-side, dispatches search-filter event for active view to handle
 //   "none"     — search hidden (settings, signal, now-playing)
 
-import { playTrack, setQueue } from "./player-bar.js";
 import { navigate } from "../router.js";
 import { formatMs } from "../utils/format.js";
 import { logEvent } from "../utils/events.js";
@@ -134,8 +133,12 @@ export function mountSearchBar(container) {
       const items = ui.dropdown.querySelectorAll("[data-track-id]");
       const pos = Array.from(items).indexOf(trackItem);
       logEvent("search_click", { track_id: trackData.id, query_text: ui.input.value, result_position: pos });
-      setQueue([trackData], 0);
-      playTrack(trackData);
+      // Collect all track results for the queue
+      const allTrackItems = ui.dropdown.querySelectorAll("[data-track-id]");
+      const allTracks = Array.from(allTrackItems).map((el) => JSON.parse(el.dataset.trackJson));
+      window.dispatchEvent(new CustomEvent("search-play-track", {
+        detail: { track: trackData, queue: allTracks, index: pos },
+      }));
       closeSearch();
       return;
     }
