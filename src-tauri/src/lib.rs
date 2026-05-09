@@ -692,14 +692,14 @@ fn default_bg_pulse_strength() -> f32 { 0.25 }
 fn default_gravity_decay() -> f32 { 1.5 }
 fn default_agc_decay() -> f32 { 0.985 }
 fn default_agc_floor() -> f32 { 3.0 }
-fn default_fluid_density_dissipation() -> f32 { 1.5 }    // Moderate decay
-fn default_fluid_velocity_dissipation() -> f32 { 0.3 }   // Velocity fades to prevent runaway
-fn default_fluid_curl() -> f32 { 30.0 }                   // Gentle vortices
-fn default_fluid_splat_radius() -> f32 { 0.15 }          // Small splats that blend as they move
-fn default_fluid_splat_force() -> f32 { 150.0 }          // Gentle push, not wind
-fn default_fluid_color_intensity() -> f32 { 5.0 }        // Moderate — builds through multiple splats
-fn default_fluid_sensitivity() -> f32 { 0.25 }
-fn default_fluid_pressure_iterations() -> u32 { 20 }
+fn default_fluid_density_dissipation() -> f32 { 0.5 }    // Slow decay — preserves trails through musical lulls
+fn default_fluid_velocity_dissipation() -> f32 { 0.15 }  // Velocity persists — coherent vortices
+fn default_fluid_curl() -> f32 { 40.0 }                  // Stronger vortices per impulse
+fn default_fluid_splat_radius() -> f32 { 0.18 }          // Slightly larger — ghost cursors paint smoother trails
+fn default_fluid_splat_force() -> f32 { 600.0 }          // Higher base; audio modulates downwards via cubic curve
+fn default_fluid_color_intensity() -> f32 { 0.6 }        // Per-frame contribution; integrated over many splats
+fn default_fluid_sensitivity() -> f32 { 1.0 }
+fn default_fluid_pressure_iterations() -> u32 { 25 }
 
 impl Default for SpectrumVisualConfig {
     fn default() -> Self {

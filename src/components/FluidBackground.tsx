@@ -18,17 +18,17 @@ import { player } from "../store/player";
 
 // Mutable config — updated from YAML via props.config
 const fluidCfg = {
-  SIM_RESOLUTION: 256,
+  SIM_RESOLUTION: 128,         // Canonical Pavel default — do not raise
   DYE_RESOLUTION: 1024,
-  DENSITY_DISSIPATION: 1.5,    // Moderate decay — visible but not permanent
-  VELOCITY_DISSIPATION: 0.3,   // Velocity fades to prevent runaway motion
+  DENSITY_DISSIPATION: 0.5,    // Slow decay — preserves trails through musical lulls
+  VELOCITY_DISSIPATION: 0.15,  // Velocity persists — coherent vortices, no flash-and-die
   PRESSURE: 0.8,
-  PRESSURE_ITERATIONS: 20,
-  CURL: 30,                    // Gentle vortices, not chaotic spin
-  SPLAT_RADIUS: 0.15,          // Small splats that blend as they move
-  SPLAT_FORCE: 150,            // Gentle push — visible movement, not wind
-  COLOR_INTENSITY: 5.0,        // Moderate — builds up through multiple splats
-  SENSITIVITY: 0.25,
+  PRESSURE_ITERATIONS: 25,
+  CURL: 40,                    // Stronger vortices, more swirl per impulse
+  SPLAT_RADIUS: 0.18,          // Slightly larger — ghost cursors paint smoother trails
+  SPLAT_FORCE: 600,            // Higher base force — modulated down by audio
+  COLOR_INTENSITY: 0.6,        // Per-frame contribution; integrated over many splats
+  SENSITIVITY: 1.0,
 };
 
 // ── FFT config ──
@@ -37,17 +37,34 @@ const RAW_BANDS = 1024;
 const LOG_BANDS = 128;
 const AGC_DECAY = 0.985;
 const AGC_FLOOR = 3.0;
-const NUM_EMITTERS = 4;
 
-// ── Shape emitter: a point on the image that emits fluid ──
+// ── Ghost cursors (Lissajous) ──
+// Three virtual pointers traverse the canvas continuously. Audio modulates
+// only force and radius — never position or trigger. Each ghost is anchored
+// to a frequency band so sub-bass, mids and treble produce spatially
+// distinguishable swirls.
 
-interface Emitter {
-  x: number;      // 0-1 normalized position
-  y: number;
-  dirX: number;   // Sobel gradient direction (normalized)
-  dirY: number;
-  brightness: number; // 0-1, how bright = how strong
+interface Ghost {
+  band: "bass" | "mid" | "treble";
+  freqA: number;     // angular speed on X (rad/s)
+  freqB: number;     // angular speed on Y (rad/s)
+  phaseA: number;    // phase offset on X (rad)
+  ampX: number;      // X amplitude in 0..1 canvas units
+  ampY: number;      // Y amplitude in 0..1 canvas units
+  baseRadius: number;
+  baseForce: number;
+  hueOffset: number; // 0..1, added to baseHue
 }
+
+const GHOSTS: Ghost[] = [
+  { band: "bass",   freqA: 0.27, freqB: 0.41, phaseA: 0,            ampX: 0.32, ampY: 0.30, baseRadius: 0.22, baseForce: 700, hueOffset: 0.00 },
+  { band: "mid",    freqA: 0.55, freqB: 0.83, phaseA: Math.PI / 2,  ampX: 0.40, ampY: 0.22, baseRadius: 0.14, baseForce: 450, hueOffset: 0.08 },
+  { band: "treble", freqA: 0.97, freqB: 1.31, phaseA: Math.PI,      ampX: 0.25, ampY: 0.36, baseRadius: 0.09, baseForce: 280, hueOffset: 0.16 },
+];
+
+// Temporal smoothing factor for band energies (≈ AnalyserNode smoothingTimeConstant).
+// 0.88 → noticeable inertia, no jitter, decays over ~150ms.
+const BAND_SMOOTH = 0.88;
 
 // ── Shader sources ──
 
@@ -331,55 +348,6 @@ function getResolution(gl: WebGL2RenderingContext, resolution: number): { width:
     : { width: min, height: max };
 }
 
-// Extract emitter positions from shape image: brightest points with Y flipped for WebGL UV
-function extractEmitters(img: HTMLImageElement, count: number): Emitter[] {
-  const sampleW = 64, sampleH = 64;
-  const offscreen = document.createElement("canvas");
-  offscreen.width = sampleW;
-  offscreen.height = sampleH;
-  const ctx = offscreen.getContext("2d")!;
-
-  ctx.filter = "saturate(0) blur(2px)";
-  ctx.drawImage(img, 0, 0, sampleW, sampleH);
-  const imgData = ctx.getImageData(0, 0, sampleW, sampleH);
-
-  const brightness = new Float32Array(sampleW * sampleH);
-  for (let i = 0; i < sampleW * sampleH; i++) {
-    const idx = i * 4;
-    brightness[i] = (0.2126 * imgData.data[idx] + 0.7152 * imgData.data[idx + 1] + 0.0722 * imgData.data[idx + 2]) / 255;
-  }
-
-  const candidates: Emitter[] = [];
-  for (let y = 2; y < sampleH - 2; y++) {
-    for (let x = 2; x < sampleW - 2; x++) {
-      const i = y * sampleW + x;
-      if (brightness[i] < 0.15) continue;
-      candidates.push({
-        x: x / sampleW,
-        y: 1.0 - (y / sampleH),  // Flip Y: canvas top-down → WebGL UV bottom-up
-        dirX: 0,
-        dirY: 0,
-        brightness: brightness[i],
-      });
-    }
-  }
-
-  if (candidates.length === 0) return [];
-  candidates.sort((a, b) => b.brightness - a.brightness);
-
-  const selected: Emitter[] = [];
-  const minDist = 0.15;
-  for (const c of candidates) {
-    if (selected.length >= count) break;
-    const tooClose = selected.some(s =>
-      Math.abs(s.x - c.x) < minDist && Math.abs(s.y - c.y) < minDist
-    );
-    if (!tooClose) selected.push(c);
-  }
-
-  return selected;
-}
-
 // ── Component ──
 
 interface Props {
@@ -396,14 +364,20 @@ export default function FluidBackground(props: Props) {
   // FFT state
   const rawFft = new Uint8Array(RAW_BANDS);
   const runningAvg = new Float32Array(RAW_BANDS);
-  const smoothed = new Float32Array(7); // 7 frequency regions
   let baseHue = 0.7;
 
-  // Shape state
-  let emitters: Emitter[] = [];
-  let shapeImage: HTMLImageElement | null = null;
+  // Smoothed band energies (0..1, exponentially smoothed each FFT frame).
+  // Read by the per-frame ghost loop to modulate force/radius/colour.
+  const bandEnergy = { bass: 0, mid: 0, treble: 0 };
+
+  // Shape state — only the colour texture and decay mask are kept; the
+  // ghost cursors paint over the entire canvas, the shape is just a
+  // backdrop and a soft attenuation field on the dye.
   let colorTex: WebGLTexture | null = null;
   let hasShape = false;
+
+  // Ghost-cursor clock (seconds since mount). Drives Lissajous trajectories.
+  let ghostT = 0;
 
   onMount(() => {
     if (!canvasRef) return;
@@ -435,28 +409,26 @@ export default function FluidBackground(props: Props) {
       } catch {}
     });
 
-    // Shape loading
+    // Shape loading — colour texture + soft decay mask only.
+    // Ghost cursors no longer sample emitter positions from the shape.
     createEffect(() => {
       const url = props.shapeUrl;
       if (!url) { hasShape = false; return; }
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
-        shapeImage = img;
-        emitters = extractEmitters(img, NUM_EMITTERS);
-        // Upload color texture for background pass
         colorTex = engine.uploadColorTexture(img);
         engine.uploadShapeMask(img);
         hasShape = true;
-        console.log(`[fluid] loaded shape: ${emitters.length} emitters extracted`);
+        console.log("[fluid] shape loaded (colour + mask)");
       };
       img.src = url;
     });
 
-    // FFT → splats: exact FluidSimPlusPlus approach
-    // Bass energy differential → splat count. Random positions. dx/dy = 1000 * random.
-    let lastBassLevel = 0;
-    let splatIdx = 0; // Cycles through emitters sequentially
+    // FFT handler — only updates smoothed band energies. Splats are emitted
+    // by the per-frame loop using Lissajous-driven ghost cursors. This
+    // matches the canonical pattern from the deep-research report:
+    // continuous emission, audio modulates only force/radius/colour.
     onAudioFft((payload: FftPayload) => {
       const len = Math.min(payload.magnitudes.length, RAW_BANDS);
       for (let i = 0; i < len; i++) {
@@ -466,44 +438,27 @@ export default function FluidBackground(props: Props) {
         rawFft[i] = Math.min(255, (v / avg) * 128);
       }
 
-      // Sum bass energy (first FREQ_RANGE bins), normalize
-      let bass = 0;
-      const freqRange = 40;
-      const freqMulti = 0.1;
-      for (let i = 0; i < freqRange && i < LOG_BANDS; i++) {
-        bass += (rawFft[i] / 255) * 2;
-      }
-      bass /= freqRange * 2 * freqMulti;
+      // Three perceptual bands. Bin counts assume the same RAW_BANDS=1024
+      // layout the existing pipeline produces (linear bins; band spans
+      // chosen empirically to map to sub-bass / mids / highs).
+      const sum = (lo: number, hi: number): number => {
+        let s = 0;
+        const n = Math.max(1, hi - lo);
+        const top = Math.min(hi, LOG_BANDS);
+        for (let i = lo; i < top; i++) s += rawFft[i] / 255;
+        return s / n;
+      };
+      const rawBass   = Math.min(1, sum(0, 16)  * fluidCfg.SENSITIVITY * 4);
+      const rawMid    = Math.min(1, sum(16, 64) * fluidCfg.SENSITIVITY * 3);
+      const rawTreble = Math.min(1, sum(64, 128) * fluidCfg.SENSITIVITY * 2.5);
 
-      // Differential: only splat on energy RISE
-      const currentLevel = Math.floor(bass * fluidCfg.SENSITIVITY * 10);
-      const splatCount = Math.max(0, currentLevel - lastBassLevel);
-      lastBassLevel = currentLevel;
+      // Exponential smoothing — emulates AnalyserNode.smoothingTimeConstant.
+      bandEnergy.bass   = bandEnergy.bass   * BAND_SMOOTH + rawBass   * (1 - BAND_SMOOTH);
+      bandEnergy.mid    = bandEnergy.mid    * BAND_SMOOTH + rawMid    * (1 - BAND_SMOOTH);
+      bandEnergy.treble = bandEnergy.treble * BAND_SMOOTH + rawTreble * (1 - BAND_SMOOTH);
 
-      // Background pulse
-      engine.setBassEnergy(Math.min(1.0, bass * 0.3));
-
-      if (splatCount === 0 || emitters.length === 0) return;
-
-      // Shape-guided: splat at emitter positions (flame tips), max 2 per beat
-      // Emitters cycle sequentially for spatial coherence
-      for (let s = 0; s < Math.min(splatCount, 2); s++) {
-        const em = emitters[splatIdx % emitters.length];
-        splatIdx++;
-
-        const color = generateColor(baseHue, s, 2);
-        color.r *= fluidCfg.COLOR_INTENSITY;
-        color.g *= fluidCfg.COLOR_INTENSITY;
-        color.b *= fluidCfg.COLOR_INTENSITY;
-
-        // Upward bias: -π/2 = screen-up (Y inverted in splat shader)
-        // ±60° spread for organic turbulence, gentle force
-        const angle = -(Math.PI / 2) + (Math.random() - 0.5) * (Math.PI / 1.5);
-        const dx = Math.cos(angle) * fluidCfg.SPLAT_FORCE;
-        const dy = Math.sin(angle) * fluidCfg.SPLAT_FORCE;
-
-        engine.splat(em.x, em.y, dx, dy, color, fluidCfg.SPLAT_RADIUS);
-      }
+      // Background pulse driven by bass.
+      engine.setBassEnergy(bandEnergy.bass);
     }).then(unsub => { unlisten = unsub; });
 
     setTimeout(() => {
@@ -519,6 +474,47 @@ export default function FluidBackground(props: Props) {
       let dt = (now - lastTime) / 1000;
       dt = Math.min(dt, 0.016666);
       lastTime = now;
+      ghostT += dt;
+
+      // Continuous emission via Lissajous-driven ghost cursors.
+      // Each ghost rides its own elliptical orbit; audio modulates only
+      // force/radius/colour, never trigger or position. This preserves
+      // pressure-field coherence so the solver can grow real vortices
+      // instead of stroboscopic puffs.
+      for (const g of GHOSTS) {
+        const energy = g.band === "bass" ? bandEnergy.bass
+                     : g.band === "mid"  ? bandEnergy.mid
+                     :                     bandEnergy.treble;
+
+        // Below this threshold the ghost goes silent — no point stirring
+        // the solver with sub-perceptual noise.
+        if (energy < 0.04) continue;
+
+        // Position on Lissajous curve.
+        const x = 0.5 + g.ampX * Math.sin(g.freqA * ghostT + g.phaseA);
+        const y = 0.5 + g.ampY * Math.sin(g.freqB * ghostT);
+
+        // Tangent (curve derivative) → splat direction.
+        const tx =  g.freqA * g.ampX * Math.cos(g.freqA * ghostT + g.phaseA);
+        const ty =  g.freqB * g.ampY * Math.cos(g.freqB * ghostT);
+        const norm = Math.hypot(tx, ty) || 1;
+
+        // Cubic curve emphasises peaks while keeping ambient passages calm.
+        const eShaped = energy * energy * energy;
+
+        const force  = g.baseForce * fluidCfg.SPLAT_FORCE / 600 * eShaped;
+        const radius = g.baseRadius * fluidCfg.SPLAT_RADIUS / 0.18 * (0.55 + energy * 0.9);
+
+        const dx = (tx / norm) * force;
+        const dy = (ty / norm) * force;
+
+        const color = generateColor(baseHue + g.hueOffset, 0, 1);
+        color.r *= fluidCfg.COLOR_INTENSITY * (0.6 + energy * 0.8);
+        color.g *= fluidCfg.COLOR_INTENSITY * (0.6 + energy * 0.8);
+        color.b *= fluidCfg.COLOR_INTENSITY * (0.6 + energy * 0.8);
+
+        engine.splat(x, y, dx, dy, color, radius);
+      }
 
       engine.step(dt);
       if (hasShape && colorTex) {
