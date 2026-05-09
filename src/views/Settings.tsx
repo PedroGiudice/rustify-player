@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { createSignal, createResource, Show, For, onMount } from "solid-js";
-import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp, listThemes, applyThemeByName } from "../tauri";
+import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp, listThemes, applyThemeByName, normGetState, normSetEnabled } from "../tauri";
 import type { ThemeInfo, ContrastCheck } from "../tauri";
 
 const APP_VERSION = "0.2.1";
@@ -130,6 +130,32 @@ export default function Settings() {
   const [scanning, setScanning] = createSignal(false);
   const [scanLabel, setScanLabel] = createSignal("Re-scan library");
 
+  // Loudness normalization toggle. Hydrate from backend on mount; the
+  // localStorage cache is used only for the optimistic initial render.
+  const cachedNorm = localStorage.getItem("rustify-norm-enabled");
+  const [normEnabled, setNormEnabled] = createSignal(cachedNorm === null ? true : cachedNorm === "true");
+
+  onMount(() => {
+    normGetState()
+      .then((on) => {
+        setNormEnabled(on);
+        localStorage.setItem("rustify-norm-enabled", String(on));
+      })
+      .catch((e) => console.error("[norm] get_state failed:", e));
+  });
+
+  function handleNormToggle(e: Event) {
+    const checked = (e.target as HTMLInputElement).checked;
+    setNormEnabled(checked);
+    localStorage.setItem("rustify-norm-enabled", String(checked));
+    normSetEnabled(checked).catch((err) => {
+      console.error("[norm] set_enabled failed:", err);
+      // Revert the optimistic update.
+      setNormEnabled(!checked);
+      localStorage.setItem("rustify-norm-enabled", String(!checked));
+    });
+  }
+
   const [updateStatus, setUpdateStatus] = createSignal<string | null>(null);
   const [updateResult, setUpdateResult] = createSignal<any>(null);
   const [checking, setChecking] = createSignal(false);
@@ -241,6 +267,20 @@ export default function Settings() {
                   <div class="settings-row__control">
                     <input type="range" class="settings-range" min="0" max="100" value={volumePct()} onInput={handleVolumeChange} />
                     <span class="settings-range__value">{volumePct()}%</span>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <label class="settings-row__label">Normalizar volume entre faixas</label>
+                  <div class="settings-row__control">
+                    <input
+                      type="checkbox"
+                      class="settings-checkbox"
+                      checked={normEnabled()}
+                      onChange={handleNormToggle}
+                    />
+                    <span class="settings-row__hint">
+                      Aplica ganho EBU R128 (alvo -14 LUFS) entre EQ e Limiter.
+                    </span>
                   </div>
                 </div>
                 <div class="settings-row">

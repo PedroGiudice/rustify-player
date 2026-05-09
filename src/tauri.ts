@@ -91,6 +91,11 @@ export const playerSetOrigin = (origin: string, trackId: string | null) =>
 export const cycleRepeat = () => invoke<void>("cycle_repeat");
 export const setVolume = (volume: number) => invoke<void>("player_set_volume", { volume });
 
+// ── Loudness normalization ─────────────────────────────────────
+export const normGetState = () => invoke<boolean>("norm_get_state");
+export const normSetEnabled = (enabled: boolean) =>
+  invoke<void>("norm_set_enabled", { enabled });
+
 // ── Library commands ───────────────────────────────────────────
 
 export const getState = () => invoke<AppState>("get_state");

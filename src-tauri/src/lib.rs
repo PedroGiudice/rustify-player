@@ -1492,6 +1492,46 @@ fn dsp_set_bypass(player: State<Player>, bypass: bool) -> Result<(), String> {
         .map_err(err)
 }
 
+// ---------------------------------------------------------------------------
+// Loudness normalization
+// ---------------------------------------------------------------------------
+
+/// Target program loudness in LUFS for the normalization stage.
+/// Hardcoded for the MVP — exposing this in UI is V2 work.
+const NORM_TARGET_LUFS: f32 = -14.0;
+
+/// User toggle for loudness normalization. Default ON.
+struct NormState {
+    enabled: AtomicBool,
+}
+
+impl Default for NormState {
+    fn default() -> Self {
+        Self {
+            enabled: AtomicBool::new(true),
+        }
+    }
+}
+
+#[tauri::command]
+fn norm_set_enabled(
+    player: State<Player>,
+    norm: State<NormState>,
+    enabled: bool,
+) -> Result<(), String> {
+    norm.enabled.store(enabled, Ordering::Relaxed);
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::DspSetNormEnabled(enabled))
+        .map_err(err)
+}
+
+#[tauri::command]
+fn norm_get_state(norm: State<NormState>) -> bool {
+    norm.enabled.load(Ordering::Relaxed)
+}
+
 #[tauri::command]
 fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String> {
     let guard = player.0.lock().map_err(err)?;
@@ -2215,10 +2255,19 @@ pub fn run() {
                 })
                 .ok();
 
+            // Loudness backfill channel — declared before the event-listener
+            // spawns so the listener can hand off track ids to the worker.
+            let (lufs_backfill_tx, lufs_backfill_rx) =
+                crossbeam_channel::unbounded::<u64>();
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
             let mc_reader = media_controls.clone();
+            let event_lufs_tx = lufs_backfill_tx.clone();
+            let event_engine_tx = engine_tx_media.clone();
+            let event_indexer = indexer_for_events.clone();
+            let event_cache_dir = cache_dir_for_events.clone();
             std::thread::Builder::new()
                 .name("event-listener".to_string())
                 .spawn(move || {
@@ -2231,10 +2280,11 @@ pub fn run() {
                                     &app_handle,
                                     &snap_writer,
                                     &mc_reader,
-                                    &indexer_for_events,
-                                    &cache_dir_for_events,
+                                    &event_indexer,
+                                    &event_cache_dir,
                                     &media_cmd_rx,
-                                    &engine_tx_media,
+                                    &event_engine_tx,
+                                    &event_lufs_tx,
                                 )
                             }),
                         );
@@ -2263,8 +2313,91 @@ pub fn run() {
 
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
+            _app.manage(NormState::default());
 
             // Background sync removed — pipeline writes directly to Qdrant.
+
+            // ---------------------------------------------------------------
+            // Loudness backfill worker
+            //
+            // Tracks indexed before the normalization feature landed have no
+            // `lufs_integrated` payload field. When the user plays one we
+            // queue its track id here; this worker decodes the file with
+            // ebur128, persists the value in Qdrant, and emits an event
+            // so the next playback starts normalized.
+            //
+            // Single dedicated thread to keep CPU bounded — feeding many
+            // analyses in parallel would compete with playback decoding.
+            // ---------------------------------------------------------------
+            let lufs_indexer = indexer_for_events.clone();
+            let lufs_engine_tx = engine_tx_media.clone();
+            let lufs_app_handle = _app.handle().clone();
+            // The original `lufs_backfill_tx` is dropped at end of setup; the
+            // event-listener thread keeps its own clone, so the worker stays
+            // alive until that thread shuts down.
+            std::thread::Builder::new()
+                .name("loudness-backfill".to_string())
+                .spawn(move || {
+                    use library_indexer::loudness::analyze_file;
+                    while let Ok(track_id) = lufs_backfill_rx.recv() {
+                        let track = match lufs_indexer.track(track_id) {
+                            Ok(Some(t)) => t,
+                            Ok(None) => continue,
+                            Err(e) => {
+                                tracing::warn!(
+                                    track_id, ?e,
+                                    "loudness-backfill: failed to load track"
+                                );
+                                continue;
+                            }
+                        };
+                        // If another invocation populated the field meanwhile,
+                        // skip work.
+                        if track.lufs_integrated.is_some() {
+                            continue;
+                        }
+                        let path = track.path.clone();
+                        let analysis = match analyze_file(&path) {
+                            Ok(a) => a,
+                            Err(e) => {
+                                tracing::warn!(
+                                    track_id, path = %path.display(), %e,
+                                    "loudness-backfill: analysis failed"
+                                );
+                                continue;
+                            }
+                        };
+                        if let Err(e) =
+                            lufs_indexer.set_track_lufs(track_id, analysis.integrated_lufs)
+                        {
+                            tracing::warn!(
+                                track_id, ?e,
+                                "loudness-backfill: persisting LUFS failed"
+                            );
+                            continue;
+                        }
+                        tracing::info!(
+                            track_id,
+                            lufs = analysis.integrated_lufs,
+                            "loudness-backfill: track analyzed"
+                        );
+                        // Notify the frontend so any cached track lists can
+                        // refresh if they care.
+                        let _ = lufs_app_handle.emit(
+                            "loudness-backfilled",
+                            serde_json::json!({
+                                "track_id": track_id.to_string(),
+                                "lufs_integrated": analysis.integrated_lufs,
+                            }),
+                        );
+                        // The track is currently playing under unity gain;
+                        // applying mid-track would jump the volume. We
+                        // intentionally do NOT push gain to the engine here
+                        // — it will take effect on the next playback.
+                        let _ = &lufs_engine_tx; // keep handle alive
+                    }
+                })
+                .ok();
 
             #[allow(clippy::too_many_arguments)]
             fn event_loop(
@@ -2276,6 +2409,7 @@ pub fn run() {
                 cache_dir: &std::path::Path,
                 media_cmd_rx: &crossbeam_channel::Receiver<souvlaki::MediaControlEvent>,
                 engine_tx: &crossbeam_channel::Sender<EngineCommand>,
+                lufs_backfill_tx: &crossbeam_channel::Sender<u64>,
             ) {
                 while let Ok(event) = rx.recv() {
                     if let Ok(mut s) = snap_writer.lock() {
@@ -2301,6 +2435,35 @@ pub fn run() {
                                             None
                                         }
                                     };
+
+                                // Loudness normalization: compute the gain
+                                // offset for this track and push it to the
+                                // engine. Tracks without a LUFS measurement
+                                // play at unity and are queued for backfill.
+                                let (gain_db, needs_backfill) = match &lib_track {
+                                    Some(t) => match t.lufs_integrated {
+                                        Some(lufs) => (
+                                            audio_engine::loudness::lufs_to_gain_db(
+                                                lufs,
+                                                NORM_TARGET_LUFS,
+                                            ),
+                                            None,
+                                        ),
+                                        None => (0.0_f32, Some(t.id)),
+                                    },
+                                    None => (0.0_f32, None),
+                                };
+                                let _ = engine_tx
+                                    .send(EngineCommand::DspSetNormGainDb(gain_db));
+                                if let Some(id) = needs_backfill {
+                                    if let Err(e) = lufs_backfill_tx.try_send(id) {
+                                        tracing::debug!(
+                                            track_id = id, ?e,
+                                            "loudness-backfill: queue full or closed"
+                                        );
+                                    }
+                                }
+
                                 s.current_library_track = lib_track;
                                 s.started_at = Some(unix_now());
                                 if let Ok(mut mc) = mc_reader.lock() {
@@ -2525,6 +2688,8 @@ pub fn run() {
             dsp_set_bass_floor_active,
             dsp_set_bass_listen,
             dsp_set_bypass,
+            norm_set_enabled,
+            norm_get_state,
             get_state,
             get_system_resources,
             check_for_update,
