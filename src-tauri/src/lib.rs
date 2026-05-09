@@ -2122,11 +2122,30 @@ pub fn run() {
             });
 
             let config = IndexerConfig {
-                qdrant_url,
+                qdrant_url: qdrant_url.clone(),
                 music_root: music_root.clone(),
                 cache_dir: cache_dir.clone(),
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
             };
+
+            // Wait for the Qdrant sidecar to become reachable. The sidecar
+            // is spawned by Tauri but takes a few hundred ms to bind its HTTP
+            // port; without this gate, Indexer::open races and panics on a
+            // cold start (especially after a hard reboot).
+            {
+                let probe = library_indexer::QdrantClient::new(&qdrant_url);
+                let started = std::time::Instant::now();
+                let timeout = std::time::Duration::from_secs(15);
+                while !probe.is_healthy() {
+                    if started.elapsed() > timeout {
+                        panic!(
+                            "Qdrant sidecar at {qdrant_url} did not become healthy within 15s"
+                        );
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "Qdrant healthy");
+            }
 
             let indexer = Indexer::open(config).expect("failed to open library indexer");
             let indexer_for_events = indexer.clone();
