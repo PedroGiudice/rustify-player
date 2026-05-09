@@ -218,6 +218,13 @@ pub enum Command {
     /// Global DSP bypass.
     DspSetBypass(bool),
 
+    /// Set the per-track normalization gain offset in dB. Applied by the
+    /// `norm_gain` stage between EQ and Limiter.
+    DspSetNormGainDb(f32),
+    /// Enable / disable the normalization stage. When false the stage
+    /// becomes a passthrough regardless of the requested gain.
+    DspSetNormEnabled(bool),
+
     /// Cleanly stop the engine thread and release resources.
     Shutdown,
 }

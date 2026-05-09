@@ -5,6 +5,7 @@
 //! state machine that translates commands into GStreamer API calls.
 
 pub mod error;
+pub mod loudness;
 pub mod types;
 
 pub(crate) mod decoder;

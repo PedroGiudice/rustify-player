@@ -1,7 +1,14 @@
 //! DSP filter bin: LV2 plugins wired as a GStreamer audio-filter.
 //!
 //! Creates a GstBin with:
-//!   audioconvert -> LSP Para EQ x16 Stereo -> LSP Limiter Stereo -> Calf Bass Enhancer -> audioconvert
+//!   audioconvert -> LSP Para EQ x16 Stereo -> norm_gain (volume) -> LSP Limiter Stereo
+//!     -> Calf Bass Enhancer -> audioconvert
+//!
+//! The `norm_gain` stage is a stock GStreamer `volume` element used by the
+//! loudness normalization feature: per-track gain offset is applied here so
+//! the limiter downstream still catches any overshoots and the EQ upstream
+//! processes flat audio. When normalization is disabled or the track has
+//! no measured LUFS the stage is set to unity (1.0), making it a no-op.
 //!
 //! The bin is set as the `audio-filter` property on `playbin` inside `gst_play::Play`.
 //!
@@ -145,12 +152,20 @@ fn safe_db_to_linear(db: f32) -> f32 {
 pub(crate) struct DspFilterBin {
     pub bin: gst::Bin,
     eq: gst::Element,
+    norm_gain: gst::Element,
     limiter: gst::Element,
     bass_enhancer: gst::Element,
     bypassed: bool,
     eq_was_enabled: bool,
     limiter_was_enabled: bool,
     bass_was_bypassed: bool,
+    /// User toggle for normalization. When false, `norm_gain` stays at 1.0
+    /// regardless of `norm_gain_db_pending`, behaving as a passthrough.
+    norm_enabled: bool,
+    /// Most recently requested gain in dB. Cached so we can reapply it
+    /// when the user re-enables normalization without needing the caller
+    /// to remember the value.
+    norm_gain_db_pending: f32,
 }
 
 impl DspFilterBin {
@@ -180,6 +195,16 @@ impl DspFilterBin {
             }
         };
 
+        // norm_gain: stock GStreamer `volume` element used as the loudness
+        // normalization stage. Sits between EQ and Limiter so EQ sees flat
+        // audio and the limiter still catches any overshoots from boosting
+        // a quiet master.
+        let norm_gain = gst::ElementFactory::make("volume")
+            .name("norm_gain")
+            .property("volume", 1.0_f64)
+            .build()
+            .map_err(|e| OutputError::PipewireInit(format!("volume (norm_gain): {e}")))?;
+
         let convert_in = gst::ElementFactory::make("audioconvert")
             .build()
             .map_err(|e| OutputError::PipewireInit(format!("audioconvert: {e}")))?;
@@ -198,10 +223,10 @@ impl DspFilterBin {
 
         let bin = gst::Bin::new();
 
-        bin.add_many([&convert_in, &capsfilter, &eq, &limiter, &bass_enhancer, &convert_out])
+        bin.add_many([&convert_in, &capsfilter, &eq, &norm_gain, &limiter, &bass_enhancer, &convert_out])
             .map_err(|e| OutputError::PipewireInit(format!("bin.add_many: {e}")))?;
 
-        gst::Element::link_many([&convert_in, &capsfilter, &eq, &limiter, &bass_enhancer, &convert_out])
+        gst::Element::link_many([&convert_in, &capsfilter, &eq, &norm_gain, &limiter, &bass_enhancer, &convert_out])
             .map_err(|e| OutputError::PipewireInit(format!("link_many: {e}")))?;
 
         // Ghost pads so the bin acts as a single filter element.
@@ -248,13 +273,56 @@ impl DspFilterBin {
         Ok(Some(Self {
             bin,
             eq,
+            norm_gain,
             limiter,
             bass_enhancer,
             bypassed: false,
             eq_was_enabled: true,
             limiter_was_enabled: false,
             bass_was_bypassed: true,
+            norm_enabled: true,
+            norm_gain_db_pending: 0.0,
         }))
+    }
+
+    // -----------------------------------------------------------------------
+    // Loudness normalization (norm_gain stage)
+    // -----------------------------------------------------------------------
+
+    /// Apply a gain offset (in dB) to the per-track normalization stage.
+    ///
+    /// When `norm_enabled` is false the value is cached but not applied;
+    /// it will take effect on the next call to
+    /// [`Self::set_norm_enabled(true)`]. This lets the caller set gain
+    /// for every track unconditionally and keep the toggle as the only
+    /// switch.
+    pub fn set_norm_gain_db(&mut self, gain_db: f32) {
+        self.norm_gain_db_pending = gain_db;
+        if self.norm_enabled {
+            let linear = f64::from(crate::loudness::gain_db_to_linear(gain_db));
+            // GStreamer `volume` element clamps internally to [0, 10], well
+            // outside the +/- 24 dB our loudness module already enforces.
+            self.norm_gain.set_property("volume", linear);
+        }
+    }
+
+    /// Enable or disable the normalization stage.
+    ///
+    /// Disabling forces the stage to unity (passthrough). Enabling
+    /// re-applies the most recently requested gain.
+    pub fn set_norm_enabled(&mut self, enabled: bool) {
+        self.norm_enabled = enabled;
+        if enabled {
+            let linear = f64::from(crate::loudness::gain_db_to_linear(self.norm_gain_db_pending));
+            self.norm_gain.set_property("volume", linear);
+        } else {
+            self.norm_gain.set_property("volume", 1.0_f64);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn norm_gain_volume(&self) -> f64 {
+        self.norm_gain.property::<f64>("volume")
     }
 
     // -----------------------------------------------------------------------

@@ -395,6 +395,16 @@ impl EngineState {
                     dsp.set_bypassed(bypass);
                 }
             }
+            Command::DspSetNormGainDb(gain_db) => {
+                if let Some(dsp) = &mut self.player.dsp {
+                    dsp.set_norm_gain_db(gain_db);
+                }
+            }
+            Command::DspSetNormEnabled(enabled) => {
+                if let Some(dsp) = &mut self.player.dsp {
+                    dsp.set_norm_enabled(enabled);
+                }
+            }
 
             Command::Shutdown => {}
         }
