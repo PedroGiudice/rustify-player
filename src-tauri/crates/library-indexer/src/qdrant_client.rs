@@ -582,6 +582,53 @@ impl QdrantClient {
         Ok(results)
     }
 
+    /// Scroll ALL points matching `filter` returning only selected payload fields.
+    /// Pages through 1000 at a time until exhausted.
+    pub fn scroll_all_with_filter(
+        &self,
+        filter: Value,
+        fields: &[&str],
+    ) -> Result<Vec<(u64, Value)>, IndexerError> {
+        let mut all: Vec<(u64, Value)> = Vec::new();
+        let mut offset: Option<Value> = None;
+        let include = json!({ "include": fields });
+
+        loop {
+            let mut body = json!({
+                "limit": 1000,
+                "with_payload": include,
+                "with_vector": false,
+                "filter": filter,
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+
+            let resp: Value = self
+                .agent
+                .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll_filtered: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    let id = p["id"].as_u64().unwrap_or(0);
+                    let payload = p.get("payload").cloned().unwrap_or(Value::Null);
+                    all.push((id, payload));
+                }
+            }
+
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+
+        Ok(all)
+    }
+
     /// Scroll ALL points returning only selected payload fields.
     /// Used for client-side aggregation (list albums, artists, genres).
     pub fn scroll_all_payloads(&self, fields: &[&str]) -> Result<Vec<(u64, Value)>, IndexerError> {

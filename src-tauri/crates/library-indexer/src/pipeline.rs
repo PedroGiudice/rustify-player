@@ -150,6 +150,25 @@ fn coordinator_loop(
         let _ = evt_tx.send(IndexerEvent::Error(e.to_string()));
     }
 
+    // Bulk LUFS backfill for tracks indexed before normalization landed.
+    // Runs on its own thread so the coordinator stays responsive; idempotent
+    // (filters on `lufs_integrated IS NULL`), so a no-op once coverage is full.
+    {
+        let backfill_client = client.clone();
+        thread::Builder::new()
+            .name("library-indexer-lufs-backfill".into())
+            .spawn(move || {
+                if let Err(e) = backfill_missing_lufs(&backfill_client) {
+                    warn!(
+                        target: "library_indexer::pipeline",
+                        error = %e,
+                        "loudness bulk backfill failed"
+                    );
+                }
+            })
+            .ok();
+    }
+
     loop {
         select! {
             recv(cmd_rx) -> msg => match msg {
@@ -289,6 +308,90 @@ fn run_scan(
         updated,
         removed,
     });
+    Ok(())
+}
+
+/// One-shot bulk pass: find every track in Qdrant whose `lufs_integrated`
+/// payload field is missing, decode it with ebur128, and persist the value.
+///
+/// Tracks indexed before the normalization feature landed have no LUFS, and
+/// the lazy on-play backfill only fills one track per playback. This bulk
+/// pass closes the gap without user intervention.
+///
+/// Single-threaded by design — keeps CPU pressure predictable while the
+/// app is also handling playback. ~5–10 s per FLAC, so ~80 min for a 1k
+/// library on first launch; subsequent launches are no-ops.
+fn backfill_missing_lufs(client: &QdrantClient) -> Result<(), IndexerError> {
+    let filter = json!({
+        "must": [
+            { "is_empty": { "key": "lufs_integrated" } }
+        ]
+    });
+
+    let pending = client.scroll_all_with_filter(filter, &["path"])?;
+    if pending.is_empty() {
+        info!(target: "library_indexer::pipeline", "loudness backfill: nothing to do");
+        return Ok(());
+    }
+
+    let total = pending.len();
+    info!(
+        target: "library_indexer::pipeline",
+        total,
+        "loudness backfill: starting bulk pass"
+    );
+
+    let mut done = 0usize;
+    let mut failed = 0usize;
+    for (id, payload) in pending {
+        let path = match payload["path"].as_str() {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => {
+                failed += 1;
+                continue;
+            }
+        };
+
+        match loudness::analyze_file(&path) {
+            Ok(a) => {
+                if let Err(e) = client.set_payload(
+                    &[id],
+                    json!({ "lufs_integrated": a.integrated_lufs }),
+                ) {
+                    warn!(
+                        target: "library_indexer::pipeline",
+                        track_id = id, error = %e,
+                        "loudness backfill: set_payload failed"
+                    );
+                    failed += 1;
+                } else {
+                    done += 1;
+                }
+            }
+            Err(e) => {
+                warn!(
+                    target: "library_indexer::pipeline",
+                    track_id = id, path = ?path, error = %e,
+                    "loudness backfill: analysis failed"
+                );
+                failed += 1;
+            }
+        }
+
+        if (done + failed) % 25 == 0 {
+            info!(
+                target: "library_indexer::pipeline",
+                done, failed, total,
+                "loudness backfill: progress"
+            );
+        }
+    }
+
+    info!(
+        target: "library_indexer::pipeline",
+        done, failed, total,
+        "loudness backfill: bulk pass complete"
+    );
     Ok(())
 }
 
