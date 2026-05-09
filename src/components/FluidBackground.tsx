@@ -517,11 +517,10 @@ export default function FluidBackground(props: Props) {
       }
 
       engine.step(dt);
-      if (hasShape && colorTex) {
-        engine.renderWithBackground(colorTex);
-      } else {
-        engine.render();
-      }
+      // Fluid stands alone over a black background — the shape image is
+      // ignored as a backdrop in this renderer. Other styles (exoskeleton)
+      // still use shape via their own components and are not affected.
+      engine.render();
     }
     frame();
   });
