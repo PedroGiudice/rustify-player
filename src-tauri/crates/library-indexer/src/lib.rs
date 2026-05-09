@@ -20,6 +20,7 @@ mod watch;
 pub mod query;
 mod pipeline;
 
+pub mod loudness;
 pub mod lyrics;
 pub mod qdrant_client;
 
@@ -198,6 +199,16 @@ impl IndexerHandle {
 
     pub fn record_play(&self, track_id: u64) -> Result<(), IndexerError> {
         query::record_play(&self.inner.client, track_id)
+    }
+
+    /// Persist the EBU R128 Integrated loudness for a track. Used by the
+    /// lazy backfill worker after analyzing tracks indexed before the
+    /// normalization feature landed.
+    pub fn set_track_lufs(&self, track_id: u64, lufs: f32) -> Result<(), IndexerError> {
+        self.inner.client.set_payload(
+            &[track_id],
+            serde_json::json!({ "lufs_integrated": lufs }),
+        )
     }
 
     pub fn toggle_like(&self, track_id: u64) -> Result<bool, IndexerError> {

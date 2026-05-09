@@ -34,6 +34,7 @@ clap = { version = "4", features = ["derive"] }
 # Library indexer stack
 walkdir = "2"
 notify = { version = "6", default-features = false, features = ["macos_kqueue"] }
+ebur128 = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 rubato = "0.15"
 sha1 = "0.10"

@@ -9,6 +9,7 @@
 use crate::cover::{self, CoverSource};
 use crate::embed_client::EmbedClient;
 use crate::error::IndexerError;
+use crate::loudness;
 use crate::lyrics;
 use crate::metadata::{self, ParsedFlacMetadata, PictureUsage};
 use crate::qdrant_client::QdrantClient;
@@ -373,6 +374,21 @@ fn build_track_payload(
 
     let now = unix_now();
 
+    // EBU R128 Integrated loudness — best-effort. A failure here must NOT
+    // abort the indexing of the track; we just skip the field and let the
+    // lazy backfill worker retry on first playback.
+    let lufs_integrated = match loudness::analyze_file(&entry.path) {
+        Ok(a) => Some(a.integrated_lufs),
+        Err(e) => {
+            warn!(
+                target: "library_indexer::pipeline",
+                path = ?entry.path, error = %e,
+                "loudness analysis failed; will backfill on first play"
+            );
+            None
+        }
+    };
+
     Ok(json!({
         "path": path_str(&entry.path),
         "filename": filename,
@@ -395,6 +411,7 @@ fn build_track_payload(
         "rg_album_gain": md.rg_album_gain,
         "rg_track_peak": md.rg_track_peak,
         "rg_album_peak": md.rg_album_peak,
+        "lufs_integrated": lufs_integrated,
         "embedding_status": "pending",
         "lrc_path": lrc_path,
         "embedded_lyrics": embedded_lyrics,

@@ -53,6 +53,7 @@ pub(crate) fn payload_to_track(id: u64, p: &Value) -> Track {
         rg_album_gain: p["rg_album_gain"].as_f64().map(|v| v as f32),
         rg_track_peak: p["rg_track_peak"].as_f64().map(|v| v as f32),
         rg_album_peak: p["rg_album_peak"].as_f64().map(|v| v as f32),
+        lufs_integrated: p["lufs_integrated"].as_f64().map(|v| v as f32),
         embedding_status: EmbeddingStatus::parse(status).unwrap_or(EmbeddingStatus::Pending),
         play_count: p["play_count"].as_u64().unwrap_or(0) as u32,
         last_played: p["last_played"].as_i64(),

@@ -94,6 +94,11 @@ pub struct Track {
     pub rg_track_peak: Option<f32>,
     pub rg_album_peak: Option<f32>,
 
+    /// EBU R128 Integrated loudness in LUFS, computed offline by the
+    /// loudness module. `None` for tracks indexed before normalization
+    /// landed; backfilled lazily on first playback.
+    pub lufs_integrated: Option<f32>,
+
     pub embedding_status: EmbeddingStatus,
     pub play_count: u32,
     pub last_played: Option<i64>,

@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 # Indexer-specific
 walkdir = { workspace = true }
 notify = { workspace = true }
+ebur128 = { workspace = true }
 image = { workspace = true }
 rubato = { workspace = true }
 zstd = { workspace = true }
