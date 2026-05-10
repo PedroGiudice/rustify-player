@@ -15,6 +15,7 @@ use crate::metadata::{self, ParsedFlacMetadata, PictureUsage};
 use crate::qdrant_client::QdrantClient;
 use crate::scan::{self, FileEntry};
 use crate::types::{IndexerCommand, IndexerEvent, IndexerSnapshot, path_to_id};
+use crate::watch::{FsWatcher, WatchEvent};
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -150,6 +151,29 @@ fn coordinator_loop(
         let _ = evt_tx.send(IndexerEvent::Error(e.to_string()));
     }
 
+    // Live filesystem watcher: any FLAC create/modify/remove inside the
+    // music root triggers an incremental rescan. Debounce is handled inside
+    // the watcher (2s window); the scanner itself is idempotent so re-running
+    // on top of an unchanged tree is cheap.
+    //
+    // Held in scope for the lifetime of the coordinator — dropping it stops
+    // the underlying notify thread.
+    let (watch_tx, watch_rx) = unbounded::<WatchEvent>();
+    let _fs_watcher = match FsWatcher::start(&config.music_root, watch_tx) {
+        Ok(w) => {
+            info!(
+                target: "library_indexer::pipeline",
+                root = %config.music_root.display(),
+                "fs watcher armed"
+            );
+            Some(w)
+        }
+        Err(e) => {
+            warn!(target: "library_indexer::pipeline", error = %e, "fs watcher disabled");
+            None
+        }
+    };
+
     // Bulk LUFS backfill for tracks indexed before normalization landed.
     // Runs on its own thread so the coordinator stays responsive; idempotent
     // (filters on `lufs_integrated IS NULL`), so a no-op once coverage is full.
@@ -183,6 +207,36 @@ fn coordinator_loop(
             recv(embed_result_rx) -> msg => match msg {
                 Ok(result) => {
                     apply_embed_result(&client, &result, &state, &evt_tx);
+                }
+                Err(_) => {}
+            },
+            recv(watch_rx) -> msg => match msg {
+                Ok(first) => {
+                    // Drain any other events that piled up during the
+                    // debounce window so a bulk move (113 FLACs at once)
+                    // collapses into a single rescan instead of one per file.
+                    let mut count = 1;
+                    while watch_rx.try_recv().is_ok() {
+                        count += 1;
+                    }
+                    if state.scan_in_progress.load(Ordering::Relaxed) {
+                        info!(
+                            target: "library_indexer::pipeline",
+                            events = count,
+                            "watch: scan already running, skipping"
+                        );
+                    } else {
+                        info!(
+                            target: "library_indexer::pipeline",
+                            events = count,
+                            first = ?first,
+                            "watch: triggering rescan"
+                        );
+                        if let Err(e) = run_scan(&client, &config, &evt_tx, &state, &embed_job_tx) {
+                            error!(target: "library_indexer::pipeline", error = %e, "watch rescan failed");
+                            let _ = evt_tx.send(IndexerEvent::Error(e.to_string()));
+                        }
+                    }
                 }
                 Err(_) => {}
             },
