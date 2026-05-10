@@ -63,6 +63,15 @@ export function PlayerBar() {
         const next = advanceQueue();
         if (next) {
           await playTrack(next, "album_seq");
+          // Radio mode: top up the queue before it runs dry so playback
+          // stays continuous without a Qdrant roundtrip gap at the end.
+          if (
+            player.shuffle &&
+            player.queueIndex >= player.queue.length - 2 &&
+            next.id
+          ) {
+            void prefetchRadio(next.id);
+          }
         } else if (ended?.id) {
           await doAutoplay(ended.id);
         }
@@ -109,7 +118,7 @@ export function PlayerBar() {
     }
   }
 
-  async function doAutoplay(seedId: number) {
+  async function doAutoplay(seedId: string) {
     try {
       const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 5);
       if (!tracks.length) return;
@@ -121,6 +130,46 @@ export function PlayerBar() {
       if (next) await playTrack(next, "autoplay");
     } catch (e) {
       console.error("[autoplay] failed:", e);
+    }
+  }
+
+  // Radio top-up: while shuffle is on and the queue is running dry, append
+  // fresh recommendations seeded by the current track so playback continues
+  // gaplessly. Distinct from doAutoplay, which only fires when the queue
+  // hits zero and forces a track switch.
+  async function prefetchRadio(seedId: string) {
+    try {
+      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 5);
+      if (!tracks.length) return;
+      setQueue([...player.queue, ...tracks], player.queueIndex);
+    } catch (e) {
+      console.error("[shuffle] radio prefetch failed:", e);
+    }
+  }
+
+  // Adaptive shuffle:
+  // - Queue has >1 track: shuffle the existing queue (album / playlist scope).
+  // - Queue has only the current track: enter radio mode by seeding the
+  //   queue with autoplay recommendations from the current track. Gives
+  //   immediate visual feedback (queue fills) and avoids a silent gap at EOS.
+  // - Turning shuffle off: keep the queue as-is, just stop topping it up.
+  async function toggleShuffle() {
+    const turningOn = !player.shuffle;
+    setPlayer("shuffle", turningOn);
+    if (!turningOn) return;
+    if (player.queue.length > 1) {
+      shuffleQueue();
+      return;
+    }
+    const seed = player.currentTrack?.id;
+    if (!seed) return;
+    try {
+      const recs = await libAutoplayNext(seed, [...recentlyPlayedIds], 10);
+      if (!recs.length) return;
+      const current = player.currentTrack!;
+      setQueue([current, ...recs], 0);
+    } catch (e) {
+      console.error("[shuffle] radio populate failed:", e);
     }
   }
 
@@ -248,10 +297,7 @@ export function PlayerBar() {
             class={`icon-btn icon-btn--toggle${player.shuffle ? " is-active" : ""}`}
             id="pb-shuffle"
             aria-label="Shuffle"
-            onClick={() => {
-              setPlayer("shuffle", (s) => !s);
-              if (!player.shuffle) shuffleQueue();
-            }}
+            onClick={toggleShuffle}
           >
             <svg class="icon" aria-hidden="true"><use href="#icon-shuffle" /></svg>
             <span class="icon-btn__pip" />
