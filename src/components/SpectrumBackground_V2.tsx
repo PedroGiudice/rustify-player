@@ -536,9 +536,12 @@ export default function SpectrumBackground(props: Props) {
       frames.push(tex);
 
       if (hasColorFrames) {
+        // Pixel-art shapes use PNG color frames + nearest filtering to preserve blocks.
+        const ext = manifest.pixel_art === true ? "png" : "jpg";
+        const filter = manifest.pixel_art === true ? gl.NEAREST : gl.LINEAR;
         const colorFrameImg = new Image();
         colorFrameImg.crossOrigin = "anonymous";
-        colorFrameImg.src = `${baseUrl}/color_${idx}.jpg`;
+        colorFrameImg.src = `${baseUrl}/color_${idx}.${ext}`;
         await new Promise<void>((resolve) => {
           colorFrameImg.onload = () => resolve();
           colorFrameImg.onerror = () => resolve();
@@ -549,8 +552,8 @@ export default function SpectrumBackground(props: Props) {
           if (ctex) {
             gl.bindTexture(gl.TEXTURE_2D, ctex);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, colorFrameImg);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             colorFrames.push(ctex);
