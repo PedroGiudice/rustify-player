@@ -203,6 +203,9 @@ async function main() {
     source_fps: frames.length / duration,
     color_frames: true,
     pixel_art: args.pixel_art,
+    // Pixel-art shapes: skip the wireframe/exoskeleton overlay — line strokes
+    // on top of pixel blocks read as visual noise. Sprite-only by default.
+    hide_overlay: args.pixel_art,
     generated_at: new Date().toISOString(),
   };
   await fs.writeFile(path.join(targetDir, "manifest.json"), JSON.stringify(manifest, null, 2));
