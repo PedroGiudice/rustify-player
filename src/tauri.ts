@@ -86,8 +86,27 @@ export const playerPause = () => invoke<void>("player_pause");
 export const playerResume = () => invoke<void>("player_resume");
 export const playerSeek = (seconds: number) => invoke<void>("player_seek", { seconds });
 export const playerEnqueueNext = (path: string) => invoke<void>("player_enqueue_next", { path });
+export const playerLoadPaused = (path: string, positionMs: number, trackId: string | null) =>
+  invoke<void>("player_load_paused", { path, positionMs, trackId });
 export const playerSetOrigin = (origin: string, trackId: string | null) =>
   invoke<void>("player_set_origin", { origin, trackId });
+
+// ── Session persistence ────────────────────────────────────────
+export interface PersistedState {
+  track_id: number | null;
+  position_ms: number;
+  queue_ids: number[];
+  queue_index: number;
+  shuffle: boolean;
+  repeat_mode: string;
+  recently_played: number[];
+  saved_at: number;
+}
+export const persistLoadState = () => invoke<PersistedState | null>("persist_load_state");
+export const persistSaveState = (state: PersistedState) =>
+  invoke<void>("persist_save_state", { state });
+export const libGetTracksByIds = (ids: string[]) =>
+  invoke<Track[]>("lib_get_tracks_by_ids", { ids });
 export const cycleRepeat = () => invoke<void>("cycle_repeat");
 export const setVolume = (volume: number) => invoke<void>("player_set_volume", { volume });
 

@@ -1,3 +1,4 @@
+mod persistence;
 mod qdrant_process;
 
 use audio_engine::{
@@ -22,6 +23,7 @@ struct Library {
     handle: IndexerHandle,
     cache_dir: PathBuf,
     music_root: PathBuf,
+    data_dir: PathBuf,
 }
 struct Player(Mutex<Option<EngineHandle>>);
 // Qdrant state removed — IndexerHandle now owns the QdrantClient.
@@ -1698,6 +1700,70 @@ fn player_enqueue_next(player: State<Player>, path: String) -> Result<(), String
         .map_err(err)
 }
 
+/// Load a track without starting playback. Used by session resume to
+/// restore the previous track + position in a paused state so the user
+/// chooses when to continue, instead of auto-playing on launch.
+#[tauri::command]
+fn player_load_paused(
+    player: State<Player>,
+    snapshot: State<Snapshot>,
+    path: String,
+    position_ms: Option<u64>,
+    track_id: Option<String>,
+) -> Result<(), String> {
+    let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
+    if let Ok(mut s) = snapshot.0.lock() {
+        s.current_origin = Some("resume".to_string());
+        s.current_track_id = tid;
+        s.started_at = None;
+        s.last_position_ms = position_ms.map(|ms| ms as i64);
+    }
+    let guard = player.0.lock().map_err(err)?;
+    let handle = guard.as_ref().ok_or("engine not started")?;
+    handle
+        .send(EngineCommand::Load(PathBuf::from(&path)))
+        .map_err(err)?;
+    if let Some(ms) = position_ms {
+        if ms > 0 {
+            handle
+                .send(EngineCommand::Seek(std::time::Duration::from_millis(ms)))
+                .map_err(err)?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn persist_load_state(lib: State<Library>) -> Option<persistence::PersistedState> {
+    persistence::load(&lib.data_dir)
+}
+
+#[tauri::command]
+fn persist_save_state(
+    lib: State<Library>,
+    state: persistence::PersistedState,
+) -> Result<(), String> {
+    persistence::save(&lib.data_dir, &state)
+}
+
+#[tauri::command]
+fn lib_get_tracks_by_ids(
+    lib: State<Library>,
+    ids: Vec<String>,
+) -> Result<Vec<Track>, String> {
+    let mut out = Vec::with_capacity(ids.len());
+    for raw in &ids {
+        let Ok(id) = raw.parse::<u64>() else { continue };
+        if let Ok(Some(mut t)) = lib.handle.track(id) {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+            out.push(t);
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 fn get_state(snapshot: State<Snapshot>) -> Result<serde_json::Value, String> {
     let snap = snapshot.0.lock().map_err(err)?;
@@ -2314,6 +2380,7 @@ pub fn run() {
                 handle: indexer,
                 cache_dir,
                 music_root,
+                data_dir: data_dir.clone(),
             });
 
             let engine = Engine::start().expect("failed to start audio engine");
@@ -2795,6 +2862,10 @@ pub fn run() {
             player_seek,
             player_set_volume,
             player_enqueue_next,
+            player_load_paused,
+            persist_load_state,
+            persist_save_state,
+            lib_get_tracks_by_ids,
             dsp_set_eq_band,
             dsp_set_eq_filter_type,
             dsp_set_eq_filter_mode,

@@ -18,14 +18,20 @@ import {
 } from "../store/player";
 import {
   playerPlay, playerPause, playerResume, playerSeek,
-  playerEnqueueNext, playerSetOrigin,
+  playerEnqueueNext, playerSetOrigin, playerLoadPaused,
   setVolume, libIsLiked, libToggleLike, libRecordPlay,
   libAutoplayNext, getState, cycleRepeat as ipcCycleRepeat,
   coverUrl, formatDuration, onPlayerState, onMprisCommand,
+  persistLoadState, persistSaveState, libGetTracksByIds,
 } from "../tauri";
 import { showPlayerMenu } from "../js/components/context-menu.js";
 
 const recentlyPlayedIds = new Set<string>();
+
+// Throttle disk writes — saving every position tick would be wasteful;
+// every 10s plus lifecycle events (track change, pause, seek, beforeunload)
+// is enough to cover any reasonable crash/close scenario.
+const SAVE_INTERVAL_MS = 10_000;
 
 export function PlayerBar() {
   let seekBarRef!: HTMLDivElement;
@@ -40,6 +46,7 @@ export function PlayerBar() {
         // Pre-load next para gapless
         const next = player.queue[player.queueIndex + 1];
         if (next) playerEnqueueNext(next.path).catch(console.error);
+        void saveSession();
 
       } else if ("Position" in p) {
         updatePosition(p.Position.samples_played, p.Position.sample_rate);
@@ -47,7 +54,7 @@ export function PlayerBar() {
       } else if ("StateChanged" in p) {
         const s = p.StateChanged;
         if (s === "Playing") setPlayingState(true);
-        else if (s === "Paused") setPlayingState(false);
+        else if (s === "Paused") { setPlayingState(false); void saveSession(); }
         else if (s === "Idle" || s === "Stopped") setPlayingState(false);
 
       } else if ("TrackEnded" in p) {
@@ -101,12 +108,83 @@ export function PlayerBar() {
     // Reconcilia estado quando janela volta ao foco
     document.addEventListener("visibilitychange", onVisibility);
     onCleanup(() => document.removeEventListener("visibilitychange", onVisibility));
+
+    // ── Session resume ────────────────────────────────────────
+    // Restore the previous session in paused state. The backend
+    // already filtered out snapshots older than 6h, so anything
+    // returned is "fresh enough" to be useful.
+    await restoreSession();
+
+    // Periodic save covers crashes. Event-driven saves (track
+    // change, pause, seek, beforeunload) cover graceful shutdown.
+    const saveTimer = window.setInterval(() => {
+      void saveSession();
+    }, SAVE_INTERVAL_MS);
+    onCleanup(() => window.clearInterval(saveTimer));
+
+    const onBeforeUnload = () => {
+      void saveSession();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    onCleanup(() => window.removeEventListener("beforeunload", onBeforeUnload));
   });
 
   onCleanup(() => {
     unlistenPlayer?.();
     unlistenMpris?.();
   });
+
+  async function restoreSession() {
+    try {
+      const snap = await persistLoadState();
+      if (!snap || snap.queue_ids.length === 0 || snap.track_id == null) return;
+      const tracks = await libGetTracksByIds(snap.queue_ids.map(String));
+      if (tracks.length === 0) return;
+      // The library may have moved on (tracks deleted, re-indexed).
+      // Rebuild the queue with whatever survived and pin the index to
+      // the current track if it's still there; otherwise bail.
+      const wantedId = String(snap.track_id);
+      const newIndex = tracks.findIndex((t) => t.id === wantedId);
+      if (newIndex < 0) return;
+      setQueue(tracks, newIndex);
+      setPlayer({
+        shuffle: snap.shuffle,
+        repeatMode: (snap.repeat_mode as "off" | "all" | "one") ?? "off",
+        positionSecs: snap.position_ms / 1000,
+        durationSecs: (tracks[newIndex].duration_ms ?? 0) / 1000,
+      });
+      // Repopulate the recently-played exclusion set so autoplay/radio
+      // don't immediately suggest tracks the user heard last session.
+      for (const id of snap.recently_played) recentlyPlayedIds.add(String(id));
+      const current = tracks[newIndex];
+      await playerLoadPaused(current.path, snap.position_ms, current.id);
+      if (current.id) {
+        libIsLiked(current.id).then(setLiked).catch(() => setLiked(false));
+      }
+    } catch (e) {
+      console.warn("[resume] failed:", e);
+    }
+  }
+
+  async function saveSession() {
+    if (!player.currentTrack?.id) return;
+    try {
+      await persistSaveState({
+        track_id: Number(player.currentTrack.id),
+        position_ms: Math.floor(player.positionSecs * 1000),
+        queue_ids: player.queue.map((t) => Number(t.id)).filter((n) => !Number.isNaN(n)),
+        queue_index: player.queueIndex,
+        shuffle: player.shuffle,
+        repeat_mode: player.repeatMode,
+        recently_played: Array.from(recentlyPlayedIds)
+          .map((s) => Number(s))
+          .filter((n) => !Number.isNaN(n)),
+        saved_at: Math.floor(Date.now() / 1000),
+      });
+    } catch (e) {
+      console.warn("[resume] save failed:", e);
+    }
+  }
 
   async function onVisibility() {
     if (document.visibilityState !== "visible") return;
