@@ -29,6 +29,13 @@ const fluidCfg = {
   SPLAT_FORCE: 600,            // Higher base force — modulated down by audio
   COLOR_INTENSITY: 0.6,        // Per-frame contribution; integrated over many splats
   SENSITIVITY: 1.0,
+  // Peak-trigger / colour calibration (mirrored from YAML; live-tunable)
+  PEAK_THRESHOLD: 1.25,
+  DELTA_THRESHOLD: 0.06,
+  JITTER_AMOUNT: 0.10,
+  HUE_JITTER: 0.14,
+  SAT_BASE: 0.75,
+  SAT_JITTER: 0.10,
 };
 
 // ── FFT config ──
@@ -58,13 +65,14 @@ interface Ghost {
 
 const GHOSTS: Ghost[] = [
   { band: "bass",   freqA: 0.27, freqB: 0.41, phaseA: 0,            ampX: 0.32, ampY: 0.30, baseRadius: 0.22, baseForce: 700, hueOffset: 0.00 },
-  { band: "mid",    freqA: 0.55, freqB: 0.83, phaseA: Math.PI / 2,  ampX: 0.40, ampY: 0.22, baseRadius: 0.14, baseForce: 450, hueOffset: 0.08 },
-  { band: "treble", freqA: 0.97, freqB: 1.31, phaseA: Math.PI,      ampX: 0.25, ampY: 0.36, baseRadius: 0.09, baseForce: 280, hueOffset: 0.16 },
+  { band: "mid",    freqA: 0.55, freqB: 0.83, phaseA: Math.PI / 2,  ampX: 0.40, ampY: 0.22, baseRadius: 0.14, baseForce: 450, hueOffset: 0.33 },
+  { band: "treble", freqA: 0.97, freqB: 1.31, phaseA: Math.PI,      ampX: 0.25, ampY: 0.36, baseRadius: 0.09, baseForce: 280, hueOffset: 0.66 },
 ];
 
-// Temporal smoothing factor for band energies (≈ AnalyserNode smoothingTimeConstant).
-// 0.88 → noticeable inertia, no jitter, decays over ~150ms.
-const BAND_SMOOTH = 0.88;
+// Temporal smoothing factor for band energies. Lower = snappier audio→visual
+// sync, but more jitter. 0.55 → ~40ms tau, perceptually in-sync with kicks
+// and percussion (humans sense audio↔visual desync above ~50ms).
+const BAND_SMOOTH = 0.55;
 
 // ── Shader sources ──
 
@@ -370,6 +378,19 @@ export default function FluidBackground(props: Props) {
   // Read by the per-frame ghost loop to modulate force/radius/colour.
   const bandEnergy = { bass: 0, mid: 0, treble: 0 };
 
+  // Long-window running average per band — the comparison baseline used
+  // for peak detection. Slower decay than bandEnergy so transient peaks
+  // stand out clearly. Cooldown prevents stuttering re-emission within
+  // the same musical event (e.g. a single kick should fire one splat,
+  // not five). Cooldowns widened to match observed musical density —
+  // earlier values were tight enough to let bass keep firing every
+  // kick, accumulating dye on the same Lissajous path.
+  const peakState = {
+    bass:   { runningAvg: 0, prevEnergy: 0, lastDelta: 0, lastPeakT: -10, cooldown: 0.13, avgDecay: 0.97 },
+    mid:    { runningAvg: 0, prevEnergy: 0, lastDelta: 0, lastPeakT: -10, cooldown: 0.09, avgDecay: 0.96 },
+    treble: { runningAvg: 0, prevEnergy: 0, lastDelta: 0, lastPeakT: -10, cooldown: 0.05, avgDecay: 0.95 },
+  };
+
   // Shape state — only the colour texture and decay mask are kept; the
   // ghost cursors paint over the entire canvas, the shape is just a
   // backdrop and a soft attenuation field on the dye.
@@ -396,7 +417,13 @@ export default function FluidBackground(props: Props) {
       fluidCfg.COLOR_INTENSITY = c.fluid_color_intensity;
       fluidCfg.SENSITIVITY = c.fluid_sensitivity;
       fluidCfg.PRESSURE_ITERATIONS = c.fluid_pressure_iterations;
-      console.log(`[fluid] config updated: dissipation=${c.fluid_density_dissipation} curl=${c.fluid_curl} force=${c.fluid_splat_force} color=${c.fluid_color_intensity}`);
+      fluidCfg.PEAK_THRESHOLD  = c.fluid_peak_threshold  ?? fluidCfg.PEAK_THRESHOLD;
+      fluidCfg.DELTA_THRESHOLD = c.fluid_delta_threshold ?? fluidCfg.DELTA_THRESHOLD;
+      fluidCfg.JITTER_AMOUNT   = c.fluid_jitter_amount   ?? fluidCfg.JITTER_AMOUNT;
+      fluidCfg.HUE_JITTER      = c.fluid_hue_jitter      ?? fluidCfg.HUE_JITTER;
+      fluidCfg.SAT_BASE        = c.fluid_sat_base        ?? fluidCfg.SAT_BASE;
+      fluidCfg.SAT_JITTER      = c.fluid_sat_jitter      ?? fluidCfg.SAT_JITTER;
+      console.log(`[fluid] config updated: dissipation=${c.fluid_density_dissipation} curl=${c.fluid_curl} force=${c.fluid_splat_force} color=${c.fluid_color_intensity} | peak_th=${fluidCfg.PEAK_THRESHOLD} delta_th=${fluidCfg.DELTA_THRESHOLD} hue_jit=${fluidCfg.HUE_JITTER} sat_base=${fluidCfg.SAT_BASE}`);
     });
 
     // Track color
@@ -457,6 +484,23 @@ export default function FluidBackground(props: Props) {
       bandEnergy.mid    = bandEnergy.mid    * BAND_SMOOTH + rawMid    * (1 - BAND_SMOOTH);
       bandEnergy.treble = bandEnergy.treble * BAND_SMOOTH + rawTreble * (1 - BAND_SMOOTH);
 
+      // Long-window running average — secondary baseline for peak detection.
+      peakState.bass.runningAvg   = peakState.bass.runningAvg   * peakState.bass.avgDecay   + bandEnergy.bass   * (1 - peakState.bass.avgDecay);
+      peakState.mid.runningAvg    = peakState.mid.runningAvg    * peakState.mid.avgDecay    + bandEnergy.mid    * (1 - peakState.mid.avgDecay);
+      peakState.treble.runningAvg = peakState.treble.runningAvg * peakState.treble.avgDecay + bandEnergy.treble * (1 - peakState.treble.avgDecay);
+
+      // Delta detection — primary onset signal. Captures sudden rises in
+      // band energy regardless of absolute level. This is what makes the
+      // detector keep firing during constant-density tracks (techno, EDM,
+      // ambient with steady kicks) where the running avg saturates and
+      // ratio-based detection silently falls through.
+      peakState.bass.lastDelta   = bandEnergy.bass   - peakState.bass.prevEnergy;
+      peakState.mid.lastDelta    = bandEnergy.mid    - peakState.mid.prevEnergy;
+      peakState.treble.lastDelta = bandEnergy.treble - peakState.treble.prevEnergy;
+      peakState.bass.prevEnergy   = bandEnergy.bass;
+      peakState.mid.prevEnergy    = bandEnergy.mid;
+      peakState.treble.prevEnergy = bandEnergy.treble;
+
       // Background pulse driven by bass.
       engine.setBassEnergy(bandEnergy.bass);
     }).then(unsub => { unlisten = unsub; });
@@ -476,44 +520,81 @@ export default function FluidBackground(props: Props) {
       lastTime = now;
       ghostT += dt;
 
-      // Continuous emission via Lissajous-driven ghost cursors.
-      // Each ghost rides its own elliptical orbit; audio modulates only
-      // force/radius/colour, never trigger or position. This preserves
-      // pressure-field coherence so the solver can grow real vortices
-      // instead of stroboscopic puffs.
-      for (const g of GHOSTS) {
-        const energy = g.band === "bass" ? bandEnergy.bass
-                     : g.band === "mid"  ? bandEnergy.mid
-                     :                     bandEnergy.treble;
+      // Peak-triggered emission. A splat fires only when a band's current
+      // energy exceeds its long-window running average by PEAK_THRESHOLD,
+      // clears an absolute floor, and is past the per-band cooldown. Result:
+      // each kick / hi-hat / vocal hit becomes a discrete visual event, the
+      // fluid dissipates between events, and there is a clear audio↔visual
+      // mapping. No event = no splat = canvas can return to black.
+      if (player.isPlaying) {
+        const ABS_FLOOR = 0.12;   // ignore peaks during near-silence (kept hardcoded — defines the noise floor, not a stylistic knob)
 
-        // Below this threshold the ghost goes silent — no point stirring
-        // the solver with sub-perceptual noise.
-        if (energy < 0.04) continue;
+        for (const g of GHOSTS) {
+          const energy = g.band === "bass" ? bandEnergy.bass
+                       : g.band === "mid"  ? bandEnergy.mid
+                       :                     bandEnergy.treble;
+          const ps = peakState[g.band];
 
-        // Position on Lissajous curve.
-        const x = 0.5 + g.ampX * Math.sin(g.freqA * ghostT + g.phaseA);
-        const y = 0.5 + g.ampY * Math.sin(g.freqB * ghostT);
+          if (energy < ABS_FLOOR) continue;
+          if ((ghostT - ps.lastPeakT) <= ps.cooldown) continue;
 
-        // Tangent (curve derivative) → splat direction.
-        const tx =  g.freqA * g.ampX * Math.cos(g.freqA * ghostT + g.phaseA);
-        const ty =  g.freqB * g.ampY * Math.cos(g.freqB * ghostT);
-        const norm = Math.hypot(tx, ty) || 1;
+          // Two-path detection. Either is enough to fire a peak:
+          //  • DELTA: sudden rise in energy (onset) — works in steady music
+          //  • RATIO: current energy noticeably above running avg
+          const ratio = ps.runningAvg > 0.05 ? energy / ps.runningAvg : 0;
+          const byDelta = ps.lastDelta > fluidCfg.DELTA_THRESHOLD;
+          const byRatio = ratio > fluidCfg.PEAK_THRESHOLD;
+          if (!byDelta && !byRatio) continue;
+          ps.lastPeakT = ghostT;
 
-        // Cubic curve emphasises peaks while keeping ambient passages calm.
-        const eShaped = energy * energy * energy;
+          // peakStrength combines both signals. Heavy onsets feel heavier;
+          // sustained-loud passages still register at moderate strength.
+          const deltaStrength = Math.max(0, ps.lastDelta * 6.0); // scale 0..1+
+          const ratioStrength = Math.max(0, ratio - 1.0);
+          const peakStrength  = Math.min(1.5, Math.max(0.35, Math.max(deltaStrength, ratioStrength)));
 
-        const force  = g.baseForce * fluidCfg.SPLAT_FORCE / 600 * eShaped;
-        const radius = g.baseRadius * fluidCfg.SPLAT_RADIUS / 0.18 * (0.55 + energy * 0.9);
+          // Position on Lissajous at this instant + per-event random jitter.
+          // Lissajous keeps the geographic anchoring (bass region stable),
+          // jitter ensures consecutive peaks don't paint over the same
+          // pixel — that was producing the "one blob lives forever" effect.
+          const baseX = 0.5 + g.ampX * Math.sin(g.freqA * ghostT + g.phaseA);
+          const baseY = 0.5 + g.ampY * Math.sin(g.freqB * ghostT);
+          const x = baseX + (Math.random() - 0.5) * fluidCfg.JITTER_AMOUNT;
+          const y = baseY + (Math.random() - 0.5) * fluidCfg.JITTER_AMOUNT;
 
-        const dx = (tx / norm) * force;
-        const dy = (ty / norm) * force;
+          const tx =  g.freqA * g.ampX * Math.cos(g.freqA * ghostT + g.phaseA);
+          const ty =  g.freqB * g.ampY * Math.cos(g.freqB * ghostT);
+          const norm = Math.hypot(tx, ty) || 1;
 
-        const color = generateColor(baseHue + g.hueOffset, 0, 1);
-        color.r *= fluidCfg.COLOR_INTENSITY * (0.6 + energy * 0.8);
-        color.g *= fluidCfg.COLOR_INTENSITY * (0.6 + energy * 0.8);
-        color.b *= fluidCfg.COLOR_INTENSITY * (0.6 + energy * 0.8);
+          // Moderate force — enough momentum for the solver to grow real
+          // swirls and curl when combined with non-trivial velocity_dissipation.
+          // Too low (0.008) produced static defined blobs; too high (0.05)
+          // sent paint flying. 0.025 × peakStrength is the sweet spot.
+          const force  = g.baseForce * fluidCfg.SPLAT_FORCE / 600 * 0.025 * peakStrength;
+          // Radius scales with peakStrength only (no ambient floor) — small
+          // peaks paint tight bursts, big peaks paint full blobs.
+          const radius = g.baseRadius * fluidCfg.SPLAT_RADIUS / 0.18 * (0.8 + peakStrength * 1.2);
 
-        engine.splat(x, y, dx, dy, color, radius);
+          const dx = (tx / norm) * force;
+          const dy = (ty / norm) * force;
+
+          // Hue jitter per splat — each peak picks a random hue within
+          // ±half the configured range of the band's anchor (still recognisable
+          // as bass/mid/treble colour, but no two splats look identical).
+          const hueJitter = (Math.random() - 0.5) * fluidCfg.HUE_JITTER;
+          // Saturation: configured base + peakStrength contribution + random jitter.
+          const sat = fluidCfg.SAT_BASE + peakStrength * 0.25 + Math.random() * fluidCfg.SAT_JITTER;
+          const c = HSVtoRGB((baseHue + g.hueOffset + hueJitter + 1) % 1, Math.min(1, sat), 1);
+          const color = { r: c.r, g: c.g, b: c.b };
+          // Brightness scales linearly with peakStrength — a hard peak is
+          // ~2x as luminous as a faint one, both clearly visible.
+          const brightness = fluidCfg.COLOR_INTENSITY * (1.2 + peakStrength * 1.6);
+          color.r *= brightness;
+          color.g *= brightness;
+          color.b *= brightness;
+
+          engine.splat(x, y, dx, dy, color, radius);
+        }
       }
 
       engine.step(dt);

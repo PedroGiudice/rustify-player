@@ -680,6 +680,36 @@ struct SpectrumVisualConfig {
     fluid_sensitivity: f32,
     #[serde(default = "default_fluid_pressure_iterations")]
     fluid_pressure_iterations: u32,
+    // Peak-trigger / colour calibration (frontend-only, hot-reloadable)
+    #[serde(default = "default_fluid_peak_threshold")]
+    fluid_peak_threshold: f32,
+    #[serde(default = "default_fluid_delta_threshold")]
+    fluid_delta_threshold: f32,
+    #[serde(default = "default_fluid_jitter_amount")]
+    fluid_jitter_amount: f32,
+    #[serde(default = "default_fluid_hue_jitter")]
+    fluid_hue_jitter: f32,
+    #[serde(default = "default_fluid_sat_base")]
+    fluid_sat_base: f32,
+    #[serde(default = "default_fluid_sat_jitter")]
+    fluid_sat_jitter: f32,
+    // SDF Raymarching params
+    #[serde(default = "default_sdf_step_count")]
+    sdf_step_count: u32,
+    #[serde(default = "default_sdf_max_dist")]
+    sdf_max_dist: f32,
+    #[serde(default = "default_sdf_warp_intensity")]
+    sdf_warp_intensity: f32,
+    #[serde(default = "default_sdf_warp_frequency")]
+    sdf_warp_frequency: f32,
+    #[serde(default = "default_sdf_smooth_k")]
+    sdf_smooth_k: f32,
+    #[serde(default = "default_sdf_emissive_boost")]
+    sdf_emissive_boost: f32,
+    #[serde(default = "default_sdf_resolution_scale")]
+    sdf_resolution_scale: f32,
+    #[serde(default = "default_sdf_render_mode")]
+    sdf_render_mode: u32,
 }
 
 fn default_style() -> String { "exoskeleton".into() }
@@ -692,14 +722,32 @@ fn default_bg_pulse_strength() -> f32 { 0.25 }
 fn default_gravity_decay() -> f32 { 1.5 }
 fn default_agc_decay() -> f32 { 0.985 }
 fn default_agc_floor() -> f32 { 3.0 }
-fn default_fluid_density_dissipation() -> f32 { 0.5 }    // Slow decay — preserves trails through musical lulls
-fn default_fluid_velocity_dissipation() -> f32 { 0.15 }  // Velocity persists — coherent vortices
-fn default_fluid_curl() -> f32 { 40.0 }                  // Stronger vortices per impulse
-fn default_fluid_splat_radius() -> f32 { 0.18 }          // Slightly larger — ghost cursors paint smoother trails
-fn default_fluid_splat_force() -> f32 { 600.0 }          // Higher base; audio modulates downwards via cubic curve
-fn default_fluid_color_intensity() -> f32 { 0.6 }        // Per-frame contribution; integrated over many splats
+fn default_fluid_density_dissipation() -> f32 { 4.0 }    // Fade ~180ms — splat reads as fluid, fades cleanly between events
+fn default_fluid_velocity_dissipation() -> f32 { 2.5 }   // Velocity persists ~280ms — solver grows real swirls (this is what makes it look like fluid)
+fn default_fluid_curl() -> f32 { 38.0 }                  // Higher vorticity — splats actually swirl and curl, not just fade in place
+fn default_fluid_splat_radius() -> f32 { 0.20 }          // Larger blobs — more presence on canvas, fluid swirl reads clearly
+fn default_fluid_splat_force() -> f32 { 600.0 }          // Base reference; frontend multiplies by 0.015 × peakStrength (event-driven)
+fn default_fluid_color_intensity() -> f32 { 0.35 }       // Restored to visible range; peak-triggered emission is sparse, so each splat must carry weight
 fn default_fluid_sensitivity() -> f32 { 1.0 }
 fn default_fluid_pressure_iterations() -> u32 { 25 }
+// Peak-trigger / colour calibration (frontend reads these into per-event splat logic)
+fn default_fluid_peak_threshold() -> f32 { 1.25 }   // ratio path: energy/runningAvg above this fires
+fn default_fluid_delta_threshold() -> f32 { 0.06 }  // delta path: energy jump per FFT frame above this fires
+fn default_fluid_jitter_amount() -> f32 { 0.10 }    // ±half this in canvas units, applied to Lissajous splat position
+fn default_fluid_hue_jitter() -> f32 { 0.14 }       // full range of hue jitter per splat (0..1 = full circle)
+fn default_fluid_sat_base() -> f32 { 0.75 }         // saturation floor; peakStrength adds 0..0.25 on top
+fn default_fluid_sat_jitter() -> f32 { 0.10 }       // random saturation jitter per splat (uniform 0..this)
+// SDF Raymarching defaults — tuned for "lite 3D" by default: lower step
+// count and tighter half-res keep fragment work modest on integrated GPUs.
+// Switch to render_mode=0 for the 2D glow path if 3D is still too heavy.
+fn default_sdf_step_count() -> u32 { 32 }           // 48→32: ~30% cheaper, silhouette near-identical
+fn default_sdf_max_dist() -> f32 { 12.0 }
+fn default_sdf_warp_intensity() -> f32 { 0.6 }      // 0..1, audio scales 0..2x
+fn default_sdf_warp_frequency() -> f32 { 1.8 }      // spatial frequency of domain warp
+fn default_sdf_smooth_k() -> f32 { 0.85 }           // smin blending — higher = more organic merging
+fn default_sdf_emissive_boost() -> f32 { 1.3 }      // multiplier applied to fresnel rim + core glow
+fn default_sdf_resolution_scale() -> f32 { 0.4 }    // render to 0.4x viewport, upscale linearly — biggest perf knob
+fn default_sdf_render_mode() -> u32 { 1 }           // 0 = 2D glow (cheapest, neon look), 1 = 3D raymarched (default, volumetric)
 
 impl Default for SpectrumVisualConfig {
     fn default() -> Self {
@@ -749,6 +797,20 @@ impl Default for SpectrumVisualConfig {
             fluid_color_intensity: default_fluid_color_intensity(),
             fluid_sensitivity: default_fluid_sensitivity(),
             fluid_pressure_iterations: default_fluid_pressure_iterations(),
+            fluid_peak_threshold: default_fluid_peak_threshold(),
+            fluid_delta_threshold: default_fluid_delta_threshold(),
+            fluid_jitter_amount: default_fluid_jitter_amount(),
+            fluid_hue_jitter: default_fluid_hue_jitter(),
+            fluid_sat_base: default_fluid_sat_base(),
+            fluid_sat_jitter: default_fluid_sat_jitter(),
+            sdf_step_count: default_sdf_step_count(),
+            sdf_max_dist: default_sdf_max_dist(),
+            sdf_warp_intensity: default_sdf_warp_intensity(),
+            sdf_warp_frequency: default_sdf_warp_frequency(),
+            sdf_smooth_k: default_sdf_smooth_k(),
+            sdf_emissive_boost: default_sdf_emissive_boost(),
+            sdf_resolution_scale: default_sdf_resolution_scale(),
+            sdf_render_mode: default_sdf_render_mode(),
         }
     }
 }

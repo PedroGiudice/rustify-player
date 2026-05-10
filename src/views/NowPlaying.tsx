@@ -10,6 +10,7 @@ import type { LyricLine, SpectrumVisualConfig } from "../tauri";
 import { navigate } from "../router";
 import SpectrumBackground from "../components/SpectrumBackground_V2";
 import FluidBackground from "../components/FluidBackground";
+import SDFBackground from "../components/SDFBackground";
 import SpectrumRangesPanel from "../components/SpectrumRangesPanel";
 
 const SHAPES_BASE = "http://127.0.0.1:19876/shapes";
@@ -117,10 +118,18 @@ export default function NowPlaying() {
   return (
     <article class="view view--hero">
       <div class="np-bg">
-        <Show when={spectrumConfig()?.style === "fluid"} fallback={
-          <SpectrumBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />
-        }>
-          <FluidBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />
+        <Show
+          when={spectrumConfig()?.style === "sdf"}
+          fallback={
+            <Show
+              when={spectrumConfig()?.style === "fluid"}
+              fallback={<SpectrumBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />}
+            >
+              <FluidBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />
+            </Show>
+          }
+        >
+          <SDFBackground config={spectrumConfig()} />
         </Show>
       </div>
 

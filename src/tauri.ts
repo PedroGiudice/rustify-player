@@ -268,6 +268,22 @@ export interface SpectrumVisualConfig {
   fluid_color_intensity: number;
   fluid_sensitivity: number;
   fluid_pressure_iterations: number;
+  // Peak-trigger / colour calibration
+  fluid_peak_threshold: number;
+  fluid_delta_threshold: number;
+  fluid_jitter_amount: number;
+  fluid_hue_jitter: number;
+  fluid_sat_base: number;
+  fluid_sat_jitter: number;
+  // SDF Raymarching params
+  sdf_step_count: number;
+  sdf_max_dist: number;
+  sdf_warp_intensity: number;
+  sdf_warp_frequency: number;
+  sdf_smooth_k: number;
+  sdf_emissive_boost: number;
+  sdf_resolution_scale: number;
+  sdf_render_mode: number;
 }
 
 export interface SpectrumPresetInfo {
