@@ -378,12 +378,18 @@ impl QdrantClient {
     /// Uses the `/points/query` endpoint (Qdrant v1.10+) with the
     /// `{"query": {"recommend": {"positive": [...], "negative": [...]}}}` form.
     ///
+    /// `exclude_ids` is a hard exclusion filter (`must_not has_id`), distinct
+    /// from `negative_ids` which alters the recommendation vector arithmetic.
+    /// Use `exclude_ids` for "don't return these specific points" (e.g.
+    /// recently played) and `negative_ids` for "diverge from this taste".
+    ///
     /// Returns `Vec<(point_id, score)>` ordered by descending relevance score.
     /// Returns an empty vec when `positive_ids` is empty (nothing to anchor on).
     pub fn recommend(
         &self,
         positive_ids: &[u64],
         negative_ids: &[u64],
+        exclude_ids: &[u64],
         limit: usize,
     ) -> Result<Vec<(u64, f64)>, IndexerError> {
         if positive_ids.is_empty() {
@@ -397,12 +403,17 @@ impl QdrantClient {
             recommend["negative"] = json!(negative_ids);
         }
 
-        let body = json!({
+        let mut body = json!({
             "query": { "recommend": recommend },
             "using": VEC_MERT,
             "limit": limit,
             "with_payload": false
         });
+        if !exclude_ids.is_empty() {
+            body["filter"] = json!({
+                "must_not": [{ "has_id": exclude_ids }]
+            });
+        }
 
         let resp: Value = self
             .agent
@@ -924,7 +935,10 @@ impl QdrantClient {
     /// Derive behavioral signals (positives and negatives) from play events.
     ///
     /// - **Positives:** top 30 distinct track_ids from the last 100 events with
-    ///   `listen_pct >= 0.8`. Tracks appearing 3+ times get an extra entry for weight.
+    ///   `listen_pct >= 0.8` AND `origin != "album_seq"`. Tracks appearing 3+
+    ///   times get an extra entry for weight. Album-sequence completions are
+    ///   excluded because they reflect "the next song played because the album
+    ///   was rolling", not active taste preference.
     /// - **Negatives:** up to 15 distinct track_ids from the last 50 events with
     ///   `listen_pct < 0.15` AND `origin != "album_seq"`.
     pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
@@ -941,6 +955,9 @@ impl QdrantClient {
             "must": [
                 event_type_filter,
                 { "key": "listen_pct", "range": { "gte": 0.8 } }
+            ],
+            "must_not": [
+                { "key": "origin", "match": { "value": "album_seq" } }
             ]
         });
         let pos_payloads = self.scroll_play_events(pos_filter, 100)?;

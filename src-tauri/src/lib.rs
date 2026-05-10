@@ -389,35 +389,40 @@ fn lib_autoplay_next(
     let lim = limit.unwrap_or(5);
     let client = lib.handle.client();
 
-    // Layer 1: Qdrant Recommendations API with behavioral signals
+    // Layer 1: Qdrant Recommendations API with behavioral signals.
+    //
+    // Positives are built as `[seed × SEED_WEIGHT, ...history]`. Qdrant's
+    // Recommendations API averages all positives equally; without weighting,
+    // a seed competes with up to ~30 historical favorites and gets diluted
+    // (~3% of the centroid). Repeating the seed dominates the recommendation
+    // vector toward the current vibe while keeping history as flavoring.
+    //
+    // exclude_ids is passed as a hard filter (must_not has_id), NOT as Qdrant
+    // negatives. Negatives reshape the search vector; we only want to skip
+    // recently-played items in the result list.
     if client.is_healthy() {
+        const SEED_WEIGHT: usize = 20;
         match lib.handle.behavioral_signals() {
-            Ok((mut positives, negatives)) => {
-                if !positives.contains(&track_id) {
-                    positives.insert(0, track_id);
-                }
-                match client.recommend(&positives, &negatives, lim + exclude_ids.len()) {
-                    Ok(recs) => {
-                        let filtered: Vec<(u64, f64)> = recs
-                            .into_iter()
-                            .filter(|(id, _)| !exclude_ids.contains(id))
-                            .take(lim)
-                            .collect();
-                        if !filtered.is_empty() {
-                            let mut tracks = Vec::new();
-                            for (rec_id, _score) in &filtered {
-                                if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
-                                    if let Some(rel) = &t.album_cover_path {
-                                        t.album_cover_path = Some(lib.cache_dir.join(rel));
-                                    }
-                                    tracks.push(t);
+            Ok((history, negatives)) => {
+                let mut positives: Vec<u64> =
+                    std::iter::repeat(track_id).take(SEED_WEIGHT).collect();
+                positives.extend(history.into_iter().filter(|id| *id != track_id));
+                match client.recommend(&positives, &negatives, &exclude_ids, lim) {
+                    Ok(recs) if !recs.is_empty() => {
+                        let mut tracks = Vec::new();
+                        for (rec_id, _score) in &recs {
+                            if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
+                                if let Some(rel) = &t.album_cover_path {
+                                    t.album_cover_path = Some(lib.cache_dir.join(rel));
                                 }
-                            }
-                            if !tracks.is_empty() {
-                                return Ok(tracks);
+                                tracks.push(t);
                             }
                         }
+                        if !tracks.is_empty() {
+                            return Ok(tracks);
+                        }
                     }
+                    Ok(_) => {}
                     Err(e) => {
                         tracing::warn!(track_id, error = %e, "autoplay: recommend failed");
                     }

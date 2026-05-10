@@ -462,7 +462,7 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
 
     let based_on_top = if !seed_ids.is_empty() {
         let positive: Vec<u64> = seed_ids.to_vec();
-        let rec_ids = client.recommend(&positive, &[], 10)?;
+        let rec_ids = client.recommend(&positive, &[], &[], 10)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
             if let Some(t) = get_track(client, tid)? {
@@ -478,7 +478,7 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
 
     let discover = if !seed_ids.is_empty() {
         let positive: Vec<u64> = seed_ids.to_vec();
-        let rec_ids = client.recommend(&positive, &[], 20)?;
+        let rec_ids = client.recommend(&positive, &[], &[], 20)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
             if let Some(t) = get_track(client, tid)? {
@@ -509,7 +509,7 @@ pub fn similar(
     track_id: u64,
     limit: usize,
 ) -> Result<Vec<(Track, f32)>, IndexerError> {
-    let recs = client.recommend(&[track_id], &[], limit)?;
+    let recs = client.recommend(&[track_id], &[], &[], limit)?;
     let mut results = Vec::new();
     for (tid, score) in recs {
         if let Some(t) = get_track(client, tid)? {
@@ -696,7 +696,10 @@ pub fn autoplay_next(
     exclude_ids: &[u64],
     limit: usize,
 ) -> Result<Vec<(u64, f64)>, IndexerError> {
-    let recs = client.recommend(&[seed_track_id], exclude_ids, limit)?;
+    // exclude_ids is a hard exclusion (filter), not a Qdrant negative — recently
+    // played tracks should be filtered out, not used to skew the recommendation
+    // vector away from their semantic neighborhood.
+    let recs = client.recommend(&[seed_track_id], &[], exclude_ids, limit)?;
     Ok(recs)
 }
 

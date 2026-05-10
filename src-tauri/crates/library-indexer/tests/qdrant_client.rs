@@ -45,7 +45,7 @@ fn test_qdrant_lifecycle() {
     // Recommend using the sentinel as a positive anchor.
     // With only 1 point this may return an empty list — that is acceptable.
     let recs = client
-        .recommend(&[999_999], &[], 5)
+        .recommend(&[999_999], &[], &[], 5)
         .expect("recommend failed");
     assert!(
         recs.len() <= 5,
