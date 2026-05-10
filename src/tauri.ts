@@ -284,6 +284,12 @@ export interface SpectrumVisualConfig {
   sdf_emissive_boost: number;
   sdf_resolution_scale: number;
   sdf_render_mode: number;
+  shape_anim_baseline_speed: number;
+  shape_anim_energy_gain: number;
+  shape_anim_peak_kick_gain: number;
+  shape_anim_peak_threshold: number;
+  shape_anim_peak_decay: number;
+  shape_anim_mode: string;
 }
 
 export interface SpectrumPresetInfo {

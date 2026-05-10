@@ -124,6 +124,7 @@ uniform float u_baseLightness;
 uniform float u_depthLightness;
 uniform float u_energyLightness;
 uniform float u_dustMode; // 1.0 = point particles with soft circle, 0.0 = lines
+uniform float u_overlayAlpha; // global multiplier for foreground (1.0 default; per-shape override via manifest)
 out vec4 fragColor;
 
 vec3 hsl2rgb(float h, float s, float l) {
@@ -153,7 +154,7 @@ void main() {
         alpha *= smoothstep(0.5, 0.1, dist); // soft glow falloff
     }
 
-    fragColor = vec4(color, alpha);
+    fragColor = vec4(color, alpha * u_overlayAlpha);
 }
 `;
 
@@ -291,6 +292,32 @@ export default function SpectrumBackground(props: Props) {
   let curLines = cfg.lines;
   let curPoints = cfg.points_per_line;
 
+  // Animated shape state — populated when shapeUrl points to a directory
+  // containing manifest.json + normal_*.png. Each frame is a pre-packed
+  // RGB normal map (R=brightness, G=normal_x, B=normal_y) loaded once into
+  // GPU as a separate texture; runtime swaps the binding by frame index.
+  type AnimShape = {
+    frames: WebGLTexture[];
+    colorFrames: WebGLTexture[]; // optional; empty array if not provided by manifest
+    dim: number;
+    duration: number;            // seconds
+    intensityRanking: number[];  // frame indices sorted dim → bright; empty if not classified
+    bandGroups: { bass: number[]; mid: number[]; treble: number[] };
+    overlayAlpha: number;        // multiplier (0..1) for wireframe/dust foreground pass; 1.0 = unchanged
+    hideOverlay: boolean;        // when true, skip the foreground pass entirely (sprite-only mode)
+  };
+  let animShape: AnimShape | null = null;
+  let animFrameIndex = 0;
+  // Pendulum/spring state — peaks inject velocity in alternating direction;
+  // damped harmonic oscillator returns the face to the neutral (front-facing)
+  // frame between peaks. Repeated transients produce natural vai-e-volta.
+  let animDisplacement = 0;   // -1 to +1, normalized offset from neutral frame
+  let animVelocity = 0;       // displacement velocity per render frame
+  let animPeakDirection = 1;  // sign flips each peak: -1 = right, +1 = left
+  let animLastEnergy = 0;     // raw bass energy from previous frame (for delta detection)
+  let animTargetFloat = 0;    // smoothed target frame index for intensity / band_split modes
+  let animPhase = 0;          // 0..1 phase accumulator for band_split continuous cycling
+
   createEffect(async () => {
     const track = player.currentTrack;
     if (!track) return;
@@ -333,7 +360,7 @@ export default function SpectrumBackground(props: Props) {
       "u_baseAlpha", "u_depthAlpha", "u_energyAlpha",
       "u_baseLightness", "u_depthLightness", "u_energyLightness",
       "u_brightnessRigidity", "u_bassReactivityBoost", "u_invertDepth",
-      "u_dustMode",
+      "u_dustMode", "u_overlayAlpha",
     ];
     for (const name of names) {
       u[name] = gl.getUniformLocation(program, name);
@@ -437,7 +464,129 @@ export default function SpectrumBackground(props: Props) {
     uploadRegions();
   }
 
+  function disposeAnimShape() {
+    if (!animShape || !gl) {
+      animShape = null;
+      return;
+    }
+    for (const tex of animShape.frames) gl.deleteTexture(tex);
+    for (const tex of animShape.colorFrames) gl.deleteTexture(tex);
+    animShape = null;
+    animFrameIndex = 0;
+    animDisplacement = 0;
+    animVelocity = 0;
+    animPeakDirection = 1;
+    animLastEnergy = 0;
+  }
+
+  async function loadAnimatedShape(baseUrl: string) {
+    disposeAnimShape();
+    if (!gl) return;
+
+    const manifestUrl = `${baseUrl}/manifest.json`;
+    const manifest = await fetch(manifestUrl).then(r => r.json()).catch(() => null);
+    if (!manifest || !manifest.frames || !manifest.dim) return;
+
+    const dim: number = manifest.dim;
+    const frameCount: number = manifest.frames;
+    const duration: number = manifest.duration_seconds ?? frameCount / 24;
+
+    // Color texture: representative frame for the bg pass
+    const colorImg = new Image();
+    colorImg.crossOrigin = "anonymous";
+    colorImg.src = `${baseUrl}/color.png`;
+    await new Promise<void>((resolve) => {
+      colorImg.onload = () => resolve();
+      colorImg.onerror = () => resolve();
+    });
+    if (gl && colorImg.naturalWidth > 0) {
+      if (!colorTex) colorTex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, colorTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, colorImg);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+
+    const frames: WebGLTexture[] = [];
+    const colorFrames: WebGLTexture[] = [];
+    const hasColorFrames: boolean = manifest.color_frames === true;
+
+    for (let i = 0; i < frameCount; i++) {
+      const idx = String(i).padStart(4, "0");
+
+      const normalImg = new Image();
+      normalImg.crossOrigin = "anonymous";
+      normalImg.src = `${baseUrl}/normal_${idx}.png`;
+      await new Promise<void>((resolve) => {
+        normalImg.onload = () => resolve();
+        normalImg.onerror = () => resolve();
+      });
+      if (!gl) return;
+      const tex = gl.createTexture();
+      if (!tex) continue;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, gl.RGB, gl.UNSIGNED_BYTE, normalImg);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      frames.push(tex);
+
+      if (hasColorFrames) {
+        const colorFrameImg = new Image();
+        colorFrameImg.crossOrigin = "anonymous";
+        colorFrameImg.src = `${baseUrl}/color_${idx}.jpg`;
+        await new Promise<void>((resolve) => {
+          colorFrameImg.onload = () => resolve();
+          colorFrameImg.onerror = () => resolve();
+        });
+        if (!gl) return;
+        if (colorFrameImg.naturalWidth > 0) {
+          const ctex = gl.createTexture();
+          if (ctex) {
+            gl.bindTexture(gl.TEXTURE_2D, ctex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, colorFrameImg);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            colorFrames.push(ctex);
+          }
+        }
+      }
+    }
+
+    if (frames.length === 0) return;
+    const intensityRanking: number[] = Array.isArray(manifest.intensity_ranking) ? manifest.intensity_ranking : [];
+    const bandGroupsRaw = manifest.band_groups ?? {};
+    const bandGroups = {
+      bass: Array.isArray(bandGroupsRaw.bass) ? bandGroupsRaw.bass : [],
+      mid: Array.isArray(bandGroupsRaw.mid) ? bandGroupsRaw.mid : [],
+      treble: Array.isArray(bandGroupsRaw.treble) ? bandGroupsRaw.treble : [],
+    };
+    const overlayAlphaRaw = typeof manifest.overlay_alpha === "number" ? manifest.overlay_alpha : 1.0;
+    const overlayAlpha = Math.max(0.0, Math.min(1.0, overlayAlphaRaw));
+    const hideOverlay: boolean = manifest.hide_overlay === true;
+    animShape = { frames, colorFrames, dim, duration, intensityRanking, bandGroups, overlayAlpha, hideOverlay };
+    hasNormalMap = true;
+  }
+
+  function isAnimatedShapeUrl(url: string): boolean {
+    // Directory shapes have no file extension and end with the shape name only.
+    // The HTTP server resolves them to media/shapes/<name>/ where manifest.json lives.
+    return !/\.[a-zA-Z0-9]{1,5}(\?|$)/.test(url);
+  }
+
   function loadShape(url: string) {
+    if (isAnimatedShapeUrl(url)) {
+      loadAnimatedShape(url);
+      return;
+    }
+
+    disposeAnimShape();
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
@@ -559,6 +708,126 @@ export default function SpectrumBackground(props: Props) {
     }
     const globalEnergy = Math.min(1.0, bassEnergy / (40.0 * 255.0));
 
+    // Animated shape rotation: continuous baseline so motion is always visible,
+    // plus an energy-modulated speed boost and ASR peak kicks for transient bursts.
+    // Compose: position += baseline + energy_gain*E + peak_kick (frames per render frame).
+    if (animShape && animShape.frames.length > 0) {
+      const N = animShape.frames.length;
+      const mode = (cfg as SpectrumVisualConfig).shape_anim_mode ?? "intensity";
+
+      // Common signals available to all modes.
+      let rawBass = 0;
+      const rawBassBins = 40;
+      for (let i = 0; i < rawBassBins; i++) rawBass += rawFft[i];
+      const rawE = Math.min(1.0, rawBass / (rawBassBins * 255.0));
+
+      let totalE = 0;
+      for (let i = 0; i < LOG_BANDS; i++) totalE += smoothed[i];
+      const E = Math.min(1.0, totalE / (LOG_BANDS * 255.0));
+
+      const peakThreshold = (cfg as SpectrumVisualConfig).shape_anim_peak_threshold ?? 0.01;
+      const kickGain = (cfg as SpectrumVisualConfig).shape_anim_peak_kick_gain ?? 0.8;
+      const energyGain = (cfg as SpectrumVisualConfig).shape_anim_energy_gain ?? 0.4;
+
+      // Ease rate for intensity / band_split modes — repurposed YAML knob.
+      // Lower = slower transitions; 0.04 default feels like a deliberate fade
+      // instead of a snap. Hot-reloadable via shape_anim_baseline_speed.
+      const easeRate = Math.max(0.01, Math.min(0.5, (cfg as SpectrumVisualConfig).shape_anim_baseline_speed ?? 0.04));
+
+      if (mode === "intensity" && animShape.intensityRanking.length === N) {
+        // Map smoothed loudness to a rank position in the dim→bright ordering;
+        // ease the rank so transitions don't snap. Each kick pulls toward higher
+        // rank (more intense visual frame), silence settles to the dimmest.
+        const drive = Math.min(1.0, E + rawE * 0.3);
+        const targetRank = drive * (N - 1);
+        animTargetFloat += (targetRank - animTargetFloat) * easeRate;
+        const rankIdx = Math.max(0, Math.min(N - 1, Math.round(animTargetFloat)));
+        animFrameIndex = animShape.intensityRanking[rankIdx];
+      } else if (mode === "band_split") {
+        // Aggregate energy in three FFT regions, pick frame from the dominant
+        // band's group; if the shape has no frames classified for that band,
+        // fall back to a slice of the intensity ranking (bass=dim, treble=bright)
+        // so every frequency drives a visible change.
+        let bassE = 0, midE = 0, trebE = 0;
+        const bassEnd = Math.floor(LOG_BANDS / 3);
+        const midEnd = Math.floor((LOG_BANDS * 2) / 3);
+        for (let i = 0; i < bassEnd; i++) bassE += smoothed[i];
+        for (let i = bassEnd; i < midEnd; i++) midE += smoothed[i];
+        for (let i = midEnd; i < LOG_BANDS; i++) trebE += smoothed[i];
+        bassE /= (bassEnd * 255.0);
+        midE /= ((midEnd - bassEnd) * 255.0);
+        trebE /= ((LOG_BANDS - midEnd) * 255.0);
+
+        // Band selection by dominance.
+        let activeBand: "bass" | "mid" | "treble" = "mid";
+        let bandAmp = midE;
+        if (bassE >= midE && bassE >= trebE) { activeBand = "bass"; bandAmp = bassE; }
+        else if (trebE >= midE && trebE >= bassE) { activeBand = "treble"; bandAmp = trebE; }
+
+        // Resolve the frame group for the active band, with intensity-ranking fallback.
+        let group: number[] = animShape.bandGroups[activeBand];
+        if (group.length === 0 && animShape.intensityRanking.length === N) {
+          const r = animShape.intensityRanking;
+          if (activeBand === "bass") group = r.slice(0, Math.max(1, Math.floor(N / 3)));
+          else if (activeBand === "treble") group = r.slice(Math.max(0, N - Math.floor(N / 3)));
+          else group = r.slice(Math.floor(N / 3), Math.max(Math.floor(N / 3) + 1, Math.floor((N * 2) / 3)));
+        }
+        if (group.length === 0) group = animShape.intensityRanking.length === N ? animShape.intensityRanking : Array.from({length: N}, (_, k) => k);
+
+        // Phase-based cycling within the active band group.
+        // Smoothed bandAmp plateaus during steady music — using it as direct
+        // position locks the frame. Instead, advance a continuous phase every
+        // render frame (baseline) and accelerate ONLY on real transients
+        // (delta of rawE above peakThreshold). Both contributions are tightly
+        // capped so calibration via shape_anim_baseline_speed stays predictable.
+        //
+        // baseline: easeRate=0.01 → ~0.0005/frame (1 cycle per ~33s @ 60fps)
+        //           easeRate=0.04 → ~0.002/frame  (1 cycle per ~8s)
+        //           easeRate=0.10 → ~0.005/frame  (1 cycle per ~3s)
+        // kick:     gated by peakThreshold, capped at ~0.02 (=~0.6 frames in
+        //           a 32-frame group) so individual kicks stay distinct, not blurry.
+        const dRaw = rawE - animLastEnergy;
+        const baseline = Math.max(0.0001, easeRate * 0.05);
+        const kickBoost = (dRaw > peakThreshold) ? Math.min(0.02, dRaw * kickGain * 0.5) : 0;
+        animPhase = (animPhase + baseline + kickBoost) % 1.0;
+        // Sensitivity still modulates how much amplitude shifts the cycle position.
+        const sensitivity = Math.max(0.0, energyGain * 0.3);
+        const ampOffset = bandAmp * sensitivity;
+        const pos = (animPhase + ampOffset) % 1.0;
+        const idx = Math.max(0, Math.min(group.length - 1, Math.floor(pos * group.length)));
+        animFrameIndex = group[idx];
+      } else {
+        // Pendulum (legacy) — kept for non-classified shapes or explicit mode.
+        const damping = (cfg as SpectrumVisualConfig).shape_anim_peak_decay ?? 0.90;
+        const spring = Math.max(0.005, (cfg as SpectrumVisualConfig).shape_anim_baseline_speed ?? 0.02) * 2.5;
+        const dRaw = rawE - animLastEnergy;
+        if (dRaw > peakThreshold) {
+          animVelocity += dRaw * kickGain * 2.0 * animPeakDirection;
+          animPeakDirection = -animPeakDirection;
+        }
+        animLastEnergy = rawE;
+        animVelocity += -animDisplacement * spring;
+        animVelocity *= damping;
+        animVelocity += (E - 0.1) * energyGain * 0.02 * animPeakDirection;
+        animDisplacement += animVelocity;
+        if (animDisplacement > 1) { animDisplacement = 1; animVelocity *= -0.4; }
+        if (animDisplacement < -1) { animDisplacement = -1; animVelocity *= -0.4; }
+        const halfFrame = Math.floor(N / 4);
+        animFrameIndex = Math.max(0, Math.min(N - 1, Math.floor(halfFrame + animDisplacement * halfFrame)));
+      }
+
+      // Pendulum & intensity modes use rawE for delta tracking; ensure animLastEnergy is sane.
+      animLastEnergy = rawE;
+    }
+
+    // Bind the active normal map (animated current frame, or static texture)
+    gl.activeTexture(gl.TEXTURE0);
+    if (animShape && animShape.frames[animFrameIndex]) {
+      gl.bindTexture(gl.TEXTURE_2D, animShape.frames[animFrameIndex]);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, normalTex);
+    }
+
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, fftTex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LOG_BANDS, 1, gl.RED, gl.UNSIGNED_BYTE, fftUpload);
@@ -570,7 +839,13 @@ export default function SpectrumBackground(props: Props) {
     if (cfg.style !== "wireframe" && hasNormalMap && bgProgram && quadVao && colorTex) {
       gl.useProgram(bgProgram);
       gl.activeTexture(gl.TEXTURE3);
-      gl.bindTexture(gl.TEXTURE_2D, colorTex);
+      // Animated shapes bind the color texture matching the current frame so
+      // the bg image rotates in lockstep with the wireframe.
+      if (animShape && animShape.colorFrames && animShape.colorFrames[animFrameIndex]) {
+        gl.bindTexture(gl.TEXTURE_2D, animShape.colorFrames[animFrameIndex]);
+      } else {
+        gl.bindTexture(gl.TEXTURE_2D, colorTex);
+      }
       gl.uniform1i(u["bg_u_colorMap"], 3);
       gl.uniform1f(u["bg_u_globalEnergy"], globalEnergy);
       gl.uniform1f(u["bg_u_bgDimming"], cfg.bg_dimming);
@@ -581,6 +856,11 @@ export default function SpectrumBackground(props: Props) {
     }
 
     // --- Pass 2: Foreground Grid Pass ---
+    // Per-shape opt-out: shapes with hide_overlay=true are sprite-only (no wireframe).
+    if (animShape?.hideOverlay) {
+      gl.bindVertexArray(null);
+      return;
+    }
     gl.useProgram(program);
     gl.uniform2f(u.u_resolution, canvas!.clientWidth, canvas!.clientHeight);
     gl.uniform1f(u.u_baseHue, baseHue);
@@ -611,12 +891,14 @@ export default function SpectrumBackground(props: Props) {
 
     const isDust = cfg.style === "dust";
     gl.uniform1f(u.u_dustMode, isDust ? 1.0 : 0.0);
+    // Per-shape overlay alpha multiplier (manifest overlay_alpha; 1.0 default).
+    gl.uniform1f(u.u_overlayAlpha, animShape ? animShape.overlayAlpha : 1.0);
 
-    if (cfg.style === "exoskeleton" || isDust) {
-      // Additive Blending: Neon glow for exoskeleton and dust
+    if (isDust) {
+      // Additive Blending: Neon glow for dust mode only
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     } else {
-      // Standard Alpha Blending for wireframe
+      // Standard Alpha Blending for exoskeleton and wireframe
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }
 
@@ -635,7 +917,10 @@ export default function SpectrumBackground(props: Props) {
   createEffect(() => {
     const url = props.shapeUrl;
     if (url) loadShape(url);
-    else hasNormalMap = false;
+    else {
+      disposeAnimShape();
+      hasNormalMap = false;
+    }
   });
 
   onMount(() => {
@@ -669,6 +954,7 @@ export default function SpectrumBackground(props: Props) {
     window.removeEventListener("resize", resize);
     spectrumUnsubscribe();
     unlisten?.();
+    disposeAnimShape();
     if (gl) {
       gl.deleteProgram(program);
       if (bgProgram) gl.deleteProgram(bgProgram);

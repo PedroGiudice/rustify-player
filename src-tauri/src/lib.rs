@@ -93,8 +93,54 @@ struct PlayerSnapshot {
     volume: f32,
     current_origin: Option<String>,
     current_track_id: Option<u64>,
-    started_at: Option<String>,
+    started_at: Option<i64>,
     last_position_ms: Option<i64>,
+}
+
+/// If a track is currently being played and we have enough state to log it
+/// (track_id, origin, started_at, duration), emit a `play_event` and clear the
+/// pending fields. Used both for natural completion (`track_ended`) and skips
+/// (`track_skipped`). Caller decides which one fits the lifecycle event.
+///
+/// Returns true if an event was actually written.
+fn flush_play_event(
+    snap: &mut PlayerSnapshot,
+    indexer: &library_indexer::IndexerHandle,
+    event_type: &str,
+) -> bool {
+    let (track_id, origin, started_at, duration) = match (
+        snap.current_track_id,
+        snap.current_origin.clone(),
+        snap.started_at,
+        snap.current_track
+            .as_ref()
+            .and_then(|t| t.duration)
+            .map(|d| d.as_millis() as u64),
+    ) {
+        (Some(tid), Some(o), Some(s), Some(d)) => (tid, o, s, d),
+        _ => return false,
+    };
+
+    let end_pos = snap.last_position_ms.unwrap_or(0).max(0) as u64;
+
+    if let Err(e) = indexer.client().insert_play_event(
+        event_type,
+        track_id,
+        &origin,
+        started_at,
+        unix_now(),
+        end_pos,
+        duration,
+    ) {
+        tracing::warn!(?e, track_id, event_type, "failed to record play event");
+        return false;
+    }
+
+    snap.current_origin = None;
+    snap.current_track_id = None;
+    snap.started_at = None;
+    snap.last_position_ms = None;
+    true
 }
 struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
@@ -114,12 +160,11 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-fn unix_now() -> String {
+fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs()
-        .to_string()
+        .as_secs() as i64
 }
 
 // ---------------------------------------------------------------------------
@@ -710,6 +755,20 @@ struct SpectrumVisualConfig {
     sdf_resolution_scale: f32,
     #[serde(default = "default_sdf_render_mode")]
     sdf_render_mode: u32,
+    // Animated shape (directory with manifest.json + normal_*.png) driver params.
+    // Position advances per render frame as: baseline + energy_gain*E + peak_kick*kick_gain.
+    #[serde(default = "default_shape_anim_baseline_speed")]
+    shape_anim_baseline_speed: f32,
+    #[serde(default = "default_shape_anim_energy_gain")]
+    shape_anim_energy_gain: f32,
+    #[serde(default = "default_shape_anim_peak_kick_gain")]
+    shape_anim_peak_kick_gain: f32,
+    #[serde(default = "default_shape_anim_peak_threshold")]
+    shape_anim_peak_threshold: f32,
+    #[serde(default = "default_shape_anim_peak_decay")]
+    shape_anim_peak_decay: f32,
+    #[serde(default = "default_shape_anim_mode")]
+    shape_anim_mode: String,
 }
 
 fn default_style() -> String { "exoskeleton".into() }
@@ -748,6 +807,12 @@ fn default_sdf_smooth_k() -> f32 { 0.85 }           // smin blending — higher 
 fn default_sdf_emissive_boost() -> f32 { 1.3 }      // multiplier applied to fresnel rim + core glow
 fn default_sdf_resolution_scale() -> f32 { 0.4 }    // render to 0.4x viewport, upscale linearly — biggest perf knob
 fn default_sdf_render_mode() -> u32 { 1 }           // 0 = 2D glow (cheapest, neon look), 1 = 3D raymarched (default, volumetric)
+fn default_shape_anim_baseline_speed() -> f32 { 0.02 }   // subtle constant rotation in silence (~40s/full turn @60fps for 48f)
+fn default_shape_anim_energy_gain() -> f32 { 0.4 }        // multiplier on smoothed full-band energy (sustained loudness pull)
+fn default_shape_anim_peak_kick_gain() -> f32 { 0.8 }     // multiplier on ASR peak velocity — high so kicks are clearly visible
+fn default_shape_anim_peak_threshold() -> f32 { 0.01 }    // delta in raw sub-bass needed to trigger a peak kick (lower = more sensitive)
+fn default_shape_anim_peak_decay() -> f32 { 0.90 }        // peak kick velocity multiplier/frame (0.90 = ~115ms half-life @60fps, snappier)
+fn default_shape_anim_mode() -> String { "intensity".into() }  // pendulum | intensity | band_split (requires Gemini-classified manifest for the latter two)
 
 impl Default for SpectrumVisualConfig {
     fn default() -> Self {
@@ -811,6 +876,12 @@ impl Default for SpectrumVisualConfig {
             sdf_emissive_boost: default_sdf_emissive_boost(),
             sdf_resolution_scale: default_sdf_resolution_scale(),
             sdf_render_mode: default_sdf_render_mode(),
+            shape_anim_baseline_speed: default_shape_anim_baseline_speed(),
+            shape_anim_energy_gain: default_shape_anim_energy_gain(),
+            shape_anim_peak_kick_gain: default_shape_anim_peak_kick_gain(),
+            shape_anim_peak_threshold: default_shape_anim_peak_threshold(),
+            shape_anim_peak_decay: default_shape_anim_peak_decay(),
+            shape_anim_mode: default_shape_anim_mode(),
         }
     }
 }
@@ -1078,6 +1149,13 @@ fn list_shapes() -> Result<Vec<String>, String> {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.ends_with(".png") || name.ends_with(".svg") || name.ends_with(".webp") || name.ends_with(".jpg") || name.ends_with(".jpeg") {
                 names.push(name);
+            } else if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                // Directory shapes hold pre-generated normal-map sequences
+                // (manifest.json + normal_*.png) for animated visuals.
+                let manifest = entry.path().join("manifest.json");
+                if manifest.is_file() {
+                    names.push(name);
+                }
             }
         }
     }
@@ -1136,12 +1214,17 @@ fn log_event(lib: State<Library>, payload: serde_json::Value) -> Result<(), Stri
 fn player_play(
     player: State<Player>,
     snapshot: State<Snapshot>,
+    library: State<Library>,
     path: String,
     origin: Option<String>,
     track_id: Option<String>,
 ) -> Result<(), String> {
     let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
     if let Ok(mut s) = snapshot.0.lock() {
+        // If a track was already playing, this call is a skip — log it before
+        // overwriting the snapshot. flush_play_event clears the pending fields
+        // on success, so the assignments below always operate on a fresh slot.
+        flush_play_event(&mut s, &library.handle, "track_skipped");
         s.current_origin = origin.or_else(|| Some("manual".to_string()));
         s.current_track_id = tid;
         s.started_at = None;
@@ -1187,7 +1270,14 @@ fn player_resume(player: State<Player>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn player_stop(player: State<Player>) -> Result<(), String> {
+fn player_stop(
+    player: State<Player>,
+    snapshot: State<Snapshot>,
+    library: State<Library>,
+) -> Result<(), String> {
+    if let Ok(mut s) = snapshot.0.lock() {
+        flush_play_event(&mut s, &library.handle, "track_skipped");
+    }
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
     handle.send(EngineCommand::Stop).map_err(err)
@@ -2601,40 +2691,7 @@ pub fn run() {
                                 s.last_position_ms = Some(ms);
                             }
                             StateUpdate::TrackEnded(_) => {
-                                if let (
-                                    Some(track_id),
-                                    Some(origin),
-                                    Some(started_at),
-                                    Some(duration),
-                                ) = (
-                                    s.current_track_id,
-                                    s.current_origin.clone(),
-                                    s.started_at.clone(),
-                                    s.current_track
-                                        .as_ref()
-                                        .and_then(|t| t.duration)
-                                        .map(|d| d.as_millis() as i64),
-                                ) {
-                                    let _ended_at = unix_now();
-                                    let end_pos = s.last_position_ms;
-                                    if let Err(e) = indexer.client().insert_play_event(
-                                        track_id,
-                                        &origin,
-                                        &started_at,
-                                        end_pos.unwrap_or(0) as u64,
-                                        duration as u64,
-                                    ) {
-                                        tracing::warn!(
-                                            ?e,
-                                            track_id,
-                                            "failed to record play event"
-                                        );
-                                    }
-                                }
-                                s.current_origin = None;
-                                s.current_track_id = None;
-                                s.started_at = None;
-                                s.last_position_ms = None;
+                                flush_play_event(&mut s, &indexer, "track_ended");
                             }
                             StateUpdate::SpectrumData(_) => {}
                             _ => {}

@@ -15,8 +15,9 @@ Sessão fechou com **dois paradigmas visuais funcionais e calibrados**:
   pra sync com peaks. Dois modos via `sdf_render_mode`: 0 = 2D glow (~50×
   mais barato), 1 = 3D raymarched. Usuário escolheu **mode 0** após teste.
 
-**Estado:** working tree com 4 arquivos modificados + 1 novo, NADA COMMITADO.
-Última release publicada via `release.sh` consumiu o working tree atual.
+**Estado:** tudo commitado em `d41faae` (working tree limpo). Mensagem do
+commit é prosa do resumo em vez de Conventional Commits — funcional, mas
+se importar com histórico vale `git commit --amend`.
 
 ## Arquivos principais
 
@@ -48,37 +49,7 @@ Sessão fechou com **dois paradigmas visuais funcionais e calibrados**:
 
 ## Próximos passos (por prioridade)
 
-### 1. Commitar tudo desta sessão (alta — bloqueador)
-
-**Onde:** working tree do projeto
-
-**O que:** 3 commits separados, na ordem:
-
-```bash
-# 1. Backend params (lib.rs + tauri.ts)
-git add src-tauri/src/lib.rs src/tauri.ts
-git commit -m "feat(spectrum): expose 13 SDF + 6 fluid peak/colour params via YAML hot-reload"
-
-# 2. SDF component (novo paradigma)
-git add src/components/SDFBackground.tsx src/views/NowPlaying.tsx
-git commit -m "feat(sdf): SDFBackground component with 2D glow / 3D raymarched render modes + ASR impulse envelope"
-
-# 3. Fluid refactor (peak-trigger)
-git add src/components/FluidBackground.tsx
-git commit -m "feat(fluid): peak-triggered emission with delta+ratio detection, hue/sat jitter, position jitter"
-
-# 4. Docs (untracked — opcional, se decidir manter no repo)
-git add docs/contexto/ docs/prompts/
-git commit -m "docs: session contexts and resumption prompts (2026-05-09 / 10)"
-```
-
-**Por que:** working tree atual reflete múltiplas releases publicadas; sem
-commits, qualquer rollback é manual via `git diff`. Próxima sessão vai
-querer ramificar a partir de checkpoints.
-
-**Verificar:** `git log --oneline -5` deve mostrar os novos commits no topo.
-
-### 2. Reconciliar `fluid_density_dissipation` user-tuned vs default Rust (alta)
+### 1. Reconciliar `fluid_density_dissipation` user-tuned vs default Rust (alta)
 
 **Onde:** `src-tauri/src/lib.rs:695` (`default_fluid_density_dissipation`)
 
@@ -96,7 +67,7 @@ investigar se default deve subir.
 **Verificar:** alterar default Rust → release → testar lado-a-lado com
 e sem override no YAML.
 
-### 3. Audit `bass_attack_scale: 0.9` (média)
+### 2. Audit `bass_attack_scale: 0.9` (média)
 
 **Onde:** procurar uso em `src/components/FluidBackground.tsx` e
 `src/components/SpectrumBackground_V2.tsx`
@@ -110,7 +81,7 @@ nada, é confusão silenciosa.
 **Verificar:** `grep -n "bass_attack_scale" src/components/*.tsx` —
 mapear todos os usos e documentar quais styles são afetados.
 
-### 4. Decidir SDF mode default no Rust (média)
+### 3. Decidir SDF mode default no Rust (média)
 
 **Onde:** `src-tauri/src/lib.rs` (`default_sdf_render_mode`)
 
@@ -123,7 +94,7 @@ pra novos users (já abre no modo mais smooth).
 **Verificar:** abrir SDF preset sem override de YAML → conferir que abre
 em 2D mode.
 
-### 5. Portar hue/sat jitter pro SDF (média)
+### 4. Portar hue/sat jitter pro SDF (média)
 
 **Onde:** `src/components/SDFBackground.tsx`, função `triadicPaint()` no
 shader (linha ~150) e shader uniforms
@@ -140,7 +111,7 @@ em vez de esquema.
 **Verificar:** visualmente — esferas devem mostrar variação tonal
 sutil mesmo em silêncio.
 
-### 6. X600 EQ ear-test warm-tilt 4-band (alta — herdada de sessão anterior)
+### 5. X600 EQ ear-test warm-tilt 4-band (alta — herdada de sessão anterior)
 
 **Onde:** UI do app — Signal view → Importar preset
 
@@ -153,7 +124,7 @@ nunca validado em escuta longa.
 **Verificar:** auditivamente. Tracks: Adele "Hello", Daft Punk
 "Doin' It Right", Steely Dan "Aja", Kendrick "DNA".
 
-### 7. YAML hot-reload pra EQ (média — herdada)
+### 6. YAML hot-reload pra EQ (média — herdada)
 
 **Onde:** novo módulo backend, watcher `notify` em arquivo
 `~/.config/rustify-player/eq-live.yaml`
@@ -228,9 +199,9 @@ ssh cmr-auto@100.102.249.9 "tail -10 ~/.local/share/rustify-player/spectrum/defa
 <session_metadata>
 date: 2026-05-10
 branch: main
-last_commit: b89244f
-release_tag: dev (v0.2.3, ~9 republicações nesta sessão)
-working_tree: 4 modified + 1 new component, not committed
+last_commit: d41faae
+release_tag: dev (v0.2.3, múltiplas republicações nesta sessão)
+working_tree: clean (commit feito via Zed)
 fluid_state: peak-trigger funcional, user-tuned dissipation 45.0 na cmr-auto
 sdf_state: 2D mode escolhido pelo user, ASR envelope estável
 deep_research_outputs:

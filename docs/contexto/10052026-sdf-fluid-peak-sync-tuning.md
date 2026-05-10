@@ -133,10 +133,17 @@ Fix em ambos: emit gating no frame loop, mas `step()` continua rodando
 
 ## Commits desta sessao
 
-Nenhum commit ainda — todas as mudanças desta sessão estão em working tree
-não-commitadas. Releases publicadas via `release.sh` consumiram o working
-tree direto, sem checkpoints intermediários. **Recomendação:** próxima
-sessão deve commitar antes de continuar.
+```
+d41faae [resumo da sessão como mensagem — feito via Zed]
+```
+
+Working tree limpo. Tudo (lib.rs, FluidBackground.tsx, SDFBackground.tsx,
+NowPlaying.tsx, tauri.ts, docs/contexto/*, docs/prompts/*) commitado num
+único commit via Zed.
+
+Observação: mensagem do commit é prosa do resumo final em vez de Conventional
+Commits. Funcional, mas se importar com histórico limpo vale `git commit
+--amend` ou rewrite no Zed.
 
 ## Decisoes tomadas
 
@@ -165,18 +172,15 @@ sessão deve commitar antes de continuar.
 
 ## Pendências identificadas
 
-1. **Commit de tudo desta sessão** (alta) — working tree tem 4 arquivos modificados + 1 novo (SDFBackground.tsx) + docs/ untracked. Sugestão: 3 commits separados
-   - `feat(sdf): SDFBackground component with 2D/3D render modes`
-   - `feat(fluid): peak-triggered emission with delta detection + colour jitter`
-   - `feat(spectrum): expose 6 fluid peak/colour params via YAML hot-reload`
+1. **Calibragem do `fluid_density_dissipation: 45.0`** (alta) — usuário tuned na cmr-auto. Testar se faz sentido como default no Rust ou só como preset alternativo. Default atual no código é 4.0. 45 é absurdamente agressivo, sugere que peak-trigger funciona melhor com fade quase instantâneo.
 
-2. **Calibragem do `fluid_density_dissipation: 45.0`** (alta) — usuário tuned na cmr-auto. Testar se faz sentido como default no Rust ou só como preset alternativo. Default atual no código é 4.0. 45 é absurdamente agressivo, sugere que peak-trigger funciona melhor com fade quase instantâneo.
+2. **`bass_attack_scale: 0.9`** (média) — usuário também tuned (default era 0.43). Desconhecido qual é o efeito visual desse param no fluid atual — pode ser legacy do SpectrumBackground V2. Vale auditar uso.
 
-3. **`bass_attack_scale: 0.9`** (média) — usuário também tuned (default era 0.43). Desconhecido qual é o efeito visual desse param no fluid atual — pode ser legacy do SpectrumBackground V2. Vale auditar uso.
+3. **SDF testado preferencialmente em 2D mode** (média) — usuário escolheu mode 0. Vale considerar: deixar mode 0 como default no Rust (default atualmente é 1), e 3D como opt-in.
 
-4. **SDF testado preferencialmente em 2D mode** (média) — usuário escolheu mode 0. Vale considerar: deixar mode 0 como default no Rust (default atualmente é 1), e 3D como opt-in.
+4. **SDF não tem hue jitter / sat jitter** (média) — só fluid recebeu essa feature. Se SDF for o paradigma preferido a longo prazo, vale portar.
 
-5. **SDF não tem hue jitter / sat jitter** (média) — só fluid recebeu essa feature. Se SDF for o paradigma preferido a longo prazo, vale portar.
+5. **Mensagem do commit `d41faae`** (baixa) — prosa de resumo em vez de Conventional Commits. Não bloqueia nada, só estética de histórico. `git commit --amend` resolve.
 
 6. **X600 EQ ear-test do warm-tilt** (alta, herdada) — preset reordenado em `cmr-auto:~/Downloads/Soundcore-Motion-X600-warm-tilt.json`. Aprovado conceptualmente, ainda não validado em escuta longa.
 

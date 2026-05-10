@@ -806,13 +806,21 @@ impl QdrantClient {
 
     /// Insert a single play event into the `play_events` collection.
     ///
-    /// Computes `listen_pct` from `end_position_ms / duration_ms` (clamped 0.0–1.0).
-    /// Uses a UUID v4 as point ID with a dummy `[0.0]` vector.
+    /// `event_type` is `"track_ended"` for natural EOS or `"track_skipped"` when
+    /// playback was interrupted. The `behavioral_signals()` derivation accepts
+    /// both as evidence — `listen_pct` is the discriminator that separates a
+    /// completion from a rejection.
+    ///
+    /// `timestamp` is the unix epoch when the event was logged (i.e. when the
+    /// track ended/was skipped). `started_at` is when playback began. Both are
+    /// integers — string ISO format was retired.
     pub fn insert_play_event(
         &self,
+        event_type: &str,
         track_id: u64,
         origin: &str,
-        started_at: &str,
+        started_at: i64,
+        timestamp: i64,
         end_position_ms: u64,
         duration_ms: u64,
     ) -> Result<(), IndexerError> {
@@ -829,6 +837,8 @@ impl QdrantClient {
                 "id": point_id,
                 "vector": [0.0],
                 "payload": {
+                    "event_type": event_type,
+                    "timestamp": timestamp,
                     "track_id": track_id,
                     "origin": origin,
                     "started_at": started_at,
@@ -918,10 +928,18 @@ impl QdrantClient {
     /// - **Negatives:** up to 15 distinct track_ids from the last 50 events with
     ///   `listen_pct < 0.15` AND `origin != "album_seq"`.
     pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
+        // event_type accepts both natural completion and interrupted plays —
+        // listen_pct is the actual discriminator. We just need to keep
+        // search/click events out of the play-affinity derivation.
+        let event_type_filter = json!({
+            "key": "event_type",
+            "match": { "any": ["track_ended", "track_skipped"] }
+        });
+
         // --- Positives ---
         let pos_filter = json!({
             "must": [
-                { "key": "event_type", "match": { "value": "track_ended" } },
+                event_type_filter,
                 { "key": "listen_pct", "range": { "gte": 0.8 } }
             ]
         });
@@ -951,7 +969,10 @@ impl QdrantClient {
         // --- Negatives ---
         let neg_filter = json!({
             "must": [
-                { "key": "event_type", "match": { "value": "track_ended" } },
+                {
+                    "key": "event_type",
+                    "match": { "any": ["track_ended", "track_skipped"] }
+                },
                 { "key": "listen_pct", "range": { "lt": 0.15 } }
             ],
             "must_not": [
