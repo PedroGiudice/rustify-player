@@ -2280,18 +2280,21 @@ pub fn run() {
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
             };
 
-            // Wait for the Qdrant sidecar to become reachable. The sidecar
-            // is spawned by Tauri but takes a few hundred ms to bind its HTTP
-            // port; without this gate, Indexer::open races and panics on a
-            // cold start (especially after a hard reboot).
+            // Spawn Qdrant sidecar BEFORE the health probe — otherwise the
+            // probe races against a process that hasn't started yet.
+            let qdrant_proc = qdrant_process::QdrantProcess::spawn(&data_dir);
+            _app.manage(QdrantSidecar(Mutex::new(qdrant_proc)));
+
+            // Wait for Qdrant to become reachable (cold start + bind takes a
+            // few hundred ms; on slow disks up to several seconds).
             {
                 let probe = library_indexer::QdrantClient::new(&qdrant_url);
                 let started = std::time::Instant::now();
-                let timeout = std::time::Duration::from_secs(15);
+                let timeout = std::time::Duration::from_secs(30);
                 while !probe.is_healthy() {
                     if started.elapsed() > timeout {
                         panic!(
-                            "Qdrant sidecar at {qdrant_url} did not become healthy within 15s"
+                            "Qdrant sidecar at {qdrant_url} did not become healthy within 30s"
                         );
                     }
                     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -2362,12 +2365,8 @@ pub fn run() {
                 })
                 .ok();
 
-            // Qdrant sidecar — spawn if binary available, otherwise try
-            // connecting to an already-running instance.
-            let qdrant_proc = qdrant_process::QdrantProcess::spawn(&data_dir);
-            _app.manage(QdrantSidecar(Mutex::new(qdrant_proc)));
-
-            // Qdrant collections are ensured by Indexer::open above.
+            // Qdrant sidecar already spawned + health-checked above (before
+            // Indexer::open). Collections were ensured by Indexer::open.
 
             let spectrum_cfg = Arc::new(Mutex::new(SpectrumConfig::default()));
             _app.manage(SharedSpectrumConfig(spectrum_cfg.clone()));
