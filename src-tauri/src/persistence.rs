@@ -24,11 +24,18 @@ const FILE_NAME: &str = "state.json";
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PersistedState {
     /// Current track ID (Qdrant point id). None when no track is loaded.
-    pub track_id: Option<u64>,
+    ///
+    /// Stored as a string because Qdrant point IDs are u64 hashes that
+    /// routinely exceed `Number.MAX_SAFE_INTEGER` (2^53). Round-tripping
+    /// them through JavaScript `Number` silently truncates the low bits
+    /// (typical signature: id ends in zeros). The frontend keeps these
+    /// IDs as strings end-to-end; we mirror that here.
+    pub track_id: Option<String>,
     /// Position in milliseconds when the snapshot was taken.
     pub position_ms: u64,
     /// IDs of every track in the queue, in playback order.
-    pub queue_ids: Vec<u64>,
+    /// Stored as strings — see `track_id` comment.
+    pub queue_ids: Vec<String>,
     /// Index of the current track within `queue_ids`.
     pub queue_index: usize,
     /// Shuffle / radio mode.
@@ -37,7 +44,8 @@ pub struct PersistedState {
     pub repeat_mode: String,
     /// Last 30 IDs the user has heard — kept across restarts so the
     /// recommendation excludes survive a reload.
-    pub recently_played: Vec<u64>,
+    /// Stored as strings — see `track_id` comment.
+    pub recently_played: Vec<String>,
     /// Unix epoch (seconds) when this snapshot was written.
     pub saved_at: i64,
 }

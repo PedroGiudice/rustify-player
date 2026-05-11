@@ -92,14 +92,18 @@ export const playerSetOrigin = (origin: string, trackId: string | null) =>
   invoke<void>("player_set_origin", { origin, trackId });
 
 // ── Session persistence ────────────────────────────────────────
+// IDs sao string porque os track_ids do Qdrant sao u64 hashes que
+// frequentemente passam de Number.MAX_SAFE_INTEGER (2^53). Converter
+// pra Number perde precisao silenciosamente (ID acaba em zeros), o
+// que quebra o resume porque os IDs corrompidos nao existem no Qdrant.
 export interface PersistedState {
-  track_id: number | null;
+  track_id: string | null;
   position_ms: number;
-  queue_ids: number[];
+  queue_ids: string[];
   queue_index: number;
   shuffle: boolean;
   repeat_mode: string;
-  recently_played: number[];
+  recently_played: string[];
   saved_at: number;
 }
 export const persistLoadState = () => invoke<PersistedState | null>("persist_load_state");

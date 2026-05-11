@@ -138,13 +138,12 @@ export function PlayerBar() {
     try {
       const snap = await persistLoadState();
       if (!snap || snap.queue_ids.length === 0 || snap.track_id == null) return;
-      const tracks = await libGetTracksByIds(snap.queue_ids.map(String));
+      const tracks = await libGetTracksByIds(snap.queue_ids);
       if (tracks.length === 0) return;
       // The library may have moved on (tracks deleted, re-indexed).
       // Rebuild the queue with whatever survived and pin the index to
       // the current track if it's still there; otherwise bail.
-      const wantedId = String(snap.track_id);
-      const newIndex = tracks.findIndex((t) => t.id === wantedId);
+      const newIndex = tracks.findIndex((t) => t.id === snap.track_id);
       if (newIndex < 0) return;
       setQueue(tracks, newIndex);
       setPlayer({
@@ -155,7 +154,7 @@ export function PlayerBar() {
       });
       // Repopulate the recently-played exclusion set so autoplay/radio
       // don't immediately suggest tracks the user heard last session.
-      for (const id of snap.recently_played) recentlyPlayedIds.add(String(id));
+      for (const id of snap.recently_played) recentlyPlayedIds.add(id);
       const current = tracks[newIndex];
       await playerLoadPaused(current.path, snap.position_ms, current.id);
       if (current.id) {
@@ -169,16 +168,16 @@ export function PlayerBar() {
   async function saveSession() {
     if (!player.currentTrack?.id) return;
     try {
+      // IDs como string end-to-end: Qdrant point IDs sao u64 hashes que
+      // estouram Number.MAX_SAFE_INTEGER. Converter pra Number trunca.
       await persistSaveState({
-        track_id: Number(player.currentTrack.id),
+        track_id: player.currentTrack.id,
         position_ms: Math.floor(player.positionSecs * 1000),
-        queue_ids: player.queue.map((t) => Number(t.id)).filter((n) => !Number.isNaN(n)),
+        queue_ids: player.queue.map((t) => t.id).filter((id): id is string => !!id),
         queue_index: player.queueIndex,
         shuffle: player.shuffle,
         repeat_mode: player.repeatMode,
-        recently_played: Array.from(recentlyPlayedIds)
-          .map((s) => Number(s))
-          .filter((n) => !Number.isNaN(n)),
+        recently_played: Array.from(recentlyPlayedIds),
         saved_at: Math.floor(Date.now() / 1000),
       });
     } catch (e) {

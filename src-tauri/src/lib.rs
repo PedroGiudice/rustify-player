@@ -403,16 +403,51 @@ fn lib_autoplay_next(
     // negatives. Negatives reshape the search vector; we only want to skip
     // recently-played items in the result list.
     if client.is_healthy() {
-        const SEED_WEIGHT: usize = 20;
+        // SEED_WEIGHT used to be 20, which pushed the seed to ~40% of the
+        // recommendation centroid and pinned results to the seed's acoustic
+        // neighborhood (recommending tracks that shared the seed's beat
+        // regardless of user taste). 4 keeps the seed anchored to the current
+        // vibe (~12% of centroid) while letting behavioral history actually
+        // shape recommendations.
+        const SEED_WEIGHT: usize = 4;
+        // Over-fetch so we can randomize the final picks across the top
+        // candidates instead of always returning the same `lim` items. This
+        // combats the "same 5 tracks keep being recommended" symptom.
+        const RECOMMEND_FETCH: usize = 15;
         match lib.handle.behavioral_signals() {
             Ok((history, negatives)) => {
                 let mut positives: Vec<u64> =
                     std::iter::repeat(track_id).take(SEED_WEIGHT).collect();
                 positives.extend(history.into_iter().filter(|id| *id != track_id));
-                match client.recommend(&positives, &negatives, &exclude_ids, lim) {
+                let fetch = lim.max(RECOMMEND_FETCH);
+                match client.recommend(&positives, &negatives, &exclude_ids, fetch) {
                     Ok(recs) if !recs.is_empty() => {
+                        // Long-tail boost: Fisher-Yates shuffle the top-N
+                        // candidates then take `lim`. The Recommendations API
+                        // already ranked them by similarity to the (seed +
+                        // taste) centroid, so any of the top-N is a "good
+                        // enough" match — varying which N we return prevents
+                        // the same head of the distribution from being served
+                        // every call. xorshift PRNG inline to avoid pulling
+                        // the rand crate just for one shuffle.
+                        let mut shuffled = recs;
+                        let seed = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_nanos() as u64)
+                            .unwrap_or(0x9E3779B97F4A7C15)
+                            .wrapping_add(track_id);
+                        let mut state = seed | 1;
+                        for i in (1..shuffled.len()).rev() {
+                            state ^= state << 13;
+                            state ^= state >> 7;
+                            state ^= state << 17;
+                            let j = (state as usize) % (i + 1);
+                            shuffled.swap(i, j);
+                        }
+                        shuffled.truncate(lim);
+
                         let mut tracks = Vec::new();
-                        for (rec_id, _score) in &recs {
+                        for (rec_id, _score) in &shuffled {
                             if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
                                 if let Some(rel) = &t.album_cover_path {
                                     t.album_cover_path = Some(lib.cache_dir.join(rel));

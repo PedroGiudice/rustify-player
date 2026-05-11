@@ -55,21 +55,42 @@ cmd_check_json() {
         return 0
     fi
 
-    local remote_pub remote_url remote_ver remote_body remote_sha
+    local remote_pub remote_url remote_ver remote_body remote_sha remote_asset_name remote_pkg_ver
     # Use the .deb asset's updatedAt (rewritten on every upload) instead of
     # the release's publishedAt (set only on creation). With a rolling "dev"
     # tag, publishedAt never advances — updatedAt tracks each new build.
-    remote_pub=$(echo "$remote_data" | jq -r '[.assets[] | select(.name | endswith(".deb"))] | .[0].updatedAt // empty')
-    remote_url=$(echo "$remote_data" | jq -r '.assets[] | select(.name | endswith(".deb")) | .url' | head -n 1)
+    #
+    # The release accumulates multiple .deb assets across versions (0.1.0,
+    # 0.2.0, ...). Sort by updatedAt desc and pick the most recent one;
+    # otherwise we'd report 0.1.0 from April as "latest".
+    local latest_asset
+    latest_asset=$(echo "$remote_data" \
+        | jq -c '[.assets[] | select(.name | endswith(".deb"))]
+                 | sort_by(.updatedAt) | reverse | .[0] // empty')
+    if [ -z "$latest_asset" ] || [ "$latest_asset" = "null" ]; then
+        remote_pub=""
+        remote_url=""
+        remote_asset_name=""
+    else
+        remote_pub=$(echo "$latest_asset" | jq -r '.updatedAt // empty')
+        remote_url=$(echo "$latest_asset" | jq -r '.url // empty')
+        remote_asset_name=$(echo "$latest_asset" | jq -r '.name // empty')
+    fi
+    # Extract version from the asset filename (e.g. rustify-player_0.2.4_amd64.deb → 0.2.4).
+    remote_pkg_ver=$(echo "$remote_asset_name" | sed -nE 's/^rustify-player_([0-9.]+)_.*\.deb$/\1/p')
     # Extract the short commit SHA from the release notes body (release.sh
-    # writes "Branch: X  ·  Commit: <sha>  ·  <ts>"). Combined with the Cargo
-    # version gives a friendly diff like "0.1.0 · 0a40f91" in the UI.
+    # writes "Branch: X  ·  Commit: <sha>  ·  <ts>"). Combined with the package
+    # version gives a friendly diff like "0.2.4 · 0a40f91" in the UI.
     remote_body=$(echo "$remote_data" | jq -r '.body // empty')
     remote_sha=$(echo "$remote_body" | grep -oE 'Commit: [a-f0-9]{7,}' | head -n 1 | awk '{print $2}')
     local remote_name
     remote_name=$(echo "$remote_data" | jq -r '.name // empty')
-    if [ -n "$remote_sha" ]; then
-        remote_ver="0.1.0 · $remote_sha"
+    if [ -n "$remote_pkg_ver" ] && [ -n "$remote_sha" ]; then
+        remote_ver="$remote_pkg_ver · $remote_sha"
+    elif [ -n "$remote_pkg_ver" ]; then
+        remote_ver="$remote_pkg_ver"
+    elif [ -n "$remote_sha" ]; then
+        remote_ver="$remote_sha"
     else
         remote_ver="$remote_name"
     fi
@@ -114,8 +135,10 @@ cmd_check_json() {
 
 cmd_install() {
     require_cmd gh
+    require_cmd jq
     require_cmd pkexec
     require_cmd mktemp
+    require_cmd curl
 
     local tmpdir
     tmpdir=$(mktemp -d -t rustify-update-XXXXXX)
@@ -125,14 +148,30 @@ cmd_install() {
     # combined with `set -u` that's an unbound-variable error.
     trap "rm -rf '$tmpdir'" EXIT
 
-    # gh writes the asset with its original name; --clobber guarantees
-    # overwrite if something weird was left behind.
-    gh release download "$TAG" -R "$REPO" -p '*.deb' -D "$tmpdir" --clobber
+    # Discover the latest .deb asset by updatedAt. The release accumulates
+    # multiple .debs across versions, so we can't just `gh release download
+    # -p '*.deb'` and grab the first hit — it'd pick the oldest. Resolve the
+    # exact asset name first, then download only that one.
+    local remote_data latest_name
+    remote_data=$(gh release view "$TAG" -R "$REPO" --json assets 2>/dev/null) || {
+        echo "failed to query release metadata for $REPO@$TAG" >&2
+        exit 4
+    }
+    latest_name=$(echo "$remote_data" \
+        | jq -r '[.assets[] | select(.name | endswith(".deb"))]
+                 | sort_by(.updatedAt) | reverse | .[0].name // empty')
+    if [ -z "$latest_name" ]; then
+        echo "no .deb asset on release $REPO@$TAG" >&2
+        exit 3
+    fi
 
-    local deb
-    deb=$(find "$tmpdir" -maxdepth 1 -name '*.deb' | head -n 1)
-    if [ -z "$deb" ]; then
-        echo "download succeeded but no .deb found in $tmpdir" >&2
+    # gh download takes a glob in -p; a literal filename works as glob too.
+    # --clobber guarantees overwrite if something weird was left behind.
+    gh release download "$TAG" -R "$REPO" -p "$latest_name" -D "$tmpdir" --clobber
+
+    local deb="$tmpdir/$latest_name"
+    if [ ! -f "$deb" ]; then
+        echo "download succeeded but $deb is missing" >&2
         exit 3
     fi
 

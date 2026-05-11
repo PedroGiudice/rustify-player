@@ -6,6 +6,7 @@
 import { createSignal, createResource, Show, For, onMount } from "solid-js";
 import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp, listThemes, applyThemeByName, normGetState, normSetEnabled } from "../tauri";
 import type { ThemeInfo, ContrastCheck } from "../tauri";
+import { player, setPlayer } from "../store/player";
 
 const APP_VERSION = "0.2.1";
 
@@ -126,7 +127,10 @@ export default function Settings() {
     return { snapshot, albums, artists, genres };
   });
 
-  const [volumePct, setVolumePct] = createSignal(80);
+  // Volume slider — derivado do store global do player.
+  // Antes era createSignal(80) hardcoded, o que fazia o slider voltar pra 80%
+  // toda vez que a view era remontada, ignorando o estado real do player.
+  const volumePct = () => Math.round(player.volume * 100);
   const [scanning, setScanning] = createSignal(false);
   const [scanLabel, setScanLabel] = createSignal("Re-scan library");
 
@@ -172,8 +176,10 @@ export default function Settings() {
 
   function handleVolumeChange(e: Event) {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
-    setVolumePct(val);
-    setVolume(val / 100).catch((err) => console.error("[player] set_volume failed:", err));
+    const vol = val / 100;
+    setPlayer("volume", vol);
+    setPlayer("isMuted", false);
+    setVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
   }
 
   async function handleCheckUpdate() {

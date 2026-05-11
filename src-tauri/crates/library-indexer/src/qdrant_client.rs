@@ -934,13 +934,17 @@ impl QdrantClient {
 
     /// Derive behavioral signals (positives and negatives) from play events.
     ///
-    /// - **Positives:** top 30 distinct track_ids from the last 100 events with
-    ///   `listen_pct >= 0.8` AND `origin != "album_seq"`. Tracks appearing 3+
-    ///   times get an extra entry for weight. Album-sequence completions are
-    ///   excluded because they reflect "the next song played because the album
-    ///   was rolling", not active taste preference.
-    /// - **Negatives:** up to 15 distinct track_ids from the last 50 events with
-    ///   `listen_pct < 0.15` AND `origin != "album_seq"`.
+    /// - **Positives:** top 25 distinct track_ids by weight from the last 300
+    ///   events with `listen_pct >= 0.9` AND `origin != "album_seq"`. A track
+    ///   only qualifies if it has been replayed (count >= 2) OR has at least
+    ///   one full listen (`pct == 1.0`) — filters out the "listened once
+    ///   distractedly" noise. Weight = `min(count, 5)` so the centroid skews
+    ///   toward tracks the user actively replays without letting a single
+    ///   obsession single-handedly hijack the recommendation vector.
+    /// - **Negatives:** up to 30 distinct track_ids from the last 200 events
+    ///   with `listen_pct < 0.15` AND `origin != "album_seq"`. Wider window
+    ///   and more entries (vs. previous 50/15) give skips real bite — a track
+    ///   skipped a week ago no longer resurfaces tomorrow.
     pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
         // event_type accepts both natural completion and interrupted plays —
         // listen_pct is the actual discriminator. We just need to keep
@@ -951,34 +955,51 @@ impl QdrantClient {
         });
 
         // --- Positives ---
+        // Tighter listen_pct threshold (0.9 vs 0.8) drops casual half-listens.
+        // Wider scroll window (300 vs 100) preserves long-term taste across
+        // days of active use instead of being washed away by a single binge.
         let pos_filter = json!({
             "must": [
                 event_type_filter,
-                { "key": "listen_pct", "range": { "gte": 0.8 } }
+                { "key": "listen_pct", "range": { "gte": 0.9 } }
             ],
             "must_not": [
                 { "key": "origin", "match": { "value": "album_seq" } }
             ]
         });
-        let pos_payloads = self.scroll_play_events(pos_filter, 100)?;
+        let pos_payloads = self.scroll_play_events(pos_filter, 300)?;
 
-        let mut track_counts: HashMap<u64, usize> = HashMap::new();
+        // (count, had_full_listen) per track. A "full listen" (pct == 1.0)
+        // qualifies a track on its own; otherwise it needs at least one
+        // replay (count >= 2).
+        let mut track_stats: HashMap<u64, (usize, bool)> = HashMap::new();
         for p in &pos_payloads {
             if let Some(tid) = p["track_id"].as_u64() {
-                *track_counts.entry(tid).or_default() += 1;
+                let entry = track_stats.entry(tid).or_insert((0, false));
+                entry.0 += 1;
+                if p["listen_pct"].as_f64().unwrap_or(0.0) >= 0.999 {
+                    entry.1 = true;
+                }
             }
         }
 
-        // Sort by count descending, take top 30 distinct
-        let mut sorted: Vec<(u64, usize)> = track_counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
-        sorted.truncate(30);
+        // Filter: needs >=2 listens OR at least one full listen.
+        let mut qualified: Vec<(u64, usize)> = track_stats
+            .into_iter()
+            .filter(|(_, (count, full))| *count >= 2 || *full)
+            .map(|(tid, (count, _))| (tid, count))
+            .collect();
 
+        // Sort by count descending, take top 25 distinct.
+        qualified.sort_by(|a, b| b.1.cmp(&a.1));
+        qualified.truncate(25);
+
+        // Weight = min(count, 5). One play -> 1 entry; 10 plays -> 5 entries.
+        // Cap prevents a single obsession from monopolizing the centroid.
         let mut positives: Vec<u64> = Vec::new();
-        for (tid, count) in &sorted {
-            positives.push(*tid);
-            // Extra weight for tracks with 3+ listens
-            if *count >= 3 {
+        for (tid, count) in &qualified {
+            let weight = (*count).min(5);
+            for _ in 0..weight {
                 positives.push(*tid);
             }
         }
@@ -996,7 +1017,7 @@ impl QdrantClient {
                 { "key": "origin", "match": { "value": "album_seq" } }
             ]
         });
-        let neg_payloads = self.scroll_play_events(neg_filter, 50)?;
+        let neg_payloads = self.scroll_play_events(neg_filter, 200)?;
 
         let mut neg_seen: HashSet<u64> = HashSet::new();
         let mut negatives: Vec<u64> = Vec::new();
@@ -1004,7 +1025,7 @@ impl QdrantClient {
             if let Some(tid) = p["track_id"].as_u64() {
                 if neg_seen.insert(tid) {
                     negatives.push(tid);
-                    if negatives.len() >= 15 {
+                    if negatives.len() >= 30 {
                         break;
                     }
                 }

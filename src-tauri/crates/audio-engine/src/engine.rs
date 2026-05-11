@@ -586,33 +586,24 @@ impl EngineState {
     }
 }
 
-/// Compute effective ReplayGain attenuation (always <= 1.0).
-/// Strategy: RG 2.0 Track mode + clip prevention + ISP margin.
-fn compute_rg_gain(info: &TrackInfo) -> f64 {
-    match (info.track_gain_db, info.track_peak) {
-        (Some(gain_db), Some(peak)) => {
-            let base = 10.0_f64.powf(f64::from(gain_db) / 20.0);
-            let capped = if base * f64::from(peak) > 1.0 {
-                0.98 / f64::from(peak)
-            } else {
-                base
-            };
-            // -1 dB ISP safety margin
-            (capped * 0.891).min(1.0)
-        }
-        (Some(gain_db), None) => {
-            let base = 10.0_f64.powf(f64::from(gain_db) / 20.0);
-            (base * 0.891).min(1.0)
-        }
-        _ => {
-            // No RG tags: -3 dB fallback for hi-res, unity for 16-bit
-            if info.bit_depth.unwrap_or(16) > 16 {
-                0.7079
-            } else {
-                1.0
-            }
-        }
-    }
+/// Master-stage loudness adjustment.
+///
+/// Historically this returned a ReplayGain-derived attenuation read from
+/// the FLAC tags (`rg_track_gain` + `rg_track_peak`). That created a
+/// **double-path** problem: tracks with RG tags were attenuated here on the
+/// master volume, then attenuated again by the DSP `norm_gain` stage from
+/// the offline EBU R128 measurement. The two paths target different
+/// reference loudness (RG ≈ -18 LUFS ref, our LUFS norm targets -14 LUFS),
+/// so the combined gain was never correct and varied wildly between tracks
+/// that had RG tags and tracks that didn't.
+///
+/// Since the entire library now has `lufs_integrated` measured at index
+/// time, the LUFS normalization stage is the canonical loudness path.
+/// Returning unity here makes the master volume a pure user-controlled
+/// attenuator and leaves all program-loudness equalization to
+/// `DspSetNormGainDb` (computed against `NORM_TARGET_LUFS`).
+fn compute_rg_gain(_info: &TrackInfo) -> f64 {
+    1.0
 }
 
 /// Extract track metadata using symphonia (GStreamer handles decode, but
