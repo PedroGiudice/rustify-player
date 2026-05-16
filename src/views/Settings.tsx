@@ -13,7 +13,7 @@ import { Icon, ICONS } from "../components/Icon";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan, setVolume, normGetState, normSetEnabled,
-  listThemes, applyThemeByName,
+  listThemes, applyThemeByName, watchTheme,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
@@ -72,6 +72,7 @@ export default function Settings() {
     const checks = await applyThemeByName(filename);
     setActiveTheme(filename);
     setContrast(checks);
+    watchTheme(filename).catch((e) => console.warn("[theme] watch failed:", e));
   }
 
   const failingContrast = () => contrast().filter((c) => !c.pass_aa);

@@ -1025,6 +1025,79 @@ fn themes_dir() -> PathBuf {
     dirs_home().join(".local/share/rustify-player/themes")
 }
 
+/// Converte uma key YAML (e.g. "fg-1", "surfaces-lowest") na CSS custom
+/// property correspondente. Retorna None se a key nao for reconhecida.
+///
+/// Estrategia em duas camadas:
+///   1. Aliases legados (Editorial Hi-Fi Dark) — mantemos por retrocompat
+///      com YAMLs criados antes do Extractor Lab redesign.
+///   2. Tokens Extractor Lab (atuais) — pass-through direto. Aceita qualquer
+///      key que case com um prefixo conhecido do design system ativo:
+///      fg-*, bg-*, line-*, tone-*, blue-*, green-*, amber-*, rose-*,
+///      purple-*, radius-*, shadow-*, dur-*, ease-*, font-*, ring-focus,
+///      sidebar-w, playerbar-h, titlebar-h.
+fn yaml_key_to_css_prop(key: &str) -> Option<String> {
+    // Camada 1 — aliases legados.
+    let legacy = match key {
+        "surfaces-lowest" => Some("--surface-lowest"),
+        "surfaces-base" => Some("--surface"),
+        "surfaces-container-low" => Some("--surface-container-low"),
+        "surfaces-container" => Some("--surface-container"),
+        "surfaces-container-high" => Some("--surface-container-high"),
+        "surfaces-container-highest" => Some("--surface-container-highest"),
+        "dividers-subtle" => Some("--divider"),
+        "dividers-prominent" => Some("--divider-hi"),
+        "accent-primary" => Some("--primary"),
+        "accent-primary-container" => Some("--primary-container"),
+        "accent-primary-fixed-dim" => Some("--primary-fixed-dim"),
+        "accent-on-primary" => Some("--on-primary"),
+        "accent-on-primary-container" => Some("--on-primary-container"),
+        "text-primary" => Some("--on-surface"),
+        "text-secondary" => Some("--on-surface-variant"),
+        "text-muted" => Some("--on-surface-mute"),
+        "text-outline" => Some("--outline-variant"),
+        "signal-ok" => Some("--sig-ok"),
+        "signal-warn" => Some("--sig-warn"),
+        "signal-error" => Some("--sig-err"),
+        "typography-body" => Some("--font-body"),
+        "typography-display" => Some("--font-display"),
+        "typography-mono-legacy" => Some("--font-mono"),
+        "typography-technical" => Some("--font-technical"),
+        "effects-glow" => Some("--glow"),
+        "effects-surface-blur" => Some("--surface-blur"),
+        "effects-surface-opacity" => Some("--surface-opacity"),
+        _ => None,
+    };
+    if let Some(prop) = legacy {
+        return Some(prop.to_string());
+    }
+
+    // Camada 2 — Extractor Lab tokens (atuais).
+    // Pass-through: a key vira `--{key}` se casar com um prefixo conhecido.
+    const ALLOWED_PREFIXES: &[&str] = &[
+        // Foreground / background scales
+        "fg-", "bg-", "line-",
+        // Tones (album cover pastels)
+        "tone-",
+        // Semantic colors (ring/bg/fg triplets)
+        "blue-", "green-", "amber-", "rose-", "purple-",
+        // Layout primitives
+        "radius-", "shadow-",
+        // Motion
+        "dur-", "ease-",
+        // Type
+        "font-",
+    ];
+    const ALLOWED_EXACT: &[&str] = &[
+        "ring-focus", "sidebar-w", "playerbar-h", "titlebar-h",
+    ];
+
+    if ALLOWED_EXACT.contains(&key) || ALLOWED_PREFIXES.iter().any(|p| key.starts_with(p)) {
+        return Some(format!("--{key}"));
+    }
+    None
+}
+
 fn yaml_to_css_vars(val: &serde_yaml::Value, prefix: &str, out: &mut std::collections::HashMap<String, String>) {
     match val {
         serde_yaml::Value::Mapping(map) => {
@@ -1036,46 +1109,14 @@ fn yaml_to_css_vars(val: &serde_yaml::Value, prefix: &str, out: &mut std::collec
             }
         }
         serde_yaml::Value::String(s) => {
-            let css_prop = match prefix {
-                "surfaces-lowest" => "--surface-lowest",
-                "surfaces-base" => "--surface",
-                "surfaces-container-low" => "--surface-container-low",
-                "surfaces-container" => "--surface-container",
-                "surfaces-container-high" => "--surface-container-high",
-                "surfaces-container-highest" => "--surface-container-highest",
-                "dividers-subtle" => "--divider",
-                "dividers-prominent" => "--divider-hi",
-                "accent-primary" => "--primary",
-                "accent-primary-container" => "--primary-container",
-                "accent-primary-fixed-dim" => "--primary-fixed-dim",
-                "accent-on-primary" => "--on-primary",
-                "accent-on-primary-container" => "--on-primary-container",
-                "text-primary" => "--on-surface",
-                "text-secondary" => "--on-surface-variant",
-                "text-muted" => "--on-surface-mute",
-                "text-outline" => "--outline-variant",
-                "signal-ok" => "--sig-ok",
-                "signal-warn" => "--sig-warn",
-                "signal-error" => "--sig-err",
-                "typography-body" => "--font-body",
-                "typography-display" => "--font-display",
-                "typography-mono" => "--font-mono",
-                "typography-technical" => "--font-technical",
-                "effects-glow" => "--glow",
-                "effects-surface-blur" => "--surface-blur",
-                "effects-surface-opacity" => "--surface-opacity",
-                _ => return,
-            };
-            out.insert(css_prop.to_string(), s.clone());
+            if let Some(prop) = yaml_key_to_css_prop(prefix) {
+                out.insert(prop, s.clone());
+            }
         }
         serde_yaml::Value::Number(n) => {
-            let css_prop = match prefix {
-                "effects-glow" => "--glow",
-                "effects-surface-blur" => "--surface-blur",
-                "effects-surface-opacity" => "--surface-opacity",
-                _ => return,
-            };
-            out.insert(css_prop.to_string(), n.to_string());
+            if let Some(prop) = yaml_key_to_css_prop(prefix) {
+                out.insert(prop, n.to_string());
+            }
         }
         _ => {}
     }
@@ -1155,12 +1196,16 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
 
     let mut checks = Vec::new();
     let pairs = [
-        ("text on surface", "--on-surface", "--surface-lowest"),
-        ("secondary on surface", "--on-surface-variant", "--surface-lowest"),
-        ("muted on surface", "--on-surface-mute", "--surface-lowest"),
-        ("text on container", "--on-surface", "--surface-container"),
+        // Extractor Lab tokens (atuais)
+        ("text on canvas",    "--fg-1", "--bg-canvas"),
+        ("text on paper",     "--fg-1", "--bg-paper"),
+        ("secondary on paper", "--fg-5", "--bg-paper"),
+        ("muted on paper",    "--fg-6", "--bg-paper"),
+        ("accent on paper",   "--blue-fg", "--bg-paper"),
+        ("text on accent",    "--bg-paper", "--blue-fg"),
+        // Legacy tokens (retrocompat com YAMLs pre-redesign)
+        ("text on surface",   "--on-surface", "--surface-lowest"),
         ("accent on surface", "--primary", "--surface-lowest"),
-        ("text on accent", "--on-primary", "--primary"),
     ];
     for (label, fg_key, bg_key) in pairs {
         if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key)) {
@@ -1179,6 +1224,54 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     }
 
     Ok(ThemeLoadResult { vars, contrast: checks })
+}
+
+#[tauri::command]
+fn watch_theme(app: tauri::AppHandle, filename: String) -> Result<(), String> {
+    let path = themes_dir().join(&filename);
+    if !path.exists() {
+        return Err(format!("Theme not found: {filename}"));
+    }
+    let app_handle = app.clone();
+    let emit_name = filename.clone();
+    std::thread::Builder::new()
+        .name("theme-watcher".into())
+        .spawn(move || {
+            let (tx, rx) = std::sync::mpsc::channel::<()>();
+            let mut watcher: notify::RecommendedWatcher = match notify::Watcher::new(
+                move |res: Result<notify::Event, notify::Error>| {
+                    if let Ok(event) = res {
+                        if matches!(event.kind, notify::EventKind::Modify(_)) {
+                            let _ = tx.send(());
+                        }
+                    }
+                },
+                notify::Config::default(),
+            ) {
+                Ok(w) => w,
+                Err(e) => { tracing::error!("Failed to create theme watcher: {e}"); return; }
+            };
+            if let Err(e) = notify::Watcher::watch(
+                &mut watcher, &path, notify::RecursiveMode::NonRecursive
+            ) {
+                tracing::error!("Failed to watch theme {}: {e}", path.display());
+                return;
+            }
+            tracing::info!("Watching theme: {}", path.display());
+            // Debounce: wait 500ms after last event before emitting
+            loop {
+                match rx.recv() {
+                    Ok(()) => {
+                        // Drain any rapid-fire events within 500ms
+                        while rx.recv_timeout(std::time::Duration::from_millis(500)).is_ok() {}
+                        let _ = app_handle.emit("theme-changed", emit_name.clone());
+                    }
+                    Err(_) => break,
+                }
+            }
+        })
+        .map_err(|e| format!("Failed to spawn theme watcher: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -2885,6 +2978,7 @@ pub fn run() {
             load_spectrum_preset,
             save_spectrum_preset,
             watch_spectrum_preset,
+            watch_theme,
             get_track_color,
             log_event,
             fs_read_text,

@@ -39,9 +39,17 @@ async function boot() {
 
   const savedTheme = localStorage.getItem("rustify-theme");
   if (savedTheme) {
-    import("./tauri").then(({ applyThemeByName }) =>
-      applyThemeByName(savedTheme).catch(() => {})
-    );
+    const { applyThemeByName, watchTheme, onThemeChanged } = await import("./tauri");
+    applyThemeByName(savedTheme).catch(() => {});
+    watchTheme(savedTheme).catch(() => {});
+    onThemeChanged(async (fname) => {
+      try {
+        await applyThemeByName(fname);
+        console.log("[theme] hot-reloaded:", fname);
+      } catch (e) {
+        console.warn("[theme] hot-reload failed:", e);
+      }
+    });
   }
 
   render(() => <App />, document.getElementById("app")!);

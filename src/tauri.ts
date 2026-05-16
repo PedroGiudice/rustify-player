@@ -365,6 +365,12 @@ export async function applyThemeByName(filename: string): Promise<ContrastCheck[
   return result.contrast;
 }
 
+export const watchTheme = (filename: string) =>
+  invoke("watch_theme", { filename });
+
+export const onThemeChanged = (cb: (filename: string) => void) =>
+  listen<string>("theme-changed", (e) => cb(e.payload));
+
 // ── Helpers ────────────────────────────────────────────────────
 
 export { convertFileSrc };
