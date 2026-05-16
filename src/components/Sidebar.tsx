@@ -152,6 +152,17 @@ export function Sidebar() {
             </a>
           )}
         </For>
+
+        {/* Tweaks: dispara o painel flutuante (fonts + zoom). */}
+        <button
+          class="nav-item"
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
+          title="Tweaks (fonts, zoom)"
+        >
+          <Icon name={ICONS.bolt} size={16} />
+          <span>Tweaks</span>
+        </button>
       </div>
     </aside>
   );

@@ -1,81 +1,67 @@
-// Tweaks panel — floating bottom-right panel for accent, density, sidebar, NP layout, type, glow, zoom, fonts.
-// Persists to localStorage. Applied on boot before any render.
+// Painel Tweaks — flutuante, ajustes minimos de fonte e zoom.
+// Alinhado ao design system Extractor Lab: usa tokens --font-sans e --font-mono.
+// Persiste em localStorage sob a chave "kv-tweaks".
 
 const { invoke } = window.__TAURI__.core;
 
 const STORAGE_KEY = "kv-tweaks";
 
+// Base font-size do extractor-lab.css (body) — multiplicado pelo fontScale para
+// produzir o tamanho final aplicado no <html>.
+const BASE_FONT_PX = 14;
+
 const DEFAULTS = {
-  accent: "copper",
-  density: "normal",
-  sidebar: "collapsed",
-  npLayout: "left",
-  type: "body",
-  glow: 0.15,
-  zoom: 1.0,
-  fontUI: "",
-  fontDisplay: "",
-  fontMono: "",
-  fontTechnical: "",
-  scaleDisplay: 1.0,
-  scaleHeading: 1.0,
-  scaleBody: 1.0,
-  scaleLabel: 1.0,
+  fontUI: "",      // vazio => fallback do --font-sans
+  fontMono: "",    // vazio => fallback do --font-mono
+  fontScale: 1.0,  // 0.85 — 1.25 (uniforme, aplicado em html.style.fontSize)
+  zoom: 1.0,       // 0.85 — 1.25 (html.style.zoom; suportado pelo webview Tauri)
 };
 
 let state = { ...DEFAULTS };
 let panelEl = null;
-let systemFonts = null; // cached after first load
+let systemFonts = null; // cache do invoke("list_system_fonts")
 
 export function loadTweaks() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved) Object.assign(state, saved);
+    if (saved && typeof saved === "object") {
+      // Aceitamos apenas as chaves novas; descartamos lixo do schema antigo.
+      for (const key of Object.keys(DEFAULTS)) {
+        if (key in saved) state[key] = saved[key];
+      }
+    }
   } catch (_) {}
   applyTweaks();
 }
 
 export function applyTweaks() {
   const html = document.documentElement;
-  if (state.accent !== "copper") {
-    html.dataset.accent = state.accent;
-  } else {
-    delete html.dataset.accent;
-  }
-  html.dataset.density = state.density === "compact" ? "compact" : "";
-  html.dataset.sidebar = state.sidebar === "expanded" ? "expanded" : "";
-  html.dataset.npLayout = state.npLayout || "left";
-  html.dataset.type = state.type === "mono" ? "mono" : "";
-  html.style.setProperty("--glow", String(state.glow));
-  html.style.zoom = String(state.zoom);
 
-  // Custom fonts
+  // UI font: sobrescreve --font-sans (token canonico do extractor-lab.css).
   if (state.fontUI) {
-    html.style.setProperty("--font-body", `"${state.fontUI}", sans-serif`);
+    html.style.setProperty(
+      "--font-sans",
+      `"${state.fontUI}", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`,
+    );
   } else {
-    html.style.removeProperty("--font-body");
+    html.style.removeProperty("--font-sans");
   }
-  if (state.fontDisplay) {
-    html.style.setProperty("--font-display", `"${state.fontDisplay}", serif`);
-  } else {
-    html.style.removeProperty("--font-display");
-  }
+
+  // Mono font: sobrescreve --font-mono.
   if (state.fontMono) {
-    html.style.setProperty("--font-mono", `"${state.fontMono}", monospace`);
+    html.style.setProperty(
+      "--font-mono",
+      `"${state.fontMono}", ui-monospace, "SF Mono", "Menlo", "Consolas", monospace`,
+    );
   } else {
     html.style.removeProperty("--font-mono");
   }
-  if (state.fontTechnical) {
-    html.style.setProperty("--font-technical", `"${state.fontTechnical}", sans-serif`);
-  } else {
-    html.style.removeProperty("--font-technical");
-  }
 
-  // Font size scale multipliers
-  html.style.setProperty("--text-scale-display", String(state.scaleDisplay));
-  html.style.setProperty("--text-scale-heading", String(state.scaleHeading));
-  html.style.setProperty("--text-scale-body", String(state.scaleBody));
-  html.style.setProperty("--text-scale-label", String(state.scaleLabel));
+  // Escala uniforme: muda a base do html, todos os rem/em escalam junto.
+  html.style.fontSize = `${BASE_FONT_PX * state.fontScale}px`;
+
+  // Zoom: o webview Tauri (WebKitGTK) suporta a propriedade nao-padrao 'zoom'.
+  html.style.zoom = String(state.zoom);
 
   save();
 }
@@ -93,9 +79,11 @@ function setVal(key, val) {
 }
 
 export function mountTweaks() {
+  if (panelEl) return; // idempotente
+
   panelEl = document.createElement("aside");
   panelEl.className = "tweaks";
-  panelEl.setAttribute("aria-label", "Design tweaks");
+  panelEl.setAttribute("aria-label", "Tweaks");
   document.body.appendChild(panelEl);
 
   window.addEventListener("toggle-tweaks", () => {
@@ -107,9 +95,10 @@ export function mountTweaks() {
 async function loadFonts() {
   if (systemFonts) return systemFonts;
   try {
-    systemFonts = await invoke("list_system_fonts");
+    const list = await invoke("list_system_fonts");
+    systemFonts = Array.isArray(list) ? list : [];
   } catch (err) {
-    console.error("[tweaks] font list failed:", err);
+    console.error("[tweaks] list_system_fonts falhou:", err);
     systemFonts = [];
   }
   return systemFonts;
@@ -117,7 +106,10 @@ async function loadFonts() {
 
 function fontSelect(label, key, fonts) {
   const opts = fonts
-    .map((f) => `<option value="${esc(f)}" ${state[key] === f ? "selected" : ""}>${esc(f)}</option>`)
+    .map(
+      (f) =>
+        `<option value="${esc(f)}" ${state[key] === f ? "selected" : ""}>${esc(f)}</option>`,
+    )
     .join("");
   return `
     <div class="tweaks__row">
@@ -130,32 +122,13 @@ function fontSelect(label, key, fonts) {
   `;
 }
 
-function scaleSlider(label, key) {
+function scaleSlider(label, key, min, max, step) {
   const pct = Math.round(state[key] * 100);
   return `
     <div class="tweaks__row">
       <span class="tweaks__label">${label} ${pct}%</span>
       <input type="range" class="settings-range" data-scale-key="${key}"
-        min="0.8" max="1.4" step="0.05" value="${state[key]}">
-    </div>
-  `;
-}
-
-function sectionHeader(text) {
-  return `<div class="tweaks__section">${text}</div>`;
-}
-
-function segmented(label, key, options) {
-  const btns = options
-    .map(
-      ([val, text]) =>
-        `<button class="segmented__btn ${state[key] === val ? "is-active" : ""}" data-key="${key}" data-val="${val}">${text}</button>`
-    )
-    .join("");
-  return `
-    <div class="tweaks__row">
-      <span class="tweaks__label">${label}</span>
-      <div class="segmented">${btns}</div>
+        min="${min}" max="${max}" step="${step}" value="${state[key]}">
     </div>
   `;
 }
@@ -168,96 +141,30 @@ async function renderPanel() {
   panelEl.innerHTML = `
     <div class="tweaks__header">
       <span class="tweaks__title">Tweaks</span>
-      <button class="tweaks__close" id="tweaks-close">&times;</button>
+      <button class="tweaks__close" id="tweaks-close" aria-label="Fechar">&times;</button>
     </div>
     <div class="tweaks__body">
-    ${segmented("Accent", "accent", [
-      ["copper", "Copper"],
-      ["moss", "Moss"],
-      ["rust", "Rust"],
-      ["slate", "Slate"],
-      ["ink", "Ink"],
-      ["gold", "Gold"],
-      ["teal", "Teal"],
-      ["violet", "Violet"],
-      ["coral", "Coral"],
-    ])}
-    ${segmented("Density", "density", [
-      ["normal", "Normal"],
-      ["compact", "Compact"],
-    ])}
-    ${segmented("Sidebar", "sidebar", [
-      ["collapsed", "Icons"],
-      ["expanded", "Labels"],
-    ])}
-    ${segmented("Now Playing", "npLayout", [
-      ["left", "Left"],
-      ["top", "Top"],
-      ["split", "Split"],
-    ])}
-    ${segmented("Type", "type", [
-      ["body", "Inter"],
-      ["mono", "Mono"],
-    ])}
-    ${sectionHeader("Fonts")}
-    ${fontSelect("Body Font", "fontUI", fonts)}
-    ${fontSelect("Display Font", "fontDisplay", fonts)}
-    ${fontSelect("Mono Font", "fontMono", fonts)}
-    ${fontSelect("Technical Font", "fontTechnical", fonts)}
-    ${sectionHeader("Font Size")}
-    ${scaleSlider("Display", "scaleDisplay")}
-    ${scaleSlider("Headings", "scaleHeading")}
-    ${scaleSlider("Body", "scaleBody")}
-    ${scaleSlider("Labels", "scaleLabel")}
-    <div class="tweaks__row">
-      <span class="tweaks__label">Glow ${state.glow.toFixed(2)}</span>
-      <input type="range" class="settings-range" id="tweaks-glow"
-        min="0" max="1" step="0.05" value="${state.glow}">
-    </div>
-    <div class="tweaks__row">
-      <span class="tweaks__label">Zoom ${Math.round(state.zoom * 100)}%</span>
-      <input type="range" class="settings-range" id="tweaks-zoom"
-        min="0.85" max="1.25" step="0.05" value="${state.zoom}">
-    </div>
+      ${fontSelect("UI Font", "fontUI", fonts)}
+      ${fontSelect("Mono Font", "fontMono", fonts)}
+      ${scaleSlider("Font Scale", "fontScale", "0.85", "1.25", "0.05")}
+      ${scaleSlider("Zoom", "zoom", "0.85", "1.25", "0.05")}
     </div>
   `;
 
-  // Bind close button
   panelEl.querySelector("#tweaks-close")?.addEventListener("click", () => {
     panelEl.classList.remove("is-visible");
   });
 
-  // Bind segmented buttons
-  panelEl.querySelectorAll(".segmented__btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      setVal(btn.dataset.key, btn.dataset.val);
-    });
-  });
-
-  // Bind font selects
   panelEl.querySelectorAll(".tweaks__select").forEach((sel) => {
     sel.addEventListener("change", (e) => {
       setVal(e.target.dataset.fontKey, e.target.value);
     });
   });
 
-  // Bind scale sliders
   panelEl.querySelectorAll("[data-scale-key]").forEach((slider) => {
     slider.addEventListener("input", (e) => {
       setVal(e.target.dataset.scaleKey, parseFloat(e.target.value));
     });
-  });
-
-  // Bind glow slider
-  const glowInput = panelEl.querySelector("#tweaks-glow");
-  glowInput.addEventListener("input", (e) => {
-    setVal("glow", parseFloat(e.target.value));
-  });
-
-  // Bind zoom slider
-  const zoomInput = panelEl.querySelector("#tweaks-zoom");
-  zoomInput.addEventListener("input", (e) => {
-    setVal("zoom", parseFloat(e.target.value));
   });
 }
 

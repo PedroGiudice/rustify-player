@@ -1124,4 +1124,59 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: background var(--dur-base), color var(--dur-base);
 }
 .segmented button:hover { color: var(--fg-1); }
+
+/* ============================================================
+   TWEAKS — painel flutuante com ajustes de fonte/zoom
+   ============================================================ */
+.tweaks {
+  position: fixed;
+  right: 16px; bottom: calc(var(--playerbar-h) + 16px);
+  width: 280px;
+  max-height: calc(100vh - var(--playerbar-h) - 80px);
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-hover);
+  z-index: 50;
+  display: none;
+  overflow: hidden;
+  flex-direction: column;
+}
+.tweaks.is-visible { display: flex; }
+.tweaks__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-2);
+}
+.tweaks__title { font-weight: 600; font-size: 13px; color: var(--fg-1); }
+.tweaks__close {
+  width: 22px; height: 22px;
+  border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--fg-5); cursor: pointer;
+}
+.tweaks__close:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__body {
+  padding: 12px 14px 16px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.tweaks__row {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tweaks__label {
+  font-size: 11px; font-weight: 600; color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.tweaks__select,
+.tweaks .settings-range {
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-2);
+  background: var(--bg-paper);
+  color: var(--fg-2);
+}
+.tweaks .settings-range { padding: 0; height: 22px; }
 .segmented button.active { background: var(--bg-paper); color: var(--fg-1); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }

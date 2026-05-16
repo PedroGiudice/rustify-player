@@ -17,9 +17,17 @@ import { PlayerBar } from "./components/PlayerBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { RouterView, navigate } from "./router";
+// Painel Tweaks (fonts + zoom). loadTweaks aplica state salvo antes do render;
+// mountTweaks cria o painel flutuante e registra o listener "toggle-tweaks".
+import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
 
 export default function App() {
+  // Aplica preferencias de fonte/zoom o quanto antes — evita flash de fonte padrao.
+  loadTweaks();
+
   onMount(() => {
+    mountTweaks();
+
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
