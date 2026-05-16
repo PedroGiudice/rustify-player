@@ -7,14 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "jsdom": "^29.1.1",
     "sharp": "^0.34.5",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
-    "vite-plugin-solid": "^2.11.12"
+    "vite-plugin-solid": "^2.11.12",
+    "vitest": "^4.1.6"
   },
   "dependencies": {
     "@tauri-apps/plugin-log": "^2.8.0",

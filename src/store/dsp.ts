@@ -274,6 +274,157 @@ export function toggleBass() {
   persistDsp();
 }
 
+export function setEqBandSlope(bandIdx: number, slope: number) {
+  setDsp("eq", "bands", bandIdx, "slope", slope);
+  ipcDebounced(() => ipc.dspSetEqSlope(bandIdx, slope), 100, `eq-slope-${bandIdx}`);
+}
+
+export function setEqBandSolo(bandIdx: number, solo: boolean) {
+  setDsp("eq", "bands", bandIdx, "solo", solo);
+  ipcDebounced(() => ipc.dspSetEqSolo(bandIdx, solo), 50, `eq-solo-${bandIdx}`);
+}
+
+export function setEqBandMute(bandIdx: number, mute: boolean) {
+  setDsp("eq", "bands", bandIdx, "mute", mute);
+  ipcDebounced(() => ipc.dspSetEqMute(bandIdx, mute), 50, `eq-mute-${bandIdx}`);
+}
+
+export function setEqMode(mode: number) {
+  setDsp("eq", "mode", mode);
+  ipcDebounced(() => ipc.dspSetEqMode(mode), 100, "eq-mode");
+}
+
+export function setEqGain(input: number, output: number) {
+  setDsp("eq", "input_gain", input);
+  setDsp("eq", "output_gain", output);
+  ipcDebounced(() => ipc.dspSetEqGain(input, output), 100, "eq-gain");
+}
+
+// ── Mutações de Limiter ───────────────────────────────────────
+
+export function setLimiterMode(mode: number) {
+  setDsp("limiter", "mode", mode);
+  ipcDebounced(() => ipc.dspSetLimiterMode(mode), 50, "lim-mode");
+}
+
+export function setLimiterOvs(ovs: number) {
+  setDsp("limiter", "ovs", ovs);
+  ipcDebounced(() => ipc.dspSetLimiterOversampling(ovs), 50, "lim-ovs");
+}
+
+export function setLimiterDither(dither: number) {
+  setDsp("limiter", "dither", dither);
+  ipcDebounced(() => ipc.dspSetLimiterDither(dither), 50, "lim-dither");
+}
+
+export function setLimiterThreshold(threshold: number) {
+  setDsp("limiter", "threshold", threshold);
+  ipcDebounced(() => ipc.dspSetLimiterThreshold(threshold), 50, "lim-threshold");
+}
+
+export function setLimiterKnee(knee: number) {
+  setDsp("limiter", "knee", knee);
+  ipcDebounced(() => ipc.dspSetLimiterKnee(knee), 50, "lim-knee");
+}
+
+export function setLimiterLookahead(lookahead: number) {
+  setDsp("limiter", "lookahead", lookahead);
+  ipcDebounced(() => ipc.dspSetLimiterLookahead(lookahead), 50, "lim-lookahead");
+}
+
+export function setLimiterAttack(attack: number) {
+  setDsp("limiter", "attack", attack);
+  ipcDebounced(() => ipc.dspSetLimiterAttack(attack), 50, "lim-attack");
+}
+
+export function setLimiterRelease(release: number) {
+  setDsp("limiter", "release", release);
+  ipcDebounced(() => ipc.dspSetLimiterRelease(release), 50, "lim-release");
+}
+
+export function setLimiterScPreamp(preamp: number) {
+  setDsp("limiter", "sc_preamp", preamp);
+  ipcDebounced(() => ipc.dspSetLimiterScPreamp(preamp), 50, "lim-sc-preamp");
+}
+
+export function setLimiterStereoLink(link: number) {
+  setDsp("limiter", "stereo_link", link);
+  ipcDebounced(() => ipc.dspSetLimiterStereoLink(link), 50, "lim-stereo-link");
+}
+
+export function setLimiterBoost(boost: boolean) {
+  setDsp("limiter", "boost", boost);
+  ipc.dspSetLimiterBoost(boost).catch(console.error);
+  persistDsp();
+}
+
+export function setLimiterGain(input: number, output: number) {
+  setDsp("limiter", "input_gain", input);
+  setDsp("limiter", "output_gain", output);
+  ipcDebounced(() => ipc.dspSetLimiterGain(input, output), 50, "lim-gain");
+}
+
+export function setLimiterAlr(alr: boolean) {
+  setDsp("limiter", "alr", alr);
+  ipc.dspSetLimiterAlr(alr).catch(console.error);
+  persistDsp();
+}
+
+export function setLimiterAlrAttack(attack: number) {
+  setDsp("limiter", "alr_attack", attack);
+  ipcDebounced(() => ipc.dspSetLimiterAlrAttack(attack), 50, "lim-alr-attack");
+}
+
+export function setLimiterAlrRelease(release: number) {
+  setDsp("limiter", "alr_release", release);
+  ipcDebounced(() => ipc.dspSetLimiterAlrRelease(release), 50, "lim-alr-release");
+}
+
+// ── Mutações de Bass ──────────────────────────────────────────
+
+export function setBassAmount(amount: number) {
+  setDsp("bass", "amount", amount);
+  ipcDebounced(() => ipc.dspSetBassAmount(amount), 50, "bass-amount");
+}
+
+export function setBassDrive(drive: number) {
+  setDsp("bass", "drive", drive);
+  ipcDebounced(() => ipc.dspSetBassDrive(drive), 50, "bass-drive");
+}
+
+export function setBassBlend(blend: number) {
+  setDsp("bass", "blend", blend);
+  ipcDebounced(() => ipc.dspSetBassBlend(blend), 50, "bass-blend");
+}
+
+export function setBassFreq(freq: number) {
+  setDsp("bass", "freq", freq);
+  ipcDebounced(() => ipc.dspSetBassFreq(freq), 50, "bass-freq");
+}
+
+export function setBassFloor(floor: number) {
+  setDsp("bass", "floor", floor);
+  ipcDebounced(() => ipc.dspSetBassFloor(floor), 50, "bass-floor");
+}
+
+export function setBassFloorActive(active: boolean) {
+  setDsp("bass", "floor_active", active);
+  ipc.dspSetBassFloorActive(active).catch(console.error);
+  persistDsp();
+}
+
+export function setBassListen(listen: boolean) {
+  setDsp("bass", "listen", listen);
+  ipc.dspSetBassListen(listen).catch(console.error);
+  persistDsp();
+}
+
+export function setBassLevels(input: number, output: number) {
+  setDsp("bass", "input_gain", input);
+  setDsp("bass", "output_gain", output);
+  ipcDebounced(() => ipc.dspSetBassLevels(input, output), 50, "bass-levels");
+}
+
 // ── Reset / Preset ────────────────────────────────────────────
 
 export function resetToFlat() {
