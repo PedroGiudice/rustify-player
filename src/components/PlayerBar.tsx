@@ -16,6 +16,7 @@ import {
   setLiked, cycleRepeat, advanceQueue, retreatQueue,
   shuffleQueue, reconcileFromState, setQueue,
 } from "../store/player";
+import { dsp } from "../store/dsp";
 import {
   playerPlay, playerPause, playerResume, playerSeek,
   playerEnqueueNext, playerSetOrigin, playerLoadPaused,
@@ -336,6 +337,17 @@ export function PlayerBar() {
 
   const volPct = () => (player.isMuted ? 0 : player.volume * 100);
 
+  // DSP chain summary mostrado na tech pill. Reage ao store de dsp,
+  // entao toggles na view Signal aparecem aqui imediatamente.
+  const dspSummary = () => {
+    if (dsp.bypass) return "BYPASS";
+    const parts: string[] = [];
+    if (dsp.eq.enabled) parts.push("EQ");
+    if (dsp.limiter.enabled) parts.push("LIM");
+    if (dsp.bass.enabled) parts.push("BASS");
+    return parts.length ? parts.join(" · ") : "DSP OFF";
+  };
+
   return (
     <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
 
@@ -505,7 +517,7 @@ export function PlayerBar() {
               </Show>
             </span>
             <span class="pb-tech__sep">·</span>
-            <span>EQ</span>
+            <span>{dspSummary()}</span>
           </div>
         </Show>
 

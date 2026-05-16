@@ -21,7 +21,12 @@ export default function Playlists() {
           <h1>Playlists</h1>
           <p class="view__head-hint">Suas coleções pessoais.</p>
         </div>
-        <button class="chip active" style={{ "padding": "6px 12px" }}>
+        <button
+          class="chip"
+          style={{ "padding": "6px 12px" }}
+          disabled
+          title="Backend ainda não expõe lib_create_playlist"
+        >
           <Icon name={ICONS.plus} size={12} /> New playlist
         </button>
       </header>

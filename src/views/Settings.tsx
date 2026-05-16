@@ -4,6 +4,7 @@
 
 import { createResource, createSignal, Show } from "solid-js";
 import { Icon, ICONS } from "../components/Icon";
+import { libRescan } from "../tauri";
 
 const THEMES = ["light", "dark", "auto"] as const;
 type Theme = typeof THEMES[number];
@@ -14,11 +15,34 @@ export default function Settings() {
   );
   const [scrobble, setScrobble] = createSignal(false);
   const [crossfade, setCrossfade] = createSignal(2);
+  const [rescanning, setRescanning] = createSignal(false);
+
+  const [version] = createResource(async () => {
+    try {
+      const app = (window as any).__TAURI__?.app;
+      if (app?.getVersion) return await app.getVersion();
+      return "—";
+    } catch {
+      return "—";
+    }
+  });
 
   function applyTheme(t: Theme) {
     setTheme(t);
     localStorage.setItem("rustify-theme", t);
     document.body.setAttribute("data-theme", t === "auto" ? "" : t);
+  }
+
+  async function handleRescan() {
+    if (rescanning()) return;
+    setRescanning(true);
+    try {
+      await libRescan();
+    } catch (err) {
+      console.error("rescan failed", err);
+    } finally {
+      setRescanning(false);
+    }
   }
 
   return (
@@ -95,7 +119,14 @@ export default function Settings() {
               <div class="toggle-row__label">Re-scan</div>
               <div class="toggle-row__hint">Re-indexa metadados e gera embeddings faltantes.</div>
             </div>
-            <button class="chip"><Icon name={ICONS.bolt} size={12} /> Re-scan</button>
+            <button
+              class="chip"
+              onClick={handleRescan}
+              disabled={rescanning()}
+              title={rescanning() ? "Re-indexando…" : undefined}
+            >
+              <Icon name={ICONS.bolt} size={12} /> {rescanning() ? "Re-indexando…" : "Re-scan"}
+            </button>
           </div>
         </section>
 
@@ -104,7 +135,7 @@ export default function Settings() {
             <h3 class="panel__title">Sobre</h3>
           </div>
           <p class="mono" style={{ "font-size": "12px", color: "var(--fg-5)" }}>
-            rustify-player · v0.1.0 · Tauri 2 + SolidJS · Extractor Lab UI
+            rustify-player · v{version() ?? "—"} · Tauri 2 + SolidJS · Extractor Lab UI
           </p>
         </section>
 

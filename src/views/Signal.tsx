@@ -84,7 +84,7 @@ export default function Signal() {
           />
           <ToggleRow
             label="Bass enhancer"
-            hint="Saturação harmônica abaixo de 200 Hz"
+            hint={`Saturação harmônica abaixo de ${dsp.bass.freq} Hz`}
             enabled={dsp.bass.enabled}
             onToggle={toggleBass}
           />

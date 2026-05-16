@@ -9,7 +9,7 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
-import { player } from "../store/player";
+import { player, setQueue } from "../store/player";
 import { coverUrl, type Track } from "../tauri";
 import { playTrack } from "./PlayerBar";
 
@@ -81,7 +81,15 @@ export function QueueDrawer() {
           <Show when={upcoming().length > 0}>
             <div class="queue-drawer__section-label">
               <span>Up next · {upcoming().length}</span>
-              <button>Clear</button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Mantem a track atual tocando, descarta o resto da fila.
+                  if (player.currentTrack) setQueue([player.currentTrack], 0);
+                }}
+              >
+                Clear
+              </button>
             </div>
             <For each={upcoming()}>
               {(track) => <QRow track={track} />}

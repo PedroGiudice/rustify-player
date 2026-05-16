@@ -7,6 +7,7 @@ import { For } from "solid-js";
 import { CoverArt } from "../components/CoverArt";
 import { Icon, ICONS } from "../components/Icon";
 
+// MOCK: lib_get_stations não existe no backend — dataset estático até ser implementado.
 const STATIONS = [
   { name: "Midnight",     desc: "ambient · drone · sleepless", seed: "midnight" },
   { name: "Sunday Slow",  desc: "modern classical · acoustic", seed: "sunday-slow" },

@@ -77,7 +77,6 @@ export default function AlbumView() {
           <div class="tracks__head">Title</div>
           <div class="tracks__head">Album</div>
           <div class="tracks__head">Genre</div>
-          <div class="tracks__head tracks__mono">Format</div>
           <div class="tracks__head tracks__mono">Length</div>
           <For each={tracks() ?? []}>
             {(t, i) => (
@@ -86,7 +85,6 @@ export default function AlbumView() {
                 <div class="tracks__title"><b>{t.title || "—"}</b><small>{t.artist_name || "—"}</small></div>
                 <div class="tracks__cell">{t.album_title ?? "—"}</div>
                 <div class="tracks__cell">{t.genre_name ?? "—"}</div>
-                <div class="tracks__mono">24/96</div>
                 <div class="tracks__mono">{fmtDur(t.duration_ms)}</div>
               </div>
             )}

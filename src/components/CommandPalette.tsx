@@ -16,7 +16,7 @@ import { CoverArt } from "./CoverArt";
 import { navigate } from "../router";
 import { playTrack } from "./PlayerBar";
 import { setQueue, enqueueEnd, enqueueNext } from "../store/player";
-import { libSearch, coverUrl, type Track } from "../tauri";
+import { libSearch, libShuffle, coverUrl, type Track, type Album, type Artist } from "../tauri";
 
 export const CMD_PALETTE_EVENT = "rustify:open-palette";
 
@@ -26,13 +26,27 @@ interface ActionItem {
   title: string;
   sub: string;
   icon: string;
-  run: () => void;
+  run: () => void | Promise<void>;
 }
 interface TrackItem {
   kind: "track";
   track: Track;
 }
-type Item = ActionItem | TrackItem;
+interface AlbumItem {
+  kind: "album";
+  album: Album;
+}
+interface ArtistItem {
+  kind: "artist";
+  artist: Artist;
+}
+type Item = ActionItem | TrackItem | AlbumItem | ArtistItem;
+
+interface SearchBundle {
+  tracks: Track[];
+  albums: Album[];
+  artists: Artist[];
+}
 
 function fmtDur(ms: number): string {
   if (!ms) return "—";
@@ -46,21 +60,43 @@ export function CommandPalette() {
   const [active, setActive] = createSignal(0);
   let inputEl!: HTMLInputElement;
 
-  // libSearch retorna { tracks, albums, artists } no backend; aqui só usamos tracks.
-  const [searchResults] = createResource(query, async (q): Promise<Track[]> => {
-    if (!q.trim()) return [];
+  // libSearch retorna { tracks, albums, artists } no backend.
+  // Caso o backend retorne array (formato legado), trata como apenas tracks.
+  const [searchResults] = createResource(query, async (q): Promise<SearchBundle> => {
+    const empty: SearchBundle = { tracks: [], albums: [], artists: [] };
+    if (!q.trim()) return empty;
     try {
       const r = await libSearch(q, 6);
-      if (Array.isArray(r)) return r as Track[];
-      return (r?.tracks as Track[]) ?? [];
-    } catch { return []; }
+      if (Array.isArray(r)) return { tracks: r as Track[], albums: [], artists: [] };
+      return {
+        tracks: (r?.tracks as Track[]) ?? [],
+        albums: (r?.albums as Album[]) ?? [],
+        artists: (r?.artists as Artist[]) ?? [],
+      };
+    } catch { return empty; }
   });
+
+  const hasResults = () => {
+    const r = searchResults();
+    return !!r && (r.tracks.length + r.albums.length + r.artists.length) > 0;
+  };
 
   const actions = (): ActionItem[] => [
     {
       kind: "action", id: "shuffle", icon: ICONS.bolt,
       title: "Shuffle all", sub: "play library tracks in random order",
-      run: () => { navigate("/library"); close(); },
+      run: async () => {
+        try {
+          const tracks = await libShuffle(50);
+          if (tracks.length) {
+            setQueue(tracks, 0);
+            playTrack(tracks[0]);
+          }
+        } catch (e) {
+          console.error("[palette] shuffle all failed:", e);
+        }
+        close();
+      },
     },
     {
       kind: "action", id: "queue", icon: ICONS.queue,
@@ -80,9 +116,29 @@ export function CommandPalette() {
   ];
 
   const items = createMemo<Item[]>(() => {
-    const tracks = (searchResults() ?? []).map<TrackItem>((t) => ({ kind: "track", track: t }));
-    if (tracks.length === 0) return actions();
-    return [...tracks, ...actions()];
+    const r = searchResults();
+    if (!r || (r.tracks.length + r.albums.length + r.artists.length) === 0) {
+      return actions();
+    }
+    const tracks = r.tracks.map<TrackItem>((t) => ({ kind: "track", track: t }));
+    const albums = r.albums.map<AlbumItem>((a) => ({ kind: "album", album: a }));
+    const artists = r.artists.map<ArtistItem>((a) => ({ kind: "artist", artist: a }));
+    return [...tracks, ...albums, ...artists, ...actions()];
+  });
+
+  // Indices das fronteiras de secao (para inserir headers no render).
+  const sectionBoundaries = createMemo(() => {
+    const r = searchResults();
+    const tracks = r?.tracks.length ?? 0;
+    const albums = r?.albums.length ?? 0;
+    const artists = r?.artists.length ?? 0;
+    return {
+      tracksStart: 0,
+      albumsStart: tracks,
+      artistsStart: tracks + albums,
+      actionsStart: tracks + albums + artists,
+      counts: { tracks, albums, artists },
+    };
   });
 
   function close() {
@@ -97,11 +153,22 @@ export function CommandPalette() {
   }
 
   function runItem(it: Item) {
-    if (it.kind === "action") it.run();
-    else {
+    if (it.kind === "action") { it.run(); return; }
+    if (it.kind === "track") {
       setQueue([it.track], 0);
       playTrack(it.track);
       close();
+      return;
+    }
+    if (it.kind === "album") {
+      navigate(`/album/${encodeURIComponent(it.album.title)}`);
+      close();
+      return;
+    }
+    if (it.kind === "artist") {
+      navigate(`/artist/${encodeURIComponent(it.artist.name)}`);
+      close();
+      return;
     }
   }
 
@@ -157,53 +224,113 @@ export function CommandPalette() {
           <span class="palette__esc">ESC</span>
         </div>
         <div class="palette__list">
-          <Show when={query() && (searchResults()?.length ?? 0) > 0}>
-            <div class="palette__section">Tracks</div>
-          </Show>
           <For each={items()}>
-            {(it, i) => (
-              <div
-                class={`palette__item${active() === i() ? " active" : ""}`}
-                onMouseMove={() => setActive(i())}
-                onClick={() => runItem(it)}
-              >
-                <Show
-                  when={it.kind === "track"}
-                  fallback={
-                    <div class="palette__item-icon">
-                      <Icon name={(it as ActionItem).icon} size={14} />
-                    </div>
-                  }
-                >
-                  {() => {
-                    const t = (it as TrackItem).track;
-                    return (
-                      <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
-                        <CoverArt
-                          seed={t.album_title || t.id}
-                          src={coverUrl(t.album_cover_path)}
-                          size="sm"
-                          style={{ width: "28px", height: "28px" }}
-                        />
+            {(it, i) => {
+              const b = sectionBoundaries();
+              const showTracksHeader = hasResults() && b.counts.tracks > 0 && i() === b.tracksStart;
+              const showAlbumsHeader = hasResults() && b.counts.albums > 0 && i() === b.albumsStart;
+              const showArtistsHeader = hasResults() && b.counts.artists > 0 && i() === b.artistsStart;
+              const showActionsHeader = hasResults() && i() === b.actionsStart;
+              return (
+                <>
+                  <Show when={showTracksHeader}>
+                    <div class="palette__section">Tracks</div>
+                  </Show>
+                  <Show when={showAlbumsHeader}>
+                    <div class="palette__section">Albums</div>
+                  </Show>
+                  <Show when={showArtistsHeader}>
+                    <div class="palette__section">Artists</div>
+                  </Show>
+                  <Show when={showActionsHeader}>
+                    <div class="palette__section">Actions</div>
+                  </Show>
+                  <div
+                    class={`palette__item${active() === i() ? " active" : ""}`}
+                    onMouseMove={() => setActive(i())}
+                    onClick={() => runItem(it)}
+                  >
+                    <Show
+                      when={it.kind === "track"}
+                      fallback={
+                        <Show
+                          when={it.kind === "album"}
+                          fallback={
+                            <Show
+                              when={it.kind === "artist"}
+                              fallback={
+                                <div class="palette__item-icon">
+                                  <Icon name={(it as ActionItem).icon} size={14} />
+                                </div>
+                              }
+                            >
+                              <div class="palette__item-icon">
+                                <Icon name={ICONS.artists ?? ICONS.search} size={14} />
+                              </div>
+                            </Show>
+                          }
+                        >
+                          {() => {
+                            const a = (it as AlbumItem).album;
+                            return (
+                              <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
+                                <CoverArt
+                                  seed={a.title}
+                                  src={coverUrl(a.cover_path)}
+                                  size="sm"
+                                  style={{ width: "28px", height: "28px" }}
+                                />
+                              </div>
+                            );
+                          }}
+                        </Show>
+                      }
+                    >
+                      {() => {
+                        const t = (it as TrackItem).track;
+                        return (
+                          <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
+                            <CoverArt
+                              seed={t.album_title || t.id}
+                              src={coverUrl(t.album_cover_path)}
+                              size="sm"
+                              style={{ width: "28px", height: "28px" }}
+                            />
+                          </div>
+                        );
+                      }}
+                    </Show>
+                    <div class="palette__item-text">
+                      <div class="palette__item-title">
+                        {it.kind === "action"
+                          ? it.title
+                          : it.kind === "track"
+                            ? it.track.title
+                            : it.kind === "album"
+                              ? it.album.title
+                              : it.artist.name}
                       </div>
-                    );
-                  }}
-                </Show>
-                <div class="palette__item-text">
-                  <div class="palette__item-title">
-                    {it.kind === "action" ? it.title : it.track.title}
+                      <div class="palette__item-sub">
+                        {it.kind === "action"
+                          ? it.sub
+                          : it.kind === "track"
+                            ? `${it.track.artist_name ?? "—"} · ${it.track.album_title ?? "—"} · ${fmtDur(it.track.duration_ms)}`
+                            : it.kind === "album"
+                              ? `${it.album.artist_name ?? "—"} · ${it.album.track_count} tracks`
+                              : `${it.artist.track_count} tracks · ${it.artist.album_count} albums`}
+                      </div>
+                    </div>
+                    <div class="palette__item-hint">
+                      {it.kind === "track"
+                        ? "↵ play · ⌘↵ next · ⇧↵ queue"
+                        : it.kind === "album" || it.kind === "artist"
+                          ? "↵ open"
+                          : "↵"}
+                    </div>
                   </div>
-                  <div class="palette__item-sub">
-                    {it.kind === "action"
-                      ? it.sub
-                      : `${it.track.artist_name ?? "—"} · ${it.track.album_title ?? "—"} · ${fmtDur(it.track.duration_ms)}`}
-                  </div>
-                </div>
-                <div class="palette__item-hint">
-                  {it.kind === "track" ? "↵ play · ⌘↵ next · ⇧↵ queue" : "↵"}
-                </div>
-              </div>
-            )}
+                </>
+              );
+            }}
           </For>
         </div>
         <div class="palette__footer">

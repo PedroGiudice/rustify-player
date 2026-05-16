@@ -15,8 +15,9 @@
    adicionar deps no package.json.
    ============================================================ */
 
-import { Show } from "solid-js";
+import { Show, onMount } from "solid-js";
 import { route } from "../router";
+import { mountResources, toggleResources } from "../js/components/resources.js";
 
 const TRAFFIC = {
   red:    "#ff5f57",
@@ -44,6 +45,12 @@ async function handleMaximize() {
 }
 
 export function Titlebar() {
+  // Monta o overlay de Resources (HUD) — o overlay vive fora do shell,
+  // injetado no body. O botao RES abaixo apenas toggla.
+  onMount(() => {
+    try { mountResources(); } catch (e) { console.warn("[titlebar] mountResources failed:", e); }
+  });
+
   const showBack = () => {
     const p = route().path;
     return p && p !== "/home" && p !== "/";
@@ -79,7 +86,7 @@ export function Titlebar() {
       </div>
 
       <span class="titlebar__text">
-        rustify-player <span class="titlebar__dim">· dev</span>
+        rustify-player {import.meta.env.DEV && <span class="titlebar__dim">· dev</span>}
       </span>
 
       <Show when={showBack()}>
@@ -95,6 +102,16 @@ export function Titlebar() {
       </Show>
 
       <div class="titlebar__spacer" data-tauri-drag-region />
+
+      <button
+        type="button"
+        class="titlebar__res no-drag"
+        aria-label="Resources"
+        title="Resources (Ctrl+R)"
+        onClick={() => toggleResources()}
+      >
+        RES
+      </button>
     </header>
   );
 }

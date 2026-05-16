@@ -68,7 +68,6 @@ export default function History() {
                     <div class="row__title">{t.title || "—"}</div>
                     <div class="row__sub">{t.artist_name || "—"}{t.album_title && <> · {t.album_title}</>}</div>
                   </div>
-                  <div class="row__tech">FLAC · 24/96</div>
                   <div class="row__when">{relTime(t.last_played)}</div>
                   <div class="row__time">{fmtDur(t.duration_ms)}</div>
                 </div>

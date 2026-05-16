@@ -7,6 +7,7 @@
 
 import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import { player } from "../store/player";
+import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { SpectrumCanvas, useShape } from "../components/SpectrumCanvas";
@@ -132,12 +133,24 @@ export default function NowPlaying() {
                   <span><b>{player.techInfo.bitDepth}</b>-bit</span>
                   <span>{player.techInfo.format}</span>
                   <span>{player.techInfo.channels === 1 ? "mono" : "stereo"}</span>
-                  <span><em>bit-perfect</em></span>
                 </div>
                 <div class="np__specs np__specs--line2">
-                  <span>PipeWire → Bifrost 2/64</span>
-                  <span>DSP <b>EQ · LIM</b></span>
-                  <span>ReplayGain −3.4 dB</span>
+                  <span>Sink <b>PipeWire</b></span>
+                  <Show
+                    when={!dsp.bypass && (dsp.eq.enabled || dsp.limiter.enabled || dsp.bass.enabled)}
+                    fallback={<span>DSP <b>{dsp.bypass ? "BYPASS" : "OFF"}</b></span>}
+                  >
+                    <span>
+                      DSP{" "}
+                      <b>
+                        {[
+                          dsp.eq.enabled ? "EQ" : null,
+                          dsp.limiter.enabled ? "LIM" : null,
+                          dsp.bass.enabled ? "BASS" : null,
+                        ].filter(Boolean).join(" · ")}
+                      </b>
+                    </span>
+                  </Show>
                 </div>
               </Show>
             </div>

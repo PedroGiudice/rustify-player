@@ -185,6 +185,24 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 }
 .nav-back:hover { background: var(--bg-tint); color: var(--fg-1); }
 
+/* RES — toggle do Resources HUD (overlay vive fora do shell) */
+.titlebar__res {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--fg-5);
+  cursor: pointer;
+  transition: background var(--dur-base), color var(--dur-base);
+}
+.titlebar__res:hover { background: var(--bg-tint); color: var(--fg-1); }
+
 /* ────────────────────────────────────────────────────────────
    SIDEBAR
    ──────────────────────────────────────────────────────────── */

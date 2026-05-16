@@ -69,7 +69,9 @@ export const [player, setPlayer] = createStore<PlayerStore>({
   positionSecs: 0,
   durationSecs: 0,
   isScrubbing: false,
-  volume: 0.78,
+  // Default sao 100%. O valor real do usuario e restaurado por persistLoadState
+  // no boot do PlayerBar antes de qualquer interacao audivel acontecer.
+  volume: 1.0,
   isMuted: false,
   shuffle: false,
   repeatMode: "off",
@@ -140,6 +142,9 @@ export function applyTrackStarted(info: TrackInfo) {
     positionSecs: 0,
     durationSecs: info.duration?.secs ?? 0,
     techInfo: {
+      // FIXME: TrackInfo no backend nao expoe format/codec — assumindo FLAC
+      // (90%+ da biblioteca real). Para suportar mp3/ogg/opus, expor
+      // codec_short_name do symphonia em TrackInfo.
       format: "FLAC",
       bitDepth: info.bit_depth ?? null,
       sampleRate: info.sample_rate ?? null,

@@ -61,7 +61,7 @@ export default function Home() {
       <header class="view__head">
         <div>
           <h1>Home</h1>
-          <p class="view__head-hint">Local · PipeWire · 1 device conectado</p>
+          <p class="view__head-hint">Local · PipeWire</p>
         </div>
         <Show when={data()}>
           {(d) => (
@@ -120,12 +120,31 @@ export default function Home() {
                     <span class="hero-tile__cta"><Icon name={ICONS.play} size={12} /></span>
                   </button>
 
-                  <button class="hero-tile" onClick={() => navigate("/stations")}>
-                    <div class="hero-tile__eyebrow">From your seeds</div>
-                    <h3 class="hero-tile__title">Midnight station</h3>
-                    <div class="hero-tile__sub">ambient · jazz · 24 tracks</div>
-                    <span class="hero-tile__cta"><Icon name={ICONS.play} size={12} /></span>
-                  </button>
+                  <Show
+                    when={d().albums.length > 0}
+                    fallback={
+                      <button class="hero-tile" onClick={shuffleAll}>
+                        <div class="hero-tile__eyebrow">Discover</div>
+                        <h3 class="hero-tile__title">Surprise me</h3>
+                        <div class="hero-tile__sub">{d().snap.tracks_total.toLocaleString()} tracks</div>
+                        <span class="hero-tile__cta"><Icon name={ICONS.play} size={12} /></span>
+                      </button>
+                    }
+                  >
+                    {(() => {
+                      const top = d().albums[0];
+                      return (
+                        <button class="hero-tile" onClick={() => playAlbum(top.title)}>
+                          <div class="hero-tile__eyebrow">From your library</div>
+                          <h3 class="hero-tile__title">{top.title}</h3>
+                          <div class="hero-tile__sub">
+                            {top.artist_name ?? "—"} · {top.track_count} tracks
+                          </div>
+                          <span class="hero-tile__cta"><Icon name={ICONS.play} size={12} /></span>
+                        </button>
+                      );
+                    })()}
+                  </Show>
                 </div>
               </section>
 
@@ -153,7 +172,6 @@ export default function Home() {
                               {t.artist_name || "—"}{t.album_title && <> · {t.album_title}</>}
                             </div>
                           </div>
-                          <div class="row__tech">FLAC · 24/96 · stereo</div>
                           <div class="row__when">{relativeTime(t.last_played)}</div>
                           <div class="row__time">{fmtDur(t.duration_ms)}</div>
                         </div>
