@@ -31,12 +31,18 @@ impl Engine {
     }
 }
 
+/// Re-export do snapshot de envelope publicado pelo FFT worker. Usado pela
+/// camada Tauri para incluir os campos `low_band_mag` / `rms_energy` no
+/// payload de `audio-fft`.
+pub use output::pw_capture::SpectrumEnvelope;
+
 #[derive(Clone)]
 pub struct EngineHandle {
     pub(crate) command_tx: crossbeam_channel::Sender<Command>,
     pub(crate) state_rx: Receiver<StateUpdate>,
     pub(crate) metrics: std::sync::Arc<engine::SharedMetrics>,
     pub(crate) spectrum_buf: std::sync::Arc<std::sync::Mutex<(u64, Vec<u8>)>>,
+    pub(crate) envelope_buf: std::sync::Arc<std::sync::Mutex<SpectrumEnvelope>>,
 }
 
 impl EngineHandle {
@@ -60,6 +66,13 @@ impl EngineHandle {
 
     pub fn spectrum_buffer(&self) -> std::sync::Arc<std::sync::Mutex<(u64, Vec<u8>)>> {
         self.spectrum_buf.clone()
+    }
+
+    /// Buffer compartilhado com o snapshot dos envelopes beat-sync
+    /// (`low_band_mag`, `rms_energy`). Consumido pelo spectrum-emitter
+    /// para anexar os campos ao payload de `audio-fft`.
+    pub fn envelope_buffer(&self) -> std::sync::Arc<std::sync::Mutex<SpectrumEnvelope>> {
+        self.envelope_buf.clone()
     }
 
     pub fn sink_latency_ms(&self) -> u64 {

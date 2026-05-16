@@ -106,6 +106,14 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     let spectrum_latest = Arc::new(std::sync::Mutex::new((0u64, Vec::<u8>::new())));
     let spectrum_latest_pub = spectrum_latest.clone();
 
+    // Beat-sync envelopes (low_band_mag, rms_energy) computados no FFT worker.
+    // Vivem em buffer separado para preservar o payload existente de
+    // `audio-fft` e seus consumidores atuais.
+    let envelope_latest = Arc::new(std::sync::Mutex::new(
+        crate::output::pw_capture::SpectrumEnvelope::default(),
+    ));
+    let envelope_latest_pub = envelope_latest.clone();
+
     thread::Builder::new()
         .name("audio-engine".to_string())
         .spawn(move || {
@@ -135,6 +143,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
             let _pw_capture = crate::output::pw_capture::start(
                 "rustify-player",
                 spectrum_latest.clone(),
+                envelope_latest.clone(),
             );
             if _pw_capture.is_none() {
                 tracing::warn!("PipeWire capture unavailable — spectrum will be silent");
@@ -173,6 +182,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
         state_rx,
         metrics,
         spectrum_buf: spectrum_latest_pub,
+        envelope_buf: envelope_latest_pub,
     })
 }
 

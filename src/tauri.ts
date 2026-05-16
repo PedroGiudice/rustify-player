@@ -218,6 +218,10 @@ export const onMprisCommand = (cb: (cmd: string) => void) =>
 export interface FftPayload {
   stream_time_ms: number;
   magnitudes: number[];
+  /** Envelope follower do range 20-150 Hz (attack ~5ms, release ~100ms). 0..1. */
+  low_band_mag: number;
+  /** RMS slow-averaged (lowpass ~2 Hz) sobre todas as bands. 0..1. */
+  rms_energy: number;
 }
 
 export const onAudioFft = (cb: (payload: FftPayload) => void) =>

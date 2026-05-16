@@ -34,10 +34,20 @@ struct QdrantSidecar(Mutex<Option<qdrant_process::QdrantProcess>>);
 
 /// Payload emitted to frontend via "audio-fft" event.
 /// `stream_time_ms` is the track position (ms) this FFT frame belongs to.
+///
+/// Os campos `low_band_mag` / `rms_energy` carregam o envelope beat-sync
+/// computado no Rust (one-pole IIR no `fft_worker_loop`) e são consumidos
+/// pelo SpectrumCanvas. Mantêm o range 0..1 e nunca afetam fase — só
+/// amplitude e densidade de tinta (ver docs/.../README.md secção 5).
+///
+/// Snake-case é preservado para retro-compatibilidade com o frontend atual
+/// que já consome `stream_time_ms` (sem `rename_all` no struct).
 #[derive(Clone, Serialize)]
 struct FftPayload {
     stream_time_ms: u64,
     magnitudes: Vec<u8>,
+    low_band_mag: f32,
+    rms_energy: f32,
 }
 
 #[derive(Clone, Serialize, serde::Deserialize)]
@@ -2572,6 +2582,7 @@ pub fn run() {
             _app.manage(SharedSpectrumConfig(spectrum_cfg.clone()));
 
             let spectrum_buf = engine.spectrum_buffer();
+            let envelope_buf = engine.envelope_buffer();
             let spectrum_handle = _app.handle().clone();
             let spectrum_flag = spectrum_active.clone();
             _app.manage(SpectrumActive(spectrum_active));
@@ -2613,12 +2624,26 @@ pub fn run() {
                             continue;
                         };
 
+                        // Snapshot do envelope beat-sync. Fallback para zeros
+                        // se o lock estiver poisoned (improvável).
+                        let envelope = envelope_buf
+                            .lock()
+                            .map(|g| *g)
+                            .unwrap_or_default();
+
                         if tick_count % 300 == 0 {
-                            tracing::info!("spectrum-emitter: emitting frame len={}", fft.len());
+                            tracing::info!(
+                                "spectrum-emitter: emitting frame len={} low={:.3} rms={:.3}",
+                                fft.len(),
+                                envelope.low_band_mag,
+                                envelope.rms_energy,
+                            );
                         }
                         let payload = FftPayload {
                             stream_time_ms: 0,
                             magnitudes: fft,
+                            low_band_mag: envelope.low_band_mag,
+                            rms_energy: envelope.rms_energy,
                         };
                         let _ = spectrum_handle.emit("audio-fft", &payload);
                     }
