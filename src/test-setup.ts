@@ -6,6 +6,18 @@
    ============================================================ */
 
 (globalThis as any).window = globalThis.window || globalThis;
+
+// Path2D nao existe em jsdom — stub minimo so pra nao explodir em testes
+// de canvas. Em producao o browser fornece a impl real.
+if (typeof (globalThis as any).Path2D === "undefined") {
+  (globalThis as any).Path2D = class {
+    moveTo() {}
+    lineTo() {}
+    bezierCurveTo() {}
+    closePath() {}
+  };
+}
+
 (window as any).__TAURI__ = {
   core: {
     invoke: async () => undefined,
