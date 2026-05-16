@@ -1,64 +1,56 @@
 /* ============================================================
-   views/Albums.tsx — Grid de albums (card-grid).
-   Markup identico ao albums.js vanilla.
+   views/Albums.tsx — Grid of all albums, click to play.
    ============================================================ */
 
-import { createResource, Show, For } from "solid-js";
-import { libGetAlbums, libGetTracksByAlbum, coverUrl } from "../tauri";
+import { createResource, For, Show } from "solid-js";
+import { libGetAlbums, libGetTracksByAlbum, coverUrl, type Album } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
-import { navigate } from "../router";
-import type { Album } from "../tauri";
-
-function initials(name: string): string {
-  return (name || "?").split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase();
-}
+import { navigate, route } from "../router";
+import { CoverArt } from "../components/CoverArt";
+import { Icon, ICONS } from "../components/Icon";
 
 export default function Albums() {
-  const [albums] = createResource(() => libGetAlbums({ limit: 500 }));
+  const [albums] = createResource(async () => {
+    try { return await libGetAlbums({ limit: 300 }); } catch { return [] as Album[]; }
+  });
 
-  async function playAlbum(albumTitle: string) {
-    const tracks = await libGetTracksByAlbum(albumTitle);
+  async function play(album: Album) {
+    const tracks = await libGetTracksByAlbum(album.title);
     if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
   }
 
+  const standalone = () => route().path === "/albums";
+
   return (
-    <article class="view">
-      <header class="view__header">
-        <h1 class="view__title">Albums</h1>
-        <Show when={albums()}>
-          {(a) => <div class="view__stats"><span>{a().length} albums</span></div>}
-        </Show>
-      </header>
+    <>
+      <Show when={standalone()}>
+        <header class="view__head">
+          <div><h1>Albums</h1></div>
+        </header>
+      </Show>
 
       <div class="view__body">
-        <Show when={albums()} fallback={<p class="empty-state__hint">Loading...</p>}>
-          {(list) => (
-            <Show when={list().length > 0} fallback={
-              <div class="empty-state"><p class="empty-state__title">No albums yet</p></div>
-            }>
-              <div class="card-grid">
-                <For each={list()}>
-                  {(a) => (
-                    <div class="card" onClick={() => navigate(`/album/${encodeURIComponent(a.title)}`)}>
-                      <div class={`card__cover${a.cover_path ? "" : " card__cover--initials"}`}>
-                        <Show when={a.cover_path} fallback={<span>{initials(a.title)}</span>}>
-                          {(p) => <img src={coverUrl(p())!} alt="" />}
-                        </Show>
-                        <button class="card__cover-play" onClick={(e) => { e.stopPropagation(); playAlbum(a.title); }} aria-label="Play album">
-                          <svg class="icon icon--filled" aria-hidden="true"><use href="#icon-play" /></svg>
-                        </button>
-                      </div>
-                      <div class="card__label">{a.title}</div>
-                      <div class="card__sub">{a.album_artist_name || a.artist_name || "—"}{a.year ? ` • ${a.year}` : ""}</div>
-                    </div>
-                  )}
-                </For>
+        <div class="card-grid">
+          <For each={albums() ?? []}>
+            {(a) => (
+              <div class="card" onClick={() => play(a)}>
+                <CoverArt
+                  seed={a.title}
+                  src={coverUrl(a.cover_path)}
+                  size="md"
+                  class="card__cover"
+                >
+                  <button class="card__play" type="button"><Icon name={ICONS.play} size={12} /></button>
+                </CoverArt>
+                <div class="card__title">{a.title}</div>
+                <div class="card__sub">{a.artist_name ?? "—"}</div>
+                <div class="card__meta">{a.track_count} tracks{a.year ? ` · ${a.year}` : ""}</div>
               </div>
-            </Show>
-          )}
-        </Show>
+            )}
+          </For>
+        </div>
       </div>
-    </article>
+    </>
   );
 }

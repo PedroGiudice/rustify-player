@@ -1,97 +1,96 @@
 /* ============================================================
-   views/Tracks.tsx — Tabela de todas as tracks.
-   Markup identico ao tracks.js vanilla.
+   views/Tracks.tsx — Flat list of all tracks with genre chips.
+
+   This view is reachable as a Library tab AND as /tracks direct.
+   When mounted inside Library, the view__head is omitted (parent
+   already rendered it); when used standalone it shows its own.
    ============================================================ */
 
-import { createResource, Show, For } from "solid-js";
-import { libGetTracks, coverUrl } from "../tauri";
+import { createResource, createSignal, For, Show } from "solid-js";
+import { libListGenres, libGetTracks, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
-import { showTrackMenu } from "../js/components/context-menu.js";
-import type { Track } from "../tauri";
+import { route } from "../router";
 
-function formatMs(ms: number | null): string {
-  if (!ms) return "—";
-  const secs = Math.floor(ms / 1000);
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+function fmtDur(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export default function Tracks() {
-  const [tracks] = createResource(() => libGetTracks());
+  const [genre, setGenre] = createSignal<string | null>(null);
 
-  function handleClick(list: Track[], idx: number) {
-    setQueue(list, idx);
-    playTrack(list[idx]);
+  const [genres] = createResource(async () => {
+    try { return (await libListGenres()).filter((g: any) => g.track_count > 0); } catch { return []; }
+  });
+
+  const [tracks] = createResource(genre, async (g): Promise<Track[]> => {
+    try { return await libGetTracks({ genre: g ?? null, limit: 500 }); } catch { return []; }
+  });
+
+  function play(t: Track) {
+    const all = tracks() ?? [];
+    const idx = all.indexOf(t);
+    setQueue(all, idx >= 0 ? idx : 0);
+    playTrack(t);
   }
 
+  const standalone = () => route().path === "/tracks";
+
   return (
-    <article class="view">
-      <header class="view__header">
-        <h1 class="view__title">Tracks</h1>
-        <Show when={tracks()}>
-          {(t) => <div class="view__stats"><span class="view__stats-item">{t().length} tracks</span></div>}
-        </Show>
-      </header>
+    <>
+      <Show when={standalone()}>
+        <header class="view__head">
+          <div><h1>Tracks</h1></div>
+        </header>
+      </Show>
 
       <div class="view__body">
-        <Show when={tracks()} fallback={
-          <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
-        }>
-          {(list) => (
-            <Show when={list().length > 0} fallback={
-              <div class="empty-state">
-                <p class="empty-state__title">No tracks indexed</p>
-                <p class="empty-state__hint">Point to a music folder in Settings</p>
+        <div class="toolbar">
+          <button class={`chip${genre() === null ? " active" : ""}`} onClick={() => setGenre(null)}>All</button>
+          <For each={genres() ?? []}>
+            {(g: any) => (
+              <button
+                class={`chip${genre() === g.name ? " active" : ""}`}
+                onClick={() => setGenre(g.name)}
+              >
+                {g.name}
+              </button>
+            )}
+          </For>
+        </div>
+
+        <div class="tracks">
+          <div class="tracks__head tracks__idx">#</div>
+          <div class="tracks__head">Title</div>
+          <div class="tracks__head">Album</div>
+          <div class="tracks__head">Genre</div>
+          <div class="tracks__head tracks__mono">Format</div>
+          <div class="tracks__head tracks__mono">Length</div>
+
+          <For each={tracks() ?? []}>
+            {(t, i) => (
+              <div class="tracks__row" onClick={() => play(t)} style={{ display: "contents" }}>
+                <div class="tracks__idx">{String(i() + 1).padStart(2, "0")}</div>
+                <div class="tracks__title">
+                  <b>{t.title || "—"}</b>
+                  <small>{t.artist_name || "—"}</small>
+                </div>
+                <div class="tracks__cell">{t.album_title ?? "—"}</div>
+                <div class="tracks__cell">{t.genre_name ?? "—"}</div>
+                <div class="tracks__mono">24/96</div>
+                <div class="tracks__mono">{fmtDur(t.duration_ms)}</div>
               </div>
-            }>
-              <table class="track-table">
-                <thead>
-                  <tr>
-                    <th class="track-table__th track-table__th--cover"></th>
-                    <th class="track-table__th track-table__th--num">#</th>
-                    <th class="track-table__th">Title</th>
-                    <th class="track-table__th">Artist</th>
-                    <th class="track-table__th">Album</th>
-                    <th class="track-table__th">Genre</th>
-                    <th class="track-table__th track-table__th--dur">Duration</th>
-                    <th class="track-table__th track-table__th--more"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={list()}>
-                    {(t, i) => (
-                      <tr
-                        class="track-row"
-                        onClick={() => handleClick(list(), i())}
-                        onContextMenu={(e) => { e.preventDefault(); showTrackMenu(e, t, list(), i()); }}
-                      >
-                        <td class="track-table__td track-table__td--cover">
-                          <Show when={t.album_cover_path}>
-                            {(p) => <img src={coverUrl(p())!} loading="lazy" alt="" />}
-                          </Show>
-                        </td>
-                        <td class="track-table__td track-table__td--num">{t.track_number ?? i() + 1}</td>
-                        <td class="track-table__td track-table__td--title">{t.title}</td>
-                        <td class="track-table__td">{t.artist_name || "—"}</td>
-                        <td class="track-table__td">{t.album_title || "—"}</td>
-                        <td class="track-table__td">{t.genre_name || "—"}</td>
-                        <td class="track-table__td track-table__td--dur">{formatMs(t.duration_ms)}</td>
-                        <td class="track-table__td track-table__td--more">
-                          <button class="more-btn" aria-label="More" onClick={(e) => { e.stopPropagation(); showTrackMenu(e, t, list(), i()); }}>
-                            <svg class="icon icon--sm"><use href="#icon-more-vertical" /></svg>
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
-          )}
-        </Show>
+            )}
+          </For>
+
+          <Show when={(tracks() ?? []).length === 0 && !tracks.loading}>
+            <div style={{ "grid-column": "1 / -1", padding: "32px", "text-align": "center", color: "var(--fg-5)" }}>
+              Nenhuma track encontrada.
+            </div>
+          </Show>
+        </div>
       </div>
-    </article>
+    </>
   );
 }

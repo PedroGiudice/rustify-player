@@ -1,140 +1,85 @@
 /* ============================================================
-   views/Library.tsx — Local Library com genre chips + track table.
-   Markup identico ao library.js vanilla.
+   views/Library.tsx — Tab nav for Tracks/Albums/Artists/Genres.
+   Renders the active sub-view inline. Each tab is also addressable
+   directly via /tracks, /albums, /artists routes if you want.
    ============================================================ */
 
-import { createResource, createSignal, Show, For } from "solid-js";
-import { libGetTracks, libSnapshot, libListGenres, coverUrl } from "../tauri";
-import { setQueue } from "../store/player";
-import { playTrack } from "../components/PlayerBar";
-import type { Track } from "../tauri";
+import { createResource, createSignal, For, Show } from "solid-js";
+import { libSnapshot, libListGenres } from "../tauri";
+import Tracks from "./Tracks";
+import Albums from "./Albums";
+import Artists from "./Artists";
 
-function formatMs(ms: number | null): string {
-  if (!ms) return "—";
-  const secs = Math.floor(ms / 1000);
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
+type Tab = "tracks" | "albums" | "artists" | "genres";
 
 export default function Library() {
-  const [data] = createResource(async () => {
-    const [snapshot, genres, tracks] = await Promise.all([
+  const [tab, setTab] = createSignal<Tab>("tracks");
+  const [meta] = createResource(async () => {
+    const [snap, genres] = await Promise.all([
       libSnapshot(),
-      libListGenres(),
-      libGetTracks({ limit: 200 }),
+      libListGenres().catch(() => []),
     ]);
-    return { snapshot, genres, tracks };
+    return { snap, genres: genres.filter((g: any) => g.track_count > 0) };
   });
-
-  const [filteredTracks, setFilteredTracks] = createSignal<Track[] | null>(null);
-  const [activeGenre, setActiveGenre] = createSignal<string | null>(null);
-
-  async function toggleGenre(genreName: string) {
-    if (activeGenre() === genreName) {
-      setActiveGenre(null);
-      setFilteredTracks(null);
-    } else {
-      setActiveGenre(genreName);
-      const filtered = await libGetTracks({ genre: genreName, limit: 200 });
-      setFilteredTracks(filtered);
-    }
-  }
-
-  const displayTracks = () => filteredTracks() ?? data()?.tracks ?? [];
-
-  function handleTrackClick(idx: number) {
-    const tracks = displayTracks();
-    if (idx >= 0 && idx < tracks.length) {
-      setQueue(tracks, idx);
-      playTrack(tracks[idx]);
-    }
-  }
 
   return (
     <article class="view">
-      <header class="view__header">
-        <h1 class="view__title">Local Library</h1>
-        <Show when={data()}>
-          {(d) => {
-            const populated = d().genres.filter((g: any) => g.track_count > 0);
-            return (
-              <div class="view__stats">
-                <span class="view__stats-item">{d().snapshot.tracks_total} tracks</span>
-                <span class="view__stats-sep">{"•"}</span>
-                <span class="view__stats-item">{populated.length} genres</span>
-                <Show when={d().snapshot.embeddings_done > 0}>
-                  <span class="view__stats-sep">{"•"}</span>
-                  <span class="view__stats-item">{d().snapshot.embeddings_done} embeddings</span>
-                </Show>
-              </div>
-            );
-          }}
+      <header class="view__head">
+        <div>
+          <h1>Library</h1>
+          <p class="view__head-hint">
+            <Show when={meta()} fallback="…">
+              {(m) => (
+                <>
+                  {m().snap.albums_total ?? "—"} albums · {m().snap.tracks_total.toLocaleString()} tracks ·{" "}
+                  {m().genres.length} genres
+                </>
+              )}
+            </Show>
+          </p>
+        </div>
+        <Show when={meta()}>
+          {(m) => (
+            <div class="view__stats">
+              <span><b>{m().snap.embeddings_done.toLocaleString()}</b> embedded</span>
+              <span><b>{(m().snap.tracks_total - m().snap.embeddings_done).toLocaleString()}</b> pending</span>
+            </div>
+          )}
         </Show>
       </header>
 
-      <div class="view__body">
-        <Show when={data()} fallback={
-          <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
-        }>
-          {(d) => {
-            const populated = d().genres.filter((g: any) => g.track_count > 0);
-            return (
-              <Show when={d().tracks.length > 0} fallback={
-                <div class="empty-state">
-                  <p class="empty-state__title">No tracks indexed yet</p>
-                  <p class="empty-state__hint">Point to a music folder in Settings</p>
-                </div>
-              }>
-                {/* Genre chips */}
-                <Show when={populated.length > 0}>
-                  <div class="genre-chips">
-                    <For each={populated}>
-                      {(g: any) => (
-                        <button
-                          class={`chip${activeGenre() === g.name ? " chip--active" : ""}`}
-                          onClick={() => toggleGenre(g.name)}
-                        >
-                          {g.name} ({g.track_count})
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+      <nav class="tabs" role="tablist">
+        <button class={`tab${tab() === "tracks" ? " active" : ""}`} onClick={() => setTab("tracks")}>
+          Tracks <Show when={meta()}><span class="tab__count">{meta()!.snap.tracks_total.toLocaleString()}</span></Show>
+        </button>
+        <button class={`tab${tab() === "albums" ? " active" : ""}`} onClick={() => setTab("albums")}>
+          Albums <Show when={meta()}><span class="tab__count">{meta()!.snap.albums_total ?? "—"}</span></Show>
+        </button>
+        <button class={`tab${tab() === "artists" ? " active" : ""}`} onClick={() => setTab("artists")}>
+          Artists <Show when={meta()}><span class="tab__count">{meta()!.snap.artists_total ?? "—"}</span></Show>
+        </button>
+        <button class={`tab${tab() === "genres" ? " active" : ""}`} onClick={() => setTab("genres")}>
+          Genres <Show when={meta()}><span class="tab__count">{meta()!.genres.length}</span></Show>
+        </button>
+      </nav>
 
-                {/* Track table */}
-                <table class="track-table">
-                  <thead>
-                    <tr>
-                      <th class="track-table__th track-table__th--num">#</th>
-                      <th class="track-table__th">Title</th>
-                      <th class="track-table__th">Artist</th>
-                      <th class="track-table__th">Album</th>
-                      <th class="track-table__th track-table__th--dur">Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={displayTracks()}>
-                      {(track, i) => (
-                        <tr
-                          class="track-row"
-                          onDblClick={() => handleTrackClick(i())}
-                        >
-                          <td class="track-table__td track-table__td--num">{i() + 1}</td>
-                          <td class="track-table__td track-table__td--title">{track.title}</td>
-                          <td class="track-table__td">{track.artist_name || "—"}</td>
-                          <td class="track-table__td">{track.album_title || "—"}</td>
-                          <td class="track-table__td track-table__td--dur">{formatMs(track.duration_ms)}</td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-              </Show>
-            );
-          }}
-        </Show>
-      </div>
+      <Show when={tab() === "tracks"}><Tracks /></Show>
+      <Show when={tab() === "albums"}><Albums /></Show>
+      <Show when={tab() === "artists"}><Artists /></Show>
+      <Show when={tab() === "genres"}>
+        <div class="view__body">
+          <For each={meta()?.genres ?? []}>
+            {(g: any) => (
+              <div class="row">
+                <div class="row__meta">
+                  <div class="row__title">{g.name}</div>
+                  <div class="row__sub">{g.track_count} tracks</div>
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
     </article>
   );
 }

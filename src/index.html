@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rustify</title>
 
-    <link rel="stylesheet" href="styles/tokens.css" />
-    <link rel="stylesheet" href="styles/base.css" />
-    <link rel="stylesheet" href="styles/layout.css" />
-    <link rel="stylesheet" href="styles/components.css" />
+    <!-- Iconify web component (vanilla, sem npm install) -->
+    <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+
+    <link rel="stylesheet" href="styles/extractor-lab.css" />
 
     <script src="js/resolve-ref.js"></script>
     <script src="js/mcp-aria-api.js"></script>
@@ -16,28 +16,6 @@
     <script type="module" src="main.js" defer></script>
   </head>
   <body>
-    <header class="titlebar" id="titlebar" data-tauri-drag-region>
-      <div class="titlebar__left">
-        <svg class="titlebar__logo" aria-hidden="true"><use href="#icon-logo-mark"></use></svg>
-        <span class="titlebar__text">rustify-player <span class="titlebar__dim">· dev</span></span>
-        <button class="nav-back" id="nav-back" type="button" aria-label="Back" hidden>&#8592;</button>
-      </div>
-      <div class="titlebar__center" id="titlebar-center"></div>
-      <div class="titlebar__controls">
-        <button class="titlebar__res" id="titlebar-res" title="Resources (Ctrl+R)">RES</button>
-        <button class="titlebar__btn" id="titlebar-minimize" aria-label="Minimize">
-          <svg width="10" height="10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1.2"/></svg>
-        </button>
-        <button class="titlebar__btn" id="titlebar-maximize" aria-label="Maximize">
-          <svg width="10" height="10"><rect x="1" y="1" width="8" height="8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-        </button>
-        <button class="titlebar__btn titlebar__btn--close" id="titlebar-close" aria-label="Close">
-          <svg width="10" height="10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/></svg>
-        </button>
-      </div>
-    </header>
-    <aside class="sidebar" id="sidebar"></aside>
-    <main class="main" id="main"></main>
-    <footer class="player-bar" id="player-bar"></footer>
+    <div id="app"></div>
   </body>
 </html>

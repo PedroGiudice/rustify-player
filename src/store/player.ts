@@ -21,6 +21,14 @@ export interface TechInfo {
   channels: number | null;
 }
 
+// "curated" — fila vem de um contexto coerente que o usuario montou ou
+//             curou (playlist, station). Shuffle dentro desse escopo
+//             embaralha a propria queue.
+// "open"    — fila vem de uma listagem generica (history, library, search,
+//             home suggestions). Shuffle nesse modo entra em radio: troca
+//             a queue por [current_track, ...autoplayNext()].
+export type QueueScope = "curated" | "open";
+
 export interface PlayerStore {
   // Faixa atual
   currentTrack: Track | null;
@@ -28,6 +36,7 @@ export interface PlayerStore {
   // Queue
   queue: Track[];
   queueIndex: number;
+  queueScope: QueueScope;
   // Estado de reprodução
   isPlaying: boolean;
   isLiked: boolean;
@@ -53,6 +62,7 @@ export const [player, setPlayer] = createStore<PlayerStore>({
   currentTrackInfo: null,
   queue: [],
   queueIndex: -1,
+  queueScope: "open",
   isPlaying: false,
   isLiked: false,
   isTransitioning: false,
@@ -69,10 +79,16 @@ export const [player, setPlayer] = createStore<PlayerStore>({
 // ── Mutações (API pública do store) ───────────────────────────
 // Sempre exportar funções — nunca expor setPlayer diretamente.
 
-export function setQueue(tracks: Track[], startIndex: number) {
+// `scope` decide o comportamento do shuffle:
+//   "curated" -> embaralha esta queue (mantem o contexto)
+//   "open"    -> shuffle entra em radio mode (descarta a queue, usa current_track como seed)
+// Default "open" porque a maioria das views serve listagens genericas;
+// playlist/station devem passar "curated" explicito.
+export function setQueue(tracks: Track[], startIndex: number, scope: QueueScope = "open") {
   setPlayer({
     queue: tracks,
     queueIndex: startIndex,
+    queueScope: scope,
     currentTrack: tracks[startIndex] ?? null,
   });
 }

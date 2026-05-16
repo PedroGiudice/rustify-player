@@ -1,382 +1,113 @@
 /* ============================================================
-   views/Settings.tsx — Configuracoes completas.
-   Markup identico ao settings.js vanilla.
+   views/Settings.tsx — Library/Audio/Theme settings.
    ============================================================ */
 
-import { createSignal, createResource, Show, For, onMount } from "solid-js";
-import { libSnapshot, libGetAlbums, libGetArtists, libListGenres, libRescan, setVolume, checkForUpdate, installUpdate, restartApp, listThemes, applyThemeByName, normGetState, normSetEnabled } from "../tauri";
-import type { ThemeInfo, ContrastCheck } from "../tauri";
-import { player, setPlayer } from "../store/player";
+import { createResource, createSignal, Show } from "solid-js";
+import { Icon, ICONS } from "../components/Icon";
 
-const APP_VERSION = "0.2.1";
-
-function embedStatusClass(s: any): string {
-  if (s.tracks_total === 0) return "status-pill--dim";
-  if (s.embeddings_done === s.tracks_total) return "status-pill--ok";
-  if (s.embeddings_failed > 0) return "status-pill--warn";
-  return "status-pill--dim";
-}
-
-function embedStatusLabel(s: any): string {
-  if (s.tracks_total === 0) return "Idle";
-  if (s.embeddings_done === s.tracks_total) return "Complete";
-  if (s.embeddings_pending > 0) return "Pending";
-  if (s.embeddings_failed > 0) return "Partial";
-  return "Idle";
-}
-
-function relativeTime(isoStr: string): string {
-  try {
-    const then = new Date(isoStr);
-    const now = new Date();
-    const diffMs = now.getTime() - then.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    if (diffSecs < 60) return "just now";
-    const diffMins = Math.floor(diffSecs / 60);
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return "yesterday";
-    if (diffDays < 30) return `${diffDays}d ago`;
-    return then.toLocaleDateString();
-  } catch { return ""; }
-}
-
-function ThemeSection() {
-  const [themes] = createResource(listThemes);
-  const [active, setActive] = createSignal(localStorage.getItem("rustify-theme") || "");
-  const [contrast, setContrast] = createSignal<ContrastCheck[]>([]);
-
-  async function select(filename: string) {
-    const checks = await applyThemeByName(filename);
-    setActive(filename);
-    setContrast(checks);
-  }
-
-  function resetTheme() {
-    const root = document.documentElement;
-    root.removeAttribute("style");
-    localStorage.removeItem("rustify-theme");
-    setActive("");
-    setContrast([]);
-  }
-
-  const failingChecks = () => contrast().filter(c => !c.pass_aa);
-
-  return (
-    <section class="settings-section">
-      <h3 class="settings-section__title">Theme</h3>
-      <div class="settings-row">
-        <label class="settings-row__label">Active theme</label>
-        <div class="settings-row__control">
-          <Show when={themes()} fallback={<span>Loading...</span>}>
-            {(t) => (
-              <select
-                class="settings-input"
-                value={active()}
-                onChange={(e) => {
-                  const v = e.currentTarget.value;
-                  if (v) select(v); else resetTheme();
-                }}
-              >
-                <option value="">Default (Copper)</option>
-                <For each={t()}>
-                  {(theme) => <option value={theme.filename}>{theme.name}</option>}
-                </For>
-              </select>
-            )}
-          </Show>
-        </div>
-      </div>
-      <Show when={failingChecks().length > 0}>
-        <div class="settings-row">
-          <label class="settings-row__label">Contrast</label>
-          <div class="settings-row__control" style="flex-direction: column; align-items: flex-start; gap: 4px;">
-            <For each={failingChecks()}>
-              {(c) => (
-                <span class="status-pill status-pill--warn" style="font-size: 10px;">
-                  {c.pair}: {c.ratio.toFixed(1)}:1 (needs 4.5:1)
-                </span>
-              )}
-            </For>
-          </div>
-        </div>
-      </Show>
-      <Show when={contrast().length > 0 && failingChecks().length === 0}>
-        <div class="settings-row">
-          <label class="settings-row__label">Contrast</label>
-          <span class="status-pill status-pill--ok">All pairs pass WCAG AA</span>
-        </div>
-      </Show>
-      <p class="settings-section__note">
-        Themes: ~/.local/share/rustify-player/themes/ — drop YAML files to add custom themes.
-      </p>
-    </section>
-  );
-}
+const THEMES = ["light", "dark", "auto"] as const;
+type Theme = typeof THEMES[number];
 
 export default function Settings() {
-  const [data] = createResource(async () => {
-    const [snapshot, albums, artists, genres] = await Promise.all([
-      libSnapshot(),
-      libGetAlbums(10000),
-      libGetArtists(10000),
-      libListGenres(),
-    ]);
-    return { snapshot, albums, artists, genres };
-  });
+  const [theme, setTheme] = createSignal<Theme>(
+    (localStorage.getItem("rustify-theme") as Theme) ?? "light",
+  );
+  const [scrobble, setScrobble] = createSignal(false);
+  const [crossfade, setCrossfade] = createSignal(2);
 
-  // Volume slider — derivado do store global do player.
-  // Antes era createSignal(80) hardcoded, o que fazia o slider voltar pra 80%
-  // toda vez que a view era remontada, ignorando o estado real do player.
-  const volumePct = () => Math.round(player.volume * 100);
-  const [scanning, setScanning] = createSignal(false);
-  const [scanLabel, setScanLabel] = createSignal("Re-scan library");
-
-  // Loudness normalization toggle. Hydrate from backend on mount; the
-  // localStorage cache is used only for the optimistic initial render.
-  const cachedNorm = localStorage.getItem("rustify-norm-enabled");
-  const [normEnabled, setNormEnabled] = createSignal(cachedNorm === null ? true : cachedNorm === "true");
-
-  onMount(() => {
-    normGetState()
-      .then((on) => {
-        setNormEnabled(on);
-        localStorage.setItem("rustify-norm-enabled", String(on));
-      })
-      .catch((e) => console.error("[norm] get_state failed:", e));
-  });
-
-  function handleNormToggle(e: Event) {
-    const checked = (e.target as HTMLInputElement).checked;
-    setNormEnabled(checked);
-    localStorage.setItem("rustify-norm-enabled", String(checked));
-    normSetEnabled(checked).catch((err) => {
-      console.error("[norm] set_enabled failed:", err);
-      // Revert the optimistic update.
-      setNormEnabled(!checked);
-      localStorage.setItem("rustify-norm-enabled", String(!checked));
-    });
-  }
-
-  const [updateStatus, setUpdateStatus] = createSignal<string | null>(null);
-  const [updateResult, setUpdateResult] = createSignal<any>(null);
-  const [checking, setChecking] = createSignal(false);
-  const [installing, setInstalling] = createSignal(false);
-
-  function handleRescan() {
-    setScanning(true);
-    setScanLabel("Scanning...");
-    libRescan().then(() => {
-      setScanLabel("Scan started");
-      setTimeout(() => { setScanning(false); setScanLabel("Re-scan library"); }, 5000);
-    }).catch(() => { setScanLabel("Scan failed"); setScanning(false); });
-  }
-
-  function handleVolumeChange(e: Event) {
-    const val = parseInt((e.target as HTMLInputElement).value, 10);
-    const vol = val / 100;
-    setPlayer("volume", vol);
-    setPlayer("isMuted", false);
-    setVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
-  }
-
-  async function handleCheckUpdate() {
-    setChecking(true);
-    setUpdateStatus("Checking...");
-    try {
-      const result = await checkForUpdate();
-      setUpdateResult(result);
-      if (result.error) {
-        setUpdateStatus(result.message);
-      } else if (result.update_available) {
-        setUpdateStatus("update_available");
-      } else {
-        setUpdateStatus("up_to_date");
-      }
-    } catch (err) {
-      setUpdateStatus(`Check failed: ${err}`);
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  async function handleInstall() {
-    setInstalling(true);
-    try {
-      await installUpdate();
-      setUpdateStatus("installed");
-    } catch (err) {
-      setUpdateStatus(`Install failed: ${err}`);
-      setInstalling(false);
-    }
+  function applyTheme(t: Theme) {
+    setTheme(t);
+    localStorage.setItem("rustify-theme", t);
+    document.body.setAttribute("data-theme", t === "auto" ? "" : t);
   }
 
   return (
     <article class="view">
-      <header class="view__header">
-        <h1 class="view__title">Settings</h1>
-        <div class="view__stats"><span class="view__stats-item">v{APP_VERSION}</span></div>
+      <header class="view__head">
+        <div>
+          <h1>Settings</h1>
+          <p class="view__head-hint">Library, audio, appearance.</p>
+        </div>
       </header>
 
-      <div class="view__body">
-        <Show when={data()} fallback={
-          <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
-        }>
-          {(d) => {
-            const snap = d().snapshot;
-            const genresPopulated = d().genres.filter((g: any) => g.track_count > 0).length;
+      <div class="view__body" style={{ "max-width": "720px" }}>
 
-            return <>
-              {/* Library */}
-              <section class="settings-section">
-                <h3 class="settings-section__title">Library</h3>
-                <div class="settings-row">
-                  <label class="settings-row__label">Music root</label>
-                  <input type="text" class="settings-input" value="~/Music" readonly />
-                </div>
-                <div class="settings-row">
-                  <label class="settings-row__label">Re-scan</label>
-                  <div class="settings-row__control">
-                    <button class="settings-button" disabled={scanning()} onClick={handleRescan}>{scanLabel()}</button>
-                  </div>
-                </div>
-                <div class="stats-grid">
-                  <div class="stat-card">
-                    <span class="stat-card__value">{snap.tracks_total}</span>
-                    <span class="stat-card__label">Tracks</span>
-                  </div>
-                  <div class="stat-card">
-                    <span class="stat-card__value">{d().albums.length}</span>
-                    <span class="stat-card__label">Albums</span>
-                  </div>
-                  <div class="stat-card">
-                    <span class="stat-card__value">{d().artists.length}</span>
-                    <span class="stat-card__label">Artists</span>
-                  </div>
-                  <div class="stat-card">
-                    <span class="stat-card__value">{genresPopulated}</span>
-                    <span class="stat-card__label">Genres</span>
-                  </div>
-                </div>
-              </section>
+        <section class="panel">
+          <div class="panel__head">
+            <h3 class="panel__title">Aparência</h3>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row__label">Tema</div>
+              <div class="toggle-row__hint">Light é o padrão Extractor Lab. Auto segue o SO.</div>
+            </div>
+            <div class="segmented">
+              <button class={theme() === "light" ? "active" : ""} onClick={() => applyTheme("light")}>Light</button>
+              <button class={theme() === "dark"  ? "active" : ""} onClick={() => applyTheme("dark")}>Dark</button>
+              <button class={theme() === "auto"  ? "active" : ""} onClick={() => applyTheme("auto")}>Auto</button>
+            </div>
+          </div>
+        </section>
 
-              {/* Theme */}
-              <ThemeSection />
+        <section class="panel">
+          <div class="panel__head">
+            <h3 class="panel__title">Reprodução</h3>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row__label">Crossfade</div>
+              <div class="toggle-row__hint">{crossfade()}s entre faixas. 0 desativa.</div>
+            </div>
+            <input
+              type="range" min="0" max="12" step="1"
+              class="slider"
+              style={{ width: "180px" }}
+              value={crossfade()}
+              onInput={(e) => setCrossfade(parseInt(e.currentTarget.value, 10))}
+            />
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row__label">Scrobble (Last.fm)</div>
+              <div class="toggle-row__hint">Envia faixas tocadas pro Last.fm.</div>
+            </div>
+            <button
+              class="toggle"
+              aria-pressed={scrobble() ? "true" : "false"}
+              onClick={() => setScrobble(!scrobble())}
+            />
+          </div>
+        </section>
 
-              {/* Audio */}
-              <section class="settings-section">
-                <h3 class="settings-section__title">Audio</h3>
-                <div class="settings-row">
-                  <label class="settings-row__label">Volume</label>
-                  <div class="settings-row__control">
-                    <input type="range" class="settings-range" min="0" max="100" value={volumePct()} onInput={handleVolumeChange} />
-                    <span class="settings-range__value">{volumePct()}%</span>
-                  </div>
-                </div>
-                <div class="settings-row">
-                  <label class="settings-row__label">Normalizar volume entre faixas</label>
-                  <div class="settings-row__control">
-                    <input
-                      type="checkbox"
-                      class="settings-checkbox"
-                      checked={normEnabled()}
-                      onChange={handleNormToggle}
-                    />
-                    <span class="settings-row__hint">
-                      Aplica ganho EBU R128 (alvo -14 LUFS) entre EQ e Limiter.
-                    </span>
-                  </div>
-                </div>
-                <div class="settings-row">
-                  <label class="settings-row__label">Output device</label>
-                  <select class="settings-input" disabled>
-                    <option>System default</option>
-                  </select>
-                </div>
-              </section>
+        <section class="panel">
+          <div class="panel__head">
+            <h3 class="panel__title">Library</h3>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row__label">Pasta da biblioteca</div>
+              <div class="toggle-row__hint mono">~/Music/library</div>
+            </div>
+            <button class="chip">Trocar…</button>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row__label">Re-scan</div>
+              <div class="toggle-row__hint">Re-indexa metadados e gera embeddings faltantes.</div>
+            </div>
+            <button class="chip"><Icon name={ICONS.bolt} size={12} /> Re-scan</button>
+          </div>
+        </section>
 
-              {/* Embedding */}
-              <section class="settings-section">
-                <h3 class="settings-section__title">Embedding</h3>
-                <div class="settings-row">
-                  <label class="settings-row__label">Status</label>
-                  <div class="settings-row__control">
-                    <span class={`status-pill ${embedStatusClass(snap)}`}>{embedStatusLabel(snap)}</span>
-                    <span class="settings-row__hint">{snap.embeddings_done}/{snap.tracks_total} tracks embedded</span>
-                  </div>
-                </div>
-                <p class="settings-section__note">
-                  Embeddings power similarity search via MERT-v1-95M running on the remote service.
-                  Similarity queries require embeddings to be populated.
-                </p>
-              </section>
+        <section class="panel">
+          <div class="panel__head">
+            <h3 class="panel__title">Sobre</h3>
+          </div>
+          <p class="mono" style={{ "font-size": "12px", color: "var(--fg-5)" }}>
+            rustify-player · v0.1.0 · Tauri 2 + SolidJS · Extractor Lab UI
+          </p>
+        </section>
 
-              {/* Updates */}
-              <section class="settings-section">
-                <h3 class="settings-section__title">Updates</h3>
-                <div class="settings-row">
-                  <label class="settings-row__label">Status</label>
-                  <div class="settings-row__control">
-                    <Show when={updateStatus() === "update_available"}>
-                      <span class="status-pill status-pill--warn">Update available</span>
-                      <span class="settings-row__hint">
-                        v{updateResult()?.current_version} {"→"} v{updateResult()?.latest_version}
-                        {updateResult()?.published_at ? ` (published ${relativeTime(updateResult().published_at)})` : ""}
-                      </span>
-                    </Show>
-                    <Show when={updateStatus() === "up_to_date"}>
-                      <span class="status-pill status-pill--ok">Up to date</span>
-                      <span class="settings-row__hint">v{updateResult()?.current_version}</span>
-                    </Show>
-                    <Show when={updateStatus() === "installed"}>
-                      <span class="status-pill status-pill--ok">Installed</span>
-                      <span class="settings-row__hint">Update installed — restart to apply.</span>
-                    </Show>
-                    <Show when={updateStatus() && !["update_available", "up_to_date", "installed"].includes(updateStatus()!)}>
-                      <span class="settings-row__value settings-row__value--muted">{updateStatus()}</span>
-                    </Show>
-                    <Show when={!updateStatus()}>
-                      <span class="settings-row__value settings-row__value--muted">Not checked</span>
-                    </Show>
-                  </div>
-                </div>
-                <div class="settings-row">
-                  <label class="settings-row__label">Action</label>
-                  <div class="settings-row__control">
-                    <Show when={updateStatus() === "installed"}>
-                      <button class="settings-button settings-button--primary" onClick={() => restartApp()}>
-                        Restart Now
-                      </button>
-                    </Show>
-                    <Show when={updateStatus() === "update_available"}>
-                      <button class="settings-button settings-button--primary" disabled={installing()} onClick={handleInstall}>
-                        {installing() ? "Installing..." : "Install Update"}
-                      </button>
-                    </Show>
-                    <button class="settings-button" disabled={checking()} onClick={handleCheckUpdate}>
-                      {checking() ? "Checking..." : "Check for updates"}
-                    </button>
-                  </div>
-                </div>
-              </section>
-
-              {/* About */}
-              <section class="settings-section">
-                <h3 class="settings-section__title">About</h3>
-                <div class="settings-row">
-                  <label class="settings-row__label">Version</label>
-                  <span class="settings-row__value">{APP_VERSION}</span>
-                </div>
-                <div class="settings-row">
-                  <label class="settings-row__label">Repository</label>
-                  <span class="settings-row__value settings-row__value--muted">rustify-player</span>
-                </div>
-              </section>
-            </>;
-          }}
-        </Show>
       </div>
     </article>
   );

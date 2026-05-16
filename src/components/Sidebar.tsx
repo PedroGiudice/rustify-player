@@ -1,130 +1,157 @@
 /* ============================================================
-   components/Sidebar.tsx — Migra sidebar.js para Solid.
-   VU bars animam reativamente via player store.
+   components/Sidebar.tsx — Light sidebar with Extractor Lab
+   styling.
+
+   Reads:
+     - route()                  → active highlight
+     - player.currentTrack      → mini chip + VU pulse
+     - player.isPlaying         → toggle VU animation
+   Dispatches:
+     - navigate('/now-playing') → opens NP screen
+     - postMessage opening cmd palette via custom event
    ============================================================ */
 
-import { For, createSignal, onMount, onCleanup } from "solid-js";
+import { For, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
-import { onPlayerState } from "../tauri";
+import { player } from "../store/player";
+import { Icon, ICONS } from "./Icon";
+import { CoverArt } from "./CoverArt";
+import { coverUrl } from "../tauri";
 
-const NAV_ITEMS = [
-  { route: "/home",      icon: "home",        label: "Home" },
-  { route: "/library",   icon: "library",     label: "Library" },
-  { route: "/artists",   icon: "person",      label: "Artists" },
-  { route: "/albums",    icon: "album",       label: "Albums" },
-  { route: "/tracks",    icon: "audiotrack",  label: "Tracks" },
-  { route: "/playlists", icon: "queue-music", label: "Playlists" },
-  { route: "/stations",  icon: "radio",       label: "Stations" },
-  { route: "/queue",     icon: "queue-music", label: "Queue" },
-  { route: "/history",   icon: "history",     label: "History" },
+const PRIMARY = [
+  { route: "/home",    icon: ICONS.home,    label: "Home" },
+  { route: "/search",  icon: ICONS.search,  label: "Search", kbd: "⌘K", action: "search" as const },
+  { route: "/library", icon: ICONS.library, label: "Library" },
 ];
 
-export function Sidebar() {
-  // VU bars — signal com alturas dos 5 bars
-  const [vuHeights, setVuHeights] = createSignal([4, 7, 10, 6, 8]);
-  let vuInterval: ReturnType<typeof setInterval> | null = null;
+const COLECOES = [
+  { route: "/playlists", icon: ICONS.playlists, label: "Playlists" },
+  { route: "/stations",  icon: ICONS.stations,  label: "Stations" },
+];
 
-  onMount(async () => {
-    const unlisten = await onPlayerState((p) => {
-      if ("Position" in p || "TrackStarted" in p) {
-        if (!vuInterval) {
-          vuInterval = setInterval(() => {
-            setVuHeights([0,0,0,0,0].map(() => 3 + Math.random() * 9));
-          }, 180);
-        }
-      } else if ("StateChanged" in p) {
-        const s = p.StateChanged;
-        if (s === "Paused" || s === "Idle" || s === "Stopped") {
-          clearInterval(vuInterval!);
-          vuInterval = null;
-          setVuHeights([4, 7, 10, 6, 8]);
-        }
+const FOOTER = [
+  { route: "/signal",   icon: ICONS.signal,   label: "Signal" },
+  { route: "/settings", icon: ICONS.settings, label: "Settings" },
+];
+
+/** Tiny event used by the search nav item to open the command palette. */
+export const SEARCH_EVENT = "rustify:open-palette";
+
+export function Sidebar() {
+  const [vu, setVu] = createSignal([4, 7, 10]);
+  let vuTimer: ReturnType<typeof setInterval> | null = null;
+
+  onMount(() => {
+    vuTimer = setInterval(() => {
+      if (player.isPlaying) {
+        setVu([0, 0, 0].map(() => 2 + Math.random() * 8));
+      } else {
+        setVu([4, 7, 10]);
       }
-    });
-    onCleanup(() => {
-      unlisten();
-      if (vuInterval) clearInterval(vuInterval);
-    });
+    }, 220);
+    onCleanup(() => { if (vuTimer) clearInterval(vuTimer); });
   });
 
   const isActive = (r: string) => route().path === r;
 
+  function handleNavClick(e: MouseEvent, item: { route: string; action?: "search" }) {
+    e.preventDefault();
+    if (item.action === "search") {
+      window.dispatchEvent(new CustomEvent(SEARCH_EVENT));
+      return;
+    }
+    navigate(item.route);
+  }
+
   return (
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar__logo">
-        <svg class="icon--lg" aria-hidden="true">
-          <use href="#icon-logo-mark" />
-        </svg>
-        <span class="sidebar__logo-word">Rustify</span>
+    <aside class="sidebar" data-screen-label="Sidebar">
+      <div class="brand">
+        <div class="brand__mark"><Icon name={ICONS.flask} size={20} /></div>
+        <div class="brand__word">Rustify</div>
+        <div class="brand__dot" title="Bit-perfect output" />
       </div>
 
-      <nav class="sidebar__nav" aria-label="Primary">
-        <For each={NAV_ITEMS}>
+      <div class="sidebar__section">
+        <For each={PRIMARY}>
           {(item) => (
             <a
-              class={`sidebar-item${isActive(item.route) ? " active" : ""}`}
+              class={`nav-item${isActive(item.route) ? " active" : ""}`}
               href={`#${item.route}`}
-              title={item.label}
+              onClick={(e) => handleNavClick(e, item)}
             >
-              <svg class="icon" aria-hidden="true">
-                <use href={`#icon-${item.icon}`} />
-              </svg>
-              <span class="sidebar-item__label">{item.label}</span>
-              <span class="sidebar-item__tooltip">{item.label}</span>
+              <Icon name={item.icon} size={16} />
+              <span>{item.label}</span>
+              {item.kbd && <span class="nav-item__kbd">{item.kbd}</span>}
             </a>
           )}
         </For>
-      </nav>
+      </div>
+
+      <div class="sidebar__section">
+        <div class="sidebar__label">Coleções</div>
+        <For each={COLECOES}>
+          {(item) => (
+            <a
+              class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              href={`#${item.route}`}
+              onClick={(e) => { e.preventDefault(); navigate(item.route); }}
+            >
+              <Icon name={item.icon} size={16} />
+              <span>{item.label}</span>
+            </a>
+          )}
+        </For>
+      </div>
+
+      <div class="sidebar__spacer" />
 
       <div class="sidebar__footer">
-        <a
-          class={`sidebar-item${isActive("/now-playing") ? " active" : ""}`}
-          href="#/now-playing"
-          title="Now Playing"
-        >
-          <svg class="icon" aria-hidden="true">
-            <use href="#icon-music-note" />
-          </svg>
-          <span class="sidebar-item__label">Now Playing</span>
-          <span class="sidebar-item__tooltip">Now Playing</span>
-          {/* VU bars — animadas reativamente via signal */}
-          <div class="sidebar__vu" id="sidebar-vu">
-            <For each={vuHeights()}>
-              {(h) => <span style={{ height: `${h}px` }} />}
-            </For>
+        {/* Mini now-playing chip */}
+        {player.currentTrack && (
+          <div
+            class="np-mini"
+            onClick={() => navigate("/now-playing")}
+            role="button"
+            tabindex="0"
+          >
+            <CoverArt
+              seed={player.currentTrack.album_title || player.currentTrack.id}
+              src={coverUrl(player.currentTrack.album_cover_path)}
+              size="sm"
+              style={{ width: "32px", height: "32px" }}
+            />
+            <div class="np-mini__meta">
+              <div class="np-mini__title">{player.currentTrack.title || "—"}</div>
+              <div class="np-mini__artist">{player.currentTrack.artist_name || "—"}</div>
+            </div>
+            <div class="np-mini__vu">
+              <For each={vu()}>{(h) => <span style={{ height: `${h}px` }} />}</For>
+            </div>
           </div>
-        </a>
+        )}
 
         <a
-          class={`sidebar-item${isActive("/signal") ? " active" : ""}`}
-          href="#/signal"
-          title="Signal"
+          class={`nav-item${isActive("/now-playing") ? " active" : ""}`}
+          href="#/now-playing"
+          onClick={(e) => { e.preventDefault(); navigate("/now-playing"); }}
         >
-          <svg class="icon" aria-hidden="true"><use href="#icon-sliders" /></svg>
-          <span class="sidebar-item__label">Signal</span>
-          <span class="sidebar-item__tooltip">Signal</span>
+          <Icon name={ICONS.music} size={16} />
+          <span>Now Playing</span>
+          <span class="nav-item__kbd">N</span>
         </a>
 
-        <a
-          class={`sidebar-item${isActive("/settings") ? " active" : ""}`}
-          href="#/settings"
-          title="Settings"
-        >
-          <svg class="icon" aria-hidden="true"><use href="#icon-settings" /></svg>
-          <span class="sidebar-item__label">Settings</span>
-          <span class="sidebar-item__tooltip">Settings</span>
-        </a>
-
-        <button
-          class="sidebar-item"
-          id="tweaks-toggle"
-          title="Tweaks"
-          onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
-        >
-          <svg class="icon" aria-hidden="true"><use href="#icon-sliders" /></svg>
-          <span class="sidebar-item__label">Tweaks</span>
-          <span class="sidebar-item__tooltip">Tweaks</span>
-        </button>
+        <For each={FOOTER}>
+          {(item) => (
+            <a
+              class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              href={`#${item.route}`}
+              onClick={(e) => { e.preventDefault(); navigate(item.route); }}
+            >
+              <Icon name={item.icon} size={16} />
+              <span>{item.label}</span>
+            </a>
+          )}
+        </For>
       </div>
     </aside>
   );

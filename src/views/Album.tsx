@@ -1,141 +1,98 @@
 /* ============================================================
-   views/Album.tsx — Detalhe de album (hero + track table).
-   Markup identico ao album.js vanilla.
+   views/Album.tsx — Detail page for a single album.
+   Param via route('/album/:title'). Shows hero + track list.
    ============================================================ */
 
-import { createResource, createSignal, Show, For } from "solid-js";
-import { libGetTracksByAlbum, coverUrl } from "../tauri";
+import { createResource, For, Show } from "solid-js";
+import { libGetTracksByAlbum, libGetAlbums, coverUrl, type Album, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
-import { navigate } from "../router";
-import { showTrackMenu } from "../js/components/context-menu.js";
-import type { Track, Album as AlbumType } from "../tauri";
+import { route } from "../router";
+import { CoverArt } from "../components/CoverArt";
+import { Icon, ICONS } from "../components/Icon";
 
-interface Props { param?: string | null; }
-
-function formatMs(ms: number | null): string {
-  if (!ms) return "—";
-  const secs = Math.floor(ms / 1000);
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+function fmtDur(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function initials(name: string): string {
-  return (name || "?").split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase();
-}
+export default function AlbumView() {
+  const title = () => route().param ? decodeURIComponent(route().param!) : null;
 
-export default function Album(props: Props) {
-  const albumTitle = () => props.param ? decodeURIComponent(props.param) : null;
-  const [tracks] = createResource(albumTitle, (title) => libGetTracksByAlbum(title));
-  const album = () => {
-    const t = tracks();
-    if (!t || t.length === 0) return null;
-    return { title: albumTitle()!, artist_name: t[0].artist_name, year: t[0].album_year, cover_path: t[0].album_cover_path, track_count: t.length } as any;
-  };
+  const [tracks] = createResource(title, async (t): Promise<Track[]> => {
+    if (!t) return [];
+    try { return await libGetTracksByAlbum(t); } catch { return []; }
+  });
 
-  const totalDur = () => {
-    const t = tracks();
-    if (!t) return "";
-    const ms = t.reduce((s, tr) => s + (tr.duration_ms || 0), 0);
-    return `${Math.floor(ms / 60000)}m`;
-  };
+  const [album] = createResource(title, async (t): Promise<Album | null> => {
+    if (!t) return null;
+    try {
+      const list = await libGetAlbums({ limit: 500 });
+      return list.find((a) => a.title === t) ?? null;
+    } catch { return null; }
+  });
+
+  function play(t: Track) {
+    const all = tracks() ?? [];
+    const idx = all.indexOf(t);
+    setQueue(all, idx >= 0 ? idx : 0);
+    playTrack(t);
+  }
 
   function playAll() {
-    const t = tracks();
-    if (t?.length) { setQueue(t, 0); playTrack(t[0]); }
-  }
-
-  function shuffleAll() {
-    const t = tracks();
-    if (!t?.length) return;
-    const shuffled = [...t].sort(() => Math.random() - 0.5);
-    setQueue(shuffled, 0);
-    playTrack(shuffled[0]);
-  }
-
-  function handleRowClick(t: Track[], idx: number) {
-    setQueue(t, idx);
-    playTrack(t[idx]);
+    const all = tracks() ?? [];
+    if (all.length) { setQueue(all, 0); playTrack(all[0]); }
   }
 
   return (
-    <article class="view view--hero">
-      <Show when={album()} fallback={
-        <div class="album-detail"><p class="empty-state__hint">Loading...</p></div>
-      }>
-        {(a) => (
-          <div class="album-detail">
-            <div class="album-detail__hero">
-              <div class="album-detail__cover">
-                <Show when={a().cover_path} fallback={
-                  <span style="font-size:var(--text-display-lg);font-weight:var(--fw-bold);color:var(--primary)">{initials(a().title)}</span>
-                }>
-                  {(p) => <img src={coverUrl(p())!} alt={a().title} />}
-                </Show>
-              </div>
-              <div class="album-detail__meta">
-                <button class="view__back" onClick={() => navigate("/albums")} aria-label="Back">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-arrow-left" /></svg>
-                </button>
-                <div class="album-detail__eyebrow">Album{a().year ? ` • ${a().year}` : ""}</div>
-                <h1 class="album-detail__title">{a().title}</h1>
-                <div class="album-detail__artist" onClick={() => {
-                  if (a()?.artist_name) navigate(`/artist/${a()?.artist_name}`);
-                }}>{a().album_artist_name || a().artist_name || "—"}</div>
-                <div class="album-detail__stats">
-                  <span>{tracks()?.length ?? 0} tracks</span>
-                  <span class="view__stats-sep">{"•"}</span>
-                  <span>{totalDur()}</span>
-                </div>
-                <div class="album-detail__actions">
-                  <button class="settings-button settings-button--primary" onClick={playAll}>
-                    <svg class="icon icon--sm icon--filled" aria-hidden="true"><use href="#icon-play" /></svg>
-                    Play
-                  </button>
-                  <button class="settings-button" onClick={shuffleAll}>
-                    <svg class="icon icon--sm" aria-hidden="true"><use href="#icon-shuffle" /></svg>
-                    Shuffle
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <Show when={tracks()}>
-              {(list) => (
-                <table class="track-table">
-                  <thead><tr>
-                    <th class="track-table__th track-table__th--num">#</th>
-                    <th class="track-table__th">Title</th>
-                    <th class="track-table__th track-table__th--dur">Dur</th>
-                    <th class="track-table__th track-table__th--more"></th>
-                  </tr></thead>
-                  <tbody>
-                    <For each={list()}>
-                      {(track, i) => (
-                        <tr
-                          class="track-row"
-                          onClick={() => handleRowClick(list(), i())}
-                          onContextMenu={(e) => { e.preventDefault(); showTrackMenu(e, track, list(), i()); }}
-                        >
-                          <td class="track-table__td track-table__td--num">{track.track_number || i() + 1}</td>
-                          <td class="track-table__td track-table__td--title">{track.title || "—"}</td>
-                          <td class="track-table__td track-table__td--dur">{formatMs(track.duration_ms)}</td>
-                          <td class="track-table__td track-table__td--more">
-                            <button class="more-btn" aria-label="More" onClick={(e) => { e.stopPropagation(); showTrackMenu(e, track, list(), i()); }}>
-                              <svg class="icon icon--sm"><use href="#icon-more-vertical" /></svg>
-                            </button>
-                          </td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-              )}
-            </Show>
+    <article class="view">
+      <header class="view__head">
+        <div style={{ display: "flex", gap: "20px", "align-items": "flex-end" }}>
+          <Show when={album()}>
+            {(a) => (
+              <CoverArt
+                seed={a().title}
+                src={coverUrl(a().cover_path)}
+                size="lg"
+                style={{ width: "120px", height: "120px" }}
+              />
+            )}
+          </Show>
+          <div>
+            <h1>{title() ?? "Album"}</h1>
+            <p class="view__head-hint">
+              {album()?.artist_name ?? "—"} · {tracks()?.length ?? 0} tracks
+              {album()?.year && <> · {album()!.year}</>}
+            </p>
           </div>
-        )}
-      </Show>
+        </div>
+        <button class="hero-tile__cta" style={{ position: "static", opacity: 1, width: "32px", height: "32px" }} onClick={playAll}>
+          <Icon name={ICONS.play} size={12} />
+        </button>
+      </header>
+
+      <div class="view__body">
+        <div class="tracks">
+          <div class="tracks__head tracks__idx">#</div>
+          <div class="tracks__head">Title</div>
+          <div class="tracks__head">Album</div>
+          <div class="tracks__head">Genre</div>
+          <div class="tracks__head tracks__mono">Format</div>
+          <div class="tracks__head tracks__mono">Length</div>
+          <For each={tracks() ?? []}>
+            {(t, i) => (
+              <div class="tracks__row" onClick={() => play(t)} style={{ display: "contents" }}>
+                <div class="tracks__idx">{String(t.track_number ?? i() + 1).padStart(2, "0")}</div>
+                <div class="tracks__title"><b>{t.title || "—"}</b><small>{t.artist_name || "—"}</small></div>
+                <div class="tracks__cell">{t.album_title ?? "—"}</div>
+                <div class="tracks__cell">{t.genre_name ?? "—"}</div>
+                <div class="tracks__mono">24/96</div>
+                <div class="tracks__mono">{fmtDur(t.duration_ms)}</div>
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
     </article>
   );
 }

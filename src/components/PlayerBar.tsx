@@ -25,6 +25,14 @@ import {
   persistLoadState, persistSaveState, libGetTracksByIds,
 } from "../tauri";
 import { showPlayerMenu } from "../js/components/context-menu.js";
+import { Icon, ICONS } from "./Icon";
+import { CoverArt } from "./CoverArt";
+import { CMD_PALETTE_EVENT } from "./CommandPalette";
+import { QUEUE_EVENT } from "./QueueDrawer";
+import { navigate } from "../router";
+
+// Re-export para que outros call-sites possam importar daqui.
+export { CMD_PALETTE_EVENT };
 
 const recentlyPlayedIds = new Set<string>();
 
@@ -224,27 +232,35 @@ export function PlayerBar() {
     }
   }
 
-  // Adaptive shuffle:
-  // - Queue has >1 track: shuffle the existing queue (album / playlist scope).
-  // - Queue has only the current track: enter radio mode by seeding the
-  //   queue with autoplay recommendations from the current track. Gives
-  //   immediate visual feedback (queue fills) and avoids a silent gap at EOS.
-  // - Turning shuffle off: keep the queue as-is, just stop topping it up.
+  // Adaptive shuffle baseado no queueScope:
+  // - "curated" (playlist, station): embaralha a propria queue mantendo
+  //   o contexto. O usuario montou ou abriu essa lista de proposito.
+  // - "open" (history, library, search, home suggestions): entra em radio
+  //   mode -- descarta a queue e repopula com [current, ...autoplayNext()].
+  //   Sem isso, clicar shuffle no historico ficava "shuffle do historico"
+  //   em vez de uma estacao a partir da track atual.
+  // Caso de borda: queue == [current] (1 track so) sempre vira radio,
+  // independente do scope -- nao ha o que embaralhar.
+  // Turning shuffle off: mantem queue como esta, so para de top-up.
   async function toggleShuffle() {
     const turningOn = !player.shuffle;
     setPlayer("shuffle", turningOn);
     if (!turningOn) return;
-    if (player.queue.length > 1) {
+
+    const isCurated = player.queueScope === "curated";
+    if (isCurated && player.queue.length > 1) {
       shuffleQueue();
       return;
     }
+
+    // Open scope OR single-track queue: virar radio com a track atual.
     const seed = player.currentTrack?.id;
     if (!seed) return;
     try {
       const recs = await libAutoplayNext(seed, [...recentlyPlayedIds], 10);
       if (!recs.length) return;
       const current = player.currentTrack!;
-      setQueue([current, ...recs], 0);
+      setQueue([current, ...recs], 0, "open");
     } catch (e) {
       console.error("[shuffle] radio populate failed:", e);
     }
@@ -321,80 +337,104 @@ export function PlayerBar() {
   const volPct = () => (player.isMuted ? 0 : player.volume * 100);
 
   return (
-    <footer class="player-bar" id="player-bar">
+    <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
 
-      {/* ── Esquerdo: cover + meta + like ── */}
-      <div class="player-bar__block player-bar__block--left">
-        <div class={`album-cover-empty${player.currentTrack?.album_cover_path ? "" : ""}`} id="pb-cover">
-          <Show when={player.currentTrack?.album_cover_path}>
-            {(path) => <img src={coverUrl(path())} alt="" />}
-          </Show>
-        </div>
+      {/* ── Esquerdo: cover + meta + like + more ── */}
+      <div class="pb-left">
+        <Show
+          when={player.currentTrack}
+          fallback={
+            <CoverArt
+              seed="empty"
+              size="sm"
+              class="pb-cover"
+              style={{ width: "44px", height: "44px" }}
+            />
+          }
+        >
+          {(track) => (
+            <CoverArt
+              seed={track().album_title || track().id}
+              src={coverUrl(track().album_cover_path)}
+              size="sm"
+              class="pb-cover"
+              style={{ width: "44px", height: "44px" }}
+            />
+          )}
+        </Show>
 
-        <div class="player-bar__track-meta">
-          <span class="player-bar__track-label" id="pb-label">
-            <svg class="icon icon--sm" aria-hidden="true">
-              <use href={player.isPlaying ? "#icon-music-note" : "#icon-pause"} />
-            </svg>
-            {player.isPlaying ? "Playing" : player.currentTrack ? "Paused" : "No Track"}
-          </span>
-          <span class="player-bar__track-title" id="pb-title">
+        <div
+          class="pb-meta"
+          onClick={() => navigate("/now-playing")}
+          onContextMenu={(e) => {
+            if (player.currentTrack) showPlayerMenu(e, player.currentTrack);
+          }}
+        >
+          <span class="pb-title" id="pb-title">
             {player.currentTrack?.title ?? "—"}
           </span>
-          <span class="player-bar__track-artist" id="pb-artist">
+          <span class="pb-artist" id="pb-artist">
             {player.currentTrack?.artist_name ?? "—"}
+            <Show when={player.currentTrack?.album_title}>
+              {(album) => <> · {album()}</>}
+            </Show>
           </span>
         </div>
 
         <Show when={player.currentTrack}>
           <button
-            class={`icon-btn like-btn${player.isLiked ? " is-liked" : ""}`}
+            class="pb-icon-btn pb-like"
             id="pb-like"
             aria-label="Like"
-            aria-pressed={player.isLiked}
+            aria-pressed={player.isLiked ? "true" : "false"}
+            title="Like"
             onClick={onLike}
           >
-            <svg class="icon" aria-hidden="true"><use href="#icon-flame" /></svg>
+            <Icon name={player.isLiked ? ICONS.heartFilled : ICONS.heart} size={14} />
           </button>
           <button
-            class="icon-btn"
+            class="pb-icon-btn"
             id="pb-more"
-            aria-label="More options"
+            aria-label="More"
+            title="More"
             onClick={(e) => { if (player.currentTrack) showPlayerMenu(e, player.currentTrack); }}
           >
-            <svg class="icon" aria-hidden="true"><use href="#icon-more-vertical" /></svg>
+            <Icon name={ICONS.more} size={14} />
           </button>
         </Show>
       </div>
 
       {/* ── Centro: transport + seek ── */}
-      <div class="player-bar__block player-bar__block--center">
-        <div class="player-bar__controls">
+      <div class="pb-center">
+        <div class="pb-transport">
           <button
-            class={`icon-btn icon-btn--toggle${player.shuffle ? " is-active" : ""}`}
+            class="pb-btn"
             id="pb-shuffle"
             aria-label="Shuffle"
+            aria-pressed={player.shuffle ? "true" : "false"}
+            title="Shuffle"
             onClick={toggleShuffle}
           >
-            <svg class="icon" aria-hidden="true"><use href="#icon-shuffle" /></svg>
-            <span class="icon-btn__pip" />
+            <Icon name={ICONS.shuffle} size={14} />
           </button>
 
           <button
-            class="icon-btn"
+            class="pb-btn"
             id="pb-prev"
             aria-disabled={player.queueIndex <= 0}
             aria-label="Previous"
+            title="Previous"
             onClick={() => { const t = retreatQueue(); if (t) playTrack(t, "queue"); }}
           >
-            <svg class="icon" aria-hidden="true"><use href="#icon-skip-previous" /></svg>
+            <Icon name={ICONS.prev} size={14} />
           </button>
 
           <button
-            class="icon-btn icon-btn--primary"
+            class="pb-btn pb-btn--primary"
             id="pb-play-pause"
             aria-disabled={!player.currentTrack}
             aria-label={player.isPlaying ? "Pause" : "Play"}
+            title={player.isPlaying ? "Pause" : "Play"}
             onClick={() => {
               if (player.isPlaying) {
                 setPlayingState(false);
@@ -405,38 +445,35 @@ export function PlayerBar() {
               }
             }}
           >
-            <svg class="icon icon--filled" aria-hidden="true">
-              <use href={player.isPlaying ? "#icon-pause" : "#icon-play"} />
-            </svg>
+            <Icon name={player.isPlaying ? ICONS.pause : ICONS.play} size={12} />
           </button>
 
           <button
-            class="icon-btn"
+            class="pb-btn"
             id="pb-next"
             aria-disabled={player.queueIndex >= player.queue.length - 1}
             aria-label="Next"
+            title="Next"
             onClick={() => { const t = advanceQueue(); if (t) playTrack(t, "queue"); }}
           >
-            <svg class="icon" aria-hidden="true"><use href="#icon-skip-next" /></svg>
+            <Icon name={ICONS.next} size={14} />
           </button>
 
           <button
-            class={`icon-btn icon-btn--toggle${player.repeatMode !== "off" ? " is-active" : ""}`}
+            class="pb-btn"
             id="pb-repeat"
             aria-label="Repeat"
+            aria-pressed={player.repeatMode !== "off" ? "true" : "false"}
+            data-repeat-mode={player.repeatMode}
+            title={`Repeat: ${player.repeatMode}`}
             onClick={() => { cycleRepeat(); ipcCycleRepeat().catch(console.error); }}
           >
-            <svg class="icon" aria-hidden="true"><use href="#icon-repeat" /></svg>
-            <span class="icon-btn__pip" />
-            <Show when={player.repeatMode === "one"}>
-              <span class="icon-btn__badge">1</span>
-            </Show>
+            <Icon name={player.repeatMode === "one" ? ICONS.repeatOne : ICONS.repeat} size={14} />
           </button>
         </div>
 
-        {/* Seek bar */}
-        <div class="player-bar__seek">
-          <span class="player-bar__time" id="pb-time-current">
+        <div class="pb-seek">
+          <span class="pb-time" id="pb-time-current">
             {formatDuration(player.positionSecs)}
           </span>
           <div
@@ -449,28 +486,42 @@ export function PlayerBar() {
             <div class="progress__fill" id="pb-progress-fill" style={{ width: `${pct()}%` }} />
             <div class="progress__thumb" id="pb-progress-thumb" style={{ left: `${pct()}%` }} />
           </div>
-          <span class="player-bar__time player-bar__time--right" id="pb-time-total">
+          <span class="pb-time" id="pb-time-total">
             {formatDuration(player.durationSecs)}
           </span>
         </div>
       </div>
 
-      {/* ── Direito: tech info + volume ── */}
-      <div class="player-bar__block player-bar__block--right">
-        <div class="player-bar__tech">
-          <div class={`tech-badge${player.techInfo.format === "—" ? " tech-badge--dim" : ""}`} id="pb-tech-badge">
-            {player.techInfo.format}
+      {/* ── Direito: tech pill + queue + volume ── */}
+      <div class="pb-right">
+        <Show when={player.techInfo.format && player.techInfo.format !== "—"}>
+          <div class="pb-tech" id="pb-tech" title="Signal path">
+            <span class="pb-tech__dot" />
+            <span>
+              {player.techInfo.format}
+              <Show when={player.techInfo.bitDepth && player.techInfo.sampleRate}>
+                {" "}
+                {player.techInfo.bitDepth}/{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}
+              </Show>
+            </span>
+            <span class="pb-tech__sep">·</span>
+            <span>EQ</span>
           </div>
-          <div class="player-bar__tech-line" id="pb-tech-line">
-            {player.techInfo.bitDepth ? `${player.techInfo.bitDepth}bit` : "—"} / {player.techInfo.sampleRate ? `${player.techInfo.sampleRate / 1000}kHz` : "—"}
-          </div>
-        </div>
+        </Show>
 
-        <div class="volume">
-          <button class="icon-btn" id="pb-vol-btn" aria-label="Volume" onClick={toggleMute}>
-            <svg class="icon" aria-hidden="true">
-              <use href={player.isMuted ? "#icon-volume-mute" : "#icon-volume"} />
-            </svg>
+        <button
+          class="pb-btn"
+          id="pb-queue"
+          title="Queue (Q)"
+          aria-label="Queue"
+          onClick={() => window.dispatchEvent(new CustomEvent(QUEUE_EVENT))}
+        >
+          <Icon name={ICONS.queue} size={14} />
+        </button>
+
+        <div class="pb-vol">
+          <button class="pb-btn" id="pb-vol-btn" aria-label="Volume" title="Mute" onClick={toggleMute}>
+            <Icon name={player.isMuted ? ICONS.volumeMute : ICONS.volume} size={14} />
           </button>
           <div
             class="progress"

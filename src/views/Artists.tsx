@@ -1,49 +1,42 @@
 /* ============================================================
-   views/Artists.tsx — Grid de artistas (card-grid).
-   Markup identico ao artists.js vanilla.
+   views/Artists.tsx — List of all artists with counts.
    ============================================================ */
 
-import { createResource, Show, For } from "solid-js";
-import { libGetArtists } from "../tauri";
-import { navigate } from "../router";
-
-function initials(name: string): string {
-  return (name || "?").split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase();
-}
+import { createResource, For, Show } from "solid-js";
+import { libGetArtists, type Artist } from "../tauri";
+import { navigate, route } from "../router";
+import { CoverArt } from "../components/CoverArt";
 
 export default function Artists() {
-  const [artists] = createResource(() => libGetArtists(500));
+  const [artists] = createResource(async () => {
+    try { return await libGetArtists({ limit: 500 }); } catch { return [] as Artist[]; }
+  });
+  const standalone = () => route().path === "/artists";
 
   return (
-    <article class="view">
-      <header class="view__header">
-        <h1 class="view__title">Artists</h1>
-        <Show when={artists()}>
-          {(a) => <div class="view__stats"><span>{a().length} artists</span></div>}
-        </Show>
-      </header>
+    <>
+      <Show when={standalone()}>
+        <header class="view__head"><div><h1>Artists</h1></div></header>
+      </Show>
 
       <div class="view__body">
-        <Show when={artists()} fallback={<p class="empty-state__hint">Loading...</p>}>
-          {(list) => (
-            <Show when={list().length > 0} fallback={
-              <div class="empty-state"><p class="empty-state__title">No artists yet</p></div>
-            }>
-              <div class="card-grid">
-                <For each={list()}>
-                  {(a) => (
-                    <div class="card" onClick={() => navigate(`/artist/${encodeURIComponent(a.name)}`)}>
-                      <div class="card__cover card__cover--initials">{initials(a.name)}</div>
-                      <div class="card__label">{a.name}</div>
-                      <div class="card__sub">{a.track_count || 0} tracks</div>
-                    </div>
-                  )}
-                </For>
+        <div class="card-grid">
+          <For each={artists() ?? []}>
+            {(a) => (
+              <div class="card" onClick={() => navigate(`/artist/${encodeURIComponent(a.name)}`)}>
+                <CoverArt
+                  seed={a.name}
+                  size="md"
+                  class="card__cover"
+                  style={{ "border-radius": "50%" }}
+                />
+                <div class="card__title">{a.name}</div>
+                <div class="card__sub">{a.album_count} albums · {a.track_count} tracks</div>
               </div>
-            </Show>
-          )}
-        </Show>
+            )}
+          </For>
+        </div>
       </div>
-    </article>
+    </>
   );
 }

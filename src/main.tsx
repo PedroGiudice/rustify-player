@@ -1,18 +1,19 @@
 /* ============================================================
-   main.tsx — Entry point. Substitui main.js.
+   main.tsx — Entry point Solid.
+
+   CSS: unificado no extractor-lab.css (substitui tokens/base/
+   layout/components do design anterior). O sprite de icones
+   continua carregado porque a Titlebar usa #icon-logo-mark.
    ============================================================ */
 
 import { render } from "solid-js/web";
 import { attachConsole } from "@tauri-apps/plugin-log";
 import App from "./App";
 
-// CSS inalterado — importado aqui para o Vite bundlar
-import "./styles/tokens.css";
-import "./styles/base.css";
-import "./styles/layout.css";
-import "./styles/components.css";
+// Redesign Extractor Lab — um CSS unico
+import "./styles/extractor-lab.css";
 
-// Carrega sprite de ícones (igual ao loadIconSprite em main.js)
+// Sprite de icones: Titlebar usa, demais lugares usam Iconify
 async function loadIconSprite() {
   try {
     const res = await fetch("assets/icons.svg");

@@ -1,241 +1,183 @@
 /* ============================================================
-   views/NowPlaying.tsx
+   views/NowPlaying.tsx — Spectrum bg + cover + meta + lyrics.
+
+   Lyrics from libGetLyrics(track.id); synced to player.positionSecs.
+   Shape state read via useShape() from SpectrumCanvas.
    ============================================================ */
 
-import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
+import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import { player } from "../store/player";
-import { libGetLyrics, coverUrl, channelLabel, getTrackColor, listShapes,
-         loadSpectrumPreset, listSpectrumPresets, onSpectrumConfigChanged, watchSpectrumPreset } from "../tauri";
-import type { LyricLine, SpectrumVisualConfig } from "../tauri";
+import { Icon, ICONS } from "../components/Icon";
+import { CoverArt } from "../components/CoverArt";
+import { SpectrumCanvas, useShape } from "../components/SpectrumCanvas";
+import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
 import { navigate } from "../router";
-import SpectrumBackground from "../components/SpectrumBackground_V2";
-import FluidBackground from "../components/FluidBackground";
-import SDFBackground from "../components/SDFBackground";
-import SpectrumRangesPanel from "../components/SpectrumRangesPanel";
-
-const SHAPES_BASE = "http://127.0.0.1:19876/shapes";
 
 export default function NowPlaying() {
-  const [lyrics, setLyrics] = createSignal<LyricLine[]>([]);
-  const [shapes, setShapes] = createSignal<string[]>([]);
-  const [shapeIdx, setShapeIdx] = createSignal(0);
-  const [activeLyric, setActiveLyric] = createSignal(-1);
-  const [lyricsMode, setLyricsMode] = createSignal<"timed" | "plain" | "empty">("empty");
-  const [spectrumOpen, setSpectrumOpen] = createSignal(false);
-  const [spectrumConfig, setSpectrumConfig] = createSignal<SpectrumVisualConfig | null>(null);
+  const shape = useShape();
+  const [cinema, setCinema] = createSignal(false);
 
-  const shapeUrl = () => {
-    const s = shapes();
-    if (!s.length) return null;
-    return `${SHAPES_BASE}/${s[shapeIdx() % s.length]}`;
-  };
+  // Cinema mode toggles a data-attr on the .app shell
+  function toggleCinema() {
+    const next = !cinema();
+    setCinema(next);
+    document.getElementById("rustify-app")?.setAttribute("data-cinema", next ? "true" : "false");
+  }
 
-  const prevShape = () => {
-    const s = shapes();
-    if (s.length < 2) return;
-    const idx = (shapeIdx() - 1 + s.length) % s.length;
-    setShapeIdx(idx);
-    localStorage.setItem("rustify-shape-idx", String(idx));
-  };
+  // Lyrics resource keyed by current track id
+  const [lyrics] = createResource(
+    () => player.currentTrack?.id ?? null,
+    async (id) => (id ? await libGetLyrics(id).catch(() => [] as LyricLine[]) : [] as LyricLine[]),
+  );
 
-  const nextShape = () => {
-    const s = shapes();
-    if (s.length < 2) return;
-    const idx = (shapeIdx() + 1) % s.length;
-    setShapeIdx(idx);
-    localStorage.setItem("rustify-shape-idx", String(idx));
-  };
-
-  onMount(async () => {
-    try {
-      const s = await listShapes();
-      setShapes(s);
-      const saved = localStorage.getItem("rustify-shape-idx");
-      if (saved) setShapeIdx(Math.min(Number(saved), s.length - 1));
-    } catch {}
-
-    // Load spectrum visual preset
-    const presetFile = localStorage.getItem("rustify-spectrum-preset") || "default.yaml";
-    try {
-      const cfg = await loadSpectrumPreset(presetFile);
-      setSpectrumConfig(cfg);
-      // Watch for external edits (hot-reload)
-      await watchSpectrumPreset(presetFile);
-      onSpectrumConfigChanged(async () => {
-        try {
-          const updated = await loadSpectrumPreset(presetFile);
-          setSpectrumConfig(updated);
-          console.log("[spectrum] config hot-reloaded");
-        } catch (e) { console.warn("[spectrum] hot-reload failed:", e); }
-      });
-    } catch {
-      // No preset file yet — use defaults (SpectrumBackground handles null config)
-    }
-  });
-
-  // Load lyrics when track changes
-  createEffect(async () => {
-    const track = player.currentTrack;
-    if (!track?.id) {
-      setLyrics([]);
-      setLyricsMode("empty");
-      return;
-    }
-    try {
-      const lines = await libGetLyrics(track.id);
-      if (!lines?.length) { setLyricsMode("empty"); setLyrics([]); return; }
-      const allZero = lines.every((l) => (l.t ?? 0) === 0);
-      setLyricsMode(allZero ? "plain" : "timed");
-      setLyrics(lines);
-    } catch {
-      setLyricsMode("empty");
-      setLyrics([]);
-    }
-  });
-
-  // Update active lyric line based on position
-  createEffect(() => {
-    const secs = player.positionSecs;
-    if (lyricsMode() !== "timed") return;
-    const lines = lyrics();
+  // Find the active lyric index based on positionSecs
+  const activeLine = createMemo(() => {
+    const ls = lyrics() ?? [];
+    if (ls.length === 0) return -1;
+    const pos = player.positionSecs;
     let idx = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if ((lines[i].t ?? 0) <= secs) idx = i;
+    for (let i = 0; i < ls.length; i++) {
+      if (ls[i].t <= pos) idx = i;
       else break;
     }
-    if (idx !== activeLyric()) {
-      setActiveLyric(idx);
-      // Auto-scroll active line into view
-      const el = document.querySelector("#np-lyrics .np__lyrics-line.is-active");
-      el?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }
+    return idx;
   });
 
-  const depth  = () => player.currentTrackInfo?.bit_depth ? `${player.currentTrackInfo.bit_depth}-bit` : "—";
-  const rate   = () => player.currentTrackInfo?.sample_rate ? `${player.currentTrackInfo.sample_rate / 1000} kHz` : "—";
-  const chanStr = () => channelLabel(player.currentTrackInfo?.channels ?? null);
+  // Auto-scroll lyrics rail so active line stays centered
+  let railEl!: HTMLDivElement;
+  let cardEl!: HTMLElement;
+  onMount(() => {
+    const apply = () => {
+      const i = activeLine();
+      if (i < 0 || !railEl || !cardEl) return;
+      const line = railEl.children[i] as HTMLElement | undefined;
+      if (!line) return;
+      const offset = line.offsetTop + line.offsetHeight / 2 - cardEl.clientHeight / 2;
+      railEl.style.transform = `translateY(${-Math.max(0, offset)}px)`;
+    };
+    // Track changes through a tiny rAF loop — cheap, only runs when NP visible
+    let raf = 0;
+    const tick = () => { apply(); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    onCleanup(() => cancelAnimationFrame(raf));
+  });
+
+  // Keyboard for shape cycling
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      if (e.key === "[") { e.preventDefault(); shape.prev(); }
+      else if (e.key === "]") { e.preventDefault(); shape.next(); }
+      else if (e.key.toLowerCase() === "f") { e.preventDefault(); toggleCinema(); }
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
 
   return (
-    <article class="view view--hero">
-      <div class="np-bg">
-        <Show
-          when={spectrumConfig()?.style === "sdf"}
-          fallback={
-            <Show
-              when={spectrumConfig()?.style === "fluid"}
-              fallback={<SpectrumBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />}
-            >
-              <FluidBackground shapeUrl={shapeUrl()} config={spectrumConfig()} />
-            </Show>
-          }
-        >
-          <SDFBackground config={spectrumConfig()} />
-        </Show>
-      </div>
+    <article class="view" style={{ overflow: "hidden", padding: 0 }}>
+      <div class="np">
+        <SpectrumCanvas />
 
-      <div class="np-shape-nav">
-        <Show when={shapes().length > 1}>
-          <button class="np-shape-nav__btn" onClick={prevShape} title="Previous shape">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        <div class="np__corner">
+          <button title="Cinema mode (F)" onClick={toggleCinema}>
+            <Icon name={cinema() ? ICONS.shrink : ICONS.expand} size={14} />
           </button>
-          <button class="np-shape-nav__btn" onClick={nextShape} title="Next shape">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-        </Show>
-        <button class="np-shape-nav__btn" onClick={() => setSpectrumOpen(!spectrumOpen())} title="Spectrum settings">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-            <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-          </svg>
-        </button>
-      </div>
-
-      <SpectrumRangesPanel open={spectrumOpen()} onClose={() => setSpectrumOpen(false)} onConfigChange={setSpectrumConfig} />
-
-      <Show
-        when={player.currentTrack}
-        fallback={
-          <div class="empty-state">
-            <svg class="empty-state__icon" aria-hidden="true">
-              <use href="#icon-music-note" />
-            </svg>
-            <p class="empty-state__title">Nothing playing</p>
-            <p class="empty-state__hint">Pick a track to start</p>
-          </div>
-        }
-      >
-        <div class="np">
-          {/* Cover */}
-          <div class="np__cover">
-            <Show when={player.currentTrack?.album_cover_path}>
-              {(path) => <img src={coverUrl(path())} alt="" />}
-            </Show>
-          </div>
-
-          {/* Metadata */}
-          <div class="np__body">
-            <div class="np__eyebrow">
-              <span class="np__eyebrow-tag">Now Playing</span>
-              <span>Local · PipeWire</span>
-            </div>
-
-            <h1 class="np__title">{player.currentTrack?.title ?? "—"}</h1>
-
-            <div
-              class="np__artist"
-              onClick={() => {
-                const name = player.currentTrack?.artist_name;
-                if (name) navigate(`/artist/${encodeURIComponent(name)}`);
-              }}
-            >
-              {player.currentTrack?.artist_name ?? "—"}
-            </div>
-
-            <div
-              class="np__album"
-              onClick={() => {
-                const title = player.currentTrack?.album_title;
-                if (title) navigate(`/album/${encodeURIComponent(title)}`);
-              }}
-            >
-              {player.currentTrack?.album_title ?? "—"}
-            </div>
-
-            {/* Tech strip */}
-            <div class="np__tech-strip">
-              <span class="np__tech-val">{rate()}</span>
-              <span class="np__tech-sep">·</span>
-              <span class="np__tech-val">{depth()}</span>
-              <span class="np__tech-sep">·</span>
-              <span class="np__tech-val">FLAC</span>
-              <span class="np__tech-sep">·</span>
-              <span class="np__tech-val">{chanStr()}</span>
-              <span class="np__tech-sep">·</span>
-              <span class="np__tech-val">PipeWire</span>
-            </div>
-
-            {/* Lyrics */}
-            <div class="np__lyrics">
-              <span class="np__tech-label">Lyrics</span>
-              <div class="np__lyrics-scroll" id="np-lyrics">
-                <Show
-                  when={lyrics().length > 0}
-                  fallback={<p class="np__lyrics-empty">No lyrics available</p>}
-                >
-                  <For each={lyrics()}>
-                    {(line, i) => (
-                      <p
-                        class={`np__lyrics-line${line.header ? " np__lyrics-line--header" : ""}${activeLyric() === i() ? " is-active" : ""}`}
-                      >
-                        {line.line}
-                      </p>
-                    )}
-                  </For>
-                </Show>
-              </div>
-            </div>
-          </div>
+          <button title="Spectrum settings"><Icon name={ICONS.settings} size={14} /></button>
+          <button title="More"><Icon name={ICONS.more} size={14} /></button>
         </div>
-      </Show>
+
+        <div class="np__chrome">
+          <div class="np__left">
+            <Show
+              when={player.currentTrack}
+              fallback={
+                <CoverArt seed="empty" size="lg" class="np__cover" style={{ width: "200px", height: "200px" }} />
+              }
+            >
+              {(t) => (
+                <CoverArt
+                  seed={t().album_title || t().id}
+                  src={coverUrl(t().album_cover_path)}
+                  size="lg"
+                  class="np__cover"
+                  style={{ width: "200px", height: "200px" }}
+                >
+                  <Show when={player.techInfo.sampleRate}>
+                    <span class="badge-fmt">
+                      {player.techInfo.format} · {player.techInfo.bitDepth}/{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}
+                    </span>
+                  </Show>
+                </CoverArt>
+              )}
+            </Show>
+
+            <div class="np__meta">
+              <div class="np__tags">
+                <span class="np__tag-playing"><span class="dot" />Now Playing</span>
+                <span class="np__tag-source"><b>Local</b> · PipeWire</span>
+              </div>
+              <h1 class="np__title">{player.currentTrack?.title ?? "Nothing playing"}</h1>
+              <p class="np__artist" onClick={() => navigate("/artists")}>
+                {player.currentTrack?.artist_name ?? "—"}
+              </p>
+              <p class="np__album" onClick={() => navigate("/albums")}>
+                {player.currentTrack?.album_title ?? "—"}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
+              </p>
+
+              <Show when={player.techInfo.sampleRate}>
+                <div class="np__specs">
+                  <span><b>{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}</b> kHz</span>
+                  <span><b>{player.techInfo.bitDepth}</b>-bit</span>
+                  <span>{player.techInfo.format}</span>
+                  <span>{player.techInfo.channels === 1 ? "mono" : "stereo"}</span>
+                  <span><em>bit-perfect</em></span>
+                </div>
+                <div class="np__specs np__specs--line2">
+                  <span>PipeWire → Bifrost 2/64</span>
+                  <span>DSP <b>EQ · LIM</b></span>
+                  <span>ReplayGain −3.4 dB</span>
+                </div>
+              </Show>
+            </div>
+          </div>
+
+          <Show when={(lyrics() ?? []).length > 0}>
+            <aside class="np__lyrics-card" ref={cardEl!}>
+              <div class="np__lyrics-head">
+                <span class="np__lyrics-label">Lyrics · synced</span>
+                <span class="np__lyrics-source mono">aligned</span>
+              </div>
+              <div class="np__lyrics-rail" ref={railEl!}>
+                <For each={lyrics() ?? []}>
+                  {(line, i) => {
+                    const cls = () => {
+                      const a = activeLine();
+                      if (i() === a) return "np__lyric is-active";
+                      if (Math.abs(i() - a) === 1) return "np__lyric is-near";
+                      return "np__lyric";
+                    };
+                    return <p class={cls()}>{line.line}</p>;
+                  }}
+                </For>
+              </div>
+            </aside>
+          </Show>
+        </div>
+
+        <div class="np__shape-nav">
+          <button title="Previous shape ([)" onClick={() => shape.prev()}>
+            <Icon name={ICONS.chevronLeft} size={14} />
+          </button>
+          <span class="np__shape-name" onClick={() => shape.next()}>
+            shape · <b>{shape.name()}</b>
+          </span>
+          <button title="Next shape (])" onClick={() => shape.next()}>
+            <Icon name={ICONS.chevronRight} size={14} />
+          </button>
+        </div>
+      </div>
     </article>
   );
 }

@@ -1,31 +1,54 @@
 /* ============================================================
-   App.tsx — Shell do app: Titlebar, Sidebar, RouterView, PlayerBar.
-   Substitui o boot() de main.js + o HTML estatico de index.html.
+   App.tsx — Shell do redesign Extractor Lab.
+
+   Mantemos a Titlebar custom porque `tauri.conf.json` define
+   `decorations: false` (precisamos dos drag-region + botoes
+   minimize/maximize/close).
+
+   Atalhos globais: N (now playing), H (home), L (library), Esc
+   (sai do cinema mode). Demais atalhos (Q, F, [, ], Ctrl/Cmd+K)
+   vivem nos componentes responsaveis.
    ============================================================ */
 
-import { onMount } from "solid-js";
+import { onCleanup, onMount } from "solid-js";
 import { Titlebar } from "./components/Titlebar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
-import { RouterView } from "./router";
-import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
-import { mountResources } from "./js/components/resources.js";
+import { CommandPalette } from "./components/CommandPalette";
+import { QueueDrawer } from "./components/QueueDrawer";
+import { RouterView, navigate } from "./router";
 
 export default function App() {
   onMount(() => {
-    loadTweaks();
-    mountTweaks();
-    mountResources();
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "n") { e.preventDefault(); navigate("/now-playing"); }
+      else if (k === "h") { e.preventDefault(); navigate("/home"); }
+      else if (k === "l") { e.preventDefault(); navigate("/library"); }
+      else if (e.key === "Escape") {
+        const app = document.getElementById("rustify-app");
+        if (app?.getAttribute("data-cinema") === "true") {
+          app.setAttribute("data-cinema", "false");
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
   return (
-    <>
+    <div class="app" id="rustify-app" data-cinema="false">
       <Titlebar />
       <Sidebar />
-      <main class="main" id="main">
+      <main class="main">
         <RouterView />
       </main>
       <PlayerBar />
-    </>
+      <CommandPalette />
+      <QueueDrawer />
+    </div>
   );
 }

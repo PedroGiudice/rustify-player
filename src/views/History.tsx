@@ -1,99 +1,80 @@
 /* ============================================================
-   views/History.tsx — Historico de reproducao.
-   Markup identico ao history.js vanilla.
+   views/History.tsx — Listening history (full, scrollable).
    ============================================================ */
 
-import { createResource, Show, For } from "solid-js";
-import { libListHistory, coverUrl } from "../tauri";
+import { createResource, For, Show } from "solid-js";
+import { libListHistory, coverUrl, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
-import { showTrackMenu } from "../js/components/context-menu.js";
-import type { Track } from "../tauri";
+import { CoverArt } from "../components/CoverArt";
 
-function formatAgo(unixTs: number | null): string {
-  if (!unixTs) return "—";
-  const diff = Math.floor(Date.now() / 1000) - unixTs;
+function fmtDur(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function relTime(ts: number | null | undefined): string {
+  if (!ts) return "—";
+  const diff = Date.now() / 1000 - ts;
   if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
+  return `${Math.floor(diff / 86400)} d ago`;
 }
 
 export default function History() {
-  const [tracks] = createResource(() => libListHistory(100));
+  const [tracks] = createResource(async () => {
+    try { return await libListHistory(200); } catch { return [] as Track[]; }
+  });
 
-  function handleClick(list: Track[], idx: number) {
-    setQueue(list, idx);
-    playTrack(list[idx]);
+  function play(t: Track) {
+    const all = tracks() ?? [];
+    const idx = all.indexOf(t);
+    setQueue(all, idx >= 0 ? idx : 0);
+    playTrack(t);
   }
 
   return (
     <article class="view">
-      <header class="view__header">
-        <h1 class="view__title">History</h1>
-        <Show when={tracks()}>
-          {(t) => <div class="view__stats"><span class="view__stats-item">{t().length} played</span></div>}
-        </Show>
+      <header class="view__head">
+        <div>
+          <h1>History</h1>
+          <p class="view__head-hint">Últimas {tracks()?.length ?? 0} faixas tocadas</p>
+        </div>
       </header>
 
       <div class="view__body">
-        <Show when={!tracks.error} fallback={
-          <div class="empty-state">
-            <p class="empty-state__title">Could not load history</p>
-            <p class="empty-state__hint">{String(tracks.error)}</p>
+        <Show
+          when={(tracks() ?? []).length > 0}
+          fallback={
+            <div class="empty-state">
+              <p class="empty-state__title">Sem histórico ainda</p>
+              <p class="empty-state__hint">Toque algumas faixas e elas vão aparecer aqui.</p>
+            </div>
+          }
+        >
+          <div class="row-list">
+            <For each={tracks() ?? []}>
+              {(t) => (
+                <div class="row" onClick={() => play(t)}>
+                  <CoverArt
+                    seed={t.album_title || t.id}
+                    src={coverUrl(t.album_cover_path)}
+                    size="sm"
+                    class="row__cover"
+                    style={{ width: "40px", height: "40px" }}
+                  />
+                  <div class="row__meta">
+                    <div class="row__title">{t.title || "—"}</div>
+                    <div class="row__sub">{t.artist_name || "—"}{t.album_title && <> · {t.album_title}</>}</div>
+                  </div>
+                  <div class="row__tech">FLAC · 24/96</div>
+                  <div class="row__when">{relTime(t.last_played)}</div>
+                  <div class="row__time">{fmtDur(t.duration_ms)}</div>
+                </div>
+              )}
+            </For>
           </div>
-        }>
-        <Show when={tracks()} fallback={
-          <div class="empty-state"><p class="empty-state__title">Loading...</p></div>
-        }>
-          {(list) => (
-            <Show when={list().length > 0} fallback={
-              <div class="empty-state">
-                <p class="empty-state__title">No playback history yet</p>
-                <p class="empty-state__hint">Play some tracks and they'll appear here</p>
-              </div>
-            }>
-              <table class="track-table">
-                <thead>
-                  <tr>
-                    <th class="track-table__th track-table__th--cover"></th>
-                    <th class="track-table__th">Title</th>
-                    <th class="track-table__th">Artist</th>
-                    <th class="track-table__th">Album</th>
-                    <th class="track-table__th track-table__th--dur">Played</th>
-                    <th class="track-table__th track-table__th--more"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={list()}>
-                    {(t, i) => (
-                      <tr
-                        class="track-row"
-                        onClick={() => handleClick(list(), i())}
-                        onContextMenu={(e) => { e.preventDefault(); showTrackMenu(e, t, list(), i()); }}
-                      >
-                        <td class="track-table__td track-table__td--cover">
-                          <Show when={t.album_cover_path}>
-                            {(p) => <img src={coverUrl(p())!} loading="lazy" alt="" />}
-                          </Show>
-                        </td>
-                        <td class="track-table__td track-table__td--title">{t.title}</td>
-                        <td class="track-table__td">{t.artist_name || "—"}</td>
-                        <td class="track-table__td">{t.album_title || "—"}</td>
-                        <td class="track-table__td track-table__td--dur">{formatAgo(t.last_played ?? null)}</td>
-                        <td class="track-table__td track-table__td--more">
-                          <button class="more-btn" aria-label="More" onClick={(e) => { e.stopPropagation(); showTrackMenu(e, t, list(), i()); }}>
-                            <svg class="icon icon--sm"><use href="#icon-more-vertical" /></svg>
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
-          )}
-        </Show>
         </Show>
       </div>
     </article>
