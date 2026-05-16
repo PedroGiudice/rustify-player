@@ -1,27 +1,25 @@
 /* ============================================================
-   components/CoverArt.tsx — pastel-toned album cover with
-   optional real <img> overlay.
+   components/CoverArt.tsx — album cover with cassette fallback.
 
    Strategy:
-     - Always render the pastel tone + hairline glyph as fallback.
-     - If `src` is provided AND loads, the <img> covers it.
-     - If `src` is null OR fails, the glyph stays visible.
-
-   Sizes: 'sm' (40), 'md' (default ~card-sized), 'lg' (200 NP).
+     - If `src` is provided AND loads, the real <img> covers everything.
+     - If `src` is null OR fails, render the cassette icon on a neutral
+       paper background. Same look across every fallback — signals
+       "no art" cleanly.
    ============================================================ */
 
 import { Show } from "solid-js";
-import { Icon } from "./Icon";
-import { toneFor, glyphFor, glyphIcon, type Tone, type Glyph } from "../tones";
+import type { Tone, Glyph } from "../tones";
+import cassetteFallback from "../assets/cassette-fallback.png";
 
 export interface CoverArtProps {
-  /** Seed string used to derive deterministic tone+glyph (e.g. album title, track id). */
+  /** Seed string (kept in the API for callers; no longer drives visuals). */
   seed: string | null | undefined;
-  /** Optional real cover image URL. Falls back to glyph if missing/error. */
+  /** Optional real cover image URL. Falls back to cassette if missing/error. */
   src?: string | null;
-  /** Force a specific tone (overrides hashing). */
+  /** Kept for back-compat with old call sites. Ignored. */
   tone?: Tone;
-  /** Force a specific glyph (overrides hashing). */
+  /** Kept for back-compat with old call sites. Ignored. */
   glyph?: Glyph;
   /** Visual variant: sm (40px), md (responsive aspect-1), lg (200px), xl (NP). */
   size?: "sm" | "md" | "lg" | "xl";
@@ -32,8 +30,6 @@ export interface CoverArtProps {
 }
 
 export function CoverArt(props: CoverArtProps) {
-  const tone = () => props.tone ?? toneFor(props.seed);
-  const glyph = () => props.glyph ?? glyphFor(props.seed);
   const sizeClass = () => {
     switch (props.size) {
       case "sm": return "cover cover--sm";
@@ -44,12 +40,12 @@ export function CoverArt(props: CoverArtProps) {
   };
   return (
     <div
-      class={`${sizeClass()} tone-${tone()}${props.class ? ` ${props.class}` : ""}`}
+      class={`${sizeClass()} cover--fallback${props.class ? ` ${props.class}` : ""}`}
       style={props.style}
     >
       <Show
         when={props.src}
-        fallback={<Icon name={glyphIcon(glyph())} />}
+        fallback={<img class="cover__cassette" src={cassetteFallback} alt="" />}
       >
         {(src) => (
           <img

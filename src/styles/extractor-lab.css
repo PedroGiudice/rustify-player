@@ -349,7 +349,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .empty-state__hint  { font-size: 13px; color: var(--fg-5); margin: 0; }
 
 /* ────────────────────────────────────────────────────────────
-   COVER ART (pastel tone + hairline glyph)
+   COVER ART (real img or cassette fallback)
    ──────────────────────────────────────────────────────────── */
 .cover {
   position: relative;
@@ -360,15 +360,17 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   border: 1px solid var(--line-2);
 }
 .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cover iconify-icon {
-  width: 56%; height: 56%;
-  color: var(--fg-2);
-  opacity: 0.55;
+.cover--fallback { background: var(--bg-soft); }
+.cover__cassette {
+  width: 78% !important;
+  height: 78% !important;
+  object-fit: contain !important;
+  opacity: 0.92;
 }
 .cover--sm { border-radius: 4px; }
-.cover--sm iconify-icon { width: 60%; height: 60%; }
-.cover--lg iconify-icon { width: 64%; height: 64%; opacity: 0.7; }
-.cover--xl iconify-icon { width: 64%; height: 64%; opacity: 0.7; }
+.cover--sm .cover__cassette { width: 84% !important; height: 84% !important; }
+.cover--lg .cover__cassette,
+.cover--xl .cover__cassette { width: 72% !important; height: 72% !important; }
 
 .tone-lavender { background: var(--tone-lavender-bg); border-color: var(--tone-lavender-border); }
 .tone-mint     { background: var(--tone-mint-bg);     border-color: var(--tone-mint-border); }
