@@ -281,12 +281,14 @@ export function setEqBandSlope(bandIdx: number, slope: number) {
 
 export function setEqBandSolo(bandIdx: number, solo: boolean) {
   setDsp("eq", "bands", bandIdx, "solo", solo);
-  ipcDebounced(() => ipc.dspSetEqSolo(bandIdx, solo), 50, `eq-solo-${bandIdx}`);
+  ipc.dspSetEqSolo(bandIdx, solo).catch(console.error);
+  persistDsp();
 }
 
 export function setEqBandMute(bandIdx: number, mute: boolean) {
   setDsp("eq", "bands", bandIdx, "mute", mute);
-  ipcDebounced(() => ipc.dspSetEqMute(bandIdx, mute), 50, `eq-mute-${bandIdx}`);
+  ipc.dspSetEqMute(bandIdx, mute).catch(console.error);
+  persistDsp();
 }
 
 export function setEqMode(mode: number) {
