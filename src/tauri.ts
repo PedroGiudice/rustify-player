@@ -405,3 +405,60 @@ export function channelLabel(ch: number | null): string {
     default: return ch ? `${ch}ch` : "—";
   }
 }
+
+// ── Stations ────────────────────────────────────────────────────
+
+export type StationKind = "seed" | "mood";
+
+export interface StationStats {
+  played: number;
+  last_played_at: number | null; // Unix timestamp em segundos
+  match_avg: number | null;
+}
+
+export interface Station {
+  id: string;
+  name: string;
+  icon: string;
+  tone: string;
+  desc: string;
+  kind: StationKind;
+  seed_track_ids: number[];
+  query: string | null;
+  stats: StationStats;
+}
+
+export interface StationDetail extends Station {
+  tracks: Track[];
+}
+
+export const libListStations = () =>
+  invoke<Station[]>("lib_list_stations");
+
+export const libGetStation = (id: string, limit?: number) =>
+  invoke<StationDetail | null>("lib_get_station", { id, limit: limit ?? 40 });
+
+export const libCreateStation = (opts: {
+  name: string;
+  kind: StationKind;
+  seedTrackIds?: number[];
+  query?: string;
+  icon?: string;
+  tone?: string;
+  desc?: string;
+}) =>
+  invoke<Station>("lib_create_station", {
+    name: opts.name,
+    kind: opts.kind,
+    seedTrackIds: opts.seedTrackIds ?? [],
+    query: opts.query ?? null,
+    icon: opts.icon ?? null,
+    tone: opts.tone ?? null,
+    desc: opts.desc ?? null,
+  });
+
+export const libDeleteStation = (id: string) =>
+  invoke<boolean>("lib_delete_station", { id });
+
+export const libPlayStation = (id: string, limit?: number) =>
+  invoke<Track[]>("lib_play_station", { id, limit: limit ?? 40 });

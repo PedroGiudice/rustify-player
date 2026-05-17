@@ -4,19 +4,23 @@
    Recriacao da tela do mockup `Rustify ExtractorLab.html`
    (data-screen="stations"). Feature card com live eyebrow + titulo
    grande + chips de seeds + CTA preto + canvas <StationViz />.
-   Grid de 6 st-cards (primeiro com badge Live verde).
-
-   MOCK: backend ainda nao expoe lib_get_stations / seed engine.
-   Quando expuser, trocar FEATURE / STATIONS por createResource.
+   Grid de stations carregado via lib_list_stations do backend.
 
    StationViz so monta o canvas quando o feature card esta visivel
    no viewport (IntersectionObserver) — evita gastar CPU com RAF
    quando o usuario scrollou pra fora.
    ============================================================ */
 
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { StationViz } from "../components/dsp/StationViz";
+import {
+  libListStations,
+  libPlayStation,
+  libCreateStation,
+  Station,
+} from "../tauri";
 
+// ── Tipo de tone ─────────────────────────────────────────────────
 type Tone =
   | "tone-lavender"
   | "tone-mint"
@@ -27,91 +31,10 @@ type Tone =
   | "tone-paper"
   | "tone-bone";
 
-interface SeedChip {
-  title: string;
-  artist: string;
-  tone: Tone;
-  icon: string;
-}
-
-interface StationCard {
-  name: string;
-  tone: Tone;
-  icon: string;
-  seedLine: string;
-  desc: string;
-  stats: { played: number; match: number; last: string };
-  live?: boolean;
-}
-
-// ── MOCK feature station ─────────────────────────────────────────
-const FEATURE_SEEDS: SeedChip[] = [
-  { title: "Northern Drift",                artist: "Aki Yamamura",   tone: "tone-lavender", icon: "lucide:target" },
-  { title: "Slow Drift Through Static",     artist: "Boreal Trio",    tone: "tone-mint",     icon: "lucide:waves" },
-  { title: "Solstice in B Minor",           artist: "Maren Hartwell", tone: "tone-bone",     icon: "lucide:rainbow" },
-];
-
-const STATIONS: StationCard[] = [
-  {
-    name: "Midnight",
-    tone: "tone-lavender",
-    icon: "lucide:target",
-    seedLine: "seed · 3 tracks · 24 generated",
-    desc: "ambient · drone · sleepless",
-    stats: { played: 312, match: 97, last: "12 m" },
-    live: true,
-  },
-  {
-    name: "Sunday slow",
-    tone: "tone-bone",
-    icon: "lucide:rainbow",
-    seedLine: "seed · 4 tracks · 38 generated",
-    desc: "modern classical · acoustic · low tempo",
-    stats: { played: 184, match: 91, last: "2 h" },
-  },
-  {
-    name: "Bridge cable",
-    tone: "tone-paper",
-    icon: "ph:dots-nine",
-    seedLine: "seed · 2 tracks · 21 generated",
-    desc: "field recording · industrial · long form",
-    stats: { played: 54, match: 88, last: "1 d" },
-  },
-  {
-    name: "Solstice",
-    tone: "tone-sky",
-    icon: "lucide:mountain",
-    seedLine: "seed · 5 tracks · 31 generated",
-    desc: "winter strings · cold piano · church reverb",
-    stats: { played: 96, match: 93, last: "4 d" },
-  },
-  {
-    name: "Pylon",
-    tone: "tone-peach",
-    icon: "lucide:audio-lines",
-    seedLine: "seed · 1 track · 17 generated",
-    desc: "minimal electronic · krautrock-adjacent",
-    stats: { played: 28, match: 85, last: "6 d" },
-  },
-  {
-    name: "Halocline",
-    tone: "tone-rose",
-    icon: "lucide:atom",
-    seedLine: "seed · 3 tracks · 29 generated",
-    desc: "deep ambient · brackish · slow drone",
-    stats: { played: 72, match: 90, last: "1 w" },
-  },
-];
-
-// ── Header stats ─────────────────────────────────────────────────
-const TOTAL_SEEDED = STATIONS.length;
-const TOTAL_EMBEDDED = 2401;  // MOCK
-const TOTAL_PENDING = 86;     // MOCK
-
 // ── Wrapper que so renderiza StationViz quando esta no viewport ──
 function LazyStationViz() {
   let host!: HTMLDivElement;
-  const [visible, setVisible] = createSignal(true); // default true (caso IO nao exista)
+  const [visible, setVisible] = createSignal(true);
   let obs: IntersectionObserver | null = null;
 
   onMount(() => {
@@ -141,91 +64,286 @@ function LazyStationViz() {
   );
 }
 
+// ── Formata tempo relativo (timestamp Unix em segundos) ──────────
+function formatRelative(ts: number | null): string {
+  if (!ts) return "—";
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 60) return "agora";
+  if (diff < 3600) return `${Math.floor(diff / 60)} m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)} d`;
+  return `${Math.floor(diff / 604800)} sem`;
+}
+
+// ── Seed chip de uma station (exibe seeds via nome da tone) ──────
+function SeedChips(props: { station: Station }) {
+  // Exibe nome + icone da station como chips de seed (MVP: 1 chip por station)
+  const chips: { label: string; tone: Tone; icon: string }[] = [
+    {
+      label: props.station.desc || props.station.name,
+      tone: (props.station.tone as Tone) || "tone-lavender",
+      icon: props.station.icon || "lucide:radio",
+    },
+  ];
+  return (
+    <For each={chips}>
+      {(c) => (
+        <span class="st-seed-chip">
+          <span class={`st-seed-chip__cover ${c.tone}`}>
+            {/* @ts-ignore */}
+            <iconify-icon icon={c.icon} noobserver />
+          </span>
+          {c.label}
+        </span>
+      )}
+    </For>
+  );
+}
+
+// ── Feature card — primeira station (mais tocada) ────────────────
+function FeatureCard(props: {
+  station: Station;
+  onResume: (id: string) => void;
+}) {
+  return (
+    <section class="st-feature">
+      <div>
+        <div class="st-feature__eyebrow">
+          <span class="dot" />
+          Live · streaming now
+        </div>
+        <h2 class="st-feature__title">{props.station.name}</h2>
+        <p class="st-feature__hint">
+          {props.station.desc ||
+            "Smart station gerada a partir de seeds e embeddings Qdrant."}
+        </p>
+        <div class="st-feature__seeds">
+          <SeedChips station={props.station} />
+        </div>
+        <button
+          class="st-feature__cta"
+          type="button"
+          onClick={() => props.onResume(props.station.id)}
+        >
+          {/* @ts-ignore */}
+          <iconify-icon icon="ph:play-fill" noobserver />
+          Resume station
+        </button>
+      </div>
+      <LazyStationViz />
+    </section>
+  );
+}
+
+// ── Station card individual ──────────────────────────────────────
+function StationCard(props: {
+  station: Station;
+  isFirst: boolean;
+  onResume: (id: string) => void;
+}) {
+  const { station, isFirst } = props;
+  const seedLine =
+    station.kind === "seed"
+      ? `seed · ${station.seed_track_ids.length} tracks`
+      : `mood · ${station.query ?? ""}`;
+
+  return (
+    <div class="st-card" onClick={() => props.onResume(station.id)}>
+      <Show when={isFirst}>
+        <span class="st-card__live">
+          <span class="dot" />
+          Live
+        </span>
+      </Show>
+      <div class="st-card__top">
+        <div class={`st-card__cover ${station.tone}`}>
+          {/* @ts-ignore */}
+          <iconify-icon icon={station.icon} noobserver />
+        </div>
+        <div class="st-card__head">
+          <span class="st-card__name">{station.name}</span>
+          <span class="st-card__seed-line">{seedLine}</span>
+        </div>
+      </div>
+      <p class="st-card__desc">{station.desc}</p>
+      <div class="st-card__stats">
+        <span>{station.stats.played} played</span>
+        <span>
+          {station.stats.match_avg != null
+            ? `${Math.round(station.stats.match_avg * 100)}% match`
+            : "—"}
+        </span>
+        <span>last: {formatRelative(station.stats.last_played_at)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── View principal ───────────────────────────────────────────────
 export default function Stations() {
+  const [stations, { refetch }] = createResource(libListStations);
+
+  async function handleResume(id: string) {
+    try {
+      await libPlayStation(id);
+      // Refetch para atualizar estatisticas de played/last_played_at.
+      refetch();
+    } catch (err) {
+      console.error("[stations] play falhou:", err);
+    }
+  }
+
+  async function handleNewFromCurrent() {
+    try {
+      // Stub MVP: cria station tipo mood com query vazia.
+      // Idealmente usaria a track atual do player como seed.
+      await libCreateStation({
+        name: "New station",
+        kind: "seed",
+        icon: "lucide:radio",
+        tone: "tone-sky",
+        desc: "criada a partir da track atual",
+      });
+      refetch();
+    } catch (err) {
+      console.error("[stations] create falhou:", err);
+    }
+  }
+
   return (
     <article class="view">
       <header class="view__head">
         <div>
           <h1>Stations</h1>
-          <p class="view__head-hint">Smart radio — geradas a partir de seeds e embeddings (qdrant).</p>
+          <p class="view__head-hint">
+            Smart radio — geradas a partir de seeds e embeddings (qdrant).
+          </p>
         </div>
         <div class="view__stats">
-          <span><b>{TOTAL_SEEDED}</b> seeded</span>
-          <span><b>{TOTAL_EMBEDDED}</b> embedded</span>
-          <span><b>{TOTAL_PENDING}</b> pending</span>
+          <Show when={!stations.loading} fallback={<span>—</span>}>
+            <span>
+              <b>{stations()?.length ?? 0}</b> seeded
+            </span>
+          </Show>
         </div>
       </header>
 
       <div class="coll">
         {/* ── Feature station ──────────────────────────── */}
-        <section class="st-feature">
-          <div>
-            <div class="st-feature__eyebrow">
-              <span class="dot" />
-              Live · streaming now
-            </div>
-            <h2 class="st-feature__title">Midnight station</h2>
-            <p class="st-feature__hint">
-              Quiet ambient, drone and modern classical clustered around the seeds below.
-              Skips and dwells refeed the embedding to drift the station in the direction you listen.
-            </p>
-            <div class="st-feature__seeds">
-              <For each={FEATURE_SEEDS}>
-                {(s) => (
+        <Show
+          when={(stations()?.length ?? 0) > 0}
+          fallback={
+            <section class="st-feature">
+              <div>
+                <div class="st-feature__eyebrow">
+                  <span class="dot" />
+                  {stations.loading ? "Carregando..." : "Nenhuma station"}
+                </div>
+                <h2 class="st-feature__title">
+                  {stations.loading ? "Aguarde" : "Crie sua primeira station"}
+                </h2>
+                <p class="st-feature__hint">
+                  {stations.loading
+                    ? "Buscando stations salvas..."
+                    : "Use o botao abaixo para criar uma station a partir da track atual."}
+                </p>
+                <div class="st-feature__seeds">
                   <span class="st-seed-chip">
-                    <span class={`st-seed-chip__cover ${s.tone}`}>
+                    <span class="st-seed-chip__cover tone-lavender">
                       {/* @ts-ignore */}
-                      <iconify-icon icon={s.icon} noobserver />
+                      <iconify-icon icon="lucide:sparkles" noobserver />
                     </span>
-                    {s.title} · {s.artist}
+                    Nenhuma seed ainda
                   </span>
-                )}
-              </For>
-            </div>
-            <button class="st-feature__cta" type="button">
-              {/* @ts-ignore */}
-              <iconify-icon icon="ph:play-fill" noobserver />
-              Resume station
-            </button>
-          </div>
-          <LazyStationViz />
-        </section>
+                  <span class="st-seed-chip">
+                    <span class="st-seed-chip__cover tone-mint">
+                      {/* @ts-ignore */}
+                      <iconify-icon icon="lucide:waves" noobserver />
+                    </span>
+                    Toque musicas para gerar seeds
+                  </span>
+                  <span class="st-seed-chip">
+                    <span class="st-seed-chip__cover tone-bone">
+                      {/* @ts-ignore */}
+                      <iconify-icon icon="lucide:rainbow" noobserver />
+                    </span>
+                    Stations aparecem aqui
+                  </span>
+                </div>
+                <button class="st-feature__cta" type="button" disabled>
+                  {/* @ts-ignore */}
+                  <iconify-icon icon="ph:play-fill" noobserver />
+                  Resume station
+                </button>
+              </div>
+              <LazyStationViz />
+            </section>
+          }
+        >
+          <FeatureCard
+            station={stations()![0]}
+            onResume={handleResume}
+          />
+        </Show>
 
         {/* ── Grid de stations ────────────────────────── */}
         <section>
           <div class="section__head">
             <h2 class="section__title">All stations</h2>
-            <a class="section__action">New from current track →</a>
+            <a
+              class="section__action"
+              style={{ cursor: "pointer" }}
+              onClick={handleNewFromCurrent}
+            >
+              New from current track →
+            </a>
           </div>
           <div class="st-grid">
-            <For each={STATIONS}>
-              {(s) => (
-                <div class="st-card">
-                  <Show when={s.live}>
-                    <span class="st-card__live">
-                      <span class="dot" />
-                      Live
-                    </span>
-                  </Show>
-                  <div class="st-card__top">
-                    <div class={`st-card__cover ${s.tone}`}>
-                      {/* @ts-ignore */}
-                      <iconify-icon icon={s.icon} noobserver />
+            <Show
+              when={(stations()?.length ?? 0) > 0}
+              fallback={
+                <For each={Array.from({ length: 6 })}>
+                  {(_, i) => (
+                    <div class="st-card" style={{ opacity: "0.35" }}>
+                      <Show when={i() === 0}>
+                        <span class="st-card__live">
+                          <span class="dot" />
+                          Live
+                        </span>
+                      </Show>
+                      <div class="st-card__top">
+                        <div class="st-card__cover tone-lavender">
+                          {/* @ts-ignore */}
+                          <iconify-icon icon="lucide:radio" noobserver />
+                        </div>
+                        <div class="st-card__head">
+                          <span class="st-card__name">—</span>
+                          <span class="st-card__seed-line">sem stations</span>
+                        </div>
+                      </div>
+                      <p class="st-card__desc">
+                        Toque musicas para gerar stations automaticamente.
+                      </p>
+                      <div class="st-card__stats">
+                        <span>0 played</span>
+                        <span>—</span>
+                        <span>last: —</span>
+                      </div>
                     </div>
-                    <div class="st-card__head">
-                      <span class="st-card__name">{s.name}</span>
-                      <span class="st-card__seed-line">{s.seedLine}</span>
-                    </div>
-                  </div>
-                  <p class="st-card__desc">{s.desc}</p>
-                  <div class="st-card__stats">
-                    <span>{s.stats.played} played</span>
-                    <span>{s.stats.match}% match</span>
-                    <span>last: {s.stats.last}</span>
-                  </div>
-                </div>
-              )}
-            </For>
+                  )}
+                </For>
+              }
+            >
+              <For each={stations()}>
+                {(s, i) => (
+                  <StationCard
+                    station={s}
+                    isFirst={i() === 0}
+                    onResume={handleResume}
+                  />
+                )}
+              </For>
+            </Show>
           </div>
         </section>
       </div>
