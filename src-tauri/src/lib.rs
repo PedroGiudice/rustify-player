@@ -48,6 +48,10 @@ struct FftPayload {
     magnitudes: Vec<u8>,
     low_band_mag: f32,
     rms_energy: f32,
+    /// Sample rate negociada pelo PipeWire (Hz). 0 enquanto nao
+    /// negociado. Frontend usa pra calcular bin->banda do RTA
+    /// 1/3 oitava ISO no overlay do EqCanvas.
+    sample_rate: u32,
 }
 
 #[derive(Clone, Serialize, serde::Deserialize)]
@@ -2673,6 +2677,7 @@ pub fn run() {
 
             let spectrum_buf = engine.spectrum_buffer();
             let envelope_buf = engine.envelope_buffer();
+            let sample_rate_buf = engine.sample_rate_buf();
             let spectrum_handle = _app.handle().clone();
             let spectrum_flag = spectrum_active.clone();
             _app.manage(SpectrumActive(spectrum_active));
@@ -2734,6 +2739,7 @@ pub fn run() {
                             magnitudes: fft,
                             low_band_mag: envelope.low_band_mag,
                             rms_energy: envelope.rms_energy,
+                            sample_rate: sample_rate_buf.load(Ordering::Relaxed),
                         };
                         let _ = spectrum_handle.emit("audio-fft", &payload);
                     }
