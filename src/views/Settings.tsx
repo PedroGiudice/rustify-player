@@ -21,17 +21,35 @@
    - Theme picker dinamico via listThemes / applyThemeByName
    ============================================================ */
 
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan, setVolume, normGetState, normSetEnabled,
-  listThemes, applyThemeByName, watchTheme,
+  listThemes, applyThemeByName, watchTheme, onThemeChanged,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
 import { player, setPlayer } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
+
+/** Classifica um par de contraste segundo WCAG 2.1 */
+function wcagLabel(c: ContrastCheck): string {
+  if (c.pass_aaa) return "AAA";
+  if (c.pass_aa)  return "AA";
+  // AA-large: 3:1 pra texto grande (>=18pt ou >=14pt bold)
+  if (c.ratio >= 3.0) return "AA-large";
+  return "fail";
+}
+
+/** Classe CSS para o badge de classificacao */
+function wcagBadgeClass(c: ContrastCheck): string {
+  if (c.pass_aaa) return "status-pill status-pill--ok";
+  if (c.pass_aa)  return "status-pill status-pill--ok";
+  // warn para AA-large (3:1) e para fail — components.css nao tem --err
+  return "status-pill status-pill--warn";
+}
+
 function relativeTime(isoStr: string | null | undefined): string {
   if (!isoStr) return "";
   try {
@@ -126,6 +144,9 @@ export default function Settings() {
     const checks = await applyThemeByName(filename);
     setActiveTheme(filename);
     setContrast(checks);
+    // Inicia watcher de hot-reload para este arquivo YAML.
+    // Quando o watcher emite "theme-changed", o listener abaixo (no onMount)
+    // re-aplica e re-calcula o contraste.
     watchTheme(filename).catch((e) => console.warn("[theme] watch failed:", e));
   }
 
@@ -195,6 +216,19 @@ export default function Settings() {
 
     // Re-aplica theme mode salvo no boot pra refletir em document.body.
     applyThemeMode(themeMode());
+
+    // Listener de hot-reload: quando o watcher de arquivo YAML emite
+    // "theme-changed", re-aplica o tema e atualiza o contraste calculado.
+    // Isso garante que a calculadora reflete o estado atual apos edicoes
+    // ao vivo nos YAMLs de tema.
+    const unlisten = onThemeChanged((filename) => {
+      if (!filename) return;
+      applyThemeByName(filename)
+        .then((checks) => setContrast(checks))
+        .catch((e) => console.warn("[theme] hot-reload failed:", e));
+    });
+    // `onThemeChanged` retorna uma Promise<UnlistenFn>; cancelamos no cleanup.
+    onCleanup(() => { unlisten.then((fn) => fn()).catch(() => {}); });
   });
 
   function toggleNorm() {
@@ -339,23 +373,33 @@ export default function Settings() {
           </div>
 
           <Show when={contrast().length > 0}>
-            <div class="set-row">
-              <div>
-                <div class="set-row__label">Contrast (WCAG AA)</div>
-                <Show
-                  when={failingContrast().length > 0}
-                  fallback={<div class="set-row__hint">All pairs pass AA.</div>}
-                >
-                  <div class="set-row__hint">
-                    <For each={failingContrast()}>
-                      {(c) => <div>{c.pair}: {c.ratio.toFixed(1)}:1 (needs 4.5:1)</div>}
-                    </For>
-                  </div>
-                </Show>
+            <div class="set-row set-row--col">
+              <div style={{ width: "100%" }}>
+                <div class="set-row__label" style={{ "margin-bottom": "8px" }}>
+                  Contraste WCAG
+                  <span
+                    class={`status-pill ${failingContrast().length > 0 ? "status-pill--warn" : "status-pill--ok"}`}
+                    style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                  >
+                    {failingContrast().length > 0 ? `${failingContrast().length} falha(s)` : "AA ok"}
+                  </span>
+                </div>
+                {/* Tabela compacta com todos os pares */}
+                <div style={{ display: "grid", "grid-template-columns": "1fr auto auto", gap: "2px 12px", "font-size": "11px", "font-family": "var(--font-mono)" }}>
+                  <For each={contrast()}>
+                    {(c) => (
+                      <>
+                        <span style={{ color: "var(--fg-4)", "overflow": "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{c.pair}</span>
+                        <span style={{ color: "var(--fg-3)", "text-align": "right" }}>{c.ratio.toFixed(2)}:1</span>
+                        <span class={wcagBadgeClass(c)} style={{ padding: "1px 5px", "font-size": "9px", "line-height": "1.6" }}>{wcagLabel(c)}</span>
+                      </>
+                    )}
+                  </For>
+                </div>
+                <div class="set-row__hint" style={{ "margin-top": "6px" }}>
+                  AA = 4.5:1 · AAA = 7:1 · AA-large = 3:1 (texto grande)
+                </div>
               </div>
-              <span class={`status-pill ${failingContrast().length > 0 ? "status-pill--warn" : "status-pill--ok"}`}>
-                {failingContrast().length > 0 ? `${failingContrast().length} fail` : "AA pass"}
-              </span>
             </div>
           </Show>
 
