@@ -236,6 +236,21 @@ export function setEqBandGain(bandIdx: number, gainDb: number) {
   ipcDebounced(() => ipc.dspSetEqBand(bandIdx, dsp.eq.bands[bandIdx].freq, gainDb, dsp.eq.bands[bandIdx].q), 50, `eq-band-${bandIdx}`);
 }
 
+/** Edita a frequencia central da banda. Range pratico 10 Hz .. 24 kHz
+    (Nyquist a 48kHz). Backend (LSP Para EQ) aceita arbitrario. */
+export function setEqBandFreq(bandIdx: number, freq: number) {
+  const clamped = Math.max(10, Math.min(24000, freq));
+  setDsp("eq", "bands", bandIdx, "freq", clamped);
+  ipcDebounced(() => ipc.dspSetEqBand(bandIdx, clamped, dsp.eq.bands[bandIdx].gain_db, dsp.eq.bands[bandIdx].q), 50, `eq-band-${bandIdx}`);
+}
+
+/** Edita o Q da banda. Range pratico 0.1 .. 36 (LSP Para EQ aceita ate ~32). */
+export function setEqBandQ(bandIdx: number, q: number) {
+  const clamped = Math.max(0.1, Math.min(36, q));
+  setDsp("eq", "bands", bandIdx, "q", clamped);
+  ipcDebounced(() => ipc.dspSetEqBand(bandIdx, dsp.eq.bands[bandIdx].freq, dsp.eq.bands[bandIdx].gain_db, clamped), 50, `eq-band-${bandIdx}`);
+}
+
 export function setEqBandType(bandIdx: number, type: number) {
   setDsp("eq", "bands", bandIdx, "type", type);
   ipcDebounced(() => ipc.dspSetEqFilterType(bandIdx, type), 100, `eq-type-${bandIdx}`);

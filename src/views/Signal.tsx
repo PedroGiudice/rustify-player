@@ -15,6 +15,8 @@ import {
   setEqBandGain,
   setEqBandType,
   setEqBandMode,
+  setEqBandFreq,
+  setEqBandQ,
   setEqBandSlope,
   setEqBandSolo,
   setEqBandMute,
@@ -677,13 +679,35 @@ function Select<T extends readonly string[]>(props: {
 
 function BandDetail() {
   const band = () => dsp.eq.bands[dsp.activeBand];
+
+  function onFreqInput(e: Event) {
+    const raw = parseFloat((e.currentTarget as HTMLInputElement).value);
+    if (!isNaN(raw)) setEqBandFreq(dsp.activeBand, raw);
+  }
+
+  function onQInput(e: Event) {
+    const raw = parseFloat((e.currentTarget as HTMLInputElement).value);
+    if (!isNaN(raw)) setEqBandQ(dsp.activeBand, raw);
+  }
+
   return (
     <div class="band-detail">
       <div class="band-detail__ctx">
         <span class="band-detail__title">Band {String(dsp.activeBand + 1).padStart(2, "0")}</span>
         <span class="band-detail__ctx-row">
-          <b>{band().freq >= 1000 ? `${(band().freq / 1000).toFixed(1)}k Hz` : `${band().freq} Hz`}</b>
-          {" "}· {FILTER_TYPES[band().type]} · {FILTER_MODES[band().filterMode]}
+          <input
+            class="band-detail__freq"
+            type="number"
+            min={10}
+            max={24000}
+            step={1}
+            value={band().freq}
+            onChange={onFreqInput}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
+            title="Frequencia central (Hz). LSP Para EQ aceita 10..24000."
+          />
+          <span class="band-detail__unit"> Hz</span>
+          {" · "}{FILTER_TYPES[band().type]} · {FILTER_MODES[band().filterMode]}
         </span>
       </div>
       <div class="band-detail__ctrls">
@@ -705,7 +729,20 @@ function BandDetail() {
           value={band().slope}
           onChange={(v) => setEqBandSlope(dsp.activeBand, v)}
         />
-        <span class="band-detail__q">Q: <b>{band().q.toFixed(2)}</b></span>
+        <label class="band-detail__q">
+          Q:
+          <input
+            class="band-detail__q-input"
+            type="number"
+            min={0.1}
+            max={36}
+            step={0.1}
+            value={band().q}
+            onChange={onQInput}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
+            title="Fator de qualidade (largura do filtro). 0.1 = bem largo, 36 = quase ressonante."
+          />
+        </label>
       </div>
       <div class="band-detail__toggles">
         <button

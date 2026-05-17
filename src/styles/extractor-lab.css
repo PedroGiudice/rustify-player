@@ -1758,12 +1758,48 @@ html { --glow: 0; }
 }
 .select-control select:focus { outline: 0; border-color: var(--fg-7); box-shadow: var(--ring-focus); }
 .band-detail__q {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--fg-5);
   letter-spacing: -0.01em;
 }
 .band-detail__q b { color: var(--fg-1); font-weight: 600; }
+.band-detail__q-input,
+.band-detail__freq {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  -moz-appearance: textfield;
+  letter-spacing: -0.01em;
+}
+.band-detail__freq { width: 78px; }
+.band-detail__q-input { width: 54px; }
+.band-detail__q-input::-webkit-outer-spin-button,
+.band-detail__q-input::-webkit-inner-spin-button,
+.band-detail__freq::-webkit-outer-spin-button,
+.band-detail__freq::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.band-detail__q-input:focus,
+.band-detail__freq:focus {
+  outline: 0;
+  border-color: var(--fg-7);
+  box-shadow: var(--ring-focus);
+}
+.band-detail__unit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-5);
+}
 .band-detail__toggles {
   display: inline-flex;
   gap: 4px;
