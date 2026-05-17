@@ -810,7 +810,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   border-radius: var(--radius-xl);
   overflow: hidden;
   display: grid;
-  grid-template-columns: 36px 1fr 180px 120px 80px 70px;
+  /* 5 colunas: idx | title (flex) | album | genre | length.
+     Tinha 6 antes (sobrava 70px) — com display:contents nas rows,
+     o slot vago empurrava todas as rows uma coluna pra direita. */
+  grid-template-columns: 36px 1fr 180px 120px 70px;
   font-size: 13px;
 }
 .tracks > div {
@@ -1291,6 +1294,11 @@ html[data-sidebar="icons"] .brand__word,
 html[data-sidebar="icons"] .brand__dot,
 html[data-sidebar="icons"] .sidebar__label,
 html[data-sidebar="icons"] .nav-item__kbd { display: none; }
+/* Esconde o texto do nav-item (span sem classe que envolve o label).
+   O Icon vira <iconify-icon>, nao span — entao filtro generico nao
+   afeta o icone. Sem isso o label do nav sobra ao lado do icone
+   numa sidebar de 56px e quebra o layout. */
+html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd) { display: none; }
 html[data-sidebar="icons"] .nav-item {
   justify-content: center; padding: 8px; gap: 0;
 }
