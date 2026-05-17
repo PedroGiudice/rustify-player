@@ -75,7 +75,7 @@ function FontSelect(props: {
 
 function NumberSlider(props: {
   label: string;
-  key: "scale" | "glow";
+  key: "scale" | "glow" | "lyricsGlass";
   min: number;
   max: number;
   step: number;
@@ -169,6 +169,14 @@ export function Tweaks() {
             max={1}
             step={0.05}
             format={(v) => v.toFixed(2)}
+          />
+          <NumberSlider
+            label="Lyrics glass"
+            key="lyricsGlass"
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
           />
 
           <button class="tweaks__reset" onClick={() => resetTweaks()}>

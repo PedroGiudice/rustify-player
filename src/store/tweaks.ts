@@ -23,6 +23,11 @@ export interface TweaksState {
   sidebar: Sidebar;
   type: TypeMode;
   glow: number;
+  /** Translucidez da caixa de lyrics (Now Playing).
+      0   = quase invisivel (alpha 0.04, brightness 0.92)
+      0.5 = meio termo
+      1   = quase opaco (alpha 0.30, brightness 0.65) */
+  lyricsGlass: number;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -33,6 +38,7 @@ export const DEFAULTS: TweaksState = {
   sidebar: "labels",
   type: "body",
   glow: 0.15,
+  lyricsGlass: 0.25,
 };
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
@@ -95,6 +101,14 @@ export function applyTweaks(s: TweaksState = state()) {
   else delete html.dataset.type;
 
   html.style.setProperty("--glow", String(s.glow));
+
+  // Lyrics glass: interpola alpha do background e brightness do backdrop
+  // a partir do slider unico. CSS le essas vars com fallback nos defaults.
+  const g = Math.max(0, Math.min(1, s.lyricsGlass));
+  const alpha = 0.04 + g * 0.26;          // 0.04 .. 0.30
+  const brightness = 0.92 - g * 0.27;     // 0.92 .. 0.65
+  html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
+  html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
 }
 
 // ── Update helper ─────────────────────────────────────────────

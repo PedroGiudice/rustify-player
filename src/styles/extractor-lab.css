@@ -650,14 +650,21 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   padding: 0;
   -webkit-mask-image: none;
           mask-image: none;
-  /* Glass real: alpha baixo + brightness no backdrop-filter pra
-     escurecer o que esta atras SEM virar painel solido. Sobre fundo
-     paper claro vira vidro fume — sobre fundo escuro vira tinted dark.
-     blur escala com tamanho via --lyrics-blur. Sem borda. */
-  background: rgba(15, 17, 16, 0.18);
+  /* Glass real: alpha do background + brightness do backdrop sao
+     controlados pelo slider Lyrics glass (Tweaks). Os fallbacks dao
+     o default sem o slider configurado. Sobre fundo paper claro vira
+     vidro fume; sobre fundo escuro vira tinted dark. Blur escala com
+     o tamanho via --lyrics-blur. Sem borda. */
+  background: rgba(15, 17, 16, var(--lyrics-bg-alpha, 0.10));
   border: 0;
-  backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(160%) brightness(0.78);
-  -webkit-backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(160%) brightness(0.78);
+  backdrop-filter:
+    blur(var(--lyrics-blur, 16px))
+    saturate(160%)
+    brightness(var(--lyrics-bg-brightness, 0.85));
+  -webkit-backdrop-filter:
+    blur(var(--lyrics-blur, 16px))
+    saturate(160%)
+    brightness(var(--lyrics-bg-brightness, 0.85));
   box-shadow:
     0 12px 48px -16px rgba(0, 0, 0, 0.45),
     0 2px 8px -2px rgba(0, 0, 0, 0.28);
