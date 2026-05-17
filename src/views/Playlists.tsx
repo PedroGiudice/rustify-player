@@ -13,7 +13,20 @@
    ============================================================ */
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
+import { libListFolders, libListFolderTracks, coverUrl, type FolderPlaylist } from "../tauri";
+import { setQueue } from "../store/player";
+import { playTrack } from "../components/PlayerBar";
+
+async function playFolder(folder: FolderPlaylist) {
+  try {
+    const tracks = await libListFolderTracks(folder.name);
+    if (!tracks.length) return;
+    setQueue(tracks, 0);
+    playTrack(tracks[0]);
+  } catch (err) {
+    console.error("[playlists] play failed:", folder.name, err);
+  }
+}
 
 // ── Tones de fallback (vide tokens em extractor-lab.css) ─────────
 type Tone =
@@ -173,7 +186,7 @@ export default function Playlists() {
             <div class="pl-grid">
               <For each={pinned()}>
                 {(p) => (
-                  <div class="pl-card">
+                  <div class="pl-card" onClick={() => playFolder(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <div class="pl-card__cover">
                       <CoverMosaic folder={p} pinned />
                     </div>
@@ -247,7 +260,7 @@ export default function Playlists() {
               </div>
               <For each={rest()}>
                 {(p) => (
-                  <div class="pl-card">
+                  <div class="pl-card" onClick={() => playFolder(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <div class="pl-card__cover">
                       <CoverMosaic folder={p} />
                     </div>
