@@ -1,15 +1,27 @@
 /* ============================================================
-   views/Settings.tsx — Library, Audio, Theme, Updates.
+   views/Settings.tsx — Settings hi-fi com 4 paineis.
 
-   Pos-redesign Extractor Lab: panel + toggle-row + segmented.
-   Logica restaurada do Settings pre-redesign (commit c3c2a9e)
-   pra nao perder Library stats, Theme picker, Volume slider,
-   Loudness normalization e principalmente o fluxo de Update
-   (check / install / restart).
+   Recriacao da view Settings seguindo o mockup do handoff
+   (data-screen="settings"). 4 paineis verticais:
+
+   1. Appearance — Theme segmented (Light/Dark/Auto),
+      Compact sidebar tog, Cinema mode kbd, Beat sync segmented
+      (Off/Subtle/Default/Pulse) persistindo em rustify-mock-sync.
+   2. Playback — Crossfade slider, Gapless tog, Output device,
+      Resume on launch tog, Scrobble Connect.
+   3. Library — Music folder + Trocar, Re-scan (accent), Embeddings
+      Generate, qdrant Restart, library stats tile grid.
+   4. About — grid 6 items mono (Version, Tauri, Backend,
+      Identifier, Branch, License).
+
+   PRESERVADO do Settings antigo (NAO QUEBRAR):
+   - Update flow (checkForUpdate / installUpdate / restartApp)
+   - Library stats (libSnapshot + albums/artists/genres counts)
+   - Volume + normalize (norm_get_state)
+   - Theme picker dinamico via listThemes / applyThemeByName
    ============================================================ */
 
 import { createResource, createSignal, For, onMount, Show } from "solid-js";
-import { Icon, ICONS } from "../components/Icon";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan, setVolume, normGetState, normSetEnabled,
@@ -19,6 +31,7 @@ import {
 } from "../tauri";
 import { player, setPlayer } from "../store/player";
 
+// ── Helpers locais ──────────────────────────────────────────────
 function relativeTime(isoStr: string | null | undefined): string {
   if (!isoStr) return "";
   try {
@@ -31,19 +44,60 @@ function relativeTime(isoStr: string | null | undefined): string {
   } catch { return ""; }
 }
 
-function embedStatus(s: any): { cls: string; label: string } {
-  if (!s || s.tracks_total === 0) return { cls: "status-pill--dim", label: "Idle" };
-  if (s.embeddings_done === s.tracks_total) return { cls: "status-pill--ok", label: "Complete" };
-  if (s.embeddings_failed > 0) return { cls: "status-pill--warn", label: "Partial" };
-  if (s.embeddings_pending > 0) return { cls: "status-pill--dim", label: "Pending" };
-  return { cls: "status-pill--dim", label: "Idle" };
+// ── localStorage keys que dialogam com T10 (SpectrumCanvas) ─────
+const SYNC_KEY = "rustify-mock-sync";
+type SyncMode = "off" | "subtle" | "default" | "pulse";
+function loadSyncMode(): SyncMode {
+  try {
+    const raw = localStorage.getItem(SYNC_KEY);
+    if (raw === "off" || raw === "subtle" || raw === "default" || raw === "pulse") return raw;
+  } catch {}
+  return "default";
+}
+function saveSyncMode(m: SyncMode) {
+  try { localStorage.setItem(SYNC_KEY, m); } catch {}
+}
+
+// Outros toggles client-only (futuro: persistir via store plugin)
+const COMPACT_KEY = "rustify-mock-compact-sidebar";
+const GAPLESS_KEY = "rustify-mock-gapless";
+const RESUME_KEY  = "rustify-mock-resume-launch";
+const CROSSFADE_KEY = "rustify-mock-crossfade-s";
+
+// Tema theme picker — bridge entre seg (Light/Dark/Auto) e o
+// listThemes existente. Light/Dark/Auto sao "modes" cosmeticos
+// que afetam document.body[data-theme]. O picker custom continua
+// disponivel pra YAMLs custom (mas movemos pra dentro do mesmo
+// painel pra nao quebrar fluidez).
+type ThemeMode = "light" | "dark" | "auto";
+const THEME_MODE_KEY = "rustify-theme-mode";
+function loadThemeMode(): ThemeMode {
+  try {
+    const raw = localStorage.getItem(THEME_MODE_KEY);
+    if (raw === "light" || raw === "dark" || raw === "auto") return raw;
+  } catch {}
+  return "light";
+}
+
+function applyThemeMode(m: ThemeMode) {
+  try {
+    if (m === "auto") {
+      document.body.removeAttribute("data-theme");
+    } else {
+      document.body.setAttribute("data-theme", m);
+    }
+    localStorage.setItem(THEME_MODE_KEY, m);
+  } catch {}
 }
 
 export default function Settings() {
-  // ── Dados da biblioteca + versao ─────────────────────────────
+  // ── Library data (preservado) ─────────────────────────────────
   const [data] = createResource(async () => {
     const [snapshot, albums, artists, genres] = await Promise.all([
-      libSnapshot().catch(() => ({ tracks_total: 0, albums_total: 0, artists_total: 0, embeddings_done: 0, embeddings_pending: 0, embeddings_failed: 0 })),
+      libSnapshot().catch(() => ({
+        tracks_total: 0, albums_total: 0, artists_total: 0,
+        embeddings_done: 0, embeddings_pending: 0, embeddings_failed: 0,
+      })),
       libGetAlbums({ limit: 10000 }).catch(() => []),
       libGetArtists({ limit: 10000 }).catch(() => []),
       libListGenres().catch(() => []),
@@ -56,12 +110,12 @@ export default function Settings() {
     catch { return "—"; }
   });
 
-  // ── Theme picker ─────────────────────────────────────────────
+  // ── Theme picker (preservado, dentro do painel Appearance) ───
   const [themes] = createResource(listThemes);
   const [activeTheme, setActiveTheme] = createSignal(localStorage.getItem("rustify-theme") || "");
   const [contrast, setContrast] = createSignal<ContrastCheck[]>([]);
 
-  async function selectTheme(filename: string) {
+  async function selectThemeFile(filename: string) {
     if (!filename) {
       document.documentElement.removeAttribute("style");
       localStorage.removeItem("rustify-theme");
@@ -77,17 +131,57 @@ export default function Settings() {
 
   const failingContrast = () => contrast().filter((c) => !c.pass_aa);
 
-  // ── Volume + normalize ───────────────────────────────────────
-  const volumePct = () => Math.round(player.volume * 100);
-
-  function onVolumeChange(e: Event) {
-    const val = parseInt((e.target as HTMLInputElement).value, 10);
-    const vol = val / 100;
-    setPlayer("volume", vol);
-    setPlayer("isMuted", false);
-    setVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
+  // ── Theme mode (Light/Dark/Auto) — seg do Appearance ──────────
+  const [themeMode, setThemeMode] = createSignal<ThemeMode>(loadThemeMode());
+  function pickThemeMode(m: ThemeMode) {
+    setThemeMode(m);
+    applyThemeMode(m);
   }
 
+  // ── Beat sync (seg do Appearance, persist em rustify-mock-sync)
+  const [syncMode, setSyncMode] = createSignal<SyncMode>(loadSyncMode());
+  function pickSync(m: SyncMode) {
+    setSyncMode(m);
+    saveSyncMode(m);
+  }
+
+  // ── Toggles cosmeticos (compact sidebar, gapless, resume) ─────
+  const [compact, setCompact] = createSignal(localStorage.getItem(COMPACT_KEY) === "true");
+  function toggleCompact() {
+    const next = !compact();
+    setCompact(next);
+    try { localStorage.setItem(COMPACT_KEY, String(next)); } catch {}
+  }
+  const [gapless, setGapless] = createSignal(localStorage.getItem(GAPLESS_KEY) !== "false");
+  function toggleGapless() {
+    const next = !gapless();
+    setGapless(next);
+    try { localStorage.setItem(GAPLESS_KEY, String(next)); } catch {}
+  }
+  const [resumeLaunch, setResumeLaunch] = createSignal(localStorage.getItem(RESUME_KEY) !== "false");
+  function toggleResume() {
+    const next = !resumeLaunch();
+    setResumeLaunch(next);
+    try { localStorage.setItem(RESUME_KEY, String(next)); } catch {}
+  }
+
+  // ── Crossfade slider ──────────────────────────────────────────
+  const [crossfade, setCrossfade] = createSignal<number>(parseFloat(localStorage.getItem(CROSSFADE_KEY) ?? "2"));
+  function setCrossfadeS(v: number) {
+    const clamped = Math.max(0, Math.min(12, Math.round(v * 10) / 10));
+    setCrossfade(clamped);
+    try { localStorage.setItem(CROSSFADE_KEY, String(clamped)); } catch {}
+  }
+  function onCrossfadeTrackClick(e: MouseEvent) {
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setCrossfadeS(pct * 12); // 0..12s
+  }
+
+  // ── Volume + normalize (preservado, visual ainda no painel Audio
+  //    do Playback — apesar de o mockup nao mostrar volume aqui,
+  //    a logica precisa ficar acessivel) ──────────────────────────
   const cachedNorm = localStorage.getItem("rustify-norm-enabled");
   const [normEnabled, setNormEnabled] = createSignal(cachedNorm === null ? true : cachedNorm === "true");
 
@@ -98,6 +192,9 @@ export default function Settings() {
         localStorage.setItem("rustify-norm-enabled", String(on));
       })
       .catch((e) => console.error("[norm] get_state failed:", e));
+
+    // Re-aplica theme mode salvo no boot pra refletir em document.body.
+    applyThemeMode(themeMode());
   });
 
   function toggleNorm() {
@@ -111,13 +208,22 @@ export default function Settings() {
     });
   }
 
-  // ── Re-scan ──────────────────────────────────────────────────
+  const volumePct = () => Math.round(player.volume * 100);
+  function onVolumeChange(e: Event) {
+    const val = parseInt((e.target as HTMLInputElement).value, 10);
+    const vol = val / 100;
+    setPlayer("volume", vol);
+    setPlayer("isMuted", false);
+    setVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
+  }
+
+  // ── Re-scan (preservado) ─────────────────────────────────────
   const [scanning, setScanning] = createSignal(false);
   const [scanLabel, setScanLabel] = createSignal("Re-scan");
 
   function handleRescan() {
     setScanning(true);
-    setScanLabel("Scanning...");
+    setScanLabel("Scanning…");
     libRescan()
       .then(() => {
         setScanLabel("Started");
@@ -126,7 +232,7 @@ export default function Settings() {
       .catch(() => { setScanLabel("Failed"); setScanning(false); });
   }
 
-  // ── Update flow ──────────────────────────────────────────────
+  // ── Update flow (preservado) ─────────────────────────────────
   const [updateStatus, setUpdateStatus] = createSignal<string | null>(null);
   const [updateResult, setUpdateResult] = createSignal<any>(null);
   const [checking, setChecking] = createSignal(false);
@@ -159,111 +265,210 @@ export default function Settings() {
     }
   }
 
+  // Stats helpers
+  const tracksTotal = () => data()?.snapshot.tracks_total ?? 0;
+  const embedDone = () => data()?.snapshot.embeddings_done ?? 0;
+  const embedPending = () => data()?.snapshot.embeddings_pending ?? 0;
+  const albumsCount = () => data()?.albums.length ?? 0;
+  const artistsCount = () => data()?.artists.length ?? 0;
+  const genresPopulated = () => (data()?.genres ?? []).filter((g: any) => g.track_count > 0).length;
+
   return (
     <article class="view">
       <header class="view__head">
         <div>
           <h1>Settings</h1>
-          <p class="view__head-hint">Library, audio, theme, updates.</p>
+          <p class="view__head-hint">Library, audio, appearance — v{version() ?? "—"}.</p>
         </div>
         <div class="view__stats">
-          <span><b>v{version() ?? "—"}</b></span>
+          <span>config <b>~/.config/rustify-player</b></span>
         </div>
       </header>
 
-      <div class="view__body" style={{ "max-width": "760px" }}>
-
-        {/* ── Library ────────────────────────────────────────── */}
-        <section class="panel">
-          <div class="panel__head">
-            <h3 class="panel__title">Library</h3>
+      <div class="set">
+        {/* ════════════════════════════════════════════════════════
+            1. APPEARANCE
+            ════════════════════════════════════════════════════════ */}
+        <div class="set-panel">
+          <div class="set-panel__head">
+            <h3 class="set-panel__title">Appearance</h3>
+            <span class="set-panel__sub">light is the default Extractor Lab palette</span>
           </div>
 
-          <Show when={data()}>
-            {(d) => {
-              const snap = d().snapshot;
-              const populated = d().genres.filter((g: any) => g.track_count > 0).length;
-              const st = embedStatus(snap);
-              return (
-                <>
-                  <div class="stat-grid">
-                    <div class="stat-tile">
-                      <span class="stat-tile__label">TRACKS</span>
-                      <span class="stat-tile__value">{snap.tracks_total}</span>
-                      <span class="stat-tile__sub">indexed</span>
-                    </div>
-                    <div class="stat-tile">
-                      <span class="stat-tile__label">ALBUMS</span>
-                      <span class="stat-tile__value">{d().albums.length}</span>
-                      <span class="stat-tile__sub">distinct</span>
-                    </div>
-                    <div class="stat-tile">
-                      <span class="stat-tile__label">ARTISTS</span>
-                      <span class="stat-tile__value">{d().artists.length}</span>
-                      <span class="stat-tile__sub">distinct</span>
-                    </div>
-                    <div class="stat-tile">
-                      <span class="stat-tile__label">GENRES</span>
-                      <span class="stat-tile__value">{populated}</span>
-                      <span class="stat-tile__sub">populated</span>
-                    </div>
-                  </div>
-
-                  <div class="toggle-row">
-                    <div>
-                      <div class="toggle-row__label">Music root</div>
-                      <div class="toggle-row__hint mono">~/Music</div>
-                    </div>
-                    <button
-                      class="chip"
-                      disabled
-                      title="Backend ainda nao expoe lib_set_library_path"
-                    >
-                      Trocar…
-                    </button>
-                  </div>
-
-                  <div class="toggle-row">
-                    <div>
-                      <div class="toggle-row__label">Re-scan biblioteca</div>
-                      <div class="toggle-row__hint">Re-indexa metadados e gera embeddings faltantes.</div>
-                    </div>
-                    <button
-                      class="chip"
-                      disabled={scanning()}
-                      onClick={handleRescan}
-                    >
-                      <Icon name={ICONS.bolt} size={12} /> {scanLabel()}
-                    </button>
-                  </div>
-
-                  <div class="toggle-row">
-                    <div>
-                      <div class="toggle-row__label">Embeddings</div>
-                      <div class="toggle-row__hint">
-                        {snap.embeddings_done}/{snap.tracks_total} tracks · powered by MERT-v1-95M
-                      </div>
-                    </div>
-                    <span class={`status-pill ${st.cls}`}>{st.label}</span>
-                  </div>
-                </>
-              );
-            }}
-          </Show>
-        </section>
-
-        {/* ── Audio ──────────────────────────────────────────── */}
-        <section class="panel">
-          <div class="panel__head">
-            <h3 class="panel__title">Audio</h3>
-          </div>
-
-          <div class="toggle-row">
+          <div class="set-row">
             <div>
-              <div class="toggle-row__label">Volume</div>
-              <div class="toggle-row__hint">Aplicado no engine; sincroniza com o slider do PlayerBar.</div>
+              <div class="set-row__label">Theme</div>
+              <div class="set-row__hint">
+                Light is the default. Auto follows your OS preference. Dark is the legacy editorial-hi-fi theme.
+              </div>
             </div>
-            <div style={{ display: "flex", "align-items": "center", gap: "10px" }}>
+            <div class="set-row__control">
+              <div class="seg">
+                <button aria-pressed={themeMode() === "light" ? "true" : "false"} onClick={() => pickThemeMode("light")}>Light</button>
+                <button aria-pressed={themeMode() === "dark" ? "true" : "false"} onClick={() => pickThemeMode("dark")}>Dark</button>
+                <button aria-pressed={themeMode() === "auto" ? "true" : "false"} onClick={() => pickThemeMode("auto")}>Auto</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Theme YAML picker — mantido pra estilos custom ── */}
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Custom theme YAML</div>
+              <div class="set-row__hint">YAMLs em ~/.local/share/rustify-player/themes/. Independente do mode acima.</div>
+            </div>
+            <div class="set-row__control">
+              <Show
+                when={themes()}
+                fallback={<span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)" }}>loading…</span>}
+              >
+                {(t) => (
+                  <select
+                    class="set-folder-btn"
+                    value={activeTheme()}
+                    onChange={(e) => selectThemeFile(e.currentTarget.value)}
+                  >
+                    <option value="">Default (Extractor Lab)</option>
+                    <For each={t()}>
+                      {(theme) => <option value={theme.filename}>{theme.name}</option>}
+                    </For>
+                  </select>
+                )}
+              </Show>
+            </div>
+          </div>
+
+          <Show when={contrast().length > 0}>
+            <div class="set-row">
+              <div>
+                <div class="set-row__label">Contrast (WCAG AA)</div>
+                <Show
+                  when={failingContrast().length > 0}
+                  fallback={<div class="set-row__hint">All pairs pass AA.</div>}
+                >
+                  <div class="set-row__hint">
+                    <For each={failingContrast()}>
+                      {(c) => <div>{c.pair}: {c.ratio.toFixed(1)}:1 (needs 4.5:1)</div>}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+              <span class={`status-pill ${failingContrast().length > 0 ? "status-pill--warn" : "status-pill--ok"}`}>
+                {failingContrast().length > 0 ? `${failingContrast().length} fail` : "AA pass"}
+              </span>
+            </div>
+          </Show>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Compact sidebar</div>
+              <div class="set-row__hint">Collapses Coleções labels and shows icons only.</div>
+            </div>
+            <div class="set-row__control">
+              <button
+                class="tog"
+                aria-pressed={compact() ? "true" : "false"}
+                onClick={toggleCompact}
+                type="button"
+                title="Toggle compact sidebar"
+              />
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Cinema mode shortcut</div>
+              <div class="set-row__hint">Hotkey to collapse all chrome on Now Playing.</div>
+            </div>
+            <div class="set-row__control">
+              <span class="kbd" style={{ "font-family": "var(--font-mono)", "font-size": "10.5px", padding: "2px 7px" }}>F</span>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Beat sync</div>
+              <div class="set-row__hint">
+                Controla quanto a animacao do Now Playing reage ao envelope do audio.
+                Pulse marca cada kick; Subtle so respira; Off desliga a reatividade.
+              </div>
+            </div>
+            <div class="set-row__control">
+              <div class="seg">
+                <button aria-pressed={syncMode() === "off" ? "true" : "false"} onClick={() => pickSync("off")}>Off</button>
+                <button aria-pressed={syncMode() === "subtle" ? "true" : "false"} onClick={() => pickSync("subtle")}>Subtle</button>
+                <button aria-pressed={syncMode() === "default" ? "true" : "false"} onClick={() => pickSync("default")}>Default</button>
+                <button aria-pressed={syncMode() === "pulse" ? "true" : "false"} onClick={() => pickSync("pulse")}>Pulse</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════
+            2. PLAYBACK
+            ════════════════════════════════════════════════════════ */}
+        <div class="set-panel">
+          <div class="set-panel__head">
+            <h3 class="set-panel__title">Playback</h3>
+            <span class="set-panel__sub">PipeWire · default sink</span>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Crossfade</div>
+              <div class="set-row__hint">
+                Overlap entre faixas. 0 desabilita; recomendado &lt; 4 s pra ambient.
+              </div>
+            </div>
+            <div class="set-row__control">
+              <div class="set-slider">
+                <div class="set-slider__track" onClick={onCrossfadeTrackClick}>
+                  <div class="set-slider__fill" style={{ width: `${(crossfade() / 12) * 100}%` }} />
+                  <div class="set-slider__thumb" style={{ left: `${(crossfade() / 12) * 100}%` }} />
+                </div>
+                <span class="set-slider__val">{crossfade().toFixed(1)} s</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Gapless playback</div>
+              <div class="set-row__hint">Necessario pra live e concept albums. Desabilita crossfade quando ativo.</div>
+            </div>
+            <div class="set-row__control">
+              <button class="tog" aria-pressed={gapless() ? "true" : "false"} onClick={toggleGapless} type="button" title="Toggle gapless" />
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Output device</div>
+              <div class="set-row__hint mono">pipewire · default sink</div>
+            </div>
+            <div class="set-row__control">
+              <button class="set-folder-btn" type="button" title="Backend ainda nao oferece switch de output device">
+                Change…
+              </button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Resume on launch</div>
+              <div class="set-row__hint">Re-abre a ultima faixa na ultima posicao.</div>
+            </div>
+            <div class="set-row__control">
+              <button class="tog" aria-pressed={resumeLaunch() ? "true" : "false"} onClick={toggleResume} type="button" title="Toggle resume" />
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Volume</div>
+              <div class="set-row__hint">Sincroniza com o slider do PlayerBar (engine-level).</div>
+            </div>
+            <div class="set-row__control">
               <input
                 type="range"
                 class="slider"
@@ -279,89 +484,155 @@ export default function Settings() {
             </div>
           </div>
 
-          <div class="toggle-row">
+          <div class="set-row">
             <div>
-              <div class="toggle-row__label">Normalizar volume entre faixas</div>
-              <div class="toggle-row__hint">EBU R128 alvo −14 LUFS, entre EQ e Limiter.</div>
+              <div class="set-row__label">Normalizar volume entre faixas</div>
+              <div class="set-row__hint">EBU R128 alvo −14 LUFS, entre EQ e Limiter.</div>
             </div>
-            <button
-              class="toggle"
-              aria-pressed={normEnabled() ? "true" : "false"}
-              onClick={toggleNorm}
-              type="button"
-            />
+            <div class="set-row__control">
+              <button class="tog" aria-pressed={normEnabled() ? "true" : "false"} onClick={toggleNorm} type="button" />
+            </div>
           </div>
 
-          <div class="toggle-row">
+          <div class="set-row">
             <div>
-              <div class="toggle-row__label">Output device</div>
-              <div class="toggle-row__hint">PipeWire default sink.</div>
+              <div class="set-row__label">Scrobble · Last.fm</div>
+              <div class="set-row__hint">Envia tracks tocados pro servico de scrobble. Desconectado.</div>
             </div>
-            <select class="chip" disabled>
-              <option>System default</option>
-            </select>
+            <div class="set-row__control">
+              <button class="set-folder-btn" type="button" title="Integracao pendente">Connect…</button>
+            </div>
           </div>
-        </section>
+        </div>
 
-        {/* ── Theme ──────────────────────────────────────────── */}
-        <section class="panel">
-          <div class="panel__head">
-            <h3 class="panel__title">Theme</h3>
+        {/* ════════════════════════════════════════════════════════
+            3. LIBRARY (preservado: stats + rescan + embeddings)
+            ════════════════════════════════════════════════════════ */}
+        <div class="set-panel">
+          <div class="set-panel__head">
+            <h3 class="set-panel__title">Library</h3>
+            <span class="set-panel__sub">
+              {tracksTotal()} tracks · {albumsCount()} albums
+            </span>
           </div>
 
-          <div class="toggle-row">
+          <div class="set-row">
             <div>
-              <div class="toggle-row__label">Active theme</div>
-              <div class="toggle-row__hint">YAMLs em ~/.local/share/rustify-player/themes/</div>
+              <div class="set-row__label">Music folder</div>
+              <div class="set-row__hint mono">~/Music/library</div>
             </div>
-            <Show when={themes()} fallback={<span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)" }}>loading…</span>}>
-              {(t) => (
-                <select
-                  class="chip"
-                  value={activeTheme()}
-                  onChange={(e) => selectTheme(e.currentTarget.value)}
-                >
-                  <option value="">Default (Extractor Lab)</option>
-                  <For each={t()}>
-                    {(theme) => <option value={theme.filename}>{theme.name}</option>}
-                  </For>
-                </select>
-              )}
-            </Show>
+            <div class="set-row__control">
+              <button
+                class="set-folder-btn"
+                type="button"
+                title="Backend ainda nao oferece lib_set_library_path"
+                onClick={() => console.log("[settings] TODO: invocar dialog.open() + lib_set_library_path quando backend expuser")}
+              >
+                {/* @ts-ignore */}
+                <iconify-icon icon="lucide:folder-open" noobserver />
+                Trocar…
+              </button>
+            </div>
           </div>
 
-          <Show when={contrast().length > 0}>
-            <div class="toggle-row">
-              <div>
-                <div class="toggle-row__label">Contrast (WCAG AA)</div>
-                <Show
-                  when={failingContrast().length > 0}
-                  fallback={<div class="toggle-row__hint">All pairs pass AA.</div>}
-                >
-                  <div class="toggle-row__hint">
-                    <For each={failingContrast()}>
-                      {(c) => <div>{c.pair}: {c.ratio.toFixed(1)}:1 (needs 4.5:1)</div>}
-                    </For>
-                  </div>
-                </Show>
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Re-scan library</div>
+              <div class="set-row__hint">Re-indexa metadados e gera embeddings faltantes.</div>
+            </div>
+            <div class="set-row__control">
+              <button
+                class="set-folder-btn set-folder-btn--accent"
+                disabled={scanning()}
+                onClick={handleRescan}
+                type="button"
+              >
+                {/* @ts-ignore */}
+                <iconify-icon icon="lucide:zap" noobserver />
+                {scanLabel()}
+              </button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Embeddings</div>
+              <div class="set-row__hint">
+                {embedDone()} of {tracksTotal()} tracks tem AI embeddings.
+                Drives the station recommender.
               </div>
-              <span class={`status-pill ${failingContrast().length > 0 ? "status-pill--warn" : "status-pill--ok"}`}>
-                {failingContrast().length > 0 ? `${failingContrast().length} fail` : "AA pass"}
-              </span>
+            </div>
+            <div class="set-row__control">
+              <button
+                class="set-folder-btn"
+                type="button"
+                title="Backend pendente — gera embeddings missing"
+              >
+                {/* @ts-ignore */}
+                <iconify-icon icon="lucide:flask-conical" noobserver />
+                Generate missing · {embedPending()}
+              </button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">qdrant process</div>
+              <div class="set-row__hint mono">localhost:6333 · vec-dim 1024 · status ok</div>
+            </div>
+            <div class="set-row__control">
+              <button
+                class="set-folder-btn"
+                type="button"
+                title="Backend pendente"
+              >
+                Restart…
+              </button>
+            </div>
+          </div>
+
+          {/* Stats grid preservada ─────────────────────────────── */}
+          <Show when={data()}>
+            <div class="stat-grid" style={{ padding: "13px 20px", "border-top": "1px solid var(--line-3)" }}>
+              <div class="stat-tile">
+                <span class="stat-tile__label">TRACKS</span>
+                <span class="stat-tile__value">{tracksTotal()}</span>
+                <span class="stat-tile__sub">indexed</span>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-tile__label">ALBUMS</span>
+                <span class="stat-tile__value">{albumsCount()}</span>
+                <span class="stat-tile__sub">distinct</span>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-tile__label">ARTISTS</span>
+                <span class="stat-tile__value">{artistsCount()}</span>
+                <span class="stat-tile__sub">distinct</span>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-tile__label">GENRES</span>
+                <span class="stat-tile__value">{genresPopulated()}</span>
+                <span class="stat-tile__sub">populated</span>
+              </div>
             </div>
           </Show>
-        </section>
+        </div>
 
-        {/* ── Updates ────────────────────────────────────────── */}
-        <section class="panel">
-          <div class="panel__head">
-            <h3 class="panel__title">Updates</h3>
+        {/* ════════════════════════════════════════════════════════
+            4. ABOUT (grid 6 items mono + update flow preservado
+               integrado como primeira row, antes do grid)
+            ════════════════════════════════════════════════════════ */}
+        <div class="set-panel">
+          <div class="set-panel__head">
+            <h3 class="set-panel__title">About</h3>
+            <span class="set-panel__sub">rustify-player · Pedro Giudice</span>
           </div>
 
-          <div class="toggle-row">
+          {/* Update flow (preservado) ────────────────────────── */}
+          <div class="set-row">
             <div>
-              <div class="toggle-row__label">Status</div>
-              <div class="toggle-row__hint">
+              <div class="set-row__label">Updates</div>
+              <div class="set-row__hint">
                 <Show when={updateStatus() === "update_available"}>
                   v{updateResult()?.current_version} → v{updateResult()?.latest_version}
                   {updateResult()?.published_at ? ` (publicado ${relativeTime(updateResult().published_at)})` : ""}
@@ -379,50 +650,67 @@ export default function Settings() {
                   Verificando no GitHub releases…
                 </Show>
                 <Show when={!updateStatus()}>
-                  Clique em "Check for updates" pra verificar.
+                  Clique em "Check for updates" pra verificar no GitHub releases.
                 </Show>
               </div>
             </div>
-
-            <Show
-              when={updateStatus() === "installed"}
-              fallback={
-                <Show
-                  when={updateStatus() === "update_available"}
-                  fallback={
-                    <button class="chip" disabled={checking()} onClick={handleCheckUpdate}>
-                      {checking() ? "Checking..." : "Check for updates"}
-                    </button>
-                  }
-                >
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button class="chip" disabled={installing()} onClick={handleInstall}>
-                      {installing() ? "Installing..." : "Install Update"}
-                    </button>
-                    <button class="chip" disabled={checking()} onClick={handleCheckUpdate}>
-                      Recheck
-                    </button>
-                  </div>
-                </Show>
-              }
-            >
-              <button class="chip" onClick={() => restartApp()}>
-                Restart Now
-              </button>
-            </Show>
+            <div class="set-row__control">
+              <Show
+                when={updateStatus() === "installed"}
+                fallback={
+                  <Show
+                    when={updateStatus() === "update_available"}
+                    fallback={
+                      <button class="set-folder-btn" disabled={checking()} onClick={handleCheckUpdate} type="button">
+                        {checking() ? "Checking..." : "Check for updates"}
+                      </button>
+                    }
+                  >
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button class="set-folder-btn set-folder-btn--accent" disabled={installing()} onClick={handleInstall} type="button">
+                        {installing() ? "Installing..." : "Install Update"}
+                      </button>
+                      <button class="set-folder-btn" disabled={checking()} onClick={handleCheckUpdate} type="button">
+                        Recheck
+                      </button>
+                    </div>
+                  </Show>
+                }
+              >
+                <button class="set-folder-btn set-folder-btn--accent" onClick={() => restartApp()} type="button">
+                  Restart Now
+                </button>
+              </Show>
+            </div>
           </div>
-        </section>
 
-        {/* ── About ──────────────────────────────────────────── */}
-        <section class="panel">
-          <div class="panel__head">
-            <h3 class="panel__title">Sobre</h3>
+          <div class="set-about-grid">
+            <div class="set-about-item">
+              <span class="set-about-item__label">Version</span>
+              <span class="set-about-item__value is-mono-strong">{version() ?? "—"}</span>
+            </div>
+            <div class="set-about-item">
+              <span class="set-about-item__label">Tauri</span>
+              <span class="set-about-item__value">2.x</span>
+            </div>
+            <div class="set-about-item">
+              <span class="set-about-item__label">Backend</span>
+              <span class="set-about-item__value">Rust · GStreamer · cpal</span>
+            </div>
+            <div class="set-about-item">
+              <span class="set-about-item__label">Identifier</span>
+              <span class="set-about-item__value">dev.cmr.rustifyplayer</span>
+            </div>
+            <div class="set-about-item">
+              <span class="set-about-item__label">Branch</span>
+              <span class="set-about-item__value">feature/signal-screens-handoff</span>
+            </div>
+            <div class="set-about-item">
+              <span class="set-about-item__label">License</span>
+              <span class="set-about-item__value">GPL-3.0</span>
+            </div>
           </div>
-          <p class="mono" style={{ "font-size": "12px", color: "var(--fg-5)" }}>
-            rustify-player · v{version() ?? "—"} · Tauri 2 + SolidJS · Extractor Lab UI
-          </p>
-        </section>
-
+        </div>
       </div>
     </article>
   );
