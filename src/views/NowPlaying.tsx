@@ -272,6 +272,9 @@ export default function NowPlaying() {
                 top: `${box().y}px`,
                 width: `${box().w}px`,
                 height: `${box().h}px`,
+                // Glass blur escala com tamanho: caixa maior, blur maior.
+                // Range: 10px (min, ~280+220) -> 32px (cap em ~1200+).
+                "--lyrics-blur": `${Math.min(32, Math.max(10, (box().w + box().h) * 0.025))}px`,
               }}
             >
               <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste pra mover">

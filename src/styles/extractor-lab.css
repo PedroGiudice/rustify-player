@@ -636,8 +636,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 }
 
 /* Variante floating: drag + resize, posicao absoluta dentro de .np.
-   Header sticky no topo (sai do mask que afeta so o viewport).
-   Resize handle no canto SE. */
+   Glass box translucida escura, sem borda. Blur dinamico via
+   --lyrics-blur (setado inline no JSX a partir do tamanho do card):
+   caixa maior = blur mais forte. Sobrescreve --fg-* localmente
+   pra texto legivel em fundo escuro. */
 .np__lyrics-card--floating {
   position: absolute;
   z-index: 2;
@@ -648,18 +650,29 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   padding: 0;
   -webkit-mask-image: none;
           mask-image: none;
-  /* Blur reforcado pra contrastar com spectrum por tras */
-  background: rgba(255,255,255,0.78);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  /* Glass: dark translucido + blur dinamico. Sem borda. */
+  background: rgba(15, 17, 16, 0.42);
+  border: 0;
+  backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(140%);
+  box-shadow:
+    0 12px 48px -16px rgba(0, 0, 0, 0.55),
+    0 2px 8px -2px rgba(0, 0, 0, 0.35);
+  /* Texto legivel em fundo escuro — vars escopadas no card */
+  --fg-1: #f5f3ee;
+  --fg-2: #e0dcd2;
+  --fg-4: #b6b1a5;
+  --fg-5: #8a857a;
+  --fg-6: #6f6a60;
+  --fg-7: #565248;
 }
 .np__lyrics-card--floating .np__lyrics-head {
   margin: 0;
   padding: 14px 20px 12px;
-  border-bottom: 1px solid var(--line-2);
+  border-bottom: 0;
   cursor: grab;
   user-select: none;
-  background: rgba(255,255,255,0.5);
+  background: rgba(0, 0, 0, 0.18);
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
 }
