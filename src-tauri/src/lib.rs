@@ -9,7 +9,7 @@ use library_indexer::{
     IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults,
     Track, TrackFilter, TrackOrder,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -2601,12 +2601,15 @@ pub fn run() {
             let indexer = Indexer::open(config).expect("failed to open library indexer");
             let indexer_for_events = indexer.clone();
             let cache_dir_for_events = cache_dir.clone();
-            _app.manage(Library {
+            let library = Library {
                 handle: indexer,
                 cache_dir,
                 music_root,
                 data_dir: data_dir.clone(),
-            });
+            };
+            // Cria a station "Your Mix" caso o usuario nao tenha nenhuma ainda.
+            maybe_seed_default_station(&library);
+            _app.manage(library);
 
             let engine = Engine::start().expect("failed to start audio engine");
 
@@ -3151,6 +3154,11 @@ pub fn run() {
             restart_app,
             list_system_fonts,
             get_media_port,
+            lib_list_stations,
+            lib_get_station,
+            lib_create_station,
+            lib_delete_station,
+            lib_play_station,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -3160,6 +3168,287 @@ fn dirs_home() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/home"))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stations — radio stations persistentes em JSON
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Tipo da station: seed usa find_similar sobre as seed tracks;
+/// mood usa lib_mood_search com a query textual.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StationKind {
+    Seed,
+    Mood,
+}
+
+/// Estatisticas de uso da station (atualizadas pelo lib_play_station).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StationStats {
+    pub played: u32,
+    pub last_played_at: Option<i64>, // Unix timestamp (segundos)
+    pub match_avg: Option<f32>,      // media de score das recomendacoes
+}
+
+/// Metadados completos de uma station (persiste em disco como JSON).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Station {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub tone: String,
+    pub desc: String,
+    pub kind: StationKind,
+    /// IDs das tracks seed (usados quando kind = Seed).
+    #[serde(default)]
+    pub seed_track_ids: Vec<u64>,
+    /// Query textual de mood (usada quando kind = Mood).
+    #[serde(default)]
+    pub query: Option<String>,
+    pub stats: StationStats,
+}
+
+/// Retorna o diretorio de stations, criando-o se necessario.
+fn stations_dir(data_dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let dir = data_dir.join("stations");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// Le todos os JSONs do diretorio de stations.
+fn read_all_stations(data_dir: &std::path::Path) -> Vec<Station> {
+    let dir = match stations_dir(data_dir) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    let mut stations = Vec::new();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            if let Ok(txt) = std::fs::read_to_string(&path) {
+                if let Ok(s) = serde_json::from_str::<Station>(&txt) {
+                    stations.push(s);
+                }
+            }
+        }
+    }
+    // Ordena por played descrescente, depois por last_played_at descrescente.
+    stations.sort_by(|a, b| {
+        b.stats
+            .played
+            .cmp(&a.stats.played)
+            .then_with(|| b.stats.last_played_at.cmp(&a.stats.last_played_at))
+    });
+    stations
+}
+
+/// Grava uma station em disco.
+fn write_station(data_dir: &std::path::Path, station: &Station) -> Result<(), String> {
+    let dir = stations_dir(data_dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}.json", station.id));
+    let json = serde_json::to_string_pretty(station).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// Retorna timestamp Unix em segundos.
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Gera tracks para uma station conforme seu kind.
+fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Vec<Track> {
+    match station.kind {
+        StationKind::Seed => {
+            // Para cada seed track, busca similares e mescla os resultados.
+            let client = lib.handle.client();
+            let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+            let mut tracks = Vec::new();
+            let per_seed = (limit / station.seed_track_ids.len().max(1)).max(5);
+            for &sid in &station.seed_track_ids {
+                if let Ok(recs) = client.recommend(&[sid], &[], &[], per_seed) {
+                    for (track_id, _score) in recs {
+                        if seen.insert(track_id) {
+                            if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+                                if let Some(rel) = &t.album_cover_path {
+                                    t.album_cover_path = Some(lib.cache_dir.join(rel));
+                                }
+                                tracks.push(t);
+                            }
+                        }
+                    }
+                }
+            }
+            tracks.truncate(limit);
+            tracks
+        }
+        StationKind::Mood => {
+            let query = station.query.clone().unwrap_or_default();
+            if query.is_empty() {
+                return Vec::new();
+            }
+            let client = lib.handle.client();
+            let filters = library_indexer::MoodFilters::parse(&query);
+            if filters.is_empty() {
+                return Vec::new();
+            }
+            let ids = match client.mood_search_enrichments(&filters, limit) {
+                Ok(v) => v,
+                Err(_) => return Vec::new(),
+            };
+            let mut tracks = Vec::new();
+            for track_id in ids {
+                if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+                    if let Some(rel) = &t.album_cover_path {
+                        t.album_cover_path = Some(lib.cache_dir.join(rel));
+                    }
+                    tracks.push(t);
+                }
+            }
+            tracks
+        }
+    }
+}
+
+// ── Commands de stations ─────────────────────────────────────────────────────
+
+#[tauri::command]
+fn lib_list_stations(lib: State<Library>) -> Vec<Station> {
+    read_all_stations(&lib.data_dir)
+}
+
+#[tauri::command]
+fn lib_get_station(
+    lib: State<Library>,
+    id: String,
+    limit: Option<usize>,
+) -> Result<Option<serde_json::Value>, String> {
+    let stations = read_all_stations(&lib.data_dir);
+    let Some(station) = stations.into_iter().find(|s| s.id == id) else {
+        return Ok(None);
+    };
+    let lim = limit.unwrap_or(40);
+    let tracks = generate_station_tracks(&station, &lib, lim);
+    let mut val = serde_json::to_value(&station).map_err(|e| e.to_string())?;
+    val["tracks"] = serde_json::to_value(&tracks).map_err(|e| e.to_string())?;
+    Ok(Some(val))
+}
+
+#[tauri::command]
+fn lib_create_station(
+    lib: State<Library>,
+    name: String,
+    kind: String,
+    seed_track_ids: Option<Vec<u64>>,
+    query: Option<String>,
+    icon: Option<String>,
+    tone: Option<String>,
+    desc: Option<String>,
+) -> Result<Station, String> {
+    let station_kind = match kind.as_str() {
+        "mood" => StationKind::Mood,
+        _ => StationKind::Seed,
+    };
+    // ID: slug do nome + timestamp para unicidade.
+    let slug: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let ts = now_unix();
+    let id = format!("{slug}-{ts}");
+
+    let station = Station {
+        id,
+        name,
+        icon: icon.unwrap_or_else(|| "lucide:radio".to_string()),
+        tone: tone.unwrap_or_else(|| "tone-lavender".to_string()),
+        desc: desc.unwrap_or_default(),
+        kind: station_kind,
+        seed_track_ids: seed_track_ids.unwrap_or_default(),
+        query,
+        stats: StationStats::default(),
+    };
+    write_station(&lib.data_dir, &station)?;
+    Ok(station)
+}
+
+#[tauri::command]
+fn lib_delete_station(lib: State<Library>, id: String) -> Result<bool, String> {
+    let dir = stations_dir(&lib.data_dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{id}.json"));
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn lib_play_station(
+    lib: State<Library>,
+    id: String,
+    limit: Option<usize>,
+) -> Result<Vec<Track>, String> {
+    let mut stations = read_all_stations(&lib.data_dir);
+    let Some(station) = stations.iter_mut().find(|s| s.id == id) else {
+        return Err(format!("station '{id}' nao encontrada"));
+    };
+    station.stats.played += 1;
+    station.stats.last_played_at = Some(now_unix());
+    let updated = station.clone();
+    write_station(&lib.data_dir, &updated)?;
+
+    let tracks = generate_station_tracks(&updated, &lib, limit.unwrap_or(40));
+    Ok(tracks)
+}
+
+/// Cria a station "Your Mix" (seed baseada em behavioral_signals) se o
+/// diretorio de stations estiver vazio. Chamado no setup do app.
+fn maybe_seed_default_station(lib: &Library) {
+    let dir = match stations_dir(&lib.data_dir) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    // So cria se o diretorio estiver vazio.
+    let is_empty = std::fs::read_dir(&dir)
+        .map(|mut d| d.next().is_none())
+        .unwrap_or(true);
+    if !is_empty {
+        return;
+    }
+
+    // Pega as tracks mais tocadas do behavioral_signals como seeds.
+    let seed_ids: Vec<u64> = match lib.handle.behavioral_signals() {
+        Ok((history, _)) => history.into_iter().take(5).collect(),
+        Err(_) => return,
+    };
+    if seed_ids.is_empty() {
+        return;
+    }
+
+    let station = Station {
+        id: "your-mix".to_string(),
+        name: "Your Mix".to_string(),
+        icon: "lucide:sparkles".to_string(),
+        tone: "tone-lavender".to_string(),
+        desc: "gerada a partir das suas tracks favoritas".to_string(),
+        kind: StationKind::Seed,
+        seed_track_ids: seed_ids,
+        query: None,
+        stats: StationStats::default(),
+    };
+    let _ = write_station(&lib.data_dir, &station);
+    tracing::info!("station 'Your Mix' criada com seeds de behavioral_signals");
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -3322,5 +3611,80 @@ effects:
             assert!(vars.contains_key(fg), "token {fg} ausente — par de contraste sera ignorado");
             assert!(vars.contains_key(bg), "token {bg} ausente — par de contraste sera ignorado");
         }
+    }
+
+    // ── Testes de stations ────────────────────────────────────────────────────
+
+    #[test]
+    fn stations_dir_vazio_retorna_lista_vazia() {
+        let tmp = tempfile::tempdir().unwrap();
+        let stations = read_all_stations(tmp.path());
+        assert!(stations.is_empty(), "dir vazio deve retornar lista vazia");
+    }
+
+    #[test]
+    fn stations_dir_com_dois_jsons_retorna_dois_registros() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("stations");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let s1 = Station {
+            id: "alpha".to_string(),
+            name: "Alpha".to_string(),
+            icon: "lucide:radio".to_string(),
+            tone: "tone-lavender".to_string(),
+            desc: "teste alpha".to_string(),
+            kind: StationKind::Seed,
+            seed_track_ids: vec![1, 2, 3],
+            query: None,
+            stats: StationStats { played: 10, ..Default::default() },
+        };
+        let s2 = Station {
+            id: "beta".to_string(),
+            name: "Beta".to_string(),
+            icon: "lucide:radio".to_string(),
+            tone: "tone-mint".to_string(),
+            desc: "teste beta".to_string(),
+            kind: StationKind::Mood,
+            seed_track_ids: Vec::new(),
+            query: Some("ambient cold".to_string()),
+            stats: StationStats { played: 5, ..Default::default() },
+        };
+
+        let json1 = serde_json::to_string_pretty(&s1).unwrap();
+        let json2 = serde_json::to_string_pretty(&s2).unwrap();
+        std::fs::write(dir.join("alpha.json"), &json1).unwrap();
+        std::fs::write(dir.join("beta.json"), &json2).unwrap();
+
+        let stations = read_all_stations(tmp.path());
+        assert_eq!(stations.len(), 2, "devem retornar 2 stations");
+    }
+
+    #[test]
+    fn stations_retornam_ordenadas_por_played_desc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("stations");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        for (id, played) in [("low", 2u32), ("high", 99u32), ("mid", 50u32)] {
+            let s = Station {
+                id: id.to_string(),
+                name: id.to_string(),
+                icon: "lucide:radio".to_string(),
+                tone: "tone-lavender".to_string(),
+                desc: "".to_string(),
+                kind: StationKind::Seed,
+                seed_track_ids: vec![],
+                query: None,
+                stats: StationStats { played, ..Default::default() },
+            };
+            let json = serde_json::to_string_pretty(&s).unwrap();
+            std::fs::write(dir.join(format!("{id}.json")), &json).unwrap();
+        }
+
+        let stations = read_all_stations(tmp.path());
+        assert_eq!(stations[0].id, "high");
+        assert_eq!(stations[1].id, "mid");
+        assert_eq!(stations[2].id, "low");
     }
 }

@@ -79,3 +79,6 @@ tracing = { workspace = true }
 ureq = { workspace = true }
 serde_yaml = "0.9"
 notify = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
