@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "rustify-player",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "identifier": "dev.cmr.rustifyplayer",
   "build": {
     "frontendDist": "../dist",
@@ -25,14 +25,19 @@
       "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://code.iconify.design; img-src 'self' asset: http://asset.localhost http://127.0.0.1:19876 data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:19876 https://api.iconify.design https://api.simplesvg.com https://api.unisvg.com; media-src 'self' http://127.0.0.1:19876; font-src 'self' https://fonts.gstatic.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/.cache/rustify-player/**", "**/.cache/rustify-player/**"]
+        "scope": [
+          "$HOME/.cache/rustify-player/**",
+          "**/.cache/rustify-player/**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/qdrant"],
+    "externalBin": [
+      "binaries/qdrant"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,7 +47,12 @@
     ],
     "linux": {
       "deb": {
-        "depends": ["libpipewire-0.3-0", "policykit-1", "jq", "gh"],
+        "depends": [
+          "libpipewire-0.3-0",
+          "policykit-1",
+          "jq",
+          "gh"
+        ],
         "files": {
           "/usr/bin/rustify-update": "../scripts/rustify-update.sh",
           "/usr/share/rustify-player/VERSION": "build-metadata/VERSION"
