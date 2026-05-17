@@ -29,7 +29,7 @@ import {
 function Segmented<K extends keyof TweaksState>(props: {
   label: string;
   key: K;
-  options: Array<[TweaksState[K] & string, string]>;
+  options: Array<[TweaksState[K], string]>;
 }) {
   return (
     <div class="tweaks__row">
@@ -40,7 +40,7 @@ function Segmented<K extends keyof TweaksState>(props: {
             <button
               class="segmented__btn"
               classList={{ "is-active": tweaks()[props.key] === val }}
-              onClick={() => updateTweak(props.key, val as TweaksState[K])}
+              onClick={() => updateTweak(props.key, val)}
             >
               {text}
             </button>
@@ -190,6 +190,11 @@ export function Tweaks() {
               onInput={(e) => updateTweak("bgInk", e.currentTarget.value)}
             />
           </div>
+          <Segmented
+            label="EQ spectrum"
+            key="eqSpectrumOverlay"
+            options={[[true, "On"], [false, "Off"]]}
+          />
 
           <button class="tweaks__reset" onClick={() => resetTweaks()}>
             Redefinir tudo

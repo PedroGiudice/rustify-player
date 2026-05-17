@@ -30,6 +30,9 @@ export interface TweaksState {
   lyricsGlass: number;
   /** Cor das linhas do spectrum bg (hex #rrggbb). Default = carbono escuro. */
   bgInk: string;
+  /** Overlay de spectrum real (pos-DSP) sob a curva do EQ.
+      31 barras ISO 1/3 oitava com peak-hold. Herda --bg-ink-rgb. */
+  eqSpectrumOverlay: boolean;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -42,6 +45,7 @@ export const DEFAULTS: TweaksState = {
   glow: 0.15,
   lyricsGlass: 0.25,
   bgInk: "#171717",
+  eqSpectrumOverlay: true,
 };
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
@@ -119,6 +123,9 @@ export function applyTweaks(s: TweaksState = state()) {
   const rgb = hexToRgb(s.bgInk || DEFAULTS.bgInk);
   html.style.setProperty("--bg-ink", s.bgInk || DEFAULTS.bgInk);
   html.style.setProperty("--bg-ink-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+
+  // EQ spectrum overlay: data attr e debug-only. EqCanvas le tweaks().eqSpectrumOverlay direto.
+  html.dataset.eqSpectrum = s.eqSpectrumOverlay ? "on" : "off";
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
