@@ -2,7 +2,6 @@
 
 import { mountSidebar } from "./js/components/sidebar.js";
 import { mountPlayerBar } from "./js/components/player-bar.js";
-import { loadTweaks, mountTweaks } from "./js/components/tweaks.js";
 import { mountResources, toggleResources } from "./js/components/resources.js";
 import { mountSearchBar } from "./js/components/search-bar.js";
 import { applyFullState as applyDspState } from "./js/views/signal.js";
@@ -73,8 +72,9 @@ function wireGlobalBack() {
 }
 
 async function boot() {
-  // 1. Apply persisted tweaks before any rendering to avoid flash
-  loadTweaks();
+  // 1. Tweaks: o componente <Tweaks/> (em App.tsx) chama loadTweaks no
+  //    construtor pra aplicar o estado persistido antes do primeiro paint.
+  //    main.js so cuida do shell legacy nao-Solid.
 
   // 2. Load icon sprite — views and components reference #icon-* symbols
   await loadIconSprite();
@@ -95,7 +95,6 @@ async function boot() {
   // 4. Mount shell components
   mountSidebar(sidebar);
   mountPlayerBar(playerBar);
-  mountTweaks();
   mountResources();
 
   // 4b. Mount search bar in titlebar
