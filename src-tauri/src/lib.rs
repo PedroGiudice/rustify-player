@@ -527,7 +527,18 @@ fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
 #[tauri::command]
 fn lib_list_folders(lib: State<Library>) -> Result<Vec<library_indexer::FolderPlaylist>, String> {
     let root = lib.music_root.to_string_lossy();
-    lib.handle.list_folders(&root).map_err(err)
+    let mut folders = lib.handle.list_folders(&root).map_err(err)?;
+    // cover_path / cover_paths sao relativos ao cache_dir — converter pra absolute
+    // pra `convertFileSrc` no frontend conseguir resolver.
+    for folder in &mut folders {
+        if let Some(rel) = &folder.cover_path {
+            folder.cover_path = Some(lib.cache_dir.join(rel));
+        }
+        for cover in &mut folder.cover_paths {
+            *cover = lib.cache_dir.join(&*cover);
+        }
+    }
+    Ok(folders)
 }
 
 #[tauri::command]
@@ -1196,6 +1207,39 @@ struct ThemeLoadResult {
     contrast: Vec<ContrastCheck>,
 }
 
+/// Bridge YAMLs legados (Editorial Hi-Fi Dark) pro design system atual
+/// (Extractor Lab). Quando o tema seta uma var legacy, tambem espelhamos
+/// pro token equivalente do design atual — assim YAMLs pre-redesign
+/// voltam a pintar componentes que so leem tokens novos.
+fn bridge_legacy_to_extractor_lab(vars: &mut std::collections::HashMap<String, String>) {
+    // (legacy_var, atual_var) — so escreve atual se nao foi setado pelo proprio YAML
+    const BRIDGE: &[(&str, &[&str])] = &[
+        // Surfaces
+        ("--surface-lowest",            &["--bg-canvas"]),
+        ("--surface",                   &["--bg-paper"]),
+        ("--surface-container-low",     &["--bg-sunken"]),
+        ("--surface-container",         &["--bg-soft"]),
+        ("--surface-container-high",    &["--bg-tint"]),
+        ("--surface-container-highest", &["--bg-faint"]),
+        // Lines / dividers
+        ("--divider",    &["--line-3"]),
+        ("--divider-hi", &["--line-1"]),
+        // Foreground / text
+        ("--on-surface",         &["--fg-1"]),
+        ("--on-surface-variant", &["--fg-4"]),
+        ("--on-surface-mute",    &["--fg-6"]),
+        // Accent — tema legacy define so um primary; espelhamos pro fg+ring do blue
+        ("--primary", &["--blue-fg", "--blue-ring"]),
+    ];
+    for (legacy, targets) in BRIDGE {
+        if let Some(val) = vars.get(*legacy).cloned() {
+            for target in *targets {
+                vars.entry(target.to_string()).or_insert_with(|| val.clone());
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     let path = themes_dir().join(&filename);
@@ -1203,6 +1247,7 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     let val: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| format!("Invalid YAML: {e}"))?;
     let mut vars = std::collections::HashMap::new();
     yaml_to_css_vars(&val, "", &mut vars);
+    bridge_legacy_to_extractor_lab(&mut vars);
 
     let mut checks = Vec::new();
     let pairs = [

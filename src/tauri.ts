@@ -149,7 +149,13 @@ export const libRescan = () => invoke<void>("lib_rescan");
 export const libSearch = (query: string, limit?: number) => invoke<any>("lib_search", { query, limit: limit ?? 8 });
 export const libSemanticSearch = (query: string, limit?: number) => invoke<any[]>("lib_semantic_search", { query, limit: limit ?? 5 });
 export const getMediaPort = () => invoke<number>("get_media_port");
-export const libListFolders = () => invoke<any[]>("lib_list_folders");
+export interface FolderPlaylist {
+  name: string;          // = folder (renomeado no serde)
+  track_count: number;
+  cover_path: string | null;
+  cover_paths: string[]; // ate 4 distintas (absolute)
+}
+export const libListFolders = () => invoke<FolderPlaylist[]>("lib_list_folders");
 export const libListFolderTracks = (folder: string) => invoke<Track[]>("lib_list_folder_tracks", { folder });
 export const libListLiked = (limit?: number) => invoke<Track[]>("lib_list_liked", { limit: limit ?? 200 });
 export const libMoodSearch = (query: string, limit?: number) => invoke<Track[]>("lib_mood_search", { query, limit: limit ?? 50 });

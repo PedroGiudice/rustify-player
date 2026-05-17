@@ -1,40 +1,79 @@
 /* ============================================================
-   views/Playlists.tsx — Manual + smart playlists, hi-fi.
+   views/Playlists.tsx — Folders reais + mosaico 2x2 de capas.
 
-   Recriacao da tela do mockup `Rustify ExtractorLab.html`
-   (data-screen="playlists"). Toolbar + Pinned + Smart playlists
-   table + All playlists grid com primeiro tile dashed pra criar.
+   Fonte de dados:
+   - "All playlists" = lib_list_folders() — folders do disco com
+     mosaico 2x2 das primeiras 4 covers distintas.
+   - "Smart playlists" = mock visual (feature nao existe no backend
+     ainda — sem lib_create_smart_playlist ou similar).
+   - "Pinned" = primeiros 3 folders ate o backend expor pin/flag.
 
-   MOCK: backend ainda nao expoe lib_list_playlists / lib_create_playlist
-   / smart playlists. Quando expuser, trocar PINNED / SMART / ALL por
-   createResource consumindo os comandos Tauri.
+   Fallback do mosaico: se o folder tem < 4 covers distintas, slots
+   vazios viram placeholder colorido (tones do extractor-lab).
    ============================================================ */
 
-import { createSignal, For } from "solid-js";
+import { createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
 
-// ── Tones permitidos (vide tokens em extractor-lab.css) ─────────
+// ── Tones de fallback (vide tokens em extractor-lab.css) ─────────
 type Tone =
-  | "tone-lavender"
-  | "tone-mint"
-  | "tone-peach"
-  | "tone-sky"
-  | "tone-rose"
-  | "tone-butter"
-  | "tone-paper"
-  | "tone-bone";
+  | "tone-lavender" | "tone-mint" | "tone-peach" | "tone-sky"
+  | "tone-rose" | "tone-butter" | "tone-paper" | "tone-bone";
 
-interface QuadCell {
-  tone: Tone;
-  icon: string; // iconify name (lucide:* | ph:*)
+const TONES: Tone[] = [
+  "tone-lavender", "tone-mint", "tone-peach", "tone-sky",
+  "tone-rose", "tone-butter", "tone-paper", "tone-bone",
+];
+
+// Hash deterministico (folder name -> tone idx) pra o mesmo folder
+// sempre cair na mesma combinacao de cores quando precisar de fallback.
+function toneFor(folder: string, offset: number): Tone {
+  let h = 0;
+  for (let i = 0; i < folder.length; i++) h = (h * 31 + folder.charCodeAt(i)) | 0;
+  return TONES[Math.abs(h + offset) % TONES.length];
 }
 
-interface PinnedPlaylist {
-  title: string;
-  sub: string;
-  meta: { tracks: number; length: string };
-  quads: [QuadCell, QuadCell, QuadCell, QuadCell];
+// ── Mosaico 2x2 de covers reais com fallback colorido ───────────
+function CoverMosaic(props: { folder: FolderPlaylist; pinned?: boolean }) {
+  const cells = createMemo(() => {
+    const out: Array<{ src: string | null; tone: Tone }> = [];
+    const covers = props.folder.cover_paths ?? [];
+    for (let i = 0; i < 4; i++) {
+      const src = covers[i] ? coverUrl(covers[i]) : null;
+      out.push({ src, tone: toneFor(props.folder.name, i) });
+    }
+    return out;
+  });
+  return (
+    <>
+      <Show when={props.pinned}>
+        <span class="pl-card__pin">
+          {/* @ts-ignore */}
+          <iconify-icon icon="lucide:pin" noobserver />
+        </span>
+      </Show>
+      <For each={cells()}>
+        {(c) => (
+          <Show
+            when={c.src}
+            fallback={
+              <div class={`pl-card__quad ${c.tone}`}>
+                {/* @ts-ignore */}
+                <iconify-icon icon="lucide:disc-3" noobserver />
+              </div>
+            }
+          >
+            <div class="pl-card__quad pl-card__quad--cover">
+              <img src={c.src!} alt="" loading="lazy" />
+            </div>
+          </Show>
+        )}
+      </For>
+    </>
+  );
 }
 
+// ── Smart playlists — mock ate backend expor smart playlists ─────
 interface SmartPlaylist {
   icon: string;
   name: string;
@@ -43,161 +82,40 @@ interface SmartPlaylist {
   tracks: number;
   length: string;
 }
-
-interface PlaylistCard {
-  title: string;
-  sub: string;
-  meta: { tracks: number; length: string };
-  quads: [QuadCell, QuadCell, QuadCell, QuadCell];
-}
-
-// ── MOCK data — replica do hi-fi mockup ──────────────────────────
-const PINNED_PLAYLISTS: PinnedPlaylist[] = [
-  {
-    title: "Cold morning, hot coffee",
-    sub: "Manual · curated by you",
-    meta: { tracks: 34, length: "2 h 41 m" },
-    quads: [
-      { tone: "tone-lavender", icon: "lucide:target" },
-      { tone: "tone-mint",     icon: "lucide:waves" },
-      { tone: "tone-sky",      icon: "lucide:mountain" },
-      { tone: "tone-bone",     icon: "lucide:rainbow" },
-    ],
-  },
-  {
-    title: "Coding · low energy",
-    sub: "Manual · 18 plays this week",
-    meta: { tracks: 52, length: "4 h 12 m" },
-    quads: [
-      { tone: "tone-peach",    icon: "lucide:audio-lines" },
-      { tone: "tone-butter",   icon: "lucide:plus" },
-      { tone: "tone-rose",     icon: "lucide:atom" },
-      { tone: "tone-paper",    icon: "ph:dots-nine" },
-    ],
-  },
-  {
-    title: "Bedtime quietude",
-    sub: "Manual · last played yesterday",
-    meta: { tracks: 21, length: "1 h 38 m" },
-    quads: [
-      { tone: "tone-sky",      icon: "lucide:mountain" },
-      { tone: "tone-lavender", icon: "lucide:target" },
-      { tone: "tone-bone",     icon: "lucide:rainbow" },
-      { tone: "tone-mint",     icon: "lucide:waves" },
-    ],
-  },
-];
-
 const SMART_PLAYLISTS: SmartPlaylist[] = [
-  { icon: "lucide:sparkles",      name: "Recently added", rule: "added >= 14 days · sort by date_added desc", updated: "live", tracks: 48, length: "3:22:18" },
-  { icon: "lucide:flame",         name: "Heavy rotation", rule: "play_count >= 6 in last 30d",                updated: "live", tracks: 26, length: "1:54:02" },
-  { icon: "lucide:flask-conical", name: "Never played",   rule: "play_count == 0 · added < 60d",              updated: "live", tracks: 94, length: "6:48:51" },
+  { icon: "lucide:sparkles",      name: "Recently added", rule: "added >= 14 days · sort by date_added desc", updated: "preview", tracks: 0, length: "—" },
+  { icon: "lucide:flame",         name: "Heavy rotation", rule: "play_count >= 6 in last 30d",                updated: "preview", tracks: 0, length: "—" },
+  { icon: "lucide:flask-conical", name: "Never played",   rule: "play_count == 0 · added < 60d",              updated: "preview", tracks: 0, length: "—" },
 ];
 
-const ALL_PLAYLISTS: PlaylistCard[] = [
-  {
-    title: "Field recordings",
-    sub: "Manual · 7 plays",
-    meta: { tracks: 19, length: "1 h 22 m" },
-    quads: [
-      { tone: "tone-mint",     icon: "lucide:waves" },
-      { tone: "tone-paper",    icon: "ph:dots-nine" },
-      { tone: "tone-peach",    icon: "lucide:audio-lines" },
-      { tone: "tone-sky",      icon: "lucide:mountain" },
-    ],
-  },
-  {
-    title: "Drone & long-form",
-    sub: "Manual · last played 3 d ago",
-    meta: { tracks: 11, length: "2 h 04 m" },
-    quads: [
-      { tone: "tone-butter",   icon: "lucide:plus" },
-      { tone: "tone-rose",     icon: "lucide:atom" },
-      { tone: "tone-lavender", icon: "lucide:target" },
-      { tone: "tone-mint",     icon: "lucide:waves" },
-    ],
-  },
-  {
-    title: "Winter strings",
-    sub: "Manual · 4 plays",
-    meta: { tracks: 27, length: "1 h 47 m" },
-    quads: [
-      { tone: "tone-bone",     icon: "lucide:rainbow" },
-      { tone: "tone-sky",      icon: "lucide:mountain" },
-      { tone: "tone-paper",    icon: "ph:dots-nine" },
-      { tone: "tone-mint",     icon: "lucide:waves" },
-    ],
-  },
-  {
-    title: "Bright mornings",
-    sub: "Manual · 12 plays",
-    meta: { tracks: 16, length: "1 h 02 m" },
-    quads: [
-      { tone: "tone-rose",     icon: "lucide:atom" },
-      { tone: "tone-peach",    icon: "lucide:audio-lines" },
-      { tone: "tone-butter",   icon: "lucide:plus" },
-      { tone: "tone-lavender", icon: "lucide:target" },
-    ],
-  },
-  {
-    title: "Long drive",
-    sub: "Manual · 1 play",
-    meta: { tracks: 41, length: "3 h 14 m" },
-    quads: [
-      { tone: "tone-paper",    icon: "ph:dots-nine" },
-      { tone: "tone-bone",     icon: "lucide:rainbow" },
-      { tone: "tone-mint",     icon: "lucide:waves" },
-      { tone: "tone-peach",    icon: "lucide:audio-lines" },
-    ],
-  },
-  {
-    title: "Saturday slow",
-    sub: "Manual · 9 plays",
-    meta: { tracks: 23, length: "1 h 32 m" },
-    quads: [
-      { tone: "tone-lavender", icon: "lucide:target" },
-      { tone: "tone-mint",     icon: "lucide:waves" },
-      { tone: "tone-paper",    icon: "ph:dots-nine" },
-      { tone: "tone-rose",     icon: "lucide:atom" },
-    ],
-  },
-];
-
-// Total agregado dos counts (header stats).
-const TOTAL_TRACKS = (() => {
-  let sum = 0;
-  for (const p of PINNED_PLAYLISTS) sum += p.meta.tracks;
-  for (const p of SMART_PLAYLISTS) sum += p.tracks;
-  for (const p of ALL_PLAYLISTS) sum += p.meta.tracks;
-  return sum;
-})();
-const TOTAL_PLAYLISTS = PINNED_PLAYLISTS.length + ALL_PLAYLISTS.length;
-const TOTAL_SMART = SMART_PLAYLISTS.length;
-
-// ── Cover quad helper ────────────────────────────────────────────
-function CoverQuads(props: { quads: PinnedPlaylist["quads"] }) {
-  return (
-    <For each={props.quads}>
-      {(q) => (
-        <div class={`pl-card__quad ${q.tone}`}>
-          {/* @ts-ignore -- iconify-icon web component */}
-          <iconify-icon icon={q.icon} noobserver />
-        </div>
-      )}
-    </For>
-  );
+// ── Helpers ─────────────────────────────────────────────────────
+function fmtTracks(n: number): string {
+  return `${n} ${n === 1 ? "track" : "tracks"}`;
 }
 
 export default function Playlists() {
   const [filter, setFilter] = createSignal("");
+  const [folders] = createResource(() => libListFolders().catch(() => [] as FolderPlaylist[]));
 
-  // Filtragem client-side simples — case insensitive sobre titulo.
-  // Mock: backend nao oferece search server-side.
-  const filtered = (list: PlaylistCard[]) => {
+  const visibleFolders = createMemo(() => {
+    const list = folders() ?? [];
     const q = filter().trim().toLowerCase();
     if (!q) return list;
-    return list.filter((p) => p.title.toLowerCase().includes(q));
-  };
+    return list.filter((f) => f.name.toLowerCase().includes(q));
+  });
+
+  // "Pinned" placeholder ate ter backend de pin: primeiros 3 folders
+  // (gera valor visual sem mentir sobre a fonte).
+  const pinned = createMemo(() => (folders() ?? []).slice(0, 3));
+  const rest   = createMemo(() => {
+    const list = visibleFolders();
+    const pinnedNames = new Set(pinned().map((p) => p.name));
+    return list.filter((f) => !pinnedNames.has(f.name));
+  });
+
+  const totalPlaylists = () => (folders() ?? []).length;
+  const totalTracks    = () => (folders() ?? []).reduce((sum, f) => sum + f.track_count, 0);
+  const totalSmart     = () => SMART_PLAYLISTS.length;
 
   return (
     <article class="view">
@@ -207,9 +125,9 @@ export default function Playlists() {
           <p class="view__head-hint">Coleções pessoais — manuais e smart playlists.</p>
         </div>
         <div class="view__stats">
-          <span><b>{TOTAL_PLAYLISTS}</b> playlists</span>
-          <span><b>{TOTAL_SMART}</b> smart</span>
-          <span><b>{TOTAL_TRACKS}</b> tracks total</span>
+          <span><b>{totalPlaylists()}</b> playlists</span>
+          <span><b>{totalSmart()}</b> smart</span>
+          <span><b>{totalTracks()}</b> tracks total</span>
         </div>
       </header>
 
@@ -246,39 +164,35 @@ export default function Playlists() {
         </div>
 
         {/* ── Pinned ───────────────────────────────────── */}
-        <section>
-          <div class="section__head">
-            <h2 class="section__title">Pinned</h2>
-            <a class="section__action">Reorder ⇅</a>
-          </div>
-          <div class="pl-grid">
-            <For each={PINNED_PLAYLISTS}>
-              {(p) => (
-                <div class="pl-card">
-                  <div class="pl-card__cover">
-                    <span class="pl-card__pin">
-                      {/* @ts-ignore */}
-                      <iconify-icon icon="lucide:pin" noobserver />
-                    </span>
-                    <CoverQuads quads={p.quads} />
+        <Show when={pinned().length > 0}>
+          <section>
+            <div class="section__head">
+              <h2 class="section__title">Pinned</h2>
+              <a class="section__action">Reorder ⇅</a>
+            </div>
+            <div class="pl-grid">
+              <For each={pinned()}>
+                {(p) => (
+                  <div class="pl-card">
+                    <div class="pl-card__cover">
+                      <CoverMosaic folder={p} pinned />
+                    </div>
+                    <div class="pl-card__title">{p.name}</div>
+                    <div class="pl-card__sub">Folder · {p.track_count} tracks</div>
+                    <div class="pl-card__meta">
+                      <span>{fmtTracks(p.track_count)}</span>
+                    </div>
                   </div>
-                  <div class="pl-card__title">{p.title}</div>
-                  <div class="pl-card__sub">{p.sub}</div>
-                  <div class="pl-card__meta">
-                    <span>{p.meta.tracks} tracks</span>
-                    <span>·</span>
-                    <span>{p.meta.length}</span>
-                  </div>
-                </div>
-              )}
-            </For>
-          </div>
-        </section>
+                )}
+              </For>
+            </div>
+          </section>
+        </Show>
 
-        {/* ── Smart playlists ──────────────────────────── */}
+        {/* ── Smart playlists (mock visual ate backend expor) ─── */}
         <section>
           <div class="section__head">
-            <h2 class="section__title">Smart playlists · rule-based</h2>
+            <h2 class="section__title">Smart playlists · rule-based <span style={{ "font-size": "10px", color: "var(--fg-6)", "margin-left": "8px", "font-family": "var(--font-mono)" }}>preview</span></h2>
             <a class="section__action">View all rules →</a>
           </div>
           <div class="smart-tbl">
@@ -309,35 +223,35 @@ export default function Playlists() {
         {/* ── All playlists ────────────────────────────── */}
         <section>
           <div class="section__head">
-            <h2 class="section__title">All playlists · {ALL_PLAYLISTS.length + 1}</h2>
+            <h2 class="section__title">All playlists · {rest().length}</h2>
             <a class="section__action">Sort by name ↓</a>
           </div>
-          <div class="pl-grid">
-            <div class="pl-card pl-card--new">
-              <div class="pl-card__cover">
-                {/* @ts-ignore */}
-                <iconify-icon icon="lucide:plus" noobserver />
-              </div>
-              <div class="pl-card__title">New playlist</div>
-              <div class="pl-card__sub">empty · drag tracks here</div>
-            </div>
-            <For each={filtered(ALL_PLAYLISTS)}>
-              {(p) => (
-                <div class="pl-card">
-                  <div class="pl-card__cover">
-                    <CoverQuads quads={p.quads} />
-                  </div>
-                  <div class="pl-card__title">{p.title}</div>
-                  <div class="pl-card__sub">{p.sub}</div>
-                  <div class="pl-card__meta">
-                    <span>{p.meta.tracks} tracks</span>
-                    <span>·</span>
-                    <span>{p.meta.length}</span>
-                  </div>
+          <Show
+            when={folders.loading || folders()}
+            fallback={<p style={{ color: "var(--fg-5)", "font-size": "13px" }}>Sem playlists.</p>}
+          >
+            <div class="pl-grid">
+              <div class="pl-card pl-card--new">
+                <div class="pl-card__cover">
+                  {/* @ts-ignore */}
+                  <iconify-icon icon="lucide:plus" noobserver />
                 </div>
-              )}
-            </For>
-          </div>
+                <div class="pl-card__title">New playlist</div>
+                <div class="pl-card__sub">empty · drag tracks here</div>
+              </div>
+              <For each={rest()}>
+                {(p) => (
+                  <div class="pl-card">
+                    <div class="pl-card__cover">
+                      <CoverMosaic folder={p} />
+                    </div>
+                    <div class="pl-card__title">{p.name}</div>
+                    <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
         </section>
       </div>
     </article>

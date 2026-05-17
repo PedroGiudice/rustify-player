@@ -551,15 +551,22 @@ pub struct FolderPlaylist {
     #[serde(rename = "name")]
     pub folder: String,
     pub track_count: u32,
+    /// Backward-compat: primeira cover encontrada.
     pub cover_path: Option<PathBuf>,
+    /// Ate 4 covers distintas (de albums/tracks diferentes) — usado pra
+    /// mosaico 2x2 no frontend. Ordem: primeiras 4 encontradas no scroll.
+    #[serde(default)]
+    pub cover_paths: Vec<PathBuf>,
 }
+
+const MOSAIC_MAX_COVERS: usize = 4;
 
 pub fn list_folders(
     client: &QdrantClient,
     music_root: &str,
 ) -> Result<Vec<FolderPlaylist>, IndexerError> {
     let all = client.scroll_all_payloads(&["path", "cover_path"])?;
-    let mut folder_map: HashMap<String, (u32, Option<PathBuf>)> = HashMap::new();
+    let mut folder_map: HashMap<String, (u32, Vec<PathBuf>)> = HashMap::new();
     let root = std::path::Path::new(music_root);
 
     for (_, payload) in &all {
@@ -572,10 +579,15 @@ pub fn list_folders(
                 if components.next().is_some() {
                     let folder = first.as_os_str().to_string_lossy().to_string();
                     if !folder.is_empty() {
-                        let entry = folder_map.entry(folder).or_insert((0, None));
+                        let entry = folder_map.entry(folder).or_insert((0, Vec::new()));
                         entry.0 += 1;
-                        if entry.1.is_none() {
-                            entry.1 = payload["cover_path"].as_str().map(PathBuf::from);
+                        if entry.1.len() < MOSAIC_MAX_COVERS {
+                            if let Some(cover) = payload["cover_path"].as_str().map(PathBuf::from) {
+                                // Distinct: skip if already present
+                                if !entry.1.contains(&cover) {
+                                    entry.1.push(cover);
+                                }
+                            }
                         }
                     }
                 }
@@ -585,10 +597,11 @@ pub fn list_folders(
 
     let mut folders: Vec<FolderPlaylist> = folder_map
         .into_iter()
-        .map(|(folder, (track_count, cover_path))| FolderPlaylist {
+        .map(|(folder, (track_count, cover_paths))| FolderPlaylist {
             folder,
             track_count,
-            cover_path,
+            cover_path: cover_paths.first().cloned(),
+            cover_paths,
         })
         .collect();
     folders.sort_by(|a, b| a.folder.cmp(&b.folder));
