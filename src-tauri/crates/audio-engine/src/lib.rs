@@ -34,7 +34,7 @@ impl Engine {
 /// Re-export do snapshot de envelope publicado pelo FFT worker. Usado pela
 /// camada Tauri para incluir os campos `low_band_mag` / `rms_energy` no
 /// payload de `audio-fft`.
-pub use output::pw_capture::SpectrumEnvelope;
+pub use output::pw_capture::{SharedSampleRate, SpectrumEnvelope};
 
 #[derive(Clone)]
 pub struct EngineHandle {
@@ -43,6 +43,7 @@ pub struct EngineHandle {
     pub(crate) metrics: std::sync::Arc<engine::SharedMetrics>,
     pub(crate) spectrum_buf: std::sync::Arc<std::sync::Mutex<(u64, Vec<u8>)>>,
     pub(crate) envelope_buf: std::sync::Arc<std::sync::Mutex<SpectrumEnvelope>>,
+    pub(crate) sample_rate_buf: SharedSampleRate,
 }
 
 impl EngineHandle {
@@ -73,6 +74,14 @@ impl EngineHandle {
     /// para anexar os campos ao payload de `audio-fft`.
     pub fn envelope_buffer(&self) -> std::sync::Arc<std::sync::Mutex<SpectrumEnvelope>> {
         self.envelope_buf.clone()
+    }
+
+    /// Sample rate atomico publicado pelo PipeWire capture (0 = nao
+    /// negociado ainda). Consumido pelo spectrum-emitter pra incluir
+    /// no payload de `audio-fft`. Frontend usa pra mapear bins -> bandas
+    /// 1/3 oitava ISO em qualquer SR (44.1/48/96 kHz).
+    pub fn sample_rate_buf(&self) -> SharedSampleRate {
+        self.sample_rate_buf.clone()
     }
 
     pub fn sink_latency_ms(&self) -> u64 {

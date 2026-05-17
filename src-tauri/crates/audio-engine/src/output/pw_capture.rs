@@ -92,7 +92,7 @@ pub type SharedEnvelope = Arc<Mutex<SpectrumEnvelope>>;
 /// Negotiated sample rate (Hz). Updated by `param_changed` callback; the
 /// FFT worker uses this to compute bin indices for the low-band envelope.
 /// `AtomicU32` so the RT callback can publish without locking.
-type SharedSampleRate = Arc<std::sync::atomic::AtomicU32>;
+pub type SharedSampleRate = Arc<std::sync::atomic::AtomicU32>;
 
 /// Start PipeWire capture targeting `target_node` and write FFT magnitudes
 /// into `spectrum_buf` and beat-sync envelopes into `envelope_buf`.
@@ -102,14 +102,12 @@ pub fn start(
     target_node: &str,
     spectrum_buf: Arc<Mutex<(u64, Vec<u8>)>>,
     envelope_buf: SharedEnvelope,
+    sample_rate: SharedSampleRate,
 ) -> Option<PwCaptureHandle> {
     let running = Arc::new(AtomicBool::new(true));
 
     // Lock-free SPSC ring buffer: PW RT thread produces, FFT thread consumes.
     let (producer, consumer) = rtrb::RingBuffer::<f32>::new(RING_BUF_CAPACITY);
-
-    // Sample rate published by PW param_changed, consumed by FFT worker.
-    let sample_rate: SharedSampleRate = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
     let running_pw = running.clone();
     let target = target_node.to_string();
