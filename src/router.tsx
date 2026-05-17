@@ -19,6 +19,7 @@ const VIEWS: Record<string, Component<{ param?: string | null }>> = {
   "/history":     lazy(() => import("./views/History")),
   "/tracks":      lazy(() => import("./views/Tracks")),
   "/playlists":   lazy(() => import("./views/Playlists")),
+  "/playlist":    lazy(() => import("./views/Playlist")),
   "/stations":    lazy(() => import("./views/Stations")),
   "/queue":       lazy(() => import("./views/Queue")),
   "/now-playing": lazy(() => import("./views/NowPlaying")),

@@ -6,26 +6,23 @@
      mosaico 2x2 das primeiras 4 covers distintas.
    - "Smart playlists" = mock visual (feature nao existe no backend
      ainda — sem lib_create_smart_playlist ou similar).
-   - "Pinned" = primeiros 3 folders ate o backend expor pin/flag.
+   - "Pinned" = lista persistida em localStorage via store/pins.ts.
+     Toggle via icon no canto sup. dir. do card.
+
+   Click no card -> navega pra /playlist/<name> (Playlist.tsx).
+   Pin toggle -> store/pins, sem navegar.
 
    Fallback do mosaico: se o folder tem < 4 covers distintas, slots
    vazios viram placeholder colorido (tones do extractor-lab).
    ============================================================ */
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { libListFolders, libListFolderTracks, coverUrl, type FolderPlaylist } from "../tauri";
-import { setQueue } from "../store/player";
-import { playTrack } from "../components/PlayerBar";
+import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
+import { isPinned, togglePin, pins } from "../store/pins";
+import { navigate } from "../router";
 
-async function playFolder(folder: FolderPlaylist) {
-  try {
-    const tracks = await libListFolderTracks(folder.name);
-    if (!tracks.length) return;
-    setQueue(tracks, 0);
-    playTrack(tracks[0]);
-  } catch (err) {
-    console.error("[playlists] play failed:", folder.name, err);
-  }
+function openPlaylist(folder: FolderPlaylist) {
+  navigate(`/playlist/${encodeURIComponent(folder.name)}`);
 }
 
 // ── Tones de fallback (vide tokens em extractor-lab.css) ─────────
@@ -47,7 +44,7 @@ function toneFor(folder: string, offset: number): Tone {
 }
 
 // ── Mosaico 2x2 de covers reais com fallback colorido ───────────
-function CoverMosaic(props: { folder: FolderPlaylist; pinned?: boolean }) {
+function CoverMosaic(props: { folder: FolderPlaylist }) {
   const cells = createMemo(() => {
     const out: Array<{ src: string | null; tone: Tone }> = [];
     const covers = props.folder.cover_paths ?? [];
@@ -57,14 +54,18 @@ function CoverMosaic(props: { folder: FolderPlaylist; pinned?: boolean }) {
     }
     return out;
   });
+  const pinned = createMemo(() => pins().includes(props.folder.name));
   return (
     <>
-      <Show when={props.pinned}>
-        <span class="pl-card__pin">
-          {/* @ts-ignore */}
-          <iconify-icon icon="lucide:pin" noobserver />
-        </span>
-      </Show>
+      <button
+        class="pl-card__pin"
+        classList={{ "is-pinned": pinned() }}
+        title={pinned() ? "Unpin" : "Pin"}
+        onClick={(e) => { e.stopPropagation(); togglePin(props.folder.name); }}
+      >
+        {/* @ts-ignore */}
+        <iconify-icon icon="lucide:pin" noobserver />
+      </button>
       <For each={cells()}>
         {(c) => (
           <Show
@@ -117,10 +118,16 @@ export default function Playlists() {
     return list.filter((f) => f.name.toLowerCase().includes(q));
   });
 
-  // "Pinned" placeholder ate ter backend de pin: primeiros 3 folders
-  // (gera valor visual sem mentir sobre a fonte).
-  const pinned = createMemo(() => (folders() ?? []).slice(0, 3));
-  const rest   = createMemo(() => {
+  // Pinned: lista persistida em localStorage (store/pins.ts). Reativo a pins().
+  // Ordem segue a ordem em pins() — primeiro pinado = primeiro card.
+  const pinned = createMemo(() => {
+    const list = folders() ?? [];
+    const pinSet = pins();
+    return pinSet
+      .map((n) => list.find((f) => f.name === n))
+      .filter((f): f is FolderPlaylist => !!f);
+  });
+  const rest = createMemo(() => {
     const list = visibleFolders();
     const pinnedNames = new Set(pinned().map((p) => p.name));
     return list.filter((f) => !pinnedNames.has(f.name));
@@ -186,9 +193,9 @@ export default function Playlists() {
             <div class="pl-grid">
               <For each={pinned()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => playFolder(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
+                  <div class="pl-card" onClick={() => openPlaylist(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <div class="pl-card__cover">
-                      <CoverMosaic folder={p} pinned />
+                      <CoverMosaic folder={p} />
                     </div>
                     <div class="pl-card__title">{p.name}</div>
                     <div class="pl-card__sub">Folder · {p.track_count} tracks</div>
@@ -260,7 +267,7 @@ export default function Playlists() {
               </div>
               <For each={rest()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => playFolder(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
+                  <div class="pl-card" onClick={() => openPlaylist(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <div class="pl-card__cover">
                       <CoverMosaic folder={p} />
                     </div>
