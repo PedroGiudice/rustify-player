@@ -17,6 +17,7 @@ import { player } from "../store/player";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
+import logoCassette from "../assets/logo-cassette.png";
 
 const PRIMARY = [
   { route: "/home",    icon: ICONS.home,    label: "Home" },
@@ -66,7 +67,12 @@ export function Sidebar() {
   return (
     <aside class="sidebar" data-screen-label="Sidebar">
       <div class="brand">
-        <div class="brand__mark"><Icon name={ICONS.flask} size={20} /></div>
+        <div class="brand__mark">
+          {/* Logo do app (Cassette · Paper Outline). PNG importado direto pra
+              Vite resolver o asset com hash. Substitui o lucide:flask-conical
+              que era placeholder. */}
+          <img src={logoCassette} alt="Rustify" width="20" height="20" />
+        </div>
         <div class="brand__word">Rustify</div>
         <div class="brand__dot" title="Bit-perfect output" />
       </div>
