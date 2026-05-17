@@ -29,3 +29,29 @@ segundos. Release.sh e o unico caminho.
 ## Branch atual
 
 `fix-playback-race-condition` — ativa ate merge em main.
+
+## TweaksPanel e o hub de customizacao
+
+O painel **Tweaks** (sidebar bottom-left, atalho via evento
+`toggle-tweaks`) e a referencia canonica pra customizacoes visuais e
+de comportamento do usuario. Antes de criar UI nova ou arquivo YAML
+de config pra um knob, avaliar se cabe no Tweaks.
+
+A infra ja resolve:
+- Persistencia em localStorage (`kv-tweaks`)
+- Reatividade Solid (signals em `src/store/tweaks.ts`)
+- Portal overlay + estilos prontos (.tweaks, .segmented, etc)
+- Aplicacao no `<html>` via CSS vars (`--lyrics-bg-alpha`,
+  `--bg-ink-rgb`, etc) que os componentes consomem sem listener
+
+Pontos de extensao:
+- `src/store/tweaks.ts` — adicionar campo no schema + DEFAULTS +
+  applyTweaks set da CSS var
+- `src/views/Tweaks.tsx` — usar `<NumberSlider>`, `<Segmented>`,
+  `<FontSelect>` existentes, ou `<input type="color">` (ver bgInk)
+- `src/styles/extractor-lab.css` — consumir a CSS var no
+  componente alvo com fallback
+
+So escalar pra YAML / Tauri command novo quando o knob precisar
+de preset salvavel, share entre instalacoes, ou hot-reload por
+processo externo. Caso contrario o Tweaks resolve.
