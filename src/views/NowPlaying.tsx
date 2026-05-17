@@ -77,6 +77,10 @@ export default function NowPlaying() {
   }
 
   const [box, setBox] = createSignal<Box>({ x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H });
+  // Sinal de drag/resize ativo: durante interacao, o card vira solid + sem
+  // backdrop-filter pra nao matar o WebKit recalculando blur/saturate/
+  // brightness por cima do spectrum animado a cada mousemove (60+fps).
+  const [interacting, setInteracting] = createSignal(false);
 
   let railEl!: HTMLDivElement;
   let railViewportEl!: HTMLDivElement;
@@ -114,16 +118,32 @@ export default function NowPlaying() {
     const rect = npEl.getBoundingClientRect();
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
-    const onMove = (ev: MouseEvent) => {
-      const nx = start.x + (ev.clientX - startX);
-      const ny = start.y + (ev.clientY - startY);
+    setInteracting(true);
+
+    // rAF throttle: mousemove dispara ate 120+ vezes/s; coalescemos pro
+    // proximo frame. Sem isso, cada mousemove faz Solid re-renderizar o
+    // style inline e o WebKit recalcular o canvas do spectrum + card,
+    // travando a UI.
+    let pendingFrame = 0;
+    let lastEv: MouseEvent | null = null;
+    const apply = () => {
+      pendingFrame = 0;
+      if (!lastEv) return;
+      const nx = start.x + (lastEv.clientX - startX);
+      const ny = start.y + (lastEv.clientY - startY);
       setBox(clamp({ ...start, x: nx, y: ny }, rect.width, rect.height));
     };
+    const onMove = (ev: MouseEvent) => {
+      lastEv = ev;
+      if (!pendingFrame) pendingFrame = requestAnimationFrame(apply);
+    };
     const onUp = () => {
+      if (pendingFrame) { cancelAnimationFrame(pendingFrame); apply(); }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      setInteracting(false);
       saveBox(box());
     };
     document.addEventListener("mousemove", onMove);
@@ -138,16 +158,28 @@ export default function NowPlaying() {
     const rect = npEl.getBoundingClientRect();
     document.body.style.cursor = "nwse-resize";
     document.body.style.userSelect = "none";
-    const onMove = (ev: MouseEvent) => {
-      const nw = start.w + (ev.clientX - startX);
-      const nh = start.h + (ev.clientY - startY);
+    setInteracting(true);
+
+    let pendingFrame = 0;
+    let lastEv: MouseEvent | null = null;
+    const apply = () => {
+      pendingFrame = 0;
+      if (!lastEv) return;
+      const nw = start.w + (lastEv.clientX - startX);
+      const nh = start.h + (lastEv.clientY - startY);
       setBox(clamp({ ...start, w: nw, h: nh }, rect.width, rect.height));
     };
+    const onMove = (ev: MouseEvent) => {
+      lastEv = ev;
+      if (!pendingFrame) pendingFrame = requestAnimationFrame(apply);
+    };
     const onUp = () => {
+      if (pendingFrame) { cancelAnimationFrame(pendingFrame); apply(); }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      setInteracting(false);
       saveBox(box());
     };
     document.addEventListener("mousemove", onMove);
@@ -266,6 +298,7 @@ export default function NowPlaying() {
           <Show when={(lyrics() ?? []).length > 0}>
             <aside
               class="np__lyrics-card np__lyrics-card--floating"
+              classList={{ "is-interacting": interacting() }}
               ref={cardEl!}
               style={{
                 left: `${box().x}px`,
