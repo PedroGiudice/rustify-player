@@ -47,7 +47,7 @@ tempfile = "3"
 
 [package]
 name = "rustify-player"
-version = "0.2.10"
+version = "0.2.11"
 description = "Player de musica audiofilo - Tauri shell"
 edition.workspace = true
 rust-version.workspace = true
