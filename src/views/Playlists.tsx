@@ -195,29 +195,35 @@ export default function Playlists() {
             <h2 class="section__title">Smart playlists · rule-based <span style={{ "font-size": "10px", color: "var(--fg-6)", "margin-left": "8px", "font-family": "var(--font-mono)" }}>preview</span></h2>
             <a class="section__action">View all rules →</a>
           </div>
-          <div class="smart-tbl">
-            <div class="smart-tbl__head"></div>
-            <div class="smart-tbl__head">Name</div>
-            <div class="smart-tbl__head">Rule</div>
-            <div class="smart-tbl__head">Updated</div>
-            <div class="smart-tbl__head" style={{ "justify-content": "flex-end" }}>Tracks</div>
-            <div class="smart-tbl__head" style={{ "justify-content": "flex-end" }}>Length</div>
-            <For each={SMART_PLAYLISTS}>
-              {(s) => (
-                <div class="smart-tbl__row">
-                  <div class="smart-tbl__icon">
-                    {/* @ts-ignore */}
-                    <iconify-icon icon={s.icon} noobserver />
-                  </div>
-                  <div class="smart-tbl__name">{s.name}</div>
-                  <div class="smart-tbl__rule">{s.rule}</div>
-                  <div class="smart-tbl__updated">{s.updated}</div>
-                  <div class="smart-tbl__count">{s.tracks}</div>
-                  <div class="smart-tbl__time">{s.length}</div>
-                </div>
-              )}
-            </For>
-          </div>
+          <table class="smart-tbl">
+            <thead>
+              <tr>
+                <th class="smart-tbl__head" aria-label="icon"></th>
+                <th class="smart-tbl__head">Name</th>
+                <th class="smart-tbl__head">Rule</th>
+                <th class="smart-tbl__head">Updated</th>
+                <th class="smart-tbl__head smart-tbl__head--num">Tracks</th>
+                <th class="smart-tbl__head smart-tbl__head--num">Length</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={SMART_PLAYLISTS}>
+                {(s) => (
+                  <tr class="smart-tbl__row">
+                    <td class="smart-tbl__icon">
+                      {/* @ts-ignore */}
+                      <iconify-icon icon={s.icon} noobserver />
+                    </td>
+                    <td class="smart-tbl__name">{s.name}</td>
+                    <td class="smart-tbl__rule">{s.rule}</td>
+                    <td class="smart-tbl__updated">{s.updated}</td>
+                    <td class="smart-tbl__count">{s.tracks}</td>
+                    <td class="smart-tbl__time">{s.length}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
         </section>
 
         {/* ── All playlists ────────────────────────────── */}

@@ -2106,39 +2106,49 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .pl-card--new .pl-card__cover iconify-icon { width: 28px; height: 28px; color: var(--fg-4); }
 .pl-card--new .pl-card__title { color: var(--fg-3); }
 
-/* Smart playlists table */
+/* Smart playlists table — table semantica (display:contents+grid era fragil em WebKitGTK) */
 .smart-tbl {
+  width: 100%;
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
   overflow: hidden;
-  display: grid;
-  grid-template-columns: 32px 1fr 240px 140px 80px 70px;
+  table-layout: fixed;
+  border-collapse: collapse;
   font-size: 13px;
 }
-.smart-tbl > div,
-.smart-tbl__row > div {
+.smart-tbl th,
+.smart-tbl td {
   padding: 9px 14px;
   border-bottom: 1px solid var(--line-3);
-  display: flex; align-items: center;
-  min-width: 0;
+  vertical-align: middle;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.smart-tbl__rule { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smart-tbl tbody tr:last-child td { border-bottom: none; }
+.smart-tbl col.smart-tbl__col-icon    { width: 32px; }
+.smart-tbl col.smart-tbl__col-name    { width: auto; }
+.smart-tbl col.smart-tbl__col-rule    { width: 35%; }
+.smart-tbl col.smart-tbl__col-updated { width: 140px; }
+.smart-tbl col.smart-tbl__col-num     { width: 80px; }
 .smart-tbl__head {
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
   color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line-2) !important;
 }
-.smart-tbl__row { display: contents; cursor: pointer; }
-.smart-tbl__row:hover > div { background: var(--bg-soft); transition: background var(--dur-base); }
-.smart-tbl__icon { color: var(--fg-5); }
-.smart-tbl__icon iconify-icon { width: 14px; height: 14px; }
+.smart-tbl__head--num { text-align: right; }
+.smart-tbl__row { cursor: pointer; }
+.smart-tbl__row:hover td { background: var(--bg-soft); transition: background var(--dur-base); }
+.smart-tbl__icon { width: 32px; color: var(--fg-5); }
+.smart-tbl__icon iconify-icon { width: 14px; height: 14px; vertical-align: middle; }
 .smart-tbl__name { font-weight: 600; color: var(--fg-1); }
 .smart-tbl__rule { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-5); letter-spacing: -0.01em; }
 .smart-tbl__updated { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
-.smart-tbl__count { font-family: var(--font-mono); font-size: 11px; color: var(--fg-4); justify-content: flex-end; font-variant-numeric: tabular-nums; }
-.smart-tbl__time { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.smart-tbl__count { font-family: var(--font-mono); font-size: 11px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
+.smart-tbl__time { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ════════════════════════════════════════════════════════════
    STATIONS — feature card + seed grid + live badge
