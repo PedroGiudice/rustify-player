@@ -30,7 +30,7 @@
   /* Lines */
   --line-1: #ececec;
   --line-2: #e5e5e5;
-  --line-3: #f5f5f5;
+  --line-3: #ebebeb;
 
   /* Semantic (ring/bg/fg triplets) */
   --blue-ring:   #3b82f6; --blue-bg:   #eff6ff; --blue-fg:   #2563eb;
@@ -168,9 +168,6 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 
 /* Elementos que NAO devem iniciar drag */
 .no-drag { -webkit-app-region: no-drag; }
-.titlebar [data-tauri-drag-region] {
-  /* o atributo serve como flag pro Tauri — sem rule necessaria aqui */
-}
 
 .nav-back {
   display: inline-flex;
@@ -520,7 +517,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   position: relative; z-index: 1;
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   padding: 32px 40px;
   align-content: start;
@@ -535,7 +532,6 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 }
 @media (max-width: 1200px) {
   .np__chrome { grid-template-columns: minmax(0, 1fr); }
-  .np__lyrics-card { max-width: 560px; max-height: 280px; margin-top: 8px; }
 }
 @media (max-width: 760px) {
   .np__left { grid-template-columns: minmax(0, 1fr); }
@@ -638,6 +634,59 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
           mask-image: linear-gradient(to bottom, black 0, black 78%, transparent 100%);
   box-shadow: var(--shadow-card);
 }
+
+/* Variante floating: drag + resize, posicao absoluta dentro de .np.
+   Header sticky no topo (sai do mask que afeta so o viewport).
+   Resize handle no canto SE. */
+.np__lyrics-card--floating {
+  position: absolute;
+  z-index: 2;
+  align-self: auto;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  -webkit-mask-image: none;
+          mask-image: none;
+  /* Blur reforcado pra contrastar com spectrum por tras */
+  background: rgba(255,255,255,0.78);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+.np__lyrics-card--floating .np__lyrics-head {
+  margin: 0;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid var(--line-2);
+  cursor: grab;
+  user-select: none;
+  background: rgba(255,255,255,0.5);
+  border-top-left-radius: var(--radius-xl);
+  border-top-right-radius: var(--radius-xl);
+}
+.np__lyrics-card--floating .np__lyrics-head:active { cursor: grabbing; }
+.np__lyrics-viewport {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  padding: 18px 20px 22px;
+  -webkit-mask-image: linear-gradient(to bottom, black 0, black 78%, transparent 100%);
+          mask-image: linear-gradient(to bottom, black 0, black 78%, transparent 100%);
+}
+.np__lyrics-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 50%, var(--fg-6) 50%, var(--fg-6) 60%, transparent 60%, transparent 70%, var(--fg-6) 70%, var(--fg-6) 80%, transparent 80%);
+  border-bottom-right-radius: var(--radius-xl);
+  opacity: 0.5;
+  transition: opacity var(--dur-base);
+}
+.np__lyrics-resize:hover { opacity: 1; }
+
 .np__lyrics-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
 .np__lyrics-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
 .np__lyrics-source { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-6); }

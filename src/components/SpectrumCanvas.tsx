@@ -181,9 +181,12 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       const kick = fresh ? lastLow : fakeKick(t, fallbackBpm);
       const energy = fresh ? lastRms : fakeEnergy(t);
 
-      // Music-reactive envelope: slow energy drift + per-beat kick bump.
+      // Music-reactive envelope: dominado pelo kick (sub-bass), com RMS
+      // como tempero suave de dinamica geral. Pesos rebalanceados —
+      // antes o RMS (banda larga, captura highs) dominava e dava sensacao
+      // de "travado" pulsando com hi-hats. Agora pulsa com kick/bass.
       // Scaled around 1.0 — syncStrength=0 deixa shape exatamente como antes.
-      const reactive = 1 + syncStrength * ((energy - 0.7) + kick * 0.32);
+      const reactive = 1 + syncStrength * (kick * 1.4 + (energy - 0.7) * 0.25);
       const amp = h * 0.17 * breath * reactive;
 
       const topY = h * 0.04;

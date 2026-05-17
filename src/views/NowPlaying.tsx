@@ -44,19 +44,126 @@ export default function NowPlaying() {
     return idx;
   });
 
-  // Auto-scroll lyrics rail so active line stays centered
+  // ── Lyrics card: draggable + resizable, persistido em localStorage ──
+  const LS_KEY = "rustify-lyrics-card";
+  const MIN_W = 280, MIN_H = 220;
+  const MAX_W = 800, MAX_H = 800;
+  const DEFAULT_W = 380, DEFAULT_H = 460;
+
+  type Box = { x: number; y: number; w: number; h: number };
+
+  function clamp(b: Box, vw: number, vh: number): Box {
+    const w = Math.min(MAX_W, Math.max(MIN_W, b.w));
+    const h = Math.min(MAX_H, Math.max(MIN_H, b.h));
+    const x = Math.min(Math.max(0, b.x), Math.max(0, vw - w));
+    const y = Math.min(Math.max(0, b.y), Math.max(0, vh - h));
+    return { x, y, w, h };
+  }
+
+  function loadBox(): Box | null {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      if (typeof o?.x === "number" && typeof o?.y === "number" && typeof o?.w === "number" && typeof o?.h === "number") {
+        return o as Box;
+      }
+    } catch {}
+    return null;
+  }
+
+  function saveBox(b: Box) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(b)); } catch {}
+  }
+
+  const [box, setBox] = createSignal<Box>({ x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H });
+
   let railEl!: HTMLDivElement;
+  let railViewportEl!: HTMLDivElement;
   let cardEl!: HTMLElement;
+  let npEl!: HTMLDivElement;
+
+  onMount(() => {
+    // Calculo do default — alinhado a direita do np, top 32px (igual ao layout antigo)
+    const rect = npEl.getBoundingClientRect();
+    const stored = loadBox();
+    const initial = stored ?? {
+      x: Math.max(0, rect.width - DEFAULT_W - 40),
+      y: 32,
+      w: DEFAULT_W,
+      h: DEFAULT_H,
+    };
+    setBox(clamp(initial, rect.width, rect.height));
+
+    // Reclamp em resize da janela
+    const onResize = () => {
+      const r = npEl.getBoundingClientRect();
+      setBox((b) => clamp(b, r.width, r.height));
+    };
+    window.addEventListener("resize", onResize);
+    onCleanup(() => window.removeEventListener("resize", onResize));
+  });
+
+  function startDrag(e: MouseEvent) {
+    // Ignora se clicou no botao "x" ou resize handle (caso adicionados depois)
+    const target = e.target as HTMLElement;
+    if (target.closest(".np__lyrics-resize")) return;
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const start = box();
+    const rect = npEl.getBoundingClientRect();
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) => {
+      const nx = start.x + (ev.clientX - startX);
+      const ny = start.y + (ev.clientY - startY);
+      setBox(clamp({ ...start, x: nx, y: ny }, rect.width, rect.height));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      saveBox(box());
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function startResize(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const start = box();
+    const rect = npEl.getBoundingClientRect();
+    document.body.style.cursor = "nwse-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) => {
+      const nw = start.w + (ev.clientX - startX);
+      const nh = start.h + (ev.clientY - startY);
+      setBox(clamp({ ...start, w: nw, h: nh }, rect.width, rect.height));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      saveBox(box());
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  // Auto-scroll: centro do RAIL VIEWPORT, nao do card todo (header sticky nao conta)
   onMount(() => {
     const apply = () => {
       const i = activeLine();
-      if (i < 0 || !railEl || !cardEl) return;
+      if (i < 0 || !railEl || !railViewportEl) return;
       const line = railEl.children[i] as HTMLElement | undefined;
       if (!line) return;
-      const offset = line.offsetTop + line.offsetHeight / 2 - cardEl.clientHeight / 2;
+      const offset = line.offsetTop + line.offsetHeight / 2 - railViewportEl.clientHeight / 2;
       railEl.style.transform = `translateY(${-Math.max(0, offset)}px)`;
     };
-    // Track changes through a tiny rAF loop — cheap, only runs when NP visible
     let raf = 0;
     const tick = () => { apply(); raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
@@ -78,7 +185,7 @@ export default function NowPlaying() {
 
   return (
     <article class="view" style={{ overflow: "hidden", padding: 0 }}>
-      <div class="np">
+      <div class="np" ref={npEl!}>
         <SpectrumCanvas />
 
         <div class="np__corner">
@@ -157,24 +264,41 @@ export default function NowPlaying() {
           </div>
 
           <Show when={(lyrics() ?? []).length > 0}>
-            <aside class="np__lyrics-card" ref={cardEl!}>
-              <div class="np__lyrics-head">
+            <aside
+              class="np__lyrics-card np__lyrics-card--floating"
+              ref={cardEl!}
+              style={{
+                left: `${box().x}px`,
+                top: `${box().y}px`,
+                width: `${box().w}px`,
+                height: `${box().h}px`,
+              }}
+            >
+              <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste pra mover">
                 <span class="np__lyrics-label">Lyrics · synced</span>
                 <span class="np__lyrics-source mono">aligned</span>
               </div>
-              <div class="np__lyrics-rail" ref={railEl!}>
-                <For each={lyrics() ?? []}>
-                  {(line, i) => {
-                    const cls = () => {
-                      const a = activeLine();
-                      if (i() === a) return "np__lyric is-active";
-                      if (Math.abs(i() - a) === 1) return "np__lyric is-near";
-                      return "np__lyric";
-                    };
-                    return <p class={cls()}>{line.line}</p>;
-                  }}
-                </For>
+              <div class="np__lyrics-viewport" ref={railViewportEl!}>
+                <div class="np__lyrics-rail" ref={railEl!}>
+                  <For each={lyrics() ?? []}>
+                    {(line, i) => {
+                      const cls = () => {
+                        const a = activeLine();
+                        if (i() === a) return "np__lyric is-active";
+                        if (Math.abs(i() - a) === 1) return "np__lyric is-near";
+                        return "np__lyric";
+                      };
+                      return <p class={cls()}>{line.line}</p>;
+                    }}
+                  </For>
+                </div>
               </div>
+              <span
+                class="np__lyrics-resize"
+                onMouseDown={startResize}
+                title="Arraste pra redimensionar"
+                aria-hidden="true"
+              />
             </aside>
           </Show>
         </div>
