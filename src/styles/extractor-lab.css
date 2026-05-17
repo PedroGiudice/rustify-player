@@ -1241,7 +1241,6 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-width: 1280px;
 }
 
 /* Master + chain status row */
