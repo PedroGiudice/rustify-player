@@ -678,10 +678,15 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 }
 /* Durante drag/resize, suspende o backdrop-filter — recalcular blur +
    saturate + brightness por cima do spectrum animado a cada frame
-   trava o WebKitGTK. Vira solid escuro suave; ao soltar, volta o glass. */
-.np__lyrics-card--floating.is-interacting {
+   trava o WebKitGTK. Vira solid escuro suave; ao soltar, volta o glass.
+   Tambem aplicado quando o slider Lyrics glass passa do threshold
+   (data-lyrics-solid="on" no <html>) — replica o look "solid" via Tweaks. */
+.np__lyrics-card--floating.is-interacting,
+html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+.np__lyrics-card--floating.is-interacting {
   background: rgba(15, 17, 16, 0.55);
 }
 .np__lyrics-card--floating .np__lyrics-head {

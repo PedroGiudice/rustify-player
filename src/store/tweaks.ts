@@ -109,13 +109,18 @@ export function applyTweaks(s: TweaksState = state()) {
 
   html.style.setProperty("--glow", String(s.glow));
 
-  // Lyrics glass: interpola alpha do background e brightness do backdrop
-  // a partir do slider unico. CSS le essas vars com fallback nos defaults.
+  // Lyrics glass: slider unico controla alpha + brightness + (em valores
+  // altos) desliga o backdrop-filter — replicando a estetica do modo
+  // "dragged" (sem blur, fundo carbono ~55%). Range estendido pra
+  // permitir o look full-solid via Tweaks. Acima de SOLID_THRESHOLD
+  // o data attr `data-lyrics-solid` ativa a regra CSS que zera o backdrop.
+  const SOLID_THRESHOLD = 0.85;
   const g = Math.max(0, Math.min(1, s.lyricsGlass));
-  const alpha = 0.04 + g * 0.26;          // 0.04 .. 0.30
-  const brightness = 0.92 - g * 0.27;     // 0.92 .. 0.65
+  const alpha = 0.04 + g * 0.61;          // 0.04 .. 0.65
+  const brightness = 0.92 - g * 0.40;     // 0.92 .. 0.52
   html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
   html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
+  html.dataset.lyricsSolid = g >= SOLID_THRESHOLD ? "on" : "off";
 
   // Cor das linhas do spectrum bg. SpectrumCanvas le essa var via
   // getComputedStyle no frame loop (~3x/s, igual aos outros knobs).
