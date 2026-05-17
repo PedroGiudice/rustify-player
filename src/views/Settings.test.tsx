@@ -27,6 +27,8 @@ vi.mock("../tauri", () => ({
   listThemes: vi.fn().mockResolvedValue([]),
   applyThemeByName: vi.fn().mockResolvedValue([]),
   watchTheme: vi.fn().mockResolvedValue(undefined),
+  // onThemeChanged retorna Promise<UnlistenFn>; mock com no-op
+  onThemeChanged: vi.fn().mockResolvedValue(() => {}),
   checkForUpdate: vi.fn().mockResolvedValue({ update_available: false, current_version: "0.1.0" }),
   installUpdate: vi.fn().mockResolvedValue(undefined),
   restartApp: vi.fn().mockResolvedValue(undefined),
@@ -145,5 +147,59 @@ describe("Settings view", () => {
     expect(checkBtn).toBeTruthy();
     fireEvent.click(checkBtn as HTMLElement);
     expect(ipc.checkForUpdate).toHaveBeenCalled();
+  });
+
+  // ── Testes da calculadora de contraste (Bug 2) ────────────────
+
+  it("selecionar tema YAML chama applyThemeByName com o filename correto", async () => {
+    // Simula listThemes retornando um tema
+    vi.mocked(ipc.listThemes).mockResolvedValue([
+      { filename: "theme-copper-default.yaml", name: "Copper (Default)", author: "Rustify" },
+    ] as any);
+    const { findByRole } = render(() => <Settings />);
+    // Espera o select carregar
+    const select = (await findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "theme-copper-default.yaml" } });
+    expect(ipc.applyThemeByName).toHaveBeenCalledWith("theme-copper-default.yaml");
+  });
+
+  it("calculadora exibe pares de contraste quando applyThemeByName retorna checks", async () => {
+    const mockChecks = [
+      { pair: "texto/canvas",  ratio: 12.5, pass_aa: true,  pass_aaa: true  },
+      { pair: "apagado/paper", ratio: 3.1,  pass_aa: false, pass_aaa: false },
+    ];
+    vi.mocked(ipc.applyThemeByName).mockResolvedValue(mockChecks as any);
+    vi.mocked(ipc.listThemes).mockResolvedValue([
+      { filename: "theme-test.yaml", name: "Test", author: "CI" },
+    ] as any);
+
+    const { findByRole, findByText } = render(() => <Settings />);
+    const select = (await findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "theme-test.yaml" } });
+
+    // Aguarda rendering dos pares de contraste
+    expect(await findByText("texto/canvas")).toBeTruthy();
+    expect(await findByText("apagado/paper")).toBeTruthy();
+    // Verifica ratios exibidos
+    expect(await findByText("12.50:1")).toBeTruthy();
+    expect(await findByText("3.10:1")).toBeTruthy();
+    // Badge AAA para o par que passa tudo
+    expect(await findByText("AAA")).toBeTruthy();
+  });
+
+  it("calculadora exibe legenda WCAG abaixo da tabela", async () => {
+    const mockChecks = [
+      { pair: "texto/canvas", ratio: 5.0, pass_aa: true, pass_aaa: false },
+    ];
+    vi.mocked(ipc.applyThemeByName).mockResolvedValue(mockChecks as any);
+    vi.mocked(ipc.listThemes).mockResolvedValue([
+      { filename: "t.yaml", name: "T", author: "CI" },
+    ] as any);
+
+    const { findByRole, findByText } = render(() => <Settings />);
+    const select = (await findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "t.yaml" } });
+
+    expect(await findByText(/AA = 4\.5:1/)).toBeTruthy();
   });
 });
