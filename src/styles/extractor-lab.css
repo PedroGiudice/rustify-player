@@ -1359,10 +1359,55 @@ html[data-sidebar="icons"] .np-mini { display: none; }
 html[data-type="mono"] { --font-sans: var(--font-mono); }
 
 /* ── --glow: token de intensidade de brilho/halo ────────────────
-   Aplica uma sombra colorida proporcional ao valor de --glow
-   em elementos com .has-glow ou no container principal.            */
+   Slider "Glow" no Tweaks (0..1, default 0.15) controla a intensidade
+   do feedback visual em controles ativos. Antes so afetava .app
+   (container viewport-filling, halo caia fora da tela — sem efeito
+   pratico). Agora cabea em todos os "ativos" reais do app.           */
 html { --glow: 0; }
 .app { box-shadow: 0 0 calc(var(--glow, 0) * 60px) calc(var(--glow, 0) * 20px) rgba(0,0,0,calc(var(--glow, 0) * 0.15)); }
+
+/* Halo + transition unificada para estados ativos. `:where()` mantem
+   specificity baixa pra nao colidir com hovers/focus existentes.
+   Halo azul (var(--blue-fg) ≈ #2563eb) proporcional ao --glow. */
+:where(
+  .pb-icon-btn[aria-pressed="true"],
+  .pb-like[aria-pressed="true"],
+  .toggle[aria-pressed="true"],
+  .tog[aria-pressed="true"],
+  .tog--blue[aria-pressed="true"],
+  .nav-item.active,
+  .segmented button.is-active,
+  .seg button[aria-pressed="true"],
+  .mode-group button[aria-pressed="true"],
+  .sig-pre[aria-pressed="true"],
+  .sig-chain__node[data-on="true"],
+  .sig-stat[data-on="true"],
+  .plug-card[data-on="true"],
+  .pl-action-btn.is-on,
+  .pl-card__pin.is-pinned,
+  .fader[data-active="true"],
+  .sm-toggle[data-on="true"]
+) {
+  box-shadow:
+    0 0 0 calc(1px + var(--glow, 0.15) * 2px) rgba(37, 99, 235, calc(var(--glow, 0.15) * 0.55)),
+    0 0 calc(var(--glow, 0.15) * 22px) calc(var(--glow, 0.15) * 4px) rgba(37, 99, 235, calc(var(--glow, 0.15) * 0.30));
+  transition:
+    box-shadow 0.18s var(--ease-out, ease-out),
+    background-color 0.15s var(--ease-out, ease-out),
+    color 0.15s var(--ease-out, ease-out);
+}
+
+/* Scale tatil breve no click — sensacao de "premi" sem mudar layout.
+   So nos toggles/buttons interativos pequenos. */
+.pb-icon-btn:active,
+.pb-like:active,
+.tog:active,
+.toggle:active,
+.segmented button:active,
+.sm-toggle:active {
+  transform: scale(0.96);
+  transition: transform 0.08s var(--ease-out, ease-out);
+}
 
 /* ════════════════════════════════════════════════════════════
    SIGNAL — DSP chain (EQ curve, faders, band editor, Limiter, Bass)
