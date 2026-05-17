@@ -1212,24 +1212,54 @@ struct ThemeLoadResult {
 /// pro token equivalente do design atual — assim YAMLs pre-redesign
 /// voltam a pintar componentes que so leem tokens novos.
 fn bridge_legacy_to_extractor_lab(vars: &mut std::collections::HashMap<String, String>) {
-    // (legacy_var, atual_var) — so escreve atual se nao foi setado pelo proprio YAML
+    // (legacy_var, [tokens_atuais]) — so escreve o token atual se ainda nao foi
+    // definido pelo proprio YAML. Ordem importa: os itens mais basicos primeiro,
+    // para que derivacoes posteriores (ex: fg-2 a partir de fg-1) possam ler
+    // o valor ja inserido na mesma passagem.
+    //
+    // Estrategia de mapeamento para a escala fg-*:
+    //   fg-1  = text.primary   (mais escuro / mais contrastante)
+    //   fg-2  = text.primary   (sem segundo tom no YAML — reutiliza)
+    //   fg-3  = text.secondary (intermediario mais legivel)
+    //   fg-4  = text.secondary
+    //   fg-5  = text.muted     (intermediario apagado)
+    //   fg-6  = text.muted
+    //   fg-7  = text.muted     (decorativo apenas)
+    //   fg-8  = divider-hi     (quase invisivel — borda)
     const BRIDGE: &[(&str, &[&str])] = &[
-        // Surfaces
+        // ── Surfaces ─────────────────────────────────────────────
         ("--surface-lowest",            &["--bg-canvas"]),
         ("--surface",                   &["--bg-paper"]),
         ("--surface-container-low",     &["--bg-sunken"]),
         ("--surface-container",         &["--bg-soft"]),
         ("--surface-container-high",    &["--bg-tint"]),
         ("--surface-container-highest", &["--bg-faint"]),
-        // Lines / dividers
-        ("--divider",    &["--line-3"]),
+        // ── Lines / dividers ─────────────────────────────────────
+        ("--divider",    &["--line-2", "--line-3"]),
         ("--divider-hi", &["--line-1"]),
-        // Foreground / text
-        ("--on-surface",         &["--fg-1"]),
-        ("--on-surface-variant", &["--fg-4"]),
-        ("--on-surface-mute",    &["--fg-6"]),
-        // Accent — tema legacy define so um primary; espelhamos pro fg+ring do blue
-        ("--primary", &["--blue-fg", "--blue-ring"]),
+        // ── Escala de foreground (fg-1..fg-8) ────────────────────
+        ("--on-surface",         &["--fg-1", "--fg-2"]),
+        ("--on-surface-variant", &["--fg-3", "--fg-4"]),
+        ("--on-surface-mute",    &["--fg-5", "--fg-6", "--fg-7"]),
+        ("--divider-hi",         &["--fg-8"]),
+        // ── Accent principal → tokens azuis ──────────────────────
+        // (os temas YAML usam `accent.primary` como cor de destaque
+        // unica; espelhamos para todo o triplet blue-*)
+        ("--primary",           &["--blue-fg", "--blue-ring"]),
+        ("--surface-container", &["--blue-bg"]),
+        // ── Signal colors → triplets semanticos ──────────────────
+        // verde (ok)
+        ("--sig-ok",            &["--green-fg", "--green-ring"]),
+        ("--surface-container-low", &["--green-bg"]),
+        // ambar (warn)
+        ("--sig-warn",          &["--amber-fg", "--amber-ring"]),
+        ("--surface-container-low", &["--amber-bg"]),
+        // rosa/vermelho (erro)
+        ("--sig-err",           &["--rose-fg", "--rose-ring"]),
+        ("--surface-container-low", &["--rose-bg"]),
+        // violeta — nao tem equivalente YAML; usa accent + surface dim
+        ("--primary",           &["--purple-fg", "--purple-ring"]),
+        ("--surface-container-low", &["--purple-bg"]),
     ];
     for (legacy, targets) in BRIDGE {
         if let Some(val) = vars.get(*legacy).cloned() {
@@ -1250,17 +1280,26 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     bridge_legacy_to_extractor_lab(&mut vars);
 
     let mut checks = Vec::new();
+    // Pares semanticamente relevantes para verificacao WCAG.
+    // Somente pares cujos dois tokens existem no mapa sao incluidos.
+    // Apos o bridge, todos os pares abaixo devem estar populados para
+    // YAMLs que seguem o vocabulario legado (surfaces/text/accent/signal).
     let pairs = [
-        // Extractor Lab tokens (atuais)
-        ("text on canvas",    "--fg-1", "--bg-canvas"),
-        ("text on paper",     "--fg-1", "--bg-paper"),
-        ("secondary on paper", "--fg-5", "--bg-paper"),
-        ("muted on paper",    "--fg-6", "--bg-paper"),
-        ("accent on paper",   "--blue-fg", "--bg-paper"),
-        ("text on accent",    "--bg-paper", "--blue-fg"),
-        // Legacy tokens (retrocompat com YAMLs pre-redesign)
-        ("text on surface",   "--on-surface", "--surface-lowest"),
-        ("accent on surface", "--primary", "--surface-lowest"),
+        // Texto principal
+        ("texto/canvas",      "--fg-1",    "--bg-canvas"),
+        ("texto/paper",       "--fg-1",    "--bg-paper"),
+        ("secundario/canvas", "--fg-3",    "--bg-canvas"),
+        ("secundario/paper",  "--fg-3",    "--bg-paper"),
+        ("apagado/paper",     "--fg-5",    "--bg-paper"),
+        ("apagado/canvas",    "--fg-5",    "--bg-canvas"),
+        // Accent azul
+        ("accent/canvas",     "--blue-fg", "--bg-canvas"),
+        ("accent/paper",      "--blue-fg", "--bg-paper"),
+        ("texto/accent-bg",   "--fg-1",    "--blue-bg"),
+        // Sinais semanticos (ok / warn / erro)
+        ("ok/canvas",         "--green-fg","--bg-canvas"),
+        ("warn/canvas",       "--amber-fg","--bg-canvas"),
+        ("erro/canvas",       "--rose-fg", "--bg-canvas"),
     ];
     for (label, fg_key, bg_key) in pairs {
         if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key)) {
@@ -3121,4 +3160,167 @@ fn dirs_home() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/home"))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Testes unitarios — bridge e calculadora de contraste
+// ──────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    // YAML minimo representando um tema legado (vocabulario surfaces/text/accent/signal).
+    // Usa r##"..."## para nao conflitar com aspas dentro de strings hex ("#aabbcc").
+    const TEMA_MINIMAL: &str = r##"
+name: Teste
+author: CI
+
+surfaces:
+  lowest: '#111111'
+  base: '#1a1a1a'
+  container-low: '#222222'
+  container: '#2a2a2a'
+  container-high: '#333333'
+  container-highest: '#3a3a3a'
+
+dividers:
+  subtle: 'rgba(255,255,255,0.08)'
+  prominent: 'rgba(255,255,255,0.16)'
+
+accent:
+  primary: '#c6633d'
+  primary-container: '#d87a52'
+  primary-fixed-dim: '#d87a52'
+  on-primary: '#111111'
+  on-primary-container: '#111111'
+
+text:
+  primary: '#edeae3'
+  secondary: '#a29e94'
+  muted: '#85827b'
+  outline: 'rgba(237,234,227,0.16)'
+
+signal:
+  ok: '#7ea977'
+  warn: '#cfa560'
+  error: '#c46b58'
+
+typography:
+  body: 'Inter, sans-serif'
+  display: 'Fraunces, serif'
+  technical: 'Inter, sans-serif'
+
+effects:
+  glow: 0.15
+  surface-blur: '20px'
+  surface-opacity: 0.85
+"##;
+
+    fn parse_tema(yaml: &str) -> HashMap<String, String> {
+        let val: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let mut vars = HashMap::new();
+        yaml_to_css_vars(&val, "", &mut vars);
+        bridge_legacy_to_extractor_lab(&mut vars);
+        vars
+    }
+
+    // ── Bug 1: tokens basicos do design system devem estar presentes ──────────
+
+    #[test]
+    fn bridge_popula_bg_canvas_e_bg_paper() {
+        let vars = parse_tema(TEMA_MINIMAL);
+        assert!(vars.contains_key("--bg-canvas"), "--bg-canvas ausente apos bridge");
+        assert_eq!(vars["--bg-canvas"], "#111111", "--bg-canvas deve vir de surfaces.lowest");
+        assert!(vars.contains_key("--bg-paper"), "--bg-paper ausente apos bridge");
+    }
+
+    #[test]
+    fn bridge_popula_escala_fg_completa() {
+        let vars = parse_tema(TEMA_MINIMAL);
+        for i in 1..=8 {
+            let token = format!("--fg-{i}");
+            assert!(vars.contains_key(token.as_str()), "{token} ausente apos bridge");
+        }
+        // fg-1 e fg-2 vem de text.primary
+        assert_eq!(vars["--fg-1"], vars["--fg-2"], "fg-1 e fg-2 devem ser identicos");
+        // fg-3 e fg-4 vem de text.secondary
+        assert_eq!(vars["--fg-3"], vars["--fg-4"], "fg-3 e fg-4 devem ser identicos");
+        // fg-5 e fg-6 vem de text.muted
+        assert_eq!(vars["--fg-5"], vars["--fg-6"], "fg-5 e fg-6 devem ser identicos");
+    }
+
+    #[test]
+    fn bridge_popula_line_2() {
+        let vars = parse_tema(TEMA_MINIMAL);
+        assert!(vars.contains_key("--line-2"), "--line-2 ausente apos bridge");
+    }
+
+    #[test]
+    fn bridge_popula_signals_semanticos() {
+        let vars = parse_tema(TEMA_MINIMAL);
+        assert!(vars.contains_key("--green-fg"),  "--green-fg ausente");
+        assert!(vars.contains_key("--green-ring"), "--green-ring ausente");
+        assert!(vars.contains_key("--amber-fg"),  "--amber-fg ausente");
+        assert!(vars.contains_key("--amber-ring"), "--amber-ring ausente");
+        assert!(vars.contains_key("--rose-fg"),   "--rose-fg ausente");
+        assert!(vars.contains_key("--rose-ring"),  "--rose-ring ausente");
+    }
+
+    #[test]
+    fn bridge_green_fg_vem_de_signal_ok() {
+        let vars = parse_tema(TEMA_MINIMAL);
+        assert_eq!(vars.get("--green-fg"), vars.get("--sig-ok"),
+            "--green-fg deve espelhar --sig-ok");
+    }
+
+    // ── Bug 2: calculadora de contraste ──────────────────────────────────────
+
+    #[test]
+    fn contraste_ratio_branco_preto_e_21() {
+        // Branco sobre preto: ratio teorico 21:1
+        let l_branco = relative_luminance(1.0, 1.0, 1.0);
+        let l_preto  = relative_luminance(0.0, 0.0, 0.0);
+        let ratio = contrast_ratio(l_branco, l_preto);
+        assert!((ratio - 21.0).abs() < 0.01, "ratio branco/preto deve ser ~21, foi {ratio}");
+    }
+
+    #[test]
+    fn hex_to_rgb_parseia_corretamente() {
+        let (r, g, b) = hex_to_rgb("#ffffff").unwrap();
+        assert!((r - 1.0).abs() < 1e-6);
+        assert!((g - 1.0).abs() < 1e-6);
+        assert!((b - 1.0).abs() < 1e-6);
+
+        let (r2, g2, b2) = hex_to_rgb("#000000").unwrap();
+        assert!(r2.abs() < 1e-6);
+        assert!(g2.abs() < 1e-6);
+        assert!(b2.abs() < 1e-6);
+    }
+
+    #[test]
+    fn contraste_pares_semanticos_sao_calculados_apos_bridge() {
+        // Verifica que todos os tokens dos pares de contraste estao presentes
+        // apos o bridge — garantindo que os checks nao sao silenciosamente
+        // ignorados por falta de valor.
+        let vars = parse_tema(TEMA_MINIMAL);
+        let pares = [
+            ("--fg-1",    "--bg-canvas"),
+            ("--fg-1",    "--bg-paper"),
+            ("--fg-3",    "--bg-canvas"),
+            ("--fg-3",    "--bg-paper"),
+            ("--fg-5",    "--bg-paper"),
+            ("--fg-5",    "--bg-canvas"),
+            ("--blue-fg", "--bg-canvas"),
+            ("--blue-fg", "--bg-paper"),
+            ("--fg-1",    "--blue-bg"),
+            ("--green-fg","--bg-canvas"),
+            ("--amber-fg","--bg-canvas"),
+            ("--rose-fg", "--bg-canvas"),
+        ];
+        for (fg, bg) in pares {
+            assert!(vars.contains_key(fg), "token {fg} ausente — par de contraste sera ignorado");
+            assert!(vars.contains_key(bg), "token {bg} ausente — par de contraste sera ignorado");
+        }
+    }
 }
