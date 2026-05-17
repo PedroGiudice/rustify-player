@@ -650,14 +650,17 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   padding: 0;
   -webkit-mask-image: none;
           mask-image: none;
-  /* Glass: dark translucido + blur dinamico. Sem borda. */
-  background: rgba(15, 17, 16, 0.42);
+  /* Glass real: alpha baixo + brightness no backdrop-filter pra
+     escurecer o que esta atras SEM virar painel solido. Sobre fundo
+     paper claro vira vidro fume — sobre fundo escuro vira tinted dark.
+     blur escala com tamanho via --lyrics-blur. Sem borda. */
+  background: rgba(15, 17, 16, 0.18);
   border: 0;
-  backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(140%);
+  backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(160%) brightness(0.78);
+  -webkit-backdrop-filter: blur(var(--lyrics-blur, 16px)) saturate(160%) brightness(0.78);
   box-shadow:
-    0 12px 48px -16px rgba(0, 0, 0, 0.55),
-    0 2px 8px -2px rgba(0, 0, 0, 0.35);
+    0 12px 48px -16px rgba(0, 0, 0, 0.45),
+    0 2px 8px -2px rgba(0, 0, 0, 0.28);
   /* Texto legivel em fundo escuro — vars escopadas no card */
   --fg-1: #f5f3ee;
   --fg-2: #e0dcd2;
@@ -672,7 +675,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   border-bottom: 0;
   cursor: grab;
   user-select: none;
-  background: rgba(0, 0, 0, 0.18);
+  /* Wash sutil pra delimitar header sem virar barra opaca */
+  background: rgba(0, 0, 0, 0.10);
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
 }
