@@ -2448,9 +2448,12 @@ pub fn run() {
                 .build(),
         )
         .setup(move |_app| {
-            if let Some(w) = _app.webview_windows().values().next() {
-                w.open_devtools();
-            }
+            // Devtools so abre quando o usuario pede (Ctrl+Shift+I), nao no startup.
+            // Pra debug agressivo, descomente o bloco abaixo:
+            // #[cfg(debug_assertions)]
+            // if let Some(w) = _app.webview_windows().values().next() {
+            //     w.open_devtools();
+            // }
 
             let home = dirs_home();
             let data_dir = home.join(".local/share/rustify-player");
