@@ -15,9 +15,10 @@
    NUNCA toca em fase — caso contrário vira screensaver Winamp.
    ============================================================ */
 
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
+import { player } from "../store/player";
 
 const SHAPE_KEY = "rustify-mock-shape";
 const SYNC_KEY = "rustify-mock-sync";
@@ -157,7 +158,45 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
     // mantendo subscribe não causa problema.
     spectrumSubscribe().catch(() => {});
 
+    // Frame estatico desenhado quando o player esta pausado: zera kick,
+    // energy, breath e drift; usa apenas a shape function pra textura.
+    function drawStaticFrame() {
+      if (document.hidden || !canvas.isConnected) return;
+      ctx.clearRect(0, 0, w, h);
+      const amp = h * 0.17; // sem breath, sem reactive
+      const topY = h * 0.04;
+      const botY = h * 0.98;
+      const shapeFn = SHAPES[shapeIdx()].fn;
+      ctx.beginPath();
+      for (let i = 0; i < NLINES; i++) {
+        const v = i / (NLINES - 1);
+        const baselineY = topY + (botY - topY) * v;
+        for (let j = 0; j <= NPOINTS; j++) {
+          const u = j / NPOINTS;
+          const x = u * w;
+          // t=0 congelado; fase apenas espacial por linha
+          const s = shapeFn(u, v, 0);
+          const phase = i * 0.085;
+          const wave = Math.sin(u * Math.PI * 3.2 + phase) * s * amp;
+          const y = baselineY - wave;
+          if (j === 0) ctx.moveTo(x, y);
+          else         ctx.lineTo(x, y);
+        }
+      }
+      ctx.strokeStyle = props.strokeStyle ?? `rgba(23, 23, 23, 0.08)`;
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+
     function frame() {
+      // Loop so anda enquanto algo toca. Sem isso, fakeKick + fakeEnergy +
+      // breath + drift continuam pulsando o canvas em silencio. Pause limpa
+      // o ultimo frame estatico (sem animacao residual) e libera o rAF.
+      if (!player.isPlaying) {
+        drawStaticFrame();
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(frame);
       if (document.hidden || !canvas.isConnected) return;
 
@@ -218,6 +257,19 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       ctx.stroke();
     }
     raf = requestAnimationFrame(frame);
+
+    // Reativa o loop quando isPlaying virar true (foi pausado e voltou).
+    // O proprio frame() decide se continua; aqui so dispara o re-start.
+    createEffect(() => {
+      if (player.isPlaying && raf === 0) {
+        raf = requestAnimationFrame(frame);
+      } else if (!player.isPlaying && raf !== 0) {
+        // Pausa imediata: cancela o frame agendado e desenha estatico.
+        cancelAnimationFrame(raf);
+        raf = 0;
+        drawStaticFrame();
+      }
+    });
 
     onCleanup(() => {
       cancelAnimationFrame(raf);
