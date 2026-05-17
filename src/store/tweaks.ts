@@ -28,6 +28,8 @@ export interface TweaksState {
       0.5 = meio termo
       1   = quase opaco (alpha 0.30, brightness 0.65) */
   lyricsGlass: number;
+  /** Cor das linhas do spectrum bg (hex #rrggbb). Default = carbono escuro. */
+  bgInk: string;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -39,6 +41,7 @@ export const DEFAULTS: TweaksState = {
   type: "body",
   glow: 0.15,
   lyricsGlass: 0.25,
+  bgInk: "#171717",
 };
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
@@ -109,6 +112,23 @@ export function applyTweaks(s: TweaksState = state()) {
   const brightness = 0.92 - g * 0.27;     // 0.92 .. 0.65
   html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
   html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
+
+  // Cor das linhas do spectrum bg. SpectrumCanvas le essa var via
+  // getComputedStyle no frame loop (~3x/s, igual aos outros knobs).
+  // Convertemos hex -> rgb pra o canvas usar com alpha controlada.
+  const rgb = hexToRgb(s.bgInk || DEFAULTS.bgInk);
+  html.style.setProperty("--bg-ink", s.bgInk || DEFAULTS.bgInk);
+  html.style.setProperty("--bg-ink-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return { r: 23, g: 23, b: 23 };
+  return {
+    r: parseInt(m[1], 16),
+    g: parseInt(m[2], 16),
+    b: parseInt(m[3], 16),
+  };
 }
 
 // ── Update helper ─────────────────────────────────────────────

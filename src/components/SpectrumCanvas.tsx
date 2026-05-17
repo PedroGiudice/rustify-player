@@ -124,6 +124,9 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   // refletir mudanças no Settings sem precisar de event listener.
   let syncStrength = readSyncStrength();
   let fallbackBpm = readFallbackBpm();
+  // Cor da tinta (Tweaks → "Bg ink"). Lida da CSS var --bg-ink-rgb
+  // (formato "R, G, B"). Default carbono.
+  let inkRgb = "23, 23, 23";
   let cfgCheckTick = 0;
 
   // Listener de FFT do backend.
@@ -183,7 +186,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
           else         ctx.lineTo(x, y);
         }
       }
-      ctx.strokeStyle = props.strokeStyle ?? `rgba(23, 23, 23, 0.08)`;
+      ctx.strokeStyle = props.strokeStyle ?? `rgba(${inkRgb}, 0.08)`;
       ctx.lineWidth = 0.6;
       ctx.stroke();
     }
@@ -206,6 +209,9 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       if (cfgCheckTick % 20 === 0) {
         syncStrength = readSyncStrength();
         fallbackBpm = readFallbackBpm();
+        const v = getComputedStyle(document.documentElement)
+          .getPropertyValue("--bg-ink-rgb").trim();
+        if (v) inkRgb = v;
       }
 
       const tMs = performance.now();
@@ -252,7 +258,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
 
       // Ink density rides o kick — cada beat fica como um leve adensamento.
       const inkAlpha = 0.1 + syncStrength * kick * 0.05;
-      ctx.strokeStyle = props.strokeStyle ?? `rgba(23, 23, 23, ${inkAlpha.toFixed(3)})`;
+      ctx.strokeStyle = props.strokeStyle ?? `rgba(${inkRgb}, ${inkAlpha.toFixed(3)})`;
       ctx.lineWidth = 0.6;
       ctx.stroke();
     }

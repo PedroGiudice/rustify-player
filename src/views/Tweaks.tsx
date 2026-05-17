@@ -179,6 +179,18 @@ export function Tweaks() {
             format={(v) => `${Math.round(v * 100)}%`}
           />
 
+          <div class="tweaks__row">
+            <span class="tweaks__label">
+              Bg ink <span class="tweaks__val">{tweaks().bgInk}</span>
+            </span>
+            <input
+              type="color"
+              class="tweaks__color"
+              value={tweaks().bgInk}
+              onInput={(e) => updateTweak("bgInk", e.currentTarget.value)}
+            />
+          </div>
+
           <button class="tweaks__reset" onClick={() => resetTweaks()}>
             Redefinir tudo
           </button>

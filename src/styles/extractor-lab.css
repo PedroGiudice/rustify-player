@@ -2921,3 +2921,21 @@ html { --glow: 0; }
   border-color: var(--fg-2);
   color: #fff;
 }
+
+/* Color picker no Tweaks panel — swatch quadrado limpo. */
+.tweaks__color {
+  width: 56px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-paper);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.tweaks__color::-webkit-color-swatch-wrapper { padding: 2px; }
+.tweaks__color::-webkit-color-swatch {
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+}
