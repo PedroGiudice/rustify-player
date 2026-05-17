@@ -47,7 +47,8 @@ export default function Home() {
 
   async function playAlbum(albumTitle: string) {
     const tracks = await libGetTracksByAlbum(albumTitle);
-    if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
+    // scope "curated": album e unidade coerente; shuffle embaralha so este.
+    if (tracks.length) { setQueue(tracks, 0, "curated"); playTrack(tracks[0]); }
   }
 
   function playRow(t: Track, all: Track[]) {

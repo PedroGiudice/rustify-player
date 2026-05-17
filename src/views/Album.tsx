@@ -32,16 +32,17 @@ export default function AlbumView() {
     } catch { return null; }
   });
 
+  // scope "curated": shuffle dentro do album embaralha SO este tracklist.
   function play(t: Track) {
     const all = tracks() ?? [];
     const idx = all.indexOf(t);
-    setQueue(all, idx >= 0 ? idx : 0);
+    setQueue(all, idx >= 0 ? idx : 0, "curated");
     playTrack(t);
   }
 
   function playAll() {
     const all = tracks() ?? [];
-    if (all.length) { setQueue(all, 0); playTrack(all[0]); }
+    if (all.length) { setQueue(all, 0, "curated"); playTrack(all[0]); }
   }
 
   return (

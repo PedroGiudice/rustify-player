@@ -42,16 +42,18 @@ export default function PlaylistView() {
     return covers.length > 0 ? coverUrl(covers[0]) : null;
   });
 
+  // scope "curated": shuffle dentro da playlist embaralha SO esta lista
+  // (em vez de virar radio mode baseado em recommendations da track atual).
   function play(t: Track) {
     const all = tracks() ?? [];
     const idx = all.indexOf(t);
-    setQueue(all, idx >= 0 ? idx : 0);
+    setQueue(all, idx >= 0 ? idx : 0, "curated");
     playTrack(t);
   }
 
   function playAll() {
     const all = tracks() ?? [];
-    if (all.length) { setQueue(all, 0); playTrack(all[0]); }
+    if (all.length) { setQueue(all, 0, "curated"); playTrack(all[0]); }
   }
 
   // Re-render reativo do estado de pin — pins() e sinal.

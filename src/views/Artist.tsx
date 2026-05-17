@@ -22,7 +22,8 @@ export default function ArtistView() {
 
   async function playAlbum(a: Album) {
     const tracks = await libGetTracksByAlbum(a.title);
-    if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
+    // scope "curated": album e uma unidade coerente do artista.
+    if (tracks.length) { setQueue(tracks, 0, "curated"); playTrack(tracks[0]); }
   }
 
   return (
