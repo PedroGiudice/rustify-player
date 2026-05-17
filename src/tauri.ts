@@ -228,6 +228,8 @@ export interface FftPayload {
   low_band_mag: number;
   /** RMS slow-averaged (lowpass ~2 Hz) sobre todas as bands. 0..1. */
   rms_energy: number;
+  /** Sample rate negociada do PipeWire (Hz). 0 enquanto nao negociado. */
+  sample_rate: number;
 }
 
 export const onAudioFft = (cb: (payload: FftPayload) => void) =>
