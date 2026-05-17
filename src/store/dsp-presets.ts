@@ -9,7 +9,12 @@
    store/dsp.ts.
    ============================================================ */
 
-import { FILTER_TYPES, FILTER_MODES, SLOPES, LIMITER_MODES, type EqBand, type DspStore } from "./dsp";
+import { produce } from "solid-js/store";
+import {
+  FILTER_TYPES, FILTER_MODES, SLOPES, LIMITER_MODES,
+  type EqBand, type DspStore,
+  dsp, setDsp, applyFullDspState,
+} from "./dsp";
 
 export interface DspPreset {
   name: string;
@@ -216,4 +221,85 @@ export function toEasyEffects(snap: DspSnapshot): any {
       plugins_order: ["equalizer#0", "limiter#0", "bass_enhancer#0"],
     },
   };
+}
+
+// ── CRUD persistencia ─────────────────────────────────────────
+// Storage layout:
+//   "rustify-dsp-presets"        => DspPreset[]
+//   "rustify-dsp-active-preset"  => string (nome do ultimo preset aplicado)
+
+const PRESETS_KEY = "rustify-dsp-presets";
+const ACTIVE_KEY = "rustify-dsp-active-preset";
+
+export function loadPresets(): DspPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePresets(presets: DspPreset[]): void {
+  try { localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); } catch {}
+}
+
+export function getActivePresetName(): string {
+  try { return localStorage.getItem(ACTIVE_KEY) ?? ""; } catch { return ""; }
+}
+
+export function setActivePresetName(name: string): void {
+  try { localStorage.setItem(ACTIVE_KEY, name); } catch {}
+}
+
+// Snapshot do estado vivo do store no formato DspPreset.
+export function snapshotCurrentDsp(name: string): DspPreset {
+  return {
+    name,
+    eq: {
+      mode: ["IIR", "FIR", "FFT", "SPM"][dsp.eq.mode] ?? "IIR",
+      input_gain: dsp.eq.input_gain,
+      output_gain: dsp.eq.output_gain,
+      bands: dsp.eq.bands.map((b) => ({ ...b })),
+    },
+    limiter: { ...dsp.limiter },
+    bass_enhancer: { ...dsp.bass },
+  };
+}
+
+// Aplica um preset salvo no store + dispara IPC pra backend.
+// Downsample pra 16 bands (preset pode ter 32 do EasyEffects).
+export function applyPresetToStore(preset: DspPreset): void {
+  const modeMap: Record<string, number> = { IIR: 0, FIR: 1, FFT: 2, SPM: 3 };
+  const incomingBands = preset.eq?.bands ?? [];
+
+  setDsp(produce((s) => {
+    for (let i = 0; i < 16; i++) {
+      const b = incomingBands[i];
+      if (b) {
+        s.eq.bands[i] = {
+          freq: b.freq ?? s.eq.bands[i].freq,
+          gain_db: b.gain_db ?? 0,
+          q: b.q ?? 2.21,
+          type: b.type ?? 1,
+          filterMode: b.filterMode ?? 6,
+          slope: b.slope ?? 0,
+          solo: !!b.solo,
+          mute: !!b.mute,
+        };
+      } else {
+        s.eq.bands[i].gain_db = 0;
+        s.eq.bands[i].solo = false;
+        s.eq.bands[i].mute = false;
+      }
+    }
+    s.eq.mode = modeMap[preset.eq?.mode ?? "IIR"] ?? 0;
+    s.eq.input_gain = preset.eq?.input_gain ?? 0;
+    s.eq.output_gain = preset.eq?.output_gain ?? 0;
+    if (preset.limiter) Object.assign(s.limiter, preset.limiter);
+    if (preset.bass_enhancer) Object.assign(s.bass, preset.bass_enhancer);
+  }));
+
+  applyFullDspState();
 }

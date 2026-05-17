@@ -55,6 +55,18 @@ import { normGetState, normSetEnabled } from "../tauri";
 import { ParamRow } from "../components/dsp/ParamRow";
 import { Fader } from "../components/dsp/Fader";
 import { EqCanvas } from "../components/dsp/EqCanvas";
+import {
+  loadPresets,
+  savePresets,
+  getActivePresetName,
+  setActivePresetName,
+  snapshotCurrentDsp,
+  applyPresetToStore,
+  parseEasyEffects,
+  toEasyEffects,
+  type DspPreset,
+} from "../store/dsp-presets";
+import { resetToFlat } from "../store/dsp";
 
 const ENGINE_MODES = ["IIR", "FIR", "FFT", "SPM"] as const;
 
@@ -120,7 +132,8 @@ const ROADMAP_SPACE: RoadmapCard[] = [
   },
 ];
 
-const PRESETS = ["Flat", "Aki Yamamura · v3", "Headphones · HD600", "Late night", "Vocal forward", "Bass focus"];
+// "Flat" e sempre o primeiro chip — reseta pra bands default sem precisar de preset salvo.
+const FLAT_PRESET = "Flat";
 
 export default function Signal() {
   // Replay-gain normalize ainda vem do backend via cmd separado.
@@ -137,8 +150,100 @@ export default function Signal() {
   // Sincronizacao backend no mount.
   onMount(() => { applyFullDspState(); });
 
-  // Preset selecionado — visual only, sem persistir backend.
-  const [activePreset, setActivePreset] = createSignal("Aki Yamamura · v3");
+  // Presets reais (localStorage). Sempre exibe "Flat" como primeiro chip.
+  const [presets, setPresets] = createSignal<DspPreset[]>(loadPresets());
+  const [activePreset, setActivePreset] = createSignal<string>(getActivePresetName() || FLAT_PRESET);
+
+  function refreshPresets() {
+    setPresets(loadPresets());
+  }
+
+  function handlePresetClick(name: string) {
+    setActivePreset(name);
+    setActivePresetName(name);
+    if (name === FLAT_PRESET) {
+      resetToFlat();
+      return;
+    }
+    const p = presets().find((x) => x.name === name);
+    if (p) applyPresetToStore(p);
+  }
+
+  function handleSave() {
+    const current = activePreset();
+    const suggestion = current && current !== FLAT_PRESET ? current : "";
+    const name = window.prompt("Nome do preset:", suggestion);
+    if (!name) return;
+    const list = loadPresets().filter((p) => p.name !== name);
+    list.push(snapshotCurrentDsp(name));
+    savePresets(list);
+    setActivePresetName(name);
+    setActivePreset(name);
+    refreshPresets();
+  }
+
+  function handleRename() {
+    const cur = activePreset();
+    if (!cur || cur === FLAT_PRESET) return;
+    const newName = window.prompt(`Renomear "${cur}" para:`, cur);
+    if (!newName || newName === cur) return;
+    const list = loadPresets().map((p) => (p.name === cur ? { ...p, name: newName } : p));
+    savePresets(list);
+    setActivePresetName(newName);
+    setActivePreset(newName);
+    refreshPresets();
+  }
+
+  function handleDelete() {
+    const cur = activePreset();
+    if (!cur || cur === FLAT_PRESET) return;
+    if (!window.confirm(`Apagar preset "${cur}"?`)) return;
+    savePresets(loadPresets().filter((p) => p.name !== cur));
+    setActivePresetName(FLAT_PRESET);
+    setActivePreset(FLAT_PRESET);
+    refreshPresets();
+  }
+
+  function handleImport() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        const name = file.name.replace(/\.json$/i, "");
+        const preset = parseEasyEffects(json, name);
+        const list = loadPresets().filter((p) => p.name !== name);
+        list.push(preset);
+        savePresets(list);
+        setActivePresetName(name);
+        setActivePreset(name);
+        refreshPresets();
+        applyPresetToStore(preset);
+      } catch (e) {
+        console.error("[signal] import falhou:", e);
+        window.alert("Import falhou — JSON invalido ou formato nao reconhecido.");
+      }
+    };
+    input.click();
+  }
+
+  function handleExport() {
+    const snap = snapshotCurrentDsp(activePreset() || "rustify-export");
+    const json = toEasyEffects({ eq: snap.eq, limiter: snap.limiter, bass: snap.bass_enhancer });
+    const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${snap.name || "rustify-preset"}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <article class="view">
@@ -231,34 +336,58 @@ export default function Signal() {
         <div class="sig-presets">
           <div class="sig-preset-chips">
             <span class="sig-preset-chips__label">Presets</span>
-            <For each={PRESETS}>{(name) => (
+            <button
+              class="sig-pre"
+              aria-pressed={activePreset() === FLAT_PRESET ? "true" : undefined}
+              onClick={() => handlePresetClick(FLAT_PRESET)}
+              title="Reseta todas as bandas pra 0 dB"
+            >
+              {FLAT_PRESET}
+            </button>
+            <For each={presets()}>{(p) => (
               <button
                 class="sig-pre"
-                aria-pressed={activePreset() === name ? "true" : undefined}
-                onClick={() => setActivePreset(name)}
+                aria-pressed={activePreset() === p.name ? "true" : undefined}
+                onClick={() => handlePresetClick(p.name)}
+                title={`Aplica preset "${p.name}"`}
               >
-                {name}
+                {p.name}
               </button>
             )}</For>
+            <Show when={presets().length === 0}>
+              <span class="sig-preset-chips__empty">
+                Nenhum preset salvo — use Save ou Import .json
+              </span>
+            </Show>
           </div>
           <div class="sig-preset-actions">
-            <button class="sig-pbtn" title="Save preset (not wired)">
+            <button class="sig-pbtn" onClick={handleSave} title="Salva estado atual como novo preset">
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:save" noobserver />Save
             </button>
-            <button class="sig-pbtn" title="Rename preset (not wired)">
+            <button
+              class="sig-pbtn"
+              onClick={handleRename}
+              disabled={!activePreset() || activePreset() === FLAT_PRESET}
+              title="Renomeia preset selecionado"
+            >
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:pencil" noobserver />Rename
             </button>
-            <button class="sig-pbtn" title="Delete preset (not wired)">
+            <button
+              class="sig-pbtn"
+              onClick={handleDelete}
+              disabled={!activePreset() || activePreset() === FLAT_PRESET}
+              title="Apaga preset selecionado"
+            >
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:trash-2" noobserver />Delete
             </button>
-            <button class="sig-pbtn" title="Import EasyEffects .json (not wired in this view)">
+            <button class="sig-pbtn" onClick={handleImport} title="Importa preset EasyEffects (.json)">
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:upload" noobserver />Import .json
             </button>
-            <button class="sig-pbtn" title="Export preset (not wired in this view)">
+            <button class="sig-pbtn" onClick={handleExport} title="Exporta estado atual como JSON EasyEffects">
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:download" noobserver />Export
             </button>
