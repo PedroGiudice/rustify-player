@@ -120,19 +120,27 @@ function toggle(force) {
   }
 }
 
+let keydownBound = false;
+
 export function mountResources() {
+  // Idempotente: chamadas repetidas nao criam overlays duplicados.
+  if (panelEl && document.body.contains(panelEl)) return;
+
   panelEl = document.createElement("div");
   panelEl.className = "resources";
   panelEl.setAttribute("hidden", "");
   document.body.appendChild(panelEl);
 
-  // Keyboard shortcut: Ctrl+R
-  document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey && e.key === "r") {
-      e.preventDefault();
-      toggle();
-    }
-  });
+  // Keyboard shortcut: Ctrl+R — registra so uma vez no document.
+  if (!keydownBound) {
+    document.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.key === "r") {
+        e.preventDefault();
+        toggle();
+      }
+    });
+    keydownBound = true;
+  }
 }
 
 export function toggleResources() {

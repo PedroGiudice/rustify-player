@@ -2,7 +2,6 @@
 
 import { mountSidebar } from "./js/components/sidebar.js";
 import { mountPlayerBar } from "./js/components/player-bar.js";
-import { mountResources, toggleResources } from "./js/components/resources.js";
 import { mountSearchBar } from "./js/components/search-bar.js";
 import { applyFullState as applyDspState } from "./js/views/signal.js";
 import { initRouter } from "./js/router.js";
@@ -95,14 +94,12 @@ async function boot() {
   // 4. Mount shell components
   mountSidebar(sidebar);
   mountPlayerBar(playerBar);
-  mountResources();
+  // Resources overlay: mountResources() agora vive em Titlebar.tsx
+  // (componente Solid). O botao RES tem onClick proprio, sem listener manual.
 
   // 4b. Mount search bar in titlebar
   const titlebarCenter = document.getElementById("titlebar-center");
   if (titlebarCenter) mountSearchBar(titlebarCenter);
-
-  // Wire RES button in titlebar
-  document.getElementById("titlebar-res")?.addEventListener("click", toggleResources);
 
   // 5. Apply persisted DSP state to backend (limiter, EQ, bass settings)
   applyDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
