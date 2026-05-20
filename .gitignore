@@ -50,3 +50,9 @@ src-tauri/binaries/
 GEMINI.md
 ai.json
 .claude/agent-memory/
+
+# Editor (Zed)
+.zed/
+
+# Docs: zips redundantes (versao extraida ja entra no repo)
+docs/rustify-player-new-telas.zip
