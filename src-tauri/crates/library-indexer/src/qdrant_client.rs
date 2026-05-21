@@ -754,44 +754,65 @@ impl QdrantClient {
     // Play Events collection (payload-only, dummy 1-d vector)
     // ──────────────────────────────────────────────────────────────────────────
 
-    /// Ensure the `play_events` collection exists with a dummy 1-d vector config
-    /// and payload indices for efficient filtering/ordering.
+    /// Ensure the `play_events` collection exists with payload indices.
+    ///
+    /// Idempotent: safe to call on every startup. Reconciles three states:
+    ///   1. Collection absent  → create it, then create indices.
+    ///   2. Collection present, indices present  → no-op (409 tolerated).
+    ///   3. Collection present, `started_at` index has wrong type (legacy
+    ///      `keyword`)  → drop the index, migrate string payloads to int,
+    ///      re-create as `integer`. This unblocks `behavioral_signals()`
+    ///      which uses `order_by: started_at` (needs a range-capable index).
     pub fn ensure_play_events_collection(&self) -> Result<(), IndexerError> {
         let url = format!(
             "{}/collections/{PLAY_EVENTS_COLLECTION}",
             self.base_url
         );
 
-        match self.agent.get(&url).call() {
-            Ok(_) => return Ok(()),
-            Err(ureq::Error::Status(404, _)) => {}
+        let exists = match self.agent.get(&url).call() {
+            Ok(_) => true,
+            Err(ureq::Error::Status(404, _)) => false,
             Err(e) => {
                 return Err(IndexerError::Embedding(format!(
                     "qdrant get play_events collection: {e}"
                 )));
             }
+        };
+
+        if !exists {
+            // Create with dummy 1-d cosine vector (Qdrant requires at least one vector config)
+            let body = json!({
+                "vectors": {
+                    "size": 1,
+                    "distance": "Cosine"
+                }
+            });
+
+            self.agent
+                .put(&url)
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!(
+                    "qdrant create play_events collection: {e}"
+                )))?;
+        } else {
+            // Upgrade legacy schema if `started_at` was indexed as `keyword`
+            // (incompatible with `order_by` used by `behavioral_signals`).
+            self.upgrade_play_events_started_at_index()?;
         }
 
-        // Create with dummy 1-d cosine vector (Qdrant requires at least one vector config)
-        let body = json!({
-            "vectors": {
-                "size": 1,
-                "distance": "Cosine"
-            }
-        });
+        self.create_play_events_indices()?;
 
-        self.agent
-            .put(&url)
-            .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!(
-                "qdrant create play_events collection: {e}"
-            )))?;
+        Ok(())
+    }
 
-        // Create payload indices for filtering and ordering
+    /// Create payload indices for `play_events`. Idempotent — 409 means the
+    /// index already exists with the same schema, which is the desired state.
+    fn create_play_events_indices(&self) -> Result<(), IndexerError> {
         let indices = [
             ("track_id", json!({"type": "integer"})),
             ("listen_pct", json!({"type": "float"})),
-            ("started_at", json!({"type": "keyword"})),
+            ("started_at", json!({"type": "integer"})),
+            ("event_type", json!({"type": "keyword"})),
             ("origin", json!({"type": "keyword"})),
         ];
 
@@ -804,14 +825,146 @@ impl QdrantClient {
                 "field_name": field,
                 "field_schema": schema
             });
-            self.agent
-                .put(&index_url)
-                .send_json(&index_body)
-                .map_err(|e| IndexerError::Embedding(format!(
-                    "qdrant create index {field}: {e}"
-                )))?;
+            match self.agent.put(&index_url).send_json(&index_body) {
+                Ok(_) | Err(ureq::Error::Status(409, _)) => {}
+                Err(e) => {
+                    return Err(IndexerError::Embedding(format!(
+                        "qdrant create index {field}: {e}"
+                    )));
+                }
+            }
         }
 
+        Ok(())
+    }
+
+    /// Detect and repair the legacy `started_at: keyword` index by dropping
+    /// the index, coercing string payloads to integer, and letting
+    /// `create_play_events_indices` rebuild it as `integer` on the next call.
+    ///
+    /// No-op when the index is already `integer` or absent.
+    fn upgrade_play_events_started_at_index(&self) -> Result<(), IndexerError> {
+        let url = format!(
+            "{}/collections/{PLAY_EVENTS_COLLECTION}",
+            self.base_url
+        );
+        let info: Value = self
+            .agent
+            .get(&url)
+            .call()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant get play_events: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let data_type = info["result"]["payload_schema"]["started_at"]["data_type"]
+            .as_str()
+            .map(|s| s.to_lowercase());
+
+        if data_type.as_deref() != Some("keyword") {
+            return Ok(());
+        }
+
+        tracing::warn!("play_events: legacy started_at:keyword index detected — migrating to integer");
+
+        // Drop the legacy index first; Qdrant rejects creating an index with
+        // a different type on top of an existing one.
+        let drop_url = format!(
+            "{}/collections/{PLAY_EVENTS_COLLECTION}/index/started_at",
+            self.base_url
+        );
+        match self.agent.delete(&drop_url).call() {
+            Ok(_) | Err(ureq::Error::Status(404, _)) => {}
+            Err(e) => {
+                return Err(IndexerError::Embedding(format!(
+                    "qdrant drop legacy started_at index: {e}"
+                )));
+            }
+        }
+
+        // Migrate payloads: any point whose `started_at` is a JSON string gets
+        // rewritten to its integer parse.
+        self.migrate_started_at_string_to_int()?;
+
+        Ok(())
+    }
+
+    /// Scroll the `play_events` collection and rewrite any `started_at`
+    /// stored as a string into its parsed `i64` value. Points with malformed
+    /// strings or missing `started_at` are skipped.
+    fn migrate_started_at_string_to_int(&self) -> Result<(), IndexerError> {
+        let scroll_url = format!(
+            "{}/collections/{PLAY_EVENTS_COLLECTION}/points/scroll",
+            self.base_url
+        );
+        let set_url = format!(
+            "{}/collections/{PLAY_EVENTS_COLLECTION}/points/payload",
+            self.base_url
+        );
+
+        let mut offset: Option<Value> = None;
+        let mut migrated: u64 = 0;
+        let mut scanned: u64 = 0;
+
+        loop {
+            let mut body = json!({
+                "limit": 500,
+                "with_payload": ["started_at"],
+                "with_vector": false
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+
+            let resp: Value = self
+                .agent
+                .post(&scroll_url)
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!(
+                    "qdrant scroll play_events for migration: {e}"
+                )))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+            let points = resp["result"]["points"].as_array().cloned().unwrap_or_default();
+            for p in &points {
+                scanned += 1;
+                let id = match p.get("id") {
+                    Some(v) => v.clone(),
+                    None => continue,
+                };
+                let started_at = &p["payload"]["started_at"];
+                let new_value = match started_at {
+                    Value::String(s) => s.parse::<i64>().ok(),
+                    _ => None,
+                };
+                let Some(parsed) = new_value else { continue };
+
+                let patch = json!({
+                    "payload": { "started_at": parsed },
+                    "points": [id]
+                });
+                self.agent
+                    .post(&set_url)
+                    .send_json(&patch)
+                    .map_err(|e| IndexerError::Embedding(format!(
+                        "qdrant set_payload started_at: {e}"
+                    )))?;
+                migrated += 1;
+            }
+
+            offset = match resp["result"]["next_page_offset"].clone() {
+                Value::Null => None,
+                v => Some(v),
+            };
+            if offset.is_none() {
+                break;
+            }
+        }
+
+        tracing::info!(
+            scanned, migrated,
+            "play_events: started_at string→int migration complete"
+        );
         Ok(())
     }
 
