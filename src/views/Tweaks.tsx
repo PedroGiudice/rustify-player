@@ -75,7 +75,14 @@ function FontSelect(props: {
 
 function NumberSlider(props: {
   label: string;
-  key: "scale" | "glow" | "lyricsGlass";
+  key:
+    | "scale"
+    | "glow"
+    | "lyricsGlass"
+    | "bgBassGain"
+    | "bgMidGain"
+    | "bgTrebleGain"
+    | "bgSmoothing";
   min: number;
   max: number;
   step: number;
@@ -194,6 +201,40 @@ export function Tweaks() {
             label="EQ spectrum"
             key="eqSpectrumOverlay"
             options={[[true, "On"], [false, "Off"]]}
+          />
+
+          <div class="tweaks__divider"><span>Bg reactivity</span></div>
+          <NumberSlider
+            label="Bass"
+            key="bgBassGain"
+            min={0}
+            max={2}
+            step={0.05}
+            format={(v) => v.toFixed(2)}
+          />
+          <NumberSlider
+            label="Mid"
+            key="bgMidGain"
+            min={0}
+            max={2}
+            step={0.05}
+            format={(v) => v.toFixed(2)}
+          />
+          <NumberSlider
+            label="Treble"
+            key="bgTrebleGain"
+            min={0}
+            max={2}
+            step={0.05}
+            format={(v) => v.toFixed(2)}
+          />
+          <NumberSlider
+            label="Smoothing"
+            key="bgSmoothing"
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
           />
 
           <button class="tweaks__reset" onClick={() => resetTweaks()}>

@@ -33,6 +33,22 @@ export interface TweaksState {
   /** Overlay de spectrum real (pos-DSP) sob a curva do EQ.
       31 barras ISO 1/3 oitava com peak-hold. Herda --bg-ink-rgb. */
   eqSpectrumOverlay: boolean;
+
+  // ── Bg reactivity ───────────────────────────────────────────
+  // Cada gain pondera o envelope da banda correspondente na soma
+  // que modula a amplitude do bg. 0 = banda ignorada, 1 = peso
+  // neutro, 2 = empurra forte. Mesma escala nas três pra facilitar
+  // mental model: "quanto graves importam vs agudos".
+  /** Peso dos graves (20-200 Hz). 0..2, default 1. */
+  bgBassGain: number;
+  /** Peso dos médios (200-2 000 Hz). 0..2, default 1. */
+  bgMidGain: number;
+  /** Peso dos agudos (2 000-12 000 Hz). 0..2, default 0.8. Mais
+      baixo por padrão porque chimbal/hi-hat saturam fácil. */
+  bgTrebleGain: number;
+  /** Smoothing do envelope final no canvas. 0 = resposta crua
+      (~100 ms tau), 1 = bem suave (~800 ms tau). */
+  bgSmoothing: number;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -46,6 +62,10 @@ export const DEFAULTS: TweaksState = {
   lyricsGlass: 0.25,
   bgInk: "#171717",
   eqSpectrumOverlay: true,
+  bgBassGain: 1.0,
+  bgMidGain: 1.0,
+  bgTrebleGain: 0.8,
+  bgSmoothing: 0.3,
 };
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
@@ -131,6 +151,14 @@ export function applyTweaks(s: TweaksState = state()) {
 
   // EQ spectrum overlay: data attr e debug-only. EqCanvas le tweaks().eqSpectrumOverlay direto.
   html.dataset.eqSpectrum = s.eqSpectrumOverlay ? "on" : "off";
+
+  // Bg reactivity: 3 ganhos por banda + smoothing. SpectrumCanvas
+  // lê essas vars no frame loop (~3x/s) sem listener, igual o
+  // bgInk. Range esperado: 0..2 nos gains, 0..1 no smoothing.
+  html.style.setProperty("--bg-bass-gain", s.bgBassGain.toFixed(3));
+  html.style.setProperty("--bg-mid-gain", s.bgMidGain.toFixed(3));
+  html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
+  html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {

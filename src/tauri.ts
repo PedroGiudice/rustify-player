@@ -224,8 +224,12 @@ export const onMprisCommand = (cb: (cmd: string) => void) =>
 export interface FftPayload {
   stream_time_ms: number;
   magnitudes: number[];
-  /** Envelope follower do range 20-150 Hz (attack ~5ms, release ~100ms). 0..1. */
+  /** Envelope follower 20-200 Hz (attack ~5ms, release ~100ms). 0..1. */
   low_band_mag: number;
+  /** Envelope follower 200-2000 Hz (mesma resposta temporal). 0..1. */
+  mid_band_mag: number;
+  /** Envelope follower 2000-12000 Hz (mesma resposta temporal). 0..1. */
+  high_band_mag: number;
   /** RMS slow-averaged (lowpass ~2 Hz) sobre todas as bands. 0..1. */
   rms_energy: number;
   /** Sample rate negociada do PipeWire (Hz). 0 enquanto nao negociado. */
@@ -238,109 +242,7 @@ export const onAudioFft = (cb: (payload: FftPayload) => void) =>
 export const spectrumSubscribe = () => invoke("spectrum_subscribe");
 export const spectrumUnsubscribe = () => invoke("spectrum_unsubscribe");
 
-export interface SpectrumRange {
-  label: string;
-  from_hz: number;
-  to_hz: number;
-  gain: number;
-}
-
-export interface SpectrumConfig {
-  ranges: SpectrumRange[];
-  sample_rate: number;
-  bands: number;
-}
-
-export const getSpectrumConfig = () => invoke<SpectrumConfig>("get_spectrum_config");
-export const setSpectrumConfig = (ranges: SpectrumRange[]) =>
-  invoke("set_spectrum_config", { ranges });
-
 export const listShapes = () => invoke<string[]>("list_shapes");
-
-// ─── Spectrum Visual Presets ────────────────────────────────────────────────
-
-export interface SpectrumVisualConfig {
-  name: string;
-  lines: number;
-  points_per_line: number;
-  attack: number;
-  release: number;
-  release_bass: number;
-  log_exponent: number;
-  bass_bin_threshold: number;
-  base_strength: number;
-  energy_multiplier: number;
-  bass_multiplier: number;
-  low_mid_multiplier: number;
-  compression_bass: number;
-  compression_default: number;
-  hue_spread: number;
-  saturation: number;
-  base_alpha: number;
-  depth_alpha: number;
-  energy_alpha: number;
-  base_lightness: number;
-  depth_lightness: number;
-  energy_lightness: number;
-  regions: [number, number][];
-  // V2 params
-  style: string;
-  brightness_rigidity: number;
-  bass_reactivity_boost: number;
-  bass_attack_scale: number;
-  invert_depth: boolean;
-  bg_dimming: number;
-  bg_pulse_strength: number;
-  gravity_decay: number;
-  agc_decay: number;
-  agc_floor: number;
-  // Fluid params
-  fluid_density_dissipation: number;
-  fluid_velocity_dissipation: number;
-  fluid_curl: number;
-  fluid_splat_radius: number;
-  fluid_splat_force: number;
-  fluid_color_intensity: number;
-  fluid_sensitivity: number;
-  fluid_pressure_iterations: number;
-  // Peak-trigger / colour calibration
-  fluid_peak_threshold: number;
-  fluid_delta_threshold: number;
-  fluid_jitter_amount: number;
-  fluid_hue_jitter: number;
-  fluid_sat_base: number;
-  fluid_sat_jitter: number;
-  // SDF Raymarching params
-  sdf_step_count: number;
-  sdf_max_dist: number;
-  sdf_warp_intensity: number;
-  sdf_warp_frequency: number;
-  sdf_smooth_k: number;
-  sdf_emissive_boost: number;
-  sdf_resolution_scale: number;
-  sdf_render_mode: number;
-  shape_anim_baseline_speed: number;
-  shape_anim_energy_gain: number;
-  shape_anim_peak_kick_gain: number;
-  shape_anim_peak_threshold: number;
-  shape_anim_peak_decay: number;
-  shape_anim_mode: string;
-}
-
-export interface SpectrumPresetInfo {
-  filename: string;
-  name: string;
-}
-
-export const listSpectrumPresets = () => invoke<SpectrumPresetInfo[]>("list_spectrum_presets");
-export const loadSpectrumPreset = (filename: string) =>
-  invoke<SpectrumVisualConfig>("load_spectrum_preset", { filename });
-export const saveSpectrumPreset = (filename: string, config: SpectrumVisualConfig) =>
-  invoke("save_spectrum_preset", { filename, config });
-export const watchSpectrumPreset = (filename: string) =>
-  invoke("watch_spectrum_preset", { filename });
-export const onSpectrumConfigChanged = (cb: () => void) =>
-  listen("spectrum-config-changed", () => cb());
 
 export interface ThemeInfo {
   filename: string;

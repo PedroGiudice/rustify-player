@@ -1,39 +1,56 @@
 /* ============================================================
-   components/SpectrumCanvas.tsx — Carbon-on-paper spectrum bg.
+   components/SpectrumCanvas.tsx — Carbon-on-paper animated bg.
 
-   Renders only when its container is visible (active route =
-   NowPlaying). Animation loop is rAF + bails if hidden.
+   Background global do app (mora no .app-bg, monta UMA vez).
+   Animação base: shape + breath + drift + fase temporal — roda
+   sempre, mesmo sem áudio. É bg, não visualizer.
 
-   Shape state is persisted to localStorage so it survives reloads.
+   Reatividade à música: consome 3 envelope followers do payload
+   audio-fft (já com smoothing assimétrico aplicado no Rust em
+   pw_capture.rs):
+     - low_band_mag   (20-200 Hz)
+     - mid_band_mag   (200-2 000 Hz)
+     - high_band_mag  (2 000-12 000 Hz)
 
-   Beat-sync (T10): consome `low_band_mag` / `rms_energy` do payload
-   `audio-fft` (envelope follower já aplicado no Rust em pw_capture.rs).
-   Quando o stream para de chegar (subscribe inativo, DSP bypass, ou
-   track carregando), faz fallback time-driven (fakeKick/fakeEnergy).
+   O peso de cada banda é controlado por Tweaks via CSS vars
+   --bg-bass-gain / --bg-mid-gain / --bg-treble-gain (0..2). O
+   smoothing final no canvas (decay quando FFT para) sai de
+   --bg-smoothing (0..1 → tau em ENV_TAU_MIN..ENV_TAU_MAX).
 
-   Regra crítica: o envelope só modula amplitude e ink density.
-   NUNCA toca em fase — caso contrário vira screensaver Winamp.
+   Regra crítica: o envelope só modula amplitude. NUNCA toca em
+   fase nem em ink density — caso contrário vira screensaver.
+
+   Tinta puxada da CSS var --bg-ink-rgb (Tweaks panel). Default
+   carbono 23, 23, 23 com alpha 0.16. lineWidth 0.7.
+
+   Shape state persiste em localStorage via useShape().
    ============================================================ */
 
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
-import { player } from "../store/player";
 
 const SHAPE_KEY = "rustify-mock-shape";
-const SYNC_KEY = "rustify-mock-sync";
-const BPM_KEY = "rustify-mock-bpm";
 
 const NLINES = 110;
 const NPOINTS = 96;
 
-/** Tempo (ms) sem frame de FFT antes de cair pro fallback time-driven. */
+/** Tempo (ms) sem frame de FFT antes de considerar stream parado. */
 const FFT_STALE_MS = 250;
 
+/** Quanto o envelope contínuo modula amplitude (1 + ENV_GAIN * env). */
+const ENV_GAIN = 0.5;
+
+/** Limites de tau (s) para o decay do envelope. Mapeados pelo slider
+    bgSmoothing dos Tweaks: 0 → ENV_TAU_MIN (resposta crua), 1 → ENV_TAU_MAX
+    (bem suave). Default em store/tweaks.ts é 0.3 → tau ≈ 310 ms. */
+const ENV_TAU_MIN = 0.1;
+const ENV_TAU_MAX = 0.8;
+
 export interface SpectrumCanvasProps {
-  /** Strokes lines in this color. Default is carbon ink 10% alpha (paper mode). */
+  /** Strokes lines in this color. Override completo da CSS var. */
   strokeStyle?: string;
-  /** Class on the <canvas>. */
+  /** Class extra no <canvas>. */
   class?: string;
 }
 
@@ -63,73 +80,34 @@ export function useShape() {
   };
 }
 
-/**
- * Lê SYNC_STRENGTH do localStorage. Suporta tanto a forma nomeada
- * configurada no T9 Settings ("off" | "subtle" | "default" | "pulse")
- * quanto número direto (legado do mockup HTML). Default 0.55.
- */
-function readSyncStrength(): number {
-  try {
-    const raw = localStorage.getItem(SYNC_KEY);
-    if (raw === null) return 0.55;
-    const named: Record<string, number> = {
-      off: 0,
-      subtle: 0.25,
-      default: 0.55,
-      pulse: 0.9,
-    };
-    if (raw in named) return named[raw];
-    const n = parseFloat(raw);
-    if (Number.isFinite(n)) return Math.max(0, Math.min(1, n));
-  } catch {}
-  return 0.55;
-}
-
-/** BPM do fallback (90 default, lido do localStorage). */
-function readFallbackBpm(): number {
-  try {
-    const raw = localStorage.getItem(BPM_KEY);
-    if (raw === null) return 90;
-    const n = parseFloat(raw);
-    if (Number.isFinite(n)) return Math.max(40, Math.min(200, n));
-  } catch {}
-  return 90;
-}
-
-/** Kick fallback time-driven — espelha o HTML referência. */
-function fakeKick(t: number, bpm: number): number {
-  const period = 60 / bpm;
-  const phase = (t % period) / period;
-  return phase < 0.05 ? phase / 0.05 : Math.exp(-(phase - 0.05) * 7.5);
-}
-
-/** Energy fallback time-driven — espelha o HTML referência. */
-function fakeEnergy(t: number): number {
-  return 0.55 + 0.2 * Math.sin(t * 0.7) + 0.15 * Math.sin(t * 0.45 + 1.7);
-}
-
 export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let canvas!: HTMLCanvasElement;
   let raf = 0;
   const t0 = performance.now();
 
-  // Estado vivo do envelope vindo do backend. Atualizado pelo listener
-  // de `audio-fft`. Fora do Solid signal de propósito — frame loop não
-  // precisa de reatividade, só do snapshot mais recente.
+  // Estado vivo dos 3 envelopes vindos do backend. Atualizados
+  // pelo listener de `audio-fft`. Fora de signal de propósito —
+  // frame loop não precisa de reatividade Solid, só do snapshot.
   let lastLow = 0;
-  let lastRms = 0.55;
+  let lastMid = 0;
+  let lastHigh = 0;
   let lastFftAt = 0;
 
-  // Cache do SYNC_STRENGTH e BPM — relido a cada frame (custo zero) pra
-  // refletir mudanças no Settings sem precisar de event listener.
-  let syncStrength = readSyncStrength();
-  let fallbackBpm = readFallbackBpm();
-  // Cor da tinta (Tweaks → "Bg ink"). Lida da CSS var --bg-ink-rgb
-  // (formato "R, G, B"). Default carbono.
+  // Envelope suavizado final — converge pro target via exp decay.
+  // Garante que pause / FFT stale produza fade gradual.
+  let smoothedEnv = 0;
+  let lastFrameMs = performance.now();
+
+  // Cor da tinta + ganhos por banda + smoothing. Lidos das CSS
+  // vars que Tweaks escreve no <html> (~3x/s, sem listener).
   let inkRgb = "23, 23, 23";
+  let bassGain = 1.0;
+  let midGain = 1.0;
+  let trebleGain = 0.8;
+  let smoothing = 0.3;
   let cfgCheckTick = 0;
 
-  // Listener de FFT do backend.
+  // Cleanup do listener de FFT.
   let unlistenFft: (() => void) | undefined;
 
   onMount(() => {
@@ -149,89 +127,72 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
     ro.observe(canvas);
     resize();
 
-    // Subscribe ao audio-fft. Quando ativo, sobrescreve os fallbacks.
+    // Subscribe ao audio-fft. Quando ativo, alimenta os 3 envelopes.
+    // Fallback pra 0 se um campo vier ausente (payloads antigos).
     onAudioFft((payload: FftPayload) => {
-      lastLow = payload.low_band_mag ?? 0;
-      lastRms = payload.rms_energy ?? 0;
+      lastLow  = payload.low_band_mag ?? 0;
+      lastMid  = payload.mid_band_mag ?? 0;
+      lastHigh = payload.high_band_mag ?? 0;
       lastFftAt = performance.now();
     }).then((un) => { unlistenFft = un; });
 
-    // Ativa o spectrum-emitter no backend. O command é idempotente
-    // (refcount no lado Rust), então conviver com Visualizer também
-    // mantendo subscribe não causa problema.
+    // Ativa o spectrum-emitter no backend (idempotente, refcount no
+    // Rust — conviver com Visualizer também subscrito é seguro).
     spectrumSubscribe().catch(() => {});
 
-    // Frame estatico desenhado quando o player esta pausado: zera kick,
-    // energy, breath e drift; usa apenas a shape function pra textura.
-    function drawStaticFrame() {
-      if (document.hidden || !canvas.isConnected) return;
-      ctx.clearRect(0, 0, w, h);
-      const amp = h * 0.17; // sem breath, sem reactive
-      const topY = h * 0.04;
-      const botY = h * 0.98;
-      const shapeFn = SHAPES[shapeIdx()].fn;
-      ctx.beginPath();
-      for (let i = 0; i < NLINES; i++) {
-        const v = i / (NLINES - 1);
-        const baselineY = topY + (botY - topY) * v;
-        for (let j = 0; j <= NPOINTS; j++) {
-          const u = j / NPOINTS;
-          const x = u * w;
-          // t=0 congelado; fase apenas espacial por linha
-          const s = shapeFn(u, v, 0);
-          const phase = i * 0.085;
-          const wave = Math.sin(u * Math.PI * 3.2 + phase) * s * amp;
-          const y = baselineY - wave;
-          if (j === 0) ctx.moveTo(x, y);
-          else         ctx.lineTo(x, y);
-        }
-      }
-      ctx.strokeStyle = props.strokeStyle ?? `rgba(${inkRgb}, 0.08)`;
-      ctx.lineWidth = 0.6;
-      ctx.stroke();
-    }
-
     function frame() {
-      // Loop so anda enquanto algo toca. Sem isso, fakeKick + fakeEnergy +
-      // breath + drift continuam pulsando o canvas em silencio. Pause limpa
-      // o ultimo frame estatico (sem animacao residual) e libera o rAF.
-      if (!player.isPlaying) {
-        drawStaticFrame();
-        raf = 0;
-        return;
-      }
       raf = requestAnimationFrame(frame);
       if (document.hidden || !canvas.isConnected) return;
 
-      // Re-ler config do localStorage ~3x/s pra refletir mudanças no Tweaks
-      // Settings sem precisar de listener dedicado. Cheap (~1 syscall).
+      // Re-ler CSS vars dos Tweaks ~3x/s pra refletir mudanças sem
+      // listener Solid. 5 leituras agrupadas no mesmo tick pra evitar
+      // 5 reflows separados em janelas onde getComputedStyle não
+      // está warm.
       cfgCheckTick++;
       if (cfgCheckTick % 20 === 0) {
-        syncStrength = readSyncStrength();
-        fallbackBpm = readFallbackBpm();
-        const v = getComputedStyle(document.documentElement)
-          .getPropertyValue("--bg-ink-rgb").trim();
-        if (v) inkRgb = v;
+        const cs = getComputedStyle(document.documentElement);
+        const ink = cs.getPropertyValue("--bg-ink-rgb").trim();
+        if (ink) inkRgb = ink;
+        const b = parseFloat(cs.getPropertyValue("--bg-bass-gain"));
+        const m = parseFloat(cs.getPropertyValue("--bg-mid-gain"));
+        const tr = parseFloat(cs.getPropertyValue("--bg-treble-gain"));
+        const sm = parseFloat(cs.getPropertyValue("--bg-smoothing"));
+        if (Number.isFinite(b)) bassGain = b;
+        if (Number.isFinite(m)) midGain = m;
+        if (Number.isFinite(tr)) trebleGain = tr;
+        if (Number.isFinite(sm)) smoothing = sm;
       }
 
       const tMs = performance.now();
       const t = (tMs - t0) * 0.001;
+      const dt = Math.max(0, (tMs - lastFrameMs) * 0.001);
+      lastFrameMs = tMs;
       ctx.clearRect(0, 0, w, h);
+
+      // Target do envelope: soma ponderada das 3 bandas, normalizada
+      // pela soma dos pesos pra evitar saturar quando gains > 1.
+      // Quando stale (sem FFT por > FFT_STALE_MS), target = 0 e o
+      // smoothedEnv decai naturalmente.
+      const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
+      let target = 0;
+      if (fresh) {
+        const num = bassGain * lastLow + midGain * lastMid + trebleGain * lastHigh;
+        const den = bassGain + midGain + trebleGain;
+        target = den > 1e-3 ? num / den : 0;
+      }
+
+      // Suavização exponencial: smoothedEnv converge pra target com
+      // tau controlado por --bg-smoothing (0..1 → ENV_TAU_MIN..MAX).
+      const tau = ENV_TAU_MIN + smoothing * (ENV_TAU_MAX - ENV_TAU_MIN);
+      const alpha = 1 - Math.exp(-dt / tau);
+      smoothedEnv += (target - smoothedEnv) * alpha;
 
       // Macro breathing — preservado do original. 4.5 s period.
       const breath = 0.85 + 0.15 * Math.sin(t * 0.4);
 
-      // Escolhe fonte do envelope: backend se fresco, senão time-driven.
-      const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
-      const kick = fresh ? lastLow : fakeKick(t, fallbackBpm);
-      const energy = fresh ? lastRms : fakeEnergy(t);
-
-      // Music-reactive envelope: dominado pelo kick (sub-bass), com RMS
-      // como tempero suave de dinamica geral. Coeficientes calibrados pra
-      // Subtle (0.25) gerar ~18% de amplitude no pico e Default (0.55)
-      // ~40%. Kick > RMS pra animacao seguir grave/kick e nao hi-hats.
-      // Scaled around 1.0 — syncStrength=0 deixa shape exatamente como antes.
-      const reactive = 1 + syncStrength * (kick * 0.7 + (energy - 0.7) * 0.15);
+      // Reatividade contínua: envelope só modula amplitude (nunca
+      // fase, nunca tinta — senão vira Winamp).
+      const reactive = 1 + ENV_GAIN * smoothedEnv;
       const amp = h * 0.17 * breath * reactive;
 
       const topY = h * 0.04;
@@ -255,27 +216,11 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
           else         ctx.lineTo(x, y);
         }
       }
-
-      // Ink density rides o kick — cada beat fica como um leve adensamento.
-      const inkAlpha = 0.1 + syncStrength * kick * 0.05;
-      ctx.strokeStyle = props.strokeStyle ?? `rgba(${inkRgb}, ${inkAlpha.toFixed(3)})`;
-      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = props.strokeStyle ?? `rgba(${inkRgb}, 0.16)`;
+      ctx.lineWidth = 0.7;
       ctx.stroke();
     }
     raf = requestAnimationFrame(frame);
-
-    // Reativa o loop quando isPlaying virar true (foi pausado e voltou).
-    // O proprio frame() decide se continua; aqui so dispara o re-start.
-    createEffect(() => {
-      if (player.isPlaying && raf === 0) {
-        raf = requestAnimationFrame(frame);
-      } else if (!player.isPlaying && raf !== 0) {
-        // Pausa imediata: cancela o frame agendado e desenha estatico.
-        cancelAnimationFrame(raf);
-        raf = 0;
-        drawStaticFrame();
-      }
-    });
 
     onCleanup(() => {
       cancelAnimationFrame(raf);
@@ -284,5 +229,5 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
     });
   });
 
-  return <canvas ref={canvas} class={`np__canvas${props.class ? ` ${props.class}` : ""}`} aria-hidden="true" />;
+  return <canvas ref={canvas} class={`app-bg__canvas${props.class ? ` ${props.class}` : ""}`} aria-hidden="true" />;
 }

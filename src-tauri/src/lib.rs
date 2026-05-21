@@ -35,10 +35,10 @@ struct QdrantSidecar(Mutex<Option<qdrant_process::QdrantProcess>>);
 /// Payload emitted to frontend via "audio-fft" event.
 /// `stream_time_ms` is the track position (ms) this FFT frame belongs to.
 ///
-/// Os campos `low_band_mag` / `rms_energy` carregam o envelope beat-sync
-/// computado no Rust (one-pole IIR no `fft_worker_loop`) e são consumidos
-/// pelo SpectrumCanvas. Mantêm o range 0..1 e nunca afetam fase — só
-/// amplitude e densidade de tinta (ver docs/.../README.md secção 5).
+/// Os campos `*_band_mag` / `rms_energy` carregam envelope beat-sync
+/// computados no Rust (one-pole IIR no `fft_worker_loop`) e são consumidos
+/// pelo SpectrumCanvas. Range 0..1, sempre. A reatividade do bg pondera
+/// as três bandas via Tweaks (bgBassGain / bgMidGain / bgTrebleGain).
 ///
 /// Snake-case é preservado para retro-compatibilidade com o frontend atual
 /// que já consome `stream_time_ms` (sem `rename_all` no struct).
@@ -47,6 +47,8 @@ struct FftPayload {
     stream_time_ms: u64,
     magnitudes: Vec<u8>,
     low_band_mag: f32,
+    mid_band_mag: f32,
+    high_band_mag: f32,
     rms_energy: f32,
     /// Sample rate negociada pelo PipeWire (Hz). 0 enquanto nao
     /// negociado. Frontend usa pra calcular bin->banda do RTA
@@ -54,42 +56,6 @@ struct FftPayload {
     sample_rate: u32,
 }
 
-#[derive(Clone, Serialize, serde::Deserialize)]
-struct SpectrumRange {
-    label: String,
-    from_hz: f32,
-    to_hz: f32,
-    gain: f32,
-}
-
-#[derive(Clone, Serialize, serde::Deserialize)]
-struct SpectrumConfig {
-    ranges: Vec<SpectrumRange>,
-    sample_rate: u32,
-    bands: u32,
-}
-
-impl Default for SpectrumConfig {
-    fn default() -> Self {
-        Self {
-            ranges: vec![
-                SpectrumRange { label: "Sub-bass".into(), from_hz: 20.0, to_hz: 60.0, gain: 1.0 },
-                SpectrumRange { label: "Bass".into(), from_hz: 60.0, to_hz: 250.0, gain: 1.0 },
-                SpectrumRange { label: "Low-mid".into(), from_hz: 250.0, to_hz: 500.0, gain: 1.0 },
-                SpectrumRange { label: "Mid".into(), from_hz: 500.0, to_hz: 2000.0, gain: 1.0 },
-                SpectrumRange { label: "Upper-mid".into(), from_hz: 2000.0, to_hz: 4000.0, gain: 1.0 },
-                SpectrumRange { label: "Presence".into(), from_hz: 4000.0, to_hz: 8000.0, gain: 1.0 },
-                SpectrumRange { label: "Brilliance".into(), from_hz: 8000.0, to_hz: 20000.0, gain: 1.0 },
-            ],
-            sample_rate: 44100,
-            bands: 512,
-        }
-    }
-}
-
-impl SpectrumConfig {}
-
-struct SharedSpectrumConfig(Arc<Mutex<SpectrumConfig>>);
 struct SpectrumActive(Arc<AtomicBool>);
 
 /// Snapshot of engine state, updated by the event-listener thread.
@@ -703,17 +669,6 @@ fn list_backgrounds() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn get_spectrum_config(config: State<SharedSpectrumConfig>) -> SpectrumConfig {
-    config.0.lock().unwrap().clone()
-}
-
-#[tauri::command]
-fn set_spectrum_config(config: State<SharedSpectrumConfig>, ranges: Vec<SpectrumRange>) {
-    let mut cfg = config.0.lock().unwrap();
-    cfg.ranges = ranges;
-}
-
-#[tauri::command]
 fn spectrum_subscribe(active: State<SpectrumActive>) {
     active.0.store(true, Ordering::Relaxed);
 }
@@ -723,328 +678,6 @@ fn spectrum_unsubscribe(active: State<SpectrumActive>) {
     active.0.store(false, Ordering::Relaxed);
 }
 
-// ─── Spectrum Visual Presets ─────────────────────────────────────────────────
-
-fn spectrum_presets_dir() -> PathBuf {
-    dirs_home().join(".local/share/rustify-player/spectrum")
-}
-
-#[derive(Clone, Serialize, serde::Deserialize)]
-struct SpectrumVisualConfig {
-    name: String,
-    lines: u32,
-    points_per_line: u32,
-    attack: f32,
-    release: f32,
-    release_bass: f32,
-    log_exponent: f32,
-    bass_bin_threshold: u32,
-    base_strength: f32,
-    energy_multiplier: f32,
-    bass_multiplier: f32,
-    low_mid_multiplier: f32,
-    compression_bass: f32,
-    compression_default: f32,
-    hue_spread: f32,
-    saturation: f32,
-    base_alpha: f32,
-    depth_alpha: f32,
-    energy_alpha: f32,
-    base_lightness: f32,
-    depth_lightness: f32,
-    energy_lightness: f32,
-    regions: Vec<[f32; 2]>,
-    // V2 params — serde defaults for backward compat with existing YAMLs
-    #[serde(default = "default_style")]
-    style: String,
-    #[serde(default = "default_brightness_rigidity")]
-    brightness_rigidity: f32,
-    #[serde(default = "default_bass_reactivity_boost")]
-    bass_reactivity_boost: f32,
-    #[serde(default = "default_bass_attack_scale")]
-    bass_attack_scale: f32,
-    #[serde(default = "default_invert_depth")]
-    invert_depth: bool,
-    #[serde(default = "default_bg_dimming")]
-    bg_dimming: f32,
-    #[serde(default = "default_bg_pulse_strength")]
-    bg_pulse_strength: f32,
-    #[serde(default = "default_gravity_decay")]
-    gravity_decay: f32,
-    #[serde(default = "default_agc_decay")]
-    agc_decay: f32,
-    #[serde(default = "default_agc_floor")]
-    agc_floor: f32,
-    // Fluid params
-    #[serde(default = "default_fluid_density_dissipation")]
-    fluid_density_dissipation: f32,
-    #[serde(default = "default_fluid_velocity_dissipation")]
-    fluid_velocity_dissipation: f32,
-    #[serde(default = "default_fluid_curl")]
-    fluid_curl: f32,
-    #[serde(default = "default_fluid_splat_radius")]
-    fluid_splat_radius: f32,
-    #[serde(default = "default_fluid_splat_force")]
-    fluid_splat_force: f32,
-    #[serde(default = "default_fluid_color_intensity")]
-    fluid_color_intensity: f32,
-    #[serde(default = "default_fluid_sensitivity")]
-    fluid_sensitivity: f32,
-    #[serde(default = "default_fluid_pressure_iterations")]
-    fluid_pressure_iterations: u32,
-    // Peak-trigger / colour calibration (frontend-only, hot-reloadable)
-    #[serde(default = "default_fluid_peak_threshold")]
-    fluid_peak_threshold: f32,
-    #[serde(default = "default_fluid_delta_threshold")]
-    fluid_delta_threshold: f32,
-    #[serde(default = "default_fluid_jitter_amount")]
-    fluid_jitter_amount: f32,
-    #[serde(default = "default_fluid_hue_jitter")]
-    fluid_hue_jitter: f32,
-    #[serde(default = "default_fluid_sat_base")]
-    fluid_sat_base: f32,
-    #[serde(default = "default_fluid_sat_jitter")]
-    fluid_sat_jitter: f32,
-    // SDF Raymarching params
-    #[serde(default = "default_sdf_step_count")]
-    sdf_step_count: u32,
-    #[serde(default = "default_sdf_max_dist")]
-    sdf_max_dist: f32,
-    #[serde(default = "default_sdf_warp_intensity")]
-    sdf_warp_intensity: f32,
-    #[serde(default = "default_sdf_warp_frequency")]
-    sdf_warp_frequency: f32,
-    #[serde(default = "default_sdf_smooth_k")]
-    sdf_smooth_k: f32,
-    #[serde(default = "default_sdf_emissive_boost")]
-    sdf_emissive_boost: f32,
-    #[serde(default = "default_sdf_resolution_scale")]
-    sdf_resolution_scale: f32,
-    #[serde(default = "default_sdf_render_mode")]
-    sdf_render_mode: u32,
-    // Animated shape (directory with manifest.json + normal_*.png) driver params.
-    // Position advances per render frame as: baseline + energy_gain*E + peak_kick*kick_gain.
-    #[serde(default = "default_shape_anim_baseline_speed")]
-    shape_anim_baseline_speed: f32,
-    #[serde(default = "default_shape_anim_energy_gain")]
-    shape_anim_energy_gain: f32,
-    #[serde(default = "default_shape_anim_peak_kick_gain")]
-    shape_anim_peak_kick_gain: f32,
-    #[serde(default = "default_shape_anim_peak_threshold")]
-    shape_anim_peak_threshold: f32,
-    #[serde(default = "default_shape_anim_peak_decay")]
-    shape_anim_peak_decay: f32,
-    #[serde(default = "default_shape_anim_mode")]
-    shape_anim_mode: String,
-}
-
-fn default_style() -> String { "exoskeleton".into() }
-fn default_brightness_rigidity() -> f32 { 0.7 }
-fn default_bass_reactivity_boost() -> f32 { 1.4 }
-fn default_bass_attack_scale() -> f32 { 0.43 }
-fn default_invert_depth() -> bool { true }
-fn default_bg_dimming() -> f32 { 0.45 }
-fn default_bg_pulse_strength() -> f32 { 0.25 }
-fn default_gravity_decay() -> f32 { 1.5 }
-fn default_agc_decay() -> f32 { 0.985 }
-fn default_agc_floor() -> f32 { 3.0 }
-fn default_fluid_density_dissipation() -> f32 { 4.0 }    // Fade ~180ms — splat reads as fluid, fades cleanly between events
-fn default_fluid_velocity_dissipation() -> f32 { 2.5 }   // Velocity persists ~280ms — solver grows real swirls (this is what makes it look like fluid)
-fn default_fluid_curl() -> f32 { 38.0 }                  // Higher vorticity — splats actually swirl and curl, not just fade in place
-fn default_fluid_splat_radius() -> f32 { 0.20 }          // Larger blobs — more presence on canvas, fluid swirl reads clearly
-fn default_fluid_splat_force() -> f32 { 600.0 }          // Base reference; frontend multiplies by 0.015 × peakStrength (event-driven)
-fn default_fluid_color_intensity() -> f32 { 0.35 }       // Restored to visible range; peak-triggered emission is sparse, so each splat must carry weight
-fn default_fluid_sensitivity() -> f32 { 1.0 }
-fn default_fluid_pressure_iterations() -> u32 { 25 }
-// Peak-trigger / colour calibration (frontend reads these into per-event splat logic)
-fn default_fluid_peak_threshold() -> f32 { 1.25 }   // ratio path: energy/runningAvg above this fires
-fn default_fluid_delta_threshold() -> f32 { 0.06 }  // delta path: energy jump per FFT frame above this fires
-fn default_fluid_jitter_amount() -> f32 { 0.10 }    // ±half this in canvas units, applied to Lissajous splat position
-fn default_fluid_hue_jitter() -> f32 { 0.14 }       // full range of hue jitter per splat (0..1 = full circle)
-fn default_fluid_sat_base() -> f32 { 0.75 }         // saturation floor; peakStrength adds 0..0.25 on top
-fn default_fluid_sat_jitter() -> f32 { 0.10 }       // random saturation jitter per splat (uniform 0..this)
-// SDF Raymarching defaults — tuned for "lite 3D" by default: lower step
-// count and tighter half-res keep fragment work modest on integrated GPUs.
-// Switch to render_mode=0 for the 2D glow path if 3D is still too heavy.
-fn default_sdf_step_count() -> u32 { 32 }           // 48→32: ~30% cheaper, silhouette near-identical
-fn default_sdf_max_dist() -> f32 { 12.0 }
-fn default_sdf_warp_intensity() -> f32 { 0.6 }      // 0..1, audio scales 0..2x
-fn default_sdf_warp_frequency() -> f32 { 1.8 }      // spatial frequency of domain warp
-fn default_sdf_smooth_k() -> f32 { 0.85 }           // smin blending — higher = more organic merging
-fn default_sdf_emissive_boost() -> f32 { 1.3 }      // multiplier applied to fresnel rim + core glow
-fn default_sdf_resolution_scale() -> f32 { 0.4 }    // render to 0.4x viewport, upscale linearly — biggest perf knob
-fn default_sdf_render_mode() -> u32 { 1 }           // 0 = 2D glow (cheapest, neon look), 1 = 3D raymarched (default, volumetric)
-fn default_shape_anim_baseline_speed() -> f32 { 0.02 }   // subtle constant rotation in silence (~40s/full turn @60fps for 48f)
-fn default_shape_anim_energy_gain() -> f32 { 0.4 }        // multiplier on smoothed full-band energy (sustained loudness pull)
-fn default_shape_anim_peak_kick_gain() -> f32 { 0.8 }     // multiplier on ASR peak velocity — high so kicks are clearly visible
-fn default_shape_anim_peak_threshold() -> f32 { 0.01 }    // delta in raw sub-bass needed to trigger a peak kick (lower = more sensitive)
-fn default_shape_anim_peak_decay() -> f32 { 0.90 }        // peak kick velocity multiplier/frame (0.90 = ~115ms half-life @60fps, snappier)
-fn default_shape_anim_mode() -> String { "intensity".into() }  // pendulum | intensity | band_split (requires Gemini-classified manifest for the latter two)
-
-impl Default for SpectrumVisualConfig {
-    fn default() -> Self {
-        Self {
-            name: "Default".into(),
-            lines: 150,
-            points_per_line: 120,
-            attack: 0.35,
-            release: 0.06,
-            release_bass: 0.043,
-            log_exponent: 1.5,
-            bass_bin_threshold: 40,
-            base_strength: 12.0,
-            energy_multiplier: 220.0,
-            bass_multiplier: 1.6,
-            low_mid_multiplier: 1.3,
-            compression_bass: 0.55,
-            compression_default: 0.75,
-            hue_spread: 20.0,
-            saturation: 0.85,
-            base_alpha: 0.12,
-            depth_alpha: 0.2,
-            energy_alpha: 0.15,
-            base_lightness: 38.0,
-            depth_lightness: 18.0,
-            energy_lightness: 12.0,
-            regions: vec![
-                [0.0, 6.0], [6.0, 16.0], [16.0, 32.0],
-                [32.0, 56.0], [56.0, 84.0], [84.0, 120.0],
-                [120.0, 168.0], [168.0, 216.0], [216.0, 256.0],
-            ],
-            style: default_style(),
-            brightness_rigidity: default_brightness_rigidity(),
-            bass_reactivity_boost: default_bass_reactivity_boost(),
-            bass_attack_scale: default_bass_attack_scale(),
-            invert_depth: default_invert_depth(),
-            bg_dimming: default_bg_dimming(),
-            bg_pulse_strength: default_bg_pulse_strength(),
-            gravity_decay: default_gravity_decay(),
-            agc_decay: default_agc_decay(),
-            agc_floor: default_agc_floor(),
-            fluid_density_dissipation: default_fluid_density_dissipation(),
-            fluid_velocity_dissipation: default_fluid_velocity_dissipation(),
-            fluid_curl: default_fluid_curl(),
-            fluid_splat_radius: default_fluid_splat_radius(),
-            fluid_splat_force: default_fluid_splat_force(),
-            fluid_color_intensity: default_fluid_color_intensity(),
-            fluid_sensitivity: default_fluid_sensitivity(),
-            fluid_pressure_iterations: default_fluid_pressure_iterations(),
-            fluid_peak_threshold: default_fluid_peak_threshold(),
-            fluid_delta_threshold: default_fluid_delta_threshold(),
-            fluid_jitter_amount: default_fluid_jitter_amount(),
-            fluid_hue_jitter: default_fluid_hue_jitter(),
-            fluid_sat_base: default_fluid_sat_base(),
-            fluid_sat_jitter: default_fluid_sat_jitter(),
-            sdf_step_count: default_sdf_step_count(),
-            sdf_max_dist: default_sdf_max_dist(),
-            sdf_warp_intensity: default_sdf_warp_intensity(),
-            sdf_warp_frequency: default_sdf_warp_frequency(),
-            sdf_smooth_k: default_sdf_smooth_k(),
-            sdf_emissive_boost: default_sdf_emissive_boost(),
-            sdf_resolution_scale: default_sdf_resolution_scale(),
-            sdf_render_mode: default_sdf_render_mode(),
-            shape_anim_baseline_speed: default_shape_anim_baseline_speed(),
-            shape_anim_energy_gain: default_shape_anim_energy_gain(),
-            shape_anim_peak_kick_gain: default_shape_anim_peak_kick_gain(),
-            shape_anim_peak_threshold: default_shape_anim_peak_threshold(),
-            shape_anim_peak_decay: default_shape_anim_peak_decay(),
-            shape_anim_mode: default_shape_anim_mode(),
-        }
-    }
-}
-
-#[derive(Clone, Serialize)]
-struct SpectrumPresetInfo {
-    filename: String,
-    name: String,
-}
-
-#[tauri::command]
-fn list_spectrum_presets() -> Vec<SpectrumPresetInfo> {
-    let dir = spectrum_presets_dir();
-    std::fs::create_dir_all(&dir).ok();
-    let mut presets = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let fname = entry.file_name().to_string_lossy().to_string();
-            if !fname.ends_with(".yaml") && !fname.ends_with(".yml") { continue; }
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                if let Ok(cfg) = serde_yaml::from_str::<SpectrumVisualConfig>(&content) {
-                    presets.push(SpectrumPresetInfo { filename: fname, name: cfg.name });
-                }
-            }
-        }
-    }
-    presets.sort_by(|a, b| a.name.cmp(&b.name));
-    presets
-}
-
-#[tauri::command]
-fn load_spectrum_preset(filename: String) -> Result<SpectrumVisualConfig, String> {
-    let path = spectrum_presets_dir().join(&filename);
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read preset: {e}"))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Invalid YAML: {e}"))
-}
-
-#[tauri::command]
-fn save_spectrum_preset(filename: String, config: SpectrumVisualConfig) -> Result<(), String> {
-    let dir = spectrum_presets_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create dir: {e}"))?;
-    let path = dir.join(&filename);
-    let yaml = serde_yaml::to_string(&config)
-        .map_err(|e| format!("Failed to serialize: {e}"))?;
-    std::fs::write(&path, yaml)
-        .map_err(|e| format!("Failed to write: {e}"))
-}
-
-#[tauri::command]
-fn watch_spectrum_preset(app: tauri::AppHandle, filename: String) -> Result<(), String> {
-    let path = spectrum_presets_dir().join(&filename);
-    if !path.exists() {
-        return Err(format!("Preset not found: {filename}"));
-    }
-    let app_handle = app.clone();
-    std::thread::Builder::new()
-        .name("spectrum-watcher".into())
-        .spawn(move || {
-            let (tx, rx) = std::sync::mpsc::channel::<()>();
-            let mut watcher: notify::RecommendedWatcher = match notify::Watcher::new(
-                move |res: Result<notify::Event, notify::Error>| {
-                    if let Ok(event) = res {
-                        if matches!(event.kind, notify::EventKind::Modify(_)) {
-                            let _ = tx.send(());
-                        }
-                    }
-                },
-                notify::Config::default(),
-            ) {
-                Ok(w) => w,
-                Err(e) => { tracing::error!("Failed to create watcher: {e}"); return; }
-            };
-            if let Err(e) = notify::Watcher::watch(
-                &mut watcher, &path, notify::RecursiveMode::NonRecursive
-            ) {
-                tracing::error!("Failed to watch {}: {e}", path.display());
-                return;
-            }
-            tracing::info!("Watching spectrum preset: {}", path.display());
-            // Debounce: wait 500ms after last event before emitting
-            loop {
-                match rx.recv() {
-                    Ok(()) => {
-                        // Drain any rapid-fire events within 500ms
-                        while rx.recv_timeout(std::time::Duration::from_millis(500)).is_ok() {}
-                        let _ = app_handle.emit("spectrum-config-changed", ());
-                    }
-                    Err(_) => break,
-                }
-            }
-        })
-        .map_err(|e| format!("Failed to spawn watcher: {e}"))?;
-    Ok(())
-}
 
 fn themes_dir() -> PathBuf {
     dirs_home().join(".local/share/rustify-player/themes")
@@ -2672,9 +2305,6 @@ pub fn run() {
             // Qdrant sidecar already spawned + health-checked above (before
             // Indexer::open). Collections were ensured by Indexer::open.
 
-            let spectrum_cfg = Arc::new(Mutex::new(SpectrumConfig::default()));
-            _app.manage(SharedSpectrumConfig(spectrum_cfg.clone()));
-
             let spectrum_buf = engine.spectrum_buffer();
             let envelope_buf = engine.envelope_buffer();
             let sample_rate_buf = engine.sample_rate_buf();
@@ -2728,9 +2358,11 @@ pub fn run() {
 
                         if tick_count % 300 == 0 {
                             tracing::info!(
-                                "spectrum-emitter: emitting frame len={} low={:.3} rms={:.3}",
+                                "spectrum-emitter: emitting frame len={} low={:.3} mid={:.3} high={:.3} rms={:.3}",
                                 fft.len(),
                                 envelope.low_band_mag,
+                                envelope.mid_band_mag,
+                                envelope.high_band_mag,
                                 envelope.rms_energy,
                             );
                         }
@@ -2738,6 +2370,8 @@ pub fn run() {
                             stream_time_ms: 0,
                             magnitudes: fft,
                             low_band_mag: envelope.low_band_mag,
+                            mid_band_mag: envelope.mid_band_mag,
+                            high_band_mag: envelope.high_band_mag,
                             rms_energy: envelope.rms_energy,
                             sample_rate: sample_rate_buf.load(Ordering::Relaxed),
                         };
@@ -3089,16 +2723,10 @@ pub fn run() {
             lib_recommendations,
             list_backgrounds,
             list_shapes,
-            get_spectrum_config,
-            set_spectrum_config,
             spectrum_subscribe,
             spectrum_unsubscribe,
             list_themes,
             load_theme,
-            list_spectrum_presets,
-            load_spectrum_preset,
-            save_spectrum_preset,
-            watch_spectrum_preset,
             watch_theme,
             get_track_color,
             log_event,

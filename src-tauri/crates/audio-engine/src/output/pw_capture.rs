@@ -77,12 +77,20 @@ const RMS_LOWPASS_HZ: f32 = 2.0;
 /// Snapshot of the beat-sync envelopes (publicado pelo FFT worker, consumido
 /// pelo spectrum-emitter na crate Tauri).
 ///
-/// Ambos campos em range 0..1 e já com smoothing aplicado:
-/// - `low_band_mag`: envelope follower do range 20–150 Hz (attack ~5 ms, release ~100 ms)
+/// Todos os campos em range 0..1, smoothing aplicado:
+/// - `low_band_mag`: envelope follower 20–200 Hz (attack ~5 ms, release ~100 ms)
+/// - `mid_band_mag`: envelope follower 200–2 000 Hz (mesma resposta temporal)
+/// - `high_band_mag`: envelope follower 2 000–12 000 Hz (mesma resposta temporal)
 /// - `rms_energy`: RMS lowpass ~2 Hz sobre todas as bands
+///
+/// As três bandas usam o mesmo `normalize_band` (sqrt + gain) — diferenças
+/// percetuais de energia por banda são tratadas no frontend via Tweaks
+/// (sliders bgBassGain/bgMidGain/bgTrebleGain).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SpectrumEnvelope {
     pub low_band_mag: f32,
+    pub mid_band_mag: f32,
+    pub high_band_mag: f32,
     pub rms_energy: f32,
 }
 
@@ -362,12 +370,16 @@ fn fft_worker_loop(
     let rms_coef = (-tick_s / rms_tau_s).exp();
 
     let mut low_env: f32 = 0.0;
+    let mut mid_env: f32 = 0.0;
+    let mut high_env: f32 = 0.0;
     let mut rms_env: f32 = 0.0;
 
-    // Cached bin range — recomputed only when the negotiated sample rate
-    // changes. Initial value derives from DEFAULT_SAMPLE_RATE.
+    // Cached bin ranges — recomputed only when the negotiated sample rate
+    // changes. Initial values derivam de DEFAULT_SAMPLE_RATE.
     let mut cached_rate: u32 = 0;
-    let (mut low_bin_start, mut low_bin_end) = low_band_bin_range(DEFAULT_SAMPLE_RATE);
+    let (mut low_bin_start, mut low_bin_end) = band_bin_range(LOW_HZ.0, LOW_HZ.1, DEFAULT_SAMPLE_RATE);
+    let (mut mid_bin_start, mut mid_bin_end) = band_bin_range(MID_HZ.0, MID_HZ.1, DEFAULT_SAMPLE_RATE);
+    let (mut high_bin_start, mut high_bin_end) = band_bin_range(HIGH_HZ.0, HIGH_HZ.1, DEFAULT_SAMPLE_RATE);
 
     while running.load(Ordering::Relaxed) {
         // Sleep ~16ms for ~60Hz refresh rate.
@@ -383,16 +395,22 @@ fn fft_worker_loop(
             continue;
         }
 
-        // Refresh bin range if the negotiated sample rate changed.
+        // Refresh bin ranges if the negotiated sample rate changed.
         let rate = sample_rate_in.load(Ordering::Relaxed);
         if rate != 0 && rate != cached_rate {
             cached_rate = rate;
-            let (s, e) = low_band_bin_range(rate);
-            low_bin_start = s;
-            low_bin_end = e;
+            let (s, e) = band_bin_range(LOW_HZ.0, LOW_HZ.1, rate);
+            low_bin_start = s; low_bin_end = e;
+            let (s, e) = band_bin_range(MID_HZ.0, MID_HZ.1, rate);
+            mid_bin_start = s; mid_bin_end = e;
+            let (s, e) = band_bin_range(HIGH_HZ.0, HIGH_HZ.1, rate);
+            high_bin_start = s; high_bin_end = e;
             debug!(
-                "fft-worker: bin range for 20–150 Hz recomputed @ {} Hz => [{}..{})",
-                rate, low_bin_start, low_bin_end
+                "fft-worker: bin ranges @ {} Hz => low [{}..{}) mid [{}..{}) high [{}..{})",
+                rate,
+                low_bin_start, low_bin_end,
+                mid_bin_start, mid_bin_end,
+                high_bin_start, high_bin_end,
             );
         }
 
@@ -430,22 +448,18 @@ fn fft_worker_loop(
 
         // ─── Beat-sync envelopes ─────────────────────────────────────────
         //
-        // low_band: média linear no range 20–150 Hz, soft-compressed por
-        // sqrt e mapeada para 0..1 com um gain empírico, depois passada
-        // pelo envelope follower assimétrico (attack rápido, release lento).
-        let raw_low = mean_linear(&linear_mags, low_bin_start, low_bin_end);
-        let low_target = normalize_low(raw_low);
+        // Cada banda: média linear no range em Hz definido por LOW_HZ /
+        // MID_HZ / HIGH_HZ, soft-compress por sqrt + gain empírico,
+        // passada pelo envelope follower assimétrico (attack rápido,
+        // release lento). Mesma resposta temporal nas três bandas — o
+        // peso perceptivo é responsabilidade do frontend (Tweaks).
+        let raw_low  = mean_linear(&linear_mags, low_bin_start, low_bin_end);
+        let raw_mid  = mean_linear(&linear_mags, mid_bin_start, mid_bin_end);
+        let raw_high = mean_linear(&linear_mags, high_bin_start, high_bin_end);
 
-        if low_target > low_env {
-            low_env = attack_coef * low_env + (1.0 - attack_coef) * low_target;
-        } else {
-            low_env = release_coef * low_env + (1.0 - release_coef) * low_target;
-        }
-        // Numerical safety: clamp e remove tail residual.
-        if low_env < 1e-4 {
-            low_env = 0.0;
-        }
-        low_env = low_env.clamp(0.0, 1.0);
+        low_env  = step_env(low_env,  normalize_band(raw_low),  attack_coef, release_coef);
+        mid_env  = step_env(mid_env,  normalize_band(raw_mid),  attack_coef, release_coef);
+        high_env = step_env(high_env, normalize_band(raw_high), attack_coef, release_coef);
 
         // rms_energy: norma L2 da magnitude vector, mapeada para 0..1 via
         // log e suavizada por lowpass ~2 Hz.
@@ -468,6 +482,8 @@ fn fft_worker_loop(
         if let Ok(mut guard) = envelope_buf.lock() {
             *guard = SpectrumEnvelope {
                 low_band_mag: low_env,
+                mid_band_mag: mid_env,
+                high_band_mag: high_env,
                 rms_energy: rms_env,
             };
         }
@@ -476,18 +492,40 @@ fn fft_worker_loop(
     debug!("FFT worker thread exited");
 }
 
-/// Compute the FFT bin index range that covers 20–150 Hz given a sample rate.
-/// Bin frequency = i * (sample_rate / FFT_SIZE).
+/// Frequency ranges das três bandas expostas pelo envelope follower.
+/// (low_hz, high_hz) — usadas pelo `band_bin_range`. Mudar aqui afeta
+/// o que o frontend recebe em `low_band_mag` / `mid_band_mag` /
+/// `high_band_mag`.
+const LOW_HZ: (f32, f32) = (20.0, 200.0);
+const MID_HZ: (f32, f32) = (200.0, 2_000.0);
+const HIGH_HZ: (f32, f32) = (2_000.0, 12_000.0);
+
+/// Compute the FFT bin index range that covers `[low_hz, high_hz)` given a
+/// sample rate. Bin frequency = i * (sample_rate / FFT_SIZE).
 /// Returns `(start_inclusive, end_exclusive)`. Always >= 1 (skip DC bin).
-fn low_band_bin_range(sample_rate: u32) -> (usize, usize) {
+fn band_bin_range(low_hz: f32, high_hz: f32, sample_rate: u32) -> (usize, usize) {
     let bin_hz = sample_rate as f32 / FFT_SIZE as f32;
-    let start = ((20.0 / bin_hz).floor() as usize).max(1);
-    let end = ((150.0 / bin_hz).ceil() as usize + 1).min(NUM_BINS);
+    let start = ((low_hz / bin_hz).floor() as usize).max(1);
+    let end = ((high_hz / bin_hz).ceil() as usize + 1).min(NUM_BINS);
     if end <= start {
         (1, (start + 1).min(NUM_BINS))
     } else {
         (start, end)
     }
+}
+
+/// One step of the asymmetric envelope follower: fast attack when `target`
+/// rises above the current state, slow release when it falls. Output clamped
+/// to 0..1 with a tail-cleanup at 1e-4 (silence anchors back to exact 0).
+#[inline]
+fn step_env(state: f32, target: f32, attack_coef: f32, release_coef: f32) -> f32 {
+    let next = if target > state {
+        attack_coef * state + (1.0 - attack_coef) * target
+    } else {
+        release_coef * state + (1.0 - release_coef) * target
+    };
+    let cleaned = if next < 1e-4 { 0.0 } else { next };
+    cleaned.clamp(0.0, 1.0)
 }
 
 /// Mean of a slice of linear magnitudes within `[start, end)`. Returns 0 when
@@ -512,17 +550,18 @@ fn rms_linear(mags: &[f32]) -> f32 {
     (sum_sq / mags.len() as f32).sqrt()
 }
 
-/// Map a raw linear low-band magnitude to a perceptual 0..1 range.
+/// Map a raw linear band magnitude to a perceptual 0..1 range.
 /// FFT magnitudes pós-normalização tipicamente vivem em ~1e-4..1e-1, então
-/// usamos `sqrt` para soft-compress e um gain empírico fixo. Mantemos uma
-/// fórmula pura (sem estado) pra facilitar testes.
+/// usamos `sqrt` para soft-compress e um gain empírico fixo. Mesma fórmula
+/// para todas as bandas; diferenças perceptivas low/mid/high são tratadas
+/// pelos gains de Tweaks no frontend.
 #[inline]
-fn normalize_low(raw: f32) -> f32 {
+fn normalize_band(raw: f32) -> f32 {
     const GAIN: f32 = 4.0;
     (raw.sqrt() * GAIN).clamp(0.0, 1.0)
 }
 
-/// Map raw RMS to 0..1 with the same approach as `normalize_low`, ajustado
+/// Map raw RMS to 0..1 with the same approach as `normalize_band`, ajustado
 /// para a faixa típica de RMS sobre todos os bins (mais baixa que pico).
 #[inline]
 fn normalize_rms(raw: f32) -> f32 {
@@ -535,33 +574,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bin_range_at_48k_covers_20_to_150_hz() {
-        let (start, end) = low_band_bin_range(48_000);
-        // bin_hz @ 48k/2048 ≈ 23.44 Hz
-        // 20/23.44 ≈ 0.85 -> floor 0 -> clamped to 1
-        // 150/23.44 ≈ 6.4 -> ceil 7 -> end 8
+    fn band_bin_range_at_48k_low_band() {
+        let (start, end) = band_bin_range(LOW_HZ.0, LOW_HZ.1, 48_000);
+        // bin_hz @ 48k/2048 ≈ 23.44 Hz → 20 Hz cai no bin 1 (DC clamp),
+        // 200 Hz cai no bin ~8.5 → ceil 9 → end 10.
         assert_eq!(start, 1);
-        assert_eq!(end, 8);
-        assert!(end > start);
+        assert!(end >= 9 && end <= 11, "got end={end}");
     }
 
     #[test]
-    fn bin_range_at_44k_covers_20_to_150_hz() {
-        let (start, end) = low_band_bin_range(44_100);
-        // bin_hz @ 44.1k/2048 ≈ 21.53 Hz
-        // 20/21.53 ≈ 0.93 -> floor 0 -> clamped to 1
-        // 150/21.53 ≈ 6.97 -> ceil 7 -> end 8
-        assert_eq!(start, 1);
-        assert_eq!(end, 8);
-    }
+    fn band_bin_ranges_dont_overlap_or_invert_at_common_rates() {
+        for rate in [8_000, 16_000, 22_050, 32_000, 44_100, 48_000, 96_000, 192_000] {
+            let (ls, le) = band_bin_range(LOW_HZ.0,  LOW_HZ.1,  rate);
+            let (ms, me) = band_bin_range(MID_HZ.0, MID_HZ.1, rate);
+            let (hs, he) = band_bin_range(HIGH_HZ.0, HIGH_HZ.1, rate);
 
-    #[test]
-    fn bin_range_never_inverts() {
-        for rate in [8_000, 16_000, 22_050, 32_000, 48_000, 96_000, 192_000] {
-            let (s, e) = low_band_bin_range(rate);
-            assert!(e > s, "rate {rate}: start={s} end={e}");
-            assert!(s >= 1, "rate {rate}: must skip DC bin");
-            assert!(e <= NUM_BINS, "rate {rate}: end out of range");
+            assert!(le > ls, "rate {rate}: low inverted");
+            assert!(me > ms, "rate {rate}: mid inverted");
+            assert!(he > hs, "rate {rate}: high inverted");
+
+            assert!(ls >= 1, "rate {rate}: low must skip DC bin");
+            assert!(he <= NUM_BINS, "rate {rate}: high end out of range");
+
+            // Ranges adjacentes; ceil/floor podem deixar 1 bin de sobreposição
+            // pontual nas extremidades, mas o ponto de partida da próxima
+            // banda nunca pode ficar abaixo do início da anterior.
+            assert!(ms >= ls, "rate {rate}: mid starts before low");
+            assert!(hs >= ms, "rate {rate}: high starts before mid");
         }
     }
 
@@ -592,16 +631,16 @@ mod tests {
     }
 
     #[test]
-    fn normalize_low_is_monotonic_and_clamped() {
+    fn normalize_band_is_monotonic_and_clamped() {
         // Range of interest for low-band FFT magnitudes after window+norm:
         // typical bass kick @ peak ~0.02–0.06, silence ~1e-5.
-        assert_eq!(normalize_low(0.0), 0.0);
-        assert!(normalize_low(1e-5) < normalize_low(1e-4));
-        assert!(normalize_low(1e-4) < normalize_low(1e-3));
-        assert!(normalize_low(1.0) <= 1.0);
-        assert!(normalize_low(1e6) <= 1.0);
+        assert_eq!(normalize_band(0.0), 0.0);
+        assert!(normalize_band(1e-5) < normalize_band(1e-4));
+        assert!(normalize_band(1e-4) < normalize_band(1e-3));
+        assert!(normalize_band(1.0) <= 1.0);
+        assert!(normalize_band(1e6) <= 1.0);
         // Strong kick should saturate to ~1.0 (visualizer is fully pulsing).
-        assert!(normalize_low(0.1) >= 0.95);
+        assert!(normalize_band(0.1) >= 0.95);
     }
 
     #[test]
