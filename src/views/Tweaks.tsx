@@ -82,7 +82,8 @@ function NumberSlider(props: {
     | "bgBassGain"
     | "bgMidGain"
     | "bgTrebleGain"
-    | "bgSmoothing";
+    | "bgSmoothing"
+    | "bgSpeed";
   min: number;
   max: number;
   step: number;
@@ -235,6 +236,14 @@ export function Tweaks() {
             max={1}
             step={0.05}
             format={(v) => `${Math.round(v * 100)}%`}
+          />
+          <NumberSlider
+            label="Speed"
+            key="bgSpeed"
+            min={0}
+            max={2}
+            step={0.05}
+            format={(v) => `${v.toFixed(2)}x`}
           />
 
           <button class="tweaks__reset" onClick={() => resetTweaks()}>

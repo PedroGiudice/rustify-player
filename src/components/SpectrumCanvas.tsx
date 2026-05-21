@@ -83,7 +83,12 @@ export function useShape() {
 export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let canvas!: HTMLCanvasElement;
   let raf = 0;
-  const t0 = performance.now();
+
+  // Relógio virtual da animação. Avança como `dt * bgSpeed` a cada
+  // frame, em vez de `(now - t0)`. Assim, mudar bgSpeed no Tweaks
+  // afeta só a derivada (rotação freia / acelera in-place) sem o
+  // salto de fase que aconteceria se recomputássemos t do zero.
+  let bgClock = 0;
 
   // Estado vivo dos 3 envelopes vindos do backend. Atualizados
   // pelo listener de `audio-fft`. Fora de signal de propósito —
@@ -105,6 +110,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let midGain = 1.0;
   let trebleGain = 0.8;
   let smoothing = 0.3;
+  let speed = 1.0;
   let cfgCheckTick = 0;
 
   // Cleanup do listener de FFT.
@@ -157,16 +163,21 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         const m = parseFloat(cs.getPropertyValue("--bg-mid-gain"));
         const tr = parseFloat(cs.getPropertyValue("--bg-treble-gain"));
         const sm = parseFloat(cs.getPropertyValue("--bg-smoothing"));
+        const sp = parseFloat(cs.getPropertyValue("--bg-speed"));
         if (Number.isFinite(b)) bassGain = b;
         if (Number.isFinite(m)) midGain = m;
         if (Number.isFinite(tr)) trebleGain = tr;
         if (Number.isFinite(sm)) smoothing = sm;
+        if (Number.isFinite(sp)) speed = sp;
       }
 
       const tMs = performance.now();
-      const t = (tMs - t0) * 0.001;
       const dt = Math.max(0, (tMs - lastFrameMs) * 0.001);
       lastFrameMs = tMs;
+      // Avança o relógio virtual da animação. bgSpeed=0 congela,
+      // 1 = nominal, 2 = dobro. Independente do dt do envelope.
+      bgClock += dt * speed;
+      const t = bgClock;
       ctx.clearRect(0, 0, w, h);
 
       // Target do envelope: soma ponderada das 3 bandas, normalizada

@@ -49,6 +49,12 @@ export interface TweaksState {
   /** Smoothing do envelope final no canvas. 0 = resposta crua
       (~100 ms tau), 1 = bem suave (~800 ms tau). */
   bgSmoothing: number;
+  /** Velocidade global da animação do bg (breath + phase + drift +
+      shape time). 0 = congela, 1 = nominal, 2 = dobro. Aplicado
+      ao tempo virtual antes de propagar pra todas as fórmulas
+      time-dependent — mudanças do slider afetam só a derivada,
+      sem saltos de fase. */
+  bgSpeed: number;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -66,6 +72,7 @@ export const DEFAULTS: TweaksState = {
   bgMidGain: 1.0,
   bgTrebleGain: 0.8,
   bgSmoothing: 0.3,
+  bgSpeed: 1.0,
 };
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
@@ -159,6 +166,7 @@ export function applyTweaks(s: TweaksState = state()) {
   html.style.setProperty("--bg-mid-gain", s.bgMidGain.toFixed(3));
   html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
   html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
+  html.style.setProperty("--bg-speed", s.bgSpeed.toFixed(3));
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
