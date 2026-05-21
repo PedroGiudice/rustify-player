@@ -206,7 +206,11 @@ export function PlayerBar() {
 
   async function doAutoplay(seedId: string) {
     try {
-      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 5);
+      // Lookahead 1: cada nova track usa a anterior como seed e o
+      // behavioral mais recente. Sem isso, uma chamada com limit>1
+      // pré-computa uma queue que envelhece — a 5ª track ainda
+      // reflete a vibe da 1ª, sem influência do que aconteceu no meio.
+      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 1);
       if (!tracks.length) return;
       // Append new tracks to queue and advance index by 1 (same as vanilla)
       const newQueue = [...player.queue, ...tracks];
@@ -225,7 +229,11 @@ export function PlayerBar() {
   // hits zero and forces a track switch.
   async function prefetchRadio(seedId: string) {
     try {
-      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 5);
+      // Lookahead 1 — mesma razão de doAutoplay. Disparado quando o
+      // player chega às 2 últimas posições da queue (ver TrackEnded
+      // handler). Garante 1 track sempre à frente, recalculada com
+      // base no que toca agora.
+      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 1);
       if (!tracks.length) return;
       setQueue([...player.queue, ...tracks], player.queueIndex);
     } catch (e) {
@@ -255,10 +263,13 @@ export function PlayerBar() {
     }
 
     // Open scope OR single-track queue: virar radio com a track atual.
+    // Lookahead 1 — o prefetchRadio no TrackEnded vai sustentar a
+    // queue daqui pra frente, sempre com 1 track à frente recalculada
+    // a partir do que toca agora.
     const seed = player.currentTrack?.id;
     if (!seed) return;
     try {
-      const recs = await libAutoplayNext(seed, [...recentlyPlayedIds], 10);
+      const recs = await libAutoplayNext(seed, [...recentlyPlayedIds], 1);
       if (!recs.length) return;
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open");

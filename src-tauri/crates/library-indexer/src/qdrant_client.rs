@@ -795,9 +795,16 @@ impl QdrantClient {
                     "qdrant create play_events collection: {e}"
                 )))?;
         } else {
-            // Upgrade legacy schema if `started_at` was indexed as `keyword`
-            // (incompatible with `order_by` used by `behavioral_signals`).
+            // Upgrade legacy `started_at:keyword` index (incompatible com
+            // o order_by usado por behavioral_signals).
             self.upgrade_play_events_started_at_index()?;
+            // Sweep idempotente: pega qualquer ponto antigo que ainda
+            // tenha started_at como string mesmo após o upgrade do
+            // índice. Necessário pra cobrir o caso em que o índice já
+            // foi promovido (0.2.27+) mas a migração concorrente
+            // deixou 10-20% de pontos pra trás. Custo: 1 scroll de
+            // started_at, instantâneo em coleções pequenas.
+            self.migrate_started_at_string_to_int()?;
         }
 
         self.create_play_events_indices()?;
@@ -889,8 +896,13 @@ impl QdrantClient {
     }
 
     /// Scroll the `play_events` collection and rewrite any `started_at`
-    /// stored as a string into its parsed `i64` value. Points with malformed
-    /// strings or missing `started_at` are skipped.
+    /// stored as a string into its parsed `i64` value.
+    ///
+    /// Two phases — read then write. Mutating payload mid-scroll causes
+    /// Qdrant to reshuffle segment storage and the paginated cursor may
+    /// skip points whose ID falls behind the new write position. A
+    /// previous version of this migration left ~17% of points untouched
+    /// for this reason. Coletando tudo primeiro garante cobertura total.
     fn migrate_started_at_string_to_int(&self) -> Result<(), IndexerError> {
         let scroll_url = format!(
             "{}/collections/{PLAY_EVENTS_COLLECTION}/points/scroll",
@@ -901,8 +913,10 @@ impl QdrantClient {
             self.base_url
         );
 
+        // Phase 1 — read-only scroll to collect (id, parsed_int) tuples
+        // for every point whose `started_at` is currently a string.
+        let mut pending: Vec<(Value, i64)> = Vec::new();
         let mut offset: Option<Value> = None;
-        let mut migrated: u64 = 0;
         let mut scanned: u64 = 0;
 
         loop {
@@ -928,28 +942,10 @@ impl QdrantClient {
             let points = resp["result"]["points"].as_array().cloned().unwrap_or_default();
             for p in &points {
                 scanned += 1;
-                let id = match p.get("id") {
-                    Some(v) => v.clone(),
-                    None => continue,
-                };
-                let started_at = &p["payload"]["started_at"];
-                let new_value = match started_at {
-                    Value::String(s) => s.parse::<i64>().ok(),
-                    _ => None,
-                };
-                let Some(parsed) = new_value else { continue };
-
-                let patch = json!({
-                    "payload": { "started_at": parsed },
-                    "points": [id]
-                });
-                self.agent
-                    .post(&set_url)
-                    .send_json(&patch)
-                    .map_err(|e| IndexerError::Embedding(format!(
-                        "qdrant set_payload started_at: {e}"
-                    )))?;
-                migrated += 1;
+                let Some(id) = p.get("id").cloned() else { continue };
+                let Value::String(s) = &p["payload"]["started_at"] else { continue };
+                let Ok(parsed) = s.parse::<i64>() else { continue };
+                pending.push((id, parsed));
             }
 
             offset = match resp["result"]["next_page_offset"].clone() {
@@ -959,6 +955,23 @@ impl QdrantClient {
             if offset.is_none() {
                 break;
             }
+        }
+
+        // Phase 2 — write set_payload for every collected point. Order
+        // doesn't matter; we already have a stable snapshot of IDs.
+        let mut migrated: u64 = 0;
+        for (id, parsed) in &pending {
+            let patch = json!({
+                "payload": { "started_at": parsed },
+                "points": [id]
+            });
+            self.agent
+                .post(&set_url)
+                .send_json(&patch)
+                .map_err(|e| IndexerError::Embedding(format!(
+                    "qdrant set_payload started_at: {e}"
+                )))?;
+            migrated += 1;
         }
 
         tracing::info!(
