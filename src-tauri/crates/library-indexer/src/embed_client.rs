@@ -160,12 +160,21 @@ struct HealthResponse {
     model: String,
 }
 
-/// Client for TEI (Text Embeddings Inference) running BGE-M3.
+/// Client for the cogmem embedding daemon running BGE-M3 (ONNX, 1024d).
 /// Embeds lyrics text into 1024d dense vectors for semantic search.
+///
+/// Replaces the decommissioned TEI service (was port 8080). cogmem serves
+/// the same BGE-M3 family (CLS pooling, L2-normalized) via /api/embed.
 #[derive(Clone, Debug)]
 pub struct LyricsEmbedClient {
     agent: ureq::Agent,
     base_url: String,
+}
+
+/// cogmem /api/embed response envelope: {"dim":1024,"embeddings":[[..]],"model":".."}
+#[derive(Deserialize)]
+struct CogmemEmbedResponse {
+    embeddings: Vec<Vec<f32>>,
 }
 
 impl LyricsEmbedClient {
@@ -181,24 +190,31 @@ impl LyricsEmbedClient {
     }
 
     pub fn embed_text(&self, text: &str) -> Result<Vec<f32>, IndexerError> {
-        let body = serde_json::json!({ "inputs": text, "truncate": true });
-        let resp: Vec<Vec<f32>> = self
+        // cogmem expects inputs as an array of strings; we send one.
+        // Cap at 8000 chars to match the previous TEI truncation behavior.
+        let truncated: String = text.chars().take(8000).collect();
+        let body = serde_json::json!({
+            "inputs": [truncated],
+            "model": "bge-m3"
+        });
+        let resp: CogmemEmbedResponse = self
             .agent
-            .post(&format!("{}/embed", self.base_url))
+            .post(&format!("{}/api/embed", self.base_url))
             .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!("TEI embed: {e}")))?
+            .map_err(|e| IndexerError::Embedding(format!("cogmem embed: {e}")))?
             .into_json()
-            .map_err(|e| IndexerError::Embedding(format!("TEI json: {e}")))?;
+            .map_err(|e| IndexerError::Embedding(format!("cogmem json: {e}")))?;
 
-        resp.into_iter()
+        resp.embeddings
+            .into_iter()
             .next()
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| IndexerError::Embedding("TEI returned empty vector".into()))
+            .ok_or_else(|| IndexerError::Embedding("cogmem returned empty vector".into()))
     }
 
     pub fn is_healthy(&self) -> bool {
         self.agent
-            .get(&format!("{}/health", self.base_url))
+            .get(&format!("{}/api/health", self.base_url))
             .call()
             .is_ok()
     }
