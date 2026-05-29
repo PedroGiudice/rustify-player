@@ -1,9 +1,9 @@
-"""Embed lyrics via TEI BGE-M3 and upsert to Qdrant as named vector 'lyrics'.
+"""Embed lyrics via cogmem BGE-M3 and upsert to Qdrant as named vector 'lyrics'.
 
 Usage:
     python3 scripts/embed_lyrics.py \
         --db ~/.local/share/rustify-player/library.db \
-        --tei-url http://localhost:8080 \
+        --cogmem-url http://100.123.73.128:3939 \
         --qdrant-url http://localhost:6333
 """
 import argparse
@@ -76,17 +76,17 @@ def get_existing_lyrics_ids(qdrant_url: str) -> set[int]:
     return ids
 
 
-def embed_text(tei_url: str, text: str) -> list[float]:
+def embed_text(cogmem_url: str, text: str) -> list[float]:
     text = text[:8000]
-    payload = json.dumps({"inputs": text, "truncate": True}).encode()
+    payload = json.dumps({"inputs": [text], "model": "bge-m3"}).encode()
     req = urllib.request.Request(
-        f"{tei_url}/embed",
+        f"{cogmem_url}/api/embed",
         data=payload,
         headers={"Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         result = json.loads(resp.read())
-    return result[0]
+    return result["embeddings"][0]
 
 
 def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
@@ -105,7 +105,7 @@ def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
 def main():
     parser = argparse.ArgumentParser(description="Embed lyrics and upsert to Qdrant")
     parser.add_argument("--db", required=True, help="Path to library.db")
-    parser.add_argument("--tei-url", default="http://localhost:8080")
+    parser.add_argument("--cogmem-url", default="http://100.123.73.128:3939")
     parser.add_argument("--qdrant-url", default="http://localhost:6333")
     parser.add_argument("--force", action="store_true", help="Re-embed all, skip incremental check")
     args = parser.parse_args()
@@ -126,7 +126,7 @@ def main():
     skipped = 0
     for i, (track_id, lyrics) in enumerate(rows):
         try:
-            vec = embed_text(args.tei_url, lyrics)
+            vec = embed_text(args.cogmem_url, lyrics)
             batch.append((track_id, vec))
         except Exception as e:
             print(f"  SKIP {track_id}: {e}", flush=True)
