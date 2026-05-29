@@ -120,8 +120,46 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .app[data-cinema="true"] .playerbar { opacity: 0; pointer-events: none; }
 .titlebar  { grid-row: 1; grid-column: 1 / 3; }
 .sidebar   { grid-row: 2 / 4; grid-column: 1; }
-.main      { grid-row: 2; grid-column: 2; min-width: 0; min-height: 0; position: relative; overflow: hidden; background: var(--bg-canvas); }
+.main      { grid-row: 2; grid-column: 2; min-width: 0; min-height: 0; position: relative; overflow: hidden; background: transparent; }
 .playerbar { grid-row: 3; grid-column: 2; }
+
+/* ────────────────────────────────────────────────────────────
+   GLOBAL ANIMATED BACKGROUND
+   Instância única no shell. Canvas dentro nunca remonta — só o
+   data-mode do wrapper recomputa em mudança de rota.
+   focused: cheio, sem filtro (em /now-playing ou cinema mode).
+   ambient: opacity 0.80 + blur 8px + saturate 0.9 (demais views).
+   Transição de 420ms entre modos.
+   ──────────────────────────────────────────────────────────── */
+.app-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    opacity 420ms var(--ease-out),
+    filter  420ms var(--ease-out);
+}
+.app-bg__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.app-bg[data-mode="focused"] {
+  opacity: 1;
+  filter: none;
+}
+.app-bg[data-mode="ambient"] {
+  opacity: 0.80;
+  filter: blur(8px) saturate(0.9);
+}
+
+/* Elementos do shell ficam acima do bg. */
+.titlebar, .sidebar, .playerbar { position: relative; z-index: 2; }
+.main { z-index: 1; }
 
 /* ────────────────────────────────────────────────────────────
    TITLEBAR — Tauri drag region + traffic lights
@@ -505,13 +543,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
    ──────────────────────────────────────────────────────────── */
 .np {
   position: relative; height: 100%; overflow: hidden;
-  background: var(--bg-soft);
-}
-.np__canvas {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  display: block; pointer-events: none;
-  z-index: 0;
+  /* transparent pra deixar o .app-bg global vazar (modo focused). */
+  background: transparent;
 }
 .np__chrome {
   position: relative; z-index: 1;

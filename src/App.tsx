@@ -5,18 +5,25 @@
    `decorations: false` (precisamos dos drag-region + botoes
    minimize/maximize/close).
 
+   Background animado é GLOBAL ao app: mora aqui (.app-bg),
+   monta o canvas UMA vez e nunca remonta. Só o data-mode do
+   wrapper recomputa em mudança de rota — "focused" quando o
+   user está em /now-playing (ou cinema mode), "ambient" caso
+   contrário. Animação persiste entre navegações.
+
    Atalhos globais: N (now playing), H (home), L (library), Esc
    (sai do cinema mode). Demais atalhos (Q, F, [, ], Ctrl/Cmd+K)
    vivem nos componentes responsaveis.
    ============================================================ */
 
-import { onCleanup, onMount } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Titlebar } from "./components/Titlebar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { QueueDrawer } from "./components/QueueDrawer";
-import { RouterView, navigate } from "./router";
+import { SpectrumCanvas } from "./components/SpectrumCanvas";
+import { RouterView, navigate, route } from "./router";
 import { Tweaks } from "./views/Tweaks";
 // Painel Tweaks (Solid). loadTweaks aplica state salvo antes do render
 // pra evitar flash; o componente <Tweaks/> renderiza via Portal e
@@ -26,6 +33,17 @@ import { loadTweaks } from "./store/tweaks";
 export default function App() {
   // Aplica preferencias de fonte/zoom o quanto antes — evita flash de fonte padrao.
   loadTweaks();
+
+  // Cinema mode é um signal local pra o data-mode do bg poder
+  // reagir junto com a rota. App.tsx é o único lugar que escreve.
+  const [cinema, setCinema] = createSignal(false);
+
+  // ── Reatividade do bg ─────────────────────────────────────
+  // Único bit reativo do background: o data-mode do wrapper.
+  // O canvas em si não depende disso — continua rodando rAF.
+  const bgMode = createMemo<"focused" | "ambient">(() =>
+    cinema() || route().path === "/now-playing" ? "focused" : "ambient"
+  );
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -37,18 +55,36 @@ export default function App() {
       else if (k === "h") { e.preventDefault(); navigate("/home"); }
       else if (k === "l") { e.preventDefault(); navigate("/library"); }
       else if (e.key === "Escape") {
-        const app = document.getElementById("rustify-app");
-        if (app?.getAttribute("data-cinema") === "true") {
-          app.setAttribute("data-cinema", "false");
+        if (cinema()) {
+          setCinema(false);
+          document.getElementById("rustify-app")?.setAttribute("data-cinema", "false");
         }
       }
     };
     window.addEventListener("keydown", onKey);
-    onCleanup(() => window.removeEventListener("keydown", onKey));
+
+    // Cinema mode toggle vem de NowPlaying.tsx via custom event —
+    // o estado canônico vive aqui pra o bgMode poder reagir.
+    const onCinemaToggle = (e: Event) => {
+      const next = (e as CustomEvent<boolean>).detail;
+      setCinema(next);
+      document.getElementById("rustify-app")?.setAttribute("data-cinema", next ? "true" : "false");
+    };
+    window.addEventListener("rustify:cinema", onCinemaToggle);
+
+    onCleanup(() => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("rustify:cinema", onCinemaToggle);
+    });
   });
 
   return (
     <div class="app" id="rustify-app" data-cinema="false">
+      {/* Background global — UMA instância pro app inteiro. */}
+      <div class="app-bg" data-mode={bgMode()} aria-hidden="true">
+        <SpectrumCanvas />
+      </div>
+
       <Titlebar />
       <Sidebar />
       <main class="main">

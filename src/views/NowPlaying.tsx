@@ -10,20 +10,31 @@ import { player } from "../store/player";
 import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
-import { SpectrumCanvas, useShape } from "../components/SpectrumCanvas";
+import { useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
 import { navigate } from "../router";
 
 export default function NowPlaying() {
   const shape = useShape();
-  const [cinema, setCinema] = createSignal(false);
+  // Estado inicial lê o data-attr canônico no shell — se o user voltou
+  // pra /now-playing com cinema ativo, mantém o ícone correto.
+  const [cinema, setCinema] = createSignal(
+    document.getElementById("rustify-app")?.getAttribute("data-cinema") === "true",
+  );
 
-  // Cinema mode toggles a data-attr on the .app shell
+  // Cinema mode é canônico no App.tsx (pra o background bgMode reagir
+  // junto). Emitimos o evento; o App escreve data-attr + signal global.
+  // Ouvimos de volta pra ficar em sync caso outro lugar (Esc no App)
+  // mude o estado.
   function toggleCinema() {
-    const next = !cinema();
-    setCinema(next);
-    document.getElementById("rustify-app")?.setAttribute("data-cinema", next ? "true" : "false");
+    window.dispatchEvent(new CustomEvent<boolean>("rustify:cinema", { detail: !cinema() }));
   }
+
+  onMount(() => {
+    const onCinema = (e: Event) => setCinema((e as CustomEvent<boolean>).detail);
+    window.addEventListener("rustify:cinema", onCinema);
+    onCleanup(() => window.removeEventListener("rustify:cinema", onCinema));
+  });
 
   // Lyrics resource keyed by current track id
   const [lyrics] = createResource(
@@ -218,7 +229,8 @@ export default function NowPlaying() {
   return (
     <article class="view" style={{ overflow: "hidden", padding: 0 }}>
       <div class="np" ref={npEl!}>
-        <SpectrumCanvas />
+        {/* O canvas vive global em <App> (.app-bg). Aqui o .np é transparent
+            pra deixar o bg vazar no modo "focused". */}
 
         <div class="np__corner">
           <button title="Cinema mode (F)" onClick={toggleCinema}>

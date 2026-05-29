@@ -2,8 +2,7 @@
    shapes.ts — Spectrum shape functions (Now Playing background).
 
    Each shape maps (u, v, t) ∈ [0,1]² × seconds → amplitude ∈ [0,1].
-   Same 7 shapes from SpectrumBackground_V2.tsx — kept identical so
-   the visual identity carries over to the redesign.
+   7 shapes consumidos pelo SpectrumCanvas (background global).
    ============================================================ */
 
 export interface Shape {
