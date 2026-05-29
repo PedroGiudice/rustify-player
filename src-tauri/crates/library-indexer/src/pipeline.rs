@@ -612,6 +612,35 @@ struct EmbedResult {
     outcome: Result<Vec<f32>, String>,
 }
 
+/// Executa uma operação de embed isolando panics. Um panic dentro do
+/// decode/preprocess (symphonia/rubato podem entrar em panic com input
+/// degenerado) viraria a morte da thread do worker, deixando o `jobs_rx`
+/// órfão (sender sem receiver) — o scan seguiria mandando jobs no vazio e
+/// nenhum embed mais aconteceria, sem sinal. `catch_unwind` converte o
+/// panic num `Err` daquele job; o worker segue para o próximo.
+fn embed_one<F>(op: F) -> Result<Vec<f32>, String>
+where
+    F: FnOnce() -> Result<Vec<f32>, IndexerError>,
+{
+    // `AssertUnwindSafe`: o EmbedClient (ureq::Agent) não é auto-UnwindSafe
+    // por causa do pool interno de conexões com interior mutability. É seguro
+    // aqui porque cada job é independente e, em caso de panic, descartamos o
+    // resultado daquele job inteiro — não reusamos nenhum estado parcialmente
+    // mutado dentro da mesma chamada.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(op)) {
+        Ok(Ok(v)) => Ok(v),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(panic) => {
+            let msg = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "panic desconhecido no embed".to_string());
+            Err(format!("embed panicked: {msg}"))
+        }
+    }
+}
+
 fn embed_worker_loop(
     client: EmbedClient,
     jobs_rx: Receiver<EmbedJob>,
@@ -619,10 +648,9 @@ fn embed_worker_loop(
 ) {
     info!(target: "library_indexer::pipeline", "embed worker starting");
     while let Ok(job) = jobs_rx.recv() {
-        let outcome = match client.embed_file(&job.path) {
-            Ok(v) => Ok(v),
-            Err(e) => Err(e.to_string()),
-        };
+        let path = job.path.clone();
+        let client = client.clone();
+        let outcome = embed_one(move || client.embed_file(&path));
         if results_tx
             .send(EmbedResult {
                 track_id: job.track_id,
@@ -700,4 +728,33 @@ fn filename_stem(name: &str) -> String {
     name.rsplit_once('.')
         .map(|(s, _)| s.to_string())
         .unwrap_or_else(|| name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embed_one_returns_ok_on_success() {
+        let r = embed_one(|| Ok(vec![1.0, 2.0, 3.0]));
+        assert_eq!(r.unwrap(), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn embed_one_returns_err_on_error() {
+        let r = embed_one(|| Err(IndexerError::Embedding("boom".into())));
+        assert!(r.unwrap_err().contains("boom"));
+    }
+
+    #[test]
+    fn embed_one_catches_panic_instead_of_propagating() {
+        // Um panic no decode/preprocess NÃO deve matar a thread do worker —
+        // deve virar um Err daquele job para o pipeline seguir.
+        let r = embed_one(|| panic!("symphonia explodiu"));
+        let err = r.expect_err("panic deve virar Err, não propagar");
+        assert!(
+            err.contains("panicked") && err.contains("symphonia explodiu"),
+            "mensagem de erro deve preservar o motivo do panic: {err}"
+        );
+    }
 }
