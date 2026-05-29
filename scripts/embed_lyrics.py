@@ -1,78 +1,89 @@
 """Embed lyrics via cogmem BGE-M3 and upsert to Qdrant as named vector 'lyrics'.
 
+Source of truth is the Qdrant collection itself, not SQLite: each point's
+payload carries `embedded_lyrics` / `lrc_path` (set by the app on scan) and the
+point id is the app's `path_to_id(path)` (DefaultHasher/SipHash of the file
+path). The SQLite `tracks.id` is a separate autoincrement value and does NOT
+match the Qdrant point id — using it produced silent no-op upserts.
+
 Usage:
     python3 scripts/embed_lyrics.py \
-        --db ~/.local/share/rustify-player/library.db \
         --cogmem-url http://100.123.73.128:3939 \
-        --qdrant-url http://localhost:6333
+        --qdrant-url http://localhost:6333 [--force]
 """
 import argparse
 import json
-import sqlite3
-import struct
+import re
 import urllib.request
 
 COLLECTION = "rustify_tracks"
 BATCH_SIZE = 50
+_TS = re.compile(r"\[\d+:\d+\.\d+\]")
 
 
-def get_lyrics(db_path: str) -> list[tuple[int, str]]:
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA query_only = ON")
-    rows = conn.execute(
-        "SELECT id, embedded_lyrics, lrc_path FROM tracks"
-    ).fetchall()
-    conn.close()
-    result = []
-    for track_id, embedded, lrc_path in rows:
-        if embedded and len(embedded) > 20:
-            result.append((track_id, embedded))
-        elif lrc_path:
-            text = _read_lrc_text(lrc_path)
-            if text and len(text) > 20:
-                result.append((track_id, text))
-    return result
+def _clean(text: str) -> str:
+    """Strip LRC inline timestamps, drop blank lines, keep plain text."""
+    out = []
+    for line in text.splitlines():
+        line = _TS.sub("", line).strip()
+        if line:
+            out.append(line)
+    return "\n".join(out)
 
 
-def _read_lrc_text(path: str) -> str | None:
-    import re
+def _read_lrc(path: str) -> str | None:
     try:
         with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
+            return _clean(f.read())
     except (OSError, UnicodeDecodeError):
         return None
-    plain = []
-    for line in lines:
-        line = re.sub(r"^\[\d+:\d+\.\d+\]", "", line).strip()
-        if line:
-            plain.append(line)
-    return "\n".join(plain) if plain else None
 
 
-def get_existing_lyrics_ids(qdrant_url: str) -> set[int]:
-    """Scroll points that already have the 'lyrics' vector."""
-    ids = set()
+def _scroll(qdrant_url: str, with_payload, with_vector=False):
+    """Yield every point in the collection (paginated)."""
     offset = None
     while True:
-        payload = {"limit": 1000, "with_payload": False, "with_vector": ["lyrics"]}
+        body = {"limit": 1000, "with_payload": with_payload, "with_vector": with_vector}
         if offset is not None:
-            payload["offset"] = offset
+            body["offset"] = offset
         req = urllib.request.Request(
             f"{qdrant_url}/collections/{COLLECTION}/points/scroll",
-            data=json.dumps(payload).encode(),
+            data=json.dumps(body).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read())
-        for p in data["result"]["points"]:
-            vec = p.get("vector", {})
-            if isinstance(vec, dict) and vec.get("lyrics"):
-                ids.add(p["id"])
-        next_off = data["result"].get("next_page_offset")
-        if next_off is None:
+            result = json.loads(resp.read())["result"]
+        yield from result["points"]
+        offset = result.get("next_page_offset")
+        if offset is None:
             break
-        offset = next_off
+
+
+def get_lyrics(qdrant_url: str) -> list[tuple[int, str]]:
+    """[(point_id, text)] from payload — embedded_lyrics first, else lrc_path."""
+    rows = []
+    for p in _scroll(qdrant_url, ["embedded_lyrics", "lrc_path"]):
+        pl = p.get("payload") or {}
+        emb = pl.get("embedded_lyrics")
+        if emb and len(emb) > 20:
+            text = _clean(emb)
+        elif pl.get("lrc_path"):
+            text = _read_lrc(pl["lrc_path"])
+        else:
+            text = None
+        if text and len(text) > 20:
+            rows.append((p["id"], text))
+    return rows
+
+
+def get_existing_lyrics_ids(qdrant_url: str) -> set[int]:
+    """Point ids that already carry a 'lyrics' vector."""
+    ids = set()
+    for p in _scroll(qdrant_url, False, with_vector=["lyrics"]):
+        vec = p.get("vector", {})
+        if isinstance(vec, dict) and vec.get("lyrics"):
+            ids.add(p["id"])
     return ids
 
 
@@ -90,7 +101,7 @@ def embed_text(cogmem_url: str, text: str) -> list[float]:
 
 
 def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
-    pts = [{"id": tid, "vector": {"lyrics": vec}} for tid, vec in points]
+    pts = [{"id": pid, "vector": {"lyrics": vec}} for pid, vec in points]
     payload = json.dumps({"points": pts}).encode()
     req = urllib.request.Request(
         f"{qdrant_url}/collections/{COLLECTION}/points/vectors",
@@ -104,18 +115,17 @@ def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
 
 def main():
     parser = argparse.ArgumentParser(description="Embed lyrics and upsert to Qdrant")
-    parser.add_argument("--db", required=True, help="Path to library.db")
     parser.add_argument("--cogmem-url", default="http://100.123.73.128:3939")
     parser.add_argument("--qdrant-url", default="http://localhost:6333")
     parser.add_argument("--force", action="store_true", help="Re-embed all, skip incremental check")
     args = parser.parse_args()
 
-    rows = get_lyrics(args.db)
-    print(f"Tracks with lyrics: {len(rows)}")
+    rows = get_lyrics(args.qdrant_url)
+    print(f"Points with lyrics text: {len(rows)}")
 
     if not args.force:
         existing = get_existing_lyrics_ids(args.qdrant_url)
-        rows = [(tid, text) for tid, text in rows if tid not in existing]
+        rows = [(pid, t) for pid, t in rows if pid not in existing]
         print(f"New to embed: {len(rows)} (skipping {len(existing)} existing)")
 
     if not rows:
@@ -124,12 +134,12 @@ def main():
 
     batch = []
     skipped = 0
-    for i, (track_id, lyrics) in enumerate(rows):
+    for i, (pid, text) in enumerate(rows):
         try:
-            vec = embed_text(args.cogmem_url, lyrics)
-            batch.append((track_id, vec))
+            vec = embed_text(args.cogmem_url, text)
+            batch.append((pid, vec))
         except Exception as e:
-            print(f"  SKIP {track_id}: {e}", flush=True)
+            print(f"  SKIP {pid}: {e}", flush=True)
             skipped += 1
             continue
 
