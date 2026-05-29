@@ -26,6 +26,7 @@
 #![allow(dead_code)]
 
 use crate::error::IndexerError;
+use crate::retry::{retry_transient, RetryPolicy};
 use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
 use serde::Deserialize;
 use std::fs::File;
@@ -52,6 +53,43 @@ const MAX_SAMPLES: usize = TARGET_SAMPLE_RATE as usize * 30;
 /// worth it on gigabit Tailscale.
 const ZSTD_LEVEL: i32 = 3;
 
+/// Deadline GLOBAL da request de embedding de áudio (DNS + connect + TLS +
+/// envio + leitura completa da resposta). MERT-v1-95M no PyTorch da VM
+/// processa ~30s de áudio; com cold start de modelo + inferência + retorno
+/// do vetor, damos 120s de folga. O ponto crítico: `ureq::timeout()` é um
+/// deadline absoluto da request inteira — o `timeout_read` antigo só limitava
+/// CADA leitura de socket, então um servidor travado (que aceitava o TCP mas
+/// nunca enviava a resposta) pendurava a thread do worker para sempre. Esse
+/// foi o root cause do deadlock do pipeline em produção.
+const MERT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Timeout do TCP connect + TLS handshake do client MERT. 10s cobre o
+/// handshake HTTPS com margem (o `timeout_connect` de 5s anterior podia não
+/// cobrir o handshake TLS completo de forma confiável).
+const MERT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Deadline global da request de embedding de texto (cogmem). BGE-M3 ONNX
+/// in-process responde em 50-300ms; 30s é folga enorme mas barata e garante
+/// que um cogmem travado não congele o pipeline.
+const LYRICS_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Timeout de connect + TLS handshake do client de lyrics.
+const LYRICS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Decide se um erro do ureq merece retry. Transitório: timeout (servidor
+/// lento/travado), erro de transporte (conexão recusada/resetada, DNS), e
+/// respostas 5xx (falha temporária do servidor). Determinístico (sem retry):
+/// 4xx (request malformada, não vai melhorar repetindo).
+fn is_transient_ureq(err: &ureq::Error) -> bool {
+    match err {
+        // ureq sinaliza timeout via Transport com kind `Io`/`ConnectionFailed`.
+        // Qualquer erro de transporte é tratado como transitório.
+        ureq::Error::Transport(_) => true,
+        // Erros HTTP de status: 5xx é transitório, 4xx não.
+        ureq::Error::Status(code, _) => *code >= 500,
+    }
+}
+
 /// HTTP client for the embedding service.
 ///
 /// Cheap to construct, cheap to clone (just wraps a `ureq::Agent`).
@@ -65,9 +103,21 @@ impl EmbedClient {
     /// Construct a client pointing at `base_url` (e.g.
     /// `"https://extractlab.cormorant-alpha.ts.net:8448"`).
     pub fn new(base_url: impl Into<String>) -> Self {
+        Self::with_timeouts(base_url, MERT_REQUEST_TIMEOUT, MERT_CONNECT_TIMEOUT)
+    }
+
+    /// Como [`EmbedClient::new`] mas com timeouts explícitos. `request_timeout`
+    /// é o deadline GLOBAL da request inteira (não só de uma leitura de
+    /// socket); `connect_timeout` cobre TCP connect + TLS handshake. Exposto
+    /// para testes injetarem deadlines curtos.
+    pub fn with_timeouts(
+        base_url: impl Into<String>,
+        request_timeout: Duration,
+        connect_timeout: Duration,
+    ) -> Self {
         let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(5))
-            .timeout_read(Duration::from_secs(60))
+            .timeout_connect(connect_timeout)
+            .timeout(request_timeout)
             .build();
         Self {
             agent,
@@ -101,27 +151,45 @@ impl EmbedClient {
             "POST /embed"
         );
 
-        let response = match self
-            .agent
-            .post(&url)
-            .set("Content-Type", "application/octet-stream")
-            .set("X-Audio-Encoding", "zstd")
-            .set("X-Sample-Rate", &TARGET_SAMPLE_RATE.to_string())
-            .send_bytes(&compressed)
-        {
-            Ok(resp) => resp,
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
-                return Err(IndexerError::Embedding(format!(
-                    "POST /embed: HTTP {code}: {body}"
-                )));
-            }
-            Err(e) => return Err(IndexerError::Embedding(format!("POST /embed: {e}"))),
-        };
-
-        let parsed: EmbedResponse = response
-            .into_json()
-            .map_err(|e| IndexerError::Embedding(format!("bad response body: {e}")))?;
+        // Retry com backoff em falha transitória (timeout, transporte, 5xx).
+        // O erro intermediário carrega a flag de transitoriedade para o retry
+        // decidir; depois é mapeado para IndexerError::Embedding.
+        let parsed: EmbedResponse = retry_transient(
+            RetryPolicy::default_embed(),
+            |e: &EmbedAttemptError| e.transient,
+            std::thread::sleep,
+            || {
+                let response = match self
+                    .agent
+                    .post(&url)
+                    .set("Content-Type", "application/octet-stream")
+                    .set("X-Audio-Encoding", "zstd")
+                    .set("X-Sample-Rate", &TARGET_SAMPLE_RATE.to_string())
+                    .send_bytes(&compressed)
+                {
+                    Ok(resp) => resp,
+                    Err(ureq::Error::Status(code, resp)) => {
+                        let body = resp.into_string().unwrap_or_default();
+                        return Err(EmbedAttemptError {
+                            transient: code >= 500,
+                            msg: format!("POST /embed: HTTP {code}: {body}"),
+                        });
+                    }
+                    Err(e) => {
+                        return Err(EmbedAttemptError {
+                            transient: is_transient_ureq(&e),
+                            msg: format!("POST /embed: {e}"),
+                        });
+                    }
+                };
+                // Falha ao ler/parsear o body é determinística (não retry).
+                response.into_json::<EmbedResponse>().map_err(|e| EmbedAttemptError {
+                    transient: false,
+                    msg: format!("bad response body: {e}"),
+                })
+            },
+        )
+        .map_err(|e| IndexerError::Embedding(e.msg))?;
 
         if parsed.vector.is_empty() {
             return Err(IndexerError::Embedding(
@@ -146,6 +214,13 @@ impl EmbedClient {
             .map_err(|e| IndexerError::Embedding(format!("bad /health body: {e}")))?;
         Ok(parsed.model)
     }
+}
+
+/// Erro de uma única tentativa de embed. Carrega se é transitório (vale
+/// retry) e a mensagem para virar [`IndexerError::Embedding`] depois.
+struct EmbedAttemptError {
+    transient: bool,
+    msg: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,9 +254,20 @@ struct CogmemEmbedResponse {
 
 impl LyricsEmbedClient {
     pub fn new(base_url: impl Into<String>) -> Self {
+        Self::with_timeouts(base_url, LYRICS_REQUEST_TIMEOUT, LYRICS_CONNECT_TIMEOUT)
+    }
+
+    /// Como [`LyricsEmbedClient::new`] mas com timeouts explícitos.
+    /// `request_timeout` é o deadline global da request inteira. Exposto para
+    /// testes injetarem deadlines curtos.
+    pub fn with_timeouts(
+        base_url: impl Into<String>,
+        request_timeout: Duration,
+        connect_timeout: Duration,
+    ) -> Self {
         let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(5))
-            .timeout_read(Duration::from_secs(30))
+            .timeout_connect(connect_timeout)
+            .timeout(request_timeout)
             .build();
         Self {
             agent,
@@ -197,13 +283,39 @@ impl LyricsEmbedClient {
             "inputs": [truncated],
             "model": "bge-m3"
         });
-        let resp: CogmemEmbedResponse = self
-            .agent
-            .post(&format!("{}/api/embed", self.base_url))
-            .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!("cogmem embed: {e}")))?
-            .into_json()
-            .map_err(|e| IndexerError::Embedding(format!("cogmem json: {e}")))?;
+        let url = format!("{}/api/embed", self.base_url);
+
+        // Mesmo padrão de retry do client MERT: repete em falha transitória.
+        let resp: CogmemEmbedResponse = retry_transient(
+            RetryPolicy::default_embed(),
+            |e: &EmbedAttemptError| e.transient,
+            std::thread::sleep,
+            || {
+                let response = match self.agent.post(&url).send_json(&body) {
+                    Ok(resp) => resp,
+                    Err(ureq::Error::Status(code, resp)) => {
+                        let body = resp.into_string().unwrap_or_default();
+                        return Err(EmbedAttemptError {
+                            transient: code >= 500,
+                            msg: format!("cogmem embed: HTTP {code}: {body}"),
+                        });
+                    }
+                    Err(e) => {
+                        return Err(EmbedAttemptError {
+                            transient: is_transient_ureq(&e),
+                            msg: format!("cogmem embed: {e}"),
+                        });
+                    }
+                };
+                response
+                    .into_json::<CogmemEmbedResponse>()
+                    .map_err(|e| EmbedAttemptError {
+                        transient: false,
+                        msg: format!("cogmem json: {e}"),
+                    })
+            },
+        )
+        .map_err(|e| IndexerError::Embedding(e.msg))?;
 
         resp.embeddings
             .into_iter()

@@ -17,6 +17,7 @@ mod scan;
 mod metadata;
 mod cover;
 mod watch;
+mod retry;
 pub mod query;
 mod pipeline;
 
