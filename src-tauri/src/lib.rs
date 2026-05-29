@@ -254,8 +254,8 @@ fn lib_semantic_search(
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let client = lib.handle.client();
-    let tei = library_indexer::LyricsEmbedClient::new("http://100.123.73.128:8080");
-    let vector = tei.embed_text(&query).map_err(err)?;
+    let embedder = library_indexer::LyricsEmbedClient::new("http://100.123.73.128:3939");
+    let vector = embedder.embed_text(&query).map_err(err)?;
     let results = client.semantic_search(&vector, limit.unwrap_or(10)).map_err(err)?;
 
     let mut tracks = Vec::new();
