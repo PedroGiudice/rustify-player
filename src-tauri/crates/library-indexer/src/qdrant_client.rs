@@ -640,6 +640,64 @@ impl QdrantClient {
         Ok(all)
     }
 
+    /// Scroll ALL points returning selected payload fields plus whether each
+    /// point already carries the `"lyrics"` named vector.
+    ///
+    /// Qdrant has no server-side filter for "point lacks a given named vector"
+    /// (feature requests qdrant#2737 / qdrant#5264 are still open), so the only
+    /// way to know is to request `with_vector: ["lyrics"]` and inspect the
+    /// response. We do NOT pull the `mert` vector (768 floats × N points would
+    /// bloat the scroll for nothing) — only the presence flag for `lyrics`.
+    ///
+    /// Returns `(point_id, payload, has_lyrics_vector)`.
+    pub fn scroll_all_lyrics_state(
+        &self,
+        fields: &[&str],
+    ) -> Result<Vec<(u64, Value, bool)>, IndexerError> {
+        let mut all: Vec<(u64, Value, bool)> = Vec::new();
+        let mut offset: Option<Value> = None;
+        let include = json!({ "include": fields });
+
+        loop {
+            let mut body = json!({
+                "limit": 1000,
+                "with_payload": include,
+                "with_vector": [VEC_LYRICS],
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+
+            let resp: Value = self
+                .agent
+                .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll_lyrics: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    let id = p["id"].as_u64().unwrap_or(0);
+                    let payload = p.get("payload").cloned().unwrap_or(Value::Null);
+                    // `vector` chega como {"lyrics": [...]} quando presente; a
+                    // chave some (ou o array é vazio) quando o ponto não tem.
+                    let has_lyrics = p["vector"][VEC_LYRICS]
+                        .as_array()
+                        .is_some_and(|v| !v.is_empty());
+                    all.push((id, payload, has_lyrics));
+                }
+            }
+
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+
+        Ok(all)
+    }
+
     /// Scroll ALL points returning only selected payload fields.
     /// Used for client-side aggregation (list albums, artists, genres).
     pub fn scroll_all_payloads(&self, fields: &[&str]) -> Result<Vec<(u64, Value)>, IndexerError> {

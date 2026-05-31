@@ -202,6 +202,46 @@ pub fn find_lrc_sidecar(audio_path: &Path) -> Option<std::path::PathBuf> {
     }
 }
 
+/// Limpa texto de letra para embedding: remove timestamps LRC inline
+/// (`[mm:ss.xx]`, `[mm:ss]`, `[mm:ss:xx]`, inclusive múltiplos por linha),
+/// descarta linhas em branco e mantém o texto puro.
+///
+/// É o que o embedding consome — os timestamps ficam só no arquivo `.lrc`
+/// (lido por [`parse_lrc_file`]). Equivalente nativo do `_clean` do
+/// `scripts/embed_lyrics.py`, mas reusa [`parse_timestamp`] em vez de regex
+/// fixa, então também cobre os formatos sem fração e com `:` decimal.
+pub fn clean_lyrics_text(raw: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+
+    for line in raw.lines() {
+        let mut rest = line.trim();
+
+        // Consome timestamps no início da linha (LRC permite vários).
+        loop {
+            if !rest.starts_with('[') {
+                break;
+            }
+            let Some(close) = rest.find(']') else {
+                break;
+            };
+            let tag = &rest[1..close];
+            if parse_timestamp(tag).is_some() {
+                rest = rest[close + 1..].trim_start();
+            } else {
+                // Não é timestamp (metadata ou marcador de seção) — para.
+                break;
+            }
+        }
+
+        let cleaned = rest.trim();
+        if !cleaned.is_empty() {
+            out.push(cleaned.to_string());
+        }
+    }
+
+    out.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,6 +390,43 @@ mod tests {
         assert_eq!(lines[0].line, "First");
         assert_eq!(lines[1].line, "Second");
         assert_eq!(lines[2].line, "Third");
+    }
+
+    #[test]
+    fn clean_strips_inline_timestamps() {
+        // Cada linha tem um timestamp LRC no início; clean remove e mantém texto.
+        let raw = "[00:00.00] primeira linha\n[00:05.50] segunda linha\n";
+        assert_eq!(clean_lyrics_text(raw), "primeira linha\nsegunda linha");
+    }
+
+    #[test]
+    fn clean_strips_multiple_timestamps_per_line() {
+        // LRC permite vários timestamps por linha; todos são removidos.
+        let raw = "[00:05.00][00:25.00] refrão repetido\n";
+        assert_eq!(clean_lyrics_text(raw), "refrão repetido");
+    }
+
+    #[test]
+    fn clean_drops_blank_and_metadata_lines() {
+        // Linhas vazias somem; metadata sem timestamp também (vira vazia após
+        // strip do colchete? não — só timestamps são removidos). Linha que
+        // sobra vazia após strip é descartada.
+        let raw = "[00:00.00] texto\n\n[00:10.00]   \n[00:20.00] mais texto\n";
+        assert_eq!(clean_lyrics_text(raw), "texto\nmais texto");
+    }
+
+    #[test]
+    fn clean_keeps_plain_text_without_timestamps() {
+        // Texto já limpo (embedded_lyrics sem timestamps) passa intacto,
+        // só normalizando linhas em branco.
+        let raw = "verso um\nverso dois\n\nverso três";
+        assert_eq!(clean_lyrics_text(raw), "verso um\nverso dois\nverso três");
+    }
+
+    #[test]
+    fn clean_empty_returns_empty() {
+        assert_eq!(clean_lyrics_text(""), "");
+        assert_eq!(clean_lyrics_text("\n\n  \n"), "");
     }
 
     #[test]
