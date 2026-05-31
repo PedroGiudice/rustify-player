@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use crate::cover::{self, CoverSource};
-use crate::embed_client::EmbedClient;
+use crate::embed_client::{EmbedClient, LyricsEmbedClient};
 use crate::error::IndexerError;
 use crate::loudness;
 use crate::lyrics;
@@ -71,6 +71,9 @@ pub(crate) struct PipelineConfig {
     pub music_root: PathBuf,
     pub cache_dir: PathBuf,
     pub embed_client: Option<EmbedClient>,
+    /// Cliente de embedding de texto (cogmem BGE-M3) para os vetores `lyrics`.
+    /// Quando presente, o coordinator roda o backfill de lyrics no startup.
+    pub lyrics_client: Option<LyricsEmbedClient>,
 }
 
 /// Start the coordinator + embed worker. Returns channels, shared state, and the client.
@@ -187,6 +190,27 @@ fn coordinator_loop(
                         target: "library_indexer::pipeline",
                         error = %e,
                         "loudness bulk backfill failed"
+                    );
+                }
+            })
+            .ok();
+    }
+
+    // Bulk lyrics backfill: popula `lrc_path` no payload de tracks cujo `.lrc`
+    // sidecar chegou depois da indexação do FLAC (run_scan não detecta isso,
+    // pois o mtime/size do FLAC não muda) e gera o vetor `lyrics` para quem tem
+    // texto mas ainda não tem vetor. Thread própria, idempotente, sem re-MERT.
+    // Só roda se houver cliente de embedding de texto configurado.
+    if let Some(lyrics_client) = config.lyrics_client.clone() {
+        let backfill_client = client.clone();
+        thread::Builder::new()
+            .name("library-indexer-lyrics-backfill".into())
+            .spawn(move || {
+                if let Err(e) = backfill_lyrics(&backfill_client, &lyrics_client) {
+                    warn!(
+                        target: "library_indexer::pipeline",
+                        error = %e,
+                        "lyrics bulk backfill failed"
                     );
                 }
             })
@@ -710,6 +734,198 @@ fn apply_embed_result(
 }
 
 // ---------------------------------------------------------------------------
+// Lyrics backfill (sidecar .lrc → payload + vetor lyrics)
+// ---------------------------------------------------------------------------
+
+/// Texto mínimo (em chars, após limpeza) para uma letra valer como input de
+/// embedding. Espelha o guard `len > 20` do `scripts/embed_lyrics.py` — textos
+/// curtos são ruído (instrumentais marcados, fragmentos).
+const MIN_LYRICS_CHARS: usize = 20;
+
+/// Resultado da resolução de letra de uma track a partir do seu payload + disco.
+struct LyricsResolution {
+    /// Texto limpo (sem timestamps) pronto para embedding, se houver.
+    text: Option<String>,
+    /// `lrc_path` a gravar no payload quando um `.lrc` sidecar foi encontrado
+    /// no disco mas ainda NÃO constava no payload (Gap A). `None` quando o
+    /// payload já estava correto ou não há sidecar.
+    lrc_path_for_payload: Option<String>,
+}
+
+/// Resolve a letra de uma track a partir do seu payload Qdrant, sem tocar no
+/// áudio (logo, sem re-embed MERT). Ordem de prioridade — mesma do pipeline
+/// Python canônico, estendida para detectar sidecar novo:
+///
+/// 1. `embedded_lyrics` do payload (limpo), se > [`MIN_LYRICS_CHARS`].
+/// 2. `lrc_path` do payload (lido do disco e limpo), se > [`MIN_LYRICS_CHARS`].
+/// 3. **Gap A**: `.lrc` sidecar ao lado do `path` do FLAC que ainda não está
+///    no payload — lê, limpa e sinaliza o caminho para `set_payload`.
+fn resolve_lyrics(payload: &serde_json::Value) -> LyricsResolution {
+    let none = LyricsResolution {
+        text: None,
+        lrc_path_for_payload: None,
+    };
+
+    // 1. embedded_lyrics direto do payload.
+    if let Some(raw) = payload["embedded_lyrics"].as_str() {
+        let cleaned = lyrics::clean_lyrics_text(raw);
+        if cleaned.chars().count() > MIN_LYRICS_CHARS {
+            return LyricsResolution {
+                text: Some(cleaned),
+                lrc_path_for_payload: None,
+            };
+        }
+    }
+
+    // 2. lrc_path já registrado no payload.
+    if let Some(lrc) = payload["lrc_path"].as_str() {
+        if let Some(cleaned) = read_clean_lrc(Path::new(lrc)) {
+            return LyricsResolution {
+                text: Some(cleaned),
+                lrc_path_for_payload: None,
+            };
+        }
+    }
+
+    // 3. Sidecar novo no disco, ainda fora do payload (Gap A).
+    if let Some(audio) = payload["path"].as_str() {
+        if let Some(sidecar) = lyrics::find_lrc_sidecar(Path::new(audio)) {
+            if let Some(cleaned) = read_clean_lrc(&sidecar) {
+                return LyricsResolution {
+                    text: Some(cleaned),
+                    lrc_path_for_payload: Some(path_str(&sidecar)),
+                };
+            }
+        }
+    }
+
+    none
+}
+
+/// Lê e limpa um `.lrc` do disco; `None` se ilegível ou texto curto demais.
+fn read_clean_lrc(path: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let cleaned = lyrics::clean_lyrics_text(&raw);
+    (cleaned.chars().count() > MIN_LYRICS_CHARS).then_some(cleaned)
+}
+
+/// Ponto de entrada `pub(crate)` para disparar o backfill de lyrics sob
+/// demanda (ex.: `IndexerHandle::sync_lyrics_to_qdrant`). Mesma lógica que roda
+/// no startup do coordinator. Retorna o número de vetores `lyrics` escritos.
+pub(crate) fn run_lyrics_backfill(
+    client: &QdrantClient,
+    lyrics_client: &LyricsEmbedClient,
+) -> Result<usize, IndexerError> {
+    backfill_lyrics(client, lyrics_client)
+}
+
+/// One-shot bulk pass: garante que toda track com letra (sidecar `.lrc` ou
+/// `embedded_lyrics`) tenha o payload de lyrics populado E o vetor `lyrics`
+/// (1024d, BGE-M3 via cogmem) gerado — sem nunca re-embeddar o vetor `mert`.
+///
+/// Resolve dois gaps de uma vez, escaneando a collection uma única vez:
+///
+/// - **Payload (Gap A)**: um `.lrc` adicionado ao lado de um FLAC já indexado
+///   nunca muda o mtime/size do FLAC, então o `run_scan` o ignora. Aqui
+///   detectamos o sidecar no disco e gravamos `lrc_path`/`embedded_lyrics` via
+///   `set_payload` (não toca vetores).
+/// - **Vetor (Gap B)**: tracks com texto de letra mas sem o vetor `lyrics`
+///   recebem o embedding via `update_vectors` (PUT /points/vectors), que
+///   preserva o `mert` intacto (doc Qdrant: "all other unspecified vectors
+///   will stay intact").
+///
+/// Idempotente: pula quem já tem o vetor `lyrics`. No-op quando a cobertura
+/// está completa. Roda em thread própria (como o backfill de LUFS) para não
+/// bloquear o coordinator. Retorna a contagem de vetores escritos.
+fn backfill_lyrics(
+    client: &QdrantClient,
+    lyrics_client: &LyricsEmbedClient,
+) -> Result<usize, IndexerError> {
+    let rows = client.scroll_all_lyrics_state(&["path", "lrc_path", "embedded_lyrics"])?;
+    if rows.is_empty() {
+        info!(target: "library_indexer::pipeline", "lyrics backfill: collection vazia");
+        return Ok(0);
+    }
+
+    let total = rows.len();
+    let mut payload_updates = 0usize;
+    let mut embedded = 0usize;
+    let mut failed = 0usize;
+    let mut vector_batch: Vec<(u64, Vec<f32>)> = Vec::new();
+
+    for (id, payload, has_lyrics_vector) in rows {
+        let resolved = resolve_lyrics(&payload);
+
+        // Gap A: sidecar novo no disco → grava no payload (não toca vetores).
+        if let Some(ref lrc) = resolved.lrc_path_for_payload {
+            if let Err(e) =
+                client.set_payload(&[id], json!({ "lrc_path": lrc }))
+            {
+                warn!(
+                    target: "library_indexer::pipeline",
+                    track_id = id, error = %e,
+                    "lyrics backfill: set_payload lrc_path falhou"
+                );
+            } else {
+                payload_updates += 1;
+            }
+        }
+
+        // Gap B: tem texto mas falta o vetor lyrics → embeda.
+        if has_lyrics_vector {
+            continue;
+        }
+        let Some(text) = resolved.text else { continue };
+
+        match lyrics_client.embed_text(&text) {
+            Ok(vec) => {
+                vector_batch.push((id, vec));
+                embedded += 1;
+            }
+            Err(e) => {
+                warn!(
+                    target: "library_indexer::pipeline",
+                    track_id = id, error = %e,
+                    "lyrics backfill: embed falhou"
+                );
+                failed += 1;
+            }
+        }
+
+        if vector_batch.len() >= 50 {
+            flush_lyrics_vectors(client, &mut vector_batch);
+        }
+    }
+
+    flush_lyrics_vectors(client, &mut vector_batch);
+
+    info!(
+        target: "library_indexer::pipeline",
+        total, payload_updates, embedded, failed,
+        "lyrics backfill: bulk pass complete"
+    );
+    Ok(embedded)
+}
+
+/// Escreve um lote de vetores `lyrics` (preserva `mert`) e esvazia o buffer.
+/// Falha de escrita é logada mas não aborta o backfill — os pontos do lote
+/// serão reprocessados no próximo startup (idempotente).
+fn flush_lyrics_vectors(client: &QdrantClient, batch: &mut Vec<(u64, Vec<f32>)>) {
+    if batch.is_empty() {
+        return;
+    }
+    let refs: Vec<(u64, &[f32])> = batch.iter().map(|(id, v)| (*id, v.as_slice())).collect();
+    if let Err(e) = client.upsert_lyrics_batch(&refs) {
+        warn!(
+            target: "library_indexer::pipeline",
+            count = refs.len(), error = %e,
+            "lyrics backfill: upsert_lyrics_batch falhou"
+        );
+    }
+    batch.clear();
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -756,5 +972,84 @@ mod tests {
             err.contains("panicked") && err.contains("symphonia explodiu"),
             "mensagem de erro deve preservar o motivo do panic: {err}"
         );
+    }
+
+    // --- resolve_lyrics --------------------------------------------------------
+
+    #[test]
+    fn resolve_lyrics_uses_embedded_text_when_present() {
+        // embedded_lyrics já no payload (com timestamps) → limpa e usa, sem
+        // tocar no disco. Não há .lrc novo para anexar ao payload.
+        let payload = json!({
+            "path": "/nao/existe/track.flac",
+            "embedded_lyrics": "[00:00.00] primeira linha da letra\n[00:05.00] segunda linha da letra",
+        });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(
+            r.text.as_deref(),
+            Some("primeira linha da letra\nsegunda linha da letra")
+        );
+        assert_eq!(r.lrc_path_for_payload, None);
+    }
+
+    #[test]
+    fn resolve_lyrics_ignores_short_embedded_text() {
+        // embedded_lyrics curto (<=20 chars após limpeza) não vale como letra
+        // — espelha o guard do script Python (len > 20).
+        let payload = json!({
+            "path": "/nao/existe/track.flac",
+            "embedded_lyrics": "[00:00.00] oi",
+        });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(r.text, None);
+        assert_eq!(r.lrc_path_for_payload, None);
+    }
+
+    #[test]
+    fn resolve_lyrics_reads_lrc_path_from_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lrc = tmp.path().join("track.lrc");
+        std::fs::write(&lrc, "[00:00.00] uma letra bem comprida de teste\n").unwrap();
+
+        let payload = json!({
+            "path": tmp.path().join("track.flac").to_string_lossy(),
+            "lrc_path": lrc.to_string_lossy(),
+        });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(r.text.as_deref(), Some("uma letra bem comprida de teste"));
+        // lrc_path já estava no payload → nada a anexar.
+        assert_eq!(r.lrc_path_for_payload, None);
+    }
+
+    #[test]
+    fn resolve_lyrics_detects_sidecar_not_yet_in_payload() {
+        // Gap A: FLAC já indexado, .lrc chegou ao lado depois, payload NÃO tem
+        // lrc_path nem embedded_lyrics. resolve_lyrics acha o sidecar no disco,
+        // devolve o texto E o caminho para popular o payload.
+        let tmp = tempfile::tempdir().unwrap();
+        let flac = tmp.path().join("track.flac");
+        let lrc = tmp.path().join("track.lrc");
+        std::fs::write(&flac, b"fake").unwrap();
+        std::fs::write(&lrc, "[00:00.00] letra que chegou depois do flac\n").unwrap();
+
+        let payload = json!({ "path": flac.to_string_lossy() });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(r.text.as_deref(), Some("letra que chegou depois do flac"));
+        assert_eq!(
+            r.lrc_path_for_payload.as_deref(),
+            Some(lrc.to_string_lossy().as_ref()),
+            "deve sinalizar o lrc_path para o set_payload do Gap A"
+        );
+    }
+
+    #[test]
+    fn resolve_lyrics_none_when_no_text_anywhere() {
+        let tmp = tempfile::tempdir().unwrap();
+        let flac = tmp.path().join("track.flac");
+        std::fs::write(&flac, b"fake").unwrap();
+        let payload = json!({ "path": flac.to_string_lossy() });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(r.text, None);
+        assert_eq!(r.lrc_path_for_payload, None);
     }
 }

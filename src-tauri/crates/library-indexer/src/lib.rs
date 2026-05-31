@@ -53,6 +53,9 @@ pub struct IndexerConfig {
     pub cache_dir: PathBuf,
     /// Optional embedding client for MERT vectors.
     pub embed_client: Option<EmbedClient>,
+    /// Optional text-embedding client (cogmem BGE-M3) for `lyrics` vectors.
+    /// When present, the indexer runs the lyrics backfill on startup.
+    pub lyrics_client: Option<LyricsEmbedClient>,
 }
 
 /// Entry point. Stateless; calling [`Indexer::open`] spawns threads.
@@ -71,6 +74,7 @@ impl Indexer {
             music_root: config.music_root.clone(),
             cache_dir: config.cache_dir.clone(),
             embed_client: config.embed_client.clone(),
+            lyrics_client: config.lyrics_client.clone(),
         };
         let (cmd_tx, evt_rx, state, client, _handles) = pipeline::start(client, pipeline_cfg);
         Ok(IndexerHandle {
@@ -245,13 +249,16 @@ impl IndexerHandle {
         self.inner.client.behavioral_signals()
     }
 
+    /// Sincroniza letras com o Qdrant: popula `lrc_path` no payload de tracks
+    /// cujo `.lrc` sidecar chegou após a indexação do FLAC e gera o vetor
+    /// `lyrics` (BGE-M3, 1024d) para quem tem texto mas ainda não tem vetor.
+    /// Não re-embeda o vetor `mert`. Idempotente. Retorna o número de vetores
+    /// `lyrics` escritos. O backfill já roda no startup; este método é o
+    /// gatilho manual (ex.: após depositar um lote de `.lrc`).
     pub fn sync_lyrics_to_qdrant(
         &self,
-        _lyrics_client: &LyricsEmbedClient,
+        lyrics_client: &LyricsEmbedClient,
     ) -> Result<usize, IndexerError> {
-        // Scroll tracks with lrc_path or embedded_lyrics that don't have lyrics vectors yet
-        // For now, delegate to the existing QdrantClient method that takes a connection
-        // This will be a no-op until we update sync_lyrics to work without SQLite
-        Ok(0)
+        pipeline::run_lyrics_backfill(&self.inner.client, lyrics_client)
     }
 }

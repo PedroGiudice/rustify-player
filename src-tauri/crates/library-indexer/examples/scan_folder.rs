@@ -96,6 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         music_root,
         cache_dir,
         embed_client: args.embed_url.as_deref().map(EmbedClient::new),
+        lyrics_client: None,
     };
 
     let indexer = Indexer::open(config)?;
