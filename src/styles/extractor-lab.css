@@ -1183,57 +1183,21 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 
 /* ────────────────────────────────────────────────────────────
-   NOW PLAYING INDICATOR (.npi)
+   NOW PLAYING INDICATOR — reusa o sprite .np-mini__vu da sidebar
+   (uniformidade visual: um unico equalizer no app inteiro). Estes
+   modifiers so adaptam o contexto; o sprite vem de .np-mini__vu.
    ──────────────────────────────────────────────────────────── */
-.npi {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 14px;
-  width: 18px;
-}
-.npi__bar {
-  display: block;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--blue-fg);
-}
-.npi--playing .npi__bar {
-  animation: npi-bounce var(--dur, 0.9s) ease-in-out infinite alternate;
-  /* (b) will-change cirúrgico: só nas barras que de fato animam (estado playing).
-     O NPI só existe na track current — 1 elemento por vez — custo de VRAM trivial.
-     NÃO colocar will-change permanente nem fora deste seletor. */
-  will-change: transform;
-}
-.npi--playing .npi__bar:nth-child(1) { --dur: 0.7s; height: 8px; }
-.npi--playing .npi__bar:nth-child(2) { --dur: 0.9s; height: 14px; }
-.npi--playing .npi__bar:nth-child(3) { --dur: 0.8s; height: 5px; }
-@keyframes npi-bounce {
-  from { transform: scaleY(0.35); }
-  to   { transform: scaleY(1); }
-}
-.npi--paused .npi__bar:nth-child(1) { height: 8px;  opacity: 0.6; }
-.npi--paused .npi__bar:nth-child(2) { height: 14px; opacity: 0.6; }
-.npi--paused .npi__bar:nth-child(3) { height: 5px;  opacity: 0.6; }
+.npi--paused span { animation-play-state: paused; }
 .npi--overlay {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  border-radius: inherit;
-  width: auto; height: auto;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 5px 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-sm);
 }
-.npi--overlay .npi__bar { background: #fff; }
-/* (a) prefers-reduced-motion: desliga a animação para usuários que pedem menos movimento
-   (a11y + máquinas lentas). As barras ficam estáticas na altura final — indicador
-   de "current" permanece visível, só não pulsa. */
 @media (prefers-reduced-motion: reduce) {
-  .npi--playing .npi__bar {
-    animation: none;
-    will-change: auto;
-  }
-  .npi--playing .npi__bar:nth-child(1) { height: 8px; }
-  .npi--playing .npi__bar:nth-child(2) { height: 14px; }
-  .npi--playing .npi__bar:nth-child(3) { height: 5px; }
+  .npi span { animation: none; }
 }
 
 /* ────────────────────────────────────────────────────────────
