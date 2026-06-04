@@ -43,6 +43,7 @@ export const ICONS = {
   signal:       "lucide:audio-waveform",
   settings:     "lucide:settings",
   queue:        "lucide:list-end",
+  lyrics:       "lucide:mic-vocal",
   history:      "lucide:history",
   artists:      "lucide:user-round",
   albums:       "lucide:disc-3",

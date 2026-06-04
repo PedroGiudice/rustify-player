@@ -10,11 +10,7 @@ import { playTrack } from "../components/PlayerBar";
 import { route } from "../router";
 import { CoverArt } from "../components/CoverArt";
 import { Icon, ICONS } from "../components/Icon";
-
-function fmtDur(ms: number): string {
-  const s = Math.round(ms / 1000);
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
+import { TrackRowTable } from "../components/TrackRowTable";
 
 export default function AlbumView() {
   const title = () => route().param ? decodeURIComponent(route().param!) : null;
@@ -81,13 +77,11 @@ export default function AlbumView() {
           <div class="tracks__head tracks__mono">Length</div>
           <For each={tracks() ?? []}>
             {(t, i) => (
-              <div class="tracks__row" onClick={() => play(t)} style={{ display: "contents" }}>
-                <div class="tracks__idx">{String(t.track_number ?? i() + 1).padStart(2, "0")}</div>
-                <div class="tracks__title"><b>{t.title || "—"}</b><small>{t.artist_name || "—"}</small></div>
-                <div class="tracks__cell">{t.album_title ?? "—"}</div>
-                <div class="tracks__cell">{t.genre_name ?? "—"}</div>
-                <div class="tracks__mono">{fmtDur(t.duration_ms)}</div>
-              </div>
+              <TrackRowTable
+                track={t}
+                index={t.track_number ?? i() + 1}
+                onClick={() => play(t)}
+              />
             )}
           </For>
         </div>

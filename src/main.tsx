@@ -31,11 +31,14 @@ async function loadIconSprite() {
 
 // Aplica DSP state persistido ao backend antes de renderizar
 import { applyFullDspState } from "./store/dsp";
+// Aplica loudness norm/target persistido ao backend (com retry de boot)
+import { applyLoudnessState } from "./store/tweaks";
 
 async function boot() {
   attachConsole();
   await loadIconSprite();
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
+  applyLoudnessState().catch((e) => console.warn("[loudness] initial sync failed:", e));
 
   const savedTheme = localStorage.getItem("rustify-theme");
   if (savedTheme) {

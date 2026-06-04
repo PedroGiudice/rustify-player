@@ -3,24 +3,11 @@
    ============================================================ */
 
 import { createResource, For, Show } from "solid-js";
-import { libListHistory, coverUrl, type Track } from "../tauri";
+import { libListHistory, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
-import { CoverArt } from "../components/CoverArt";
-
-function fmtDur(ms: number): string {
-  const s = Math.round(ms / 1000);
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function relTime(ts: number | null | undefined): string {
-  if (!ts) return "—";
-  const diff = Date.now() / 1000 - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
-  return `${Math.floor(diff / 86400)} d ago`;
-}
+import { TrackRowList } from "../components/TrackRowList";
+import { relTime } from "../lib/format";
 
 export default function History() {
   const [tracks] = createResource(async () => {
@@ -56,21 +43,11 @@ export default function History() {
           <div class="row-list">
             <For each={tracks() ?? []}>
               {(t) => (
-                <div class="row" onClick={() => play(t)}>
-                  <CoverArt
-                    seed={t.album_title || t.id}
-                    src={coverUrl(t.album_cover_path)}
-                    size="sm"
-                    class="row__cover"
-                    style={{ width: "40px", height: "40px" }}
-                  />
-                  <div class="row__meta">
-                    <div class="row__title">{t.title || "—"}</div>
-                    <div class="row__sub">{t.artist_name || "—"}{t.album_title && <> · {t.album_title}</>}</div>
-                  </div>
-                  <div class="row__when">{relTime(t.last_played)}</div>
-                  <div class="row__time">{fmtDur(t.duration_ms)}</div>
-                </div>
+                <TrackRowList
+                  track={t}
+                  onClick={() => play(t)}
+                  whenText={relTime(t.last_played)}
+                />
               )}
             </For>
           </div>

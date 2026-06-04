@@ -12,6 +12,7 @@ import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
+import { tweaks } from "../store/tweaks";
 import { navigate } from "../router";
 
 export default function NowPlaying() {
@@ -307,7 +308,7 @@ export default function NowPlaying() {
             </div>
           </div>
 
-          <Show when={(lyrics() ?? []).length > 0}>
+          <Show when={tweaks().lyricsVisible && (lyrics() ?? []).length > 0}>
             <aside
               class="np__lyrics-card np__lyrics-card--floating"
               classList={{ "is-interacting": interacting() }}

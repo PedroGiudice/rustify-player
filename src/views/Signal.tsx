@@ -4,7 +4,7 @@
    Solid + store/dsp.ts. Layout pixel-a-pixel do handoff HTML.
    ============================================================ */
 
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, onMount, Show } from "solid-js";
 import {
   dsp,
   toggleBypass,
@@ -53,7 +53,7 @@ import {
   LIMITER_OVS,
   LIMITER_DITHER,
 } from "../store/dsp";
-import { normGetState, normSetEnabled } from "../tauri";
+import { tweaks } from "../store/tweaks";
 import { ParamRow } from "../components/dsp/ParamRow";
 import { Fader } from "../components/dsp/Fader";
 import { EqCanvas } from "../components/dsp/EqCanvas";
@@ -138,16 +138,10 @@ const ROADMAP_SPACE: RoadmapCard[] = [
 const FLAT_PRESET = "Flat";
 
 export default function Signal() {
-  // Replay-gain normalize ainda vem do backend via cmd separado.
-  const [normEnabled, { mutate: setNormState }] = createResource(async () => {
-    try { return await normGetState(); } catch { return false; }
-  });
-
-  async function toggleNorm() {
-    const next = !normEnabled();
-    setNormState(next);
-    try { await normSetEnabled(next); } catch {}
-  }
+  // Loudness normalization: fonte unica de verdade e o store de tweaks
+  // (tweaks().loudnessNorm / loudnessTarget). A Signal so EXIBE — o
+  // controle on/off + target vive no painel Tweaks. Antes a Signal tinha
+  // estado IPC proprio (normGetState) que ficava stale ao mexer no Tweaks.
 
   // Sincronizacao backend no mount.
   onMount(() => { applyFullDspState(); });
@@ -301,9 +295,9 @@ export default function Signal() {
           />
           <StatTile
             label="Normalize"
-            on={!!normEnabled() && !dsp.bypass}
-            value={normEnabled() ? "−18 LUFS" : "off"}
-            sub="ReplayGain · track"
+            on={tweaks().loudnessNorm && !dsp.bypass}
+            value={tweaks().loudnessNorm ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
+            sub="LUFS · per-track"
           />
         </div>
 
@@ -319,7 +313,7 @@ export default function Signal() {
             <span class="dot" />LSP Para EQ × 16
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={!!normEnabled() && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={tweaks().loudnessNorm && !dsp.bypass ? "true" : "false"}>
             <span class="dot" />norm_gain
           </span>
           <span class="sig-chain__arrow">→</span>

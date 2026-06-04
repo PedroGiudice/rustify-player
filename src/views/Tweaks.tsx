@@ -83,7 +83,8 @@ function NumberSlider(props: {
     | "bgMidGain"
     | "bgTrebleGain"
     | "bgSmoothing"
-    | "bgSpeed";
+    | "bgSpeed"
+    | "loudnessTarget";
   min: number;
   max: number;
   step: number;
@@ -244,6 +245,21 @@ export function Tweaks() {
             max={2}
             step={0.05}
             format={(v) => `${v.toFixed(2)}x`}
+          />
+
+          <div class="tweaks__divider"><span>Loudness</span></div>
+          <Segmented
+            label="Normalização"
+            key="loudnessNorm"
+            options={[[true, "On"], [false, "Off"]]}
+          />
+          <NumberSlider
+            label="Target"
+            key="loudnessTarget"
+            min={-20}
+            max={-6}
+            step={0.5}
+            format={(v) => `${v.toFixed(1)} LUFS`}
           />
 
           <button class="tweaks__reset" onClick={() => resetTweaks()}>

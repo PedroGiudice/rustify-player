@@ -6,6 +6,7 @@
    ============================================================ */
 
 import { createSignal, createEffect } from "solid-js";
+import { normSetEnabled, normSetTarget } from "../tauri";
 
 const { invoke } = (window as any).__TAURI__.core;
 
@@ -28,6 +29,9 @@ export interface TweaksState {
       0.5 = meio termo
       1   = quase opaco (alpha 0.30, brightness 0.65) */
   lyricsGlass: number;
+  /** Mostra o card de lyrics no Now Playing. Toggle rapido via botao
+      na PlayerBar; persiste igual aos demais tweaks. */
+  lyricsVisible: boolean;
   /** Cor das linhas do spectrum bg (hex #rrggbb). Default = carbono escuro. */
   bgInk: string;
   /** Overlay de spectrum real (pos-DSP) sob a curva do EQ.
@@ -55,6 +59,16 @@ export interface TweaksState {
       time-dependent — mudanças do slider afetam só a derivada,
       sem saltos de fase. */
   bgSpeed: number;
+
+  // ── Loudness ────────────────────────────────────────────────
+  /** Normalização de loudness ligada. Default ON (alvo streaming).
+      Mapeia pra `norm_set_enabled` no backend. */
+  loudnessNorm: boolean;
+  /** Alvo de loudness em LUFS. Range UI -20..-6, default -14 (padrão
+      streaming). A maioria das masters modernas fica entre -6 e -10,
+      então subir o alvo (-10/-8) atenua menos. Mapeia pra
+      `norm_set_target`; aplica na faixa tocando agora. */
+  loudnessTarget: number;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -66,6 +80,7 @@ export const DEFAULTS: TweaksState = {
   type: "body",
   glow: 0.15,
   lyricsGlass: 0.25,
+  lyricsVisible: true,
   bgInk: "#171717",
   eqSpectrumOverlay: true,
   bgBassGain: 1.0,
@@ -73,6 +88,8 @@ export const DEFAULTS: TweaksState = {
   bgTrebleGain: 0.8,
   bgSmoothing: 0.3,
   bgSpeed: 1.0,
+  loudnessNorm: true,
+  loudnessTarget: -14,
 };
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
@@ -222,3 +239,55 @@ createEffect(() => {
   applyTweaks(s);
   save(s);
 });
+
+// ── Loudness → backend (IPC) ──────────────────────────────────
+// Effect DEDICADO: separado do applyTweaks (que e DOM-only). Le SO os
+// dois campos de loudness pra nao re-disparar IPC quando outro tweak
+// muda. Debounce leve pra nao floodar o backend durante o arrasto do
+// slider de target.
+let _loudnessTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Empurra enabled + target pro backend. Idempotente; tolera o engine
+    ainda nao ter subido (invoke falha com "engine not started") sem
+    quebrar — o boot reaplica via applyLoudnessState(). */
+function pushLoudness(norm: boolean, target: number) {
+  normSetEnabled(norm).catch((e: unknown) => {
+    console.warn("[tweaks] norm_set_enabled falhou:", e);
+  });
+  normSetTarget(target).catch((e: unknown) => {
+    console.warn("[tweaks] norm_set_target falhou:", e);
+  });
+}
+
+createEffect(() => {
+  // Acessa os dois signals pra registrar dependencia reativa.
+  const norm = state().loudnessNorm;
+  const target = state().loudnessTarget;
+  if (_loudnessTimer) clearTimeout(_loudnessTimer);
+  _loudnessTimer = setTimeout(() => {
+    _loudnessTimer = undefined;
+    pushLoudness(norm, target);
+  }, 100);
+});
+
+/** Reaplica o estado de loudness salvo ao backend no boot.
+    Chamado em main.tsx ao lado de applyFullDspState(), porque no
+    primeiro tick o engine pode nao estar pronto e o createEffect
+    acima falharia silenciosamente — sem isso a primeira faixa tocaria
+    no alvo default (-14) em vez do salvo. Retry curto cobre o gap de
+    inicializacao do engine. */
+export async function applyLoudnessState(retries = 5): Promise<void> {
+  const s = state();
+  try {
+    await normSetEnabled(s.loudnessNorm);
+    await normSetTarget(s.loudnessTarget);
+  } catch (e) {
+    if (retries > 0) {
+      setTimeout(() => {
+        applyLoudnessState(retries - 1).catch(() => {});
+      }, 300);
+    } else {
+      console.warn("[tweaks] applyLoudnessState desistiu:", e);
+    }
+  }
+}

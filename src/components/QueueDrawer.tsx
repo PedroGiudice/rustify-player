@@ -8,18 +8,12 @@
 
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { Icon, ICONS } from "./Icon";
-import { CoverArt } from "./CoverArt";
+import { TrackRowList } from "./TrackRowList";
 import { player, setQueue } from "../store/player";
-import { coverUrl, type Track } from "../tauri";
 import { playTrack } from "./PlayerBar";
+import { fmtDur } from "../lib/format";
 
 export const QUEUE_EVENT = "rustify:open-queue";
-
-function fmtDur(ms: number): string {
-  if (!ms) return "—";
-  const s = Math.round(ms / 1000);
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
 
 function totalRemaining(): string {
   const upcoming = player.queue.slice(player.queueIndex + 1);
@@ -73,7 +67,7 @@ export function QueueDrawer() {
             {(t) => (
               <>
                 <div class="queue-drawer__section-label"><span>Now playing</span></div>
-                <QRow track={t()} current />
+                <TrackRowList track={t()} onClick={() => playTrack(t())} size="compact" />
               </>
             )}
           </Show>
@@ -92,7 +86,7 @@ export function QueueDrawer() {
               </button>
             </div>
             <For each={upcoming()}>
-              {(track) => <QRow track={track} />}
+              {(track) => <TrackRowList track={track} onClick={() => playTrack(track)} size="compact" />}
             </For>
           </Show>
 
@@ -105,30 +99,5 @@ export function QueueDrawer() {
         </div>
       </aside>
     </>
-  );
-}
-
-function QRow(props: { track: Track; current?: boolean }) {
-  return (
-    <div
-      class={`qrow${props.current ? " qrow--current" : ""}`}
-      onClick={() => playTrack(props.track)}
-    >
-      <CoverArt
-        seed={props.track.album_title || props.track.id}
-        src={coverUrl(props.track.album_cover_path)}
-        size="sm"
-        class="qrow__cover"
-        style={{ width: "36px", height: "36px" }}
-      />
-      <div class="qrow__meta">
-        <div class="qrow__title">{props.track.title || "—"}</div>
-        <div class="qrow__sub">
-          {props.track.artist_name || "—"}
-          {props.track.album_title && <> · {props.track.album_title}</>}
-        </div>
-      </div>
-      <div class="qrow__time">{fmtDur(props.track.duration_ms)}</div>
-    </div>
   );
 }

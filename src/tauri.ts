@@ -118,6 +118,9 @@ export const setVolume = (volume: number) => invoke<void>("player_set_volume", {
 export const normGetState = () => invoke<boolean>("norm_get_state");
 export const normSetEnabled = (enabled: boolean) =>
   invoke<void>("norm_set_enabled", { enabled });
+export const normGetTarget = () => invoke<number>("norm_get_target");
+export const normSetTarget = (lufs: number) =>
+  invoke<void>("norm_set_target", { lufs });
 
 // ── Library commands ───────────────────────────────────────────
 

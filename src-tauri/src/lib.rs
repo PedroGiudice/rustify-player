@@ -11,7 +11,7 @@ use library_indexer::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 
@@ -1514,21 +1514,48 @@ fn dsp_set_bypass(player: State<Player>, bypass: bool) -> Result<(), String> {
 // Loudness normalization
 // ---------------------------------------------------------------------------
 
-/// Target program loudness in LUFS for the normalization stage.
-/// Hardcoded for the MVP — exposing this in UI is V2 work.
+/// Default program loudness in LUFS for the normalization stage. The user
+/// can now override this at runtime via the Tweaks panel; this constant is
+/// only the initial value seeded into `NormState`.
 const NORM_TARGET_LUFS: f32 = -14.0;
 
-/// User toggle for loudness normalization. Default ON.
+/// Sane bounds for the user-selectable normalization target, in LUFS.
+/// The UI slider is narrower (-20..-6) but the command clamps defensively
+/// in case a caller pushes an out-of-range value.
+const NORM_TARGET_MIN: f32 = -30.0;
+const NORM_TARGET_MAX: f32 = 0.0;
+
+/// User-controlled state for loudness normalization.
+///
+/// - `enabled`: master on/off toggle (default ON).
+/// - `target_bits`: the target LUFS encoded as `f32::to_bits` inside an
+///   `AtomicU32` (the std has no atomic f32). Shared via `Arc` with the
+///   event-listener thread so per-track gain is computed against the live
+///   target without a lock.
 struct NormState {
     enabled: AtomicBool,
+    target_bits: Arc<AtomicU32>,
 }
 
-impl Default for NormState {
-    fn default() -> Self {
+impl NormState {
+    /// Build with a pre-existing shared target cell. The same `Arc` is
+    /// cloned into the event-listener thread so both sides observe the
+    /// current target.
+    fn with_target(target_bits: Arc<AtomicU32>) -> Self {
         Self {
             enabled: AtomicBool::new(true),
+            target_bits,
         }
     }
+
+    fn target_lufs(&self) -> f32 {
+        f32::from_bits(self.target_bits.load(Ordering::Relaxed))
+    }
+}
+
+/// Read the target LUFS out of a shared `Arc<AtomicU32>` cell.
+fn norm_target_from_cell(cell: &AtomicU32) -> f32 {
+    f32::from_bits(cell.load(Ordering::Relaxed))
 }
 
 #[tauri::command]
@@ -1548,6 +1575,54 @@ fn norm_set_enabled(
 #[tauri::command]
 fn norm_get_state(norm: State<NormState>) -> bool {
     norm.enabled.load(Ordering::Relaxed)
+}
+
+/// Set the normalization target loudness (LUFS) at runtime.
+///
+/// Applies immediately to the track playing right now: if the current
+/// library track has a measured `lufs_integrated`, the per-track gain is
+/// recomputed against the new target and pushed to the engine so the user
+/// hears the slider move. This is a deliberate, conscious adjustment — the
+/// "never change gain mid-track" rule in the loudness backfill worker is
+/// about surprise jumps from background analysis, not this slider.
+///
+/// If nothing is playing or the current track has no LUFS measurement, the
+/// new target is just stored; the next track to start picks it up.
+#[tauri::command]
+fn norm_set_target(
+    player: State<Player>,
+    snapshot: State<Snapshot>,
+    norm: State<NormState>,
+    lufs: f32,
+) -> Result<(), String> {
+    let target = if lufs.is_finite() {
+        lufs.clamp(NORM_TARGET_MIN, NORM_TARGET_MAX)
+    } else {
+        NORM_TARGET_LUFS
+    };
+    norm.target_bits.store(target.to_bits(), Ordering::Relaxed);
+
+    // Resolve the LUFS of whatever is playing right now, if any.
+    let current_lufs = snapshot
+        .0
+        .lock()
+        .ok()
+        .and_then(|s| s.current_library_track.as_ref().and_then(|t| t.lufs_integrated));
+
+    if let Some(lufs_integrated) = current_lufs {
+        let gain_db = audio_engine::loudness::lufs_to_gain_db(lufs_integrated, target);
+        let guard = player.0.lock().map_err(err)?;
+        let handle = guard.as_ref().ok_or("engine not started")?;
+        handle
+            .send(EngineCommand::DspSetNormGainDb(gain_db))
+            .map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn norm_get_target(norm: State<NormState>) -> f32 {
+    norm.target_lufs()
 }
 
 #[tauri::command]
@@ -2391,6 +2466,12 @@ pub fn run() {
             let (lufs_backfill_tx, lufs_backfill_rx) =
                 crossbeam_channel::unbounded::<u64>();
 
+            // Shared loudness-normalization target (LUFS encoded as f32 bits).
+            // Created here so the same Arc is observed by both the
+            // event-listener thread (per-track gain) and the managed
+            // `NormState` (the `norm_set_target` command writes through it).
+            let norm_target_cell = Arc::new(AtomicU32::new(NORM_TARGET_LUFS.to_bits()));
+
             let rx = engine.subscribe();
             let app_handle = _app.handle().clone();
             let snap_writer = snapshot.clone();
@@ -2399,6 +2480,7 @@ pub fn run() {
             let event_engine_tx = engine_tx_media.clone();
             let event_indexer = indexer_for_events.clone();
             let event_cache_dir = cache_dir_for_events.clone();
+            let event_norm_target = norm_target_cell.clone();
             std::thread::Builder::new()
                 .name("event-listener".to_string())
                 .spawn(move || {
@@ -2416,6 +2498,7 @@ pub fn run() {
                                     &media_cmd_rx,
                                     &event_engine_tx,
                                     &event_lufs_tx,
+                                    &event_norm_target,
                                 )
                             }),
                         );
@@ -2444,7 +2527,7 @@ pub fn run() {
 
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
-            _app.manage(NormState::default());
+            _app.manage(NormState::with_target(norm_target_cell));
 
             // Background sync removed — pipeline writes directly to Qdrant.
 
@@ -2541,6 +2624,7 @@ pub fn run() {
                 media_cmd_rx: &crossbeam_channel::Receiver<souvlaki::MediaControlEvent>,
                 engine_tx: &crossbeam_channel::Sender<EngineCommand>,
                 lufs_backfill_tx: &crossbeam_channel::Sender<u64>,
+                norm_target: &Arc<AtomicU32>,
             ) {
                 while let Ok(event) = rx.recv() {
                     if let Ok(mut s) = snap_writer.lock() {
@@ -2576,7 +2660,7 @@ pub fn run() {
                                         Some(lufs) => (
                                             audio_engine::loudness::lufs_to_gain_db(
                                                 lufs,
-                                                NORM_TARGET_LUFS,
+                                                norm_target_from_cell(norm_target),
                                             ),
                                             None,
                                         ),
@@ -2787,6 +2871,8 @@ pub fn run() {
             dsp_set_bypass,
             norm_set_enabled,
             norm_get_state,
+            norm_set_target,
+            norm_get_target,
             get_state,
             get_system_resources,
             check_for_update,

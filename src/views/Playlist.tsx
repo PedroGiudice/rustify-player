@@ -21,11 +21,7 @@ import { playTrack } from "../components/PlayerBar";
 import { isPinned, togglePin, pins } from "../store/pins";
 import { route } from "../router";
 import { Icon, ICONS } from "../components/Icon";
-
-function fmtDur(ms: number): string {
-  const s = Math.round(ms / 1000);
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
+import { TrackRowTable } from "../components/TrackRowTable";
 
 function fmtTotalDur(ms: number): string {
   const totalSec = Math.round(ms / 1000);
@@ -156,29 +152,26 @@ export default function PlaylistView() {
           <div class="tracks__head tracks__mono">Length</div>
           <For each={tracks() ?? []}>
             {(t, i) => (
-              <div class="tracks__row" onClick={() => play(t)} style={{ display: "contents" }}>
-                <div class="tracks__idx">{String(i() + 1).padStart(2, "0")}</div>
-                <div class="tracks__cover">
-                  <Show
-                    when={t.album_cover_path}
-                    fallback={
-                      <div class="tracks__cover-fallback">
-                        {/* @ts-ignore */}
-                        <iconify-icon icon="lucide:disc-3" noobserver style={{ "font-size": "14px" }} />
-                      </div>
-                    }
-                  >
-                    <img src={coverUrl(t.album_cover_path!)} alt="" loading="lazy" />
-                  </Show>
-                </div>
-                <div class="tracks__title">
-                  <b>{t.title || "—"}</b>
-                  <small>{t.artist_name || "—"}</small>
-                </div>
-                <div class="tracks__cell">{t.album_title ?? "—"}</div>
-                <div class="tracks__cell">{t.genre_name ?? "—"}</div>
-                <div class="tracks__mono">{fmtDur(t.duration_ms)}</div>
-              </div>
+              <TrackRowTable
+                track={t}
+                index={i() + 1}
+                onClick={() => play(t)}
+                coverSlot={
+                  <div class="tracks__cover">
+                    <Show
+                      when={t.album_cover_path}
+                      fallback={
+                        <div class="tracks__cover-fallback">
+                          {/* @ts-ignore */}
+                          <iconify-icon icon="lucide:disc-3" noobserver style={{ "font-size": "14px" }} />
+                        </div>
+                      }
+                    >
+                      <img src={coverUrl(t.album_cover_path!)} alt="" loading="lazy" />
+                    </Show>
+                  </div>
+                }
+              />
             )}
           </For>
         </div>

@@ -17,6 +17,7 @@ import {
   shuffleQueue, reconcileFromState, setQueue,
 } from "../store/player";
 import { dsp } from "../store/dsp";
+import { tweaks, updateTweak } from "../store/tweaks";
 import {
   playerPlay, playerPause, playerResume, playerSeek,
   playerEnqueueNext, playerSetOrigin, playerLoadPaused,
@@ -531,6 +532,17 @@ export function PlayerBar() {
             <span>{dspSummary()}</span>
           </div>
         </Show>
+
+        <button
+          class="pb-btn"
+          id="pb-lyrics"
+          title={tweaks().lyricsVisible ? "Hide lyrics" : "Show lyrics"}
+          aria-label="Toggle lyrics"
+          aria-pressed={tweaks().lyricsVisible}
+          onClick={() => updateTweak("lyricsVisible", !tweaks().lyricsVisible)}
+        >
+          <Icon name={ICONS.lyrics} size={14} />
+        </button>
 
         <button
           class="pb-btn"
