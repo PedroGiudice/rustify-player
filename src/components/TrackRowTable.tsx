@@ -7,6 +7,7 @@ import { player } from "../store/player";
 import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import type { Track } from "../tauri";
 import { fmtDur } from "../lib/format";
+import { openTrackMenu } from "../store/contextMenu";
 
 interface TrackRowTableProps {
   track: Track;
@@ -24,6 +25,8 @@ interface TrackRowTableProps {
    * Passado explicitamente para customizar (ex: remover genre em alguma view futura).
    */
   extraCols?: JSX.Element;
+  /** Lista circundante — habilita o item Shuffle no menu de contexto. */
+  contextList?: Track[];
 }
 
 export function TrackRowTable(props: TrackRowTableProps) {
@@ -34,6 +37,7 @@ export function TrackRowTable(props: TrackRowTableProps) {
       class="tracks__row"
       classList={{ "tracks__row--current": isCurrent() }}
       onClick={props.onClick}
+      onContextMenu={(e) => openTrackMenu(e, props.track, { list: props.contextList, onPlay: props.onClick })}
       style={{ display: "contents" }}
       role="row"
       tabIndex={0}

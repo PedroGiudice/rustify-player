@@ -156,6 +156,7 @@ export default function PlaylistView() {
                 track={t}
                 index={i() + 1}
                 onClick={() => play(t)}
+                contextList={tracks() ?? []}
                 coverSlot={
                   <div class="tracks__cover">
                     <Show

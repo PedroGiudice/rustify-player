@@ -6,6 +6,7 @@ import { player } from "../store/player";
 import { CoverArt } from "./CoverArt";
 import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import { fmtDur } from "../lib/format";
+import { openTrackMenu } from "../store/contextMenu";
 
 interface TrackRowListProps {
   track: Track;
@@ -26,6 +27,8 @@ interface TrackRowListProps {
   noWhen?: boolean;
   /** Reduz opacidade para 0.55 — usado em Queue para tracks já reproduzidas. */
   muted?: boolean;
+  /** Lista circundante — habilita o item Shuffle no menu de contexto. */
+  contextList?: Track[];
 }
 
 export function TrackRowList(props: TrackRowListProps) {
@@ -40,6 +43,7 @@ export function TrackRowList(props: TrackRowListProps) {
         : "row"}
       classList={{ "is-current": !isCompact() && isCurrent() }}
       onClick={props.onClick}
+      onContextMenu={(e) => openTrackMenu(e, props.track, { list: props.contextList, onPlay: props.onClick })}
       style={{
         opacity: props.muted ? 0.55 : 1,
         ...(props.noWhen ? { "grid-template-columns": "40px 1fr auto" } : {}),

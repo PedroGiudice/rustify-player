@@ -22,6 +22,7 @@ import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { QueueDrawer } from "./components/QueueDrawer";
+import { TrackContextMenu } from "./components/TrackContextMenu";
 import { SpectrumCanvas } from "./components/SpectrumCanvas";
 import { RouterView, navigate, route } from "./router";
 import { Tweaks } from "./views/Tweaks";
@@ -94,6 +95,7 @@ export default function App() {
       <CommandPalette />
       <QueueDrawer />
       <Tweaks />
+      <TrackContextMenu />
     </div>
   );
 }

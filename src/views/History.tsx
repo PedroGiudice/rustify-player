@@ -47,6 +47,7 @@ export default function History() {
                   track={t}
                   onClick={() => play(t)}
                   whenText={relTime(t.last_played)}
+                  contextList={tracks() ?? []}
                 />
               )}
             </For>

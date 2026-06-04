@@ -81,6 +81,7 @@ export default function AlbumView() {
                 track={t}
                 index={t.track_number ?? i() + 1}
                 onClick={() => play(t)}
+                contextList={tracks() ?? []}
               />
             )}
           </For>

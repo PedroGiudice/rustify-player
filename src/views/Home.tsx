@@ -151,6 +151,7 @@ export default function Home() {
                           track={t}
                           onClick={() => playRow(t, d().recent)}
                           whenText={relTime(t.last_played)}
+                          contextList={d().recent}
                         />
                       )}
                     </For>

@@ -69,6 +69,7 @@ export default function Tracks() {
                 track={t}
                 index={i() + 1}
                 onClick={() => play(t)}
+                contextList={tracks() ?? []}
               />
             )}
           </For>

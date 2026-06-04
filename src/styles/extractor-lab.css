@@ -863,7 +863,12 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 
 .tracks {
-  background: var(--bg-paper);
+  /* Translucido: deixa o background animado global (.app-bg, ja com blur
+     8px no modo ambient) vazar atras da tabela em Playlist/Album/Tracks.
+     Sem backdrop-filter de proposito — o canvas ja vem borrado e
+     backdrop-filter em tela cheia sobre canvas animado custa repaint por
+     frame. Menor alpha = mais canvas aparece. */
+  background: rgba(255, 255, 255, 0.78);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
   overflow: hidden;
