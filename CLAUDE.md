@@ -95,15 +95,50 @@ delega ao subagente. Variantes que funcionam: "descobre <genero> pra
 expandir minha biblioteca", "deep cuts do <artista que ja tenho>",
 "sugere algo novo pro meu gosto".
 
-### Fluxo
+### Fluxo (reescrito 2026-06 — motor deterministico + curadoria)
 
-1. Subagente le perfil + biblioteca via Qdrant (`http://100.102.249.9:6333`)
-2. Pesquisa iterativa (WebSearch + WebFetch) em fontes curadas
-   (RateYourMusic, Pitchfork, AllMusic, Reddit, MusicBrainz)
-3. Valida cada candidato via MusicBrainz API (anti-alucinacao)
-4. Cross-check contra biblioteca pra remover duplicatas
-5. Entrega lista markdown com: artista, track, album, ano, justificativa
-   concreta ancorada no teu perfil, e **query slskd pre-formada**
+A descoberta tem duas camadas e DOIS eixos. O motor faz o trabalho onde o LLM
+erra (jq corrompe u64, WebSearch nao tem grafo de similaridade); o subagente cura.
+
+**Eixo ARTISTA** (`scripts/curator/discover.py`): deriva o perfil do Qdrant
+(play_events), seleciona artistas-seed, resolve MBID (MusicBrainz, com cache),
+busca **similar-artists no ListenBrainz** (collaborative filtering), agrega
+cross-seed normalizado, filtra a biblioteca. Pool de ARTISTAS com `agg_score`,
+`overlap`, `per_seed`, `library_tracks` (0=novo / 1-5=parcial pra modo album),
+`signal_quality`. Usado pra modo album e expansao lateral.
+
+**Eixo FAIXA** (`scripts/curator/discover_tracks.py`): sobe a descoberta pro
+nivel de track. Duas fontes enchem UM pool: (A) **similar-recordings** das
+faixas mais tocadas + seeds diversos por MERT (co-listening de faixa); (B)
+**cauda** dos artistas do grafo (faixas fora do top, via top-recordings). Cada
+faixa e rotulada por TIER (hit/mid/deep) pela **popularidade absoluta**
+(`/popularity/recording`, batch) no percentil DO POOL — NAO por discografia do
+artista (resolver artista por nome pega homonimo: 'Kanye West' tem obscuros que
+o MB nao desempata). Composicao estratificada: `--mode mix` (default, 30/40/30),
+`deep`, `hit`. Filtro de biblioteca COLLAB-AWARE (`is_owned`): casa titulo +
+artista sobreposto ('family ties' de 'Baby Keem & Kendrick Lamar' bate com o
+acervo que tem so 'Baby Keem'). Ver `[[project_listenbrainz_recording_fragmentation]]`.
+
+**Curador** (subagente): roda os DOIS motores, cura (corta megapop, respeita
+ecletismo, mantem a estratificacao de tier), sugere **album inteiro** pros
+parciais (caso Travis/Astroworld, validando `secondary-types` contra mixtape),
+e — passo OBRIGATORIO — roda `discover_tracks.py --check` em TODAS as faixas
+finais (inclusive curveball/eixo-artista, que NAO passaram pelo is_owned do pool)
+e remove o que ja esta no acervo. Entrega lista markdown com query slskd
+pre-formada + a meta dos JSONs como prova de execucao.
+
+Comandos do motor:
+```bash
+python3 scripts/curator/discover.py --top-seeds 8 --pool-size 60 --out /tmp/curator-pool.json
+python3 scripts/curator/discover_tracks.py --mode mix --pool-size 50 --out /tmp/curator-tracks.json
+# verificacao anti-duplicata (stdin JSON):
+echo '[{"artist":"Smino","title":"Anita"}]' | python3 scripts/curator/discover_tracks.py --check
+# testes das funcoes puras (filtro collab-aware, tier, compose):
+python3 scripts/curator/test_discover_tracks.py
+```
+
+Last.fm foi deliberadamente descartado (aversao do usuario + redundante com
+ListenBrainz). WebSearch e so contexto/justificativa e fallback pra nicho.
 
 ### Como baixar o que voce aprovar
 
@@ -124,7 +159,24 @@ Endpoint slskd: `http://100.102.249.9:5030`.
 - `liked_at` esta sempre 0 no Qdrant — likes explicitos nao sao usados.
   Toda inferencia de gosto vem de `play_events` (listen_pct, replays).
 - Qualidade da curadoria depende de massa de eventos: com < 30 positives
-  qualificadas o subagente vai sinalizar baixa confianca.
-- ListenBrainz como fonte de grounding e opcional e depende de tracks
-  estarem indexadas no MusicBrainz (cobertura boa pra ocidental, fraca
-  pra alguns nichos brasileiros).
+  qualificadas o subagente sinaliza baixa confianca.
+- **Perfil de nicho/BR** (rap BR, funk BR): o grafo do ListenBrainz e esparso
+  (score satura ~120 vs ~5000 do mainstream). Nesses casos `signal_quality`
+  vem `low` e o curador usa o pool so como recall, re-rankeando via MusicBrainz
+  rels/tags + WebSearch curado.
+- **Metadata suja** na biblioteca (ex: funk BR com `artist` = URL do ripper,
+  `www.ftpdjemilio.com`) e filtrada como seed-lixo no `_is_junk_artist`, mas
+  o ideal e limpar na fonte (indexer).
+- O motor depende de 2 servicos externos em cadeia (MusicBrainz pra MBID +
+  ListenBrainz Labs pro grafo). MusicBrainz tem rate limit 1 req/s (gargalo
+  real, ~15-25s por run); ListenBrainz Labs nao publica rate limit (serializado
+  com folga). Cache de MBID em `~/.cache/rustify-curator/mbid.json`.
+- **`resolve_mbid` (discover.py) desempata homonimo por score do MB** (relevancia
+  de busca, nao popularidade) — pode pegar o artista errado ('Kanye West' obscuro).
+  Afeta os SEEDS de ambos os motores; os similar-artists do LB trazem mbid
+  confiavel. Divida tecnica conhecida, nao critica (a curadoria filtra). O eixo
+  FAIXA contorna usando `/popularity/recording` (nao resolve artista pro tier).
+- **Eixo FAIXA: tier por popularidade do POOL, nao da discografia.** `deep` =
+  faixa obscura entre as candidatas, nao necessariamente deep cut da discografia
+  do artista. Fonte A (co-listening) e hit-pesada; a fonte B (cauda) tem cota
+  reservada (`SOURCE_B_SHARE`) pra nao ser soterrada.
