@@ -113,13 +113,26 @@ describe("Settings view", () => {
     expect(ipc.libRescan).toHaveBeenCalled();
   });
 
-  it("Playback tem crossfade slider, gapless toggle, output device", () => {
-    const { container, getByText } = render(() => <Settings />);
-    expect(getByText("Crossfade")).toBeTruthy();
-    expect(getByText(/Gapless/i)).toBeTruthy();
-    expect(getByText(/Output device/i)).toBeTruthy();
-    // Slider visivel
-    expect(container.querySelector(".set-slider")).toBeTruthy();
+  it("Playback tem volume slider, normalize toggle, resume on launch toggle", () => {
+    const { container } = render(() => <Settings />);
+    // Volume range
+    expect(container.querySelector("input[type='range']")).toBeTruthy();
+    // Normalizar row
+    const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
+    const normLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("normalizar"));
+    expect(normLabel).toBeTruthy();
+    // Resume on launch row
+    const resumeLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("resume"));
+    expect(resumeLabel).toBeTruthy();
+    // Crossfade NAO existe
+    const crossfadeLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("crossfade"));
+    expect(crossfadeLabel).toBeUndefined();
+    // Gapless NAO existe
+    const gaplessLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("gapless"));
+    expect(gaplessLabel).toBeUndefined();
+    // Output device NAO existe
+    const outputLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("output device"));
+    expect(outputLabel).toBeUndefined();
   });
 
   it("About renderiza grid com 6 items mono (Version, Tauri, Backend, Identifier, Branch, License)", () => {
@@ -201,5 +214,104 @@ describe("Settings view", () => {
     fireEvent.change(select, { target: { value: "t.yaml" } });
 
     expect(await findByText(/AA = 4\.5:1/)).toBeTruthy();
+  });
+
+  // ── Tier 0: controles removidos NAO devem existir ────────────
+  describe("controles zumbi removidos (Tier 0)", () => {
+    it("0.1 Output device nao tem botao Change", () => {
+      const { container } = render(() => <Settings />);
+      const allBtns = Array.from(container.querySelectorAll("button"));
+      const changeBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Change…");
+      expect(changeBtn).toBeUndefined();
+    });
+
+    it("0.2 Scrobble nao tem botao Connect", () => {
+      const { container } = render(() => <Settings />);
+      const allBtns = Array.from(container.querySelectorAll("button"));
+      const connectBtn = allBtns.find((b) => (b.textContent ?? "").includes("Connect…"));
+      expect(connectBtn).toBeUndefined();
+    });
+
+    it("0.3 Embeddings row existe mas nao tem botao Generate missing", () => {
+      const { container } = render(() => <Settings />);
+      // A row de Embeddings ainda existe como stat read-only
+      const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
+      const embedLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("embeddings"));
+      expect(embedLabel).toBeTruthy();
+      // Mas o botao "Generate missing" nao existe
+      const allBtns = Array.from(container.querySelectorAll("button"));
+      const genBtn = allBtns.find((b) => (b.textContent ?? "").toLowerCase().includes("generate missing"));
+      expect(genBtn).toBeUndefined();
+    });
+
+    it("0.4 qdrant row existe mas nao tem botao Restart", () => {
+      const { container } = render(() => <Settings />);
+      const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
+      const qdrantLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("qdrant"));
+      expect(qdrantLabel).toBeTruthy();
+      // Botao Restart nao existe
+      const allBtns = Array.from(container.querySelectorAll("button"));
+      const restartBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Restart…");
+      expect(restartBtn).toBeUndefined();
+    });
+
+    it("0.6 Gapless nao tem toggle button", () => {
+      const { container } = render(() => <Settings />);
+      // Nao deve existir nenhum elemento com texto Gapless
+      const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
+      const gaplessLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("gapless"));
+      expect(gaplessLabel).toBeUndefined();
+    });
+
+    it("0.7 Crossfade nao tem slider (.set-slider)", () => {
+      const { container } = render(() => <Settings />);
+      // Nao deve existir label "Crossfade"
+      const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
+      const crossfadeLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("crossfade"));
+      expect(crossfadeLabel).toBeUndefined();
+      // Nao deve existir .set-slider
+      expect(container.querySelector(".set-slider")).toBeNull();
+    });
+
+    it("0.8 Music folder nao tem botao Trocar", () => {
+      const { container } = render(() => <Settings />);
+      const allBtns = Array.from(container.querySelectorAll("button"));
+      const trocarBtn = allBtns.find((b) => (b.textContent ?? "").includes("Trocar"));
+      expect(trocarBtn).toBeUndefined();
+    });
+
+    // Controles VIVOS devem continuar presentes
+    it("controles vivos: Theme seg, Beat sync, Volume, Normalize, Re-scan, Check for updates", () => {
+      const { container } = render(() => <Settings />);
+      // Theme seg (Light/Dark/Auto)
+      const segs = Array.from(container.querySelectorAll(".seg"));
+      const themeSeg = segs.find((s) => {
+        const txt = (s.textContent ?? "").toLowerCase();
+        return txt.includes("light") && txt.includes("dark") && txt.includes("auto");
+      });
+      expect(themeSeg).toBeTruthy();
+      // Beat sync seg (Off/Subtle/Pulse)
+      const beatSeg = segs.find((s) => {
+        const txt = (s.textContent ?? "").toLowerCase();
+        return txt.includes("off") && txt.includes("pulse");
+      });
+      expect(beatSeg).toBeTruthy();
+      // Volume slider
+      const volumeInput = container.querySelector("input[type='range']");
+      expect(volumeInput).toBeTruthy();
+      // Normalizar row deve existir
+      const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
+      const normLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("normalizar"));
+      expect(normLabel).toBeTruthy();
+      // Re-scan botao
+      const rescanBtn = Array.from(container.querySelectorAll("button.set-folder-btn--accent")).find(
+        (b) => (b.textContent ?? "").includes("Re-scan")
+      );
+      expect(rescanBtn).toBeTruthy();
+      // Check for updates
+      const allBtns = Array.from(container.querySelectorAll("button"));
+      const checkBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Check for updates");
+      expect(checkBtn).toBeTruthy();
+    });
   });
 });

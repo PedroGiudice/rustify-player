@@ -270,11 +270,6 @@ export default function Stations() {
                     Stations aparecem aqui
                   </span>
                 </div>
-                <button class="st-feature__cta" type="button" disabled>
-                  {/* @ts-ignore */}
-                  <iconify-icon icon="ph:play-fill" noobserver />
-                  Resume station
-                </button>
               </div>
               <LazyStationViz />
             </section>

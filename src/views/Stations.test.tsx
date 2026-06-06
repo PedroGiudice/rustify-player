@@ -137,9 +137,13 @@ describe("Stations view", () => {
     expect(container.querySelector(".view__stats")).toBeTruthy();
   });
 
-  it("renderiza feature card com eyebrow, titulo grande, seeds chips, CTA preto", async () => {
-    const { container, getByText } = render(() => <Stations />);
-    // Aguarda o createResource resolver o mock
+  it("renderiza feature card com eyebrow, titulo grande, seeds chips", async () => {
+    // Nota: o stub global de __TAURI__ (test-setup.ts) captura invoke no load
+    // do tauri.ts e retorna undefined, entao libListStations resolve vazio e a
+    // view renderiza o empty-state (.st-feature fallback). Este teste valida a
+    // estrutura compartilhada do feature card (eyebrow, titulo, seed-chips).
+    // O botao "Resume station" disabled foi REMOVIDO no Tier 0 — nao se asserta.
+    const { container } = render(() => <Stations />);
     await waitFor(() => {
       const feature = container.querySelector(".st-feature");
       expect(feature).toBeTruthy();
@@ -149,8 +153,6 @@ describe("Stations view", () => {
     expect(feature!.querySelector(".st-feature__title")).toBeTruthy();
     const seeds = feature!.querySelectorAll(".st-seed-chip");
     expect(seeds.length).toBeGreaterThanOrEqual(1);
-    expect(feature!.querySelector(".st-feature__cta")).toBeTruthy();
-    expect(getByText("Resume station")).toBeTruthy();
   });
 
   it("feature card contem canvas (StationViz wrapper visual)", async () => {
@@ -208,5 +210,24 @@ describe("Stations view", () => {
     // Durante o loading, o fallback exibe 6 cards placeholder
     const cards = container.querySelectorAll(".st-card");
     expect(cards.length).toBe(6);
+  });
+
+  it("0.5 empty-state nao tem o botao disabled Resume station", async () => {
+    // Simula backend sem stations (empty-state)
+    (globalThis as any).window.__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === "lib_list_stations") return [];
+      return null;
+    });
+    const { container } = render(() => <Stations />);
+    await waitFor(() => {
+      // O feature card fallback (empty-state) deve estar visivel
+      expect(container.querySelector(".st-feature")).toBeTruthy();
+    });
+    // Botao "Resume station" (era disabled, agora removido) NAO deve existir
+    const allBtns = Array.from(container.querySelectorAll("button"));
+    const resumeBtn = allBtns.find((b) => (b.textContent ?? "").includes("Resume station"));
+    expect(resumeBtn).toBeUndefined();
+    // O texto explicativo do empty-state continua presente
+    expect((container.querySelector(".st-feature")?.textContent ?? "")).toContain("Stations aparecem aqui");
   });
 });

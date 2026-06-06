@@ -7,10 +7,10 @@
    1. Appearance — Theme segmented (Light/Dark/Auto),
       Compact sidebar tog, Cinema mode kbd, Beat sync segmented
       (Off/Subtle/Default/Pulse) persistindo em rustify-mock-sync.
-   2. Playback — Crossfade slider, Gapless tog, Output device,
-      Resume on launch tog, Scrobble Connect.
-   3. Library — Music folder + Trocar, Re-scan (accent), Embeddings
-      Generate, qdrant Restart, library stats tile grid.
+   2. Playback — Resume on launch tog, Volume slider, Normalize tog.
+      (Tier 0 removeu crossfade, gapless, output device, scrobble.)
+   3. Library — Music folder (read-only), Re-scan (accent), Embeddings
+      (read-only stat), qdrant status (read-only), library stats tile grid.
    4. About — grid 6 items mono (Version, Tauri, Backend,
       Identifier, Branch, License).
 
@@ -78,9 +78,7 @@ function saveSyncMode(m: SyncMode) {
 
 // Outros toggles client-only (futuro: persistir via store plugin)
 const COMPACT_KEY = "rustify-mock-compact-sidebar";
-const GAPLESS_KEY = "rustify-mock-gapless";
 const RESUME_KEY  = "rustify-mock-resume-launch";
-const CROSSFADE_KEY = "rustify-mock-crossfade-s";
 
 // Tema theme picker — bridge entre seg (Light/Dark/Auto) e o
 // listThemes existente. Light/Dark/Auto sao "modes" cosmeticos
@@ -166,38 +164,18 @@ export default function Settings() {
     saveSyncMode(m);
   }
 
-  // ── Toggles cosmeticos (compact sidebar, gapless, resume) ─────
+  // ── Toggles cosmeticos (compact sidebar, resume) ─────
   const [compact, setCompact] = createSignal(localStorage.getItem(COMPACT_KEY) === "true");
   function toggleCompact() {
     const next = !compact();
     setCompact(next);
     try { localStorage.setItem(COMPACT_KEY, String(next)); } catch {}
   }
-  const [gapless, setGapless] = createSignal(localStorage.getItem(GAPLESS_KEY) !== "false");
-  function toggleGapless() {
-    const next = !gapless();
-    setGapless(next);
-    try { localStorage.setItem(GAPLESS_KEY, String(next)); } catch {}
-  }
   const [resumeLaunch, setResumeLaunch] = createSignal(localStorage.getItem(RESUME_KEY) !== "false");
   function toggleResume() {
     const next = !resumeLaunch();
     setResumeLaunch(next);
     try { localStorage.setItem(RESUME_KEY, String(next)); } catch {}
-  }
-
-  // ── Crossfade slider ──────────────────────────────────────────
-  const [crossfade, setCrossfade] = createSignal<number>(parseFloat(localStorage.getItem(CROSSFADE_KEY) ?? "2"));
-  function setCrossfadeS(v: number) {
-    const clamped = Math.max(0, Math.min(12, Math.round(v * 10) / 10));
-    setCrossfade(clamped);
-    try { localStorage.setItem(CROSSFADE_KEY, String(clamped)); } catch {}
-  }
-  function onCrossfadeTrackClick(e: MouseEvent) {
-    const el = e.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setCrossfadeS(pct * 12); // 0..12s
   }
 
   // ── Volume + normalize (preservado, visual ainda no painel Audio
@@ -302,7 +280,6 @@ export default function Settings() {
   // Stats helpers
   const tracksTotal = () => data()?.snapshot.tracks_total ?? 0;
   const embedDone = () => data()?.snapshot.embeddings_done ?? 0;
-  const embedPending = () => data()?.snapshot.embeddings_pending ?? 0;
   const albumsCount = () => data()?.albums.length ?? 0;
   const artistsCount = () => data()?.artists.length ?? 0;
   const genresPopulated = () => (data()?.genres ?? []).filter((g: any) => g.track_count > 0).length;
@@ -459,46 +436,6 @@ export default function Settings() {
 
           <div class="set-row">
             <div>
-              <div class="set-row__label">Crossfade</div>
-              <div class="set-row__hint">
-                Overlap entre faixas. 0 desabilita; recomendado &lt; 4 s pra ambient.
-              </div>
-            </div>
-            <div class="set-row__control">
-              <div class="set-slider">
-                <div class="set-slider__track" onClick={onCrossfadeTrackClick}>
-                  <div class="set-slider__fill" style={{ width: `${(crossfade() / 12) * 100}%` }} />
-                  <div class="set-slider__thumb" style={{ left: `${(crossfade() / 12) * 100}%` }} />
-                </div>
-                <span class="set-slider__val">{crossfade().toFixed(1)} s</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Gapless playback</div>
-              <div class="set-row__hint">Necessario pra live e concept albums. Desabilita crossfade quando ativo.</div>
-            </div>
-            <div class="set-row__control">
-              <button class="tog" aria-pressed={gapless() ? "true" : "false"} onClick={toggleGapless} type="button" title="Toggle gapless" />
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Output device</div>
-              <div class="set-row__hint mono">pipewire · default sink</div>
-            </div>
-            <div class="set-row__control">
-              <button class="set-folder-btn" type="button" title="Backend ainda nao oferece switch de output device">
-                Change…
-              </button>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
               <div class="set-row__label">Resume on launch</div>
               <div class="set-row__hint">Re-abre a ultima faixa na ultima posicao.</div>
             </div>
@@ -538,15 +475,6 @@ export default function Settings() {
             </div>
           </div>
 
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Scrobble · Last.fm</div>
-              <div class="set-row__hint">Envia tracks tocados pro servico de scrobble. Desconectado.</div>
-            </div>
-            <div class="set-row__control">
-              <button class="set-folder-btn" type="button" title="Integracao pendente">Connect…</button>
-            </div>
-          </div>
         </div>
 
         {/* ════════════════════════════════════════════════════════
@@ -564,18 +492,6 @@ export default function Settings() {
             <div>
               <div class="set-row__label">Music folder</div>
               <div class="set-row__hint mono">~/Music/library</div>
-            </div>
-            <div class="set-row__control">
-              <button
-                class="set-folder-btn"
-                type="button"
-                title="Backend ainda nao oferece lib_set_library_path"
-                onClick={() => console.log("[settings] TODO: invocar dialog.open() + lib_set_library_path quando backend expuser")}
-              >
-                {/* @ts-ignore */}
-                <iconify-icon icon="lucide:folder-open" noobserver />
-                Trocar…
-              </button>
             </div>
           </div>
 
@@ -606,32 +522,12 @@ export default function Settings() {
                 Drives the station recommender.
               </div>
             </div>
-            <div class="set-row__control">
-              <button
-                class="set-folder-btn"
-                type="button"
-                title="Backend pendente — gera embeddings missing"
-              >
-                {/* @ts-ignore */}
-                <iconify-icon icon="lucide:flask-conical" noobserver />
-                Generate missing · {embedPending()}
-              </button>
-            </div>
           </div>
 
           <div class="set-row">
             <div>
               <div class="set-row__label">qdrant process</div>
               <div class="set-row__hint mono">localhost:6333 · vec-dim 1024 · status ok</div>
-            </div>
-            <div class="set-row__control">
-              <button
-                class="set-folder-btn"
-                type="button"
-                title="Backend pendente"
-              >
-                Restart…
-              </button>
             </div>
           </div>
 
