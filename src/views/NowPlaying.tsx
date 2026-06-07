@@ -14,6 +14,7 @@ import { useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
 import { tweaks } from "../store/tweaks";
 import { navigate } from "../router";
+import { openTrackMenu } from "../store/contextMenu";
 
 export default function NowPlaying() {
   const shape = useShape();
@@ -238,7 +239,13 @@ export default function NowPlaying() {
             <Icon name={cinema() ? ICONS.shrink : ICONS.expand} size={14} />
           </button>
           <button title="Spectrum settings"><Icon name={ICONS.settings} size={14} /></button>
-          <button title="More"><Icon name={ICONS.more} size={14} /></button>
+          <button
+            title="More"
+            disabled={!player.currentTrack}
+            onClick={(e) => { if (player.currentTrack) openTrackMenu(e, player.currentTrack); }}
+          >
+            <Icon name={ICONS.more} size={14} />
+          </button>
         </div>
 
         <div class="np__chrome">
