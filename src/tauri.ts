@@ -79,7 +79,7 @@ export type PlayerStatePayload =
 
 // ── Player commands ────────────────────────────────────────────
 
-export const playerPlay = (path: string, origin: string, trackId: number | null) =>
+export const playerPlay = (path: string, origin: string, trackId: string | null) =>
   invoke<void>("player_play", { path, origin, trackId });
 
 export const playerPause = () => invoke<void>("player_pause");

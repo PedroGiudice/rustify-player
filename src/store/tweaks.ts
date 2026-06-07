@@ -8,7 +8,7 @@
 import { createSignal, createEffect } from "solid-js";
 import { normSetEnabled, normSetTarget } from "../tauri";
 
-const { invoke } = (window as any).__TAURI__.core;
+const { invoke } = window.__TAURI__.core;
 
 const STORAGE_KEY = "kv-tweaks";
 

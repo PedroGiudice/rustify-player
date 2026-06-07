@@ -251,10 +251,12 @@ export function CommandPalette() {
                     onClick={() => runItem(it)}
                   >
                     <Show
-                      when={it.kind === "track"}
+                      when={it.kind === "track" ? (it as TrackItem).track : null}
+                      keyed
                       fallback={
                         <Show
-                          when={it.kind === "album"}
+                          when={it.kind === "album" ? (it as AlbumItem).album : null}
+                          keyed
                           fallback={
                             <Show
                               when={it.kind === "artist"}
@@ -270,35 +272,29 @@ export function CommandPalette() {
                             </Show>
                           }
                         >
-                          {() => {
-                            const a = (it as AlbumItem).album;
-                            return (
-                              <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
-                                <CoverArt
-                                  seed={a.title}
-                                  src={coverUrl(a.cover_path)}
-                                  size="sm"
-                                  style={{ width: "28px", height: "28px" }}
-                                />
-                              </div>
-                            );
-                          }}
+                          {(a) => (
+                            <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
+                              <CoverArt
+                                seed={a.title}
+                                src={coverUrl(a.cover_path)}
+                                size="sm"
+                                style={{ width: "28px", height: "28px" }}
+                              />
+                            </div>
+                          )}
                         </Show>
                       }
                     >
-                      {() => {
-                        const t = (it as TrackItem).track;
-                        return (
-                          <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
-                            <CoverArt
-                              seed={t.album_title || t.id}
-                              src={coverUrl(t.album_cover_path)}
-                              size="sm"
-                              style={{ width: "28px", height: "28px" }}
-                            />
-                          </div>
-                        );
-                      }}
+                      {(t) => (
+                        <div class="palette__item-icon" style={{ background: "transparent", border: "0", padding: 0 }}>
+                          <CoverArt
+                            seed={t.album_title || t.id}
+                            src={coverUrl(t.album_cover_path)}
+                            size="sm"
+                            style={{ width: "28px", height: "28px" }}
+                          />
+                        </div>
+                      )}
                     </Show>
                     <div class="palette__item-text">
                       <div class="palette__item-title">
