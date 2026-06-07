@@ -142,17 +142,38 @@ ListenBrainz). WebSearch e so contexto/justificativa e fallback pra nicho.
 
 ### Como baixar o que voce aprovar
 
-O subagente entrega cada sugestao com uma query slskd otimizada. Voce
-indica quais aprovar e a sessao principal Claude roda o script existente:
+O download roda na **cmr-auto** (NAO na VM): o `baixar_soulseek_teste.py` aponta
+pra `/home/cmr-auto/Music` (skip de duplicata) e slskd em `localhost:5030`. A
+sessao principal dispara via SSH (`ssh cmr-auto@100.102.249.9`).
 
+O script consome um CSV `Música|Artista` (delimiter `|`, com header — ele faz
+`next(leitor)`), gera variantes de query por faixa, baixa 1 FLAC valido por
+query (filtro FLAC + tamanho min, diversificacao por peer, 3 tentativas, estado
+persistido). E **faixa-orientado**: nao baixa pasta de album.
+
+Fluxo (validado 2026-06):
 ```bash
-# Por enquanto manual — adapta o script pra receber query via CLI
-python /home/opc/baixar_soulseek_teste.py --query "<query>"
+# 1. faixas avulsas: montar CSV musica|artista (do que o usuario aprovou)
+# 2. albuns inteiros: expandir tracklist via MusicBrainz
+printf 'Travis Scott|ASTROWORLD\n' | python3 scripts/curator/expand_albums.py >> /tmp/leva.csv
+# 3. CSV final = header + faixas + tracklists; copiar pra cmr-auto
+scp /tmp/leva.csv cmr-auto@100.102.249.9:/home/cmr-auto/
+# 4. testar e rodar NA cmr-auto (uv resolve deps; python3 puro NAO tem slskd_api)
+ssh cmr-auto@100.102.249.9 'bash -lc "cd ~ && uv run --with slskd-api --with mutagen \
+  baixar_soulseek_teste.py --csv ~/leva.csv --dry-run"'   # valida sem baixar
+ssh cmr-auto@100.102.249.9 'bash -lc "cd ~ && nohup uv run --with slskd-api --with mutagen \
+  baixar_soulseek_teste.py --csv ~/leva.csv > ~/leva.log 2>&1 &"'
 ```
 
-O `baixar_soulseek_teste.py` ja tem: busca, filtro FLAC + tamanho minimo,
-diversificacao por peer, fallback de 3 tentativas, estado persistido.
-Endpoint slskd: `http://100.102.249.9:5030`.
+Gotchas:
+- **Rodar via `uv run --with slskd-api --with mutagen`** — o python3 puro da
+  cmr-auto NAO tem `slskd_api`. `uv` precisa de `bash -lc` (PATH no login shell).
+- **Log fica vazio** (block-buffering do Python redirecionado). Monitorar pela
+  fonte de verdade: `~/slskd_dados/downloads/` (completos) + `incomplete/`.
+- **`|` no titulo da faixa quebra o CSV** (ex: TA13OO 'TABOO | TA13OO'). O
+  `expand_albums.py` sanitiza (corta no `|`); CSV manual idem.
+- Download fuzzy as vezes pega live/remix/extended em vez do estudio — revisar
+  pontualmente depois, nao refazer a leva.
 
 ### Limitacoes conhecidas
 
