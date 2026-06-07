@@ -111,6 +111,12 @@ export default function Playlists() {
   const [filter, setFilter] = createSignal("");
   const [folders] = createResource(() => libListFolders().catch(() => [] as FolderPlaylist[]));
 
+  // "none" = ordem da API, "asc" = A→Z, "desc" = Z→A. Toggle ciclico.
+  const [sortDir, setSortDir] = createSignal<"none" | "asc" | "desc">("none");
+  function cycleSortDir() {
+    setSortDir((cur) => (cur === "none" ? "asc" : cur === "asc" ? "desc" : "none"));
+  }
+
   const visibleFolders = createMemo(() => {
     const list = folders() ?? [];
     const q = filter().trim().toLowerCase();
@@ -130,7 +136,11 @@ export default function Playlists() {
   const rest = createMemo(() => {
     const list = visibleFolders();
     const pinnedNames = new Set(pinned().map((p) => p.name));
-    return list.filter((f) => !pinnedNames.has(f.name));
+    const filtered = list.filter((f) => !pinnedNames.has(f.name));
+    const dir = sortDir();
+    if (dir === "none") return filtered;
+    const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    return dir === "asc" ? sorted : sorted.reverse();
   });
 
   const totalPlaylists = () => (folders() ?? []).length;
@@ -174,11 +184,6 @@ export default function Playlists() {
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:sparkles" noobserver />
               New smart playlist
-            </button>
-            <button class="sig-pbtn" type="button">
-              {/* @ts-ignore */}
-              <iconify-icon icon="lucide:arrow-down-narrow-wide" noobserver />
-              Recently played
             </button>
           </div>
         </div>
@@ -250,7 +255,9 @@ export default function Playlists() {
         <section>
           <div class="section__head">
             <h2 class="section__title">All playlists · {rest().length}</h2>
-            <a class="section__action">Sort by name ↓</a>
+            <a class="section__action" style={{ cursor: "pointer" }} onClick={cycleSortDir}>
+              {sortDir() === "none" ? "Sort by name" : sortDir() === "asc" ? "Sort: A→Z ↑" : "Sort: Z→A ↓"}
+            </a>
           </div>
           <Show
             when={folders.loading || folders()}
