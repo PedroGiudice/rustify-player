@@ -176,7 +176,7 @@ export default function Home() {
                             size="md"
                             class="card__cover"
                           >
-                            <button class="card__play" type="button"><Icon name={ICONS.play} size={12} /></button>
+                            <button class="card__play" type="button" onClick={(e) => { e.stopPropagation(); playAlbum(a.title); }}><Icon name={ICONS.play} size={12} /></button>
                           </CoverArt>
                           <div class="card__title">{a.title}</div>
                           <div class="card__sub">{a.artist_name ?? "—"}</div>
