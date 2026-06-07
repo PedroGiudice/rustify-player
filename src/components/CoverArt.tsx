@@ -27,6 +27,8 @@ export interface CoverArtProps {
   style?: import("solid-js").JSX.CSSProperties;
   class?: string;
   alt?: string;
+  /** Conteudo sobreposto ao cover (ex: botao play no hover dos cards). */
+  children?: import("solid-js").JSX.Element;
 }
 
 export function CoverArt(props: CoverArtProps) {
@@ -55,6 +57,7 @@ export function CoverArt(props: CoverArtProps) {
           />
         )}
       </Show>
+      {props.children}
     </div>
   );
 }

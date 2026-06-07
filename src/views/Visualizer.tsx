@@ -135,7 +135,7 @@ export default function Visualizer() {
     window.addEventListener("resize", resize);
 
     onAudioFft((data) => {
-      for (let i = 0; i < Math.min(data.length, 128); i++) fftData[i] = data[i];
+      for (let i = 0; i < Math.min(data.magnitudes.length, 128); i++) fftData[i] = data.magnitudes[i];
     }).then(unsub => { unlisten = unsub; });
 
     setTimeout(() => spectrumSubscribe(), 200);
