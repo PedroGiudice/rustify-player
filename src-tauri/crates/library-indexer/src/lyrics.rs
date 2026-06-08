@@ -35,6 +35,30 @@ pub fn parse_lrc_file(path: &Path) -> Result<Vec<LyricLine>, IndexerError> {
     Ok(parse_lrc(&content))
 }
 
+/// Converte o conteudo do payload `embedded_lyrics` em linhas exibiveis.
+///
+/// `embedded_lyrics` guarda o LRC completo, com timestamps inline. Se houver
+/// timestamps reconheciveis, parseia normalmente (sync + texto limpo). Se nao
+/// houver (texto plano), devolve uma linha por linha com `t = 0.0`.
+///
+/// Existe para o fallback de `get_lyrics`: sem isto, um LRC com timestamps caia
+/// no caminho cru (`.lines()` com `t = 0.0`), aparecendo sem sincronia e com o
+/// "[mm:ss]" colado no texto.
+pub fn lyrics_from_embedded(text: &str) -> Vec<LyricLine> {
+    let parsed = parse_lrc(text);
+    if !parsed.is_empty() {
+        return parsed;
+    }
+    text.trim()
+        .lines()
+        .map(|line| LyricLine {
+            t: 0.0,
+            line: line.to_string(),
+            header: false,
+        })
+        .collect()
+}
+
 /// Parse LRC content from a string.
 pub fn parse_lrc(content: &str) -> Vec<LyricLine> {
     let mut lines = Vec::new();
@@ -245,6 +269,43 @@ pub fn clean_lyrics_text(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- lyrics_from_embedded: fallback do payload `embedded_lyrics` ---
+    // Regressao do bug: embedded_lyrics e um LRC com timestamps inline; o
+    // fallback antigo fazia `.lines()` cru com t=0.0, deixando o "[mm:ss]" no
+    // texto e sem sync. Deve parsear quando ha timestamps; cair pra plano quando nao.
+
+    #[test]
+    fn embedded_with_timestamps_is_synced_and_clean() {
+        let text = "[00:00.01] Entra, meu amor\n[00:06.17] E diz com sinceridade\n[00:11.01] O que desejas de mim";
+        let lines = lyrics_from_embedded(text);
+        assert_eq!(lines.len(), 3);
+        // sync real: timestamps extraidos, nao t=0.0
+        assert_eq!(lines[0].t, 0.01);
+        assert_eq!(lines[1].t, 6.17);
+        assert_eq!(lines[2].t, 11.01);
+        // texto limpo: sem o "[mm:ss]" colado
+        assert_eq!(lines[0].line, "Entra, meu amor");
+        assert!(!lines[1].line.contains('['));
+    }
+
+    #[test]
+    fn embedded_plain_text_stays_plain() {
+        // Sem timestamps reconheciveis: nao regredir as tracks plain — mantem
+        // o texto legivel, t=0.0 (sem sync, que e o esperado pra plain).
+        let text = "I'm just a piece of fruit\nLeft in the midday sun";
+        let lines = lyrics_from_embedded(text);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].t, 0.0);
+        assert_eq!(lines[0].line, "I'm just a piece of fruit");
+        assert_eq!(lines[1].line, "Left in the midday sun");
+    }
+
+    #[test]
+    fn embedded_empty_is_empty() {
+        assert!(lyrics_from_embedded("").is_empty());
+        assert!(lyrics_from_embedded("   \n  ").is_empty());
+    }
 
     #[test]
     fn parse_basic_lrc() {

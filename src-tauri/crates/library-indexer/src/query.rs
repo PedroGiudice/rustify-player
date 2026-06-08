@@ -683,16 +683,9 @@ pub fn get_lyrics(
 
     if let Some(text) = payload["embedded_lyrics"].as_str() {
         if !text.trim().is_empty() {
-            let lines = text
-                .trim()
-                .lines()
-                .map(|line| crate::lyrics::LyricLine {
-                    t: 0.0,
-                    line: line.to_string(),
-                    header: false,
-                })
-                .collect();
-            return Ok(lines);
+            // embedded_lyrics e um LRC completo: parsear pra sincronizar e limpar
+            // o "[mm:ss]" do texto. So cai pra texto plano se nao houver timestamps.
+            return Ok(crate::lyrics::lyrics_from_embedded(text));
         }
     }
 
