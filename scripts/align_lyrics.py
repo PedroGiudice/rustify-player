@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Batch forced alignment: wav2vec2 MMS on BS-Roformer stems + Whisper text → LRC.
+"""Batch forced alignment: wav2vec2 MMS on vocal stems + curated text → LRC.
 
-Reads stems from data/stems-v2/ and texts from data/output-v2/.
-Outputs LRC files to data/lyrics-v2/.
+Reads stems from data/stems-v2/ and texts (one verse per line) from
+data/scraped-texts/. Outputs LRC files to data/lyrics-v2/.
+
+A quebra de linha do LRC segue a ESTRUTURA DE VERSO do texto-fonte (scraped-texts
+traz a letra ja versejada do letras.com), nao heuristica de capitalizacao. O
+wav2vec2 da o timestamp real de cada palavra; cada verso recebe o tempo da sua
+primeira palavra. Ver segment_by_verses().
 
 Usage:
     python3 scripts/align_lyrics.py
@@ -22,10 +27,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 TRACK_TIMEOUT = 300  # 5 min max per track
 
 STEMS_DIR = "data/stems-v2"
-TEXTS_DIR = "data/output-v2"
+TEXTS_DIR = "data/scraped-texts"
 OUTPUT_DIR = "data/lyrics-v2"
-
-GAP_THRESHOLD = 1.5  # seconds of silence → new verse line
 
 
 def normalize_text(text):
@@ -35,6 +38,47 @@ def normalize_text(text):
     text = re.sub(r"[^a-z' ]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def count_norm_tokens(verse):
+    """Numero de tokens que `verse` produz apos normalize_text.
+
+    E a MESMA tokenizacao usada no forced alignment (normalize_text(...).split()),
+    entao a contagem por verso casa 1:1 com os word_spans do wav2vec2.
+    """
+    return len(normalize_text(verse).split())
+
+
+def segment_by_verses(verses, word_spans):
+    """Quebra o LRC pela estrutura de verso do texto-fonte.
+
+    verses: linhas do texto-fonte (versos limpos do scraped-texts), incluindo
+            linhas vazias (separadores de estrofe).
+    word_spans: tempo de inicio (segundos) de cada palavra alinhada, na ordem do
+            texto normalizado flat. 1:1 com normalize_text(" ".join(verses)).split().
+
+    Retorna [(timestamp, texto_do_verso)] — uma entrada por verso nao-vazio,
+    com o timestamp da primeira palavra do verso.
+
+    Sem heuristica de maiuscula nem gap temporal: a quebra E a do texto-fonte,
+    que ja traz os versos corretos da letra. Se os spans acabarem antes dos versos
+    (audio mais curto que a letra), para gracioso e emite o que alinhou.
+    """
+    out = []
+    idx = 0
+    n_spans = len(word_spans)
+    for verse in verses:
+        text = verse.strip()
+        if not text:
+            continue
+        n = count_norm_tokens(verse)
+        if n == 0:
+            continue
+        if idx >= n_spans:
+            break
+        out.append((word_spans[idx], text))
+        idx += n
+    return out
 
 
 def detect_hallucination(raw_text):
@@ -123,43 +167,14 @@ def align_track(track_id, force=False, stems_dir=STEMS_DIR, texts_dir=TEXTS_DIR,
     token_spans = aligner(emission[0], tokens)
     ratio = waveform.shape[1] / emission.shape[1] / bundle.sample_rate
 
-    lrc_lines = []
-    raw_words = raw_text.split()
+    # Tempo de inicio de cada palavra alinhada, na ordem do texto normalizado.
+    word_spans = [span[0].start * ratio for span in token_spans]
 
-    current_line = []
-    line_start = None
-    prev_end = 0.0
-
-    for i, span in enumerate(token_spans):
-        if i >= len(raw_words):
-            break
-        start = span[0].start * ratio
-        end = span[-1].end * ratio
-
-        should_break = False
-
-        # Primary: timing gap between words
-        if current_line and i > 0:
-            gap = start - prev_end
-            if gap > GAP_THRESHOLD:
-                should_break = True
-
-        # Secondary: uppercase letter (verse start)
-        if current_line and raw_words[i][0].isupper():
-            should_break = True
-
-        if should_break:
-            lrc_lines.append(f"{_fmt_ts(line_start)}{' '.join(current_line)}")
-            current_line = []
-            line_start = None
-
-        if line_start is None:
-            line_start = start
-        current_line.append(raw_words[i])
-        prev_end = end
-
-    if current_line and line_start is not None:
-        lrc_lines.append(f"{_fmt_ts(line_start)}{' '.join(current_line)}")
+    # Quebra pela ESTRUTURA DE VERSO do texto-fonte (versos limpos do scraped-texts),
+    # nao por heuristica de maiuscula/gap. Cada verso = uma linha LRC, com o
+    # timestamp da sua primeira palavra.
+    verses = raw_text.splitlines()
+    lrc_lines = [f"{_fmt_ts(t)}{txt}" for t, txt in segment_by_verses(verses, word_spans)]
 
     os.makedirs(output_dir, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
