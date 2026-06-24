@@ -740,6 +740,54 @@ impl QdrantClient {
         Ok(all)
     }
 
+    /// Scroll ALL points with their FULL payload, paging 1000 at a time.
+    ///
+    /// Used by client-side search, which needs every field of each `Track`
+    /// (to be able to play it) and must be robust against partial full-text
+    /// index coverage — Qdrant's `match:{text}` fallback is case-sensitive on
+    /// segments that lack the text index, which silently broke the palette.
+    pub fn scroll_all_full(&self) -> Result<Vec<(u64, Value)>, IndexerError> {
+        let mut all: Vec<(u64, Value)> = Vec::new();
+        let mut offset: Option<Value> = None;
+
+        loop {
+            let mut body = json!({
+                "limit": 1000,
+                // Tudo menos `embedded_lyrics` (LRC completo, ~1-4 KB/faixa): a
+                // busca só lê title/artist/album + os campos de playback, e este
+                // scroll roda no hot path da palette (a cada tecla).
+                "with_payload": { "exclude": ["embedded_lyrics"] },
+                "with_vector": false
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+
+            let resp: Value = self
+                .agent
+                .post(&format!("{}/collections/{COLLECTION}/points/scroll", self.base_url))
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll_full: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    let id = p["id"].as_u64().unwrap_or(0);
+                    let payload = p.get("payload").cloned().unwrap_or(Value::Null);
+                    all.push((id, payload));
+                }
+            }
+
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+
+        Ok(all)
+    }
+
     /// Get a single point by ID with full payload.
     pub fn get_point(&self, id: u64) -> Result<Option<Value>, IndexerError> {
         let url = format!("{}/collections/{COLLECTION}/points/{id}", self.base_url);

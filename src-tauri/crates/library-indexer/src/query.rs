@@ -296,13 +296,91 @@ pub fn list_artists(
 // Text search
 // ---------------------------------------------------------------------------
 
+/// Pesos por campo no ranking de busca (título > artista > álbum).
+const W_TITLE: i32 = 1000;
+const W_ARTIST: i32 = 500;
+const W_ALBUM: i32 = 300;
+
+/// Remove diacríticos latinos/PT-BR comuns. Não depende de crate externa;
+/// o caractere já chega minúsculo de `norm`.
+fn strip_accent(c: char) -> char {
+    match c {
+        'á' | 'à' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+        'é' | 'è' | 'ê' | 'ë' => 'e',
+        'í' | 'ì' | 'î' | 'ï' => 'i',
+        'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+        'ú' | 'ù' | 'û' | 'ü' => 'u',
+        'ç' => 'c',
+        'ñ' => 'n',
+        'ý' | 'ÿ' => 'y',
+        other => other,
+    }
+}
+
+/// Normaliza texto para comparação de busca: trim + lowercase (Unicode-aware)
+/// + remoção de acentos. Garante que "amari" case com "Amari" e "beyonce"
+/// com "Beyoncé", independentemente de qualquer índice do Qdrant.
+fn norm(s: &str) -> String {
+    s.trim().to_lowercase().chars().map(strip_accent).collect()
+}
+
+/// Pontua o match de `needle` contra um único campo (ambos já normalizados).
+/// 0 = sem match. Camadas: 4 exato, 3 prefixo do campo, 2 prefixo de palavra,
+/// 1 substring no meio.
+fn field_score(needle: &str, field: &str) -> i32 {
+    if needle.is_empty() || field.is_empty() {
+        return 0;
+    }
+    if field == needle {
+        4
+    } else if field.starts_with(needle) {
+        3
+    } else if field.split_whitespace().any(|w| w.starts_with(needle)) {
+        2
+    } else if field.contains(needle) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Pontua uma track. `needle`, `title`, `artist` e `album` já vêm normalizados.
+/// 0 = não casa; maior = mais relevante.
+///
+/// A `needle` é tokenizada por espaços e exige-se que TODOS os tokens casem
+/// (AND), cada um pela sua melhor contribuição ponderada entre os três campos.
+/// Isso reproduz — e melhora — o comportamento do antigo filtro full-text do
+/// Qdrant (`match:{text}`): busca "artista faixa" funciona em qualquer ordem e
+/// com tokens em campos diferentes (ex: "kendrick humble" casando o artista no
+/// `artist` e o título no `title`). Para um único token, equivale a pegar o
+/// melhor campo — um match no título supera um no artista, que supera no álbum.
+fn match_score(needle: &str, title: &str, artist: &str, album: &str) -> i32 {
+    let mut total = 0;
+    let mut any = false;
+    for tok in needle.split_whitespace() {
+        any = true;
+        let best = (W_TITLE * field_score(tok, title))
+            .max(W_ARTIST * field_score(tok, artist))
+            .max(W_ALBUM * field_score(tok, album));
+        if best == 0 {
+            return 0; // AND: cada token precisa casar em algum campo.
+        }
+        total += best;
+    }
+    if any {
+        total
+    } else {
+        0
+    }
+}
+
 pub fn search(
     client: &QdrantClient,
     query: &str,
     limit: usize,
 ) -> Result<SearchResults, IndexerError> {
-    let q = query.trim();
-    if q.is_empty() {
+    let needle = norm(query);
+    if needle.is_empty() {
         return Ok(SearchResults {
             tracks: Vec::new(),
             albums: Vec::new(),
@@ -310,20 +388,33 @@ pub fn search(
         });
     }
 
-    let filter = json!({
-        "should": [
-            {"key": "title", "match": {"text": q}},
-            {"key": "artist", "match": {"text": q}},
-            {"key": "album_title", "match": {"text": q}}
-        ]
+    // Busca client-side sobre a biblioteca inteira. Substitui o antigo filtro
+    // Qdrant `match:{text}`, cujo fallback case-sensitive (quando o segment não
+    // tem índice full-text) quebrava buscas em minúsculo contra títulos
+    // capitalizados. Para uma biblioteca pessoal (~10³ faixas) o custo é trivial
+    // e ainda ganha substring + case/accent-insensitive (UX melhor que o
+    // tokenizer word do Qdrant). Ver query::search_playlists (mesmo padrão).
+    let all = client.scroll_all_full()?;
+
+    let mut scored: Vec<(i32, Track)> = Vec::with_capacity(all.len());
+    for (id, payload) in &all {
+        let t = payload_to_track(*id, payload);
+        let title = norm(&t.title);
+        let artist = t.artist_name.as_deref().map(norm).unwrap_or_default();
+        let album = t.album_title.as_deref().map(norm).unwrap_or_default();
+        let score = match_score(&needle, &title, &artist, &album);
+        if score > 0 {
+            scored.push((score, t));
+        }
+    }
+
+    // Maior score primeiro; desempate estável por título.
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.title.to_lowercase().cmp(&b.1.title.to_lowercase()))
     });
 
-    let results = client.scroll_with_filter(Some(filter), None, limit * 3, false)?;
-    let tracks: Vec<Track> = results
-        .iter()
-        .map(|(id, payload)| payload_to_track(*id, payload))
-        .take(limit)
-        .collect();
+    let tracks: Vec<Track> = scored.into_iter().map(|(_, t)| t).take(limit).collect();
 
     let mut seen_albums = HashSet::new();
     let mut albums = Vec::new();
@@ -757,4 +848,103 @@ fn unix_now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{match_score, norm};
+
+    #[test]
+    fn norm_lowercases_and_strips_accents() {
+        assert_eq!(norm("Amari"), "amari");
+        assert_eq!(norm("  Beyoncé  "), "beyonce");
+        assert_eq!(norm("Olá Mündo Çödê"), "ola mundo code");
+        assert_eq!(norm("J. Cole"), "j. cole");
+    }
+
+    // O BUG reportado: buscar "amari" (minúsculo) deve achar a track "Amari"
+    // (capitalizada no metadata). O fallback case-sensitive do Qdrant falhava aqui.
+    #[test]
+    fn matches_case_insensitively_the_reported_bug() {
+        let s = match_score("amari", "amari", "j. cole", "the off-season");
+        assert!(s > 0, "query 'amari' deve casar título 'Amari' (case-insensitive)");
+    }
+
+    #[test]
+    fn matches_word_in_the_middle_of_title() {
+        // "role" deve achar "No Role Modelz" (palavra do meio, case-insensitive).
+        let s = match_score("role", "no role modelz", "j. cole", "");
+        assert!(s > 0, "query 'role' deve casar 'No Role Modelz'");
+    }
+
+    #[test]
+    fn matches_accent_insensitively() {
+        let s = match_score("beyonce", "halo", "beyonce", "");
+        assert!(s > 0, "query sem acento deve casar artista com acento");
+    }
+
+    #[test]
+    fn no_match_returns_zero() {
+        assert_eq!(match_score("xyzzy", "amari", "j. cole", "the off-season"), 0);
+    }
+
+    #[test]
+    fn empty_needle_never_matches() {
+        // Guard defensivo: needle vazio não deve casar tudo via starts_with("").
+        assert_eq!(match_score("", "amari", "j. cole", "x"), 0);
+    }
+
+    #[test]
+    fn exact_title_ranks_above_prefix_title() {
+        let exact = match_score("amari", "amari", "", "");
+        let prefix = match_score("amari", "amari (slowed)", "", "");
+        assert!(exact > prefix, "match exato no título > prefixo no título");
+    }
+
+    #[test]
+    fn title_match_ranks_above_artist_match() {
+        // Mesma needle: casar no título vale mais que casar no artista.
+        let by_title = match_score("cole", "cole world", "someone", "");
+        let by_artist = match_score("cole", "different", "j. cole", "");
+        assert!(by_title > by_artist, "match no título > match no artista");
+    }
+
+    #[test]
+    fn substring_ranks_below_word_prefix() {
+        // "ari": word_prefix em "Ari Lennox" vs substring em "Amari".
+        let word_prefix = match_score("ari", "ari lennox", "", "");
+        let substring = match_score("ari", "amari", "", "");
+        assert!(word_prefix > substring, "prefixo de palavra > substring no meio");
+    }
+
+    // --- Busca multi-palavra (query dominante "artista faixa" no acervo) ---
+    // O filtro Qdrant antigo fazia AND de tokens order-independent dentro de um
+    // campo; tratar a needle como string única era regressão.
+
+    #[test]
+    fn multiword_matches_artist_in_order() {
+        let s = match_score("kendrick lamar", "humble.", "kendrick lamar", "damn");
+        assert!(s > 0, "'kendrick lamar' deve casar o artista 'Kendrick Lamar'");
+    }
+
+    #[test]
+    fn multiword_is_order_independent() {
+        // Ordem trocada deve casar igual (AND de tokens, não substring literal).
+        let s = match_score("lamar kendrick", "humble.", "kendrick lamar", "damn");
+        assert!(s > 0, "'lamar kendrick' (ordem trocada) deve casar 'Kendrick Lamar'");
+    }
+
+    #[test]
+    fn multiword_matches_across_fields() {
+        // Um token no artista, outro no título.
+        let s = match_score("kendrick humble", "humble.", "kendrick lamar", "damn");
+        assert!(s > 0, "tokens em campos diferentes (artista+título) devem casar");
+    }
+
+    #[test]
+    fn multiword_requires_all_tokens() {
+        // AND: se um token não casa em lugar nenhum, não há match.
+        let s = match_score("kendrick zzzqqq", "humble.", "kendrick lamar", "damn");
+        assert_eq!(s, 0, "token sem match em nenhum campo zera o resultado (AND)");
+    }
 }

@@ -57,12 +57,16 @@ function fmtDur(ms: number): string {
 export function CommandPalette() {
   const [open, setOpen] = createSignal(false);
   const [query, setQuery] = createSignal("");
+  // `query` reflete o input na hora (controlled); `debouncedQuery` alimenta a
+  // busca com ~150ms de atraso, evitando um scroll da biblioteca por tecla.
+  const [debouncedQuery, setDebouncedQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
   let inputEl!: HTMLInputElement;
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   // libSearch retorna { tracks, albums, artists } no backend.
   // Caso o backend retorne array (formato legado), trata como apenas tracks.
-  const [searchResults] = createResource(query, async (q): Promise<SearchBundle> => {
+  const [searchResults] = createResource(debouncedQuery, async (q): Promise<SearchBundle> => {
     const empty: SearchBundle = { tracks: [], albums: [], artists: [] };
     if (!q.trim()) return empty;
     try {
@@ -144,6 +148,8 @@ export function CommandPalette() {
   function close() {
     setOpen(false);
     setQuery("");
+    setDebouncedQuery("");
+    clearTimeout(debounceTimer);
     setActive(0);
   }
 
@@ -202,6 +208,7 @@ export function CommandPalette() {
     onCleanup(() => {
       window.removeEventListener(CMD_PALETTE_EVENT, onOpenEvt);
       window.removeEventListener("keydown", onGlobalKey);
+      clearTimeout(debounceTimer);
     });
   });
 
@@ -219,7 +226,12 @@ export function CommandPalette() {
             class="palette__input"
             value={query()}
             placeholder="Buscar tracks, albums, artists ou comandos…"
-            onInput={(e) => batch(() => { setQuery(e.currentTarget.value); setActive(0); })}
+            onInput={(e) => {
+              const val = e.currentTarget.value;
+              batch(() => { setQuery(val); setActive(0); });
+              clearTimeout(debounceTimer);
+              debounceTimer = setTimeout(() => setDebouncedQuery(val), 150);
+            }}
           />
           <span class="palette__esc">ESC</span>
         </div>
