@@ -324,6 +324,14 @@ fn norm(s: &str) -> String {
     s.trim().to_lowercase().chars().map(strip_accent).collect()
 }
 
+/// Versão "comprimida" de um texto já normalizado: só caracteres alfanuméricos,
+/// sem espaços nem pontuação. Permite casar títulos estilizados com letras
+/// espaçadas (ex: J. Cole "The Off-Season" guarda "a m a r i" no metadata) —
+/// `squish("a m a r i") == "amari" == squish("amari")`.
+fn squish(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
 /// Pontua o match de `needle` contra um único campo (ambos já normalizados).
 /// 0 = sem match. Camadas: 4 exato, 3 prefixo do campo, 2 prefixo de palavra,
 /// 1 substring no meio.
@@ -355,23 +363,44 @@ fn field_score(needle: &str, field: &str) -> i32 {
 /// `artist` e o título no `title`). Para um único token, equivale a pegar o
 /// melhor campo — um match no título supera um no artista, que supera no álbum.
 fn match_score(needle: &str, title: &str, artist: &str, album: &str) -> i32 {
+    let toks: Vec<&str> = needle.split_whitespace().collect();
+    if toks.is_empty() {
+        return 0;
+    }
+
+    // 1. Match por token (AND, melhor campo por token) — caminho normal.
     let mut total = 0;
-    let mut any = false;
-    for tok in needle.split_whitespace() {
-        any = true;
+    let mut all_ok = true;
+    for tok in &toks {
         let best = (W_TITLE * field_score(tok, title))
             .max(W_ARTIST * field_score(tok, artist))
             .max(W_ALBUM * field_score(tok, album));
         if best == 0 {
-            return 0; // AND: cada token precisa casar em algum campo.
+            all_ok = false;
+            break;
         }
         total += best;
     }
-    if any {
-        total
-    } else {
-        0
+    if all_ok {
+        return total;
     }
+
+    // 2. Fallback comprimido: ignora espaços/pontuação para casar títulos
+    // estilizados ("a m a r i"). Score baixo (metade do peso) para ficar abaixo
+    // de qualquer match normal. Needle mínima de 3 chars evita ruído.
+    let nq = squish(needle);
+    if nq.len() >= 3 {
+        if squish(title).contains(&nq) {
+            return W_TITLE / 2;
+        }
+        if squish(artist).contains(&nq) {
+            return W_ARTIST / 2;
+        }
+        if squish(album).contains(&nq) {
+            return W_ALBUM / 2;
+        }
+    }
+    0
 }
 
 pub fn search(
@@ -946,5 +975,35 @@ mod tests {
         // AND: se um token não casa em lugar nenhum, não há match.
         let s = match_score("kendrick zzzqqq", "humble.", "kendrick lamar", "damn");
         assert_eq!(s, 0, "token sem match em nenhum campo zera o resultado (AND)");
+    }
+
+    // --- Títulos estilizados com letras espaçadas (ex: J. Cole "The Off-Season") ---
+    // O metadata traz "a m a r i", "m y . l i f e" etc; buscar "amari" deve casar
+    // ignorando espaçamento e pontuação.
+
+    #[test]
+    fn matches_letter_spaced_title() {
+        let s = match_score("amari", "a m a r i", "j. cole", "the off-season");
+        assert!(s > 0, "'amari' deve casar o título estilizado 'a m a r i'");
+    }
+
+    #[test]
+    fn matches_letter_spaced_multiword() {
+        let s = match_score("my life", "m y . l i f e", "j. cole", "the off-season");
+        assert!(s > 0, "'my life' deve casar 'm y . l i f e'");
+    }
+
+    #[test]
+    fn squish_fallback_ranks_below_normal_match() {
+        let spaced = match_score("amari", "a m a r i", "j. cole", "");
+        let normal = match_score("amari", "amari", "j. cole", "");
+        assert!(spaced > 0, "estilizado deve casar");
+        assert!(normal > spaced, "match normal de título > match via squish");
+    }
+
+    #[test]
+    fn short_needle_does_not_oversquish() {
+        // needle de 1-2 chars não deve casar via squish (evita ruído).
+        assert_eq!(match_score("a", "x y z w q", "", ""), 0);
     }
 }
