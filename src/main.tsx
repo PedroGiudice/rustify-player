@@ -6,6 +6,9 @@
    continua carregado porque a Titlebar usa #icon-logo-mark.
    ============================================================ */
 
+// Registro offline dos ícones Iconify (substitui a CDN) — antes de qualquer render.
+import "./icons-offline";
+
 import { render } from "solid-js/web";
 import { attachConsole } from "@tauri-apps/plugin-log";
 import App from "./App";
