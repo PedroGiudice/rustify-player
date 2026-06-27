@@ -16,6 +16,7 @@ import { CoverArt } from "./CoverArt";
 import { navigate } from "../router";
 import { playTrack } from "./PlayerBar";
 import { setQueue, enqueueEnd, enqueueNext } from "../store/player";
+import { openTrackMenu } from "../store/contextMenu";
 import { libSearch, libShuffle, coverUrl, type Track, type Album, type Artist } from "../tauri";
 
 export const CMD_PALETTE_EVENT = "rustify:open-palette";
@@ -261,6 +262,18 @@ export function CommandPalette() {
                     class={`palette__item${active() === i() ? " active" : ""}`}
                     onMouseMove={() => setActive(i())}
                     onClick={() => runItem(it)}
+                    onContextMenu={(e) => {
+                      // Só tracks têm menu de contexto (play next / queue /
+                      // shuffle / like). Abre o menu e fecha o palette: o menu
+                      // (Portal no body, z-index 300) cobre o scrim (z-index 100)
+                      // e o close evita overlay órfão se a ação navegar.
+                      if (it.kind !== "track") return;
+                      openTrackMenu(e, it.track, {
+                        list: searchResults()?.tracks,
+                        onPlay: () => runItem(it),
+                      });
+                      close();
+                    }}
                   >
                     <Show
                       when={it.kind === "track" ? (it as TrackItem).track : null}
