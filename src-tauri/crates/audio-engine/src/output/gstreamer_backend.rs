@@ -7,6 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use gstreamer as gst;
+use gstreamer::glib;
 use gstreamer::prelude::*;
 use gstreamer_play as gst_play;
 
@@ -59,7 +60,7 @@ impl GstreamerPlayer {
     }
 
     pub fn load(&mut self, path: &Path) {
-        let uri = format!("file://{}", path.display());
+        let uri = file_uri(path);
         self.player.set_uri(Some(&uri));
     }
 
@@ -175,8 +176,75 @@ impl GstreamerPlayer {
     }
 }
 
+/// Build a percent-encoded `file://` URI from a filesystem path.
+///
+/// `format!("file://{}", path)` is wrong: characters that are *syntactic* in a
+/// URI corrupt the parse and `GstGioSrc` then fails to open the resource with
+/// "No input stream provided by subclass" — playback silently never starts.
+/// Real cases this broke: `5% TINT.flac` (`%` introduces a percent-escape) and
+/// `Interlude #4.flac` (`#` is the fragment delimiter).
+///
+/// `glib::filename_to_uri` percent-encodes exactly the bytes that need it
+/// (`%`→`%25`, `#`→`%23`, space→`%20`) and leaves safe ones (`&`, `(`) literal.
+/// It requires an absolute path; library paths already are, but we coerce
+/// defensively and fall back to the raw form (logged) if conversion fails.
+fn file_uri(path: &Path) -> String {
+    let abs_buf;
+    let abs: &Path = if path.is_absolute() {
+        path
+    } else {
+        abs_buf = std::env::current_dir()
+            .map(|d| d.join(path))
+            .unwrap_or_else(|_| path.to_path_buf());
+        &abs_buf
+    };
+    match glib::filename_to_uri(abs, None) {
+        Ok(uri) => uri.to_string(),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                path = %abs.display(),
+                "filename_to_uri failed; using raw file:// (special chars may break playback)"
+            );
+            format!("file://{}", abs.display())
+        }
+    }
+}
+
 impl Drop for GstreamerPlayer {
     fn drop(&mut self) {
         self.player.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_uri_percent_encodes_the_percent_sign() {
+        // The bug that broke "5% TINT.flac": `%` must become `%25`.
+        let uri = file_uri(Path::new("/music/09 - 5% TINT.flac"));
+        assert!(uri.starts_with("file:///"), "{uri}");
+        assert!(uri.contains("%25"), "percent must be encoded: {uri}");
+        assert!(!uri.contains("5% TINT"), "raw `% ` leaks into uri: {uri}");
+        assert!(uri.contains("%20"), "space must be encoded: {uri}");
+    }
+
+    #[test]
+    fn file_uri_encodes_the_hash() {
+        // `#` is the URI fragment delimiter; broke "Interlude #4.flac".
+        let uri = file_uri(Path::new("/music/Interlude #4.flac"));
+        assert!(uri.contains("%23"), "hash must be encoded: {uri}");
+        assert!(!uri.contains("#4"), "raw `#` leaks into uri: {uri}");
+    }
+
+    #[test]
+    fn file_uri_roundtrips_back_to_the_original_path() {
+        // The strongest check: glib parses our URI back to the exact path.
+        let p = Path::new("/music/Rap & Hip-Hop/5% TINT #1.flac");
+        let uri = file_uri(p);
+        let (back, _host) = glib::filename_from_uri(&uri).expect("uri parses back");
+        assert_eq!(back.as_path(), p, "roundtrip mismatch from {uri}");
     }
 }

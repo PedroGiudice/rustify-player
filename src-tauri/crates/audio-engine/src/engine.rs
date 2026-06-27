@@ -101,6 +101,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     let metrics_thread = metrics.clone();
     let state_tx_thread = state_tx.clone();
     let state_tx_panic = state_tx.clone();
+    let state_tx_err = state_tx.clone();
 
     // (running_time_ns, magnitudes) — timestamped spectrum data
     let spectrum_latest = Arc::new(std::sync::Mutex::new((0u64, Vec::<u8>::new())));
@@ -142,6 +143,15 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 let adapter = player.signal_adapter();
                 adapter.connect_end_of_stream(move |_| {
                     let _ = eos_tx.try_send(());
+                });
+                // Surface GStreamer playback errors (resource/decode/caps
+                // failures) instead of failing silently. Without this the
+                // GstPlay bus error never reaches the UI or the log — which is
+                // exactly why broken-URI tracks looked like "nothing happens".
+                let err_tx = state_tx_err;
+                adapter.connect_error(move |_, err, _details| {
+                    tracing::error!(error = %err, "GStreamer playback error");
+                    let _ = err_tx.send(StateUpdate::Error(format!("playback error: {err}")));
                 });
             }
 
