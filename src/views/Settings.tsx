@@ -24,13 +24,13 @@
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
-  libRescan, setVolume, normGetState, normSetEnabled,
-  listThemes, applyThemeByName, watchTheme, onThemeChanged,
+  libRescan, setVolume,
+  listThemes, applyThemeByName, loadTheme, watchTheme, onThemeChanged,
   clearThemeVars,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
-import { applyTweaks } from "../store/tweaks";
+import { applyTweaks, tweaks, updateTweak } from "../store/tweaks";
 import { player, setPlayer } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
@@ -191,43 +191,30 @@ export default function Settings() {
   // ── Volume + normalize (preservado, visual ainda no painel Audio
   //    do Playback — apesar de o mockup nao mostrar volume aqui,
   //    a logica precisa ficar acessivel) ──────────────────────────
-  const cachedNorm = localStorage.getItem("rustify-norm-enabled");
-  const [normEnabled, setNormEnabled] = createSignal(cachedNorm === null ? true : cachedNorm === "true");
-
   onMount(() => {
-    normGetState()
-      .then((on) => {
-        setNormEnabled(on);
-        localStorage.setItem("rustify-norm-enabled", String(on));
-      })
-      .catch((e) => console.error("[norm] get_state failed:", e));
-
     // Re-aplica theme mode salvo no boot pra refletir em document.body.
     applyThemeMode(themeMode());
 
-    // Listener de hot-reload: quando o watcher de arquivo YAML emite
-    // "theme-changed", re-aplica o tema e atualiza o contraste calculado.
-    // Isso garante que a calculadora reflete o estado atual apos edicoes
-    // ao vivo nos YAMLs de tema.
+    // Hot-reload de tema: quem APLICA é o listener do boot (main.tsx) —
+    // registrar um segundo applyThemeByName aqui duplicava IPC e aplicação
+    // (achado da auditoria). Este listener só atualiza a calculadora de
+    // contraste da view, via loadTheme (leitura pura, não aplica).
     const unlisten = onThemeChanged((filename) => {
       if (!filename) return;
-      applyThemeByName(filename)
-        .then((checks) => setContrast(checks))
-        .catch((e) => console.warn("[theme] hot-reload failed:", e));
+      loadTheme(filename)
+        .then((r) => setContrast(r.contrast))
+        .catch((e) => console.warn("[theme] refresh contrast failed:", e));
     });
     // `onThemeChanged` retorna uma Promise<UnlistenFn>; cancelamos no cleanup.
     onCleanup(() => { unlisten.then((fn) => fn()).catch(() => {}); });
   });
 
+  // Normalize: fonte ÚNICA é tweaks().loudnessNorm — o effect de loudness
+  // do store empurra pro backend. O estado local + localStorage paralelo
+  // que vivia aqui revertia silenciosamente (auditoria: o store re-aplicava
+  // o valor antigo a cada mudança de qualquer tweak).
   function toggleNorm() {
-    const next = !normEnabled();
-    setNormEnabled(next);
-    localStorage.setItem("rustify-norm-enabled", String(next));
-    normSetEnabled(next).catch((err) => {
-      console.error("[norm] set_enabled failed:", err);
-      setNormEnabled(!next);
-      localStorage.setItem("rustify-norm-enabled", String(!next));
-    });
+    updateTweak("loudnessNorm", !tweaks().loudnessNorm);
   }
 
   const volumePct = () => Math.round(player.volume * 100);
@@ -481,7 +468,7 @@ export default function Settings() {
               <div class="set-row__hint">EBU R128 alvo −14 LUFS, entre EQ e Limiter.</div>
             </div>
             <div class="set-row__control">
-              <button class="tog" aria-pressed={normEnabled() ? "true" : "false"} onClick={toggleNorm} type="button" />
+              <button class="tog" aria-pressed={tweaks().loudnessNorm ? "true" : "false"} onClick={toggleNorm} type="button" />
             </div>
           </div>
 

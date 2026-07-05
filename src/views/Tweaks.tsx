@@ -191,6 +191,7 @@ export function Tweaks() {
             max={1}
             step={0.05}
             format={(v) => v.toFixed(2)}
+            themeGoverned
           />
           <NumberSlider
             label="Lyrics glass"

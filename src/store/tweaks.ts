@@ -109,7 +109,7 @@ export const DEFAULTS: TweaksState = {
 // Campos onde o tema fornece o default e o valor do usuário só vale se
 // ele tocou no knob. Sem dirty, o applyTweaks se abstém e deixa o tema
 // (ou a capa, no caso do ink) valer. Signal pra UI reagir (botão reset).
-const THEME_GOVERNED: ReadonlyArray<keyof TweaksState> = ["bgInk", "lyricsGlass"];
+const THEME_GOVERNED: ReadonlyArray<keyof TweaksState> = ["bgInk", "lyricsGlass", "glow"];
 const [dirtyKeys, setDirtyKeys] = createSignal<ReadonlySet<keyof TweaksState>>(new Set());
 
 export function isDirty(key: keyof TweaksState): boolean {
@@ -156,13 +156,19 @@ export async function listSystemFonts(): Promise<string[]> {
 export function applyTweaks(s: TweaksState = state()) {
   const html = document.documentElement;
 
+  // Fontes: valor não-vazio = escolha do usuário (vence o tema). No caminho
+  // unset, RESTAURAR o que o tema declarou — removeProperty apagaria a
+  // inline var do applyTheme e mataria a fonte do tema no primeiro toque
+  // em qualquer knob (achado da auditoria).
   if (s.fontUI) {
     html.style.setProperty(
       "--font-sans",
       `"${s.fontUI}", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`,
     );
   } else {
-    html.style.removeProperty("--font-sans");
+    const tv = themeVar("--font-sans");
+    if (tv !== null) html.style.setProperty("--font-sans", tv);
+    else html.style.removeProperty("--font-sans");
   }
 
   if (s.fontMono) {
@@ -171,7 +177,9 @@ export function applyTweaks(s: TweaksState = state()) {
       `"${s.fontMono}", ui-monospace, "SF Mono", "Menlo", "Consolas", monospace`,
     );
   } else {
-    html.style.removeProperty("--font-mono");
+    const tv = themeVar("--font-mono");
+    if (tv !== null) html.style.setProperty("--font-mono", tv);
+    else html.style.removeProperty("--font-mono");
   }
 
   // zoom afeta TUDO inclusive font-size em px hardcoded.
@@ -188,7 +196,15 @@ export function applyTweaks(s: TweaksState = state()) {
   if (s.type === "mono") html.dataset.type = "mono";
   else delete html.dataset.type;
 
-  html.style.setProperty("--glow", String(s.glow));
+  // Glow é theme-governed: escrever incondicionalmente estompava o --glow
+  // declarado pelo tema a cada mudança de knob. Só o valor dirty vence.
+  if (isDirty("glow")) {
+    html.style.setProperty("--glow", String(s.glow));
+  } else {
+    const tv = themeVar("--glow");
+    if (tv !== null) html.style.setProperty("--glow", tv);
+    else html.style.removeProperty("--glow");
+  }
 
   // Lyrics glass: slider unico controla alpha + brightness + (em valores
   // altos) desliga o backdrop-filter — replicando a estetica do modo
@@ -376,6 +392,7 @@ window.addEventListener("rustify:theme-applied", (e: Event) => {
     );
   }
   if (isDirty("lyricsGlass")) applyLyricsGlass(s);
+  if (isDirty("glow")) html.style.setProperty("--glow", String(s.glow));
   applyInkResolved(s);
   applyAccentResolved(s);
 });
@@ -399,6 +416,9 @@ function save(s: TweaksState) {
 }
 
 export function loadTweaks() {
+  // Libera aplicação/persistência ANTES do setState: o effect global passa
+  // a valer a partir do estado carregado, nunca dos DEFAULTS do import.
+  _loaded = true;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) { applyTweaks(); return; }
@@ -417,12 +437,17 @@ export function loadTweaks() {
 
     // Dirty list persistida. Estado salvo por versão anterior (sem __dirty):
     // infere — valor diferente do default = escolha do usuário, preserva.
+    // A união com a inferência cobre chaves que viraram theme-governed
+    // DEPOIS do estado ter sido salvo (ex: glow): valor != default = escolha
+    // do usuário. Seguro porque clearDirty zera o valor pro default — um
+    // reset nunca é ressuscitado pela inferência.
     if (Array.isArray(saved.__dirty)) {
-      const keys = (saved.__dirty as string[]).filter(
+      const explicit = (saved.__dirty as string[]).filter(
         (k): k is keyof TweaksState =>
           (THEME_GOVERNED as ReadonlyArray<string>).includes(k),
       );
-      setDirtyKeys(new Set(keys));
+      const inferred = THEME_GOVERNED.filter((k) => next[k] !== DEFAULTS[k]);
+      setDirtyKeys(new Set([...explicit, ...inferred]));
     } else {
       setDirtyKeys(new Set(THEME_GOVERNED.filter((k) => next[k] !== DEFAULTS[k])));
     }
@@ -432,10 +457,16 @@ export function loadTweaks() {
   applyTweaks();
 }
 
-// Auto-apply + persist sempre que state mudar (depois do mount inicial).
-// Roda no boot tambem (idempotente).
+// Auto-apply + persist sempre que state mudar. ATENÇÃO (achado da
+// auditoria): createEffect em module-level roda SÍNCRONO no import —
+// sem o gate _loaded, este effect salvava DEFAULTS por cima do kv-tweaks
+// persistido ANTES de loadTweaks() rodar, apagando os tweaks do usuário
+// a cada boot. Persistência e aplicação só valem após o load.
+let _loaded = false;
+
 createEffect(() => {
   const s = state();
+  if (!_loaded) return;
   applyTweaks(s);
   save(s);
 });
@@ -459,10 +490,22 @@ function pushLoudness(norm: boolean, target: number) {
   });
 }
 
+// `state` é um signal do objeto INTEIRO: ler um campo NÃO restringe a
+// dependência (achado da auditoria — qualquer knob re-rodava este effect
+// e re-empurrava IPC redundante, revertendo o toggle do Settings). O guard
+// de valores anteriores garante IPC só quando o PAR de fato mudou; o gate
+// _loaded evita empurrar DEFAULTS antes do loadTweaks.
+let _prevNorm: boolean | undefined;
+let _prevTarget: number | undefined;
+
 createEffect(() => {
-  // Acessa os dois signals pra registrar dependencia reativa.
-  const norm = state().loudnessNorm;
-  const target = state().loudnessTarget;
+  const s = state();
+  const norm = s.loudnessNorm;
+  const target = s.loudnessTarget;
+  if (!_loaded) return;
+  if (norm === _prevNorm && target === _prevTarget) return;
+  _prevNorm = norm;
+  _prevTarget = target;
   if (_loudnessTimer) clearTimeout(_loudnessTimer);
   _loudnessTimer = setTimeout(() => {
     _loudnessTimer = undefined;

@@ -110,11 +110,18 @@ function applyDerived(hex: string | null) {
   setAdaptiveAccent(hex ? deriveAccent(hex, themeInkBase()) : null);
 }
 
-async function fetchAndApply(expectedPath: string, retryLeft = 5): Promise<void> {
-  const seq = ++_reqSeq;
+// O retry PRESERVA o seq da requisição original (achado da auditoria: a
+// re-entrada fazia ++_reqSeq e o retry obsoleto da faixa anterior roubava
+// o sequencial da corrente, matando o fetch da faixa nova — skip rápido
+// A→B deixava B sem cor adaptativa). Retry stale morre no guard.
+async function fetchAndApply(expectedPath: string, retryLeft = 5, seq = ++_reqSeq): Promise<void> {
+  if (seq !== _reqSeq) return; // cadeia obsoleta: outra faixa assumiu
   const retry = () => {
-    if (retryLeft > 0) setTimeout(() => { void fetchAndApply(expectedPath, retryLeft - 1); }, 300);
-    else applyDerived(null);
+    if (retryLeft > 0) {
+      setTimeout(() => { void fetchAndApply(expectedPath, retryLeft - 1, seq); }, 300);
+    } else if (seq === _reqSeq) {
+      applyDerived(null);
+    }
   };
   try {
     const snap = await getState();
