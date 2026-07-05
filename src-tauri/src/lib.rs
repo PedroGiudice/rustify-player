@@ -958,6 +958,10 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
         ("ok/canvas",         "--green-fg","--bg-canvas"),
         ("warn/canvas",       "--amber-fg","--bg-canvas"),
         ("erro/canvas",       "--rose-fg", "--bg-canvas"),
+        // Texto sobre o accent (botões primary). Buraco histórico: Uvinha
+        // shipava on-primary 1.46:1 sobre primary sem o checker acusar.
+        ("on-primary/primary",    "--on-primary", "--primary"),
+        ("on-primary/container",  "--on-primary-container", "--primary-container"),
     ];
     // Tones declarados pelo tema: o texto principal precisa ler sobre cada
     // card pastel. Só checa os que o YAML define — tema sem tones não ganha
@@ -1073,10 +1077,11 @@ fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, Stri
     let client = lib.handle.client();
 
     let enr = client.get_enrichment(tid).map_err(err)?;
-    // Chave versionada: o extractor mudou de média-1x1 pra quantização
-    // saturation-aware. Os valores antigos ("dominant_color") são lamacentos
-    // por construção — ignorados; cada faixa recalcula lazy no primeiro play.
-    if let Some(color) = enr["dominant_color_v2"].as_str().filter(|s| !s.is_empty()) {
+    // Chave versionada: v1 = média-1x1 (lamacenta), v2 = quantização em
+    // buckets (dividia o voto do vermelho no wrap do hue e diluía na média),
+    // v3 = eleição de família de hue + núcleo saturado. Valores de versões
+    // antigas são ignorados; cada faixa recalcula lazy no primeiro play.
+    if let Some(color) = enr["dominant_color_v3"].as_str().filter(|s| !s.is_empty()) {
         return Ok(color.to_string());
     }
 
@@ -1087,7 +1092,7 @@ fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, Stri
         if cover_file.exists() {
             let source = library_indexer::CoverSource::FolderFile(cover_file);
             if let Some(hex) = library_indexer::dominant_color(&source) {
-                client.set_enrichment(tid, serde_json::json!({"dominant_color_v2": hex})).ok();
+                client.set_enrichment(tid, serde_json::json!({"dominant_color_v3": hex})).ok();
                 return Ok(hex);
             }
         }

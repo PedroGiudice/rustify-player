@@ -22,7 +22,7 @@ vi.mock("../tauri", () => {
     "normGetState", "normSetEnabled",
   ];
   for (const n of names) ipcStubs[n] = vi.fn().mockResolvedValue(undefined);
-  return ipcStubs;
+  return { ...ipcStubs, themeVar: () => null, clearThemeVars: vi.fn() };
 });
 
 import { dsp } from "./dsp";

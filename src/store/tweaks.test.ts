@@ -10,6 +10,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../tauri", () => ({
+  themeVar: () => null,
+  clearThemeVars: vi.fn(),
   normSetEnabled: vi.fn().mockResolvedValue(undefined),
   normSetTarget: vi.fn().mockResolvedValue(undefined),
 }));

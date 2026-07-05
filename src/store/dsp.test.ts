@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock do modulo tauri ANTES de importar o store, porque o store
 // importa ipc no top-level e o vi.mock e hoisted.
 vi.mock("../tauri", () => ({
+  themeVar: () => null,
+  clearThemeVars: vi.fn(),
   dspSetEqSlope: vi.fn().mockResolvedValue(undefined),
   dspSetLimiterThreshold: vi.fn().mockResolvedValue(undefined),
   dspSetBassAmount: vi.fn().mockResolvedValue(undefined),

@@ -116,50 +116,99 @@ pub fn process_album_cover(
 
 /// Extract a *vibrant* dominant color from a cover as a hex string.
 ///
-/// The old approach (resize-to-1x1 = global average) blends complementary
-/// hues into mud — a red/teal cover averages to gray-brown. Instead we
-/// quantize a small thumbnail into hue/sat/light buckets and score each
-/// bucket by pixel count weighted toward saturated, mid-lightness colors
-/// (the "identity" colors of the art, à la Spotify). The winner's weighted
-/// average is returned, so within-bucket nuance survives.
+/// v1 (resize-to-1x1 = global average) blends complementary hues into mud.
+/// v2 quantized into hue×sat×light buckets, but vivid families still split
+/// their vote across bucket boundaries — red wraps the hue circle (350°..10°
+/// lands in two bins) and sat/light bands split further — so a busy vivid
+/// cover could lose to one big washed-out bucket, and the winner's plain
+/// mean diluted the color. v3 elects a HUE FAMILY first, then finds its
+/// saturated core:
 ///
-/// Grayscale covers stay grayscale: desaturated pixels get a small but
-/// non-zero weight, so they win when nothing chromatic competes.
+/// Pass 1 — 24 wrap-aware hue bins, smoothed with the neighbors
+/// ([0.25, 0.5, 0.25]) so family votes re-merge across bin edges. Votes are
+/// weighted by chroma (s^1.5) and mid-lightness. Achromatic pixels
+/// (s < 0.08) vote in a separate "gray" party that only wins when nothing
+/// chromatic has real presence — grayscale covers stay grayscale.
+///
+/// Pass 2 — representative INSIDE the family (winner bin ± 1, wrap-aware):
+/// weighted mean with s² × mid-lightness, so the saturated core defines the
+/// color and washed-out members stop diluting it.
 pub fn dominant_color(source: &CoverSource) -> Option<String> {
     let img = load_source(source).ok()?;
     let small = img.resize_exact(48, 48, FilterType::Triangle).to_rgb8();
 
-    const HUE_BINS: usize = 12;
-    const SAT_BINS: usize = 3;
-    const LIG_BINS: usize = 3;
-    // (weight_sum, r_sum, g_sum, b_sum) per bucket, all weighted.
-    let mut buckets = vec![(0f64, 0f64, 0f64, 0f64); HUE_BINS * SAT_BINS * LIG_BINS];
+    const HUE_BINS: usize = 24;
+    const ACHROMATIC_S: f64 = 0.08;
+    let light_w = |l: f64| (1.0 - (l - 0.5).abs() * 1.6).max(0.10);
 
+    // Pass 1: eleição da família de hue (+ partido acromático).
+    let mut votes = [0f64; HUE_BINS];
+    let mut gray = (0f64, 0f64, 0f64, 0f64); // (peso, r, g, b)
     for px in small.pixels() {
         let r = f64::from(px[0]) / 255.0;
         let g = f64::from(px[1]) / 255.0;
         let b = f64::from(px[2]) / 255.0;
         let (h, s, l) = rgb_to_hsl(r, g, b);
-        let hb = ((h * HUE_BINS as f64) as usize).min(HUE_BINS - 1);
-        let sb = ((s * SAT_BINS as f64) as usize).min(SAT_BINS - 1);
-        let lb = ((l * LIG_BINS as f64) as usize).min(LIG_BINS - 1);
-        // Saturated colors count more; near-black/near-white count less.
-        let w = (0.10 + s) * (1.0 - (l - 0.5).abs() * 1.6).max(0.10);
-        let e = &mut buckets[(hb * SAT_BINS + sb) * LIG_BINS + lb];
-        e.0 += w;
-        e.1 += r * w;
-        e.2 += g * w;
-        e.3 += b * w;
+        if s < ACHROMATIC_S {
+            let w = 0.15 * light_w(l);
+            gray.0 += w;
+            gray.1 += r * w;
+            gray.2 += g * w;
+            gray.3 += b * w;
+        } else {
+            let hb = ((h * HUE_BINS as f64) as usize).min(HUE_BINS - 1);
+            votes[hb] += s.powf(1.5) * light_w(l);
+        }
     }
 
-    let (w, rs, gs, bs) = buckets
-        .into_iter()
-        .max_by(|a, b| a.0.total_cmp(&b.0))?;
-    if w <= f64::EPSILON {
+    let mut smooth = [0f64; HUE_BINS];
+    for i in 0..HUE_BINS {
+        let prev = votes[(i + HUE_BINS - 1) % HUE_BINS];
+        let next = votes[(i + 1) % HUE_BINS];
+        smooth[i] = 0.25 * prev + 0.5 * votes[i] + 0.25 * next;
+    }
+    let (win, &win_votes) = smooth
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))?;
+
+    // Sem presença cromática real: capa acromática fica acromática.
+    if win_votes * 4.0 < gray.0 || win_votes <= f64::EPSILON {
+        if gray.0 <= f64::EPSILON {
+            return None;
+        }
+        let to8 = |v: f64| ((v / gray.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+        return Some(format!("#{:02x}{:02x}{:02x}", to8(gray.1), to8(gray.2), to8(gray.3)));
+    }
+
+    // Pass 2: núcleo saturado da família vencedora (win ± 1, com wrap).
+    let in_family = |hb: usize| {
+        hb == win || hb == (win + 1) % HUE_BINS || hb == (win + HUE_BINS - 1) % HUE_BINS
+    };
+    let mut acc = (0f64, 0f64, 0f64, 0f64);
+    for px in small.pixels() {
+        let r = f64::from(px[0]) / 255.0;
+        let g = f64::from(px[1]) / 255.0;
+        let b = f64::from(px[2]) / 255.0;
+        let (h, s, l) = rgb_to_hsl(r, g, b);
+        if s < ACHROMATIC_S {
+            continue;
+        }
+        let hb = ((h * HUE_BINS as f64) as usize).min(HUE_BINS - 1);
+        if !in_family(hb) {
+            continue;
+        }
+        let w = s * s * light_w(l);
+        acc.0 += w;
+        acc.1 += r * w;
+        acc.2 += g * w;
+        acc.3 += b * w;
+    }
+    if acc.0 <= f64::EPSILON {
         return None;
     }
-    let to8 = |v: f64| ((v / w) * 255.0).round().clamp(0.0, 255.0) as u8;
-    Some(format!("#{:02x}{:02x}{:02x}", to8(rs), to8(gs), to8(bs)))
+    let to8 = |v: f64| ((v / acc.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+    Some(format!("#{:02x}{:02x}{:02x}", to8(acc.1), to8(acc.2), to8(acc.3)))
 }
 
 /// RGB (0..1) → HSL (all 0..1). Hue 0..1 wraps the circle.
@@ -290,6 +339,37 @@ mod tests {
         assert!(
             (r - g).abs() <= 6 && (g - b).abs() <= 6,
             "capa cinza deve continuar cinza, veio {hex}"
+        );
+    }
+
+    #[test]
+    fn dominant_color_red_family_survives_hue_wrap() {
+        // 80% cinza + 10% vermelho h≈357° + 10% vermelho h≈8°. Na v2 o
+        // vermelho dividia o voto em dois buckets (wrap do círculo de hue)
+        // e o cinza vencia; a v3 re-funde a família via smoothing wrap-aware.
+        let mut img = RgbImage::from_pixel(60, 60, Rgb([128, 128, 128]));
+        for y in 0..60 {
+            for x in 0..6 {
+                img.put_pixel(x, y, Rgb([200, 30, 40])); // h ≈ 357°
+            }
+            for x in 6..12 {
+                img.put_pixel(x, y, Rgb([200, 50, 30])); // h ≈ 8°
+            }
+        }
+        let mut buf = Vec::new();
+        PngEncoder::new(&mut buf)
+            .write_image(&img, 60, 60, ExtendedColorType::Rgb8)
+            .unwrap();
+        let hex = dominant_color(&CoverSource::EmbeddedBytes {
+            data: buf,
+            mime_hint: String::new(),
+        })
+        .expect("cor extraída");
+        let r = u8::from_str_radix(&hex[1..3], 16).unwrap();
+        let g = u8::from_str_radix(&hex[3..5], 16).unwrap();
+        assert!(
+            r > 150 && g < 90,
+            "família vermelha devia vencer o cinza majoritário, veio {hex}"
         );
     }
 

@@ -228,6 +228,11 @@ export function Tweaks() {
             options={[[true, "Album"], [false, "Off"]]}
           />
           <Segmented
+            label="Adaptive accent"
+            key="adaptiveAccent"
+            options={[[true, "Album"], [false, "Off"]]}
+          />
+          <Segmented
             label="EQ spectrum"
             key="eqSpectrumOverlay"
             options={[[true, "On"], [false, "Off"]]}

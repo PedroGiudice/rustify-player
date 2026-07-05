@@ -6,7 +6,7 @@
    ============================================================ */
 
 import { createSignal, createEffect } from "solid-js";
-import { normSetEnabled, normSetTarget } from "../tauri";
+import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
 
 const { invoke } = window.__TAURI__.core;
 
@@ -74,6 +74,11 @@ export interface TweaksState {
       dominante da capa da faixa tocando. Precedência do ink:
       usuário (bgInk tocado) > capa (este toggle) > tema > default. */
   adaptiveInk: boolean;
+  /** Accent adaptativo: --primary e família (container, on-primary,
+      blue-fg/bg/ring — chips, halos, botões) seguem o hue da capa da
+      faixa tocando, com contraste garantido na derivação. Desligado ou
+      capa acromática → o accent do tema vale. */
+  adaptiveAccent: boolean;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -96,6 +101,7 @@ export const DEFAULTS: TweaksState = {
   loudnessNorm: true,
   loudnessTarget: -14,
   adaptiveInk: true,
+  adaptiveAccent: true,
 };
 
 // ── Dirty tracking ────────────────────────────────────────────
@@ -201,6 +207,10 @@ export function applyTweaks(s: TweaksState = state()) {
   // usuário > capa > tema > default (ver resolveInk).
   applyInkResolved(s);
 
+  // Accent da UI: capa (adaptiveAccent) > tema. Roda em todo state change
+  // pra cobrir o toggle sem listener dedicado.
+  applyAccentResolved(s);
+
   // EQ spectrum overlay: data attr e debug-only. EqCanvas le tweaks().eqSpectrumOverlay direto.
   html.dataset.eqSpectrum = s.eqSpectrumOverlay ? "on" : "off";
 
@@ -254,6 +264,55 @@ export function themeInkBase(): string {
 export function setAdaptiveColor(hex: string | null) {
   _adaptiveColor = hex;
   applyInkResolved();
+}
+
+// ── Accent: capa > tema ───────────────────────────────────────
+// O adaptiveInk.ts deriva {accent, container, on} da capa e entrega aqui.
+// Aplicar = sobrescrever as inline vars que o applyTheme escreveu; restaurar
+// = reescrever os valores do TEMA (themeVar) — removeProperty cairia nos
+// defaults do :root e apagaria o tema junto.
+export interface AdaptiveAccent {
+  accent: string;
+  container: string;
+  on: string;
+}
+
+let _adaptiveAccent: AdaptiveAccent | null = null;
+
+export function setAdaptiveAccent(a: AdaptiveAccent | null) {
+  _adaptiveAccent = a;
+  applyAccentResolved();
+}
+
+/** Vars regidas pelo accent adaptativo. blue-* incluídas porque o design
+    system usa blue-fg/bg/ring como papel de destaque (chips, halos). */
+const ACCENT_VARS = [
+  "--primary", "--primary-container", "--primary-fixed-dim",
+  "--on-primary", "--on-primary-container",
+  "--blue-fg", "--blue-bg", "--blue-ring",
+] as const;
+
+function applyAccentResolved(s: TweaksState = state()) {
+  const html = document.documentElement;
+  const a = s.adaptiveAccent ? _adaptiveAccent : null;
+  if (a) {
+    const { r, g, b } = hexToRgb(a.accent);
+    html.style.setProperty("--primary", a.accent);
+    html.style.setProperty("--primary-container", a.container);
+    html.style.setProperty("--primary-fixed-dim", a.container);
+    html.style.setProperty("--on-primary", a.on);
+    html.style.setProperty("--on-primary-container", a.on);
+    html.style.setProperty("--blue-fg", a.accent);
+    html.style.setProperty("--blue-ring", a.accent);
+    html.style.setProperty("--blue-bg", `rgba(${r}, ${g}, ${b}, 0.12)`);
+    return;
+  }
+  // Restaura o accent do tema ativo; sem tema, remove (caem os :root).
+  for (const name of ACCENT_VARS) {
+    const v = themeVar(name);
+    if (v !== null) html.style.setProperty(name, v);
+    else html.style.removeProperty(name);
+  }
 }
 
 function resolveInk(s: TweaksState): string {
@@ -326,6 +385,7 @@ window.addEventListener("rustify:theme-applied", (e: Event) => {
   }
   if (isDirty("lyricsGlass")) applyLyricsGlass(s);
   applyInkResolved(s);
+  applyAccentResolved(s);
 });
 
 // ── Update helper ─────────────────────────────────────────────

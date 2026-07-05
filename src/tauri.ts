@@ -268,8 +268,25 @@ export interface ThemeLoadResult {
 
 export const loadTheme = (filename: string) => invoke<ThemeLoadResult>("load_theme", { filename });
 
+// Snapshot das vars do tema ativo. O accent adaptativo (store/tweaks)
+// sobrescreve --primary e família nas inline vars; restaurar o tema
+// exige reler os valores originais daqui — removeProperty cairia nos
+// defaults do :root, não no tema.
+let _themeVars: Record<string, string> | null = null;
+
+/** Valor que o tema ATIVO declarou pra var, ou null (sem tema / não declara). */
+export function themeVar(name: string): string | null {
+  return _themeVars?.[name] ?? null;
+}
+
+/** Esquece o tema ativo (caminho "sem tema" do Settings). */
+export function clearThemeVars() {
+  _themeVars = null;
+}
+
 export function applyTheme(vars: Record<string, string>) {
   const root = document.documentElement;
+  _themeVars = { ...vars };
   for (const [prop, val] of Object.entries(vars)) {
     root.style.setProperty(prop, val);
   }

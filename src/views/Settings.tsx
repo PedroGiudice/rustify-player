@@ -26,6 +26,7 @@ import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan, setVolume, normGetState, normSetEnabled,
   listThemes, applyThemeByName, watchTheme, onThemeChanged,
+  clearThemeVars,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
@@ -136,6 +137,7 @@ export default function Settings() {
     if (!filename) {
       document.documentElement.removeAttribute("style");
       localStorage.removeItem("rustify-theme");
+      clearThemeVars();
       setActiveTheme("");
       setContrast([]);
       // O removeAttribute acima apaga TODAS as inline vars — inclusive as

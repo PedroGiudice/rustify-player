@@ -23,6 +23,8 @@ const { mockTracks, mockSnap, mockAlbums, mockSetQueue, mockPlayTrack } = vi.hoi
 }));
 
 vi.mock("../tauri", () => ({
+  themeVar: () => null,
+  clearThemeVars: vi.fn(),
   normSetEnabled: vi.fn().mockResolvedValue(undefined),
   normSetTarget: vi.fn().mockResolvedValue(undefined),
   getState: vi.fn().mockResolvedValue({ current_track: null, current_library_track: null, is_playing: false }),

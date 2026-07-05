@@ -9,7 +9,14 @@ Uso:
     python3 scripts/themes/validate.py <dir-ou-arquivo.yaml> [...]
 
 Sai com código 1 se qualquer tema tiver: parse error, chave descartada,
-par de contraste AA reprovado, ou hex malformado em token de cor.
+par de contraste AA reprovado (incluindo on-primary sobre primary/container,
+buraco que deixou o Uvinha shippar botão ilegível), ou hex malformado em
+token de cor.
+
+Além dos erros, emite AVISOS (não reprovam): colapso semântico entre
+sig-ok/warn/err, erro indistinguível do accent, hierarquia de texto
+duplicada. Avisos existem pra guiar a curadoria (theme-maker); temas
+monocromáticos legítimos os disparariam como erro, por isso não gateiam.
 """
 import sys, glob, os, re
 import yaml
@@ -102,6 +109,8 @@ PAIRS = [
     ("ok/canvas",         "--green-fg","--bg-canvas"),
     ("warn/canvas",       "--amber-fg","--bg-canvas"),
     ("erro/canvas",       "--rose-fg", "--bg-canvas"),
+    ("on-primary/primary",   "--on-primary", "--primary"),
+    ("on-primary/container", "--on-primary-container", "--primary-container"),
 ]
 
 HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
@@ -165,16 +174,61 @@ def contrast(c1, c2):
     return (hi + 0.05) / (lo + 0.05)
 
 
+def rgb_to_hsl(r, g, b):
+    mx, mn = max(r, g, b), min(r, g, b)
+    l = (mx + mn) / 2
+    if mx == mn:
+        return 0.0, 0.0, l
+    d = mx - mn
+    s = d / (2 - mx - mn) if l > 0.5 else d / (mx + mn)
+    if mx == r:
+        h = ((g - b) / d + (6 if g < b else 0)) / 6
+    elif mx == g:
+        h = ((b - r) / d + 2) / 6
+    else:
+        h = ((r - g) / d + 4) / 6
+    return h, s, l
+
+
+def hue_dist_deg(h1, h2):
+    d = abs(h1 - h2) * 360
+    return min(d, 360 - d)
+
+
+def semantic_warnings(vars_):
+    """Avisos de curadoria: só falam quando AMBAS as cores têm chroma real
+    (s >= 0.2) — tema monocromático de propósito não dispara nada."""
+    warns = []
+    def hsl(key):
+        v = vars_.get(key)
+        rgb = hex_to_rgb(v) if v else None
+        return rgb_to_hsl(*rgb) if rgb else None
+
+    sigs = {k: hsl(f"--sig-{k}") for k in ("ok", "warn", "err")}
+    for a, b in (("ok", "warn"), ("warn", "err"), ("ok", "err")):
+        ca, cb = sigs[a], sigs[b]
+        if ca and cb and ca[1] >= 0.2 and cb[1] >= 0.2:
+            if hue_dist_deg(ca[0], cb[0]) < 18 and abs(ca[2] - cb[2]) < 0.18:
+                warns.append(f"sinais sig-{a} e sig-{b} quase idênticos (colapso semântico)")
+    err, prim = hsl("--sig-err"), hsl("--primary")
+    if err and prim and err[1] >= 0.2 and prim[1] >= 0.2:
+        if hue_dist_deg(err[0], prim[0]) < 10 and abs(err[2] - prim[2]) < 0.10:
+            warns.append("sig-err indistinguível do accent (--primary)")
+    if vars_.get("--fg-2") and vars_.get("--fg-2") == vars_.get("--fg-3"):
+        warns.append("fg-2 == fg-3 (hierarquia de texto duplicada)")
+    return warns
+
+
 def validate_file(fn):
-    """Retorna lista de problemas (strings). Vazia = tema válido."""
+    """Retorna (problemas, avisos). Problemas vazios = tema válido."""
     problems = []
     try:
         with open(fn) as f:
             doc = yaml.safe_load(f)
     except Exception as e:
-        return [f"PARSE ERROR: {e}"]
+        return [f"PARSE ERROR: {e}"], []
     if not isinstance(doc, dict):
-        return ["raiz não é mapping"]
+        return ["raiz não é mapping"], []
 
     vars_, dropped = {}, []
     flatten(doc, "", vars_, dropped)
@@ -211,7 +265,7 @@ def validate_file(fn):
         r = contrast(c1, c2)
         if r < 4.5:
             problems.append(f"contraste AA reprovado {label}: {r:.2f} (fg={fg} bg={bg})")
-    return problems
+    return problems, semantic_warnings(vars_)
 
 
 def main():
@@ -228,11 +282,13 @@ def main():
 
     failed = 0
     for fn in targets:
-        problems = validate_file(fn)
+        problems, warns = validate_file(fn)
         status = "OK" if not problems else "FALHOU"
         print(f"{os.path.basename(fn)}: {status}")
         for p in problems:
             print(f"  - {p}")
+        for w in warns:
+            print(f"  - aviso: {w}")
         failed += bool(problems)
     print(f"\n{len(targets) - failed}/{len(targets)} temas válidos")
     return 1 if failed else 0
