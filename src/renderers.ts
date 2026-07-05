@@ -6,10 +6,13 @@
    sabe qual shape está ativo, por isso as listas se multiplicam
    (18 shapes × 5 renderers) sem custo.
 
-   Assinatura: (ctx, w, h, t, shapeFn, amp, breath, ink).
+   Assinatura: (ctx, w, h, t, shapeFn, amp, breath, ink, env).
    `ink` é a tinta "r, g, b" (vinda de --bg-ink-rgb via Tweaks);
-   cada renderer aplica o próprio alpha. `breath` só é consumido
-   por dots (raio); os demais recebem por uniformidade de contrato.
+   cada renderer aplica o próprio alpha. `breath` (LFO 4.5s) e
+   `env` (envelope FFT 0..1 suavizado) só são consumidos por dots
+   — raio respira com breath e pulsa com env, alpha flasheia com
+   env; os demais recebem por uniformidade de contrato (neles o
+   áudio já chega embutido em `amp`, que é em pixels).
 
    Densidades e alphas copiados 1:1 do handoff (docs/design-refs/
    design_handoff_persistent_background). index 0 = mesh = o
@@ -29,6 +32,7 @@ export interface Renderer {
     amp: number,
     breath: number,
     ink: string,
+    env: number,
   ) => void;
 }
 
@@ -49,7 +53,7 @@ const NBANDS  = 34;     // contour: bandas topográficas
 function drawMesh(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
   shapeFn: ShapeFn, amp: number, _breath: number, ink: string,
-  style?: StrokeStyle,
+  _env: number, style?: StrokeStyle,
 ) {
   const topY = h * 0.04, botY = h * 0.98;
   ctx.beginPath();
@@ -77,7 +81,7 @@ function drawMesh(
 function drawColumns(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
   shapeFn: ShapeFn, amp: number, _breath: number, ink: string,
-  style?: StrokeStyle,
+  _env: number, style?: StrokeStyle,
 ) {
   const leftX = w * 0.02, rightX = w * 0.98;
   ctx.beginPath();
@@ -103,18 +107,24 @@ function drawColumns(
 /* weave — mesh + columns sobrepostos a alpha 0.10 → textura de tecido. */
 function drawWeave(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
-  shapeFn: ShapeFn, amp: number, breath: number, ink: string,
+  shapeFn: ShapeFn, amp: number, breath: number, ink: string, env: number,
 ) {
-  drawMesh(ctx, w, h, t, shapeFn, amp * 0.8, breath, ink, { color: `rgba(${ink}, 0.10)`, width: 0.6 });
-  drawColumns(ctx, w, h, t, shapeFn, amp * 0.8, breath, ink, { color: `rgba(${ink}, 0.10)`, width: 0.6 });
+  drawMesh(ctx, w, h, t, shapeFn, amp * 0.8, breath, ink, env, { color: `rgba(${ink}, 0.10)`, width: 0.6 });
+  drawColumns(ctx, w, h, t, shapeFn, amp * 0.8, breath, ink, env, { color: `rgba(${ink}, 0.10)`, width: 0.6 });
 }
 
-/* dots — grade de pontos; raio e alpha ∝ campo, raio respira com breath. */
+/* dots — grade de pontos; raio e alpha ∝ campo. Raio respira com breath
+   (LFO) e pulsa com env (áudio); alpha flasheia com env. Com env=0 o
+   visual é IDÊNTICO ao handoff — a reatividade é aditiva, nunca mexe
+   na fase nem na tinta. */
 function drawDots(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
-  shapeFn: ShapeFn, _amp: number, breath: number, ink: string,
+  shapeFn: ShapeFn, _amp: number, breath: number, ink: string, env: number,
 ) {
   const maxR = Math.min(w / GX, h / GY) * 0.66;
+  const e = Math.min(1, Math.max(0, env));
+  const pulse = 1 + 0.22 * e; // raio: punch sem virar blob (overlap contido)
+  const flash = 1 + 0.55 * e; // alpha carrega o grosso da reatividade
   ctx.fillStyle = `rgb(${ink})`;
   for (let gy = 0; gy < GY; gy++) {
     const v = gy / (GY - 1);
@@ -124,9 +134,9 @@ function drawDots(
       const s = shapeFn(u, v, t);
       if (s < 0.03) continue;
       const cl = Math.min(1, s);
-      const r = maxR * cl * (0.55 + 0.45 * breath);
+      const r = maxR * cl * (0.55 + 0.45 * breath) * pulse;
       const x = u * w + Math.sin(t * 0.6 + gy * 0.3) * 1.2;
-      ctx.globalAlpha = 0.10 + 0.55 * cl;
+      ctx.globalAlpha = Math.min(0.9, (0.10 + 0.55 * cl) * flash);
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
@@ -138,7 +148,7 @@ function drawDots(
 /* contour — poucas bandas; espessura/alpha ∝ pico da banda → topográfico. */
 function drawContour(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
-  shapeFn: ShapeFn, amp: number, _breath: number, ink: string,
+  shapeFn: ShapeFn, amp: number, _breath: number, ink: string, _env: number,
 ) {
   const topY = h * 0.04, botY = h * 0.98;
   for (let i = 0; i < NBANDS; i++) {

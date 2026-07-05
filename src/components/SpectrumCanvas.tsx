@@ -256,7 +256,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       // Despacha pro renderer ativo — todo renderer consome o mesmo
       // campo shapeFn(u,v,t); só o índice muda entre eles.
       const shapeFn = SHAPES[shapeIdx()].fn;
-      RENDERERS[renderIdx()].fn(ctx, w, h, t, shapeFn, amp, breath, inkRgb);
+      RENDERERS[renderIdx()].fn(ctx, w, h, t, shapeFn, amp, breath, inkRgb, smoothedEnv);
     }
     raf = requestAnimationFrame(frame);
 
