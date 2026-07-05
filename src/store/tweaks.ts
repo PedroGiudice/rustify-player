@@ -130,7 +130,6 @@ export const tweaks = state;
 const [open, setOpen] = createSignal(false);
 export const tweaksOpen = open;
 export function setTweaksOpen(v: boolean) { setOpen(v); }
-export function toggleTweaks() { setOpen((v) => !v); }
 
 // Fontes do sistema — carrega uma vez, cache em memoria.
 let fontsCache: string[] | null = null;

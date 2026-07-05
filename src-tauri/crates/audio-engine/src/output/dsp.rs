@@ -320,11 +320,6 @@ impl DspFilterBin {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn norm_gain_volume(&self) -> f64 {
-        self.norm_gain.property::<f64>("volume")
-    }
-
     // -----------------------------------------------------------------------
     // Parametric EQ
     // -----------------------------------------------------------------------

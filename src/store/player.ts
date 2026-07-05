@@ -163,10 +163,6 @@ export function setPlayingState(playing: boolean) {
   setPlayer("isPlaying", playing);
 }
 
-export function setScrubbing(scrubbing: boolean) {
-  setPlayer("isScrubbing", scrubbing);
-}
-
 export function setLiked(liked: boolean) {
   setPlayer("isLiked", liked);
 }
