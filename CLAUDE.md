@@ -76,6 +76,35 @@ default. `bgInk` e `lyricsGlass` sao regidos por tema: o valor do Tweaks
 so vale se dirty; botao "↺ tema" limpa. Ao aplicar tema, `applyTheme`
 dispara `rustify:theme-applied` e o store re-asserta os overrides.
 
+**Derivacao da cor da capa (v3, desde v0.2.39)**: `deriveInk`/`deriveAccent`
+em `src/lib/adaptiveInk.ts` sao contrast-driven — alvo >= 4:1 contra o
+canvas do tema (a v2 ancorava na "profundidade do tema" e produzia ink
+invisivel, ja que todos os temas declaram `background.ink` = canvas).
+Extracao no Rust (`cover.rs dominant_color`) = eleicao de familia de hue
+wrap-aware + nucleo saturado; enrichment `dominant_color_v3` (versoes
+antigas ignoradas, recalcula lazy no 1o play).
+
+**Accent adaptativo** (`adaptiveAccent`, default ON): `--primary`,
+`--primary-container/fixed-dim`, `--on-primary[-container]` e
+`--blue-fg/bg/ring` seguem o hue da capa (chips, halos, botoes). Capa
+acromatica => accent do tema permanece. Restaurar o tema exige os valores
+originais: `applyTheme` (tauri.ts) guarda snapshot acessivel via
+`themeVar(name)`; `removeProperty` cairia nos defaults do :root, nao no
+tema. Checker `load_theme` valida os pares `on-primary/primary` e
+`on-primary/container` (buraco historico: Uvinha shipava 1.46:1);
+`validate.py` replica como erro e emite avisos semanticos de curadoria
+(colapso sig-ok/warn/err, fg-2==fg-3) que NAO gateiam — temas
+monocromaticos legitimos os disparariam.
+
+**Bg persistente: shapes x renderers (18x5, desde v0.2.39)**: campo
+escalar (`src/shapes.ts`, 18 shapes) x estrategia de pintura
+(`src/renderers.ts`, 5: mesh/columns/weave/dots/contour; mesh = default =
+visual antigo). Dispatch no `SpectrumCanvas` (`useShape()`/`useRenderer()`,
+persistidos em localStorage), seletores empilhados no NowPlaying e teclas
+`[`/`]` (shape) `,`/`.` (renderer). Spec: `docs/design-refs/
+design_handoff_persistent_background/` (HTML = fonte da verdade dos
+numeros).
+
 So escalar pra YAML / Tauri command novo quando o knob precisar
 de preset salvavel, share entre instalacoes, ou hot-reload por
 processo externo. Caso contrario o Tweaks resolve.
