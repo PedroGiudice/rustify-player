@@ -24,14 +24,14 @@
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
-  libRescan, setVolume,
+  libRescan,
   listThemes, applyThemeByName, loadTheme, watchTheme, onThemeChanged,
   clearThemeVars,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
 import { applyTweaks, tweaks, updateTweak } from "../store/tweaks";
-import { player, setPlayer } from "../store/player";
+import { player, changeVolume } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
 
@@ -221,9 +221,8 @@ export default function Settings() {
   function onVolumeChange(e: Event) {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     const vol = val / 100;
-    setPlayer("volume", vol);
-    setPlayer("isMuted", false);
-    setVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
+    // changeVolume persiste (kv-volume) além de store + engine.
+    changeVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
   }
 
   // ── Re-scan (preservado) ─────────────────────────────────────

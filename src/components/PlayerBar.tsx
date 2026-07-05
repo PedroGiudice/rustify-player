@@ -14,7 +14,7 @@ import {
   player, setPlayer,
   applyTrackStarted, updatePosition, setPlayingState,
   setLiked, cycleRepeat, advanceQueue, retreatQueue,
-  shuffleQueue, reconcileFromState, setQueue,
+  shuffleQueue, reconcileFromState, setQueue, changeVolume,
 } from "../store/player";
 import { dsp } from "../store/dsp";
 import { tweaks, updateTweak } from "../store/tweaks";
@@ -327,9 +327,8 @@ export function PlayerBar() {
     const update = (ev: PointerEvent) => {
       const rect = volBarRef.getBoundingClientRect();
       const vol = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-      setPlayer("volume", vol);
-      setPlayer("isMuted", false);
-      setVolume(vol).catch(console.error);
+      // changeVolume persiste (kv-volume) além de store + engine.
+      changeVolume(vol).catch(console.error);
     };
     update(e);
     const onMove = (ev: PointerEvent) => update(ev);

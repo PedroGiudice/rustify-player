@@ -36,6 +36,8 @@ async function loadIconSprite() {
 import { applyFullDspState } from "./store/dsp";
 // Aplica loudness norm/target persistido ao backend (com retry de boot)
 import { applyLoudnessState } from "./store/tweaks";
+// Restaura o volume persistido (kv-volume) e empurra pro engine
+import { applyPersistedVolume } from "./store/player";
 // Ink adaptativo: bg/linhas seguem a cor da capa da faixa tocando
 import { wireAdaptiveInk } from "./lib/adaptiveInk";
 // Custom properties de cor tipadas (<color>) — habilita a transition
@@ -48,6 +50,7 @@ async function boot() {
   await loadIconSprite();
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
   applyLoudnessState().catch((e) => console.warn("[loudness] initial sync failed:", e));
+  applyPersistedVolume().catch((e) => console.warn("[volume] initial sync failed:", e));
 
   const savedTheme = localStorage.getItem("rustify-theme");
   if (savedTheme) {

@@ -11,6 +11,7 @@
 
 import { createStore } from "solid-js/store";
 import type { Track, TrackInfo } from "../tauri";
+import { setVolume as ipcSetVolume } from "../tauri";
 
 // ── Tipos ──────────────────────────────────────────────────────
 
@@ -69,14 +70,54 @@ export const [player, setPlayer] = createStore<PlayerStore>({
   positionSecs: 0,
   durationSecs: 0,
   isScrubbing: false,
-  // Default sao 100%. O valor real do usuario e restaurado por persistLoadState
-  // no boot do PlayerBar antes de qualquer interacao audivel acontecer.
+  // Default 100%. O valor real do usuario e restaurado por
+  // applyPersistedVolume() no boot (localStorage kv-volume) — volume e
+  // preferencia de dispositivo, NAO estado de sessao: o state.json expira
+  // em 6h e apagaria o volume junto (achado da auditoria: o comentario
+  // antigo prometia restauracao via persistLoadState que nunca existiu).
   volume: 1.0,
   isMuted: false,
   shuffle: false,
   repeatMode: "off",
   techInfo: { format: "—", bitDepth: null, sampleRate: null, channels: null },
 });
+
+// ── Volume: preferência persistida ────────────────────────────
+// Volume vive no localStorage (kv-volume), não no state.json: a sessão
+// persistida expira em 6h e levaria o volume junto. O push pro engine
+// no boot tem retry porque o engine pode ainda não ter subido.
+const VOLUME_KEY = "kv-volume";
+
+function loadPersistedVolume(): number {
+  try {
+    const v = parseFloat(localStorage.getItem(VOLUME_KEY) ?? "");
+    if (Number.isFinite(v)) return Math.min(1, Math.max(0, v));
+  } catch {}
+  return 1.0;
+}
+
+/** Fonte única de mudança de volume: store + persistência + engine.
+    Handlers de UI (PlayerBar, Settings) chamam isto — nunca setVolume
+    IPC direto, senão a preferência não persiste. */
+export function changeVolume(vol: number): Promise<void> {
+  const v = Math.min(1, Math.max(0, vol));
+  setPlayer({ volume: v, isMuted: false });
+  try { localStorage.setItem(VOLUME_KEY, String(v)); } catch {}
+  return ipcSetVolume(v);
+}
+
+/** Restaura o volume persistido no boot. Chamar uma vez (main.tsx). */
+export async function applyPersistedVolume(retries = 5): Promise<void> {
+  const v = loadPersistedVolume();
+  setPlayer("volume", v);
+  try {
+    await ipcSetVolume(v);
+  } catch {
+    if (retries > 0) {
+      setTimeout(() => { applyPersistedVolume(retries - 1).catch(() => {}); }, 300);
+    }
+  }
+}
 
 // ── Mutações (API pública do store) ───────────────────────────
 // Sempre exportar funções — nunca expor setPlayer diretamente.

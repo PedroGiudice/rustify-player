@@ -128,6 +128,13 @@ So escalar pra YAML / Tauri command novo quando o knob precisar
 de preset salvavel, share entre instalacoes, ou hot-reload por
 processo externo. Caso contrario o Tweaks resolve.
 
+### Volume (preferencia, nao sessao)
+
+Volume persiste em localStorage `kv-volume` (NAO no state.json, que expira
+em 6h). Fonte unica de mudanca: `changeVolume()` em `src/store/player.ts`
+(store + persistencia + IPC); boot restaura via `applyPersistedVolume()`
+em main.tsx. Handlers de UI nunca chamam o IPC `setVolume` direto.
+
 ### Loudness normalization (excecao ao padrao CSS-var)
 
 A normalizacao de loudness e um knob do Tweaks que NAO segue o padrao
