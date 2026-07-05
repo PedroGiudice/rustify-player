@@ -28,7 +28,8 @@ segundos. Release.sh e o unico caminho.
 
 ## Branch atual
 
-`fix-playback-race-condition` — ativa ate merge em main.
+`main` — trabalho commitado direto em `main`, com rolling dev release
+(tag `dev` no GitHub via `release.sh`). Sem PR para fixes pontuais.
 
 ## TweaksPanel e o hub de customizacao
 
@@ -51,6 +52,29 @@ Pontos de extensao:
   `<FontSelect>` existentes, ou `<input type="color">` (ver bgInk)
 - `src/styles/extractor-lab.css` — consumir a CSS var no
   componente alvo com fallback
+
+## Themes (YAML) e a precedencia com Tweaks
+
+Temas vivem em `~/.local/share/rustify-player/themes/*.yaml` NA CMR-AUTO
+(nao no repo). Schema completo (legado + boost 2026-07: `tones`, `glass`,
+`radius`, `shadows`, `motion`, `background.ink`, `effects.halo`) em
+`docs/superpowers/specs/2026-07-05-themes-boost-design.md`. Parser:
+`yaml_key_to_css_prop` em `src-tauri/src/lib.rs` (2 camadas: aliases +
+pass-through de tokens). Validador offline que replica o checker WCAG do
+backend: `python3 scripts/themes/validate.py <dir|arquivo>` — zero
+reprovacoes e pre-condicao pra deploy.
+
+**Criacao/upgrade de tema = subagente `theme-maker`**
+(`.claude/agents/theme-maker.md`): recebe descricao/paleta/imagem, deriva
+paleta completa, valida e faz deploy de arquivo NOVO com hot-reload.
+
+**Precedencia do ink do bg** (`--bg-ink[-rgb]`, resolver unico em
+`store/tweaks.ts`): usuario (knob tocado, dirty-flag persistida em
+`kv-tweaks.__dirty`) > capa do album (`adaptiveInk`, default ON, via
+`get_track_color` + `src/lib/adaptiveInk.ts`) > tema (`background.ink`) >
+default. `bgInk` e `lyricsGlass` sao regidos por tema: o valor do Tweaks
+so vale se dirty; botao "↺ tema" limpa. Ao aplicar tema, `applyTheme`
+dispara `rustify:theme-applied` e o store re-asserta os overrides.
 
 So escalar pra YAML / Tauri command novo quando o knob precisar
 de preset salvavel, share entre instalacoes, ou hot-reload por
