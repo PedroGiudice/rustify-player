@@ -64,16 +64,15 @@ describe("RENDERERS", () => {
     };
     const quiet = run(100, 0);
     const loud = run(100, 1);
-    // Raio: pulso de +35% no pico; alpha: flash de +60% (clamp 0.95).
-    expect(loud.maxR / quiet.maxR).toBeCloseTo(1.35, 2);
+    // Raio: pulso ponderado pelo campo, +60% nos pontos fortes (cl→1).
+    expect(loud.maxR / quiet.maxR).toBeGreaterThan(1.35);
+    expect(loud.maxR / quiet.maxR).toBeLessThanOrEqual(1.6 + 1e-9);
     expect(loud.maxA).toBeGreaterThan(quiet.maxA);
-    // amp desloca os pontos verticalmente (o mesmo campo de onda do mesh):
-    // com amp=0 os pontos ficam na grade; com amp=200 saem dela.
-    const flat = run(0, 0);
-    const waved = run(200, 0);
-    expect(flat.ys.length).toBe(waved.ys.length);
-    const maxDelta = Math.max(...waved.ys.map((y, i) => Math.abs(y - flat.ys[i])));
-    expect(maxDelta).toBeGreaterThan(20);
+    // SEM balanço: a grade é estática — env e amp não movem posição.
+    const still = run(0, 0);
+    expect(loud.ys.length).toBe(still.ys.length);
+    const maxDelta = Math.max(...loud.ys.map((y, i) => Math.abs(y - still.ys[i])));
+    expect(maxDelta).toBe(0);
     // Raio baseline (env=0) segue o contrato: maxR * cl * (0.55 + 0.45*breath).
     expect(quiet.maxR).toBeLessThanOrEqual(Math.min(800 / 66, 600 / 44) * 0.66 * (0.55 + 0.45 * 0.9) + 1e-9);
   });

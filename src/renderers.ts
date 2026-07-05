@@ -113,38 +113,34 @@ function drawWeave(
   drawColumns(ctx, w, h, t, shapeFn, amp * 0.8, breath, ink, env, { color: `rgba(${ink}, 0.10)`, width: 0.6 });
 }
 
-/* dots — grade de pontos cavalgando o MESMO campo de onda do mesh:
-   cada ponto desloca verticalmente por sin(u·π·3.2 + fase)·s·amp,
-   a mesma reatividade espacial que os renderers de linha têm — é o
-   deslocamento (dezenas de px) que o olho lê como "reage à música",
-   não raio/alpha sozinhos. Por cima: raio respira (breath) e pulsa
-   (env), alpha flasheia (env). Fase segue time-driven, nunca áudio. */
+/* dots — grade ESTÁTICA de pontos (sem balanço: o deslocamento de onda
+   da v0.2.44 foi removido a pedido — o amp baseline oscila mesmo sem
+   música e virava gangorra). Reatividade é 100% envelope de áudio:
+   pulso de raio PONDERADO PELO CAMPO (pontos fortes estouram até +60%,
+   fracos quase não mexem — o pulso desenha a shape, não a grade) e
+   flash de alpha agressivo. Em silêncio (env=0) é o baseline do
+   handoff, parado. */
 function drawDots(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
-  shapeFn: ShapeFn, amp: number, breath: number, ink: string, env: number,
+  shapeFn: ShapeFn, _amp: number, breath: number, ink: string, env: number,
 ) {
   const maxR = Math.min(w / GX, h / GY) * 0.66;
   const e = Math.min(1, Math.max(0, env));
-  const pulse = 1 + 0.35 * e; // raio: punch no pico
-  const flash = 1 + 0.6 * e;  // alpha: flash de intensidade
   ctx.fillStyle = `rgb(${ink})`;
   for (let gy = 0; gy < GY; gy++) {
     const v = gy / (GY - 1);
-    const baselineY = h * 0.04 + h * 0.94 * v;
-    // Mesma inclinação de fase do mesh ao longo da altura:
-    // mesh varre v*(NLINES-1)*0.085 ≈ v*9.27 rad. Fase só de tempo.
-    const phase = v * 9.27 + t * 0.55;
+    const y = h * 0.04 + h * 0.94 * v;
     for (let gx = 0; gx < GX; gx++) {
       const u = gx / (GX - 1);
       const s = shapeFn(u, v, t);
       if (s < 0.03) continue;
       const cl = Math.min(1, s);
-      const wave = Math.sin(u * Math.PI * 3.2 + phase) * s * amp * 0.6;
+      const pulse = 1 + 0.6 * e * cl;  // punch concentrado nos pontos fortes
       const r = maxR * cl * (0.55 + 0.45 * breath) * pulse;
       const x = u * w + Math.sin(t * 0.6 + gy * 0.3) * 1.2;
-      ctx.globalAlpha = Math.min(0.95, (0.10 + 0.55 * cl) * flash);
+      ctx.globalAlpha = Math.min(0.95, (0.10 + 0.55 * cl) * (1 + 0.9 * e));
       ctx.beginPath();
-      ctx.arc(x, baselineY - wave, r, 0, Math.PI * 2);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
   }
