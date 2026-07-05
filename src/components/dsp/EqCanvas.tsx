@@ -21,6 +21,7 @@ import { Component, createEffect, onCleanup, onMount } from "solid-js";
 import type { EqBand } from "../../store/dsp";
 import { tweaks } from "../../store/tweaks";
 import { player } from "../../store/player";
+import { cssColorToRgb } from "../../lib/color";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../../tauri";
 import {
   ISO_CENTERS,
@@ -221,11 +222,15 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
 
     // ── Spectrum bars + peaks (RTA pos-DSP) ──
     if (tweaks().eqSpectrumOverlay) {
-      const inkRgb = (
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--bg-ink-rgb")
-          .trim() || "23, 23, 23"
-      );
+      // Lê --bg-ink (custom property registrada como <color>): durante o
+      // crossfade de 480ms o getComputedStyle devolve o valor INTERPOLADO,
+      // então as barras acompanham a transição de graça. Fallback pro
+      // --bg-ink-rgb cru se o parse falhar (registro indisponível).
+      const cs = getComputedStyle(document.documentElement);
+      const animated = cssColorToRgb(cs.getPropertyValue("--bg-ink"));
+      const inkRgb = animated
+        ? `${animated.r}, ${animated.g}, ${animated.b}`
+        : (cs.getPropertyValue("--bg-ink-rgb").trim() || "23, 23, 23");
       const bottom = h - 4;
       const top = 4;
       const usableH = bottom - top;

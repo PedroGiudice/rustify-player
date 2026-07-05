@@ -53,6 +53,18 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } | nul
   return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
 }
 
+/** Valor CSS de cor → {r,g,b}. Aceita "#rrggbb" e "rgb()/rgba()" — o
+    formato que getComputedStyle devolve pra custom property registrada
+    como <color> (inclusive NO MEIO de uma transição). */
+export function cssColorToRgb(value: string): { r: number; g: number; b: number } | null {
+  const v = value.trim();
+  const hex = hexToRgb(v);
+  if (hex) return hex;
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(v);
+  if (!m) return null;
+  return { r: Math.round(+m[1]), g: Math.round(+m[2]), b: Math.round(+m[3]) };
+}
+
 /** Luminância relativa WCAG (0..1) a partir de hex. */
 export function relLuminance(hex: string): number | null {
   const rgb = hexToRgb(hex);

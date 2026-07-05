@@ -253,8 +253,6 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 // a capa via setAdaptiveColor (src/lib/adaptiveInk.ts).
 let _themeInk: string | null = null;
 let _adaptiveColor: string | null = null;
-let _currentInkRgb: { r: number; g: number; b: number } | null = null;
-let _inkAnimFrame = 0;
 
 /** Ink base do tema ativo (ou default) — referência de luminância pro
     deriveInk do adaptive. */
@@ -340,43 +338,18 @@ function resolveInk(s: TweaksState): string {
   return ensureInkContrast(ink, activeCanvas(), MIN_INK_CONTRAST);
 }
 
-/** Escreve --bg-ink/--bg-ink-rgb com transição curta (o SpectrumCanvas
-    amostra a var ~3x/s; 600ms dá 1-2 passos intermediários — suficiente
-    pra troca de faixa não "piscar"). Chamadas re-entrantes cancelam a
-    animação anterior e partem da cor corrente. */
+/** Escreve --bg-ink/--bg-ink-rgb uma vez, sem animação própria: a suavidade
+    é da camada de apresentação. --bg-ink é custom property registrada como
+    <color> (animatedColorProps.ts) e transiciona 480ms via CSS — todo
+    consumidor DOM e o EqCanvas (que lê o valor em transição) herdam o
+    crossfade. --bg-ink-rgb salta pro alvo; o SpectrumCanvas faz lerp
+    interno por frame, então nunca vê o salto. */
 function applyInkResolved(s: TweaksState = state()) {
   const target = resolveInk(s);
   const to = hexToRgb(target);
   const html = document.documentElement;
   html.style.setProperty("--bg-ink", target);
-
-  clearTimeout(_inkAnimFrame);
-  const from = _currentInkRgb;
-  if (!from || (from.r === to.r && from.g === to.g && from.b === to.b)) {
-    _currentInkRgb = to;
-    html.style.setProperty("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
-    return;
-  }
-  // Passos de ~150ms: os consumidores (SpectrumCanvas/EqCanvas) amostram a
-  // var ~3x/s via getComputedStyle — interpolar por frame (rAF) gastaria
-  // ~36 writes dos quais só 2 seriam lidos. 4 passos batem a cadência.
-  const STEPS = 4;
-  const STEP_MS = 150;
-  let i = 0;
-  const step = () => {
-    i += 1;
-    const t2 = i / STEPS;
-    const e = 1 - (1 - t2) * (1 - t2); // ease-out quad
-    const cur = {
-      r: Math.round(from.r + (to.r - from.r) * e),
-      g: Math.round(from.g + (to.g - from.g) * e),
-      b: Math.round(from.b + (to.b - from.b) * e),
-    };
-    _currentInkRgb = cur;
-    html.style.setProperty("--bg-ink-rgb", `${cur.r}, ${cur.g}, ${cur.b}`);
-    if (i < STEPS) _inkAnimFrame = window.setTimeout(step, STEP_MS) as unknown as number;
-  };
-  _inkAnimFrame = window.setTimeout(step, STEP_MS) as unknown as number;
+  html.style.setProperty("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
 }
 
 // Tema aplicado (boot, troca no picker, hot-reload do watcher): captura o

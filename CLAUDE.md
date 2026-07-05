@@ -84,6 +84,17 @@ Extracao no Rust (`cover.rs dominant_color`) = eleicao de familia de hue
 wrap-aware + nucleo saturado; enrichment `dominant_color_v3` (versoes
 antigas ignoradas, recalcula lazy no 1o play).
 
+**Transicao suave de cor (v0.2.41)**: a suavidade e da camada de
+apresentacao, nao do store. `--bg-ink` e a familia `--primary`/`--blue-*`
+sao custom properties REGISTRADAS como `<color>`
+(`src/lib/animatedColorProps.ts`, CSS.registerProperty — validado no
+WebKitGTK real) com `transition: 480ms` no `:root` — accent, ink e troca
+de tema fazem crossfade nativo no compositor. O EqCanvas le o valor EM
+TRANSICAO via getComputedStyle; o SpectrumCanvas mantem lerp proprio por
+frame (tau 350ms) porque amostra a var a 3Hz. O antigo stepper de
+4x150ms no tweaks.ts foi REMOVIDO — nao reintroduzir animacao via
+setTimeout no store.
+
 **Enforcement de visibilidade do ink (v0.2.40)**: duas camadas com a MESMA
 matematica WCAG. Backend: `load_theme` corrige `--bg-ink` < 3:1 vs canvas
 na saida (`ensure_bg_ink_contrast`, lib.rs) — nenhum tema entrega ink

@@ -128,6 +128,12 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
 
   // Cor da tinta + ganhos por banda + smoothing. Lidos das CSS
   // vars que Tweaks escreve no <html> (~3x/s, sem listener).
+  // A tinta tem DOIS estados: alvo (amostrado a 3Hz) e corrente
+  // (lerp exponencial a 60fps no frame loop) — o morph de cor é
+  // contínuo mesmo com amostragem esparsa e var que salta.
+  let inkTgt = { r: 23, g: 23, b: 23 };
+  let inkCur = { r: 23, g: 23, b: 23 };
+  let inkSampled = false;
   let inkRgb = "23, 23, 23";
   let bassGain = 1.0;
   let midGain = 1.0;
@@ -181,7 +187,14 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       if (cfgCheckTick % 20 === 0) {
         const cs = getComputedStyle(document.documentElement);
         const ink = cs.getPropertyValue("--bg-ink-rgb").trim();
-        if (ink) inkRgb = ink;
+        if (ink) {
+          const [r, g, b] = ink.split(",").map((v) => parseFloat(v));
+          if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+            inkTgt = { r, g, b };
+            // Primeira amostra: assume direto (sem fade a partir do default).
+            if (!inkSampled) { inkCur = { ...inkTgt }; inkSampled = true; }
+          }
+        }
         const b = parseFloat(cs.getPropertyValue("--bg-bass-gain"));
         const m = parseFloat(cs.getPropertyValue("--bg-mid-gain"));
         const tr = parseFloat(cs.getPropertyValue("--bg-treble-gain"));
@@ -197,6 +210,14 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       const tMs = performance.now();
       const dt = Math.max(0, (tMs - lastFrameMs) * 0.001);
       lastFrameMs = tMs;
+
+      // Lerp da tinta a cada frame (tau ~350ms): converge pro alvo
+      // amostrado, morph contínuo independente da cadência de 3Hz.
+      const kInk = 1 - Math.exp(-dt / 0.35);
+      inkCur.r += (inkTgt.r - inkCur.r) * kInk;
+      inkCur.g += (inkTgt.g - inkCur.g) * kInk;
+      inkCur.b += (inkTgt.b - inkCur.b) * kInk;
+      inkRgb = `${Math.round(inkCur.r)}, ${Math.round(inkCur.g)}, ${Math.round(inkCur.b)}`;
       // Avança o relógio virtual da animação. bgSpeed=0 congela,
       // 1 = nominal, 2 = dobro. Independente do dt do envelope.
       bgClock += dt * speed;

@@ -13,6 +13,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 
 vi.mock("../tauri", () => ({
+  themeVar: () => null,
+  clearThemeVars: vi.fn(),
   libSnapshot: vi.fn().mockResolvedValue({
     tracks_total: 100, albums_total: 10, artists_total: 5,
     embeddings_done: 80, embeddings_pending: 20, embeddings_failed: 0,

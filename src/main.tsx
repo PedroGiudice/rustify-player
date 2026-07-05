@@ -38,9 +38,13 @@ import { applyFullDspState } from "./store/dsp";
 import { applyLoudnessState } from "./store/tweaks";
 // Ink adaptativo: bg/linhas seguem a cor da capa da faixa tocando
 import { wireAdaptiveInk } from "./lib/adaptiveInk";
+// Custom properties de cor tipadas (<color>) — habilita a transition
+// declarada no :root (crossfade nativo de accent/ink/tema)
+import { registerAnimatedColorProps } from "./lib/animatedColorProps";
 
 async function boot() {
   attachConsole();
+  registerAnimatedColorProps();
   await loadIconSprite();
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
   applyLoudnessState().catch((e) => console.warn("[loudness] initial sync failed:", e));

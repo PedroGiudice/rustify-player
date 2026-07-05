@@ -7,7 +7,7 @@
    ============================================================ */
 
 import { describe, it, expect } from "vitest";
-import { ensureInkContrast, relLuminance, contrastRatio } from "./color";
+import { ensureInkContrast, relLuminance, contrastRatio, cssColorToRgb } from "./color";
 
 function ratio(a: string, b: string): number {
   return contrastRatio(relLuminance(a)!, relLuminance(b)!);
@@ -46,5 +46,16 @@ describe("ensureInkContrast", () => {
   it("canvas não parseável (jsdom/sem tema) vira no-op", () => {
     expect(ensureInkContrast("#151515", "", 3.0)).toBe("#151515");
     expect(ensureInkContrast("#151515", "rgba(0,0,0,.5)", 3.0)).toBe("#151515");
+  });
+});
+
+describe("cssColorToRgb", () => {
+  it("aceita hex e os formatos rgb()/rgba() do getComputedStyle", () => {
+    expect(cssColorToRgb("#c64a10")).toEqual({ r: 198, g: 74, b: 16 });
+    // Formato devolvido por custom property <color> em transição
+    expect(cssColorToRgb("rgb(105, 0, 0)")).toEqual({ r: 105, g: 0, b: 0 });
+    expect(cssColorToRgb("rgba(105, 0, 0, 0.5)")).toEqual({ r: 105, g: 0, b: 0 });
+    expect(cssColorToRgb("")).toBeNull();
+    expect(cssColorToRgb("var(--x)")).toBeNull();
   });
 });

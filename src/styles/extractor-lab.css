@@ -8,6 +8,26 @@
 /* ────────────────────────────────────────────────────────────
    TOKENS
    ──────────────────────────────────────────────────────────── */
+
+/* Crossfade nativo das cores dinâmicas (accent adaptativo, ink, troca de
+   tema). Só funciona porque essas props são registradas como <color> em
+   lib/animatedColorProps.ts — custom property não-registrada é string e
+   ignora transition. Consumidores DOM herdam a interpolação de graça; o
+   EqCanvas lê o valor em transição via getComputedStyle; o SpectrumCanvas
+   faz lerp próprio por frame (amostra a 3Hz de propósito). */
+:root {
+  transition:
+    --bg-ink 480ms ease,
+    --primary 480ms ease,
+    --primary-container 480ms ease,
+    --primary-fixed-dim 480ms ease,
+    --on-primary 480ms ease,
+    --on-primary-container 480ms ease,
+    --blue-fg 480ms ease,
+    --blue-ring 480ms ease,
+    --blue-bg 480ms ease;
+}
+
 :root {
   /* Surfaces */
   --bg-canvas:   #fafafa;
