@@ -51,6 +51,10 @@ vi.mock("../store/tweaks", () => ({
 }));
 
 vi.mock("../tauri", () => ({
+  normSetEnabled: vi.fn().mockResolvedValue(undefined),
+  normSetTarget: vi.fn().mockResolvedValue(undefined),
+  getState: vi.fn().mockResolvedValue({ current_track: null, current_library_track: null, is_playing: false }),
+  getTrackColor: vi.fn().mockResolvedValue(""),
   libGetLyrics: vi.fn().mockResolvedValue([]),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));

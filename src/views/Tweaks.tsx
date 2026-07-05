@@ -21,6 +21,8 @@ import {
   updateTweak,
   resetTweaks,
   listSystemFonts,
+  isDirty,
+  clearDirty,
   type TweaksState,
 } from "../store/tweaks";
 
@@ -89,11 +91,22 @@ function NumberSlider(props: {
   max: number;
   step: number;
   format: (v: number) => string;
+  /** Knob regido pelo tema: mostra "↺ tema" quando o usuário sobrescreveu. */
+  themeGoverned?: boolean;
 }) {
   return (
     <div class="tweaks__row">
       <span class="tweaks__label">
         {props.label} <span class="tweaks__val">{props.format(tweaks()[props.key])}</span>
+        <Show when={props.themeGoverned && isDirty(props.key)}>
+          <button
+            class="tweaks__reset"
+            title="Voltar a seguir o tema"
+            onClick={() => clearDirty(props.key)}
+          >
+            ↺ tema
+          </button>
+        </Show>
       </span>
       <input
         type="range"
@@ -186,11 +199,21 @@ export function Tweaks() {
             max={1}
             step={0.05}
             format={(v) => `${Math.round(v * 100)}%`}
+            themeGoverned
           />
 
           <div class="tweaks__row">
             <span class="tweaks__label">
               Bg ink <span class="tweaks__val">{tweaks().bgInk}</span>
+              <Show when={isDirty("bgInk")}>
+                <button
+                  class="tweaks__reset"
+                  title="Voltar a seguir o tema / capa"
+                  onClick={() => clearDirty("bgInk")}
+                >
+                  ↺ tema
+                </button>
+              </Show>
             </span>
             <input
               type="color"
@@ -199,6 +222,11 @@ export function Tweaks() {
               onInput={(e) => updateTweak("bgInk", e.currentTarget.value)}
             />
           </div>
+          <Segmented
+            label="Adaptive ink"
+            key="adaptiveInk"
+            options={[[true, "Album"], [false, "Off"]]}
+          />
           <Segmented
             label="EQ spectrum"
             key="eqSpectrumOverlay"

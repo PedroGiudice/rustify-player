@@ -69,6 +69,11 @@ export interface TweaksState {
       então subir o alvo (-10/-8) atenua menos. Mapeia pra
       `norm_set_target`; aplica na faixa tocando agora. */
   loudnessTarget: number;
+
+  /** Ink adaptativo: o bg animado (e as linhas do spectrum) seguem a cor
+      dominante da capa da faixa tocando. Precedência do ink:
+      usuário (bgInk tocado) > capa (este toggle) > tema > default. */
+  adaptiveInk: boolean;
 }
 
 export const DEFAULTS: TweaksState = {
@@ -90,7 +95,33 @@ export const DEFAULTS: TweaksState = {
   bgSpeed: 1.0,
   loudnessNorm: true,
   loudnessTarget: -14,
+  adaptiveInk: true,
 };
+
+// ── Dirty tracking ────────────────────────────────────────────
+// Campos onde o tema fornece o default e o valor do usuário só vale se
+// ele tocou no knob. Sem dirty, o applyTweaks se abstém e deixa o tema
+// (ou a capa, no caso do ink) valer. Signal pra UI reagir (botão reset).
+const THEME_GOVERNED: ReadonlyArray<keyof TweaksState> = ["bgInk", "lyricsGlass"];
+const [dirtyKeys, setDirtyKeys] = createSignal<ReadonlySet<keyof TweaksState>>(new Set());
+
+export function isDirty(key: keyof TweaksState): boolean {
+  return dirtyKeys().has(key);
+}
+
+function markDirty(key: keyof TweaksState) {
+  if (dirtyKeys().has(key)) return;
+  setDirtyKeys(new Set([...dirtyKeys(), key]));
+}
+
+/** Limpa o override do usuário: o knob volta a seguir o tema. */
+export function clearDirty(key: keyof TweaksState) {
+  const next = new Set(dirtyKeys());
+  next.delete(key);
+  setDirtyKeys(next);
+  // Volta o valor exibido no knob pro default (o efetivo vem do tema).
+  setState((s) => ({ ...s, [key]: DEFAULTS[key] }));
+}
 
 const [state, setState] = createSignal<TweaksState>({ ...DEFAULTS });
 export const tweaks = state;
@@ -158,20 +189,24 @@ export function applyTweaks(s: TweaksState = state()) {
   // "dragged" (sem blur, fundo carbono ~55%). Range estendido pra
   // permitir o look full-solid via Tweaks. Acima de SOLID_THRESHOLD
   // o data attr `data-lyrics-solid` ativa a regra CSS que zera o backdrop.
-  const SOLID_THRESHOLD = 0.85;
-  const g = Math.max(0, Math.min(1, s.lyricsGlass));
-  const alpha = 0.04 + g * 0.61;          // 0.04 .. 0.65
-  const brightness = 0.92 - g * 0.40;     // 0.92 .. 0.52
-  html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
-  html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
-  html.dataset.lyricsSolid = g >= SOLID_THRESHOLD ? "on" : "off";
+  // Sem dirty, o CSS decide pelos fallbacks inline (tema-neutro).
+  if (isDirty("lyricsGlass")) {
+    const SOLID_THRESHOLD = 0.85;
+    const g = Math.max(0, Math.min(1, s.lyricsGlass));
+    const alpha = 0.04 + g * 0.61;          // 0.04 .. 0.65
+    const brightness = 0.92 - g * 0.40;     // 0.92 .. 0.52
+    html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
+    html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
+    html.dataset.lyricsSolid = g >= SOLID_THRESHOLD ? "on" : "off";
+  } else {
+    html.style.removeProperty("--lyrics-bg-alpha");
+    html.style.removeProperty("--lyrics-bg-brightness");
+    html.dataset.lyricsSolid = "off";
+  }
 
-  // Cor das linhas do spectrum bg. SpectrumCanvas le essa var via
-  // getComputedStyle no frame loop (~3x/s, igual aos outros knobs).
-  // Convertemos hex -> rgb pra o canvas usar com alpha controlada.
-  const rgb = hexToRgb(s.bgInk || DEFAULTS.bgInk);
-  html.style.setProperty("--bg-ink", s.bgInk || DEFAULTS.bgInk);
-  html.style.setProperty("--bg-ink-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+  // Cor das linhas do spectrum bg: resolvida pela precedência
+  // usuário > capa > tema > default (ver resolveInk).
+  applyInkResolved(s);
 
   // EQ spectrum overlay: data attr e debug-only. EqCanvas le tweaks().eqSpectrumOverlay direto.
   html.dataset.eqSpectrum = s.eqSpectrumOverlay ? "on" : "off";
@@ -196,18 +231,91 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   };
 }
 
+// ── Ink: precedência + animação ───────────────────────────────
+// usuário (bgInk dirty) > capa (adaptiveInk + cor corrente) > tema > default.
+// O tema entra via evento "rustify:theme-applied" (applyTheme em tauri.ts);
+// a capa via setAdaptiveColor (src/lib/adaptiveInk.ts).
+let _themeInk: string | null = null;
+let _adaptiveColor: string | null = null;
+let _currentInkRgb: { r: number; g: number; b: number } | null = null;
+let _inkAnimFrame = 0;
+
+/** Ink base do tema ativo (ou default) — referência de luminância pro
+    deriveInk do adaptive. */
+export function themeInkBase(): string {
+  return _themeInk || DEFAULTS.bgInk;
+}
+
+export function setAdaptiveColor(hex: string | null) {
+  _adaptiveColor = hex;
+  applyInkResolved();
+}
+
+function resolveInk(s: TweaksState): string {
+  if (isDirty("bgInk")) return s.bgInk || DEFAULTS.bgInk;
+  if (s.adaptiveInk && _adaptiveColor) return _adaptiveColor;
+  return themeInkBase();
+}
+
+/** Escreve --bg-ink/--bg-ink-rgb com transição curta (o SpectrumCanvas
+    amostra a var ~3x/s; 600ms dá 1-2 passos intermediários — suficiente
+    pra troca de faixa não "piscar"). Chamadas re-entrantes cancelam a
+    animação anterior e partem da cor corrente. */
+function applyInkResolved(s: TweaksState = state()) {
+  const target = resolveInk(s);
+  const to = hexToRgb(target);
+  const html = document.documentElement;
+  html.style.setProperty("--bg-ink", target);
+
+  cancelAnimationFrame(_inkAnimFrame);
+  const from = _currentInkRgb;
+  if (!from || (from.r === to.r && from.g === to.g && from.b === to.b)) {
+    _currentInkRgb = to;
+    html.style.setProperty("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
+    return;
+  }
+  const DUR = 600;
+  const t0 = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - t0) / DUR);
+    const e = 1 - (1 - t) * (1 - t); // ease-out quad
+    const cur = {
+      r: Math.round(from.r + (to.r - from.r) * e),
+      g: Math.round(from.g + (to.g - from.g) * e),
+      b: Math.round(from.b + (to.b - from.b) * e),
+    };
+    _currentInkRgb = cur;
+    html.style.setProperty("--bg-ink-rgb", `${cur.r}, ${cur.g}, ${cur.b}`);
+    if (t < 1) _inkAnimFrame = requestAnimationFrame(step);
+  };
+  _inkAnimFrame = requestAnimationFrame(step);
+}
+
+// Tema aplicado (boot, troca no picker, hot-reload do watcher): captura o
+// ink declarado pelo tema e re-asserta os overrides do usuário por cima
+// das inline vars que o applyTheme acabou de escrever.
+window.addEventListener("rustify:theme-applied", (e: Event) => {
+  const detail = (e as CustomEvent<{ ink: string | null }>).detail;
+  _themeInk = detail?.ink ?? null;
+  applyTweaks();
+});
+
 // ── Update helper ─────────────────────────────────────────────
 export function updateTweak<K extends keyof TweaksState>(key: K, val: TweaksState[K]) {
+  if ((THEME_GOVERNED as ReadonlyArray<string>).includes(key)) markDirty(key);
   setState((s) => ({ ...s, [key]: val }));
 }
 
 export function resetTweaks() {
+  setDirtyKeys(new Set<keyof TweaksState>());
   setState({ ...DEFAULTS });
 }
 
 // ── Persistencia ──────────────────────────────────────────────
 function save(s: TweaksState) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...s, __dirty: [...dirtyKeys()] }));
+  } catch {}
 }
 
 export function loadTweaks() {
@@ -226,6 +334,18 @@ export function loadTweaks() {
     // Migracao: sidebar "collapsed"/"expanded" -> "icons"/"labels"
     if (saved.sidebar === "collapsed") next.sidebar = "icons";
     if (saved.sidebar === "expanded") next.sidebar = "labels";
+
+    // Dirty list persistida. Estado salvo por versão anterior (sem __dirty):
+    // infere — valor diferente do default = escolha do usuário, preserva.
+    if (Array.isArray(saved.__dirty)) {
+      const keys = (saved.__dirty as string[]).filter(
+        (k): k is keyof TweaksState =>
+          (THEME_GOVERNED as ReadonlyArray<string>).includes(k),
+      );
+      setDirtyKeys(new Set(keys));
+    } else {
+      setDirtyKeys(new Set(THEME_GOVERNED.filter((k) => next[k] !== DEFAULTS[k])));
+    }
 
     setState(next);
   } catch {}

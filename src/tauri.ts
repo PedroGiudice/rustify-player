@@ -273,6 +273,13 @@ export function applyTheme(vars: Record<string, string>) {
   for (const [prop, val] of Object.entries(vars)) {
     root.style.setProperty(prop, val);
   }
+  // Tema aplicado sobrescreve inline vars que Tweaks/adaptive ink também
+  // controlam. O listener em store/tweaks.ts re-asserta os overrides do
+  // usuário e re-resolve o ink (usuário > capa > tema). CustomEvent evita
+  // import circular (tweaks.ts já importa deste módulo).
+  window.dispatchEvent(new CustomEvent("rustify:theme-applied", {
+    detail: { ink: vars["--bg-ink"] ?? null },
+  }));
 }
 
 export async function applyThemeByName(filename: string): Promise<ContrastCheck[]> {

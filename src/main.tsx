@@ -36,6 +36,8 @@ async function loadIconSprite() {
 import { applyFullDspState } from "./store/dsp";
 // Aplica loudness norm/target persistido ao backend (com retry de boot)
 import { applyLoudnessState } from "./store/tweaks";
+// Ink adaptativo: bg/linhas seguem a cor da capa da faixa tocando
+import { wireAdaptiveInk } from "./lib/adaptiveInk";
 
 async function boot() {
   attachConsole();
@@ -57,6 +59,8 @@ async function boot() {
       }
     });
   }
+
+  wireAdaptiveInk();
 
   render(() => <App />, document.getElementById("app")!);
 }

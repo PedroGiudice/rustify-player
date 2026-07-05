@@ -26,6 +26,10 @@ const { mockTracks, mockAlbums, mockSetQueue, mockPlayTrack } = vi.hoisted(() =>
 }));
 
 vi.mock("../tauri", () => ({
+  normSetEnabled: vi.fn().mockResolvedValue(undefined),
+  normSetTarget: vi.fn().mockResolvedValue(undefined),
+  getState: vi.fn().mockResolvedValue({ current_track: null, current_library_track: null, is_playing: false }),
+  getTrackColor: vi.fn().mockResolvedValue(""),
   libGetAlbums: vi.fn().mockResolvedValue(mockAlbums),
   libGetTracksByAlbum: vi.fn().mockResolvedValue(mockTracks),
   coverUrl: vi.fn((p: string | null) => p ?? ""),

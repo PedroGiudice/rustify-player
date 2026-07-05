@@ -9,6 +9,9 @@ import { render, cleanup } from "@solidjs/testing-library";
 
 // Mocks de tauri (mesmo padrao do dsp.test.ts).
 vi.mock("../tauri", () => ({
+  normSetTarget: vi.fn().mockResolvedValue(undefined),
+  getState: vi.fn().mockResolvedValue({ current_track: null, current_library_track: null, is_playing: false }),
+  getTrackColor: vi.fn().mockResolvedValue(""),
   dspSetBypass: vi.fn().mockResolvedValue(undefined),
   dspSetEqEnabled: vi.fn().mockResolvedValue(undefined),
   dspSetEqMode: vi.fn().mockResolvedValue(undefined),
