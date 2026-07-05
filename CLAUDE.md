@@ -84,6 +84,14 @@ Extracao no Rust (`cover.rs dominant_color`) = eleicao de familia de hue
 wrap-aware + nucleo saturado; enrichment `dominant_color_v3` (versoes
 antigas ignoradas, recalcula lazy no 1o play).
 
+**Enforcement de visibilidade do ink (v0.2.40)**: duas camadas com a MESMA
+matematica WCAG. Backend: `load_theme` corrige `--bg-ink` < 3:1 vs canvas
+na saida (`ensure_bg_ink_contrast`, lib.rs) — nenhum tema entrega ink
+invisivel. Frontend: `resolveInk` (tweaks.ts) aplica piso 3:1 via
+`ensureInkContrast` (`src/lib/color.ts`, modulo unico de conversores —
+CMR-112 item 1) cobrindo knob manual e default. O knob mantem o valor
+escolhido; o APLICADO e o corrigido.
+
 **Accent adaptativo** (`adaptiveAccent`, default ON): `--primary`,
 `--primary-container/fixed-dim`, `--on-primary[-container]` e
 `--blue-fg/bg/ring` seguem o hue da capa (chips, halos, botoes). Capa

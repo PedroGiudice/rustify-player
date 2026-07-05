@@ -216,6 +216,14 @@ def semantic_warnings(vars_):
             warns.append("sig-err indistinguível do accent (--primary)")
     if vars_.get("--fg-2") and vars_.get("--fg-2") == vars_.get("--fg-3"):
         warns.append("fg-2 == fg-3 (hierarquia de texto duplicada)")
+    ink, canvas = vars_.get("--bg-ink"), vars_.get("--bg-canvas")
+    if ink and canvas:
+        ci, cc = hex_to_rgb(ink), hex_to_rgb(canvas)
+        if ci and cc and contrast(ci, cc) < 3.0:
+            warns.append(
+                f"bg-ink {contrast(ci, cc):.2f}:1 vs canvas — o backend corrige "
+                "no load_theme (piso 3:1), mas declare um ink com presença"
+            )
     return warns
 
 

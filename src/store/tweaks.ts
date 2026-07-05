@@ -7,6 +7,7 @@
 
 import { createSignal, createEffect } from "solid-js";
 import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
+import { ensureInkContrast } from "../lib/color";
 
 const { invoke } = window.__TAURI__.core;
 
@@ -315,10 +316,28 @@ function applyAccentResolved(s: TweaksState = state()) {
   }
 }
 
+/** Piso de visibilidade (não-texto WCAG). O deriveInk da capa mira 4:1 por
+    conta própria; este piso pega o resto — knob manual, tema, default. */
+const MIN_INK_CONTRAST = 3.0;
+
+/** Canvas do tema ativo (referência do piso de contraste). Sem tema, cai
+    no valor computado do :root; se nem isso parsear, ensureInkContrast
+    vira no-op — nunca quebra. */
+function activeCanvas(): string {
+  return (
+    themeVar("--bg-canvas") ??
+    getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim()
+  );
+}
+
 function resolveInk(s: TweaksState): string {
-  if (isDirty("bgInk")) return s.bgInk || DEFAULTS.bgInk;
-  if (s.adaptiveInk && _adaptiveColor) return _adaptiveColor;
-  return themeInkBase();
+  let ink: string;
+  if (isDirty("bgInk")) ink = s.bgInk || DEFAULTS.bgInk;
+  else if (s.adaptiveInk && _adaptiveColor) ink = _adaptiveColor;
+  else ink = themeInkBase();
+  // Enforcement final: NENHUMA fonte entrega ink invisível contra o canvas
+  // do tema ativo (espelha o ensure_bg_ink_contrast do load_theme).
+  return ensureInkContrast(ink, activeCanvas(), MIN_INK_CONTRAST);
 }
 
 /** Escreve --bg-ink/--bg-ink-rgb com transição curta (o SpectrumCanvas

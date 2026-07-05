@@ -851,6 +851,73 @@ fn contrast_ratio(l1: f64, l2: f64) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
+fn rgb_to_hsl(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    if (max - min).abs() < f64::EPSILON {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if (max - r).abs() < f64::EPSILON {
+        ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0
+    } else if (max - g).abs() < f64::EPSILON {
+        ((b - r) / d + 2.0) / 6.0
+    } else {
+        ((r - g) / d + 4.0) / 6.0
+    };
+    (h, s, l)
+}
+
+fn hsl_to_hex(h: f64, s: f64, l: f64) -> String {
+    let hue = |p: f64, q: f64, mut t: f64| {
+        if t < 0.0 { t += 1.0; }
+        if t > 1.0 { t -= 1.0; }
+        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
+        if t < 1.0 / 2.0 { return q; }
+        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        p
+    };
+    let (r, g, b) = if s <= f64::EPSILON {
+        (l, l, l)
+    } else {
+        let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+        let p = 2.0 * l - q;
+        (hue(p, q, h + 1.0 / 3.0), hue(p, q, h), hue(p, q, h - 1.0 / 3.0))
+    };
+    let c = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    format!("#{:02x}{:02x}{:02x}", c(r), c(g), c(b))
+}
+
+/// Garante que o ink de bg tenha presença mínima contra o canvas do tema.
+///
+/// Todos os temas atuais declaram `background.ink` = canvas (o ink nasce
+/// invisível por construção); este passo corrige na SAÍDA do load_theme:
+/// preserva o hue e caminha a luminância na direção que afasta do canvas
+/// até `min_ratio`. Retorna None quando o ink já contrasta (ou não parseia
+/// — vars não-hex passam intocadas).
+fn ensure_bg_ink_contrast(ink_hex: &str, canvas_hex: &str, min_ratio: f64) -> Option<String> {
+    let (ir, ig, ib) = hex_to_rgb(ink_hex)?;
+    let (cr, cg, cb) = hex_to_rgb(canvas_hex)?;
+    let canvas_y = relative_luminance(cr, cg, cb);
+    if contrast_ratio(relative_luminance(ir, ig, ib), canvas_y) >= min_ratio {
+        return None;
+    }
+    let (h, s, mut l) = rgb_to_hsl(ir, ig, ib);
+    let dark_canvas = canvas_y < 0.18; // ~L 0.5 em luminância relativa
+    let mut hex = hsl_to_hex(h, s, l);
+    for _ in 0..40 {
+        let (r, g, b) = hex_to_rgb(&hex)?;
+        if contrast_ratio(relative_luminance(r, g, b), canvas_y) >= min_ratio {
+            return Some(hex);
+        }
+        l = if dark_canvas { (l + 0.02).min(0.85) } else { (l - 0.02).max(0.08) };
+        hex = hsl_to_hex(h, s, l);
+    }
+    Some(hex)
+}
+
 #[derive(Serialize)]
 struct ContrastCheck {
     pair: String,
@@ -936,6 +1003,18 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     let mut vars = std::collections::HashMap::new();
     yaml_to_css_vars(&val, "", &mut vars);
     bridge_legacy_to_extractor_lab(&mut vars);
+
+    // Enforcement: nenhum tema entrega ink de bg invisível. O piso 3:1
+    // (não-texto WCAG) vale pro fallback do tema; o adaptive ink da capa
+    // mira 4:1 por conta própria (deriveInk v3 no frontend).
+    if let (Some(ink), Some(canvas)) = (
+        vars.get("--bg-ink").cloned(),
+        vars.get("--bg-canvas").cloned(),
+    ) {
+        if let Some(lifted) = ensure_bg_ink_contrast(&ink, &canvas, 3.0) {
+            vars.insert("--bg-ink".to_string(), lifted);
+        }
+    }
 
     let mut checks = Vec::new();
     // Pares semanticamente relevantes para verificacao WCAG.
@@ -3423,6 +3502,49 @@ typography:
         assert!(r2.abs() < 1e-6);
         assert!(g2.abs() < 1e-6);
         assert!(b2.abs() < 1e-6);
+    }
+
+    // ── Enforcement: ink de bg nunca invisível contra o canvas ──────────────
+
+    fn ratio_of(a: &str, b: &str) -> f64 {
+        let (r1, g1, b1) = hex_to_rgb(a).unwrap();
+        let (r2, g2, b2) = hex_to_rgb(b).unwrap();
+        contrast_ratio(relative_luminance(r1, g1, b1), relative_luminance(r2, g2, b2))
+    }
+
+    #[test]
+    fn ink_igual_ao_canvas_e_levantado_para_3_1() {
+        // Caso real: todos os temas declaram background.ink = canvas.
+        let lifted = ensure_bg_ink_contrast("#111110", "#111110", 3.0)
+            .expect("ink invisível deve ser corrigido");
+        assert!(ratio_of(&lifted, "#111110") >= 3.0, "veio {lifted}");
+    }
+
+    #[test]
+    fn ink_escuro_em_canvas_claro_desce_ou_mantem() {
+        // Canvas claro: a correção anda pra BAIXO (ink mais escuro).
+        let lifted = ensure_bg_ink_contrast("#eeeeee", "#fafafa", 3.0)
+            .expect("ink claro sobre canvas claro deve ser corrigido");
+        assert!(ratio_of(&lifted, "#fafafa") >= 3.0, "veio {lifted}");
+    }
+
+    #[test]
+    fn ink_com_contraste_suficiente_passa_intocado() {
+        assert!(ensure_bg_ink_contrast("#c64a10", "#111110", 3.0).is_none());
+    }
+
+    #[test]
+    fn ink_corrigido_preserva_o_hue() {
+        // Ink vinho escuro sobre canvas escuro: sobe luminância, mantém família.
+        let lifted = ensure_bg_ink_contrast("#2a1015", "#111110", 3.0).unwrap();
+        let (r, g, b) = hex_to_rgb(&lifted).unwrap();
+        assert!(r > g && r > b, "família avermelhada devia sobreviver, veio {lifted}");
+    }
+
+    #[test]
+    fn load_theme_nao_quebra_com_ink_nao_hex() {
+        // Var não-hex passa intocada (None), sem panic.
+        assert!(ensure_bg_ink_contrast("rgba(0,0,0,0.5)", "#111110", 3.0).is_none());
     }
 
     #[test]
