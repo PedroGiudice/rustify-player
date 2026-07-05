@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { StationViz } from "./StationViz";
 
 let rafIds = 0;
@@ -70,5 +71,29 @@ describe("StationViz", () => {
   it("aceita props seedCount/genCount", () => {
     const { container } = render(() => <StationViz seedCount={5} genCount={40} />);
     expect(container.querySelector("canvas")).toBeTruthy();
+  });
+
+  it("re-deriva seeds/generated quando props mudam pos-mount", () => {
+    // Captura o callback do RAF pra rodar frames manualmente.
+    let lastCb: FrameRequestCallback | null = null;
+    (globalThis as any).requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => {
+      lastCb = cb;
+      rafIds += 1;
+      return rafIds;
+    });
+    const [gen, setGen] = createSignal(10);
+    render(() => <StationViz seedCount={3} genCount={gen()} />);
+
+    // Por frame: 1 arc por generated dot + 2 arcs por seed (halo + core).
+    ctxRecorder.arc.mockClear();
+    lastCb!(0);
+    expect(ctxRecorder.arc).toHaveBeenCalledTimes(10 + 3 * 2);
+
+    // Mudar genCount pos-mount precisa refletir no proximo frame — antes
+    // era snapshot congelado no corpo do componente.
+    setGen(20);
+    ctxRecorder.arc.mockClear();
+    lastCb!(0);
+    expect(ctxRecorder.arc).toHaveBeenCalledTimes(20 + 3 * 2);
   });
 });

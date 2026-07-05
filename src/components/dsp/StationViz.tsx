@@ -5,7 +5,7 @@
    ao fundo. 60fps via requestAnimationFrame.
    ============================================================ */
 
-import { Component, onCleanup, onMount } from "solid-js";
+import { Component, createMemo, onCleanup, onMount } from "solid-js";
 
 export interface StationVizProps {
   seedCount?: number;
@@ -46,15 +46,19 @@ export const StationViz: Component<StationVizProps> = (props) => {
   let raf: number | null = null;
   const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-  // Seeds e generated sao constantes apos mount — recalculo so se contagem mudar.
+  // Derivacao reativa de verdade: mudar props.seedCount/genCount pos-mount
+  // regenera os pontos (o loop de RAF le os memos a cada frame).
   const seedCount = () => props.seedCount ?? DEFAULT_SEEDS.length;
   const genCount = () => props.genCount ?? 28;
 
-  const seeds: Seed[] = DEFAULT_SEEDS.slice(0, seedCount());
-  // Se seedCount > defaults, padding com seed central.
-  while (seeds.length < seedCount()) seeds.push({ x: 0.5, y: 0.5 });
+  const seeds = createMemo<Seed[]>(() => {
+    const out = DEFAULT_SEEDS.slice(0, seedCount());
+    // Se seedCount > defaults, padding com seed central.
+    while (out.length < seedCount()) out.push({ x: 0.5, y: 0.5 });
+    return out;
+  });
 
-  const generated = makeGenerated(seeds, genCount());
+  const generated = createMemo<Gen[]>(() => makeGenerated(seeds(), genCount()));
 
   function draw() {
     const ctx = canvasEl.getContext("2d");
@@ -74,6 +78,11 @@ export const StationViz: Component<StationVizProps> = (props) => {
 
     ctx.clearRect(0, 0, w, h);
 
+    // Snapshot dos memos pro frame corrente (leitura fora de escopo
+    // reativo e ok — memo devolve o valor atualizado).
+    const sds = seeds();
+    const gens = generated();
+
     // Hairline dot grid
     ctx.fillStyle = "rgba(0,0,0,0.05)";
     const step = 14;
@@ -86,10 +95,10 @@ export const StationViz: Component<StationVizProps> = (props) => {
     // Hairlines connecting generated -> nearest seed
     ctx.strokeStyle = "rgba(0,0,0,0.06)";
     ctx.lineWidth = 1;
-    for (const g of generated) {
-      let best = seeds[0];
+    for (const g of gens) {
+      let best = sds[0];
       let bestD = Infinity;
-      for (const s of seeds) {
+      for (const s of sds) {
         const d = Math.hypot(s.x - g.x, s.y - g.y);
         if (d < bestD) { bestD = d; best = s; }
       }
@@ -101,14 +110,14 @@ export const StationViz: Component<StationVizProps> = (props) => {
 
     // Generated dots (carbono dim)
     ctx.fillStyle = "rgba(23,23,23,0.45)";
-    for (const g of generated) {
+    for (const g of gens) {
       ctx.beginPath();
       ctx.arc(g.x * w, g.y * h, g.r, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // Seeds com halo pulsante azul
-    seeds.forEach((s, i) => {
+    sds.forEach((s, i) => {
       const pulse = 0.5 + 0.5 * Math.sin(t * 1.4 + i * 1.3);
       // Halo
       ctx.beginPath();
@@ -143,9 +152,8 @@ export const StationViz: Component<StationVizProps> = (props) => {
     }
   });
 
-  return (
-    <div class="st-feature__visual">
-      <canvas ref={canvasEl} aria-hidden="true" />
-    </div>
-  );
+  // So o <canvas>: a moldura .st-feature__visual e responsabilidade do
+  // call site (LazyStationViz em Stations.tsx) — antes havia div duplicado
+  // aninhado com a mesma classe (borda/bg/radius renderizados duas vezes).
+  return <canvas ref={canvasEl} aria-hidden="true" />;
 };

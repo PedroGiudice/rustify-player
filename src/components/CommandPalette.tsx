@@ -239,23 +239,35 @@ export function CommandPalette() {
         <div class="palette__list">
           <For each={items()}>
             {(it, i) => {
-              const b = sectionBoundaries();
-              const showTracksHeader = hasResults() && b.counts.tracks > 0 && i() === b.tracksStart;
-              const showAlbumsHeader = hasResults() && b.counts.albums > 0 && i() === b.albumsStart;
-              const showArtistsHeader = hasResults() && b.counts.artists > 0 && i() === b.artistsStart;
-              const showActionsHeader = hasResults() && i() === b.actionsStart;
+              // Accessors (nao consts): i() e sectionBoundaries() sao signals;
+              // capturar o valor na criacao da row congelaria os headers se a
+              // row for reconciliada em vez de remontada.
+              const showTracksHeader = () => {
+                const b = sectionBoundaries();
+                return hasResults() && b.counts.tracks > 0 && i() === b.tracksStart;
+              };
+              const showAlbumsHeader = () => {
+                const b = sectionBoundaries();
+                return hasResults() && b.counts.albums > 0 && i() === b.albumsStart;
+              };
+              const showArtistsHeader = () => {
+                const b = sectionBoundaries();
+                return hasResults() && b.counts.artists > 0 && i() === b.artistsStart;
+              };
+              const showActionsHeader = () =>
+                hasResults() && i() === sectionBoundaries().actionsStart;
               return (
                 <>
-                  <Show when={showTracksHeader}>
+                  <Show when={showTracksHeader()}>
                     <div class="palette__section">Tracks</div>
                   </Show>
-                  <Show when={showAlbumsHeader}>
+                  <Show when={showAlbumsHeader()}>
                     <div class="palette__section">Albums</div>
                   </Show>
-                  <Show when={showArtistsHeader}>
+                  <Show when={showArtistsHeader()}>
                     <div class="palette__section">Artists</div>
                   </Show>
-                  <Show when={showActionsHeader}>
+                  <Show when={showActionsHeader()}>
                     <div class="palette__section">Actions</div>
                   </Show>
                   <div

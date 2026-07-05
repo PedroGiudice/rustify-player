@@ -127,7 +127,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-import Stations from "./Stations";
+import Stations, { SeedChips, StationCard } from "./Stations";
+import { createSignal } from "solid-js";
 import { waitFor } from "@solidjs/testing-library";
 
 describe("Stations view", () => {
@@ -229,5 +230,56 @@ describe("Stations view", () => {
     expect(resumeBtn).toBeUndefined();
     // O texto explicativo do empty-state continua presente
     expect((container.querySelector(".st-feature")?.textContent ?? "")).toContain("Stations aparecem aqui");
+  });
+
+  it("moldura .st-feature__visual nao aparece aninhada (dedup do StationViz)", async () => {
+    const { container } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(container.querySelector(".st-feature__visual")).toBeTruthy();
+    });
+    // Antes o StationViz renderizava um segundo div com a mesma classe
+    // dentro do wrapper do LazyStationViz — borda/bg/radius duplicados.
+    expect(container.querySelectorAll(".st-feature__visual .st-feature__visual").length).toBe(0);
+    expect(container.querySelector(".st-feature__visual canvas")).toBeTruthy();
+  });
+});
+
+describe("SeedChips (reatividade sob parent nao-keyed)", () => {
+  it("re-deriva label/tone/icon quando props.station muda in-place", () => {
+    const [station, setStation] = createSignal<Station>(MOCK_STATIONS[0]);
+    const { container } = render(() => <SeedChips station={station()} />);
+    const chip = () => container.querySelector(".st-seed-chip");
+    expect(chip()!.textContent).toContain("ambient · drone · sleepless");
+    expect(chip()!.querySelector(".st-seed-chip__cover")!.classList.contains("tone-lavender")).toBe(true);
+
+    // Simula o refetch trocando a station sem remontar o componente —
+    // com chips como const congelados, o label/tone ficariam na antiga.
+    setStation(MOCK_STATIONS[1]);
+    expect(chip()!.textContent).toContain("modern classical · acoustic · low tempo");
+    expect(chip()!.querySelector(".st-seed-chip__cover")!.classList.contains("tone-bone")).toBe(true);
+  });
+});
+
+describe("StationCard (reatividade de isFirst/seedLine)", () => {
+  it("badge Live segue props.isFirst apos mudanca", () => {
+    const [first, setFirst] = createSignal(false);
+    const { container } = render(() => (
+      <StationCard station={MOCK_STATIONS[0]} isFirst={first()} onResume={() => {}} />
+    ));
+    expect(container.querySelector(".st-card__live")).toBeFalsy();
+    setFirst(true);
+    expect(container.querySelector(".st-card__live")).toBeTruthy();
+    setFirst(false);
+    expect(container.querySelector(".st-card__live")).toBeFalsy();
+  });
+
+  it("seedLine re-deriva quando a station muda de kind", () => {
+    const [st, setSt] = createSignal<Station>(MOCK_STATIONS[0]); // seed, 3 tracks
+    const { container } = render(() => (
+      <StationCard station={st()} isFirst={false} onResume={() => {}} />
+    ));
+    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("seed · 3 tracks");
+    setSt(MOCK_STATIONS[4]); // mood, query "minimal electronic"
+    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("mood · minimal electronic");
   });
 });

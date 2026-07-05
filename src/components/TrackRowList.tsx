@@ -38,10 +38,15 @@ export function TrackRowList(props: TrackRowListProps) {
 
   return (
     <div
-      class={isCompact()
-        ? `qrow${isCurrent() ? " qrow--current" : ""}`
-        : "row"}
-      classList={{ "is-current": !isCompact() && isCurrent() }}
+      // Um unico classList: misturar `class` dinamico com classList no mesmo
+      // elemento e footgun do Solid (o re-run do class reescreve className
+      // inteiro e o diff do classList nao re-aplica).
+      classList={{
+        qrow: isCompact(),
+        "qrow--current": isCompact() && isCurrent(),
+        row: !isCompact(),
+        "is-current": !isCompact() && isCurrent(),
+      }}
       onClick={props.onClick}
       onContextMenu={(e) => openTrackMenu(e, props.track, { list: props.contextList, onPlay: props.onClick })}
       style={{

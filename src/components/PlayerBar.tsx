@@ -49,7 +49,50 @@ export function PlayerBar() {
   let unlistenPlayer: () => void;
   let unlistenMpris: () => void;
 
-  onMount(async () => {
+  onMount(() => {
+    // ── Listeners/timers DOM: registro sincrono, antes de qualquer await ──
+    // onCleanup so registra dentro do owner do Solid; chamado apos um await
+    // dentro de onMount(async) ele roda fora do owner e vira no-op (os
+    // cleanups nunca executariam).
+
+    // Bridge: vanilla search-bar dispatches this event to play a track
+    const onSearchPlay = (e: Event) => {
+      const { track, queue, index } = (e as CustomEvent).detail;
+      setQueue(queue, index);
+      playTrack(track, "search");
+    };
+    window.addEventListener("search-play-track", onSearchPlay);
+
+    // Reconcilia estado quando janela volta ao foco
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Periodic save covers crashes. Event-driven saves (track
+    // change, pause, seek, beforeunload) cover graceful shutdown.
+    // (saveSession e no-op sem currentTrack, entao ticks antes do
+    // restoreSession abaixo nao gravam nada.)
+    const saveTimer = window.setInterval(() => {
+      void saveSession();
+    }, SAVE_INTERVAL_MS);
+
+    const onBeforeUnload = () => {
+      void saveSession();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    onCleanup(() => {
+      window.removeEventListener("search-play-track", onSearchPlay);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(saveTimer);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    });
+
+    // ── Setup assincrono (IPC listeners + session resume) ──
+    // Os unlisteners vao pra vars capturadas pelo onCleanup externo
+    // (registrado sincronamente no corpo do componente).
+    setupAsync().catch((e) => console.error("[player] setup failed:", e));
+  });
+
+  async function setupAsync() {
     unlistenPlayer = await onPlayerState(async (p) => {
       if ("TrackStarted" in p) {
         applyTrackStarted(p.TrackStarted);
@@ -106,38 +149,12 @@ export function PlayerBar() {
       }
     });
 
-    // Bridge: vanilla search-bar dispatches this event to play a track
-    const onSearchPlay = (e: Event) => {
-      const { track, queue, index } = (e as CustomEvent).detail;
-      setQueue(queue, index);
-      playTrack(track, "search");
-    };
-    window.addEventListener("search-play-track", onSearchPlay);
-    onCleanup(() => window.removeEventListener("search-play-track", onSearchPlay));
-
-    // Reconcilia estado quando janela volta ao foco
-    document.addEventListener("visibilitychange", onVisibility);
-    onCleanup(() => document.removeEventListener("visibilitychange", onVisibility));
-
     // ── Session resume ────────────────────────────────────────
     // Restore the previous session in paused state. The backend
     // already filtered out snapshots older than 6h, so anything
     // returned is "fresh enough" to be useful.
     await restoreSession();
-
-    // Periodic save covers crashes. Event-driven saves (track
-    // change, pause, seek, beforeunload) cover graceful shutdown.
-    const saveTimer = window.setInterval(() => {
-      void saveSession();
-    }, SAVE_INTERVAL_MS);
-    onCleanup(() => window.clearInterval(saveTimer));
-
-    const onBeforeUnload = () => {
-      void saveSession();
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    onCleanup(() => window.removeEventListener("beforeunload", onBeforeUnload));
-  });
+  }
 
   onCleanup(() => {
     unlistenPlayer?.();

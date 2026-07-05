@@ -11,7 +11,7 @@
      - postMessage opening cmd palette via custom event
    ============================================================ */
 
-import { For, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Index, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
 import { Icon, ICONS } from "./Icon";
@@ -131,7 +131,9 @@ export function Sidebar() {
               <div class="np-mini__artist">{player.currentTrack.artist_name || "—"}</div>
             </div>
             <div class="np-mini__vu">
-              <For each={vu()}>{(h) => <span style={{ height: `${h}px` }} />}</For>
+              {/* Index (nao For): For keia por valor e recriaria os 3 spans
+                  a cada tick de 220ms; Index atualiza height in-place. */}
+              <Index each={vu()}>{(h) => <span style={{ height: `${h()}px` }} />}</Index>
             </div>
           </div>
         )}

@@ -32,6 +32,8 @@ type Tone =
   | "tone-bone";
 
 // ── Wrapper que so renderiza StationViz quando esta no viewport ──
+// Dono unico da moldura .st-feature__visual: o StationViz devolve so o
+// <canvas>, entao visivel e fallback compartilham a mesma moldura.
 function LazyStationViz() {
   let host!: HTMLDivElement;
   const [visible, setVisible] = createSignal(true);
@@ -76,9 +78,13 @@ function formatRelative(ts: number | null): string {
 }
 
 // ── Seed chip de uma station (exibe seeds via nome da tone) ──────
-function SeedChips(props: { station: Station }) {
-  // Exibe nome + icone da station como chips de seed (MVP: 1 chip por station)
-  const chips: { label: string; tone: Tone; icon: string }[] = [
+// Exportado para testes (regressao de reatividade sob parent nao-keyed).
+export function SeedChips(props: { station: Station }) {
+  // Exibe nome + icone da station como chips de seed (MVP: 1 chip por station).
+  // Accessor (nao const): FeatureCard vive sob <Show> nao-keyed, entao a
+  // mesma instancia sobrevive a refetch() — os chips precisam re-derivar
+  // quando props.station muda.
+  const chips = (): { label: string; tone: Tone; icon: string }[] => [
     {
       label: props.station.desc || props.station.name,
       tone: (props.station.tone as Tone) || "tone-lavender",
@@ -86,7 +92,7 @@ function SeedChips(props: { station: Station }) {
     },
   ];
   return (
-    <For each={chips}>
+    <For each={chips()}>
       {(c) => (
         <span class="st-seed-chip">
           <span class={`st-seed-chip__cover ${c.tone}`}>
@@ -136,44 +142,46 @@ function FeatureCard(props: {
 }
 
 // ── Station card individual ──────────────────────────────────────
-function StationCard(props: {
+// Exportado para testes (regressao de reatividade de isFirst/seedLine).
+export function StationCard(props: {
   station: Station;
   isFirst: boolean;
   onResume: (id: string) => void;
 }) {
-  const { station, isFirst } = props;
-  const seedLine =
-    station.kind === "seed"
-      ? `seed · ${station.seed_track_ids.length} tracks`
-      : `mood · ${station.query ?? ""}`;
+  // Sem destructuring de props (quebra reatividade no Solid): isFirst vem
+  // do signal de indice do <For> e station pode trocar sob a mesma row.
+  const seedLine = () =>
+    props.station.kind === "seed"
+      ? `seed · ${props.station.seed_track_ids.length} tracks`
+      : `mood · ${props.station.query ?? ""}`;
 
   return (
-    <div class="st-card" onClick={() => props.onResume(station.id)}>
-      <Show when={isFirst}>
+    <div class="st-card" onClick={() => props.onResume(props.station.id)}>
+      <Show when={props.isFirst}>
         <span class="st-card__live">
           <span class="dot" />
           Live
         </span>
       </Show>
       <div class="st-card__top">
-        <div class={`st-card__cover ${station.tone}`}>
+        <div class={`st-card__cover ${props.station.tone}`}>
           {/* @ts-ignore */}
-          <iconify-icon icon={station.icon} noobserver />
+          <iconify-icon icon={props.station.icon} noobserver />
         </div>
         <div class="st-card__head">
-          <span class="st-card__name">{station.name}</span>
-          <span class="st-card__seed-line">{seedLine}</span>
+          <span class="st-card__name">{props.station.name}</span>
+          <span class="st-card__seed-line">{seedLine()}</span>
         </div>
       </div>
-      <p class="st-card__desc">{station.desc}</p>
+      <p class="st-card__desc">{props.station.desc}</p>
       <div class="st-card__stats">
-        <span>{station.stats.played} played</span>
+        <span>{props.station.stats.played} played</span>
         <span>
-          {station.stats.match_avg != null
-            ? `${Math.round(station.stats.match_avg * 100)}% match`
+          {props.station.stats.match_avg != null
+            ? `${Math.round(props.station.stats.match_avg * 100)}% match`
             : "—"}
         </span>
-        <span>last: {formatRelative(station.stats.last_played_at)}</span>
+        <span>last: {formatRelative(props.station.stats.last_played_at)}</span>
       </div>
     </div>
   );
