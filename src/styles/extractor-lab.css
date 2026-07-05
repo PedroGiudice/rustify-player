@@ -68,6 +68,16 @@
   --shadow-hover:    0 8px 24px rgba(0,0,0,0.06);
   --shadow-compact:  0 6px 18px rgba(0,0,0,0.05);
   --ring-focus:      0 0 0 2px rgba(163,163,163,0.15);
+  --shadow-knob:     0 1px 2px rgba(0,0,0,0.18);
+
+  /* Glass panels (tematizavel: glass.tint/alpha/blur no YAML) */
+  --glass-tint: 255, 255, 255;
+  --glass-alpha: 0.85;
+  --glass-blur: 8px;
+  /* Intensidade dos aneis de foco/hover derivados dos rings semanticos
+     (tematizavel: effects.halo). Multiplicadores locais preservam a
+     hierarquia relativa entre os halos. */
+  --halo-alpha: 0.10;
 
   /* Motion */
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
@@ -326,6 +336,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .view::-webkit-scrollbar-thumb { background: var(--bg-tint); border-radius: 999px; border: 2px solid var(--bg-canvas); }
 .view::-webkit-scrollbar-track { background: transparent; }
 
+::selection { background: color-mix(in srgb, var(--primary, var(--blue-ring)) 30%, transparent); }
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
@@ -473,7 +485,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .hero-tile__eyebrow .dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--blue-ring);
-  box-shadow: 0 0 0 4px rgba(59,130,246,0.08);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 80%), transparent);
 }
 .hero-tile__title {
   font-size: 18px; font-weight: 600;
@@ -609,7 +621,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .np__tag-playing .dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--blue-ring);
-  box-shadow: 0 0 0 4px rgba(59,130,246,0.14);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 140%), transparent);
   animation: pulse 1.4s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
@@ -661,8 +673,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 
 .np__lyrics-card {
   align-self: stretch;
-  background: rgba(255,255,255,0.85);
-  backdrop-filter: blur(8px);
+  background: rgba(var(--glass-tint), var(--glass-alpha));
+  backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
   padding: 18px 20px 22px;
@@ -868,7 +880,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
      Sem backdrop-filter de proposito — o canvas ja vem borrado e
      backdrop-filter em tela cheia sobre canvas animado custa repaint por
      frame. Menor alpha = mais canvas aparece. */
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(var(--glass-tint), calc(var(--glass-alpha) - 0.07));
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
   overflow: hidden;
@@ -969,14 +981,14 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   width: 36px; height: 36px;
   border-radius: 50%;
   background: var(--fg-1);
-  color: #ffffff;            /* explicit branco — iconify-icon herda via currentColor */
+  color: var(--bg-paper);   /* inverso do fg — iconify-icon herda via currentColor */
   margin: 0 6px;
   transition: transform var(--dur-base), background var(--dur-base);
 }
-.pb-btn--primary:hover { background: var(--fg-2); transform: scale(1.04); color: #ffffff; }
+.pb-btn--primary:hover { background: var(--fg-2); transform: scale(1.04); color: var(--bg-paper); }
 .pb-btn--primary iconify-icon {
   width: 16px; height: 16px;
-  color: #ffffff;            /* reforco explicito caso o componente nao herde */
+  color: var(--bg-paper);   /* reforco explicito caso o componente nao herde */
 }
 /* Stroke maior pra dar peso visual de "play/pause filled" usando line icons */
 .pb-btn--primary iconify-icon::part(svg) { stroke-width: 2.5; }
@@ -1017,7 +1029,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .pb-tech:hover { background: var(--bg-soft); border-color: var(--fg-8); }
 .pb-tech__sep { color: var(--fg-7); }
-.pb-tech__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green-ring); box-shadow: 0 0 0 3px rgba(16,185,129,0.16); }
+.pb-tech__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent); }
 .pb-vol { display: flex; align-items: center; gap: 8px; min-width: 130px; }
 .pb-vol .progress { flex: 1; }
 
@@ -1268,7 +1280,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   width: 14px; height: 14px;
   border-radius: 50%;
   background: var(--bg-paper);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-knob);
   transition: transform var(--dur-base);
 }
 .toggle[aria-pressed="true"] { background: var(--fg-1); }
@@ -1538,7 +1550,7 @@ html { --glow: 0; }
 }
 .sig-stat[data-on="true"] .sig-stat__dot {
   background: var(--blue-ring);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.10);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 100%), transparent);
 }
 .sig-stat__value {
   font-size: 16px; font-weight: 700;
@@ -1789,7 +1801,7 @@ html { --glow: 0; }
   background: var(--fg-1);
   border: 2px solid var(--bg-paper);
   border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-knob);
   transition: background var(--dur-base);
 }
 .fader[data-active="true"] .fader__thumb { background: var(--blue-fg); }
@@ -2037,7 +2049,7 @@ html { --glow: 0; }
   background: var(--fg-1);
   border: 2px solid var(--bg-paper);
   border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-knob);
 }
 .param-row__val {
   font-family: var(--font-mono);
@@ -2133,7 +2145,7 @@ html { --glow: 0; }
   width: 12px; height: 12px;
   border-radius: 50%;
   background: var(--bg-paper);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-knob);
   transition: transform var(--dur-base);
 }
 .tog[aria-pressed="true"] { background: var(--fg-1); }
@@ -2367,7 +2379,7 @@ html { --glow: 0; }
   top: 10px; left: 10px;
   width: 24px; height: 24px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.9);
+  background: rgba(var(--glass-tint), calc(var(--glass-alpha) + 0.05));
   border: 1px solid var(--line-2);
   display: grid; place-items: center;
   color: var(--fg-5);
@@ -2389,7 +2401,7 @@ html { --glow: 0; }
   background: var(--fg-1);
   border-color: var(--fg-1);
 }
-.pl-card__pin.is-pinned iconify-icon { color: #fff; }
+.pl-card__pin.is-pinned iconify-icon { color: var(--bg-paper); }
 .pl-card__pin:hover { color: var(--fg-1); border-color: var(--fg-3); }
 .pl-card__pin.is-pinned:hover { background: var(--fg-2); border-color: var(--fg-2); }
 .pl-card__pin iconify-icon { width: 12px; height: 12px; }
@@ -2470,7 +2482,7 @@ html { --glow: 0; }
 .st-feature__eyebrow .dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--blue-ring);
-  box-shadow: 0 0 0 4px rgba(59,130,246,0.10);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 100%), transparent);
   animation: stPulse 1.4s ease-in-out infinite;
 }
 @keyframes stPulse {
@@ -2632,7 +2644,7 @@ html { --glow: 0; }
   width: 5px; height: 5px;
   border-radius: 50%;
   background: var(--green-ring);
-  box-shadow: 0 0 0 3px rgba(16,185,129,0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2746,7 +2758,7 @@ html { --glow: 0; }
   background: var(--fg-1);
   border: 2px solid var(--bg-paper);
   border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-knob);
 }
 .set-slider__val {
   font-family: var(--font-mono);
@@ -3060,18 +3072,18 @@ html { --glow: 0; }
 .pl-action-btn.is-on {
   background: var(--fg-1);
   border-color: var(--fg-1);
-  color: #fff;
+  color: var(--bg-paper);
 }
-.pl-action-btn.is-on iconify-icon { color: #fff; }
+.pl-action-btn.is-on iconify-icon { color: var(--bg-paper); }
 .pl-action-btn--primary {
   background: var(--fg-1);
   border-color: var(--fg-1);
-  color: #fff;
+  color: var(--bg-paper);
 }
 .pl-action-btn--primary:hover {
   background: var(--fg-2);
   border-color: var(--fg-2);
-  color: #fff;
+  color: var(--bg-paper);
 }
 
 /* Color picker no Tweaks panel — swatch quadrado limpo. */
