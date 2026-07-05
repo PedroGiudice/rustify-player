@@ -162,9 +162,13 @@ capa cacheada e persiste). Falta só o elo:
 
 1. `scripts/themes/validate.py` (base de verificação)
 2. Parser Rust (aliases + checks tone) + `cargo check` + testes Rust
-3. CSS (tokens + migração hardcoded)
-4. Tweaks dirty-flag + typecheck + testes TS
-5. Upgrade dos 12 YAML + validate.py + deploy cmr-auto
-6. theme-maker agent
-7. Docs (CLAUDE.md) + commits + release.sh + dpkg -i (usuário) + verificação
+3. **theme-maker agent (prime)** — criado cedo pra executar as tasks de tema
+   seguintes e workflows futuros
+4. CSS (tokens + migração hardcoded)
+5. Tweaks dirty-flag + adaptive ink + typecheck + testes TS
+6. Upgrade dos 12 YAML — **delegado ao theme-maker**, revisão minha antes do
+   deploy + validate.py + deploy cmr-auto
+7. Limpeza de dead code (Rust: dead_code warnings, ex. `norm_gain_volume`
+   órfão em dsp.rs; TS: exports sem consumidor) — deletar, não comentar
+8. Docs (CLAUDE.md) + commits + release.sh + dpkg -i (usuário) + verificação
    via MCP no app real
