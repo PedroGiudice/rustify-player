@@ -114,13 +114,72 @@ pub fn process_album_cover(
     Ok(target_path)
 }
 
-/// Extract the dominant color from a cover source as a hex string (e.g. "#a04f2c").
-/// Uses average-color via resize-to-1x1 for speed.
+/// Extract a *vibrant* dominant color from a cover as a hex string.
+///
+/// The old approach (resize-to-1x1 = global average) blends complementary
+/// hues into mud — a red/teal cover averages to gray-brown. Instead we
+/// quantize a small thumbnail into hue/sat/light buckets and score each
+/// bucket by pixel count weighted toward saturated, mid-lightness colors
+/// (the "identity" colors of the art, à la Spotify). The winner's weighted
+/// average is returned, so within-bucket nuance survives.
+///
+/// Grayscale covers stay grayscale: desaturated pixels get a small but
+/// non-zero weight, so they win when nothing chromatic competes.
 pub fn dominant_color(source: &CoverSource) -> Option<String> {
     let img = load_source(source).ok()?;
-    let tiny = img.resize_exact(1, 1, FilterType::Lanczos3);
-    let px = tiny.get_pixel(0, 0);
-    Some(format!("#{:02x}{:02x}{:02x}", px[0], px[1], px[2]))
+    let small = img.resize_exact(48, 48, FilterType::Triangle).to_rgb8();
+
+    const HUE_BINS: usize = 12;
+    const SAT_BINS: usize = 3;
+    const LIG_BINS: usize = 3;
+    // (weight_sum, r_sum, g_sum, b_sum) per bucket, all weighted.
+    let mut buckets = vec![(0f64, 0f64, 0f64, 0f64); HUE_BINS * SAT_BINS * LIG_BINS];
+
+    for px in small.pixels() {
+        let r = f64::from(px[0]) / 255.0;
+        let g = f64::from(px[1]) / 255.0;
+        let b = f64::from(px[2]) / 255.0;
+        let (h, s, l) = rgb_to_hsl(r, g, b);
+        let hb = ((h * HUE_BINS as f64) as usize).min(HUE_BINS - 1);
+        let sb = ((s * SAT_BINS as f64) as usize).min(SAT_BINS - 1);
+        let lb = ((l * LIG_BINS as f64) as usize).min(LIG_BINS - 1);
+        // Saturated colors count more; near-black/near-white count less.
+        let w = (0.10 + s) * (1.0 - (l - 0.5).abs() * 1.6).max(0.10);
+        let e = &mut buckets[(hb * SAT_BINS + sb) * LIG_BINS + lb];
+        e.0 += w;
+        e.1 += r * w;
+        e.2 += g * w;
+        e.3 += b * w;
+    }
+
+    let (w, rs, gs, bs) = buckets
+        .into_iter()
+        .max_by(|a, b| a.0.total_cmp(&b.0))?;
+    if w <= f64::EPSILON {
+        return None;
+    }
+    let to8 = |v: f64| ((v / w) * 255.0).round().clamp(0.0, 255.0) as u8;
+    Some(format!("#{:02x}{:02x}{:02x}", to8(rs), to8(gs), to8(bs)))
+}
+
+/// RGB (0..1) → HSL (all 0..1). Hue 0..1 wraps the circle.
+fn rgb_to_hsl(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    if (max - min).abs() < f64::EPSILON {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if (max - r).abs() < f64::EPSILON {
+        ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0
+    } else if (max - g).abs() < f64::EPSILON {
+        ((b - r) / d + 2.0) / 6.0
+    } else {
+        ((r - g) / d + 4.0) / 6.0
+    };
+    (h, s, l)
 }
 
 fn load_source(source: &CoverSource) -> Result<DynamicImage, IndexerError> {
@@ -182,6 +241,56 @@ mod tests {
             .write_image(&img, w, h, ExtendedColorType::Rgb8)
             .unwrap();
         buf
+    }
+
+    #[test]
+    fn dominant_color_prefers_saturated_over_gray_majority() {
+        // 70% cinza médio + 30% vermelho saturado. A média global daria um
+        // marrom-acinzentado; o extractor v2 deve devolver o VERMELHO (a cor
+        // de identidade da capa), não o blend.
+        let mut img = RgbImage::from_pixel(60, 60, Rgb([128, 128, 128]));
+        for y in 0..60 {
+            for x in 0..18 {
+                img.put_pixel(x, y, Rgb([200, 30, 30]));
+            }
+        }
+        let mut buf = Vec::new();
+        PngEncoder::new(&mut buf)
+            .write_image(&img, 60, 60, ExtendedColorType::Rgb8)
+            .unwrap();
+        let hex = dominant_color(&CoverSource::EmbeddedBytes {
+            data: buf,
+            mime_hint: String::new(),
+        })
+        .expect("cor extraída");
+        let r = u8::from_str_radix(&hex[1..3], 16).unwrap();
+        let g = u8::from_str_radix(&hex[3..5], 16).unwrap();
+        let b = u8::from_str_radix(&hex[5..7], 16).unwrap();
+        assert!(
+            r > 150 && g < 90 && b < 90,
+            "esperava vermelho dominante, veio {hex}"
+        );
+    }
+
+    #[test]
+    fn dominant_color_grayscale_cover_stays_gray() {
+        let img = RgbImage::from_pixel(60, 60, Rgb([90, 90, 90]));
+        let mut buf = Vec::new();
+        PngEncoder::new(&mut buf)
+            .write_image(&img, 60, 60, ExtendedColorType::Rgb8)
+            .unwrap();
+        let hex = dominant_color(&CoverSource::EmbeddedBytes {
+            data: buf,
+            mime_hint: String::new(),
+        })
+        .expect("cor extraída");
+        let r = i32::from_str_radix(&hex[1..3], 16).unwrap();
+        let g = i32::from_str_radix(&hex[3..5], 16).unwrap();
+        let b = i32::from_str_radix(&hex[5..7], 16).unwrap();
+        assert!(
+            (r - g).abs() <= 6 && (g - b).abs() <= 6,
+            "capa cinza deve continuar cinza, veio {hex}"
+        );
     }
 
     #[test]

@@ -190,13 +190,7 @@ export function applyTweaks(s: TweaksState = state()) {
   // o data attr `data-lyrics-solid` ativa a regra CSS que zera o backdrop.
   // Sem dirty, o CSS decide pelos fallbacks inline (tema-neutro).
   if (isDirty("lyricsGlass")) {
-    const SOLID_THRESHOLD = 0.85;
-    const g = Math.max(0, Math.min(1, s.lyricsGlass));
-    const alpha = 0.04 + g * 0.61;          // 0.04 .. 0.65
-    const brightness = 0.92 - g * 0.40;     // 0.92 .. 0.52
-    html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
-    html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
-    html.dataset.lyricsSolid = g >= SOLID_THRESHOLD ? "on" : "off";
+    applyLyricsGlass(s);
   } else {
     html.style.removeProperty("--lyrics-bg-alpha");
     html.style.removeProperty("--lyrics-bg-brightness");
@@ -218,6 +212,18 @@ export function applyTweaks(s: TweaksState = state()) {
   html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
   html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
   html.style.setProperty("--bg-speed", s.bgSpeed.toFixed(3));
+}
+
+/** Deriva e escreve as vars do lyrics glass a partir do slider. */
+function applyLyricsGlass(s: TweaksState) {
+  const html = document.documentElement;
+  const SOLID_THRESHOLD = 0.85;
+  const g = Math.max(0, Math.min(1, s.lyricsGlass));
+  const alpha = 0.04 + g * 0.61;          // 0.04 .. 0.65
+  const brightness = 0.92 - g * 0.40;     // 0.92 .. 0.52
+  html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
+  html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
+  html.dataset.lyricsSolid = g >= SOLID_THRESHOLD ? "on" : "off";
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -266,18 +272,23 @@ function applyInkResolved(s: TweaksState = state()) {
   const html = document.documentElement;
   html.style.setProperty("--bg-ink", target);
 
-  cancelAnimationFrame(_inkAnimFrame);
+  clearTimeout(_inkAnimFrame);
   const from = _currentInkRgb;
   if (!from || (from.r === to.r && from.g === to.g && from.b === to.b)) {
     _currentInkRgb = to;
     html.style.setProperty("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
     return;
   }
-  const DUR = 600;
-  const t0 = performance.now();
-  const step = (now: number) => {
-    const t = Math.min(1, (now - t0) / DUR);
-    const e = 1 - (1 - t) * (1 - t); // ease-out quad
+  // Passos de ~150ms: os consumidores (SpectrumCanvas/EqCanvas) amostram a
+  // var ~3x/s via getComputedStyle — interpolar por frame (rAF) gastaria
+  // ~36 writes dos quais só 2 seriam lidos. 4 passos batem a cadência.
+  const STEPS = 4;
+  const STEP_MS = 150;
+  let i = 0;
+  const step = () => {
+    i += 1;
+    const t2 = i / STEPS;
+    const e = 1 - (1 - t2) * (1 - t2); // ease-out quad
     const cur = {
       r: Math.round(from.r + (to.r - from.r) * e),
       g: Math.round(from.g + (to.g - from.g) * e),
@@ -285,18 +296,36 @@ function applyInkResolved(s: TweaksState = state()) {
     };
     _currentInkRgb = cur;
     html.style.setProperty("--bg-ink-rgb", `${cur.r}, ${cur.g}, ${cur.b}`);
-    if (t < 1) _inkAnimFrame = requestAnimationFrame(step);
+    if (i < STEPS) _inkAnimFrame = window.setTimeout(step, STEP_MS) as unknown as number;
   };
-  _inkAnimFrame = requestAnimationFrame(step);
+  _inkAnimFrame = window.setTimeout(step, STEP_MS) as unknown as number;
 }
 
 // Tema aplicado (boot, troca no picker, hot-reload do watcher): captura o
-// ink declarado pelo tema e re-asserta os overrides do usuário por cima
-// das inline vars que o applyTheme acabou de escrever.
+// ink declarado pelo tema e re-asserta SOMENTE os overrides que o usuário
+// de fato tem (fontes setadas, lyrics dirty, ink resolvido) por cima das
+// inline vars que o applyTheme acabou de escrever. NÃO chama applyTweaks
+// inteiro: o caminho "unset" faria removeProperty de --font-mono e
+// sobrescreveria --glow, matando o que o tema declarou.
 window.addEventListener("rustify:theme-applied", (e: Event) => {
   const detail = (e as CustomEvent<{ ink: string | null }>).detail;
   _themeInk = detail?.ink ?? null;
-  applyTweaks();
+  const s = state();
+  const html = document.documentElement;
+  if (s.fontUI) {
+    html.style.setProperty(
+      "--font-sans",
+      `"${s.fontUI}", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`,
+    );
+  }
+  if (s.fontMono) {
+    html.style.setProperty(
+      "--font-mono",
+      `"${s.fontMono}", ui-monospace, "SF Mono", "Menlo", "Consolas", monospace`,
+    );
+  }
+  if (isDirty("lyricsGlass")) applyLyricsGlass(s);
+  applyInkResolved(s);
 });
 
 // ── Update helper ─────────────────────────────────────────────

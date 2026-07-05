@@ -61,55 +61,81 @@ function hslToHex(h: number, s: number, l: number): string {
 // ── Derivação ─────────────────────────────────────────────────
 
 /** Normaliza a cor dominante da capa pro papel de ink: mantém o hue,
-    clampa a luminância na faixa útil do tema (dark → ink escuro; light →
-    ink claro) e garante saturação mínima quando a cor tem croma. Capas
+    ancora a luminância NO INK DO TEMA ATUAL (o bg da capa fica na mesma
+    "profundidade" do tema: really-dark segue profundo, temas mais claros
+    ganham ink com mais presença) e reforça a saturação — a cor média de
+    capa tende ao lamacento, então boost 1.6x com piso 0.35. Capas
     acromáticas (s < 0.05) ficam acromáticas — cinza é identidade também. */
 export function deriveInk(coverHex: string, baseInkHex: string): string | null {
   const cover = hexToHsl(coverHex);
   if (!cover) return null;
   const base = hexToHsl(baseInkHex);
-  const darkTheme = (base?.l ?? 0.1) < 0.5;
-  const [lMin, lMax] = darkTheme ? [0.10, 0.32] : [0.55, 0.85];
+  const themeL = base?.l ?? 0.09;
+  const darkTheme = themeL < 0.5;
+  const [lMin, lMax] = darkTheme
+    ? [Math.max(0.10, themeL), Math.min(0.45, themeL + 0.24)]
+    : [Math.max(0.50, themeL - 0.24), Math.min(0.90, themeL)];
   const l = Math.min(lMax, Math.max(lMin, cover.l));
-  const s = cover.s < 0.05 ? cover.s : Math.max(0.15, Math.min(0.85, cover.s));
+  const s = cover.s < 0.05 ? cover.s : Math.max(0.35, Math.min(0.90, cover.s * 1.6));
   return hslToHex(cover.h, s, l);
 }
 
 // ── Wiring ────────────────────────────────────────────────────
 
 let _reqSeq = 0;
+// Cor BRUTA da capa da faixa corrente. Guardada pra re-derivar quando o
+// TEMA troca mid-track (a faixa de luminância do deriveInk depende do
+// ink do tema — sem re-derivação a cor ficaria presa na faixa antiga).
+let _lastCoverHex: string | null = null;
 
-async function fetchAndApply(retryLeft = 1): Promise<void> {
+async function fetchAndApply(expectedPath: string, retryLeft = 5): Promise<void> {
   const seq = ++_reqSeq;
+  const retry = () => {
+    if (retryLeft > 0) setTimeout(() => { void fetchAndApply(expectedPath, retryLeft - 1); }, 300);
+    else { _lastCoverHex = null; setAdaptiveColor(null); }
+  };
   try {
     const snap = await getState();
     const track = snap.current_library_track;
     if (seq !== _reqSeq) return; // faixa já trocou de novo
-    if (!track) {
-      // TrackStarted chega um tick antes do snapshot popular a library
-      // track em algumas trocas — um retry curto cobre o gap.
-      if (retryLeft > 0) setTimeout(() => { void fetchAndApply(retryLeft - 1); }, 300);
-      else setAdaptiveColor(null);
-      return;
-    }
+    // TrackStarted chega um tick antes do snapshot atualizar — o snapshot
+    // pode vir vazio OU ainda com a faixa ANTERIOR. Validar contra o path
+    // que disparou o effect evita aplicar a cor da capa errada num skip.
+    if (!track || track.path !== expectedPath) { retry(); return; }
     const hex = await getTrackColor(String(track.id));
     if (seq !== _reqSeq) return;
+    _lastCoverHex = hex || null;
     setAdaptiveColor(hex ? deriveInk(hex, themeInkBase()) : null);
   } catch {
-    if (seq === _reqSeq) setAdaptiveColor(null);
+    if (seq === _reqSeq) { _lastCoverHex = null; setAdaptiveColor(null); }
   }
 }
 
 /** Liga o ink adaptativo. Chamar uma vez no boot (main.tsx). */
 export function wireAdaptiveInk() {
   createRoot(() => {
+    let prevOn: boolean | null = null;
+    let prevPath: string | null = null;
     createEffect(() => {
       const on = tweaks().adaptiveInk;
       // Registra dependência na troca de faixa (TrackStarted seta
       // currentTrackInfo; path muda por faixa).
       const path = player.currentTrackInfo?.path ?? null;
-      if (!on || !path) { setAdaptiveColor(null); return; }
-      void fetchAndApply();
+      // tweaks() é um signal de objeto inteiro: QUALQUER knob re-roda este
+      // effect. Só age quando o que importa (on/path) de fato mudou —
+      // senão o arrasto de um slider viraria burst de IPCs.
+      if (on === prevOn && path === prevPath) return;
+      prevOn = on; prevPath = path;
+      if (!on || !path) { _lastCoverHex = null; setAdaptiveColor(null); return; }
+      void fetchAndApply(path);
     });
+  });
+  // Tema trocou mid-track: re-deriva a cor da capa contra o ink do tema
+  // novo (tweaks.ts registra o listener dele primeiro, então themeInkBase()
+  // já reflete o tema novo quando este handler roda).
+  window.addEventListener("rustify:theme-applied", () => {
+    if (_lastCoverHex && tweaks().adaptiveInk) {
+      setAdaptiveColor(deriveInk(_lastCoverHex, themeInkBase()));
+    }
   });
 }

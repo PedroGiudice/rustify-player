@@ -55,14 +55,10 @@ LEGACY = {
     "motion-med": "--dur-med",
     "motion-ease": "--ease-out",
 }
+# tones-*/shadows-* replicam o strip_prefix open-ended do Rust (qualquer
+# nome passa; TONE_NAMES fica só pros pares de contraste). radius-* cai na
+# camada 2 (prefixo permitido), igual ao backend.
 TONE_NAMES = ["mint", "sky", "peach", "rose", "lavender", "butter", "bone", "paper"]
-for _t in TONE_NAMES:
-    LEGACY[f"tones-{_t}-bg"] = f"--tone-{_t}-bg"
-    LEGACY[f"tones-{_t}-border"] = f"--tone-{_t}-border"
-for _r in ["xs", "sm", "md", "lg", "xl", "2xl", "pill", "full"]:
-    LEGACY[f"radius-{_r}"] = f"--radius-{_r}"
-for _s in ["card", "hover", "hairline", "compact"]:
-    LEGACY[f"shadows-{_s}"] = f"--shadow-{_s}"
 
 ALLOWED_PREFIXES = ["fg-", "bg-", "line-", "tone-", "blue-", "green-", "amber-",
                     "rose-", "purple-", "radius-", "shadow-", "dur-", "ease-", "font-"]
@@ -112,13 +108,21 @@ HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
 COLOR_TOKEN_PREFIXES = ("--fg", "--bg-", "--tone-", "--blue", "--green", "--amber",
                         "--rose", "--purple", "--sig", "--primary", "--on-",
                         "--surface-", "--divider", "--line", "--outline")
-# tokens que casam com prefixo de cor mas não são cor (ou aceitam outro formato)
-NON_HEX_OK = {"--glass-tint", "--bg-ink", "--surface-blur", "--surface-opacity"}
+# tokens que casam com prefixo de cor mas não são cor (ou aceitam outro formato).
+# --bg-ink fica FORA: o frontend deriva --bg-ink-rgb via hexToRgb, que só
+# aceita hex — ink não-hex passaria aqui e falharia silencioso no app.
+NON_HEX_OK = {"--glass-tint", "--surface-blur", "--surface-opacity"}
 
 
 def key_to_prop(key):
     if key in LEGACY:
         return LEGACY[key]
+    # Seções plurais → tokens singulares (open-ended, espelha o strip_prefix
+    # do lib.rs — 'shadows.knob' vira --shadow-knob, 'tones.sage.bg' passa).
+    if key.startswith("tones-"):
+        return "--tone-" + key[len("tones-"):]
+    if key.startswith("shadows-"):
+        return "--shadow-" + key[len("shadows-"):]
     if key in ALLOWED_EXACT or any(key.startswith(p) for p in ALLOWED_PREFIXES):
         return f"--{key}"
     return None
@@ -189,11 +193,13 @@ def validate_file(fn):
             if not (HEX_RE.match(v) or v.startswith("rgba(") or v.startswith("rgb(")):
                 problems.append(f"valor de cor inválido: {k} = {v!r}")
 
-    # pares fixos + tones declarados (fg-1 sobre cada tone-bg presente)
+    # pares fixos + tones declarados (fg-1 sobre QUALQUER --tone-*-bg
+    # presente — espelho do loop dinâmico do load_theme, cobre tone custom)
     pairs = list(PAIRS)
-    for t in TONE_NAMES:
-        if f"--tone-{t}-bg" in vars_:
-            pairs.append((f"tone-{t}", "--fg-1", f"--tone-{t}-bg"))
+    for k in sorted(vars_):
+        if k.startswith("--tone-") and k.endswith("-bg"):
+            name = k[len("--tone-"):-len("-bg")]
+            pairs.append((f"tone-{name}", "--fg-1", k))
 
     for label, fgk, bgk in pairs:
         fg, bg = vars_.get(fgk), vars_.get(bgk)

@@ -1073,7 +1073,10 @@ fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, Stri
     let client = lib.handle.client();
 
     let enr = client.get_enrichment(tid).map_err(err)?;
-    if let Some(color) = enr["dominant_color"].as_str().filter(|s| !s.is_empty()) {
+    // Chave versionada: o extractor mudou de média-1x1 pra quantização
+    // saturation-aware. Os valores antigos ("dominant_color") são lamacentos
+    // por construção — ignorados; cada faixa recalcula lazy no primeiro play.
+    if let Some(color) = enr["dominant_color_v2"].as_str().filter(|s| !s.is_empty()) {
         return Ok(color.to_string());
     }
 
@@ -1084,7 +1087,7 @@ fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, Stri
         if cover_file.exists() {
             let source = library_indexer::CoverSource::FolderFile(cover_file);
             if let Some(hex) = library_indexer::dominant_color(&source) {
-                client.set_enrichment(tid, serde_json::json!({"dominant_color": hex})).ok();
+                client.set_enrichment(tid, serde_json::json!({"dominant_color_v2": hex})).ok();
                 return Ok(hex);
             }
         }

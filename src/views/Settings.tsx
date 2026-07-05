@@ -29,6 +29,7 @@ import {
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
+import { applyTweaks } from "../store/tweaks";
 import { player, setPlayer } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
@@ -137,6 +138,13 @@ export default function Settings() {
       localStorage.removeItem("rustify-theme");
       setActiveTheme("");
       setContrast([]);
+      // O removeAttribute acima apaga TODAS as inline vars — inclusive as
+      // dos Tweaks (zoom, glow, fontes). Notifica o store (ink do tema
+      // deixa de existir) e re-aplica os tweaks por inteiro.
+      window.dispatchEvent(new CustomEvent("rustify:theme-applied", {
+        detail: { ink: null },
+      }));
+      applyTweaks();
       return;
     }
     const checks = await applyThemeByName(filename);
