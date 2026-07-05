@@ -719,15 +719,36 @@ fn yaml_key_to_css_prop(key: &str) -> Option<String> {
         "signal-error" => Some("--sig-err"),
         "typography-body" => Some("--font-body"),
         "typography-display" => Some("--font-display"),
+        "typography-mono" => Some("--font-mono"),
         "typography-mono-legacy" => Some("--font-mono"),
         "typography-technical" => Some("--font-technical"),
         "effects-glow" => Some("--glow"),
+        "effects-halo" => Some("--halo-alpha"),
         "effects-surface-blur" => Some("--surface-blur"),
         "effects-surface-opacity" => Some("--surface-opacity"),
+        // ── Themes boost (2026-07): superfícies novas ──
+        "glass-tint" => Some("--glass-tint"),
+        "glass-alpha" => Some("--glass-alpha"),
+        "glass-blur" => Some("--glass-blur"),
+        "background-ink" => Some("--bg-ink"),
+        "motion-fast" => Some("--dur-fast"),
+        "motion-base" => Some("--dur-base"),
+        "motion-med" => Some("--dur-med"),
+        "motion-ease" => Some("--ease-out"),
         _ => None,
     };
     if let Some(prop) = legacy {
         return Some(prop.to_string());
+    }
+
+    // Seções estruturadas plurais mapeiam pros tokens singulares da camada 2:
+    // `tones.mint.bg` (achatado "tones-mint-bg") → `--tone-mint-bg`,
+    // `shadows.card` → `--shadow-card`. `radius.*` já coincide com o token.
+    if let Some(rest) = key.strip_prefix("tones-") {
+        return Some(format!("--tone-{rest}"));
+    }
+    if let Some(rest) = key.strip_prefix("shadows-") {
+        return Some(format!("--shadow-{rest}"));
     }
 
     // Camada 2 — Extractor Lab tokens (atuais).
@@ -938,14 +959,31 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
         ("warn/canvas",       "--amber-fg","--bg-canvas"),
         ("erro/canvas",       "--rose-fg", "--bg-canvas"),
     ];
-    for (label, fg_key, bg_key) in pairs {
-        if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key)) {
+    // Tones declarados pelo tema: o texto principal precisa ler sobre cada
+    // card pastel. Só checa os que o YAML define — tema sem tones não ganha
+    // pares extras (mesma semântica dos pares fixos com token ausente).
+    let mut tone_pairs: Vec<(String, &'static str, String)> = vars
+        .keys()
+        .filter_map(|k| {
+            let name = k.strip_prefix("--tone-")?.strip_suffix("-bg")?;
+            Some((format!("tone-{name}"), "--fg-1", k.clone()))
+        })
+        .collect();
+    tone_pairs.sort();
+
+    let all_pairs = pairs
+        .iter()
+        .map(|(l, f, b)| (l.to_string(), *f, b.to_string()))
+        .chain(tone_pairs);
+
+    for (label, fg_key, bg_key) in all_pairs {
+        if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key.as_str())) {
             if let (Some(fg_rgb), Some(bg_rgb)) = (hex_to_rgb(fg), hex_to_rgb(bg)) {
                 let l1 = relative_luminance(fg_rgb.0, fg_rgb.1, fg_rgb.2);
                 let l2 = relative_luminance(bg_rgb.0, bg_rgb.1, bg_rgb.2);
                 let ratio = contrast_ratio(l1, l2);
                 checks.push(ContrastCheck {
-                    pair: label.to_string(),
+                    pair: label,
                     ratio: (ratio * 100.0).round() / 100.0,
                     pass_aa: ratio >= 4.5,
                     pass_aaa: ratio >= 7.0,
@@ -3263,6 +3301,72 @@ effects:
         assert_eq!(vars["--fg-3"], vars["--fg-4"], "fg-3 e fg-4 devem ser identicos");
         // fg-5 e fg-6 vem de text.muted
         assert_eq!(vars["--fg-5"], vars["--fg-6"], "fg-5 e fg-6 devem ser identicos");
+    }
+
+    // ── Themes boost: schema novo (tones/glass/motion/shadows/background) ─────
+
+    const TEMA_BOOST: &str = r##"
+name: Boost
+author: CI
+
+tones:
+  mint: { bg: '#1e2a24', border: '#26352d' }
+  sky:
+    bg: '#1d2530'
+    border: '#25303e'
+
+glass:
+  tint: '23, 23, 23'
+  alpha: 0.85
+  blur: '20px'
+
+shadows:
+  card: '0 1px 2px rgba(0,0,0,0.18)'
+
+radius:
+  md: '10px'
+
+motion:
+  fast: '120ms'
+  base: '180ms'
+  med: '260ms'
+  ease: 'cubic-bezier(.2,.8,.2,1)'
+
+background:
+  ink: '#171717'
+
+effects:
+  halo: 0.12
+
+typography:
+  mono: 'JetBrains Mono, monospace'
+"##;
+
+    #[test]
+    fn schema_boost_mapeia_secoes_novas() {
+        let vars = parse_tema(TEMA_BOOST);
+        assert_eq!(vars["--tone-mint-bg"], "#1e2a24");
+        assert_eq!(vars["--tone-mint-border"], "#26352d");
+        assert_eq!(vars["--tone-sky-bg"], "#1d2530");
+        assert_eq!(vars["--glass-tint"], "23, 23, 23");
+        assert_eq!(vars["--glass-alpha"], "0.85");
+        assert_eq!(vars["--glass-blur"], "20px");
+        assert_eq!(vars["--shadow-card"], "0 1px 2px rgba(0,0,0,0.18)");
+        assert_eq!(vars["--radius-md"], "10px");
+        assert_eq!(vars["--dur-fast"], "120ms");
+        assert_eq!(vars["--dur-base"], "180ms");
+        assert_eq!(vars["--dur-med"], "260ms");
+        assert_eq!(vars["--ease-out"], "cubic-bezier(.2,.8,.2,1)");
+        assert_eq!(vars["--bg-ink"], "#171717");
+        assert_eq!(vars["--halo-alpha"], "0.12");
+    }
+
+    #[test]
+    fn typography_mono_e_mono_legacy_mapeiam_font_mono() {
+        let vars = parse_tema(TEMA_BOOST);
+        assert_eq!(vars["--font-mono"], "JetBrains Mono, monospace");
+        let legado = parse_tema("typography:\n  mono-legacy: 'X Mono'\n");
+        assert_eq!(legado["--font-mono"], "X Mono");
     }
 
     #[test]
