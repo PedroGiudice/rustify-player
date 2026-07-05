@@ -171,8 +171,11 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       lastFftAt = performance.now();
     }).then((un) => { unlistenFft = un; });
 
-    // Ativa o spectrum-emitter no backend (idempotente, refcount no
-    // Rust — conviver com Visualizer também subscrito é seguro).
+    // Ativa o spectrum-emitter no backend. `spectrum_subscribe` incrementa um
+    // refcount de assinantes (AtomicUsize no Rust); o emitter roda enquanto
+    // houver >= 1. Este canvas é singleton do shell (monta 1x, nunca desmonta),
+    // então mantém +1 permanente — conviver com EqCanvas/Visualizer também
+    // subscritos é seguro, e o unsubscribe de um deles não desliga este feed.
     spectrumSubscribe().catch(() => {});
 
     function frame() {

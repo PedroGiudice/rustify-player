@@ -22,7 +22,7 @@ import type { EqBand } from "../../store/dsp";
 import { tweaks } from "../../store/tweaks";
 import { player } from "../../store/player";
 import { cssColorToRgb } from "../../lib/color";
-import { onAudioFft, spectrumSubscribe, type FftPayload } from "../../tauri";
+import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, type FftPayload } from "../../tauri";
 import {
   ISO_CENTERS,
   NUM_BANDS,
@@ -95,7 +95,28 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   let lastFftAt = 0;
   let lastDrawAt = 0;
   let rafId = 0;
-  let unlistenFft: (() => void) | null = null;
+
+  // ── Listener de FFT: guarda a Promise, não só o resultado ──
+  // Sem isso, desmontar/desligar antes do resolve do onAudioFft vaza o
+  // callback de 60Hz pelo resto da sessão (o unlisten chegava tarde demais
+  // e ninguém o chamava).
+  let fftUnlisten: (() => void) | null = null;
+  let fftPending: Promise<() => void> | null = null;
+
+  // ── Dimensões/DPR cacheados (recomputados só no ResizeObserver) ──
+  // Atribuir canvas.width/height reseta o backing store E a transform do
+  // contexto; fazer isso a 60Hz no draw() é caro e força layout. Cacheamos
+  // e só reatribuímos quando o tamanho físico muda (padrão do SpectrumCanvas).
+  let cssW = 0;
+  let cssH = 0;
+
+  // ── Buffers reutilizados por frame (evita churn de GC no caminho quente) ──
+  // Geometria das barras e amostras da curva são recomputadas in-place,
+  // nunca realocadas.
+  const xCenters = new Float32Array(NUM_BANDS);
+  const slotW = new Float32Array(NUM_BANDS);
+  const sampleX = new Float32Array(CURVE_STEPS + 1);
+  const sampleY = new Float32Array(CURVE_STEPS + 1);
 
   function onFft(payload: FftPayload) {
     if (
@@ -160,34 +181,61 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   }
 
   function ensureFftListener() {
-    if (unlistenFft) return;
+    if (fftPending) return; // já assinado ou assinando
     spectrumSubscribe().catch(() => {});
-    onAudioFft(onFft).then((un) => {
-      unlistenFft = un;
+    const p = onAudioFft(onFft);
+    fftPending = p;
+    p.then((un) => {
+      if (fftPending !== p) {
+        // dropFftListener rodou antes do resolve: descarta o listener tardio
+        // em vez de deixá-lo vazar.
+        un();
+        return;
+      }
+      fftUnlisten = un;
     });
   }
 
   function dropFftListener() {
-    if (unlistenFft) {
-      unlistenFft();
-      unlistenFft = null;
+    if (!fftPending) return;
+    fftPending = null; // sinaliza cancelamento pro resolve tardio (guard acima)
+    spectrumUnsubscribe().catch(() => {}); // balanceia o refcount do subscribe
+    if (fftUnlisten) {
+      fftUnlisten();
+      fftUnlisten = null;
     }
+  }
+
+  /** Recomputa dimensões/DPR e reatribui o backing store só quando muda.
+      Chamado no mount e pelo ResizeObserver — nunca por frame. */
+  function resize() {
+    if (!canvasEl) return;
+    const r = canvasEl.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const nextW = Math.round(r.width * dpr);
+    const nextH = Math.round(r.height * dpr);
+    cssW = r.width;
+    cssH = r.height;
+    // Reatribuir width/height reseta o backing store + a transform, então só
+    // fazemos quando o tamanho físico de fato muda.
+    if (canvasEl.width !== nextW || canvasEl.height !== nextH) {
+      canvasEl.width = nextW;
+      canvasEl.height = nextH;
+    }
+    const ctx = canvasEl.getContext("2d");
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
   }
 
   function draw() {
     if (!canvasEl) return;
     const ctx = canvasEl.getContext("2d");
     if (!ctx) return;
-    const r = canvasEl.getBoundingClientRect();
-    if (!r.width || !r.height) return;
+    const w = cssW;
+    const h = cssH;
+    if (!w || !h) return; // ainda não dimensionado (resize roda no mount)
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvasEl.width = Math.round(r.width * dpr);
-    canvasEl.height = Math.round(r.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const w = r.width;
-    const h = r.height;
     const mid = h / 2;
     const innerW = w - PAD_X - PAD_X_RIGHT;
 
@@ -242,12 +290,11 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
         return bottom - norm * usableH;
       };
 
-      // Slot widths a partir do espaco entre centros adjacentes
-      const xCenters = new Float32Array(NUM_BANDS);
+      // Slot widths a partir do espaco entre centros adjacentes.
+      // xCenters/slotW: buffers reutilizados, preenchidos in-place.
       for (let i = 0; i < NUM_BANDS; i++) {
         xCenters[i] = freqToX(ISO_CENTERS[i], PAD_X, innerW);
       }
-      const slotW = new Float32Array(NUM_BANDS);
       for (let i = 0; i < NUM_BANDS; i++) {
         const left =
           i === 0
@@ -289,35 +336,37 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
 
     const dbToY = (db: number) => mid - (db / DB_VIS_RANGE) * (h / 2) * 0.9;
 
-    const samples: [number, number][] = [];
+    // Amostra a curva em buffers reutilizados (sampleX/sampleY): sem alocar
+    // 257 tuplas por frame.
     for (let i = 0; i <= CURVE_STEPS; i++) {
       const x = PAD_X + (innerW * i) / CURVE_STEPS;
       const f = xToFreq(x, PAD_X, innerW);
       const db = totalResponseDb(f, bands);
       const dbClamped = Math.max(-DB_VIS_RANGE, Math.min(DB_VIS_RANGE, db));
-      samples.push([x, dbToY(dbClamped)]);
+      sampleX[i] = x;
+      sampleY[i] = dbToY(dbClamped);
     }
 
-    function curvePath(closeToMid: boolean): Path2D {
-      const p = new Path2D();
-      p.moveTo(samples[0][0], samples[0][1]);
-      for (let i = 1; i < samples.length; i++) p.lineTo(samples[i][0], samples[i][1]);
-      if (closeToMid) {
-        p.lineTo(samples[samples.length - 1][0], mid);
-        p.lineTo(samples[0][0], mid);
-        p.closePath();
-      }
-      return p;
-    }
-
+    // Fill carbono 5% (curva fechada até a linha 0 dB). Path direto no
+    // contexto — evita alocar Path2D por frame.
     ctx.fillStyle = "rgba(23,23,23,0.05)";
-    ctx.fill(curvePath(true));
+    ctx.beginPath();
+    ctx.moveTo(sampleX[0], sampleY[0]);
+    for (let i = 1; i <= CURVE_STEPS; i++) ctx.lineTo(sampleX[i], sampleY[i]);
+    ctx.lineTo(sampleX[CURVE_STEPS], mid);
+    ctx.lineTo(sampleX[0], mid);
+    ctx.closePath();
+    ctx.fill();
 
+    // Stroke carbono 72% (curva aberta).
     ctx.strokeStyle = "rgba(23,23,23,0.72)";
     ctx.lineWidth = 1.4;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    ctx.stroke(curvePath(false));
+    ctx.beginPath();
+    ctx.moveTo(sampleX[0], sampleY[0]);
+    for (let i = 1; i <= CURVE_STEPS; i++) ctx.lineTo(sampleX[i], sampleY[i]);
+    ctx.stroke();
 
     // Dots por banda
     const active = props.activeBand;
@@ -347,9 +396,12 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
 
   onMount(() => {
     if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => draw());
+      observer = new ResizeObserver(() => resize());
       observer.observe(canvasEl);
     }
+    // Dimensiona sincronamente no mount (antes dos createEffects que desenham);
+    // o observer cobre mudanças de tamanho/DPR futuras.
+    resize();
   });
 
   onCleanup(() => {
@@ -359,9 +411,17 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   });
 
   // Lifecycle: liga listener + rAF loop quando overlay e isPlaying.
+  // tweaks() é signal de objeto inteiro — QUALQUER knob re-roda este effect.
+  // Só age quando overlay/playing de fato mudam (padrão de adaptiveInk.ts),
+  // senão arrastar um slider viraria burst de draw() no branch pausado.
+  let prevOverlayOn: boolean | null = null;
+  let prevIsPlaying: boolean | null = null;
   createEffect(() => {
     const overlayOn = tweaks().eqSpectrumOverlay;
     const isPlaying = player.isPlaying;
+    if (overlayOn === prevOverlayOn && isPlaying === prevIsPlaying) return;
+    prevOverlayOn = overlayOn;
+    prevIsPlaying = isPlaying;
     if (overlayOn && isPlaying) {
       ensureFftListener();
       startLoop();

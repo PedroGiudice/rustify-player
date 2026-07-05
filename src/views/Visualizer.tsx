@@ -145,6 +145,8 @@ export default function Visualizer() {
   onCleanup(() => {
     cancelAnimationFrame(animId);
     window.removeEventListener("resize", resize);
+    // Refcount no backend: decrementa (não zera). Enquanto o SpectrumCanvas do
+    // shell continuar subscrito, o spectrum-emitter segue rodando pra ele.
     spectrumUnsubscribe();
     unlisten?.();
   });

@@ -11,7 +11,7 @@ use library_indexer::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 
@@ -56,7 +56,13 @@ struct FftPayload {
     sample_rate: u32,
 }
 
-struct SpectrumActive(Arc<AtomicBool>);
+/// Refcount de assinantes do spectrum-emitter. Cada consumidor de `audio-fft`
+/// (SpectrumCanvas do shell, overlay do EqCanvas, Visualizer) chama
+/// `spectrum_subscribe` ao montar e `spectrum_unsubscribe` ao desmontar; o
+/// emitter roda enquanto o contador for > 0. Antes era um `AtomicBool` global
+/// (ultimo a chamar vencia), o que fazia o unsubscribe de um consumidor
+/// desligar o feed dos demais.
+struct SpectrumActive(Arc<AtomicUsize>);
 
 /// Snapshot of engine state, updated by the event-listener thread.
 /// Read by the `get_state` command so the frontend can hydrate views
@@ -670,12 +676,19 @@ fn list_backgrounds() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn spectrum_subscribe(active: State<SpectrumActive>) {
-    active.0.store(true, Ordering::Relaxed);
+    // Refcount: +1 assinante. Ver `SpectrumActive`.
+    active.0.fetch_add(1, Ordering::Relaxed);
 }
 
 #[tauri::command]
 fn spectrum_unsubscribe(active: State<SpectrumActive>) {
-    active.0.store(false, Ordering::Relaxed);
+    // Refcount: -1 assinante, saturado em 0 (unsubscribe desbalanceado nunca
+    // faz o contador dar underflow para usize::MAX e manter o emitter preso).
+    let _ = active
+        .0
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            Some(n.saturating_sub(1))
+        });
 }
 
 
@@ -1078,51 +1091,128 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     Ok(ThemeLoadResult { vars, contrast: checks })
 }
 
+/// Estado global do watcher de tema ativo. Garante que trocar de tema N vezes
+/// nao acumule N threads + inotify watchers imortais: cada `watch_theme`
+/// derruba o handle anterior (drop do `notify::Watcher` + join da thread de
+/// debounce) antes de instalar o novo. Sem isso, o watcher stale do tema A
+/// continuava emitindo `theme-changed("A")` e revertia o app pro tema A quando
+/// o YAML de A mudava no disco, mesmo com B ativo.
+struct ThemeWatchState(Mutex<Option<ThemeWatchHandle>>);
+
+/// Handle de um watcher de tema ativo. Segurar este valor mantem o watcher e a
+/// thread de debounce vivos; `stop()` os derruba de forma ordenada.
+struct ThemeWatchHandle {
+    /// `Option` para permitir dropar o watcher explicitamente antes do join.
+    /// Dropar o watcher para de observar o arquivo E fecha o canal do callback,
+    /// desbloqueando o `recv()` da thread de debounce (que entao encerra).
+    watcher: Option<notify::RecommendedWatcher>,
+    /// Sinaliza a thread a sair sem emitir, mesmo que um evento chegue no meio
+    /// do teardown.
+    shutdown: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ThemeWatchHandle {
+    /// Derruba o watcher e aguarda a thread de debounce encerrar: sinaliza
+    /// shutdown, dropa o watcher (fecha o canal) e faz join.
+    fn stop(mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        // Dropar o watcher ANTES do join fecha o canal do callback e
+        // desbloqueia o `recv()` bloqueante da thread.
+        self.watcher = None;
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// Loop de debounce da thread de watcher: aguarda eventos de modificacao,
+/// agrupa rajadas dentro de `debounce` e chama `on_change` uma vez por rajada.
+/// Encerra quando o canal fecha (watcher dropado) ou `shutdown` esta setado.
+/// Extraido como funcao livre para ser testavel sem `notify`.
+fn theme_debounce_loop(
+    rx: std::sync::mpsc::Receiver<()>,
+    shutdown: &AtomicBool,
+    debounce: std::time::Duration,
+    mut on_change: impl FnMut(),
+) {
+    loop {
+        match rx.recv() {
+            Ok(()) => {
+                if shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                // Drena a rajada de eventos dentro da janela de debounce.
+                while rx.recv_timeout(debounce).is_ok() {}
+                if shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                on_change();
+            }
+            Err(_) => break, // canal fechado: watcher foi dropado
+        }
+    }
+}
+
 #[tauri::command]
-fn watch_theme(app: tauri::AppHandle, filename: String) -> Result<(), String> {
+fn watch_theme(
+    app: tauri::AppHandle,
+    filename: String,
+    state: State<ThemeWatchState>,
+) -> Result<(), String> {
     let path = themes_dir().join(&filename);
     if !path.exists() {
         return Err(format!("Theme not found: {filename}"));
     }
-    let app_handle = app.clone();
-    let emit_name = filename.clone();
-    std::thread::Builder::new()
-        .name("theme-watcher".into())
-        .spawn(move || {
-            let (tx, rx) = std::sync::mpsc::channel::<()>();
-            let mut watcher: notify::RecommendedWatcher = match notify::Watcher::new(
-                move |res: Result<notify::Event, notify::Error>| {
-                    if let Ok(event) = res {
-                        if matches!(event.kind, notify::EventKind::Modify(_)) {
-                            let _ = tx.send(());
-                        }
-                    }
-                },
-                notify::Config::default(),
-            ) {
-                Ok(w) => w,
-                Err(e) => { tracing::error!("Failed to create theme watcher: {e}"); return; }
-            };
-            if let Err(e) = notify::Watcher::watch(
-                &mut watcher, &path, notify::RecursiveMode::NonRecursive
-            ) {
-                tracing::error!("Failed to watch theme {}: {e}", path.display());
-                return;
-            }
-            tracing::info!("Watching theme: {}", path.display());
-            // Debounce: wait 500ms after last event before emitting
-            loop {
-                match rx.recv() {
-                    Ok(()) => {
-                        // Drain any rapid-fire events within 500ms
-                        while rx.recv_timeout(std::time::Duration::from_millis(500)).is_ok() {}
-                        let _ = app_handle.emit("theme-changed", emit_name.clone());
-                    }
-                    Err(_) => break,
+
+    // Derruba o watcher anterior (se houver) ANTES de criar o novo. `take` +
+    // `stop` fora do lock: nao seguramos o Mutex durante o join da thread.
+    let previous = state.0.lock().unwrap().take();
+    if let Some(prev) = previous {
+        prev.stop();
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(
+        move |res: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = res {
+                if matches!(event.kind, notify::EventKind::Modify(_)) {
+                    let _ = tx.send(());
                 }
             }
+        },
+        notify::Config::default(),
+    )
+    .map_err(|e| format!("Failed to create theme watcher: {e}"))?;
+
+    notify::Watcher::watch(&mut watcher, &path, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| format!("Failed to watch theme {}: {e}", path.display()))?;
+
+    tracing::info!("Watching theme: {}", path.display());
+
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_thread = shutdown.clone();
+    let app_handle = app.clone();
+    let emit_name = filename.clone();
+    let thread = std::thread::Builder::new()
+        .name("theme-watcher".into())
+        .spawn(move || {
+            theme_debounce_loop(
+                rx,
+                &shutdown_thread,
+                std::time::Duration::from_millis(500),
+                || {
+                    let _ = app_handle.emit("theme-changed", emit_name.clone());
+                },
+            );
         })
         .map_err(|e| format!("Failed to spawn theme watcher: {e}"))?;
+
+    *state.0.lock().unwrap() = Some(ThemeWatchHandle {
+        watcher: Some(watcher),
+        shutdown,
+        thread: Some(thread),
+    });
     Ok(())
 }
 
@@ -2347,7 +2437,7 @@ fn get_media_port(port: State<MediaServerPort>) -> u16 {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let spectrum_active = Arc::new(AtomicBool::new(false));
+    let spectrum_active = Arc::new(AtomicUsize::new(0));
 
     tauri::Builder::default()
         .plugin(
@@ -2528,9 +2618,9 @@ pub fn run() {
                         std::thread::sleep(std::time::Duration::from_millis(16));
                         tick_count += 1;
 
-                        if !spectrum_flag.load(Ordering::Relaxed) {
+                        if spectrum_flag.load(Ordering::Relaxed) == 0 {
                             if tick_count % 300 == 0 {
-                                tracing::debug!("spectrum-emitter: subscribe inactive");
+                                tracing::debug!("spectrum-emitter: no subscribers");
                             }
                             continue;
                         }
@@ -2653,6 +2743,7 @@ pub fn run() {
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
             _app.manage(NormState::with_target(norm_target_cell));
+            _app.manage(ThemeWatchState(Mutex::new(None)));
 
             // Background sync removed — pipeline writes directly to Qdrant.
 
@@ -3646,5 +3737,68 @@ typography:
         assert_eq!(stations[0].id, "high");
         assert_eq!(stations[1].id, "mid");
         assert_eq!(stations[2].id, "low");
+    }
+
+    // ── Bug: teardown do watcher de tema (swap do handle) ─────────────────────
+    // Cobre a mecanica que `ThemeWatchHandle::stop` usa ao trocar de tema:
+    // sinalizar shutdown + fechar o canal encerra a thread de debounce. Sem
+    // isso, trocar N vezes de tema deixava N threads/watchers vivos.
+
+    #[test]
+    fn theme_debounce_loop_encerra_ao_fechar_canal() {
+        // Thread ociosa em `recv()`; o teardown (shutdown + drop do tx) precisa
+        // encerra-la sem emitir. Determinístico, sem depender de timing.
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_thread = calls.clone();
+        let shutdown_thread = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            theme_debounce_loop(
+                rx,
+                &shutdown_thread,
+                std::time::Duration::from_millis(500),
+                || {
+                    calls_thread.fetch_add(1, Ordering::Relaxed);
+                },
+            );
+        });
+
+        shutdown.store(true, Ordering::Relaxed);
+        drop(tx);
+        handle.join().unwrap();
+        assert_eq!(calls.load(Ordering::Relaxed), 0, "teardown nao deve emitir");
+    }
+
+    #[test]
+    fn theme_debounce_loop_emite_uma_vez_por_rajada() {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_thread = calls.clone();
+        let shutdown_thread = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            theme_debounce_loop(
+                rx,
+                &shutdown_thread,
+                std::time::Duration::from_millis(15),
+                || {
+                    calls_thread.fetch_add(1, Ordering::Relaxed);
+                },
+            );
+        });
+
+        // Rajada de 3 eventos deve colapsar em UMA emissao apos a janela.
+        tx.send(()).unwrap();
+        tx.send(()).unwrap();
+        tx.send(()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        assert_eq!(calls.load(Ordering::Relaxed), 1, "rajada deve emitir 1x");
+
+        // Teardown limpo: nao deve haver emissao adicional.
+        shutdown.store(true, Ordering::Relaxed);
+        drop(tx);
+        handle.join().unwrap();
+        assert_eq!(calls.load(Ordering::Relaxed), 1, "teardown nao deve reemitir");
     }
 }
