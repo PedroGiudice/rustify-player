@@ -8,11 +8,11 @@
 
    Assinatura: (ctx, w, h, t, shapeFn, amp, breath, ink, env).
    `ink` é a tinta "r, g, b" (vinda de --bg-ink-rgb via Tweaks);
-   cada renderer aplica o próprio alpha. `breath` (LFO 4.5s) e
-   `env` (envelope FFT 0..1 suavizado) só são consumidos por dots
-   — raio respira com breath e pulsa com env, alpha flasheia com
-   env; os demais recebem por uniformidade de contrato (neles o
-   áudio já chega embutido em `amp`, que é em pixels).
+   cada renderer aplica o próprio alpha. `amp` (pixels, já contém
+   o envelope de áudio) desloca geometria em TODOS os renderers —
+   inclusive dots, que cavalga o mesmo campo de onda do mesh.
+   `breath` (LFO 4.5s) e `env` (envelope FFT 0..1) são consumidos
+   só por dots: raio respira/pulsa, alpha flasheia.
 
    Densidades e alphas copiados 1:1 do handoff (docs/design-refs/
    design_handoff_persistent_background). index 0 = mesh = o
@@ -113,32 +113,38 @@ function drawWeave(
   drawColumns(ctx, w, h, t, shapeFn, amp * 0.8, breath, ink, env, { color: `rgba(${ink}, 0.10)`, width: 0.6 });
 }
 
-/* dots — grade de pontos; raio e alpha ∝ campo. Raio respira com breath
-   (LFO) e pulsa com env (áudio); alpha flasheia com env. Com env=0 o
-   visual é IDÊNTICO ao handoff — a reatividade é aditiva, nunca mexe
-   na fase nem na tinta. */
+/* dots — grade de pontos cavalgando o MESMO campo de onda do mesh:
+   cada ponto desloca verticalmente por sin(u·π·3.2 + fase)·s·amp,
+   a mesma reatividade espacial que os renderers de linha têm — é o
+   deslocamento (dezenas de px) que o olho lê como "reage à música",
+   não raio/alpha sozinhos. Por cima: raio respira (breath) e pulsa
+   (env), alpha flasheia (env). Fase segue time-driven, nunca áudio. */
 function drawDots(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
-  shapeFn: ShapeFn, _amp: number, breath: number, ink: string, env: number,
+  shapeFn: ShapeFn, amp: number, breath: number, ink: string, env: number,
 ) {
   const maxR = Math.min(w / GX, h / GY) * 0.66;
   const e = Math.min(1, Math.max(0, env));
-  const pulse = 1 + 0.22 * e; // raio: punch sem virar blob (overlap contido)
-  const flash = 1 + 0.55 * e; // alpha carrega o grosso da reatividade
+  const pulse = 1 + 0.35 * e; // raio: punch no pico
+  const flash = 1 + 0.6 * e;  // alpha: flash de intensidade
   ctx.fillStyle = `rgb(${ink})`;
   for (let gy = 0; gy < GY; gy++) {
     const v = gy / (GY - 1);
-    const y = h * 0.04 + h * 0.94 * v;
+    const baselineY = h * 0.04 + h * 0.94 * v;
+    // Mesma inclinação de fase do mesh ao longo da altura:
+    // mesh varre v*(NLINES-1)*0.085 ≈ v*9.27 rad. Fase só de tempo.
+    const phase = v * 9.27 + t * 0.55;
     for (let gx = 0; gx < GX; gx++) {
       const u = gx / (GX - 1);
       const s = shapeFn(u, v, t);
       if (s < 0.03) continue;
       const cl = Math.min(1, s);
+      const wave = Math.sin(u * Math.PI * 3.2 + phase) * s * amp * 0.6;
       const r = maxR * cl * (0.55 + 0.45 * breath) * pulse;
       const x = u * w + Math.sin(t * 0.6 + gy * 0.3) * 1.2;
-      ctx.globalAlpha = Math.min(0.9, (0.10 + 0.55 * cl) * flash);
+      ctx.globalAlpha = Math.min(0.95, (0.10 + 0.55 * cl) * flash);
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.arc(x, baselineY - wave, r, 0, Math.PI * 2);
       ctx.fill();
     }
   }

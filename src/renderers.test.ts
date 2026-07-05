@@ -39,10 +39,11 @@ describe("RENDERERS", () => {
     expect(RENDERERS.map((r) => r.name)).toEqual(EXPECTED_ORDER);
   });
 
-  it("dots: env (envelope de áudio) aumenta raio e alpha — reatividade real", () => {
+  it("dots: amp desloca geometria, env aumenta raio e alpha — paridade de reatividade", () => {
     const dots = RENDERERS.find((r) => r.name === "dots")!;
-    const run = (env: number) => {
+    const run = (amp: number, env: number) => {
       const radii: number[] = [];
+      const ys: number[] = [];
       const alphas: number[] = [];
       let alpha = 1;
       const ctx = {
@@ -51,22 +52,29 @@ describe("RENDERERS", () => {
         lineTo() {},
         stroke() {},
         fill() {},
-        arc(_x: number, _y: number, r: number) { radii.push(r); },
+        arc(_x: number, y: number, r: number) { ys.push(y); radii.push(r); },
         strokeStyle: "",
         fillStyle: "",
         lineWidth: 0,
         get globalAlpha() { return alpha; },
         set globalAlpha(a: number) { alpha = a; if (a < 1) alphas.push(a); },
       } as unknown as CanvasRenderingContext2D;
-      dots.fn(ctx, 800, 600, 7.3, SHAPES[0].fn, 100, 0.9, "23, 23, 23", env);
-      return { maxR: Math.max(...radii), maxA: Math.max(...alphas) };
+      dots.fn(ctx, 800, 600, 7.3, SHAPES[0].fn, amp, 0.9, "23, 23, 23", env);
+      return { radii, ys, maxR: Math.max(...radii), maxA: Math.max(...alphas) };
     };
-    const quiet = run(0);
-    const loud = run(1);
-    // Raio: pulso de +22% no pico; alpha: flash de +55% (clamp 0.9).
-    expect(loud.maxR / quiet.maxR).toBeCloseTo(1.22, 2);
+    const quiet = run(100, 0);
+    const loud = run(100, 1);
+    // Raio: pulso de +35% no pico; alpha: flash de +60% (clamp 0.95).
+    expect(loud.maxR / quiet.maxR).toBeCloseTo(1.35, 2);
     expect(loud.maxA).toBeGreaterThan(quiet.maxA);
-    // env=0 preserva o baseline do handoff (0.55 + 0.45*breath, sem pulso).
+    // amp desloca os pontos verticalmente (o mesmo campo de onda do mesh):
+    // com amp=0 os pontos ficam na grade; com amp=200 saem dela.
+    const flat = run(0, 0);
+    const waved = run(200, 0);
+    expect(flat.ys.length).toBe(waved.ys.length);
+    const maxDelta = Math.max(...waved.ys.map((y, i) => Math.abs(y - flat.ys[i])));
+    expect(maxDelta).toBeGreaterThan(20);
+    // Raio baseline (env=0) segue o contrato: maxR * cl * (0.55 + 0.45*breath).
     expect(quiet.maxR).toBeLessThanOrEqual(Math.min(800 / 66, 600 / 44) * 0.66 * (0.55 + 0.45 * 0.9) + 1e-9);
   });
 
