@@ -2,7 +2,9 @@
    views/NowPlaying.tsx — Spectrum bg + cover + meta + lyrics.
 
    Lyrics from libGetLyrics(track.id); synced to player.positionSecs.
-   Shape state read via useShape() from SpectrumCanvas.
+   Shape/renderer state via useShape()/useRenderer() (SpectrumCanvas).
+   Seletores empilhados no canto inferior-direito: renderer em cima,
+   shape embaixo. Atalhos: [ ] shape, , . renderer.
    ============================================================ */
 
 import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
@@ -10,7 +12,7 @@ import { player } from "../store/player";
 import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
-import { useShape } from "../components/SpectrumCanvas";
+import { useRenderer, useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
 import { tweaks } from "../store/tweaks";
 import { navigate } from "../router";
@@ -18,6 +20,7 @@ import { openTrackMenu } from "../store/contextMenu";
 
 export default function NowPlaying() {
   const shape = useShape();
+  const renderer = useRenderer();
   // Estado inicial lê o data-attr canônico no shell — se o user voltou
   // pra /now-playing com cinema ativo, mantém o ícone correto.
   const [cinema, setCinema] = createSignal(
@@ -215,13 +218,16 @@ export default function NowPlaying() {
     onCleanup(() => cancelAnimationFrame(raf));
   });
 
-  // Keyboard for shape cycling
+  // Keyboard: [ ] cicla shape, , . cicla renderer, F cinema mode.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "[") { e.preventDefault(); shape.prev(); }
       else if (e.key === "]") { e.preventDefault(); shape.next(); }
+      else if (e.key === ",") { e.preventDefault(); renderer.prev(); }
+      else if (e.key === ".") { e.preventDefault(); renderer.next(); }
       else if (e.key.toLowerCase() === "f") { e.preventDefault(); toggleCinema(); }
     };
     window.addEventListener("keydown", onKey);
@@ -359,16 +365,31 @@ export default function NowPlaying() {
           </Show>
         </div>
 
-        <div class="np__shape-nav">
-          <button title="Previous shape ([)" onClick={() => shape.prev()}>
-            <Icon name={ICONS.chevronLeft} size={14} />
-          </button>
-          <span class="np__shape-name" onClick={() => shape.next()}>
-            shape · <b>{shape.name()}</b>
-          </span>
-          <button title="Next shape (])" onClick={() => shape.next()}>
-            <Icon name={ICONS.chevronRight} size={14} />
-          </button>
+        {/* Seletores empilhados: renderer (como pintar) em cima,
+            shape (campo) embaixo. Mesmo estilo ‹ nome ›. */}
+        <div class="np__viz-nav">
+          <div class="np__nav-row">
+            <button title="Previous renderer (,)" onClick={() => renderer.prev()}>
+              <Icon name={ICONS.chevronLeft} size={14} />
+            </button>
+            <span class="np__nav-name" onClick={() => renderer.next()}>
+              render · <b>{renderer.name()}</b>
+            </span>
+            <button title="Next renderer (.)" onClick={() => renderer.next()}>
+              <Icon name={ICONS.chevronRight} size={14} />
+            </button>
+          </div>
+          <div class="np__nav-row">
+            <button title="Previous shape ([)" onClick={() => shape.prev()}>
+              <Icon name={ICONS.chevronLeft} size={14} />
+            </button>
+            <span class="np__nav-name" onClick={() => shape.next()}>
+              shape · <b>{shape.name()}</b>
+            </span>
+            <button title="Next shape (])" onClick={() => shape.next()}>
+              <Icon name={ICONS.chevronRight} size={14} />
+            </button>
+          </div>
         </div>
       </div>
     </article>

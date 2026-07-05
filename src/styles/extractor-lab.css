@@ -805,12 +805,14 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .np__corner button:hover { background: var(--bg-soft); color: var(--fg-1); border-color: var(--fg-8); }
 .np__corner button iconify-icon { width: 14px; height: 14px; }
 
-/* Shape nav */
-.np__shape-nav {
+/* Viz nav — seletores empilhados (renderer em cima, shape embaixo) */
+.np__viz-nav {
   position: absolute; bottom: 24px; right: 28px;
-  z-index: 3; display: flex; gap: 6px; align-items: center;
+  z-index: 3; display: flex; flex-direction: column; gap: 6px;
+  align-items: flex-end;
 }
-.np__shape-nav button {
+.np__nav-row { display: flex; gap: 6px; align-items: center; }
+.np__nav-row button {
   width: 28px; height: 28px;
   border-radius: var(--radius-md);
   display: grid; place-items: center;
@@ -818,9 +820,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
 }
-.np__shape-nav button:hover { background: var(--bg-soft); color: var(--fg-1); border-color: var(--fg-8); }
-.np__shape-nav button iconify-icon { width: 14px; height: 14px; }
-.np__shape-name {
+.np__nav-row button:hover { background: var(--bg-soft); color: var(--fg-1); border-color: var(--fg-8); }
+.np__nav-row button iconify-icon { width: 14px; height: 14px; }
+.np__nav-name {
+  min-width: 152px; text-align: center;
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--fg-5); text-transform: uppercase;
@@ -830,8 +833,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   border-radius: var(--radius-md);
   cursor: pointer;
 }
-.np__shape-name b { color: var(--fg-1); font-weight: 600; }
-.np__shape-name:hover { background: var(--bg-soft); }
+.np__nav-name b { color: var(--fg-1); font-weight: 600; }
+.np__nav-name:hover { background: var(--bg-soft); }
 
 /* ────────────────────────────────────────────────────────────
    LIBRARY / TRACKS — hairline tabs, chips, table

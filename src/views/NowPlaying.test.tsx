@@ -76,6 +76,7 @@ vi.mock("../components/Icon", () => ({
 
 vi.mock("../components/SpectrumCanvas", () => ({
   useShape: () => ({ prev: vi.fn(), next: vi.fn(), name: () => "wave" }),
+  useRenderer: () => ({ prev: vi.fn(), next: vi.fn(), name: () => "mesh" }),
 }));
 
 beforeEach(() => {

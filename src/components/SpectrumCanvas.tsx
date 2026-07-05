@@ -21,19 +21,25 @@
    fase nem em ink density — caso contrário vira screensaver.
 
    Tinta puxada da CSS var --bg-ink-rgb (Tweaks panel). Default
-   carbono 23, 23, 23 com alpha 0.16. lineWidth 0.7.
+   carbono 23, 23, 23; alpha por renderer (renderers.ts).
 
-   Shape state persiste em localStorage via useShape().
+   Duas camadas independentes que se multiplicam:
+     shape (shapes.ts)      = campo escalar fn(u,v,t) — "o quê"
+     renderer (renderers.ts) = estratégia de pintura — "como"
+   O frame loop só despacha RENDERERS[idx].fn(...). Trocar shape
+   ou renderer nunca remonta o canvas — muda um índice reativo.
+
+   Shape/renderer persistem em localStorage via useShape() /
+   useRenderer().
    ============================================================ */
 
 import { createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
+import { RENDERERS } from "../renderers";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
 
 const SHAPE_KEY = "rustify-mock-shape";
-
-const NLINES = 110;
-const NPOINTS = 96;
+const RENDER_KEY = "rustify-mock-renderer";
 
 /** Tempo (ms) sem frame de FFT antes de considerar stream parado. */
 const FFT_STALE_MS = 250;
@@ -48,22 +54,24 @@ const ENV_TAU_MIN = 0.1;
 const ENV_TAU_MAX = 0.8;
 
 export interface SpectrumCanvasProps {
-  /** Strokes lines in this color. Override completo da CSS var. */
-  strokeStyle?: string;
   /** Class extra no <canvas>. */
   class?: string;
 }
 
-/** Reactive shape index — components can read+update this. */
-const [shapeIdx, setShapeIdx] = createSignal<number>(loadInitialShape());
-
-function loadInitialShape(): number {
+/** Índice salvo em localStorage, normalizado pro range da lista. */
+function loadInitialIdx(key: string, len: number): number {
   try {
-    const raw = parseInt(localStorage.getItem(SHAPE_KEY) ?? "0", 10);
-    if (Number.isFinite(raw)) return ((raw % SHAPES.length) + SHAPES.length) % SHAPES.length;
+    const raw = parseInt(localStorage.getItem(key) ?? "0", 10);
+    if (Number.isFinite(raw)) return ((raw % len) + len) % len;
   } catch {}
   return 0;
 }
+
+/** Reactive shape index — components can read+update this. */
+const [shapeIdx, setShapeIdx] = createSignal<number>(loadInitialIdx(SHAPE_KEY, SHAPES.length));
+
+/** Reactive renderer index — default 0 (mesh) preserva o visual antigo. */
+const [renderIdx, setRenderIdx] = createSignal<number>(loadInitialIdx(RENDER_KEY, RENDERERS.length));
 
 export function useShape() {
   return {
@@ -77,6 +85,21 @@ export function useShape() {
     next: () => useShape().set(shapeIdx() + 1),
     prev: () => useShape().set(shapeIdx() - 1),
     count: SHAPES.length,
+  };
+}
+
+export function useRenderer() {
+  return {
+    idx: renderIdx,
+    name: () => RENDERERS[renderIdx()].name,
+    set: (n: number) => {
+      const i = ((n % RENDERERS.length) + RENDERERS.length) % RENDERERS.length;
+      setRenderIdx(i);
+      try { localStorage.setItem(RENDER_KEY, String(i)); } catch {}
+    },
+    next: () => useRenderer().set(renderIdx() + 1),
+    prev: () => useRenderer().set(renderIdx() - 1),
+    count: RENDERERS.length,
   };
 }
 
@@ -206,30 +229,10 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       const reactive = 1 + ENV_GAIN * smoothedEnv;
       const amp = h * 0.17 * breath * reactive;
 
-      const topY = h * 0.04;
-      const botY = h * 0.98;
+      // Despacha pro renderer ativo — todo renderer consome o mesmo
+      // campo shapeFn(u,v,t); só o índice muda entre eles.
       const shapeFn = SHAPES[shapeIdx()].fn;
-
-      ctx.beginPath();
-      for (let i = 0; i < NLINES; i++) {
-        const v = i / (NLINES - 1);
-        const baselineY = topY + (botY - topY) * v;
-        for (let j = 0; j <= NPOINTS; j++) {
-          const u = j / NPOINTS;
-          const x = u * w;
-          const s = shapeFn(u, v, t);
-          // Fase é APENAS time-driven — nunca tocada pelo envelope.
-          const phase = i * 0.085 + t * 0.55;
-          const wave  = Math.sin(u * Math.PI * 3.2 + phase) * s * amp;
-          const drift = Math.sin(t * 0.45 + i * 0.07) * 1.4;
-          const y = baselineY - wave + drift;
-          if (j === 0) ctx.moveTo(x, y);
-          else         ctx.lineTo(x, y);
-        }
-      }
-      ctx.strokeStyle = props.strokeStyle ?? `rgba(${inkRgb}, 0.16)`;
-      ctx.lineWidth = 0.7;
-      ctx.stroke();
+      RENDERERS[renderIdx()].fn(ctx, w, h, t, shapeFn, amp, breath, inkRgb);
     }
     raf = requestAnimationFrame(frame);
 
