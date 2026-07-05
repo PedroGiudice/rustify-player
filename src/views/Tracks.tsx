@@ -21,7 +21,7 @@ export default function Tracks() {
   });
 
   const [tracks] = createResource(genre, async (g): Promise<Track[]> => {
-    try { return await libGetTracks({ genre: g ?? null, limit: 500 }); } catch { return []; }
+    try { return await libGetTracks({ genre: g ?? null }); } catch { return []; }
   });
 
   function play(t: Track) {

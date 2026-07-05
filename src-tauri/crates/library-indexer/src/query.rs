@@ -98,7 +98,10 @@ pub fn list_tracks(
         TrackOrder::LastPlayed => Some("last_played"),
         _ => None,
     };
-    let limit = filter.limit.unwrap_or(500);
+    // Sem limit explícito = biblioteca inteira. O default antigo de 500
+    // cortava a view Tracks silenciosamente (500 de N) enquanto os counts
+    // de playlist/genre agregam o total — os números não batiam na UI.
+    let limit = filter.limit.unwrap_or(100_000);
 
     let results = client.scroll_with_filter(qdrant_filter, order_key, limit, false)?;
     let mut tracks: Vec<Track> = results
