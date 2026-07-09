@@ -566,15 +566,16 @@ pub struct Recommendations {
 }
 
 pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, IndexerError> {
-    let filter = json!({"must": [{"key": "play_count", "range": {"gt": 0}}]});
-    let results = client.scroll_with_filter(Some(filter), Some("play_count"), 10, false)?;
-    let most_played: Vec<Track> = results
-        .iter()
-        .map(|(id, p)| payload_to_track(*id, p))
-        .collect();
+    // play_count/liked_at VIVOS moram em track_enrichments — record_play e
+    // toggle_like escrevem la desde a migracao. Ler de rustify_tracks (como
+    // este codigo fazia) devolvia contadores fosseis pre-migracao: a Home
+    // ignorava ~90% dos plays e TODOS os likes.
+    let played_filter = json!({"must": [{"key": "play_count", "range": {"gt": 0}}]});
+    let top_played = client.scroll_enrichments(Some(played_filter.clone()), Some("play_count"), 10)?;
+    let most_played = resolve_tracks_with_enrichments(client, &top_played);
 
     let liked_filter = json!({"must": [{"key": "liked_at", "range": {"gt": 0}}]});
-    let liked = client.scroll_with_filter(Some(liked_filter), Some("liked_at"), 10, false)?;
+    let liked = client.scroll_enrichments(Some(liked_filter), Some("liked_at"), 10)?;
     let mut seed_ids: Vec<u64> = liked.iter().map(|(id, _)| *id).collect();
     for t in most_played.iter().take(5) {
         if !seed_ids.contains(&t.id) {
@@ -583,9 +584,15 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
     }
     seed_ids.truncate(10);
 
+    // Set completo de tracks ja tocadas: o payload play_count de
+    // rustify_tracks e fossil, entao o filtro do discover consulta os
+    // enrichments (uma passada; acervo ~1.3k pontos).
+    let played_all = client.scroll_enrichments(Some(played_filter), None, 10_000)?;
+    let played_ids: std::collections::HashSet<u64> =
+        played_all.iter().map(|(id, _)| *id).collect();
+
     let based_on_top = if !seed_ids.is_empty() {
-        let positive: Vec<u64> = seed_ids.to_vec();
-        let rec_ids = client.recommend(&positive, &[], &[], 10)?;
+        let rec_ids = client.recommend(&seed_ids, &[], &[], 10)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
             if let Some(t) = get_track(client, tid)? {
@@ -600,12 +607,11 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
     };
 
     let discover = if !seed_ids.is_empty() {
-        let positive: Vec<u64> = seed_ids.to_vec();
-        let rec_ids = client.recommend(&positive, &[], &[], 20)?;
+        let rec_ids = client.recommend(&seed_ids, &[], &[], 20)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
             if let Some(t) = get_track(client, tid)? {
-                if t.play_count == 0 && !seed_ids.contains(&t.id) {
+                if !played_ids.contains(&t.id) && !seed_ids.contains(&t.id) {
                     tracks.push(t);
                 }
             }

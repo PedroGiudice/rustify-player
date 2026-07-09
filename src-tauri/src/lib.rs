@@ -260,7 +260,11 @@ fn lib_semantic_search(
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let client = lib.handle.client();
-    let embedder = library_indexer::LyricsEmbedClient::new("http://100.123.73.128:3939");
+    // Mesmo endpoint/override do setup — o literal fixo aqui ignorava o
+    // RUSTIFY_LYRICS_EMBED_URL documentado.
+    let lyrics_url = std::env::var("RUSTIFY_LYRICS_EMBED_URL")
+        .unwrap_or_else(|_| "http://100.123.73.128:3939".to_string());
+    let embedder = library_indexer::LyricsEmbedClient::new(lyrics_url);
     let vector = embedder.embed_text(&query).map_err(err)?;
     let results = client.semantic_search(&vector, limit.unwrap_or(10)).map_err(err)?;
 
@@ -3133,6 +3137,48 @@ pub struct StationStats {
     pub match_avg: Option<f32>,      // media de score das recomendacoes
 }
 
+/// Serde do wire de `seed_track_ids`: track IDs sao u64 > 2^53 e corrompem
+/// silenciosamente em JS number, entao saem como STRING (igual `Track.id`).
+/// A deserializacao aceita tambem numbers — JSONs legados em disco foram
+/// gravados assim.
+mod seed_ids_wire {
+    use serde::ser::SerializeSeq;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(ids: &[u64], s: S) -> Result<S::Ok, S::Error> {
+        let mut seq = s.serialize_seq(Some(ids.len()))?;
+        for id in ids {
+            seq.serialize_element(&id.to_string())?;
+        }
+        seq.end()
+    }
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(u64),
+        Str(String),
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u64>, D::Error> {
+        let raw = Vec::<NumOrStr>::deserialize(d)?;
+        raw.into_iter()
+            .map(|v| match v {
+                NumOrStr::Num(n) => Ok(n),
+                NumOrStr::Str(s) => s.parse::<u64>().map_err(serde::de::Error::custom),
+            })
+            .collect()
+    }
+}
+
+/// Remove duplicatas preservando a ordem de primeira ocorrencia.
+/// `behavioral_signals` retorna positives PONDERADOS (mesmo id repetido ate
+/// 5x por design) — seeds de station devem ser tracks distintas.
+fn dedup_preserving_order(ids: &[u64]) -> Vec<u64> {
+    let mut seen = std::collections::HashSet::new();
+    ids.iter().copied().filter(|id| seen.insert(*id)).collect()
+}
+
 /// Metadados completos de uma station (persiste em disco como JSON).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Station {
@@ -3143,7 +3189,7 @@ pub struct Station {
     pub desc: String,
     pub kind: StationKind,
     /// IDs das tracks seed (usados quando kind = Seed).
-    #[serde(default)]
+    #[serde(default, with = "seed_ids_wire")]
     pub seed_track_ids: Vec<u64>,
     /// Query textual de mood (usada quando kind = Mood).
     #[serde(default)]
@@ -3210,11 +3256,15 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
     match station.kind {
         StationKind::Seed => {
             // Para cada seed track, busca similares e mescla os resultados.
+            // Dedup dos seeds: JSONs legados podem ter ids repetidos (bug do
+            // take(5) sobre positives ponderados) — sem dedup o per_seed
+            // encolhe e a mesma vizinhanca e consultada N vezes.
             let client = lib.handle.client();
+            let seeds = dedup_preserving_order(&station.seed_track_ids);
             let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
             let mut tracks = Vec::new();
-            let per_seed = (limit / station.seed_track_ids.len().max(1)).max(5);
-            for &sid in &station.seed_track_ids {
+            let per_seed = (limit / seeds.len().max(1)).max(5);
+            for &sid in &seeds {
                 if let Ok(recs) = client.recommend(&[sid], &[], &[], per_seed) {
                     for (track_id, _score) in recs {
                         if seen.insert(track_id) {
@@ -3250,6 +3300,15 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
                 if let Ok(Some(mut t)) = lib.handle.track(track_id) {
                     if let Some(rel) = &t.album_cover_path {
                         t.album_cover_path = Some(lib.cache_dir.join(rel));
+                    }
+                    // Mesmo filtro client-side do lib_mood_search: o scroll de
+                    // enrichments nao conhece genre (payload de rustify_tracks) —
+                    // sem isto, station mood com termo de genero ignorava o genero.
+                    if let Some(ref genre_filter) = filters.genre {
+                        match &t.genre_name {
+                            Some(g) if g == genre_filter => {}
+                            _ => continue,
+                        }
                     }
                     tracks.push(t);
                 }
@@ -3370,8 +3429,13 @@ fn maybe_seed_default_station(lib: &Library) {
     }
 
     // Pega as tracks mais tocadas do behavioral_signals como seeds.
+    // Dedup obrigatorio: os positives vem PONDERADOS (id repetido ate 5x) —
+    // take(5) cru ja produziu uma Your Mix com a mesma track 5 vezes.
     let seed_ids: Vec<u64> = match lib.handle.behavioral_signals() {
-        Ok((history, _)) => history.into_iter().take(5).collect(),
+        Ok((history, _)) => dedup_preserving_order(&history)
+            .into_iter()
+            .take(5)
+            .collect(),
         Err(_) => return,
     };
     if seed_ids.is_empty() {
@@ -3400,6 +3464,42 @@ fn maybe_seed_default_station(lib: &Library) {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    // ── Stations: wire de seed_track_ids e dedup de seeds ──────────────────
+
+    #[test]
+    fn station_seed_ids_serializam_como_string_e_leem_number_legado() {
+        // JSONs legados em disco tem seed_track_ids como numbers — precisam
+        // continuar deserializando.
+        let legacy = r#"{
+            "id": "x", "name": "X", "icon": "i", "tone": "t", "desc": "",
+            "kind": "seed",
+            "seed_track_ids": [3940784406639047387, 42],
+            "query": null,
+            "stats": { "played": 0, "last_played_at": null, "match_avg": null }
+        }"#;
+        let s: Station = serde_json::from_str(legacy).expect("deserializa legado");
+        assert_eq!(s.seed_track_ids, vec![3940784406639047387u64, 42]);
+
+        // No wire (e nos JSONs novos) os IDs saem como STRING — u64 > 2^53
+        // corrompe em JS number.
+        let v = serde_json::to_value(&s).expect("serializa");
+        assert_eq!(v["seed_track_ids"][0], serde_json::json!("3940784406639047387"));
+        assert_eq!(v["seed_track_ids"][1], serde_json::json!("42"));
+
+        // Roundtrip: strings deserializam de volta pro mesmo Vec<u64>.
+        let s2: Station = serde_json::from_value(v).expect("deserializa strings");
+        assert_eq!(s2.seed_track_ids, s.seed_track_ids);
+    }
+
+    #[test]
+    fn dedup_preserving_order_remove_duplicatas_mantendo_ordem() {
+        // behavioral_signals retorna positives PONDERADOS (mesmo id repetido
+        // ate 5x) — seeds de station precisam ser distintos.
+        let input = vec![7u64, 7, 7, 3, 7, 3, 9];
+        assert_eq!(dedup_preserving_order(&input), vec![7, 3, 9]);
+        assert_eq!(dedup_preserving_order(&[]), Vec::<u64>::new());
+    }
 
     // YAML minimo representando um tema legado (vocabulario surfaces/text/accent/signal).
     // Usa r##"..."## para nao conflitar com aspas dentro de strings hex ("#aabbcc").

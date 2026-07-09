@@ -19,6 +19,8 @@ import {
   libCreateStation,
   Station,
 } from "../tauri";
+import { player, setQueue } from "../store/player";
+import { playTrack } from "../components/PlayerBar";
 
 // ── Tipo de tone ─────────────────────────────────────────────────
 type Tone =
@@ -193,7 +195,14 @@ export default function Stations() {
 
   async function handleResume(id: string) {
     try {
-      await libPlayStation(id);
+      // lib_play_station atualiza stats E retorna as tracks geradas —
+      // a fila entra em scope "curated" (shuffle embaralha o contexto,
+      // nao vira radio) e a primeira track toca imediatamente.
+      const tracks = await libPlayStation(id);
+      if (tracks.length > 0) {
+        setQueue(tracks, 0, "curated");
+        playTrack(tracks[0], "station");
+      }
       // Refetch para atualizar estatisticas de played/last_played_at.
       refetch();
     } catch (err) {
@@ -202,15 +211,19 @@ export default function Stations() {
   }
 
   async function handleNewFromCurrent() {
+    // Sem track tocando nao ha seed — nada a criar.
+    const current = player.currentTrack;
+    if (!current) return;
     try {
-      // Stub MVP: cria station tipo mood com query vazia.
-      // Idealmente usaria a track atual do player como seed.
       await libCreateStation({
-        name: "New station",
+        name: `${current.title} radio`,
         kind: "seed",
+        seedTrackIds: [current.id],
         icon: "lucide:radio",
         tone: "tone-sky",
-        desc: "criada a partir da track atual",
+        desc: current.artist_name
+          ? `a partir de ${current.title} — ${current.artist_name}`
+          : `a partir de ${current.title}`,
       });
       refetch();
     } catch (err) {

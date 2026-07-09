@@ -354,7 +354,9 @@ export interface Station {
   tone: string;
   desc: string;
   kind: StationKind;
-  seed_track_ids: number[];
+  // Track IDs sao u64 > 2^53: viajam como STRING no wire (serde custom no
+  // backend), igual Track.id — number aqui corromperia silenciosamente.
+  seed_track_ids: string[];
   query: string | null;
   stats: StationStats;
 }
@@ -372,7 +374,7 @@ export const libGetStation = (id: string, limit?: number) =>
 export const libCreateStation = (opts: {
   name: string;
   kind: StationKind;
-  seedTrackIds?: number[];
+  seedTrackIds?: string[];
   query?: string;
   icon?: string;
   tone?: string;

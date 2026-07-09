@@ -1,7 +1,35 @@
 # Auditoria: motor de inteligência (stations/autoplay/recommend) + mistério das 1500
 
 **Data:** 2026-07-09
-**Estado:** diagnóstico completo, NADA corrigido ainda. Próxima sessão (via `claude --agent rustify-player-dev`) executa os fixes.
+**Estado:** diagnóstico completo; **fixes #1-#6 EXECUTADOS na v0.2.47** (mesma
+sessão, TDD, gates verdes). Pendentes: #7 (UI de degradação do autoplay),
+#8 (match_avg), #9 (pipeline de enrichment órfão — decisão de produto),
+#10 (set_enrichment sem lock — tech debt).
+
+## Fixes v0.2.47 (executados)
+
+1. Station play toca: `handleResume` usa o `Vec<Track>` (setQueue "curated" +
+   playTrack origin "station"). Testes novos em Stations.test.tsx.
+2. `recommendations()` lê `track_enrichments` (dados vivos: 910 plays, 65
+   likes); discover filtra por set real de tracks tocadas.
+3. Your Mix: `your-mix.json` regravado NA CMR-AUTO com top 5 seeds DISTINTOS
+   dos signals atuais (4x J. Cole + 99 Neighbors) — efeito imediato; código
+   ganhou `dedup_preserving_order` em maybe_seed + generate (positives são
+   ponderados por design).
+4. New from current track: usa `player.currentTrack` como seed; sem track não
+   cria. BUG EXTRA descoberto: `seed_track_ids` viajava como number (u64>2^53
+   corrompe em JS) — agora serde string no wire, deserialização aceita
+   numbers legados dos JSONs em disco.
+5. `lib_semantic_search` respeita `RUSTIFY_LYRICS_EMBED_URL` (literal removido).
+6. Branch mood de `generate_station_tracks` aplica filtro de genre
+   client-side (paridade com lib_mood_search).
+
+Nota de infra: teste de integração `lyrics_embed` falhou por cogmem travado no
+caminho de embed (health ok, embed >90s) — restart do serviço resolveu; não
+relacionado ao diff. Nota de teste: mocks de invoke via `window.__TAURI__` em
+runtime NÃO funcionam (tauri.ts captura invoke no load) — usar
+`vi.mock("../tauri")`; o teste antigo do grid passava por coincidência
+(placeholders também têm `.st-card`).
 
 ## 1. Mistério das 1500 músicas — RESOLVIDO, não há bug
 

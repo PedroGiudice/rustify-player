@@ -12,6 +12,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup } from "@solidjs/testing-library";
 import type { Station } from "../tauri";
 
+// Mocks module-level: tauri.ts captura window.__TAURI__.core.invoke no LOAD
+// (test-setup stub, sempre undefined) — substituir invoke em runtime NAO
+// funciona. Mockamos os wrappers usados pela view; o resto segue real.
+vi.mock("../components/PlayerBar", () => ({ playTrack: vi.fn() }));
+vi.mock("../tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../tauri")>();
+  return {
+    ...actual,
+    libListStations: vi.fn(async () => []),
+    libPlayStation: vi.fn(async () => []),
+    libCreateStation: vi.fn(async () => null),
+  };
+});
+import * as tauriApi from "../tauri";
+import { playTrack } from "../components/PlayerBar";
+
 // ── 6 stations de exemplo (simula resposta do backend) ──────────
 const MOCK_STATIONS: Station[] = [
   {
@@ -21,7 +37,7 @@ const MOCK_STATIONS: Station[] = [
     tone: "tone-lavender",
     desc: "ambient · drone · sleepless",
     kind: "seed",
-    seed_track_ids: [1, 2, 3],
+    seed_track_ids: ["1", "2", "3"],
     query: null,
     stats: { played: 312, last_played_at: null, match_avg: 0.97 },
   },
@@ -32,7 +48,7 @@ const MOCK_STATIONS: Station[] = [
     tone: "tone-bone",
     desc: "modern classical · acoustic · low tempo",
     kind: "seed",
-    seed_track_ids: [4, 5, 6, 7],
+    seed_track_ids: ["4", "5", "6", "7"],
     query: null,
     stats: { played: 184, last_played_at: null, match_avg: 0.91 },
   },
@@ -43,7 +59,7 @@ const MOCK_STATIONS: Station[] = [
     tone: "tone-paper",
     desc: "field recording · industrial · long form",
     kind: "seed",
-    seed_track_ids: [8, 9],
+    seed_track_ids: ["8", "9"],
     query: null,
     stats: { played: 54, last_played_at: null, match_avg: 0.88 },
   },
@@ -54,7 +70,7 @@ const MOCK_STATIONS: Station[] = [
     tone: "tone-sky",
     desc: "winter strings · cold piano · church reverb",
     kind: "seed",
-    seed_track_ids: [10, 11, 12, 13, 14],
+    seed_track_ids: ["10", "11", "12", "13", "14"],
     query: null,
     stats: { played: 96, last_played_at: null, match_avg: 0.93 },
   },
@@ -76,7 +92,7 @@ const MOCK_STATIONS: Station[] = [
     tone: "tone-rose",
     desc: "deep ambient · brackish · slow drone",
     kind: "seed",
-    seed_track_ids: [15, 16, 17],
+    seed_track_ids: ["15", "16", "17"],
     query: null,
     stats: { played: 72, last_played_at: null, match_avg: 0.90 },
   },
@@ -129,7 +145,8 @@ afterEach(() => {
 
 import Stations, { SeedChips, StationCard } from "./Stations";
 import { createSignal } from "solid-js";
-import { waitFor } from "@solidjs/testing-library";
+import { fireEvent, waitFor } from "@solidjs/testing-library";
+import { player, setQueue } from "../store/player";
 
 describe("Stations view", () => {
   it("renderiza heading + stats", async () => {
@@ -241,6 +258,95 @@ describe("Stations view", () => {
     // dentro do wrapper do LazyStationViz — borda/bg/radius duplicados.
     expect(container.querySelectorAll(".st-feature__visual .st-feature__visual").length).toBe(0);
     expect(container.querySelector(".st-feature__visual canvas")).toBeTruthy();
+  });
+});
+
+// ── Tracks retornadas pelo lib_play_station (mock) ───────────────
+// IDs como STRING: track IDs sao u64 > 2^53 e viajam como string no wire.
+const STATION_TRACKS = [
+  { id: "3940784406639047387", title: "Alpha", path: "/m/a.flac", duration_ms: 180000, artist_name: null, album_title: null, album_cover_path: null, album_year: null },
+  { id: "1655525807613953999", title: "Beta", path: "/m/b.flac", duration_ms: 200000, artist_name: null, album_title: null, album_cover_path: null, album_year: null },
+] as any[];
+
+describe("Resume station inicia playback (fix: tracks eram descartadas)", () => {
+  afterEach(() => {
+    // restaura defaults da factory (clearAllMocks nao remove mockResolvedValue)
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    vi.mocked(tauriApi.libPlayStation).mockImplementation(async () => []);
+  });
+
+  it("coloca as tracks retornadas na fila com scope curated e toca a primeira", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libPlayStation).mockImplementation(async () => STATION_TRACKS as any);
+    setQueue([], 0); // reset do singleton entre testes
+    const { container } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(container.querySelector(".st-feature__cta")).toBeTruthy();
+    });
+    fireEvent.click(container.querySelector(".st-feature__cta")!);
+    await waitFor(() => {
+      expect(player.queue.length).toBe(2);
+    });
+    expect(player.queueScope).toBe("curated");
+    expect(player.currentTrack?.id).toBe("3940784406639047387");
+    expect(vi.mocked(playTrack)).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "3940784406639047387" }),
+      expect.anything(),
+    );
+  });
+
+  it("station vazia (0 tracks) nao mexe na fila nem toca", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libPlayStation).mockImplementation(async () => []);
+    setQueue([], 0);
+    const { container } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(container.querySelector(".st-feature__cta")).toBeTruthy();
+    });
+    fireEvent.click(container.querySelector(".st-feature__cta")!);
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libPlayStation)).toHaveBeenCalled();
+    });
+    expect(player.queue.length).toBe(0);
+    expect(player.currentTrack).toBeNull();
+    expect(vi.mocked(playTrack)).not.toHaveBeenCalled();
+  });
+});
+
+describe("New from current track usa a track atual como seed (fix: stub)", () => {
+  afterEach(() => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+  });
+
+  it("cria station kind seed com seedTrackIds = [id da track atual] como string", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    setQueue([STATION_TRACKS[0]], 0); // currentTrack = Alpha
+    const { getByText } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(getByText(/New from current track/)).toBeTruthy();
+    });
+    fireEvent.click(getByText(/New from current track/));
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libCreateStation)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "seed",
+          seedTrackIds: ["3940784406639047387"],
+        }),
+      );
+    });
+  });
+
+  it("sem track atual, nao cria station", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    setQueue([], 0); // currentTrack = null
+    const { getByText } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(getByText(/New from current track/)).toBeTruthy();
+    });
+    fireEvent.click(getByText(/New from current track/));
+    // da tempo do handler async rodar
+    await new Promise((r) => setTimeout(r, 20));
+    expect(vi.mocked(tauriApi.libCreateStation)).not.toHaveBeenCalled();
   });
 });
 

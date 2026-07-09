@@ -1,48 +1,42 @@
 ---
-name: rustify-player-dev
-description: |
-  Use this agent when working on the Rustify Player project — a Tauri 2.x
-  desktop music player with Rust workspace backend (audio-engine on GStreamer
-  + DSP chain, library-indexer with local Qdrant sidecar) and SolidJS
-  frontend. Handles feature development, bug fixes, audio/DSP debugging,
-  theming, the intelligence engine (stations/autoplay/enrichments), and the
-  GitHub rolling release workflow. Examples:
+name: "rustify-player-dev"
+description: "Use this agent when working on the Rustify Player project — a Tauri 2.x desktop music player with Rust workspace backend (audio-engine on GStreamer + DSP chain, library-indexer with local Qdrant sidecar) and SolidJS frontend. Handles feature development, bug fixes, audio/DSP debugging, theming, the intelligence engine (stations/autoplay/enrichments), and the GitHub rolling release workflow. Examples:
 
-  <example>
-  Context: User reports an audio problem in the app.
-  user: "o som ta distorcido em tracks que antes tocavam limpas"
-  assistant: "Vou usar o rustify-player-dev pra diagnosticar por medição (pw-record + A/B via IPC) antes de tocar em código."
-  <commentary>
-  Bug de áudio exige o conhecimento da cadeia DSP (EQ -> norm_gain -> Limiter -> Bass) e do método de medição objetiva no app real da cmr-auto.
-  </commentary>
-  </example>
+<example>
+Context: User reports an audio problem in the app.
+user: \"o som ta distorcido em tracks que antes tocavam limpas\"
+assistant: \"Vou usar o rustify-player-dev pra diagnosticar por medição (pw-record + A/B via IPC) antes de tocar em código.\"
+<commentary>
+Bug de áudio exige o conhecimento da cadeia DSP (EQ -> norm_gain -> Limiter -> Bass) e do método de medição objetiva no app real da cmr-auto.
+</commentary>
+</example>
 
-  <example>
-  Context: User wants a new UI feature.
-  user: "quero um seletor de renderer no Now Playing"
-  assistant: "Vou usar o rustify-player-dev — view SolidJS em src/views/NowPlaying.tsx, estilos no extractor-lab.css, persistência em localStorage."
-  <commentary>
-  Feature de frontend exige as convenções do projeto: Solid stores, CSS único, tweaks/temas.
-  </commentary>
-  </example>
+<example>
+Context: User wants a new UI feature.
+user: \"quero um seletor de renderer no Now Playing\"
+assistant: \"Vou usar o rustify-player-dev — view SolidJS em src/views/NowPlaying.tsx, estilos no extractor-lab.css, persistência em localStorage.\"
+<commentary>
+Feature de frontend exige as convenções do projeto: Solid stores, CSS único, tweaks/temas.
+</commentary>
+</example>
 
-  <example>
-  Context: Session accumulated code changes that compile.
-  user: "fecha essa leva e me entrega pra testar"
-  assistant: "Vou rodar os gates (typecheck, npm test, cargo test), depois scripts/release.sh, e te lembrar do dpkg -i + restart na cmr-auto."
-  <commentary>
-  O fluxo de entrega é fixo: gates -> release.sh na VM -> dpkg pelo usuário. Compilação intermediária é desperdício.
-  </commentary>
-  </example>
+<example>
+Context: Session accumulated code changes that compile.
+user: \"fecha essa leva e me entrega pra testar\"
+assistant: \"Vou rodar os gates (typecheck, npm test, cargo test), depois scripts/release.sh, e te lembrar do dpkg -i + restart na cmr-auto.\"
+<commentary>
+O fluxo de entrega é fixo: gates -> release.sh na VM -> dpkg pelo usuário. Compilação intermediária é desperdício.
+</commentary>
+</example>
 
-  <example>
-  Context: User questions recommendation quality.
-  user: "as stations tao recomendando coisa sem pé nem cabeça"
-  assistant: "Vou usar o rustify-player-dev pra auditar o pipeline: stations JSON, enrichments no Qdrant, autoplay_next e os play_events."
-  <commentary>
-  O motor de inteligência (Qdrant local da cmr-auto: rustify_tracks/play_events/track_enrichments) é parte do domínio do agente.
-  </commentary>
-  </example>
+<example>
+Context: User questions recommendation quality.
+user: \"as stations tao recomendando coisa sem pé nem cabeça\"
+assistant: \"Vou usar o rustify-player-dev pra auditar o pipeline: stations JSON, enrichments no Qdrant, autoplay_next e os play_events.\"
+<commentary>
+O motor de inteligência (Qdrant local da cmr-auto: rustify_tracks/play_events/track_enrichments) é parte do domínio do agente.
+</commentary>
+</example>"
 model: inherit
 color: blue
 memory: project
