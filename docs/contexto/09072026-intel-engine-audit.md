@@ -2,9 +2,28 @@
 
 **Data:** 2026-07-09
 **Estado:** diagnóstico completo; **fixes #1-#6 EXECUTADOS na v0.2.47** (mesma
-sessão, TDD, gates verdes). Pendentes: #7 (UI de degradação do autoplay),
-#8 (match_avg), #9 (pipeline de enrichment órfão — decisão de produto),
+sessão, TDD, gates verdes) e **#9 RESOLVIDO operacionalmente** (ver abaixo).
+Pendentes: #7 (UI de degradação do autoplay), #8 (match_avg),
 #10 (set_enrichment sem lock — tech debt).
+
+## Enrichment #9 — resolvido com Opus (Gemini morto por decisão do usuário)
+
+As 372 tracks sem mood/energy foram anotadas em 2026-07-09 por **15 subagentes
+Opus em paralelo** (batches de 25, via subscription — SEM API key), com o
+vocabulário FECHADO extraído dos 934 já anotados (24 moods, 14 activities,
+inglês — os dados reais; o prompt PT do script Gemini antigo nunca foi o que
+chegou ao Qdrant). Validação central: 372/372 dentro do vocabulário, ranges
+ok. Upsert na cmr-auto: 259 set_payload (merge, preservando play_count) + 113
+pontos novos. **Cobertura: 1306/1306 tracks vivas com mood_tags.**
+Artifact: `data/enrichments/2026-07-09-opus-mood-annotations.json` (IDs reais).
+Smoke test no app real: `lib_mood_search("sensual")` retorna faixas
+recém-anotadas (Mochakk/PAWSA/DJ Arana). Processo replicável: extrair
+faltantes do Qdrant → batches com índice local (nunca retranscrever u64 em
+prompt) → agentes Opus com vocabulário fechado → validador → merge/upsert.
+Scripts gemini-* em scripts/ estão MORTOS como pipeline (manter só como
+referência histórica ou deletar).
+Órfãos conhecidos: 9 pontos de enrichment de tracks removidas (inofensivos,
+filtrados na resolução de track).
 
 ## Fixes v0.2.47 (executados)
 
