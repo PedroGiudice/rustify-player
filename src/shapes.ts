@@ -2,10 +2,13 @@
    shapes.ts — Spectrum shape functions (Now Playing background).
 
    Each shape maps (u, v, t) ∈ [0,1]² × seconds → amplitude ∈ [0,1].
-   18 shapes consumidos pelo SpectrumCanvas (background global).
+   23 shapes consumidos pelo SpectrumCanvas (background global).
    Shape = "o quê" (campo escalar); renderers.ts = "como" pintar.
    Valores copiados 1:1 do handoff (docs/design-refs/
    design_handoff_persistent_background) — não reinterpretar.
+   Regra de performance do handoff: todo shape é O(1) por ponto
+   (punhado de sin/exp, zero loop em fn) — mantém 60fps em
+   qualquer renderer.
    ============================================================ */
 
 export type ShapeFn = (u: number, v: number, t: number) => number;
@@ -187,6 +190,54 @@ export const SHAPES: Shape[] = [
       const beam = th > Math.PI ? 2 * Math.PI - th : th;
       const sweep = Math.exp(-beam * beam * 3);
       return Math.exp(-r * r * 3) * (0.15 + 0.85 * sweep);
+    },
+  },
+  // ── família gerativa (Field Explorer, handoff 2026-07-09) ──
+  // "As vencedoras do batch de exploração" — validadas a 60fps
+  // no Field Explorer.html. Campos O(1) por ponto.
+  {
+    name: "interference",
+    fn: (u, v, t) => {
+      // dois pontos-fonte se batendo — topografia nervosa
+      const d1 = Math.hypot(u - 0.32, v - 0.4);
+      const d2 = Math.hypot(u - 0.7, v - 0.62);
+      return 0.5 + 0.5 * Math.sin(d1 * 34 - t * 0.6) * Math.sin(d2 * 30 + t * 0.4);
+    },
+  },
+  {
+    name: "spiral",
+    fn: (u, v, t) => {
+      // espiral logarítmica com bico de tensão
+      const du = u - 0.5, dv = v - 0.5;
+      const r = Math.hypot(du, dv), th = Math.atan2(dv, du);
+      return 0.5 + 0.5 * Math.sin(th * 3 + r * 26 - t * 0.7);
+    },
+  },
+  {
+    name: "turbulence",
+    fn: (u, v, t) => {
+      // fbm barato de 3 oitavas — cordilheira caótica
+      const s = Math.sin(u * 7 + Math.sin(v * 5 + t * 0.3)) * 0.5
+              + Math.sin(v * 11 + 2 - t * 0.2) * 0.3
+              + Math.sin((u + v) * 17) * 0.2;
+      return 0.5 + 0.5 * s;
+    },
+  },
+  {
+    name: "cells",
+    fn: (u, v, t) => {
+      // quilt orgânico, |sin·cos|^0.6
+      const g = Math.abs(Math.sin(u * Math.PI * 7 + t * 0.2) * Math.cos(v * Math.PI * 7 - t * 0.15));
+      return Math.pow(g, 0.6);
+    },
+  },
+  {
+    name: "warp",
+    fn: (u, v, t) => {
+      // domain-warp de senoides
+      const wu = u + 0.18 * Math.sin(v * 6 + t * 0.3);
+      const wv = v + 0.18 * Math.sin(u * 5 - t * 0.2);
+      return 0.5 + 0.5 * Math.sin(wu * Math.PI * 5) * Math.cos(wv * Math.PI * 4);
     },
   },
 ];

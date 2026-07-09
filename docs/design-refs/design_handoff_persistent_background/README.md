@@ -11,9 +11,9 @@ características:
 2. **Separação "o quê" × "como"** — o desenho tem duas camadas independentes
    que se multiplicam:
    - **shape** = um campo escalar `fn(u,v,t) → [0,1]` (onde há energia no plano).
-     **18** shapes.
+     **23** shapes.
    - **renderer** = como pintar esse campo. **5** renderers.
-   - 18 × 5 = **90 combinações**, cada uma persistida em localStorage.
+   - 23 × 5 = **115 combinações**, cada uma persistida em localStorage.
 
 ## About the Design Files
 
@@ -40,7 +40,7 @@ CAMPO (o quê)              ESTRATÉGIA (como)           LOOP
 ────────────              ─────────────────           ────
 SHAPES[]                  RENDERERS[]                 rAF único, canvas
   fn(u,v,t) → [0,1]         draw(ctx, …, shapeFn)      global que nunca
-  (18 campos)               (5 estratégias)            remonta; calcula
+  (23 campos)               (5 estratégias)            remonta; calcula
                                                        breath/amp e chama
                                                        RENDERERS[i].draw
 ```
@@ -54,7 +54,7 @@ SHAPES[]                  RENDERERS[]                 rAF único, canvas
   `0` (`mesh`), o desenho original — logo o comportamento antigo é preservado
   por padrão.
 
-## Shapes (18)
+## Shapes (23)
 
 Assinatura: `fn: (u, v, t) => number`, `u,v ∈ [0,1]²`, `t` em segundos,
 retorno logicamente em `[0,1]`. Código-fonte de cada função: bloco `const
@@ -151,3 +151,24 @@ usar a fonte já embarcada.
   dispatch shape × renderer, os dois seletores, keybindings e o HUD "Reactivity
   Split" (route / bg mode / canvas mounts / frames / renderer / shape). **Fonte
   da verdade** para valores, funções e comportamento.
+
+## Atualização 2026-07-09 — família gerativa (Field Explorer)
+
+O handoff remoto (claude.ai/design, projeto rustify-player) ganhou 5 shapes
+novas — família "gerativa / Field Explorer", as vencedoras do batch de
+exploração, todas validadas a 60fps: `interference` (dois pontos-fonte,
+topografia nervosa), `spiral` (espiral logarítmica), `turbulence` (fbm barato
+de 3 oitavas), `cells` (quilt orgânico `|sin·cos|^0.6`), `warp` (domain-warp
+de senoides). Implementadas em `src/shapes.ts` na v0.2.48, APÓS as 18
+existentes (índice persiste em localStorage — ordem é contrato).
+
+Arquivos adicionais no projeto remoto (não sincronizados aqui por peso):
+- `Field Explorer.html` — bancada de validação com HUD de FPS real,
+  verts/frame e frame-ms. Teclado: `[ ]` shape · `< >` render · `space`
+  pausa · `b` beat-sync.
+- `covers/` — 18 renders estáticos 1200×1200 do motor. Ideia de produto
+  registrada: cover art gerativa determinística por hash do álbum
+  (álbum sem capa → mesma shape sempre).
+- Beat-sync: fórmula fechada no README remoto
+  (`reactive = 1 + SYNC · ((rmsEnergy − 0.7) + lowBandMag · 0.32)`,
+  modula só amplitude/tinta, nunca fase).
