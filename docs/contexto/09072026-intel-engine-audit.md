@@ -23,7 +23,14 @@ prompt) → agentes Opus com vocabulário fechado → validador → merge/upsert
 Scripts gemini-* em scripts/ estão MORTOS como pipeline (manter só como
 referência histórica ou deletar).
 Órfãos conhecidos: 9 pontos de enrichment de tracks removidas (inofensivos,
-filtrados na resolução de track).
+filtrados na resolução de track; nenhum tem mood_tags).
+
+**Update 2026-07-11:** as 72 tracks da leva de 09/07 (indexadas pelo boot
+scan, acervo → 1378) foram anotadas com o mesmo pipeline (3 subagentes Opus,
+batches de 25 com índice local, vocabulário fechado, validação 72/72, upsert
+63 pontos novos + 9 set_payload merge preservando play_count).
+**Cobertura: 1378/1378 tracks vivas com mood_tags.**
+Artifact: `data/enrichments/2026-07-11-opus-mood-annotations-leva72.json`.
 
 ## Fixes v0.2.47 (executados)
 

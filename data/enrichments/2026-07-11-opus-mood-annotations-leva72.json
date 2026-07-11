@@ -1,0 +1,1249 @@
+{
+ "generated_at": "2026-07-11",
+ "annotated_by": "opus-4.8-batch-2026-07-11",
+ "description": "Anotacao mood/activity/energy/valence das 72 tracks da leva 2026-07-09 (channel ORANGE, Swimming, KIDS SEE GHOSTS, East Atlanta Love Letter, Bas, ye + 3 eletronicas). Vocabulario fechado dos 1306 ja anotados. 63 pontos novos + 9 set_payload merge.",
+ "annotations": [
+  {
+   "id": 201677013499452212,
+   "artist": "Frank Ocean",
+   "title": "Pink Matter (feat. André 3000)",
+   "mood_tags": [
+    "dreamy",
+    "sensual",
+    "nostalgic",
+    "bittersweet"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance",
+    "study"
+   ],
+   "energy": 0.4,
+   "valence": 0.45
+  },
+  {
+   "id": 357077365788655027,
+   "artist": "Frank Ocean",
+   "title": "Sweet Life",
+   "mood_tags": [
+    "chill",
+    "nostalgic",
+    "dreamy",
+    "groovy"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving",
+    "social"
+   ],
+   "energy": 0.45,
+   "valence": 0.6
+  },
+  {
+   "id": 463898418136488069,
+   "artist": "6LACK",
+   "title": "Seasons feat. Khalid",
+   "mood_tags": [
+    "melancholic",
+    "bittersweet",
+    "chill",
+    "dreamy"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance",
+    "commute"
+   ],
+   "energy": 0.4,
+   "valence": 0.35
+  },
+  {
+   "id": 1538639158472092112,
+   "artist": "Mac Miller",
+   "title": "Wings",
+   "mood_tags": [
+    "confident",
+    "chill",
+    "groovy",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving",
+    "study"
+   ],
+   "energy": 0.5,
+   "valence": 0.55
+  },
+  {
+   "id": 1643665101491222029,
+   "artist": "dvsn",
+   "title": "Hallucinations",
+   "mood_tags": [
+    "sensual",
+    "romantic",
+    "intense",
+    "dreamy"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.55,
+   "valence": 0.5
+  },
+  {
+   "id": 1792588845346803477,
+   "artist": "Jhené Aiko",
+   "title": "While We're Young",
+   "mood_tags": [
+    "nostalgic",
+    "bittersweet",
+    "peaceful",
+    "romantic"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance",
+    "sleep"
+   ],
+   "energy": 0.35,
+   "valence": 0.5
+  },
+  {
+   "id": 2303395923609886105,
+   "artist": "KIDS SEE GHOSTS",
+   "title": "Feel the Love",
+   "mood_tags": [
+    "uplifting",
+    "triumphant",
+    "energetic",
+    "confident"
+   ],
+   "activity_tags": [
+    "driving",
+    "workout",
+    "party"
+   ],
+   "energy": 0.75,
+   "valence": 0.8
+  },
+  {
+   "id": 2419347222652321482,
+   "artist": "Frank Ocean",
+   "title": "Super Rich Kids (feat. Earl Sweatshirt)",
+   "mood_tags": [
+    "nostalgic",
+    "bittersweet",
+    "raw",
+    "melancholic"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving",
+    "social"
+   ],
+   "energy": 0.45,
+   "valence": 0.4
+  },
+  {
+   "id": 2582581517373296929,
+   "artist": "JID",
+   "title": "151 Rum",
+   "mood_tags": [
+    "intense",
+    "confident",
+    "driving",
+    "raw"
+   ],
+   "activity_tags": [
+    "workout",
+    "driving",
+    "party"
+   ],
+   "energy": 0.8,
+   "valence": 0.55
+  },
+  {
+   "id": 2595126703014598562,
+   "artist": "Recondite",
+   "title": "Levo",
+   "mood_tags": [
+    "dark",
+    "dreamy",
+    "driving",
+    "focus"
+   ],
+   "activity_tags": [
+    "focus",
+    "driving",
+    "study"
+   ],
+   "energy": 0.6,
+   "valence": 0.35
+  },
+  {
+   "id": 3056873411962250635,
+   "artist": "Bas",
+   "title": "Spaceships + Rockets",
+   "mood_tags": [
+    "confident",
+    "groovy",
+    "chill",
+    "driving"
+   ],
+   "activity_tags": [
+    "driving",
+    "party",
+    "social"
+   ],
+   "energy": 0.6,
+   "valence": 0.6
+  },
+  {
+   "id": 3592113398471166546,
+   "artist": "6LACK",
+   "title": "Let Her Go",
+   "mood_tags": [
+    "melancholic",
+    "bittersweet",
+    "raw",
+    "dark"
+   ],
+   "activity_tags": [
+    "chill",
+    "commute",
+    "romance"
+   ],
+   "energy": 0.45,
+   "valence": 0.3
+  },
+  {
+   "id": 4417462622435785384,
+   "artist": "Bas",
+   "title": "Purge",
+   "mood_tags": [
+    "confident",
+    "driving",
+    "intense",
+    "aggressive"
+   ],
+   "activity_tags": [
+    "workout",
+    "driving",
+    "party"
+   ],
+   "energy": 0.75,
+   "valence": 0.5
+  },
+  {
+   "id": 4440580129965515779,
+   "artist": "Frank Ocean",
+   "title": "Sierra Leone",
+   "mood_tags": [
+    "dreamy",
+    "nostalgic",
+    "bittersweet",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving",
+    "study"
+   ],
+   "energy": 0.4,
+   "valence": 0.45
+  },
+  {
+   "id": 4745651646590597221,
+   "artist": "KIDS SEE GHOSTS",
+   "title": "Reborn",
+   "mood_tags": [
+    "uplifting",
+    "triumphant",
+    "peaceful",
+    "dreamy"
+   ],
+   "activity_tags": [
+    "focus",
+    "meditation",
+    "chill"
+   ],
+   "energy": 0.5,
+   "valence": 0.75
+  },
+  {
+   "id": 5033492125622535987,
+   "artist": "6LACK",
+   "title": "Nonchalant",
+   "mood_tags": [
+    "confident",
+    "sensual",
+    "chill",
+    "groovy"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance",
+    "social"
+   ],
+   "energy": 0.5,
+   "valence": 0.5
+  },
+  {
+   "id": 5294469615619459235,
+   "artist": "KIDS SEE GHOSTS",
+   "title": "Freeee (Ghost Town, Pt. 2)",
+   "mood_tags": [
+    "triumphant",
+    "energetic",
+    "intense",
+    "rebellious"
+   ],
+   "activity_tags": [
+    "workout",
+    "driving",
+    "party"
+   ],
+   "energy": 0.8,
+   "valence": 0.7
+  },
+  {
+   "id": 5490149128329522095,
+   "artist": "Mac Miller",
+   "title": "What's the Use?",
+   "mood_tags": [
+    "chill",
+    "dreamy",
+    "groovy",
+    "melancholic"
+   ],
+   "activity_tags": [
+    "chill",
+    "party",
+    "driving"
+   ],
+   "energy": 0.5,
+   "valence": 0.5
+  },
+  {
+   "id": 5669506125437187108,
+   "artist": "Frank Ocean",
+   "title": "Not Just Money",
+   "mood_tags": [
+    "raw",
+    "confident",
+    "groovy",
+    "dark"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving",
+    "social"
+   ],
+   "energy": 0.5,
+   "valence": 0.45
+  },
+  {
+   "id": 5758058504391528971,
+   "artist": "Frank Ocean",
+   "title": "Lost",
+   "mood_tags": [
+    "groovy",
+    "dreamy",
+    "bittersweet",
+    "driving"
+   ],
+   "activity_tags": [
+    "driving",
+    "chill",
+    "social"
+   ],
+   "energy": 0.55,
+   "valence": 0.5
+  },
+  {
+   "id": 5896586293691698552,
+   "artist": "Mac Miller",
+   "title": "Hurt Feelings",
+   "mood_tags": [
+    "confident",
+    "groovy",
+    "playful",
+    "chill"
+   ],
+   "activity_tags": [
+    "driving",
+    "chill",
+    "social"
+   ],
+   "energy": 0.6,
+   "valence": 0.6
+  },
+  {
+   "id": 5900579857526680782,
+   "artist": "Bas",
+   "title": "Boca Raton",
+   "mood_tags": [
+    "chill",
+    "nostalgic",
+    "groovy",
+    "confident"
+   ],
+   "activity_tags": [
+    "driving",
+    "chill",
+    "party"
+   ],
+   "energy": 0.55,
+   "valence": 0.6
+  },
+  {
+   "id": 5911844395523634661,
+   "artist": "Mac Miller",
+   "title": "Perfecto",
+   "mood_tags": [
+    "confident",
+    "groovy",
+    "chill",
+    "driving"
+   ],
+   "activity_tags": [
+    "driving",
+    "workout",
+    "party"
+   ],
+   "energy": 0.6,
+   "valence": 0.55
+  },
+  {
+   "id": 5927779491357149312,
+   "artist": "Mac Miller",
+   "title": "Come Back to Earth",
+   "mood_tags": [
+    "melancholic",
+    "bittersweet",
+    "dark",
+    "raw"
+   ],
+   "activity_tags": [
+    "chill",
+    "sleep",
+    "meditation"
+   ],
+   "energy": 0.2,
+   "valence": 0.2
+  },
+  {
+   "id": 6453506436988168692,
+   "artist": "Frank Ocean",
+   "title": "Thinkin Bout You",
+   "mood_tags": [
+    "romantic",
+    "bittersweet",
+    "dreamy",
+    "melancholic"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill",
+    "sleep"
+   ],
+   "energy": 0.4,
+   "valence": 0.4
+  },
+  {
+   "id": 6563040008694425260,
+   "artist": "Ye",
+   "title": "I Thought About Killing You",
+   "mood_tags": [
+    "dark",
+    "raw",
+    "anxious",
+    "intense"
+   ],
+   "activity_tags": [
+    "focus",
+    "commute"
+   ],
+   "energy": 0.42,
+   "valence": 0.13
+  },
+  {
+   "id": 6576583329280842516,
+   "artist": "6LACK",
+   "title": "Switch",
+   "mood_tags": [
+    "dark",
+    "confident",
+    "sensual",
+    "groovy"
+   ],
+   "activity_tags": [
+    "driving",
+    "chill"
+   ],
+   "energy": 0.55,
+   "valence": 0.4
+  },
+  {
+   "id": 6705771987447482083,
+   "artist": "Mac Miller",
+   "title": "Ladders",
+   "mood_tags": [
+    "groovy",
+    "bittersweet",
+    "uplifting",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving"
+   ],
+   "energy": 0.6,
+   "valence": 0.55
+  },
+  {
+   "id": 6781762853043485439,
+   "artist": "Extrawelt",
+   "title": "Soopertrack",
+   "mood_tags": [
+    "driving",
+    "energetic",
+    "intense",
+    "focus"
+   ],
+   "activity_tags": [
+    "workout",
+    "focus",
+    "driving"
+   ],
+   "energy": 0.85,
+   "valence": 0.5
+  },
+  {
+   "id": 6854119584289567021,
+   "artist": "Frank Ocean",
+   "title": "Bad Religion",
+   "mood_tags": [
+    "melancholic",
+    "bittersweet",
+    "romantic",
+    "raw"
+   ],
+   "activity_tags": [
+    "chill",
+    "sleep"
+   ],
+   "energy": 0.38,
+   "valence": 0.14
+  },
+  {
+   "id": 6864767177293972417,
+   "artist": "Mac Miller",
+   "title": "2009",
+   "mood_tags": [
+    "bittersweet",
+    "nostalgic",
+    "uplifting",
+    "peaceful"
+   ],
+   "activity_tags": [
+    "chill",
+    "study"
+   ],
+   "energy": 0.48,
+   "valence": 0.5
+  },
+  {
+   "id": 6915357892708984973,
+   "artist": "Denzel Curry",
+   "title": "RICKY",
+   "mood_tags": [
+    "aggressive",
+    "intense",
+    "energetic",
+    "confident"
+   ],
+   "activity_tags": [
+    "workout",
+    "party"
+   ],
+   "energy": 0.9,
+   "valence": 0.48
+  },
+  {
+   "id": 7487838193472128040,
+   "artist": "KIDS SEE GHOSTS",
+   "title": "Fire",
+   "mood_tags": [
+    "energetic",
+    "triumphant",
+    "uplifting",
+    "rebellious"
+   ],
+   "activity_tags": [
+    "workout",
+    "driving"
+   ],
+   "energy": 0.72,
+   "valence": 0.58
+  },
+  {
+   "id": 7809205726591115847,
+   "artist": "Frank Ocean",
+   "title": "Pilot Jones",
+   "mood_tags": [
+    "dreamy",
+    "sensual",
+    "melancholic",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance"
+   ],
+   "energy": 0.4,
+   "valence": 0.35
+  },
+  {
+   "id": 8766062257066828919,
+   "artist": "Bas",
+   "title": "Sanufa",
+   "mood_tags": [
+    "groovy",
+    "confident",
+    "chill",
+    "sensual"
+   ],
+   "activity_tags": [
+    "chill",
+    "party",
+    "driving"
+   ],
+   "energy": 0.6,
+   "valence": 0.55
+  },
+  {
+   "id": 8969123966554238528,
+   "artist": "Bas",
+   "title": "Icarus",
+   "mood_tags": [
+    "driving",
+    "confident",
+    "melancholic",
+    "focus"
+   ],
+   "activity_tags": [
+    "driving",
+    "focus"
+   ],
+   "energy": 0.55,
+   "valence": 0.4
+  },
+  {
+   "id": 8991631675756950010,
+   "artist": "KIDS SEE GHOSTS",
+   "title": "Cudi Montage",
+   "mood_tags": [
+    "bittersweet",
+    "raw",
+    "triumphant",
+    "melancholic"
+   ],
+   "activity_tags": [
+    "chill",
+    "focus"
+   ],
+   "energy": 0.55,
+   "valence": 0.42
+  },
+  {
+   "id": 9348590979173702899,
+   "artist": "Frank Ocean",
+   "title": "Thinkin Bout You",
+   "mood_tags": [
+    "dreamy",
+    "romantic",
+    "bittersweet",
+    "ethereal"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.4,
+   "valence": 0.5
+  },
+  {
+   "id": 10421641399036136197,
+   "artist": "Frank Ocean",
+   "title": "Forrest Gump",
+   "mood_tags": [
+    "nostalgic",
+    "playful",
+    "romantic",
+    "uplifting"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance"
+   ],
+   "energy": 0.5,
+   "valence": 0.62
+  },
+  {
+   "id": 10476843345662811665,
+   "artist": "A$AP Rocky",
+   "title": "Praise the Lord (Da Shine)",
+   "mood_tags": [
+    "confident",
+    "groovy",
+    "dark",
+    "driving"
+   ],
+   "activity_tags": [
+    "workout",
+    "party",
+    "driving"
+   ],
+   "energy": 0.7,
+   "valence": 0.5
+  },
+  {
+   "id": 10618733982026040980,
+   "artist": "Frank Ocean",
+   "title": "Crack Rock",
+   "mood_tags": [
+    "dark",
+    "melancholic",
+    "bittersweet",
+    "raw"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.42,
+   "valence": 0.2
+  },
+  {
+   "id": 10762827601290196792,
+   "artist": "Frank Ocean",
+   "title": "Monks",
+   "mood_tags": [
+    "energetic",
+    "driving",
+    "playful",
+    "confident"
+   ],
+   "activity_tags": [
+    "driving"
+   ],
+   "energy": 0.62,
+   "valence": 0.5
+  },
+  {
+   "id": 10965806683576613413,
+   "artist": "Mac Miller",
+   "title": "Small Worlds",
+   "mood_tags": [
+    "groovy",
+    "chill",
+    "bittersweet",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving"
+   ],
+   "energy": 0.5,
+   "valence": 0.5
+  },
+  {
+   "id": 11083868538298433024,
+   "artist": "Frank Ocean",
+   "title": "Pilot Jones",
+   "mood_tags": [
+    "dreamy",
+    "sensual",
+    "melancholic",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance"
+   ],
+   "energy": 0.4,
+   "valence": 0.35
+  },
+  {
+   "id": 11384188571755576662,
+   "artist": "6LACK",
+   "title": "Stan",
+   "mood_tags": [
+    "dark",
+    "sensual",
+    "melancholic",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance"
+   ],
+   "energy": 0.48,
+   "valence": 0.35
+  },
+  {
+   "id": 12253112350644716716,
+   "artist": "Frank Ocean",
+   "title": "End",
+   "mood_tags": [
+    "dreamy",
+    "peaceful",
+    "ethereal",
+    "melancholic"
+   ],
+   "activity_tags": [
+    "sleep",
+    "chill"
+   ],
+   "energy": 0.3,
+   "valence": 0.35
+  },
+  {
+   "id": 12448820901951043763,
+   "artist": "6LACK",
+   "title": "Balenciaga Challenge",
+   "mood_tags": [
+    "sensual",
+    "dark",
+    "confident",
+    "groovy"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance",
+    "driving"
+   ],
+   "energy": 0.5,
+   "valence": 0.42
+  },
+  {
+   "id": 12556703402459575574,
+   "artist": "Frank Ocean",
+   "title": "Sierra Leone",
+   "mood_tags": [
+    "dreamy",
+    "romantic",
+    "sensual",
+    "ethereal"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.4,
+   "valence": 0.45
+  },
+  {
+   "id": 12655382456354963714,
+   "artist": "Bryson Tiller",
+   "title": "Exchange",
+   "mood_tags": [
+    "sensual",
+    "romantic",
+    "dark",
+    "chill"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.45,
+   "valence": 0.4
+  },
+  {
+   "id": 12693880263816725876,
+   "artist": "Mac Miller",
+   "title": "Self Care",
+   "mood_tags": [
+    "bittersweet",
+    "chill",
+    "nostalgic",
+    "groovy"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving"
+   ],
+   "energy": 0.55,
+   "valence": 0.45
+  },
+  {
+   "id": 12770886291780474452,
+   "artist": "Bas",
+   "title": "Infinity+2 (ft. Correy C)",
+   "mood_tags": [
+    "chill",
+    "confident",
+    "nostalgic",
+    "groovy"
+   ],
+   "activity_tags": [
+    "chill",
+    "focus"
+   ],
+   "energy": 0.5,
+   "valence": 0.5
+  },
+  {
+   "id": 12887980882841798156,
+   "artist": "Mac Miller",
+   "title": "So It Goes",
+   "mood_tags": [
+    "dreamy",
+    "romantic",
+    "bittersweet",
+    "sensual"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance"
+   ],
+   "energy": 0.42,
+   "valence": 0.48
+  },
+  {
+   "id": 13070646246164323343,
+   "artist": "Bas",
+   "title": "Fragrance",
+   "mood_tags": [
+    "sensual",
+    "chill",
+    "groovy",
+    "confident"
+   ],
+   "activity_tags": [
+    "chill",
+    "romance"
+   ],
+   "energy": 0.5,
+   "valence": 0.55
+  },
+  {
+   "id": 13776459330113317301,
+   "artist": "Summer Walker",
+   "title": "Girls Need Love (remix)",
+   "mood_tags": [
+    "sensual",
+    "melancholic",
+    "dreamy"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.38,
+   "valence": 0.38
+  },
+  {
+   "id": 14098189678784063291,
+   "artist": "Frank Ocean",
+   "title": "Fertilizer",
+   "mood_tags": [
+    "playful",
+    "chill",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.4,
+   "valence": 0.62
+  },
+  {
+   "id": 14485504404798914544,
+   "artist": "Ye",
+   "title": "Violent Crimes",
+   "mood_tags": [
+    "melancholic",
+    "bittersweet",
+    "dark",
+    "confident"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.45,
+   "valence": 0.38
+  },
+  {
+   "id": 15314331380444765190,
+   "artist": "Miguel",
+   "title": "Coffee",
+   "mood_tags": [
+    "sensual",
+    "romantic",
+    "dreamy",
+    "groovy"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.5,
+   "valence": 0.6
+  },
+  {
+   "id": 15403765925927544753,
+   "artist": "Frank Ocean",
+   "title": "Fertilizer",
+   "mood_tags": [
+    "playful",
+    "chill",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.4,
+   "valence": 0.62
+  },
+  {
+   "id": 15866696142482864045,
+   "artist": "Bas",
+   "title": "Barack Obama Special",
+   "mood_tags": [
+    "confident",
+    "energetic",
+    "driving",
+    "rebellious"
+   ],
+   "activity_tags": [
+    "workout",
+    "driving"
+   ],
+   "energy": 0.66,
+   "valence": 0.55
+  },
+  {
+   "id": 15974568548687098038,
+   "artist": "Mac Miller",
+   "title": "Dunno",
+   "mood_tags": [
+    "sensual",
+    "romantic",
+    "chill",
+    "groovy"
+   ],
+   "activity_tags": [
+    "romance",
+    "chill"
+   ],
+   "energy": 0.45,
+   "valence": 0.55
+  },
+  {
+   "id": 16076230013570176095,
+   "artist": "Frank Ocean",
+   "title": "White (feat. John Mayer)",
+   "mood_tags": [
+    "dreamy",
+    "peaceful",
+    "ethereal",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill",
+    "meditation"
+   ],
+   "energy": 0.28,
+   "valence": 0.55
+  },
+  {
+   "id": 16106609836694812876,
+   "artist": "6LACK",
+   "title": "Scripture",
+   "mood_tags": [
+    "dark",
+    "sensual",
+    "melancholic",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.44,
+   "valence": 0.35
+  },
+  {
+   "id": 16260957475237325365,
+   "artist": "Frank Ocean",
+   "title": "Pyramids",
+   "mood_tags": [
+    "sensual",
+    "groovy",
+    "intense",
+    "dreamy"
+   ],
+   "activity_tags": [
+    "party",
+    "chill"
+   ],
+   "energy": 0.62,
+   "valence": 0.5
+  },
+  {
+   "id": 16588760783552868685,
+   "artist": "Kali Uchis",
+   "title": "After The Storm (feat. Tyler, The Creator & Bootsy Collins)",
+   "mood_tags": [
+    "groovy",
+    "dreamy",
+    "uplifting",
+    "playful"
+   ],
+   "activity_tags": [
+    "chill",
+    "social"
+   ],
+   "energy": 0.52,
+   "valence": 0.66
+  },
+  {
+   "id": 16901692763467790280,
+   "artist": "Pusha T",
+   "title": "If You Know You Know",
+   "mood_tags": [
+    "confident",
+    "aggressive",
+    "dark",
+    "driving"
+   ],
+   "activity_tags": [
+    "workout",
+    "driving"
+   ],
+   "energy": 0.72,
+   "valence": 0.45
+  },
+  {
+   "id": 17132212292342190271,
+   "artist": "6LACK",
+   "title": "Disconnect",
+   "mood_tags": [
+    "melancholic",
+    "dark",
+    "anxious",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.4,
+   "valence": 0.3
+  },
+  {
+   "id": 17664856380742986702,
+   "artist": "Enrico Sangiuliano",
+   "title": "Astral Projection",
+   "mood_tags": [
+    "driving",
+    "intense",
+    "dark",
+    "energetic"
+   ],
+   "activity_tags": [
+    "workout",
+    "party",
+    "focus"
+   ],
+   "energy": 0.86,
+   "valence": 0.45
+  },
+  {
+   "id": 17705889360431829930,
+   "artist": "Bas",
+   "title": "Front Desk",
+   "mood_tags": [
+    "chill",
+    "groovy",
+    "confident",
+    "nostalgic"
+   ],
+   "activity_tags": [
+    "chill",
+    "driving"
+   ],
+   "energy": 0.5,
+   "valence": 0.55
+  },
+  {
+   "id": 17930842605224652320,
+   "artist": "6LACK",
+   "title": "Thugger's Interlude",
+   "mood_tags": [
+    "dark",
+    "sensual",
+    "dreamy",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill"
+   ],
+   "energy": 0.4,
+   "valence": 0.35
+  },
+  {
+   "id": 17932067460154256895,
+   "artist": "Mac Miller",
+   "title": "Conversation, Pt. 1",
+   "mood_tags": [
+    "confident",
+    "raw",
+    "driving",
+    "dark"
+   ],
+   "activity_tags": [
+    "focus",
+    "driving"
+   ],
+   "energy": 0.6,
+   "valence": 0.45
+  },
+  {
+   "id": 17947689847876071830,
+   "artist": "Frank Ocean",
+   "title": "Start",
+   "mood_tags": [
+    "ethereal",
+    "dreamy",
+    "nostalgic",
+    "peaceful"
+   ],
+   "activity_tags": [
+    "chill",
+    "meditation"
+   ],
+   "energy": 0.15,
+   "valence": 0.5
+  },
+  {
+   "id": 18203222381599706456,
+   "artist": "Mac Miller",
+   "title": "Jet Fuel",
+   "mood_tags": [
+    "melancholic",
+    "dreamy",
+    "bittersweet",
+    "chill"
+   ],
+   "activity_tags": [
+    "chill",
+    "meditation"
+   ],
+   "energy": 0.4,
+   "valence": 0.4
+  }
+ ]
+}
