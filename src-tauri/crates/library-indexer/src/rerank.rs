@@ -148,6 +148,41 @@ pub fn hybrid_rerank_pools(
     scored.into_iter().map(|(_, t)| t).collect()
 }
 
+/// [`cap_per_artist`] com piso: aplica o cap e, se o resultado ficar
+/// abaixo de `min_len`, completa com os cortados na ordem original —
+/// relaxa a diversidade em vez de entregar lista curta (uma station de
+/// 40 pedidas não pode voltar com 14 porque os vizinhos MERT se
+/// concentram em poucos artistas).
+pub fn cap_per_artist_soft(tracks: Vec<Track>, cap: usize, min_len: usize) -> Vec<Track> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut kept: Vec<Track> = Vec::new();
+    let mut cut: Vec<Track> = Vec::new();
+    for t in tracks {
+        let key: String = t
+            .artist_name
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect();
+        if key.is_empty() {
+            kept.push(t);
+            continue;
+        }
+        let n = counts.entry(key).or_insert(0);
+        *n += 1;
+        if *n <= cap {
+            kept.push(t);
+        } else {
+            cut.push(t);
+        }
+    }
+    let deficit = min_len.saturating_sub(kept.len());
+    kept.extend(cut.into_iter().take(deficit));
+    kept
+}
+
 /// Limita a `cap` tracks por artista, preservando a ordem.
 ///
 /// Chave = artist_name lowercase só-alfanumérico ("J. Cole" e "J Cole"
@@ -289,6 +324,18 @@ mod tests {
     }
 
     #[test]
+    fn vibe_similarity_moods_assimetrico_e_neutro_nao_zero() {
+        // Um lado COM moods e o outro sem = dado ausente => componente
+        // neutro (0.5), NUNCA jaccard(x, vazio)=0 — ausência de enrichment
+        // não é sinal de vibe oposta. Demais componentes ausentes também
+        // neutros: score total = 0.5 exato.
+        let com = VibeProfile { moods: moods(&["dark", "raw"]), ..Default::default() };
+        let sem = VibeProfile::default();
+        assert!((vibe_similarity(&com, &sem) - 0.5).abs() < 1e-9);
+        assert!((vibe_similarity(&sem, &com) - 0.5).abs() < 1e-9, "simétrico");
+    }
+
+    #[test]
     fn vibe_similarity_genre_eq_tres_casos() {
         let base = VibeProfile::default();
         let trance = VibeProfile { genre: Some("Trance".into()), ..Default::default() };
@@ -373,9 +420,11 @@ mod tests {
         ];
         let out = hybrid_rerank_pools(&seed, pools);
         let ids: Vec<u64> = out.iter().map(|t| t.id).collect();
-        assert_eq!(ids.len(), 3, "dedup por id: {ids:?}");
-        assert_eq!(ids.iter().filter(|&&i| i == 1).count(), 1);
-        assert_eq!(*ids.last().unwrap(), 2, "pior mert_norm por último: {ids:?}");
+        // Empate de score entre 1 e 3 (ambas norm 1.0, vibe neutra): o
+        // desempate É contrato — ordem de PRIMEIRA ocorrência na iteração
+        // dos pools (por isso a implementação mantém o Vec `order` em vez
+        // de iterar o HashMap, cuja ordem varia por execução).
+        assert_eq!(ids, vec![1, 3, 2], "dedup + desempate estável: {ids:?}");
     }
 
     #[test]
@@ -440,6 +489,46 @@ mod tests {
         ];
         let out = cap_per_artist(tracks, 2);
         assert_eq!(out.iter().map(|t| t.id).collect::<Vec<_>>(), vec![1, 2, 3, 5]);
+    }
+
+    #[test]
+    fn cap_per_artist_soft_completa_ate_o_piso_com_os_cortados() {
+        // 6 tracks de só 2 artistas; cap 2 deixaria 4 — abaixo do piso 5.
+        // O soft completa com o primeiro cortado na ordem original.
+        let tracks = vec![
+            track(1, Some("A")),
+            track(2, Some("A")),
+            track(3, Some("A")), // cortado pelo cap
+            track(4, Some("B")),
+            track(5, Some("B")),
+            track(6, Some("B")), // cortado pelo cap
+        ];
+        let out = cap_per_artist_soft(tracks, 2, 5);
+        assert_eq!(
+            out.iter().map(|t| t.id).collect::<Vec<_>>(),
+            vec![1, 2, 4, 5, 3],
+            "capados primeiro na ordem, depois cortados até o piso"
+        );
+    }
+
+    #[test]
+    fn cap_per_artist_soft_sem_deficit_e_identico_ao_cap() {
+        let tracks = vec![
+            track(1, Some("A")),
+            track(2, Some("A")),
+            track(3, Some("A")),
+            track(4, Some("B")),
+        ];
+        // Piso 3 <= resultado do cap (3) => nada é readicionado.
+        let out = cap_per_artist_soft(tracks, 2, 3);
+        assert_eq!(out.iter().map(|t| t.id).collect::<Vec<_>>(), vec![1, 2, 4]);
+    }
+
+    #[test]
+    fn cap_per_artist_soft_piso_maior_que_o_total_devolve_tudo() {
+        let tracks = vec![track(1, Some("A")), track(2, Some("A")), track(3, Some("A"))];
+        let out = cap_per_artist_soft(tracks, 1, 10);
+        assert_eq!(out.len(), 3, "não há de onde tirar mais — devolve todas");
     }
 
     #[test]

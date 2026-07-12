@@ -230,7 +230,12 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       }
 
       const tMs = performance.now();
-      const dt = Math.max(0, (tMs - lastFrameMs) * 0.001);
+      // dt clampado em 100ms: no retorno de foreground (document.hidden
+      // congela lastFrameMs mas o áudio/FFT seguem vivos) o dt seria a
+      // duração oculta inteira — um salto de fase que o beat-boost ainda
+      // amplificaria (kBeat satura com dt >> BEAT_TAU). O clamp preserva
+      // o invariante "sem salto de fase" do cabeçalho pra QUALQUER dt.
+      const dt = Math.max(0, Math.min(0.1, (tMs - lastFrameMs) * 0.001));
       lastFrameMs = tMs;
 
       // Lerp da tinta a cada frame (tau ~350ms): converge pro alvo

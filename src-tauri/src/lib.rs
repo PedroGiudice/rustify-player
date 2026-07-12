@@ -478,12 +478,18 @@ fn lib_autoplay_next(
                         tracing::warn!(track_id, error = %e, "autoplay: seed-pool recommend falhou");
                         Vec::new()
                     });
-                let taste_pool = client
-                    .recommend(&positives, &negatives, &exclude_ids, fetch)
-                    .unwrap_or_else(|e| {
-                        tracing::warn!(track_id, error = %e, "autoplay: taste-pool recommend falhou");
-                        Vec::new()
-                    });
+                // Sem historico, positives == [seed] e o taste-pool seria
+                // uma copia identica do seed-pool — pula a segunda chamada.
+                let taste_pool = if positives.len() > 1 {
+                    client
+                        .recommend(&positives, &negatives, &exclude_ids, fetch)
+                        .unwrap_or_else(|e| {
+                            tracing::warn!(track_id, error = %e, "autoplay: taste-pool recommend falhou");
+                            Vec::new()
+                        })
+                } else {
+                    Vec::new()
+                };
                 if !(seed_pool.is_empty() && taste_pool.is_empty()) {
                     // Resolve as tracks de cada pool preservando a ordem
                     // (= rank MERT daquele pool).
@@ -3379,8 +3385,11 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
                 }
             }
             // Cap global por artista antes do corte final — sem isto uma
-            // station podia sair dominada por um artista so.
-            let mut tracks = rerank::cap_per_artist(tracks, 2);
+            // station podia sair dominada por um artista so. Versao SOFT:
+            // se o cap derrubar o total abaixo do limit pedido (vizinhos
+            // MERT concentrados em poucos artistas), completa com os
+            // cortados — station curta e pior que station repetida.
+            let mut tracks = rerank::cap_per_artist_soft(tracks, 2, limit);
             tracks.truncate(limit);
             tracks
         }
@@ -3612,10 +3621,15 @@ mod tests {
         // Sufixo (alem do prefix) fica intocado — o rank do re-rank hibrido
         // so pode ser perturbado no topo.
         assert_eq!(&v[5..], &original[5..]);
-        // Prefixo e uma permutacao dos mesmos elementos.
+        // Prefixo e uma permutacao dos mesmos elementos...
         let mut pre: Vec<u64> = v[..5].to_vec();
         pre.sort_unstable();
         assert_eq!(pre, vec![0, 1, 2, 3, 4]);
+        // ...e EMBARALHOU de fato: com seed fixa o resultado e
+        // deterministico e diferente da identidade — um xorshift quebrado
+        // que degenerasse em no-op passaria no assert de permutacao acima
+        // sem este.
+        assert_ne!(&v[..5], &original[..5], "prefixo identico ao original: shuffle virou no-op");
         // prefix maior que o slice nao panica e preserva os elementos.
         let mut w = vec![1u64, 2];
         shuffle_prefix(&mut w, 10, 7);
