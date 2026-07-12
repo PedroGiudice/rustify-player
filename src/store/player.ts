@@ -38,6 +38,9 @@ export interface PlayerStore {
   queue: Track[];
   queueIndex: number;
   queueScope: QueueScope;
+  /** Proveniência da fila: "station" faz continuações logarem
+      origin="station" (régua + behavioral_signals). null = fila comum. */
+  queueContext: "station" | null;
   // Estado de reprodução
   isPlaying: boolean;
   isLiked: boolean;
@@ -64,6 +67,7 @@ export const [player, setPlayer] = createStore<PlayerStore>({
   queue: [],
   queueIndex: -1,
   queueScope: "open",
+  queueContext: null,
   isPlaying: false,
   isLiked: false,
   isTransitioning: false,
@@ -127,11 +131,25 @@ export async function applyPersistedVolume(retries = 5): Promise<void> {
 //   "open"    -> shuffle entra em radio mode (descarta a queue, usa current_track como seed)
 // Default "open" porque a maioria das views serve listagens genericas;
 // playlist/station devem passar "curated" explicito.
-export function setQueue(tracks: Track[], startIndex: number, scope: QueueScope = "open") {
+//
+// `context` marca a PROVENIENCIA da fila alem do scope: "station" faz as
+// continuacoes (auto-advance e skip) logarem play_events com
+// origin="station" em vez de "album_seq"/"queue" — sem isso so a 1a
+// faixa de uma station carrega o origin certo, a regua de skip-rate por
+// origin subconta e o behavioral_signals ignora a escuta (exclui
+// album_seq dos positives). Default null: qualquer setQueue de outra
+// fonte limpa o contexto.
+export function setQueue(
+  tracks: Track[],
+  startIndex: number,
+  scope: QueueScope = "open",
+  context: "station" | null = null,
+) {
   setPlayer({
     queue: tracks,
     queueIndex: startIndex,
     queueScope: scope,
+    queueContext: context,
     currentTrack: tracks[startIndex] ?? null,
   });
 }

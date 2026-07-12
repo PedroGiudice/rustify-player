@@ -122,7 +122,7 @@ export function PlayerBar() {
         // Auto-advance
         const next = advanceQueue();
         if (next) {
-          await playTrack(next, "album_seq");
+          await playTrack(next, contOrigin("album_seq"));
           // Radio mode: top up the queue before it runs dry so playback
           // stays continuous without a Qdrant roundtrip gap at the end.
           if (
@@ -141,11 +141,11 @@ export function PlayerBar() {
     unlistenMpris = await onMprisCommand(async (cmd) => {
       if (cmd === "next") {
         const next = advanceQueue();
-        if (next) await playTrack(next, "queue");
+        if (next) await playTrack(next, contOrigin("queue"));
         else if (player.currentTrack?.id) await doAutoplay(player.currentTrack.id);
       } else if (cmd === "previous") {
         const prev = retreatQueue();
-        if (prev) await playTrack(prev, "queue");
+        if (prev) await playTrack(prev, contOrigin("queue"));
       }
     });
 
@@ -464,7 +464,7 @@ export function PlayerBar() {
             aria-disabled={player.queueIndex <= 0}
             aria-label="Previous"
             title="Previous"
-            onClick={() => { const t = retreatQueue(); if (t) playTrack(t, "queue"); }}
+            onClick={() => { const t = retreatQueue(); if (t) playTrack(t, contOrigin("queue")); }}
           >
             <Icon name={ICONS.prev} size={14} />
           </button>
@@ -494,7 +494,7 @@ export function PlayerBar() {
             aria-disabled={player.queueIndex >= player.queue.length - 1}
             aria-label="Next"
             title="Next"
-            onClick={() => { const t = advanceQueue(); if (t) playTrack(t, "queue"); }}
+            onClick={() => { const t = advanceQueue(); if (t) playTrack(t, contOrigin("queue")); }}
           >
             <Icon name={ICONS.next} size={14} />
           </button>
@@ -590,6 +590,15 @@ export function PlayerBar() {
 }
 
 // ── playTrack — equivalente ao playTrack() de player-bar.js ───
+
+/** Origem real de uma CONTINUAÇÃO de fila: fila vinda de station loga
+    origin="station" em vez do default ("album_seq"/"queue") — sem isto
+    só a 1ª faixa da station carrega o origin certo, a régua de
+    skip-rate por origin subconta e o behavioral_signals descarta a
+    escuta (exclui album_seq dos positives). Fase 0 do session-awareness. */
+export function contOrigin(def: string): string {
+  return player.queueContext === "station" ? "station" : def;
+}
 
 export async function playTrack(track: import("../tauri").Track, origin = "manual") {
   setPlayer({

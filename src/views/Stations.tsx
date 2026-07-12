@@ -200,7 +200,9 @@ export default function Stations() {
       // nao vira radio) e a primeira track toca imediatamente.
       const tracks = await libPlayStation(id);
       if (tracks.length > 0) {
-        setQueue(tracks, 0, "curated");
+        // context "station": continuações (auto-advance/skip) logam
+        // origin="station" — régua e behavioral_signals dependem disso.
+        setQueue(tracks, 0, "curated", "station");
         playTrack(tracks[0], "station");
       }
       // Refetch para atualizar estatisticas de played/last_played_at.

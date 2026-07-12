@@ -3361,8 +3361,22 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
             // Over-fetch por seed: espaco pro re-rank hibrido reordenar
             // antes do corte em per_seed.
             let per_seed_fetch = per_seed * 3;
+            // Negativos GLOBAIS dos behavioral_signals — paridade com o
+            // autoplay (Fase 0 do session-awareness): a station nunca
+            // recebia negatives, entao candidatos parecidos com skips
+            // fortes do usuario entravam livremente. Falha degrada pra
+            // vazio (station segue funcionando sem o sinal).
+            let global_negatives = lib
+                .handle
+                .behavioral_signals()
+                .map(|(_, neg)| neg)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "station: behavioral_signals falhou — sem negatives");
+                    Vec::new()
+                });
             for &sid in &seeds {
-                let Ok(recs) = client.recommend(&[sid], &[], &[], per_seed_fetch) else {
+                let Ok(recs) = client.recommend(&[sid], &global_negatives, &[], per_seed_fetch)
+                else {
                     continue;
                 };
                 // Resolve as tracks preservando a ordem (= rank MERT).
