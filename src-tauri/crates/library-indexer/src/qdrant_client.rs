@@ -375,15 +375,26 @@ impl QdrantClient {
 
     /// Query recommendations via the Qdrant Recommendations API.
     ///
-    /// Uses the `/points/query` endpoint (Qdrant v1.10+) with the
-    /// `{"query": {"recommend": {"positive": [...], "negative": [...]}}}` form.
+    /// Uses the `/points/query` endpoint with `strategy: best_score`
+    /// (Qdrant v1.6+): each candidate is scored by its BEST match against
+    /// any single positive, instead of by similarity to the AVERAGE of all
+    /// positives. The MERT taste space is multi-cluster — averaging an
+    /// eclectic history collapses onto the dominant cluster (measured: a
+    /// psytrance seed drowned by a rap-heavy history returned 0/15
+    /// electronic tracks). With best_score every taste cluster keeps its own
+    /// gravity; with a single positive the ordering is identical to average.
+    /// Repeating a positive (the old SEED_WEIGHT trick) does NOT change the
+    /// max — weighting by repetition is meaningless under this strategy.
     ///
     /// `exclude_ids` is a hard exclusion filter (`must_not has_id`), distinct
-    /// from `negative_ids` which alters the recommendation vector arithmetic.
-    /// Use `exclude_ids` for "don't return these specific points" (e.g.
-    /// recently played) and `negative_ids` for "diverge from this taste".
+    /// from `negative_ids` which penalizes candidates close to a negative
+    /// example. Use `exclude_ids` for "don't return these specific points"
+    /// (e.g. recently played) and `negative_ids` for "diverge from this taste".
     ///
     /// Returns `Vec<(point_id, score)>` ordered by descending relevance score.
+    /// NOTE: best_score values are NOT comparable across queries (and the
+    /// MERT space is anisotropic) — treat the result as a RANK, never as an
+    /// absolute similarity.
     /// Returns an empty vec when `positive_ids` is empty (nothing to anchor on).
     pub fn recommend(
         &self,
@@ -396,24 +407,7 @@ impl QdrantClient {
             return Ok(vec![]);
         }
 
-        let mut recommend = json!({
-            "positive": positive_ids
-        });
-        if !negative_ids.is_empty() {
-            recommend["negative"] = json!(negative_ids);
-        }
-
-        let mut body = json!({
-            "query": { "recommend": recommend },
-            "using": VEC_MERT,
-            "limit": limit,
-            "with_payload": false
-        });
-        if !exclude_ids.is_empty() {
-            body["filter"] = json!({
-                "must_not": [{ "has_id": exclude_ids }]
-            });
-        }
+        let body = build_recommend_body(positive_ids, negative_ids, exclude_ids, limit);
 
         let resp: Value = self
             .agent
@@ -1393,6 +1387,34 @@ impl QdrantClient {
         }
     }
 
+    /// Batch-retrieve enrichment payloads for a set of track IDs in a single
+    /// call (`POST /collections/track_enrichments/points`).
+    ///
+    /// Returns `{track_id → payload}`. Points absent from the collection
+    /// simply don't appear in the map — callers treat a missing entry as
+    /// "no enrichment" (neutral vibe). IDs are u64 ALWAYS (hash-based,
+    /// values above `i64::MAX` are common).
+    pub fn get_enrichments_batch(
+        &self,
+        ids: &[u64],
+    ) -> Result<HashMap<u64, Value>, IndexerError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let body = json!({ "ids": ids, "with_payload": true });
+        let resp: Value = self
+            .agent
+            .post(&format!(
+                "{}/collections/{ENRICHMENTS_COLLECTION}/points",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant get enrichments batch: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+        Ok(parse_id_payload_map(&resp))
+    }
+
     pub fn set_enrichment(&self, track_id: u64, payload: Value) -> Result<(), IndexerError> {
         let existing = self.get_enrichment(track_id)?;
         let mut merged = existing;
@@ -1515,4 +1537,115 @@ fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
         .chunks_exact(4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
+}
+
+/// Build the `/points/query` body for the Recommendations API.
+///
+/// Always sets `"strategy": "best_score"`: with a single positive the
+/// ordering is identical to `average_vector`; with multiple positives it
+/// avoids centroid collapse (the MERT space is multi-cluster — averaging an
+/// eclectic taste lands in a "middle" that represents no cluster); with
+/// negatives, a candidate close to a strong skip is penalized individually.
+///
+/// `exclude_ids` becomes a hard `must_not has_id` filter (only when
+/// non-empty); `negative_ids` is omitted when empty.
+pub(crate) fn build_recommend_body(
+    positive_ids: &[u64],
+    negative_ids: &[u64],
+    exclude_ids: &[u64],
+    limit: usize,
+) -> Value {
+    let mut recommend = json!({
+        "positive": positive_ids,
+        "strategy": "best_score"
+    });
+    if !negative_ids.is_empty() {
+        recommend["negative"] = json!(negative_ids);
+    }
+
+    let mut body = json!({
+        "query": { "recommend": recommend },
+        "using": VEC_MERT,
+        "limit": limit,
+        "with_payload": false
+    });
+    if !exclude_ids.is_empty() {
+        body["filter"] = json!({
+            "must_not": [{ "has_id": exclude_ids }]
+        });
+    }
+    body
+}
+
+/// Extract `{point_id → payload}` from a Qdrant batch-retrieve response
+/// (`result` is an array of points with `id` and `payload`).
+///
+/// Point IDs are ALWAYS u64 (hash-based, values above `i64::MAX` are common
+/// in this library) — `as_u64`, never `as_i64`. Points absent from the
+/// response simply don't appear in the map.
+fn parse_id_payload_map(resp: &Value) -> HashMap<u64, Value> {
+    let mut map = HashMap::new();
+    if let Some(points) = resp["result"].as_array() {
+        for p in points {
+            if let Some(id) = p["id"].as_u64() {
+                map.insert(id, p.get("payload").cloned().unwrap_or(Value::Null));
+            }
+        }
+    }
+    map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_recommend_body_inclui_strategy_best_score_e_positives() {
+        // ID acima de i64::MAX no meio dos positives — u64 no wire sempre.
+        let big: u64 = 18_446_744_073_709_551_000;
+        let body = build_recommend_body(&[big, 42], &[], &[], 10);
+        assert_eq!(body["query"]["recommend"]["strategy"], json!("best_score"));
+        assert_eq!(body["query"]["recommend"]["positive"], json!([big, 42]));
+        assert_eq!(body["using"], json!("mert"));
+        assert_eq!(body["limit"], json!(10));
+        assert_eq!(body["with_payload"], json!(false));
+    }
+
+    #[test]
+    fn build_recommend_body_omite_negatives_vazio_e_inclui_quando_presente() {
+        let sem = build_recommend_body(&[1], &[], &[], 5);
+        assert!(
+            sem["query"]["recommend"].get("negative").is_none(),
+            "negative não deve aparecer quando vazio"
+        );
+        let com = build_recommend_body(&[1], &[9], &[], 5);
+        assert_eq!(com["query"]["recommend"]["negative"], json!([9]));
+    }
+
+    #[test]
+    fn build_recommend_body_filtro_must_not_so_com_exclude() {
+        let sem = build_recommend_body(&[1], &[], &[], 5);
+        assert!(sem.get("filter").is_none(), "sem exclude → sem filter");
+        let com = build_recommend_body(&[1], &[], &[7, 8], 5);
+        assert_eq!(com["filter"]["must_not"][0]["has_id"], json!([7, 8]));
+    }
+
+    #[test]
+    fn parse_id_payload_map_ids_u64_grandes_e_pontos_ausentes() {
+        let big: u64 = 18_446_744_073_709_551_000;
+        let resp = json!({
+            "result": [
+                { "id": big, "payload": { "energy": 0.8 } },
+                { "id": 42, "payload": null }
+            ]
+        });
+        let map = parse_id_payload_map(&resp);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map[&big]["energy"], json!(0.8));
+        assert!(map.contains_key(&42));
+        // Ponto não retornado pelo Qdrant simplesmente não aparece no map.
+        assert!(!map.contains_key(&99));
+        // Resposta sem result → map vazio, sem panic.
+        assert!(parse_id_payload_map(&json!({})).is_empty());
+    }
 }

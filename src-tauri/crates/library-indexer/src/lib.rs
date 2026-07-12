@@ -24,6 +24,7 @@ mod pipeline;
 pub mod loudness;
 pub mod lyrics;
 pub mod qdrant_client;
+pub mod rerank;
 
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
@@ -32,6 +33,7 @@ pub use cover::{CoverSource, dominant_color};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};
+pub use rerank::{cap_per_artist, hybrid_rerank, vibe_from_enrichment, VibeProfile};
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
     IndexerEvent, IndexerSnapshot, MoodPlaylist, SearchResults, Track, TrackFilter,
