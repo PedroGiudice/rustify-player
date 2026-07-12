@@ -369,17 +369,19 @@ fn lib_shuffle(
         .map_err(err)
 }
 
-/// Re-rankeia `candidates` (ja em ordem de rank MERT) pela vibe do seed:
-/// busca os enrichments do seed + candidatos numa UNICA chamada batch e
-/// aplica o re-rank hibrido (rank MERT normalizado + energy/valence/
-/// mood_tags/genre contra o seed). O genre do seed vem do Track dele
-/// (payload de rustify_tracks), nao do enrichment.
+/// Re-rankeia a uniao de `pools` (cada um ja em ordem de rank MERT) pela
+/// vibe do seed: busca os enrichments do seed + candidatos numa UNICA
+/// chamada batch e aplica o re-rank hibrido multi-pool (melhor rank MERT
+/// entre os pools, normalizado + energy/valence/mood_tags/genre contra o
+/// seed, dedup por id). O genre do seed vem do Track dele (payload de
+/// rustify_tracks), nao do enrichment.
 ///
-/// Falha do batch NAO derruba o fluxo: warn + degrada pro rank MERT puro
-/// (cap por artista e shuffle seguem valendo no chamador).
-fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> Vec<Track> {
+/// Falha do batch NAO derruba o fluxo: warn + degrada pra concatenacao dos
+/// pools com dedup, mantendo o rank MERT (cap por artista e shuffle seguem
+/// valendo no chamador).
+fn rerank_by_seed_vibe_pools(lib: &Library, seed_id: u64, pools: Vec<Vec<Track>>) -> Vec<Track> {
     let client = lib.handle.client();
-    let mut batch_ids: Vec<u64> = candidates.iter().map(|t| t.id).collect();
+    let mut batch_ids: Vec<u64> = pools.iter().flatten().map(|t| t.id).collect();
     batch_ids.push(seed_id);
     match client.get_enrichments_batch(&batch_ids) {
         Ok(enrichments) => {
@@ -394,23 +396,38 @@ fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> V
                 enrichments.get(&seed_id).unwrap_or(&null),
                 seed_genre,
             );
-            let with_vibes: Vec<(Track, rerank::VibeProfile)> = candidates
+            let pools_with_vibes: Vec<Vec<(Track, rerank::VibeProfile)>> = pools
                 .into_iter()
-                .map(|t| {
-                    let vibe = rerank::vibe_from_enrichment(
-                        enrichments.get(&t.id).unwrap_or(&null),
-                        t.genre_name.clone(),
-                    );
-                    (t, vibe)
+                .map(|pool| {
+                    pool.into_iter()
+                        .map(|t| {
+                            let vibe = rerank::vibe_from_enrichment(
+                                enrichments.get(&t.id).unwrap_or(&null),
+                                t.genre_name.clone(),
+                            );
+                            (t, vibe)
+                        })
+                        .collect()
                 })
                 .collect();
-            rerank::hybrid_rerank(&seed_vibe, with_vibes)
+            rerank::hybrid_rerank_pools(&seed_vibe, pools_with_vibes)
         }
         Err(e) => {
             tracing::warn!(seed_id, error = %e, "re-rank: enrichments batch falhou — mantendo rank MERT");
-            candidates
+            let mut seen = std::collections::HashSet::new();
+            pools
+                .into_iter()
+                .flatten()
+                .filter(|t| seen.insert(t.id))
+                .collect()
         }
     }
+}
+
+/// Atalho de pool unico do [`rerank_by_seed_vibe_pools`] — usado pelas
+/// stations, onde cada seed re-rankeia so a propria vizinhanca.
+fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> Vec<Track> {
+    rerank_by_seed_vibe_pools(lib, seed_id, vec![candidates])
 }
 
 #[tauri::command]
@@ -425,69 +442,84 @@ fn lib_autoplay_next(
     let lim = limit.unwrap_or(5);
     let client = lib.handle.client();
 
-    // Layer 1: Qdrant Recommendations API (strategy=best_score) + re-rank
-    // hibrido pela vibe do seed.
+    // Layer 1: Qdrant Recommendations API (strategy=best_score) com POOL
+    // DUPLO + re-rank hibrido pela vibe do seed.
     //
-    // positives = [seed] + historico comportamental. Com best_score o score
-    // de cada candidato e o MELHOR match individual contra qualquer positive
-    // — repetir o seed (o antigo SEED_WEIGHT) nao muda o max, entao a
-    // ponderacao foi removida. O espaco MERT e anisotropico e multi-cluster:
-    // average_vector colapsava no cluster dominante do gosto (seed de
-    // psytrance retornava 0/15 eletronica), e o score absoluto nao e
-    // confiavel como valor (sims intra-cluster rap chegam a 0.744 vs ~0.599
-    // do melhor techno contra seed techno). Quem carrega a vibe da faixa
-    // atual sao os enrichments: o resultado do recommend e tratado como
-    // RANK e re-rankeado por energy/valence/mood_tags/genre contra o seed
-    // (rerank_by_seed_vibe), com cap de 2 por artista.
+    // Pool A = vizinhanca PURA do seed (recommend([seed])); pool B = gosto
+    // global (positives = [seed] + historico comportamental, best_score).
+    // O pool global sozinho nao traz a vizinhanca de um seed fora do
+    // cluster dominante do gosto — o espaco MERT e anisotropico (sims
+    // intra-cluster rap chegam a 0.744 vs ~0.599 do melhor techno contra
+    // seed techno), entao um seed de psytrance retornava 0 candidatos
+    // eletronicos em 60 e o re-rank nao tinha o que promover. A uniao dos
+    // pools devolve esses candidatos (validado: 0/15 -> 7/15 eletronica no
+    // top-15 com seed Astrix; seed de rap segue coerente, 11/15).
+    //
+    // O antigo SEED_WEIGHT (repetir o seed nos positives) foi removido: com
+    // best_score o score e o MELHOR match individual, repeticao nao muda o
+    // max. O resultado do recommend e tratado como RANK (nunca valor) e
+    // re-rankeado por energy/valence/mood_tags/genre contra o seed
+    // (rerank_by_seed_vibe_pools), com cap de 2 por artista.
     //
     // exclude_ids segue como filtro duro (must_not has_id), NAO como
     // negative — negatives penalizam candidatos proximos de skips fortes.
     if client.is_healthy() {
-        // Over-fetch: espaco pro re-rank hibrido reordenar e pro cap por
-        // artista descartar sem esvaziar o resultado final.
+        // Over-fetch por pool: espaco pro re-rank hibrido reordenar e pro
+        // cap por artista descartar sem esvaziar o resultado final.
         const RECOMMEND_FETCH: usize = 60;
         match lib.handle.behavioral_signals() {
             Ok((history, negatives)) => {
                 let mut positives: Vec<u64> = vec![track_id];
                 positives.extend(history.into_iter().filter(|id| *id != track_id));
                 let fetch = lim.max(RECOMMEND_FETCH);
-                match client.recommend(&positives, &negatives, &exclude_ids, fetch) {
-                    Ok(recs) if !recs.is_empty() => {
-                        // Resolve as tracks preservando a ordem (= rank MERT).
-                        let mut candidates: Vec<Track> = Vec::new();
-                        for (rec_id, _score) in &recs {
+                let seed_pool = client
+                    .recommend(&[track_id], &negatives, &exclude_ids, fetch)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(track_id, error = %e, "autoplay: seed-pool recommend falhou");
+                        Vec::new()
+                    });
+                let taste_pool = client
+                    .recommend(&positives, &negatives, &exclude_ids, fetch)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(track_id, error = %e, "autoplay: taste-pool recommend falhou");
+                        Vec::new()
+                    });
+                if !(seed_pool.is_empty() && taste_pool.is_empty()) {
+                    // Resolve as tracks de cada pool preservando a ordem
+                    // (= rank MERT daquele pool).
+                    let resolve = |recs: &[(u64, f64)]| -> Vec<Track> {
+                        let mut out = Vec::new();
+                        for (rec_id, _score) in recs {
                             if let Ok(Some(t)) = lib.handle.track(*rec_id) {
-                                candidates.push(t);
+                                out.push(t);
                             }
                         }
+                        out
+                    };
+                    let pools = vec![resolve(&seed_pool), resolve(&taste_pool)];
 
-                        // Re-rank pela vibe do seed + cap de 2 por artista.
-                        let mut ranked = rerank_by_seed_vibe(&lib, track_id, candidates);
-                        ranked = rerank::cap_per_artist(ranked, 2);
+                    // Re-rank da uniao pela vibe do seed + cap de 2 por artista.
+                    let mut ranked = rerank_by_seed_vibe_pools(&lib, track_id, pools);
+                    ranked = rerank::cap_per_artist(ranked, 2);
 
-                        // Variedade entre chamadas sem destruir o re-rank:
-                        // Fisher-Yates (xorshift inline, sem crate rand) so
-                        // sobre o topo (lim*3) do resultado, depois corta.
-                        let seed = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_nanos() as u64)
-                            .unwrap_or(0x9E3779B97F4A7C15)
-                            .wrapping_add(track_id);
-                        shuffle_prefix(&mut ranked, lim * 3, seed);
-                        ranked.truncate(lim);
+                    // Variedade entre chamadas sem destruir o re-rank:
+                    // Fisher-Yates (xorshift inline, sem crate rand) so
+                    // sobre o topo (lim*3) do resultado, depois corta.
+                    let seed = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as u64)
+                        .unwrap_or(0x9E3779B97F4A7C15)
+                        .wrapping_add(track_id);
+                    shuffle_prefix(&mut ranked, lim * 3, seed);
+                    ranked.truncate(lim);
 
-                        for t in &mut ranked {
-                            if let Some(rel) = &t.album_cover_path {
-                                t.album_cover_path = Some(lib.cache_dir.join(rel));
-                            }
-                        }
-                        if !ranked.is_empty() {
-                            return Ok(ranked);
+                    for t in &mut ranked {
+                        if let Some(rel) = &t.album_cover_path {
+                            t.album_cover_path = Some(lib.cache_dir.join(rel));
                         }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!(track_id, error = %e, "autoplay: recommend failed");
+                    if !ranked.is_empty() {
+                        return Ok(ranked);
                     }
                 }
             }

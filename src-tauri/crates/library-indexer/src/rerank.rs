@@ -97,16 +97,50 @@ pub fn vibe_similarity(seed: &VibeProfile, cand: &VibeProfile) -> f64 {
 /// partial_cmp defensivo — NaN não deve ocorrer, mas cai em Equal em vez de
 /// panicar).
 pub fn hybrid_rerank(seed: &VibeProfile, candidates: Vec<(Track, VibeProfile)>) -> Vec<Track> {
-    let len = candidates.len();
-    if len == 0 {
-        return Vec::new();
+    hybrid_rerank_pools(seed, vec![candidates])
+}
+
+/// Variante multi-pool do [`hybrid_rerank`]: cada pool é uma lista em ordem
+/// de rank MERT (ex.: vizinhança pura do seed + gosto global via best_score).
+/// Uma track presente em mais de um pool entra UMA vez, com o MELHOR
+/// `mert_norm` entre eles.
+///
+/// A união de pools é o que devolve ao re-rank os candidatos que o pool
+/// global não traz: o espaço MERT é anisotrópico e um seed fora do cluster
+/// dominante do gosto não coloca a própria vizinhança no top-N global
+/// (validado empiricamente: seed de psytrance ia de 0/15 pra 7/15
+/// eletrônica no top-15 com o pool duplo).
+pub fn hybrid_rerank_pools(
+    seed: &VibeProfile,
+    pools: Vec<Vec<(Track, VibeProfile)>>,
+) -> Vec<Track> {
+    // Primeira passada: consolida a união dos pools. `order` preserva a
+    // ordem de primeira ocorrência (desempate estável do sort abaixo);
+    // `best` guarda o melhor mert_norm visto pra cada track.
+    let mut order: Vec<u64> = Vec::new();
+    let mut best: HashMap<u64, (f64, Track, VibeProfile)> = HashMap::new();
+    for pool in pools {
+        let len = pool.len();
+        for (i, (track, vibe)) in pool.into_iter().enumerate() {
+            let norm = 1.0 - i as f64 / len as f64;
+            match best.get_mut(&track.id) {
+                Some(entry) => {
+                    if norm > entry.0 {
+                        entry.0 = norm;
+                    }
+                }
+                None => {
+                    order.push(track.id);
+                    best.insert(track.id, (norm, track, vibe));
+                }
+            }
+        }
     }
-    let mut scored: Vec<(f64, Track)> = candidates
+    let mut scored: Vec<(f64, Track)> = order
         .into_iter()
-        .enumerate()
-        .map(|(i, (track, vibe))| {
-            let mert_norm = 1.0 - i as f64 / len as f64;
-            let score = 0.5 * mert_norm + 0.5 * vibe_similarity(seed, &vibe);
+        .filter_map(|id| best.remove(&id))
+        .map(|(norm, track, vibe)| {
+            let score = 0.5 * norm + 0.5 * vibe_similarity(seed, &vibe);
             (score, track)
         })
         .collect();
@@ -316,6 +350,80 @@ mod tests {
     #[test]
     fn hybrid_rerank_vazio_retorna_vazio() {
         assert!(hybrid_rerank(&VibeProfile::default(), Vec::new()).is_empty());
+    }
+
+    // ── hybrid_rerank_pools ─────────────────────────────────────────────────
+
+    #[test]
+    fn hybrid_rerank_pools_dedup_por_id_com_melhor_rank() {
+        // Pool A: [1, 2]; Pool B: [3, 1] — a track 1 aparece nos dois.
+        // Vibes todas neutras → só o mert_norm decide. A track 1 fica com o
+        // melhor rank entre os pools (topo do A, norm 1.0) e aparece UMA vez;
+        // a track 2 (norm 0.5, pior de todas) sai por último.
+        let seed = VibeProfile::default();
+        let pools = vec![
+            vec![
+                (track(1, None), VibeProfile::default()),
+                (track(2, None), VibeProfile::default()),
+            ],
+            vec![
+                (track(3, None), VibeProfile::default()),
+                (track(1, None), VibeProfile::default()),
+            ],
+        ];
+        let out = hybrid_rerank_pools(&seed, pools);
+        let ids: Vec<u64> = out.iter().map(|t| t.id).collect();
+        assert_eq!(ids.len(), 3, "dedup por id: {ids:?}");
+        assert_eq!(ids.iter().filter(|&&i| i == 1).count(), 1);
+        assert_eq!(*ids.last().unwrap(), 2, "pior mert_norm por último: {ids:?}");
+    }
+
+    #[test]
+    fn hybrid_rerank_pools_promove_vizinhanca_do_seed_de_outro_pool() {
+        // Cenário Astrix em miniatura: o pool "gosto global" (A) só tem
+        // candidatos de vibe oposta; o pool "vizinhança do seed" (B) traz o
+        // candidato de vibe idêntica, que deve subir pro topo da união.
+        let seed = VibeProfile {
+            energy: Some(0.9),
+            valence: Some(0.7),
+            moods: moods(&["energetic", "intense"]),
+            genre: Some("Trance".into()),
+        };
+        let oposta = VibeProfile {
+            energy: Some(0.2),
+            valence: Some(0.3),
+            moods: moods(&["melancholic"]),
+            genre: Some("Rap & Hip-Hop".into()),
+        };
+        let pools = vec![
+            vec![
+                (track(10, Some("Rapper A")), oposta.clone()),
+                (track(11, Some("Rapper B")), oposta.clone()),
+            ],
+            vec![(track(20, Some("Techno X")), seed.clone())],
+        ];
+        let out = hybrid_rerank_pools(&seed, pools);
+        assert_eq!(out[0].id, 20, "vizinho do seed com vibe idêntica vence a união");
+    }
+
+    #[test]
+    fn hybrid_rerank_e_wrapper_de_pool_unico() {
+        // Mesmo input => mesma saída entre hybrid_rerank e a variante pools
+        // com um pool só — o wrapper não pode divergir.
+        let seed = VibeProfile {
+            energy: Some(0.9),
+            ..Default::default()
+        };
+        let cands = || {
+            vec![
+                (track(1, None), VibeProfile { energy: Some(0.1), ..Default::default() }),
+                (track(2, None), VibeProfile { energy: Some(0.9), ..Default::default() }),
+                (track(3, None), VibeProfile::default()),
+            ]
+        };
+        let a: Vec<u64> = hybrid_rerank(&seed, cands()).iter().map(|t| t.id).collect();
+        let b: Vec<u64> = hybrid_rerank_pools(&seed, vec![cands()]).iter().map(|t| t.id).collect();
+        assert_eq!(a, b);
     }
 
     // ── cap_per_artist ──────────────────────────────────────────────────────
