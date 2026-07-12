@@ -5,7 +5,7 @@ use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
 use library_indexer::{
-    Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
+    rerank, Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
     IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults,
     Track, TrackFilter, TrackOrder,
 };
@@ -369,6 +369,50 @@ fn lib_shuffle(
         .map_err(err)
 }
 
+/// Re-rankeia `candidates` (ja em ordem de rank MERT) pela vibe do seed:
+/// busca os enrichments do seed + candidatos numa UNICA chamada batch e
+/// aplica o re-rank hibrido (rank MERT normalizado + energy/valence/
+/// mood_tags/genre contra o seed). O genre do seed vem do Track dele
+/// (payload de rustify_tracks), nao do enrichment.
+///
+/// Falha do batch NAO derruba o fluxo: warn + degrada pro rank MERT puro
+/// (cap por artista e shuffle seguem valendo no chamador).
+fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> Vec<Track> {
+    let client = lib.handle.client();
+    let mut batch_ids: Vec<u64> = candidates.iter().map(|t| t.id).collect();
+    batch_ids.push(seed_id);
+    match client.get_enrichments_batch(&batch_ids) {
+        Ok(enrichments) => {
+            let seed_genre = lib
+                .handle
+                .track(seed_id)
+                .ok()
+                .flatten()
+                .and_then(|t| t.genre_name);
+            let null = serde_json::Value::Null;
+            let seed_vibe = rerank::vibe_from_enrichment(
+                enrichments.get(&seed_id).unwrap_or(&null),
+                seed_genre,
+            );
+            let with_vibes: Vec<(Track, rerank::VibeProfile)> = candidates
+                .into_iter()
+                .map(|t| {
+                    let vibe = rerank::vibe_from_enrichment(
+                        enrichments.get(&t.id).unwrap_or(&null),
+                        t.genre_name.clone(),
+                    );
+                    (t, vibe)
+                })
+                .collect();
+            rerank::hybrid_rerank(&seed_vibe, with_vibes)
+        }
+        Err(e) => {
+            tracing::warn!(seed_id, error = %e, "re-rank: enrichments batch falhou — mantendo rank MERT");
+            candidates
+        }
+    }
+}
+
 #[tauri::command]
 fn lib_autoplay_next(
     lib: State<Library>,
@@ -381,72 +425,64 @@ fn lib_autoplay_next(
     let lim = limit.unwrap_or(5);
     let client = lib.handle.client();
 
-    // Layer 1: Qdrant Recommendations API with behavioral signals.
+    // Layer 1: Qdrant Recommendations API (strategy=best_score) + re-rank
+    // hibrido pela vibe do seed.
     //
-    // Positives are built as `[seed × SEED_WEIGHT, ...history]`. Qdrant's
-    // Recommendations API averages all positives equally; without weighting,
-    // a seed competes with up to ~30 historical favorites and gets diluted
-    // (~3% of the centroid). Repeating the seed dominates the recommendation
-    // vector toward the current vibe while keeping history as flavoring.
+    // positives = [seed] + historico comportamental. Com best_score o score
+    // de cada candidato e o MELHOR match individual contra qualquer positive
+    // — repetir o seed (o antigo SEED_WEIGHT) nao muda o max, entao a
+    // ponderacao foi removida. O espaco MERT e anisotropico e multi-cluster:
+    // average_vector colapsava no cluster dominante do gosto (seed de
+    // psytrance retornava 0/15 eletronica), e o score absoluto nao e
+    // confiavel como valor (sims intra-cluster rap chegam a 0.744 vs ~0.599
+    // do melhor techno contra seed techno). Quem carrega a vibe da faixa
+    // atual sao os enrichments: o resultado do recommend e tratado como
+    // RANK e re-rankeado por energy/valence/mood_tags/genre contra o seed
+    // (rerank_by_seed_vibe), com cap de 2 por artista.
     //
-    // exclude_ids is passed as a hard filter (must_not has_id), NOT as Qdrant
-    // negatives. Negatives reshape the search vector; we only want to skip
-    // recently-played items in the result list.
+    // exclude_ids segue como filtro duro (must_not has_id), NAO como
+    // negative — negatives penalizam candidatos proximos de skips fortes.
     if client.is_healthy() {
-        // SEED_WEIGHT used to be 20, which pushed the seed to ~40% of the
-        // recommendation centroid and pinned results to the seed's acoustic
-        // neighborhood (recommending tracks that shared the seed's beat
-        // regardless of user taste). 4 keeps the seed anchored to the current
-        // vibe (~12% of centroid) while letting behavioral history actually
-        // shape recommendations.
-        const SEED_WEIGHT: usize = 4;
-        // Over-fetch so we can randomize the final picks across the top
-        // candidates instead of always returning the same `lim` items. This
-        // combats the "same 5 tracks keep being recommended" symptom.
-        const RECOMMEND_FETCH: usize = 15;
+        // Over-fetch: espaco pro re-rank hibrido reordenar e pro cap por
+        // artista descartar sem esvaziar o resultado final.
+        const RECOMMEND_FETCH: usize = 60;
         match lib.handle.behavioral_signals() {
             Ok((history, negatives)) => {
-                let mut positives: Vec<u64> =
-                    std::iter::repeat(track_id).take(SEED_WEIGHT).collect();
+                let mut positives: Vec<u64> = vec![track_id];
                 positives.extend(history.into_iter().filter(|id| *id != track_id));
                 let fetch = lim.max(RECOMMEND_FETCH);
                 match client.recommend(&positives, &negatives, &exclude_ids, fetch) {
                     Ok(recs) if !recs.is_empty() => {
-                        // Long-tail boost: Fisher-Yates shuffle the top-N
-                        // candidates then take `lim`. The Recommendations API
-                        // already ranked them by similarity to the (seed +
-                        // taste) centroid, so any of the top-N is a "good
-                        // enough" match — varying which N we return prevents
-                        // the same head of the distribution from being served
-                        // every call. xorshift PRNG inline to avoid pulling
-                        // the rand crate just for one shuffle.
-                        let mut shuffled = recs;
+                        // Resolve as tracks preservando a ordem (= rank MERT).
+                        let mut candidates: Vec<Track> = Vec::new();
+                        for (rec_id, _score) in &recs {
+                            if let Ok(Some(t)) = lib.handle.track(*rec_id) {
+                                candidates.push(t);
+                            }
+                        }
+
+                        // Re-rank pela vibe do seed + cap de 2 por artista.
+                        let mut ranked = rerank_by_seed_vibe(&lib, track_id, candidates);
+                        ranked = rerank::cap_per_artist(ranked, 2);
+
+                        // Variedade entre chamadas sem destruir o re-rank:
+                        // Fisher-Yates (xorshift inline, sem crate rand) so
+                        // sobre o topo (lim*3) do resultado, depois corta.
                         let seed = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.as_nanos() as u64)
                             .unwrap_or(0x9E3779B97F4A7C15)
                             .wrapping_add(track_id);
-                        let mut state = seed | 1;
-                        for i in (1..shuffled.len()).rev() {
-                            state ^= state << 13;
-                            state ^= state >> 7;
-                            state ^= state << 17;
-                            let j = (state as usize) % (i + 1);
-                            shuffled.swap(i, j);
-                        }
-                        shuffled.truncate(lim);
+                        shuffle_prefix(&mut ranked, lim * 3, seed);
+                        ranked.truncate(lim);
 
-                        let mut tracks = Vec::new();
-                        for (rec_id, _score) in &shuffled {
-                            if let Ok(Some(mut t)) = lib.handle.track(*rec_id) {
-                                if let Some(rel) = &t.album_cover_path {
-                                    t.album_cover_path = Some(lib.cache_dir.join(rel));
-                                }
-                                tracks.push(t);
+                        for t in &mut ranked {
+                            if let Some(rel) = &t.album_cover_path {
+                                t.album_cover_path = Some(lib.cache_dir.join(rel));
                             }
                         }
-                        if !tracks.is_empty() {
-                            return Ok(tracks);
+                        if !ranked.is_empty() {
+                            return Ok(ranked);
                         }
                     }
                     Ok(_) => {}
@@ -3171,6 +3207,24 @@ mod seed_ids_wire {
     }
 }
 
+/// Fisher-Yates com xorshift apenas sobre os primeiros `prefix` elementos.
+/// Variedade entre chamadas sem destruir o rank do restante da lista —
+/// usado pelo autoplay pra embaralhar so o topo do resultado re-rankeado.
+fn shuffle_prefix<T>(items: &mut [T], prefix: usize, seed: u64) {
+    let n = prefix.min(items.len());
+    if n < 2 {
+        return;
+    }
+    let mut state = seed | 1;
+    for i in (1..n).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let j = (state as usize) % (i + 1);
+        items.swap(i, j);
+    }
+}
+
 /// Remove duplicatas preservando a ordem de primeira ocorrencia.
 /// `behavioral_signals` retorna positives PONDERADOS (mesmo id repetido ate
 /// 5x por design) — seeds de station devem ser tracks distintas.
@@ -3255,7 +3309,9 @@ fn now_unix() -> i64 {
 fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Vec<Track> {
     match station.kind {
         StationKind::Seed => {
-            // Para cada seed track, busca similares e mescla os resultados.
+            // Para cada seed track, busca similares (rank MERT), re-rankeia
+            // pela vibe DAQUELE seed e toma o topo — a station mistura as
+            // vizinhancas curadas de cada seed, nao o rank MERT cru.
             // Dedup dos seeds: JSONs legados podem ter ids repetidos (bug do
             // take(5) sobre positives ponderados) — sem dedup o per_seed
             // encolhe e a mesma vizinhanca e consultada N vezes.
@@ -3264,20 +3320,35 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
             let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
             let mut tracks = Vec::new();
             let per_seed = (limit / seeds.len().max(1)).max(5);
+            // Over-fetch por seed: espaco pro re-rank hibrido reordenar
+            // antes do corte em per_seed.
+            let per_seed_fetch = per_seed * 3;
             for &sid in &seeds {
-                if let Ok(recs) = client.recommend(&[sid], &[], &[], per_seed) {
-                    for (track_id, _score) in recs {
-                        if seen.insert(track_id) {
-                            if let Ok(Some(mut t)) = lib.handle.track(track_id) {
-                                if let Some(rel) = &t.album_cover_path {
-                                    t.album_cover_path = Some(lib.cache_dir.join(rel));
-                                }
-                                tracks.push(t);
-                            }
+                let Ok(recs) = client.recommend(&[sid], &[], &[], per_seed_fetch) else {
+                    continue;
+                };
+                // Resolve as tracks preservando a ordem (= rank MERT).
+                let mut cands: Vec<Track> = Vec::new();
+                for (track_id, _score) in recs {
+                    if let Ok(Some(t)) = lib.handle.track(track_id) {
+                        cands.push(t);
+                    }
+                }
+                // Uma chamada batch de enrichments por seed e aceitavel —
+                // o Qdrant e sidecar localhost.
+                let ranked = rerank_by_seed_vibe(lib, sid, cands);
+                for mut t in ranked.into_iter().take(per_seed) {
+                    if seen.insert(t.id) {
+                        if let Some(rel) = &t.album_cover_path {
+                            t.album_cover_path = Some(lib.cache_dir.join(rel));
                         }
+                        tracks.push(t);
                     }
                 }
             }
+            // Cap global por artista antes do corte final — sem isto uma
+            // station podia sair dominada por um artista so.
+            let mut tracks = rerank::cap_per_artist(tracks, 2);
             tracks.truncate(limit);
             tracks
         }
@@ -3499,6 +3570,31 @@ mod tests {
         let input = vec![7u64, 7, 7, 3, 7, 3, 9];
         assert_eq!(dedup_preserving_order(&input), vec![7, 3, 9]);
         assert_eq!(dedup_preserving_order(&[]), Vec::<u64>::new());
+    }
+
+    #[test]
+    fn shuffle_prefix_so_embaralha_o_topo_e_preserva_elementos() {
+        let original: Vec<u64> = (0..20).collect();
+        let mut v = original.clone();
+        shuffle_prefix(&mut v, 5, 12345);
+        // Sufixo (alem do prefix) fica intocado — o rank do re-rank hibrido
+        // so pode ser perturbado no topo.
+        assert_eq!(&v[5..], &original[5..]);
+        // Prefixo e uma permutacao dos mesmos elementos.
+        let mut pre: Vec<u64> = v[..5].to_vec();
+        pre.sort_unstable();
+        assert_eq!(pre, vec![0, 1, 2, 3, 4]);
+        // prefix maior que o slice nao panica e preserva os elementos.
+        let mut w = vec![1u64, 2];
+        shuffle_prefix(&mut w, 10, 7);
+        let mut ws = w.clone();
+        ws.sort_unstable();
+        assert_eq!(ws, vec![1, 2]);
+        // Slice vazio / prefix 0 sao no-ops.
+        shuffle_prefix(&mut Vec::<u64>::new(), 5, 7);
+        let mut único = vec![9u64];
+        shuffle_prefix(&mut único, 0, 7);
+        assert_eq!(único, vec![9]);
     }
 
     // YAML minimo representando um tema legado (vocabulario surfaces/text/accent/signal).

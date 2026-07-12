@@ -591,8 +591,12 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
     let played_ids: std::collections::HashSet<u64> =
         played_all.iter().map(|(id, _)| *id).collect();
 
+    // Sem re-rank hibrido de vibe nas linhas da Home: o alvo aqui e o gosto
+    // GLOBAL (multi-cluster, sem seed de vibe) — o strategy=best_score do
+    // recommend ja evita o colapso de centroide que soterrava os clusters
+    // minoritarios do gosto. Over-fetch + cap de 2 por artista + corte em 10.
     let based_on_top = if !seed_ids.is_empty() {
-        let rec_ids = client.recommend(&seed_ids, &[], &[], 10)?;
+        let rec_ids = client.recommend(&seed_ids, &[], &[], 20)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
             if let Some(t) = get_track(client, tid)? {
@@ -601,13 +605,17 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
                 }
             }
         }
+        let mut tracks = crate::rerank::cap_per_artist(tracks, 2);
+        tracks.truncate(10);
         tracks
     } else {
         Vec::new()
     };
 
     let discover = if !seed_ids.is_empty() {
-        let rec_ids = client.recommend(&seed_ids, &[], &[], 20)?;
+        // Over-fetch maior (30): o filtro de ja-tocadas + seeds descarta
+        // mais candidatos que o based_on_top.
+        let rec_ids = client.recommend(&seed_ids, &[], &[], 30)?;
         let mut tracks = Vec::new();
         for (tid, _score) in rec_ids {
             if let Some(t) = get_track(client, tid)? {
@@ -616,6 +624,7 @@ pub fn recommendations(client: &QdrantClient) -> Result<Recommendations, Indexer
                 }
             }
         }
+        let mut tracks = crate::rerank::cap_per_artist(tracks, 2);
         tracks.truncate(10);
         tracks
     } else {
