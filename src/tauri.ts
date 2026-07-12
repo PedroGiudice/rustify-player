@@ -365,6 +365,15 @@ export interface StationDetail extends Station {
   tracks: Track[];
 }
 
+export interface MoodVocabulary {
+  moods: string[];
+  activities: string[];
+  genres: string[];
+}
+
+export const libMoodVocabulary = () =>
+  invoke<MoodVocabulary>("lib_mood_vocabulary");
+
 export const libListStations = () =>
   invoke<Station[]>("lib_list_stations");
 

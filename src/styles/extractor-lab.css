@@ -2588,6 +2588,43 @@ html { --glow: 0; }
 }
 .st-feature__visual canvas { width: 100%; height: 100%; display: block; }
 
+/* Painel de criacao de mood station (chips multi-select + genero + nome) */
+.st-mood-create {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+}
+.st-mood-create__group { display: flex; flex-direction: column; gap: 6px; }
+.st-mood-create__label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--fg-5);
+}
+.st-mood-create__chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.st-mood-create__row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.st-mood-create__genre,
+.st-mood-create__name {
+  padding: 7px 11px;
+  font-size: 13px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-paper);
+  color: var(--fg-1);
+}
+.st-mood-create__name { flex: 1; min-width: 160px; }
+.st-mood-create__row .st-feature__cta {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+}
+.st-mood-create__row .st-feature__cta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Station grid */
 .st-grid {
   display: grid;

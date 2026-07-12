@@ -17,6 +17,7 @@ import {
   libListStations,
   libPlayStation,
   libCreateStation,
+  libMoodVocabulary,
   Station,
 } from "../tauri";
 import { player, setQueue } from "../store/player";
@@ -189,9 +190,127 @@ export function StationCard(props: {
   );
 }
 
+// ── Painel de criacao de mood station ─────────────────────────────
+// Chips multi-select de mood/activity (vocabulario buscado no mount via
+// lib_mood_vocabulary — o MESMO vocabulario que MoodFilters::parse aceita,
+// entao o round-trip nunca produz 0 resultados por divergencia PT/EN),
+// select opcional de genero, nome com autoname sugerido pela selecao.
+// Validacao: exige >=1 mood OU >=1 activity (senao MoodFilters::is_empty
+// e a station nasce vazia).
+function MoodStationCreator(props: { onCreated: () => void }) {
+  const [vocab] = createResource(libMoodVocabulary);
+  const [selectedMoods, setSelectedMoods] = createSignal<string[]>([]);
+  const [selectedActivities, setSelectedActivities] = createSignal<string[]>([]);
+  const [genre, setGenre] = createSignal("");
+  const [customName, setCustomName] = createSignal("");
+
+  function toggle(list: () => string[], setList: (v: string[]) => void, tag: string) {
+    setList(list().includes(tag) ? list().filter((t) => t !== tag) : [...list(), tag]);
+  }
+
+  const autoName = () => [...selectedMoods(), ...selectedActivities()].join(" · ");
+  const canCreate = () => selectedMoods().length > 0 || selectedActivities().length > 0;
+
+  async function handleCreate() {
+    if (!canCreate()) return;
+    const tokens = [...selectedMoods(), ...selectedActivities()];
+    // MoodFilters::parse (Rust) reconhece genero via bigram/token exato sobre
+    // a string em minusculas — "Funk & Soul" so bate no bigram "funk soul"
+    // (sem "&"); mandando o "&" cru, o bigram nao bate e os TOKENS soltos
+    // "funk"/"soul" caem no ramo de single-token errado ("funk" sozinho vira
+    // "Funk Brasileiro"). Remover " & " evita a tokenizacao ambigua sem
+    // tocar no parser (fora de escopo — ver CLAUDE.md).
+    const genreQuery = genre().replace(/\s*&\s*/g, " ");
+    const query = genre() ? `${tokens.join(" ")} ${genreQuery}` : tokens.join(" ");
+    const name = customName().trim() || autoName();
+    try {
+      await libCreateStation({
+        name,
+        kind: "mood",
+        query,
+        icon: "lucide:sparkles",
+        tone: "tone-mint",
+        desc: query,
+      });
+      setSelectedMoods([]);
+      setSelectedActivities([]);
+      setGenre("");
+      setCustomName("");
+      props.onCreated();
+    } catch (err) {
+      console.error("[stations] criar mood station falhou:", err);
+    }
+  }
+
+  return (
+    <div class="st-mood-create">
+      <div class="st-mood-create__group">
+        <span class="st-mood-create__label">Mood</span>
+        <div class="st-mood-create__chips">
+          <For each={vocab()?.moods ?? []}>
+            {(m) => (
+              <button
+                type="button"
+                class={`chip${selectedMoods().includes(m) ? " active" : ""}`}
+                onClick={() => toggle(selectedMoods, setSelectedMoods, m)}
+              >
+                {m}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class="st-mood-create__group">
+        <span class="st-mood-create__label">Activity</span>
+        <div class="st-mood-create__chips">
+          <For each={vocab()?.activities ?? []}>
+            {(a) => (
+              <button
+                type="button"
+                class={`chip${selectedActivities().includes(a) ? " active" : ""}`}
+                onClick={() => toggle(selectedActivities, setSelectedActivities, a)}
+              >
+                {a}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class="st-mood-create__row">
+        <select
+          class="st-mood-create__genre"
+          value={genre()}
+          onChange={(e) => setGenre(e.currentTarget.value)}
+        >
+          <option value="">Qualquer genero</option>
+          <For each={vocab()?.genres ?? []}>
+            {(g) => <option value={g}>{g}</option>}
+          </For>
+        </select>
+        <input
+          class="st-mood-create__name"
+          type="text"
+          placeholder={autoName() || "Nome da station"}
+          value={customName()}
+          onInput={(e) => setCustomName(e.currentTarget.value)}
+        />
+        <button
+          type="button"
+          class="st-feature__cta"
+          disabled={!canCreate()}
+          onClick={handleCreate}
+        >
+          Criar mood station
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── View principal ───────────────────────────────────────────────
 export default function Stations() {
   const [stations, { refetch }] = createResource(libListStations);
+  const [moodPanelOpen, setMoodPanelOpen] = createSignal(false);
 
   async function handleResume(id: string) {
     try {
@@ -308,14 +427,31 @@ export default function Stations() {
         <section>
           <div class="section__head">
             <h2 class="section__title">All stations</h2>
-            <a
-              class="section__action"
-              style={{ cursor: "pointer" }}
-              onClick={handleNewFromCurrent}
-            >
-              New from current track →
-            </a>
+            <div style={{ display: "flex", gap: "16px" }}>
+              <a
+                class="section__action"
+                style={{ cursor: "pointer" }}
+                onClick={handleNewFromCurrent}
+              >
+                New from current track →
+              </a>
+              <a
+                class="section__action"
+                style={{ cursor: "pointer" }}
+                onClick={() => setMoodPanelOpen((v) => !v)}
+              >
+                {moodPanelOpen() ? "Fechar" : "Nova mood station"} →
+              </a>
+            </div>
           </div>
+          <Show when={moodPanelOpen()}>
+            <MoodStationCreator
+              onCreated={() => {
+                setMoodPanelOpen(false);
+                refetch();
+              }}
+            />
+          </Show>
           <div class="st-grid">
             <Show
               when={(stations()?.length ?? 0) > 0}
