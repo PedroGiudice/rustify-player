@@ -14,6 +14,61 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+/// Vocabulário canônico de mood — os 24 tokens DE FATO anotados na collection
+/// `track_enrichments` (extraídos de todas as 1378 tracks anotadas, 2026-07).
+/// Ordem alfabética. `MoodFilters::parse` emite exclusivamente estes tokens
+/// (nunca português) — o filtro do Qdrant em `mood_search_enrichments` faz
+/// match exato contra o payload, então qualquer divergência de vocabulário
+/// retorna 0 resultados silenciosamente.
+///
+/// "chill", "driving", "focus" e "social" também existem em
+/// [`ACTIVITY_VOCAB`] — ver a nota de ambiguidade em `MoodFilters::parse`.
+pub const MOOD_VOCAB: &[&str] = &[
+    "aggressive",
+    "anxious",
+    "bittersweet",
+    "chill",
+    "confident",
+    "dark",
+    "dreamy",
+    "driving",
+    "energetic",
+    "ethereal",
+    "focus",
+    "groovy",
+    "intense",
+    "melancholic",
+    "nostalgic",
+    "peaceful",
+    "playful",
+    "raw",
+    "rebellious",
+    "romantic",
+    "sensual",
+    "social",
+    "triumphant",
+    "uplifting",
+];
+
+/// Vocabulário canônico de activity — os 14 tokens DE FATO anotados em
+/// `track_enrichments`. Mesma fonte e mesma regra de `MOOD_VOCAB`.
+pub const ACTIVITY_VOCAB: &[&str] = &[
+    "chill",
+    "cleaning",
+    "commute",
+    "cooking",
+    "driving",
+    "focus",
+    "gaming",
+    "meditation",
+    "party",
+    "romance",
+    "sleep",
+    "social",
+    "study",
+    "workout",
+];
+
 #[derive(Debug, Default)]
 pub struct MoodFilters {
     pub mood_tags: Vec<String>,
@@ -36,13 +91,28 @@ impl MoodFilters {
             && self.valence_max.is_none()
     }
 
+    /// Traduz uma query textual (PT/EN livre) para os tokens EXATOS anotados
+    /// em `track_enrichments` ([`MOOD_VOCAB`] / [`ACTIVITY_VOCAB`]).
+    ///
+    /// Duas camadas, nesta ordem:
+    /// 1. **Passthrough canônico**: se o token já é um item do vocabulário,
+    ///    ele vira a si mesmo. Checado mood-primeiro — isso é o que resolve
+    ///    a ambiguidade dos 4 tokens presentes nos dois vocabulários
+    ///    ("chill", "driving", "focus", "social"): digitados direto, caem em
+    ///    mood (uso mais comum). Nunca os dois buckets a partir do mesmo
+    ///    token.
+    /// 2. **Aliases PT/EN**: sinônimos que não são o token canônico. Quando
+    ///    o alias é claramente de atividade (ex: "dirigir", "relaxar",
+    ///    "trabalhar", "churrasco"), resolve pra activity mesmo que o
+    ///    resultado seja um dos 4 tokens ambíguos — a alias explícita vence
+    ///    o default de ambiguidade.
     pub fn parse(query: &str) -> Self {
         let q = query.to_lowercase();
         let mut f = MoodFilters::default();
 
         // Bigrams first (order matters — "road trip" before "road")
         let bigram_map: &[(&str, Box<dyn Fn(&mut MoodFilters)>)] = &[
-            ("road trip", Box::new(|f: &mut MoodFilters| f.activity_tags.push("road_trip".into()))),
+            ("road trip", Box::new(|f: &mut MoodFilters| f.activity_tags.push("driving".into()))),
             ("hip hop", Box::new(|f: &mut MoodFilters| f.genre = Some("Rap & Hip-Hop".into()))),
             ("hip-hop", Box::new(|f: &mut MoodFilters| f.genre = Some("Rap & Hip-Hop".into()))),
             ("alta energia", Box::new(|f: &mut MoodFilters| f.energy_min = Some(0.7))),
@@ -65,36 +135,56 @@ impl MoodFilters {
 
         let tokens: Vec<&str> = consumed.split_whitespace().collect();
         for tok in &tokens {
+            // Passthrough canônico — mood checado primeiro (resolve os 4
+            // tokens ambíguos a favor de mood quando digitados direto).
+            if MOOD_VOCAB.contains(tok) {
+                f.mood_tags.push((*tok).to_string());
+                continue;
+            }
+            if ACTIVITY_VOCAB.contains(tok) {
+                f.activity_tags.push((*tok).to_string());
+                continue;
+            }
+
             match *tok {
-                // Activity
-                "malhar" | "treino" | "workout" | "academia" => f.activity_tags.push("malhar".into()),
-                "relaxar" | "relax" | "chill" | "calmo" | "calma" => f.activity_tags.push("relaxar".into()),
-                "dirigir" | "drive" | "carro" => f.activity_tags.push("dirigir".into()),
-                "estudar" | "study" | "foco" | "focus" => f.activity_tags.push("estudar".into()),
-                "festa" | "party" => f.activity_tags.push("festa".into()),
-                "correr" | "run" | "running" => f.activity_tags.push("correr".into()),
-                "dançar" | "dance" | "dancing" => f.activity_tags.push("dançar".into()),
-                "acordar" | "morning" | "manhã" => f.activity_tags.push("acordar".into()),
-                "dormir" | "sleep" => f.activity_tags.push("dormir".into()),
-                "meditar" | "meditation" => f.activity_tags.push("meditar".into()),
-                "churrasco" | "bbq" => f.activity_tags.push("churrasco".into()),
-                "cozinhar" | "cooking" => f.activity_tags.push("cozinhar".into()),
-                "trabalhar" | "work" => f.activity_tags.push("trabalhar".into()),
-                // Mood
-                "triste" | "sad" => f.mood_tags.push("melancólico".into()),
-                "alegre" | "happy" | "feliz" => f.mood_tags.push("alegre".into()),
-                "animado" | "energia" | "energetic" | "energy" => f.mood_tags.push("energético".into()),
-                "agressivo" | "aggressive" | "pesado" | "heavy" => f.mood_tags.push("agressivo".into()),
-                "romântico" | "romantic" | "amor" | "love" => f.mood_tags.push("romântico".into()),
-                "sombrio" | "dark" => f.mood_tags.push("sombrio".into()),
-                "nostálgico" | "nostalgia" => f.mood_tags.push("nostálgico".into()),
-                "misterioso" | "mystery" => f.mood_tags.push("misterioso".into()),
-                "rebelde" | "rebel" => f.mood_tags.push("rebelde".into()),
-                "sensual" | "sexy" => f.mood_tags.push("sensual".into()),
-                "empoderador" | "empowering" => f.mood_tags.push("empoderador".into()),
-                "intenso" => f.energy_min = Some(0.7),
-                "suave" | "soft" => f.energy_max = Some(0.3),
-                // Genre (single tokens not caught by bigrams)
+                // ── Activity aliases → token canônico do ACTIVITY_VOCAB ──
+                "malhar" | "treino" | "academia" | "correr" | "run" | "running" => {
+                    f.activity_tags.push("workout".into())
+                }
+                "relaxar" | "relax" | "calmo" | "calma" => f.activity_tags.push("chill".into()),
+                "dirigir" | "drive" | "carro" => f.activity_tags.push("driving".into()),
+                "estudar" | "foco" => f.activity_tags.push("study".into()),
+                "festa" | "dançar" | "dance" | "dancing" => f.activity_tags.push("party".into()),
+                "dormir" => f.activity_tags.push("sleep".into()),
+                "meditar" => f.activity_tags.push("meditation".into()),
+                "churrasco" | "bbq" => f.activity_tags.push("social".into()),
+                "cozinhar" => f.activity_tags.push("cooking".into()),
+                "trabalhar" | "work" => f.activity_tags.push("focus".into()),
+                "limpar" | "faxina" => f.activity_tags.push("cleaning".into()),
+                "deslocamento" => f.activity_tags.push("commute".into()),
+                "jogar" | "jogos" | "game" | "gamer" => f.activity_tags.push("gaming".into()),
+                "date" | "encontro" => f.activity_tags.push("romance".into()),
+                // ── Mood aliases → token canônico do MOOD_VOCAB ──────────
+                "triste" | "sad" => f.mood_tags.push("melancholic".into()),
+                "alegre" | "happy" | "feliz" => f.mood_tags.push("uplifting".into()),
+                "animado" | "energia" | "energy" => f.mood_tags.push("energetic".into()),
+                "agressivo" | "pesado" | "heavy" => f.mood_tags.push("aggressive".into()),
+                "romântico" | "amor" | "love" => f.mood_tags.push("romantic".into()),
+                "sombrio" | "misterioso" | "mystery" => f.mood_tags.push("dark".into()),
+                "nostálgico" | "nostalgia" => f.mood_tags.push("nostalgic".into()),
+                "rebelde" | "rebel" => f.mood_tags.push("rebellious".into()),
+                "sexy" => f.mood_tags.push("sensual".into()),
+                "empoderador" | "empowering" => f.mood_tags.push("confident".into()),
+                "intenso" => f.mood_tags.push("intense".into()),
+                "suave" | "soft" => f.mood_tags.push("peaceful".into()),
+                "ansioso" => f.mood_tags.push("anxious".into()),
+                "agridoce" => f.mood_tags.push("bittersweet".into()),
+                "sonhador" => f.mood_tags.push("dreamy".into()),
+                "etéreo" | "etereo" => f.mood_tags.push("ethereal".into()),
+                "brincalhão" | "brincalhao" => f.mood_tags.push("playful".into()),
+                "cru" => f.mood_tags.push("raw".into()),
+                "triunfante" => f.mood_tags.push("triumphant".into()),
+                // ── Genre (single tokens not caught by bigrams) ──────────
                 "funk" => {
                     if f.genre.is_none() {
                         f.genre = Some("Funk Brasileiro".into());
@@ -1647,5 +1737,167 @@ mod tests {
         assert!(!map.contains_key(&99));
         // Resposta sem result → map vazio, sem panic.
         assert!(parse_id_payload_map(&json!({})).is_empty());
+    }
+
+    // ── MoodFilters::parse — vocabulário real (fix "workout retorna 0") ────
+    //
+    // O vocabulário canônico é o que está DE FATO anotado em track_enrichments
+    // (24 moods + 14 activities, extraídos da collection real). O parser
+    // antigo emitia tags em português que não existiam nos dados — qualquer
+    // termo cujo alias não coincidisse acidentalmente com o inglês (ex:
+    // "sensual") retornava 0 resultados. Estes testes travam a saída em
+    // inglês, idêntica aos tokens anotados.
+
+    /// Dos 4 tokens presentes em AMBOS os vocabulários (driving/chill/focus/
+    /// social), o canônico digitado direto resolve para mood — ver docs de
+    /// `MoodFilters::parse`.
+    const AMBIGUOUS_TOKENS: &[&str] = &["driving", "chill", "focus", "social"];
+
+    #[test]
+    fn mood_e_activity_vocab_tem_o_tamanho_esperado() {
+        assert_eq!(MOOD_VOCAB.len(), 24, "MOOD_VOCAB deveria ter os 24 moods anotados em track_enrichments");
+        assert_eq!(ACTIVITY_VOCAB.len(), 14, "ACTIVITY_VOCAB deveria ter as 14 activities anotadas em track_enrichments");
+    }
+
+    #[test]
+    fn parse_todos_os_moods_canonicos_caem_em_mood_tags_com_token_identico() {
+        for tag in MOOD_VOCAB {
+            let f = MoodFilters::parse(tag);
+            assert_eq!(
+                f.mood_tags,
+                vec![tag.to_string()],
+                "mood '{tag}' digitado direto deveria virar mood_tags=[{tag}]"
+            );
+            assert!(
+                f.activity_tags.is_empty(),
+                "mood '{tag}' nao deveria vazar pra activity_tags"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_activities_nao_ambiguas_caem_em_activity_tags_com_token_identico() {
+        for tag in ACTIVITY_VOCAB {
+            if AMBIGUOUS_TOKENS.contains(tag) {
+                continue; // cobertas pelo teste de ambiguidade abaixo
+            }
+            let f = MoodFilters::parse(tag);
+            assert_eq!(
+                f.activity_tags,
+                vec![tag.to_string()],
+                "activity '{tag}' digitada direto deveria virar activity_tags=[{tag}]"
+            );
+            assert!(
+                f.mood_tags.is_empty(),
+                "activity '{tag}' nao deveria vazar pra mood_tags"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_tokens_ambiguos_digitados_direto_preferem_mood() {
+        // "driving", "chill", "focus" e "social" existem nos dois vocabulários.
+        // Regra: o token canônico digitado direto prefere mood (uso mais
+        // comum); aliases claramente de atividade (ex: "dirigir", "relaxar")
+        // é que resolvem pra activity — ver teste seguinte.
+        for tag in AMBIGUOUS_TOKENS {
+            let f = MoodFilters::parse(tag);
+            assert_eq!(
+                f.mood_tags,
+                vec![tag.to_string()],
+                "token ambíguo '{tag}' digitado direto deve preferir mood"
+            );
+            assert!(
+                f.activity_tags.is_empty(),
+                "token ambíguo '{tag}' nao deve duplicar em activity_tags quando digitado direto"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_aliases_de_atividade_resolvem_ambiguo_para_activity() {
+        // Mesma string final do teste anterior (chill/driving/focus/social),
+        // mas via alias inequivocamente de atividade — aqui vai pra activity,
+        // nao pra mood. Nao empurra pros dois buckets a partir do mesmo token.
+        let casos = [
+            ("relaxar", "chill"),
+            ("calmo", "chill"),
+            ("dirigir", "driving"),
+            ("carro", "driving"),
+            ("trabalhar", "focus"),
+            ("churrasco", "social"),
+            ("bbq", "social"),
+        ];
+        for (alias, esperado) in casos {
+            let f = MoodFilters::parse(alias);
+            assert_eq!(
+                f.activity_tags,
+                vec![esperado.to_string()],
+                "alias '{alias}' deveria virar activity_tags=[{esperado}]"
+            );
+            assert!(
+                f.mood_tags.is_empty(),
+                "alias '{alias}' nao deveria vazar pra mood_tags"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_workout_bug_original_retorna_activity_tags_workout() {
+        // Caso relatado: "workout" produzia activity_tags=["malhar"] (PT) e
+        // 0 faixas, porque track_enrichments so tem "workout" (EN).
+        let f = MoodFilters::parse("workout");
+        assert_eq!(f.activity_tags, vec!["workout".to_string()]);
+        assert!(f.mood_tags.is_empty());
+    }
+
+    #[test]
+    fn parse_dark_retorna_mood_tags_dark() {
+        let f = MoodFilters::parse("dark");
+        assert_eq!(f.mood_tags, vec!["dark".to_string()]);
+    }
+
+    #[test]
+    fn parse_aliases_pt_mapeiam_pro_token_ingles_dos_dados() {
+        assert_eq!(MoodFilters::parse("sombrio").mood_tags, vec!["dark".to_string()]);
+        assert_eq!(MoodFilters::parse("misterioso").mood_tags, vec!["dark".to_string()]);
+        assert_eq!(MoodFilters::parse("malhar").activity_tags, vec!["workout".to_string()]);
+        assert_eq!(MoodFilters::parse("treino").activity_tags, vec!["workout".to_string()]);
+        assert_eq!(MoodFilters::parse("triste").mood_tags, vec!["melancholic".to_string()]);
+        assert_eq!(MoodFilters::parse("alegre").mood_tags, vec!["uplifting".to_string()]);
+        assert_eq!(MoodFilters::parse("agressivo").mood_tags, vec!["aggressive".to_string()]);
+        assert_eq!(MoodFilters::parse("romântico").mood_tags, vec!["romantic".to_string()]);
+        assert_eq!(MoodFilters::parse("nostalgia").mood_tags, vec!["nostalgic".to_string()]);
+        assert_eq!(MoodFilters::parse("rebelde").mood_tags, vec!["rebellious".to_string()]);
+        assert_eq!(MoodFilters::parse("sexy").mood_tags, vec!["sensual".to_string()]);
+        assert_eq!(MoodFilters::parse("empoderador").mood_tags, vec!["confident".to_string()]);
+        assert_eq!(MoodFilters::parse("estudar").activity_tags, vec!["study".to_string()]);
+        assert_eq!(MoodFilters::parse("foco").activity_tags, vec!["study".to_string()]);
+        assert_eq!(MoodFilters::parse("festa").activity_tags, vec!["party".to_string()]);
+        assert_eq!(MoodFilters::parse("dormir").activity_tags, vec!["sleep".to_string()]);
+        assert_eq!(MoodFilters::parse("meditar").activity_tags, vec!["meditation".to_string()]);
+        assert_eq!(MoodFilters::parse("cozinhar").activity_tags, vec!["cooking".to_string()]);
+    }
+
+    #[test]
+    fn parse_road_trip_bigram_mapeia_activity_driving_nao_placeholder_antigo() {
+        // Bug antigo: "road trip" virava activity_tags=["road_trip"], uma
+        // tag que nunca existiu em track_enrichments.
+        let f = MoodFilters::parse("road trip");
+        assert_eq!(f.activity_tags, vec!["driving".to_string()]);
+    }
+
+    #[test]
+    fn parse_genero_bigram_ainda_funciona_pos_fix() {
+        // Bigrams de genre/energy/valence nao fazem parte do fix — regressao.
+        assert_eq!(MoodFilters::parse("funk br").genre, Some("Funk Brasileiro".to_string()));
+        assert_eq!(MoodFilters::parse("hip hop").genre, Some("Rap & Hip-Hop".to_string()));
+        assert_eq!(MoodFilters::parse("alta energia").energy_min, Some(0.7));
+    }
+
+    #[test]
+    fn parse_dedup_e_sort_mantidos_para_multiplos_tokens() {
+        let f = MoodFilters::parse("dark dark uplifting");
+        assert_eq!(f.mood_tags, vec!["dark".to_string(), "uplifting".to_string()]);
     }
 }

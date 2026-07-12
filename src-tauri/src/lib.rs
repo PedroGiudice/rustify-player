@@ -164,6 +164,33 @@ fn lib_list_genres(lib: State<Library>) -> Result<Vec<Genre>, String> {
     lib.handle.list_genres().map_err(err)
 }
 
+/// Vocabulario pra UI de criacao de mood stations: moods/activities vem do
+/// vocabulario canonico do parser (`MoodFilters::parse` so reconhece estes
+/// tokens — ver `library_indexer::qdrant_client`), genres reusa a mesma
+/// fonte de `lib_list_genres` (pastas de 1o nivel = generos).
+#[derive(Debug, Clone, Serialize)]
+pub struct MoodVocabulary {
+    pub moods: Vec<String>,
+    pub activities: Vec<String>,
+    pub genres: Vec<String>,
+}
+
+#[tauri::command]
+fn lib_mood_vocabulary(lib: State<Library>) -> Result<MoodVocabulary, String> {
+    let genres = lib
+        .handle
+        .list_genres()
+        .map_err(err)?
+        .into_iter()
+        .map(|g| g.name)
+        .collect();
+    Ok(MoodVocabulary {
+        moods: library_indexer::MOOD_VOCAB.iter().map(|s| s.to_string()).collect(),
+        activities: library_indexer::ACTIVITY_VOCAB.iter().map(|s| s.to_string()).collect(),
+        genres,
+    })
+}
+
 #[tauri::command]
 fn lib_list_tracks(
     lib: State<Library>,
@@ -3083,6 +3110,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             lib_list_genres,
+            lib_mood_vocabulary,
             lib_list_tracks,
             lib_list_albums,
             lib_list_artists,

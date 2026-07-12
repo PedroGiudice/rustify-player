@@ -23,6 +23,11 @@ vi.mock("../tauri", async (importOriginal) => {
     libListStations: vi.fn(async () => []),
     libPlayStation: vi.fn(async () => []),
     libCreateStation: vi.fn(async () => null),
+    libMoodVocabulary: vi.fn(async () => ({
+      moods: ["dark", "uplifting", "chill"],
+      activities: ["workout", "study"],
+      genres: ["Rap & Hip-Hop", "Rock", "Funk & Soul"],
+    })),
   };
 });
 import * as tauriApi from "../tauri";
@@ -366,6 +371,82 @@ describe("SeedChips (reatividade sob parent nao-keyed)", () => {
     setStation(MOCK_STATIONS[1]);
     expect(chip()!.textContent).toContain("modern classical · acoustic · low tempo");
     expect(chip()!.querySelector(".st-seed-chip__cover")!.classList.contains("tone-bone")).toBe(true);
+  });
+});
+
+describe("Criacao de mood station", () => {
+  afterEach(() => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    vi.mocked(tauriApi.libCreateStation).mockImplementation(async () => null as any);
+  });
+
+  it("abre o painel e lista chips de mood/activity do vocabulario mockado", async () => {
+    const { getByText, container } = render(() => <Stations />);
+    fireEvent.click(getByText(/Nova mood station/));
+    await waitFor(() => {
+      expect(container.querySelector(".st-mood-create")).toBeTruthy();
+    });
+    expect(getByText("dark")).toBeTruthy();
+    expect(getByText("uplifting")).toBeTruthy();
+    expect(getByText("chill")).toBeTruthy();
+    expect(getByText("workout")).toBeTruthy();
+    expect(getByText("study")).toBeTruthy();
+  });
+
+  it("botao de criar fica desabilitado sem nenhum chip selecionado", async () => {
+    const { getByText, container } = render(() => <Stations />);
+    fireEvent.click(getByText(/Nova mood station/));
+    await waitFor(() => {
+      expect(container.querySelector(".st-mood-create")).toBeTruthy();
+    });
+    const createBtn = getByText("Criar mood station") as HTMLButtonElement;
+    expect(createBtn.disabled).toBe(true);
+  });
+
+  it("selecionar 2 chips habilita o botao e chama libCreateStation com kind mood e query com os tokens", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    const { getByText, container } = render(() => <Stations />);
+    fireEvent.click(getByText(/Nova mood station/));
+    await waitFor(() => {
+      expect(container.querySelector(".st-mood-create")).toBeTruthy();
+    });
+    fireEvent.click(getByText("dark"));
+    fireEvent.click(getByText("workout"));
+    const createBtn = getByText("Criar mood station") as HTMLButtonElement;
+    expect(createBtn.disabled).toBe(false);
+    fireEvent.click(createBtn);
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libCreateStation)).toHaveBeenCalled();
+    });
+    const call = vi.mocked(tauriApi.libCreateStation).mock.calls[0][0];
+    expect(call.kind).toBe("mood");
+    expect(call.query).toContain("dark");
+    expect(call.query).toContain("workout");
+  });
+
+  it("genero com '&' (ex: Funk & Soul) e sanitizado pra nao quebrar o bigram do parser Rust", async () => {
+    // MoodFilters::parse (Rust) reconhece o genero "Funk & Soul" via bigram
+    // "funk soul" (substring sem &). Se a query mandar o "&" cru, o bigram
+    // nao bate e os tokens soltos "funk"/"soul" caem no ramo errado
+    // (single-token "funk" seta genero pra "Funk Brasileiro" por engano).
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    const { getByText, container } = render(() => <Stations />);
+    fireEvent.click(getByText(/Nova mood station/));
+    await waitFor(() => {
+      expect(container.querySelector(".st-mood-create")).toBeTruthy();
+    });
+    fireEvent.click(getByText("dark"));
+    const genreSelect = container.querySelector(".st-mood-create__genre") as HTMLSelectElement;
+    fireEvent.change(genreSelect, { target: { value: "Funk & Soul" } });
+    fireEvent.click(getByText("Criar mood station"));
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libCreateStation)).toHaveBeenCalled();
+    });
+    const call = vi.mocked(tauriApi.libCreateStation).mock.calls[0][0];
+    expect(call.query).not.toContain("&");
+    // MoodFilters::parse faz to_lowercase() na query inteira antes de tokenizar
+    // — case na origem nao importa pro bigram bater.
+    expect(call.query.toLowerCase()).toContain("funk soul");
   });
 });
 
