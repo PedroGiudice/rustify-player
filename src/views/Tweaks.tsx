@@ -280,6 +280,12 @@ export function Tweaks() {
             step={0.05}
             format={(v) => `${v.toFixed(2)}x`}
           />
+          <Segmented
+            label="Beat sync"
+            key="bgBeatSync"
+            options={[[true, "On"], [false, "Off"]]}
+          />
+          <div class="tweaks__hint">Kick acelera o movimento do fundo</div>
 
           <div class="tweaks__divider"><span>Loudness</span></div>
           <Segmented
