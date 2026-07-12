@@ -41,6 +41,7 @@ import { createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
 import { RENDERERS } from "../renderers";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
+import { expandKick, BEAT_GAIN } from "../lib/beatBoost";
 
 const SHAPE_KEY = "rustify-mock-shape";
 const RENDER_KEY = "rustify-mock-renderer";
@@ -51,9 +52,8 @@ const FFT_STALE_MS = 250;
 /** Quanto o envelope contínuo modula amplitude (1 + ENV_GAIN * env). */
 const ENV_GAIN = 0.5;
 
-/** Boost máximo de velocidade no pico do kick (beat-sync). A derivada
-    do relógio vira dt * speed * (1 + BEAT_GAIN * beatEnv). */
-const BEAT_GAIN = 0.9;
+// BEAT_GAIN vem de lib/beatBoost.ts junto com expandKick — calibrados
+// com a faixa dinâmica REAL do kick medida no app (p50~0.32, max~0.68).
 
 /** Tau (s) da resposta do beat-boost. Só refina a transição — o
     attack/release grosso do envelope já vem do Rust (pw_capture.rs). */
@@ -253,8 +253,10 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       // Beat-boost: o kick (low band) empurra a DERIVADA do relógio —
       // contínuo e suavizado, nunca salto de fase. Opt-in via Tweaks
       // (--bg-beat-sync). Em silêncio/pausa beatEnv decai e a
-      // velocidade volta à nominal.
-      const beatTarget = fresh && beatSync > 0.5 ? lastLow : 0;
+      // velocidade volta à nominal. expandKick remapeia a faixa real
+      // do kick ([0.10, 0.60] medido) pra [0,1] — sem isso o boost
+      // usava só ~40% do range e ficava imperceptível.
+      const beatTarget = fresh && beatSync > 0.5 ? expandKick(lastLow) : 0;
       const kBeat = 1 - Math.exp(-dt / BEAT_TAU);
       beatEnv += (beatTarget - beatEnv) * kBeat;
 
