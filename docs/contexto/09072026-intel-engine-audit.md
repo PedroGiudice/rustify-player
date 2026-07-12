@@ -57,6 +57,47 @@ runtime NÃO funcionam (tauri.ts captura invoke no load) — usar
 `vi.mock("../tauri")`; o teste antigo do grid passava por coincidência
 (placeholders também têm `.st-card`).
 
+## Motor v2 (2026-07-12) — best_score + pool duplo + re-rank híbrido + cap
+
+Executado na v0.2.49 (CMR-123 itens 1, 2, 3 e 5 — o 5 foi ANTECIPADO por
+evidência; item 4 session-awareness fica pra próxima iteração).
+
+**Baseline medido (a régua):** autoplay 66.4% skip / 57% hard-skip (n=107);
+album_seq 42.5% skip é o teto de aceitação; queue (87%) é browsing ativo,
+não comparável. Meta v2: autoplay/station <= 55% skip, hard-skip < 40%.
+
+**Descoberta central (A/B empírico no Qdrant real):** o espaço MERT é
+anisotrópico e desbalanceado — sims intra-cluster rap chegam a 0.744+
+enquanto o melhor candidato techno contra seed techno fica em ~0.599. Por
+isso: (a) average_vector colapsa no cluster dominante (seed Astrix
+psytrance => 0/15 eletrônica no autoplay antigo); (b) best_score global
+TAMBÉM não resgata a vibe do seed (0/15); (c) score MERT só vale como
+RANK, nunca como valor. Quem carrega vibe são os enrichments
+(energy/valence/mood_tags, 100% de cobertura).
+
+**Design shipado:**
+- `recommend` sempre com `strategy: best_score` (Qdrant 1.17; corrige o
+  centróide da Home; inócuo pra single-positive).
+- Autoplay layer 1 com POOL DUPLO: vizinhança pura do seed
+  (`recommend([seed])`) + gosto global (`[seed]+history`, best_score);
+  união com `mert_norm = melhor rank entre pools`, dedup por id
+  (`rerank::hybrid_rerank_pools`). Validação: Astrix 0/15 -> 7/15
+  eletrônica; seed rap segue coerente (11/15, J. Cole capado em 2).
+- Re-rank híbrido pela vibe do seed: `0.5·mert_norm + 0.5·vibe`, com
+  `vibe = 0.35·energy + 0.25·valence + 0.30·jaccard(moods) + 0.10·genre`
+  (dado ausente = 0.5 neutro). Pesos v1 calibráveis contra a régua.
+- `cap_per_artist(2)` em autoplay, station e Home (based_on_top/discover
+  com over-fetch); chave normalizada lowercase alfanumérica ("J. Cole" ==
+  "J Cole"). `similar()` deliberadamente SEM cap.
+- Station Seed: over-fetch 3x por seed + re-rank pela vibe de cada seed +
+  cap global. SEED_WEIGHT removido do autoplay (inócuo com best_score).
+
+**Sobre "learning":** o motor aprende por SINAL (behavioral_signals são
+recalculados a cada chamada dos play_events — cada play/skip muda a
+próxima recomendação), mas os PESOS são estáticos. Calibração dos pesos
+contra os play_events (offline, batch) é o passo natural de learning
+barato; session-awareness (item 4) é o learning de curto prazo.
+
 ## 1. Mistério das 1500 músicas — RESOLVIDO, não há bug
 
 Números medidos na cmr-auto (2026-07-09):
