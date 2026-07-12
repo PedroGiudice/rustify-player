@@ -60,6 +60,11 @@ export interface TweaksState {
       time-dependent — mudanças do slider afetam só a derivada,
       sem saltos de fase. */
   bgSpeed: number;
+  /** Beat sync: o kick (low band do audio-fft) empurra a DERIVADA do
+      relógio virtual do bg — a animação acelera no beat, contínua e
+      suavizada, sem salto de fase. Off = velocidade puramente nominal
+      (bgSpeed). Consumido pelo SpectrumCanvas via --bg-beat-sync. */
+  bgBeatSync: boolean;
 
   // ── Loudness ────────────────────────────────────────────────
   /** Normalização de loudness ligada. Default ON (alvo streaming).
@@ -99,6 +104,7 @@ export const DEFAULTS: TweaksState = {
   bgTrebleGain: 0.8,
   bgSmoothing: 0.3,
   bgSpeed: 1.0,
+  bgBeatSync: true,
   loudnessNorm: true,
   loudnessTarget: -14,
   adaptiveInk: true,
@@ -239,6 +245,9 @@ export function applyTweaks(s: TweaksState = state()) {
   html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
   html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
   html.style.setProperty("--bg-speed", s.bgSpeed.toFixed(3));
+  // Beat sync como flag numérica ("1"/"0"): o canvas lê com parseFloat
+  // no mesmo batch das outras vars, sem parsing especial de bool.
+  html.style.setProperty("--bg-beat-sync", s.bgBeatSync ? "1" : "0");
 }
 
 /** Deriva e escreve as vars do lyrics glass a partir do slider. */

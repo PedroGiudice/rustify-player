@@ -19,6 +19,10 @@
 
    Regra crítica: o envelope só modula amplitude. NUNCA toca em
    fase nem em ink density — caso contrário vira screensaver.
+   Exceção deliberada (beat-sync, opt-in via --bg-beat-sync): o kick
+   (low band) modula a DERIVADA do relógio virtual — a velocidade
+   acelera no beat, contínua e suavizada (BEAT_TAU). Salto ou
+   descontinuidade de FASE segue proibido.
 
    Tinta puxada da CSS var --bg-ink-rgb (Tweaks panel). Default
    carbono 23, 23, 23; alpha por renderer (renderers.ts).
@@ -46,6 +50,14 @@ const FFT_STALE_MS = 250;
 
 /** Quanto o envelope contínuo modula amplitude (1 + ENV_GAIN * env). */
 const ENV_GAIN = 0.5;
+
+/** Boost máximo de velocidade no pico do kick (beat-sync). A derivada
+    do relógio vira dt * speed * (1 + BEAT_GAIN * beatEnv). */
+const BEAT_GAIN = 0.9;
+
+/** Tau (s) da resposta do beat-boost. Só refina a transição — o
+    attack/release grosso do envelope já vem do Rust (pw_capture.rs). */
+const BEAT_TAU = 0.09;
 
 /** Limites de tau (s) para o decay do envelope. Mapeados pelo slider
     bgSmoothing dos Tweaks: 0 → ENV_TAU_MIN (resposta crua), 1 → ENV_TAU_MAX
@@ -126,6 +138,11 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let smoothedEnv = 0;
   let lastFrameMs = performance.now();
 
+  // Beat-sync: envelope do kick que empurra a derivada do relógio
+  // (beatEnv) + flag lida de --bg-beat-sync (1 = on, 0 = off).
+  let beatEnv = 0;
+  let beatSync = 1;
+
   // Cor da tinta + ganhos por banda + smoothing. Lidos das CSS
   // vars que Tweaks escreve no <html> (~3x/s, sem listener).
   // A tinta tem DOIS estados: alvo (amostrado a 3Hz) e corrente
@@ -203,11 +220,13 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         const tr = parseFloat(cs.getPropertyValue("--bg-treble-gain"));
         const sm = parseFloat(cs.getPropertyValue("--bg-smoothing"));
         const sp = parseFloat(cs.getPropertyValue("--bg-speed"));
+        const bs = parseFloat(cs.getPropertyValue("--bg-beat-sync"));
         if (Number.isFinite(b)) bassGain = b;
         if (Number.isFinite(m)) midGain = m;
         if (Number.isFinite(tr)) trebleGain = tr;
         if (Number.isFinite(sm)) smoothing = sm;
         if (Number.isFinite(sp)) speed = sp;
+        if (Number.isFinite(bs)) beatSync = bs;
       }
 
       const tMs = performance.now();
@@ -221,9 +240,22 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       inkCur.g += (inkTgt.g - inkCur.g) * kInk;
       inkCur.b += (inkTgt.b - inkCur.b) * kInk;
       inkRgb = `${Math.round(inkCur.r)}, ${Math.round(inkCur.g)}, ${Math.round(inkCur.b)}`;
+      // Stream de FFT considerado vivo? Computado ANTES do avanço do
+      // clock porque o beat-boost depende dele; reusado no target do
+      // envelope de amplitude logo abaixo.
+      const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
+
+      // Beat-boost: o kick (low band) empurra a DERIVADA do relógio —
+      // contínuo e suavizado, nunca salto de fase. Opt-in via Tweaks
+      // (--bg-beat-sync). Em silêncio/pausa beatEnv decai e a
+      // velocidade volta à nominal.
+      const beatTarget = fresh && beatSync > 0.5 ? lastLow : 0;
+      const kBeat = 1 - Math.exp(-dt / BEAT_TAU);
+      beatEnv += (beatTarget - beatEnv) * kBeat;
+
       // Avança o relógio virtual da animação. bgSpeed=0 congela,
       // 1 = nominal, 2 = dobro. Independente do dt do envelope.
-      bgClock += dt * speed;
+      bgClock += dt * speed * (1 + BEAT_GAIN * beatEnv);
       const t = bgClock;
       ctx.clearRect(0, 0, w, h);
 
@@ -231,7 +263,6 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       // pela soma dos pesos pra evitar saturar quando gains > 1.
       // Quando stale (sem FFT por > FFT_STALE_MS), target = 0 e o
       // smoothedEnv decai naturalmente.
-      const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
       let target = 0;
       if (fresh) {
         const num = bassGain * lastLow + midGain * lastMid + trebleGain * lastHigh;

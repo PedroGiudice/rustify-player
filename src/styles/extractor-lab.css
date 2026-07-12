@@ -1427,6 +1427,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   transition: background var(--dur-base), color var(--dur-base);
 }
 .tweaks__reset:hover { background: var(--line-2); color: var(--fg-2); }
+/* Hint de uma linha sob um knob (mesma família do .set-row__hint). */
+.tweaks__hint {
+  font-size: 11px; color: var(--fg-5); line-height: 1.4;
+  margin: -2px 0 2px;
+}
 
 /* ── data-density="compact": reduz padding/gap em toda a UI ───── */
 html[data-density="compact"] .nav-item { padding: 5px 10px; }

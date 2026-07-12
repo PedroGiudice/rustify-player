@@ -103,6 +103,32 @@ describe("migração de estado salvo sem __dirty", () => {
   });
 });
 
+describe("bgBeatSync (beat-sync do bg)", () => {
+  it("default é true e applyTweaks escreve --bg-beat-sync = 1", () => {
+    // Estado salvo sem o campo (versão antiga) também cai aqui: o load
+    // preenche com DEFAULTS.
+    localStorage.setItem("kv-tweaks", "{}");
+    loadTweaks();
+    expect(DEFAULTS.bgBeatSync).toBe(true);
+    expect(tweaks().bgBeatSync).toBe(true);
+    expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("1");
+  });
+
+  it("toggle off escreve --bg-beat-sync = 0", () => {
+    localStorage.setItem("kv-tweaks", "{}");
+    loadTweaks();
+    updateTweak("bgBeatSync", false);
+    expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
+  });
+
+  it("estado salvo false é respeitado no boot", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatSync: false }));
+    loadTweaks();
+    expect(tweaks().bgBeatSync).toBe(false);
+    expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
+  });
+});
+
 describe("lyricsGlass regido por tema", () => {
   it("sem dirty, não escreve as vars inline (fallbacks do CSS valem)", () => {
     loadTweaks();
