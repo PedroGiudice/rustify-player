@@ -2,17 +2,17 @@
    lib/animatedColorProps.ts — registra as cores dinâmicas como
    custom properties tipadas (<color>) via CSS.registerProperty.
 
-   Sem registro, custom property é string opaca e a `transition`
-   declarada no :root (extractor-lab.css) é ignorada — a troca de
-   cor corta seco. Registrada, o compositor interpola: accent
-   adaptativo, ink e troca de tema fazem crossfade nativo, e
-   getComputedStyle devolve o valor EM TRANSIÇÃO (o EqCanvas lê
-   isso direto). Validado no WebKitGTK real via probe MCP
-   (2026-07-05: rgb intermediário correto no meio da transição).
+   HISTÓRICO: o registro existia pra habilitar `transition` dessas
+   props no :root (crossfade nativo). Essa transition foi REMOVIDA
+   em 2026-07-17: animar custom property herdada no root força
+   restyle da árvore inteira por frame no WebKitGTK — medido no app
+   real: 60fps -> 29fps durante os 480ms, stall de 382ms. Hoje as
+   vars saltam; a suavidade é local (canvases via lib/rgbLerp.ts,
+   consumidores DOM via transition nas propriedades concretas).
 
-   initialValue: o valor computado no boot quando existir (tema já
-   aplicado), senão o default do design system — só vale quando a
-   var está unset (ex: "sem tema").
+   O registro permanece pelo initialValue: garante valor válido
+   quando a var está unset (boot sem tema, consumidores color-mix
+   sem fallback). Não reintroduzir transition nessas props.
    ============================================================ */
 
 const COLOR_PROPS: ReadonlyArray<[name: string, fallback: string]> = [

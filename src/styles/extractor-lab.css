@@ -9,24 +9,15 @@
    TOKENS
    ──────────────────────────────────────────────────────────── */
 
-/* Crossfade nativo das cores dinâmicas (accent adaptativo, ink, troca de
-   tema). Só funciona porque essas props são registradas como <color> em
-   lib/animatedColorProps.ts — custom property não-registrada é string e
-   ignora transition. Consumidores DOM herdam a interpolação de graça; o
-   EqCanvas lê o valor em transição via getComputedStyle; o SpectrumCanvas
-   faz lerp próprio por frame (amostra a 3Hz de propósito). */
-:root {
-  transition:
-    --bg-ink 480ms ease,
-    --primary 480ms ease,
-    --primary-container 480ms ease,
-    --primary-fixed-dim 480ms ease,
-    --on-primary 480ms ease,
-    --on-primary-container 480ms ease,
-    --blue-fg 480ms ease,
-    --blue-ring 480ms ease,
-    --blue-bg 480ms ease;
-}
+/* NUNCA animar custom property no :root (transition: --bg-ink 480ms etc).
+   Custom property herdada animando no root força restyle da ÁRVORE INTEIRA
+   a cada frame de interpolação no WebKitGTK — medido no app real
+   (2026-07-17): 60fps -> 29fps durante a transition, stall de 382ms.
+   As vars de cor SALTAM pro alvo; a suavidade vem de: (a) canvases com
+   lerp exponencial local (SpectrumCanvas, EqCanvas via lib/rgbLerp.ts);
+   (b) consumidores DOM com transition nas PROPRIEDADES CONCRETAS
+   (background, color, border-color) — elas disparam quando o valor
+   computado da var muda, sem custo global. */
 
 :root {
   /* Surfaces */

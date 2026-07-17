@@ -388,12 +388,12 @@ function resolveInk(s: TweaksState): string {
   return ensureInkContrast(ink, activeCanvas(), MIN_INK_CONTRAST);
 }
 
-/** Escreve --bg-ink/--bg-ink-rgb uma vez, sem animação própria: a suavidade
-    é da camada de apresentação. --bg-ink é custom property registrada como
-    <color> (animatedColorProps.ts) e transiciona 480ms via CSS — todo
-    consumidor DOM e o EqCanvas (que lê o valor em transição) herdam o
-    crossfade. --bg-ink-rgb salta pro alvo; o SpectrumCanvas faz lerp
-    interno por frame, então nunca vê o salto. */
+/** Escreve --bg-ink/--bg-ink-rgb uma vez, sem animação própria: ambas
+    SALTAM pro alvo. A suavidade é dos consumidores — SpectrumCanvas e
+    EqCanvas fazem lerp exponencial local por frame (lib/rgbLerp.ts).
+    NÃO reintroduzir transition CSS nessas vars: animar custom property
+    registrada no :root força restyle global por frame no WebKitGTK
+    (medido 2026-07-17: 60fps -> 29fps, stall de 382ms). */
 function applyInkResolved(s: TweaksState = state()) {
   const target = resolveInk(s);
   const to = hexToRgb(target);

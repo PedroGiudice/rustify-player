@@ -200,8 +200,9 @@ export function wireAdaptiveInk() {
 
     // Ciclo de cores do bg: com 2+ inks derivados e o knob ligado, alterna
     // a cada INK_CYCLE_MS voltando sempre pra dominante ([0]) no wrap. O
-    // crossfade visual vem de graça: --bg-ink é custom property registrada
-    // (transition 480ms) e o canvas tem lerp próprio (tau 350ms). Troca de
+    // crossfade visual é dos CANVASES (lerp local por frame, lib/rgbLerp) —
+    // a var salta; transition CSS em custom property no :root é proibida
+    // (restyle global por frame no WebKitGTK, fps pela metade). Troca de
     // faixa/tema recria a paleta → applyDerived reseta pro índice 0.
     let cycleTimer: ReturnType<typeof setInterval> | undefined;
     createEffect(() => {

@@ -84,16 +84,20 @@ Extracao no Rust (`cover.rs dominant_color`) = eleicao de familia de hue
 wrap-aware + nucleo saturado; enrichment `dominant_color_v3` (versoes
 antigas ignoradas, recalcula lazy no 1o play).
 
-**Transicao suave de cor (v0.2.41)**: a suavidade e da camada de
-apresentacao, nao do store. `--bg-ink` e a familia `--primary`/`--blue-*`
-sao custom properties REGISTRADAS como `<color>`
-(`src/lib/animatedColorProps.ts`, CSS.registerProperty — validado no
-WebKitGTK real) com `transition: 480ms` no `:root` — accent, ink e troca
-de tema fazem crossfade nativo no compositor. O EqCanvas le o valor EM
-TRANSICAO via getComputedStyle; o SpectrumCanvas mantem lerp proprio por
-frame (tau 350ms) porque amostra a var a 3Hz. O antigo stepper de
-4x150ms no tweaks.ts foi REMOVIDO — nao reintroduzir animacao via
-setTimeout no store.
+**Transicao suave de cor (v0.2.58 — regra dura)**: as vars de cor
+(`--bg-ink`, familia `--primary`/`--blue-*`) SALTAM pro alvo; NUNCA
+declarar `transition` de custom property no `:root`. A v0.2.41 fazia
+isso (crossfade nativo via props registradas) e foi REVERTIDA em
+2026-07-17: animar custom property herdada no root forca restyle da
+arvore inteira POR FRAME no WebKitGTK — medido no app real: 60fps ->
+29fps durante os 480ms, stall de 382ms ("mudanca de cores cai fps").
+A suavidade e LOCAL: SpectrumCanvas e EqCanvas fazem lerp exponencial
+por frame (`src/lib/rgbLerp.ts`, tau 350ms; ciclo da paleta anuncia tau
+longo via `--bg-ink-morph`); consumidores DOM usam transition nas
+propriedades CONCRETAS (background/color/border), que disparam quando o
+valor da var muda, sem custo global. O registro CSS.registerProperty
+(`animatedColorProps.ts`) permanece so pelo initialValue. Tambem nao
+reintroduzir animacao via setTimeout no store (stepper antigo banido).
 
 **Enforcement de visibilidade do ink (v0.2.40)**: duas camadas com a MESMA
 matematica WCAG. Backend: `load_theme` corrige `--bg-ink` < 3:1 vs canvas

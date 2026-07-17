@@ -21,7 +21,7 @@ import { Component, createEffect, onCleanup, onMount } from "solid-js";
 import type { EqBand } from "../../store/dsp";
 import { tweaks } from "../../store/tweaks";
 import { player } from "../../store/player";
-import { cssColorToRgb } from "../../lib/color";
+import { stepRgbLerp, type Rgb } from "../../lib/rgbLerp";
 import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, type FftPayload } from "../../tauri";
 import {
   ISO_CENTERS,
@@ -96,6 +96,34 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   let lastDrawAt = 0;
   let rafId = 0;
 
+  // ── Tinta do RTA: alvo (amostrado a ~3Hz no loop) + corrente (lerp
+  // exponencial por frame) — padrão do SpectrumCanvas. A transition CSS
+  // de --bg-ink foi REMOVIDA (animar custom property registrada no :root
+  // força restyle global por frame no WebKitGTK; medido 2026-07-17:
+  // 60fps -> 29fps com stall de 382ms). A var salta; a suavidade é local.
+  const inkTgt: Rgb = { r: 23, g: 23, b: 23 };
+  const inkCur: Rgb = { r: 23, g: 23, b: 23 };
+  let inkSampled = false;
+  let inkMorphTau = 0.35;
+  let inkTick = 0;
+
+  function sampleInkTarget() {
+    const cs = getComputedStyle(document.documentElement);
+    const raw = cs.getPropertyValue("--bg-ink-rgb").trim();
+    if (raw) {
+      const [r, g, b] = raw.split(",").map((v) => parseFloat(v));
+      if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+        inkTgt.r = r; inkTgt.g = g; inkTgt.b = b;
+        // Primeira amostra: assume direto (sem fade a partir do default).
+        if (!inkSampled) { inkCur.r = r; inkCur.g = g; inkCur.b = b; inkSampled = true; }
+      }
+    }
+    // Tau do lerp: o ciclo da paleta (adaptiveInk) anuncia deriva lenta
+    // via --bg-ink-morph; troca de faixa/tema remove a var (tau rápido).
+    const im = parseFloat(cs.getPropertyValue("--bg-ink-morph"));
+    inkMorphTau = Number.isFinite(im) && im > 0 ? im : 0.35;
+  }
+
   // ── Listener de FFT: guarda a Promise, não só o resultado ──
   // Sem isso, desmontar/desligar antes do resolve do onAudioFft vaza o
   // callback de 60Hz pelo resto da sessão (o unlisten chegava tarde demais
@@ -157,6 +185,12 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     for (let b = 0; b < NUM_BANDS; b++) {
       updatePeak(bandPeaks[b], bandMags[b], dtDraw);
     }
+
+    // Tinta: re-amostra o alvo a ~3Hz (getComputedStyle fora do caminho
+    // por-frame) e converge por lerp exponencial a cada frame.
+    inkTick++;
+    if (inkTick % 20 === 1) sampleInkTarget();
+    stepRgbLerp(inkCur, inkTgt, dtDraw, inkMorphTau);
 
     draw();
 
@@ -270,15 +304,11 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
 
     // ── Spectrum bars + peaks (RTA pos-DSP) ──
     if (tweaks().eqSpectrumOverlay) {
-      // Lê --bg-ink (custom property registrada como <color>): durante o
-      // crossfade de 480ms o getComputedStyle devolve o valor INTERPOLADO,
-      // então as barras acompanham a transição de graça. Fallback pro
-      // --bg-ink-rgb cru se o parse falhar (registro indisponível).
-      const cs = getComputedStyle(document.documentElement);
-      const animated = cssColorToRgb(cs.getPropertyValue("--bg-ink"));
-      const inkRgb = animated
-        ? `${animated.r}, ${animated.g}, ${animated.b}`
-        : (cs.getPropertyValue("--bg-ink-rgb").trim() || "23, 23, 23");
+      // Cor corrente do lerp local (ver comentário no estado do ink).
+      // draw() também roda fora do frame loop (resize, knobs com player
+      // parado) — garante ao menos uma amostra antes de pintar.
+      if (!inkSampled) sampleInkTarget();
+      const inkRgb = `${Math.round(inkCur.r)}, ${Math.round(inkCur.g)}, ${Math.round(inkCur.b)}`;
       const bottom = h - 4;
       const top = 4;
       const usableH = bottom - top;
