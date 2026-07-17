@@ -17,16 +17,19 @@
    smoothing final no canvas (decay quando FFT para) sai de
    --bg-smoothing (0..1 → tau em ENV_TAU_MIN..ENV_TAU_MAX).
 
-   Regra crítica: o envelope só modula amplitude. NUNCA toca em
-   fase nem em velocidade — caso contrário vira screensaver.
-   Beat-sync (opt-in via --bg-beat-sync): onsets do kick travam um
-   oscilador em fase (PLL, lib/beatPll.ts) no tempo da música; o
-   pulso sintetizado modula AMPLITUDE (profundidade em
-   --bg-beat-depth) e dá um lift sutil de ink density no contour
-   (INK_PULSE). Relógio/fase seguem intocados — a exceção antiga
-   (beat na derivada do clock) foi REMOVIDA: lia como solavanco.
-   Spec: docs/design-refs/design_handoff_persistent_background/
-   PATCH-beat-sync-PLL.md (validado no Beat Sync Lab.html).
+   Regra crítica: o envelope de AMPLITUDE nunca toca em fase nem
+   em ink — senão vira screensaver. O beat-sync tem DOIS modos
+   (--bg-beat-mode; espelham o Beat Sync Lab do handoff):
+     1 = SPEED (default): energia do kick (expandKick, envelope
+         BEAT_TAU) empurra a DERIVADA do relógio — o movimento
+         acelera no beat, contínuo, sem salto de fase. Preferência
+         do usuário (2026-07-17), sobre o sinal de 62 Hz são.
+     2 = PULSE: PLL (lib/beatPll.ts) trava fase nos onsets; pulso
+         modula amplitude + lift sutil de ink no contour. Lock
+         parcial em música real (detector recalibrado com série
+         medida) — o gate de confiança segura o pulso no escuro.
+   Spec do pulse: docs/design-refs/design_handoff_persistent_
+   background/PATCH-beat-sync-PLL.md (Beat Sync Lab.html).
 
    Tinta puxada da CSS var --bg-ink-rgb (Tweaks panel). Default
    carbono 23, 23, 23; alpha por renderer (renderers.ts).
@@ -45,7 +48,10 @@ import { createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
 import { RENDERERS } from "../renderers";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
-import { createBeatPll, pllStep, beatPulse, BEAT_DEPTH_DEFAULT, INK_PULSE } from "../lib/beatPll";
+import {
+  createBeatPll, pllStep, beatPulse, expandKick, speedBoostGain,
+  BEAT_TAU, BEAT_DEPTH_DEFAULT, INK_PULSE,
+} from "../lib/beatPll";
 
 const SHAPE_KEY = "rustify-mock-shape";
 const RENDER_KEY = "rustify-mock-renderer";
@@ -138,11 +144,14 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let smoothedEnv = 0;
   let lastFrameMs = performance.now();
 
-  // Beat-sync: onset detector + PLL (estado em lib/beatPll.ts).
-  // beatSync = flag de --bg-beat-sync (1 = on, 0 = off); beatDepth =
-  // profundidade do pulso de --bg-beat-depth (0.3/0.55/0.85 no Tweaks).
+  // Beat-sync: beatSync = gate de --bg-beat-sync (1/0); beatMode =
+  // --bg-beat-mode (1 speed / 2 pulse); beatDepth = intensidade de
+  // --bg-beat-depth (0.3/0.55/0.85 no Tweaks). Modo speed usa o
+  // envelope beatEnv; modo pulse usa o PLL (lib/beatPll.ts).
   const pll = createBeatPll();
+  let beatEnv = 0;
   let beatSync = 1;
+  let beatMode = 1;
   let beatDepth = BEAT_DEPTH_DEFAULT;
 
   // Cor da tinta + ganhos por banda + smoothing. Lidos das CSS
@@ -223,6 +232,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         const sm = parseFloat(cs.getPropertyValue("--bg-smoothing"));
         const sp = parseFloat(cs.getPropertyValue("--bg-speed"));
         const bs = parseFloat(cs.getPropertyValue("--bg-beat-sync"));
+        const bm = parseFloat(cs.getPropertyValue("--bg-beat-mode"));
         const bd = parseFloat(cs.getPropertyValue("--bg-beat-depth"));
         if (Number.isFinite(b)) bassGain = b;
         if (Number.isFinite(m)) midGain = m;
@@ -230,6 +240,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         if (Number.isFinite(sm)) smoothing = sm;
         if (Number.isFinite(sp)) speed = sp;
         if (Number.isFinite(bs)) beatSync = bs;
+        if (Number.isFinite(bm)) beatMode = bm;
         if (Number.isFinite(bd)) beatDepth = bd;
       }
 
@@ -252,19 +263,26 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       // pelo target do envelope de amplitude logo abaixo.
       const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
 
-      // Onset + PLL: detecta transientes do kick na low band e trava
-      // um oscilador em fase no tempo da música. Roda sempre que há
-      // FFT (mantém o lock pronto mesmo com beat-sync off); o gate do
-      // Tweaks entra só no pulso. t = relógio REAL em segundos — nunca
-      // o bgClock virtual, senão o lock deriva quando bgSpeed != 1.
-      // Sem FFT fresco não há onsets, o lock decai e o pulso zera —
-      // o bg volta ao breath contínuo puro, sem fallback time-driven.
+      // Onset + PLL: detecta transientes do kick e trava um oscilador
+      // em fase no tempo da música. Roda sempre que há FFT (mantém o
+      // lock pronto pra troca de modo); o gate do Tweaks entra só no
+      // pulso. t = relógio REAL em segundos — nunca o bgClock virtual,
+      // senão o lock deriva quando bgSpeed != 1. Sem FFT fresco não há
+      // onsets, o lock decai e o pulso zera — o bg volta ao breath
+      // contínuo puro, sem fallback time-driven.
       pllStep(pll, lastLow, tMs * 0.001, dt, fresh);
 
-      // Avança o relógio virtual da animação SEMPRE à velocidade
-      // nominal (bgSpeed): 0 congela, 1 nominal, 2 dobro. O beat não
-      // toca mais nisto — modular a derivada lia como solavanco.
-      bgClock += dt * speed;
+      // Modo SPEED: a energia do kick (expandida pra faixa real) empurra
+      // a DERIVADA do relógio via envelope rápido (BEAT_TAU) — contínuo,
+      // sem salto de fase. Em silêncio/pausa/modo!=speed o envelope
+      // decai e a velocidade volta à nominal.
+      const speedTarget = fresh && beatSync > 0.5 && beatMode === 1 ? expandKick(lastLow) : 0;
+      beatEnv += (speedTarget - beatEnv) * (1 - Math.exp(-dt / BEAT_TAU));
+
+      // Avança o relógio virtual: bgSpeed nominal (0 congela, 1 nominal,
+      // 2 dobro) + boost do modo speed (depth 0.55 → ganho 1.5, o
+      // calibrado da v0.2.52).
+      bgClock += dt * speed * (1 + speedBoostGain(beatDepth) * beatEnv);
       const t = bgClock;
       ctx.clearRect(0, 0, w, h);
 
@@ -288,10 +306,10 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       // Macro breathing — preservado do original. 4.5 s period.
       const breath = 0.85 + 0.15 * Math.sin(t * 0.4);
 
-      // Pulso do PLL (só com beat-sync ligado). "Thump": attack rápido
-      // + decay exponencial, escalado pela confiança de lock pra não
+      // Pulso do PLL (só no modo pulse). "Thump": attack rápido +
+      // decay exponencial, escalado pela confiança de lock pra não
       // pulsar no escuro enquanto o PLL ainda caça o tempo.
-      const pulse = beatSync > 0.5 ? beatPulse(pll, beatDepth) : 0;
+      const pulse = beatSync > 0.5 && beatMode === 2 ? beatPulse(pll, beatDepth) : 0;
 
       // Amplitude: breath (contínuo) × envelope contínuo + pulso do
       // beat (discreto). Envelope e pulso só modulam amplitude (nunca

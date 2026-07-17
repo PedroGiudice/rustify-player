@@ -288,10 +288,15 @@ export function Tweaks() {
           />
           <Segmented
             label="Beat sync"
-            key="bgBeatDepth"
-            options={[[0, "Off"], [0.3, "Subtle"], [0.55, "Default"], [0.85, "Pulse"]]}
+            key="bgBeatMode"
+            options={[["off", "Off"], ["speed", "Speed"], ["pulse", "Pulse"]]}
           />
-          <div class="tweaks__hint">Pulso do kick na amplitude, travado no tempo da música</div>
+          <div class="tweaks__hint">Speed: kick acelera o movimento · Pulse: pulso de amplitude no tempo</div>
+          <Segmented
+            label="Beat depth"
+            key="bgBeatDepth"
+            options={[[0.3, "Subtle"], [0.55, "Default"], [0.85, "Strong"]]}
+          />
 
           <div class="tweaks__divider"><span>Loudness</span></div>
           <Segmented

@@ -60,13 +60,22 @@ export interface TweaksState {
       time-dependent — mudanças do slider afetam só a derivada,
       sem saltos de fase. */
   bgSpeed: number;
-  /** Beat sync via PLL: onsets do kick (low band do audio-fft) travam
-      um oscilador em fase no tempo da música (lib/beatPll.ts); o pulso
-      sintetizado modula a AMPLITUDE do bg — nunca velocidade nem fase
-      (spec: PATCH-beat-sync-PLL.md). O valor é a profundidade do pulso
-      (BEAT_DEPTH): 0 = off, 0.3 sutil, 0.55 default, 0.85 pulse.
-      Consumido pelo SpectrumCanvas via --bg-beat-sync (0/1, derivado
-      de depth > 0) + --bg-beat-depth. */
+  /** Modo do beat-sync do bg (espelha os modos do Beat Sync Lab):
+      - "speed": o kick (low band, expandido pra faixa real) empurra a
+        DERIVADA do relógio — o movimento acelera no beat, contínuo e
+        imediato. O comportamento clássico (v0.2.52), preferência
+        declarada do usuário 2026-07-17 ("mais agressivo, mas melhor"),
+        agora sobre o sinal de 62 Hz consertado. DEFAULT.
+      - "pulse": onset detection + PLL travando fase (lib/beatPll.ts);
+        pulso modula amplitude. Em música real com bass sustentado o
+        lock é parcial (medido: lockMean ~0.18 na melhor calibração) —
+        modo experimental.
+      Consumido via --bg-beat-sync (0/1) + --bg-beat-mode (0/1/2). */
+  bgBeatMode: "off" | "speed" | "pulse";
+  /** Intensidade do beat-sync (vale pros dois modos): 0.3 sutil,
+      0.55 default, 0.85 forte. No speed mapeia pro ganho de velocidade
+      (0.55 → ganho 1.5, o calibrado da v0.2.52); no pulse é o
+      BEAT_DEPTH do pulso de amplitude. Via --bg-beat-depth. */
   bgBeatDepth: number;
 
   // ── Loudness ────────────────────────────────────────────────
@@ -112,6 +121,7 @@ export const DEFAULTS: TweaksState = {
   bgTrebleGain: 0.8,
   bgSmoothing: 0.3,
   bgSpeed: 1.0,
+  bgBeatMode: "speed",
   bgBeatDepth: 0.55,
   loudnessNorm: true,
   loudnessTarget: -14,
@@ -254,10 +264,14 @@ export function applyTweaks(s: TweaksState = state()) {
   html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
   html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
   html.style.setProperty("--bg-speed", s.bgSpeed.toFixed(3));
-  // Beat sync: flag numérica ("1"/"0", derivada de depth > 0) + a
-  // profundidade do pulso PLL. O canvas lê com parseFloat no mesmo
-  // batch das outras vars, sem parsing especial de bool.
-  html.style.setProperty("--bg-beat-sync", s.bgBeatDepth > 0 ? "1" : "0");
+  // Beat sync: 3 vars numéricas (o canvas lê com parseFloat no mesmo
+  // batch, sem parsing de bool/string): gate 0/1, modo 0=off/1=speed/
+  // 2=pulse, intensidade.
+  html.style.setProperty("--bg-beat-sync", s.bgBeatMode !== "off" ? "1" : "0");
+  html.style.setProperty(
+    "--bg-beat-mode",
+    s.bgBeatMode === "speed" ? "1" : s.bgBeatMode === "pulse" ? "2" : "0",
+  );
   html.style.setProperty("--bg-beat-depth", s.bgBeatDepth.toFixed(2));
 }
 
@@ -451,11 +465,21 @@ export function loadTweaks() {
     }
     // Migracao: schema antigo usa "zoom" como controle separado.
     if (!("scale" in saved) && "zoom" in saved) next.scale = saved.zoom;
-    // Migracao: bgBeatSync boolean (schema antigo, beat na velocidade)
-    // -> bgBeatDepth (PLL). Off persistido continua off; on vira o
-    // depth default.
-    if (!("bgBeatDepth" in saved) && "bgBeatSync" in saved) {
-      next.bgBeatDepth = saved.bgBeatSync ? DEFAULTS.bgBeatDepth : 0;
+    // Migracao beat-sync, 2 geracoes:
+    // v1 (bgBeatSync bool) e v2 (bgBeatDepth com 0 = off embutido) ->
+    // v3 (bgBeatMode off/speed/pulse + bgBeatDepth só intensidade).
+    // Off persistido continua off; ligado vira "speed" (default novo).
+    if (!("bgBeatMode" in saved)) {
+      if ("bgBeatDepth" in saved) {
+        if (saved.bgBeatDepth === 0) {
+          next.bgBeatMode = "off";
+          next.bgBeatDepth = DEFAULTS.bgBeatDepth;
+        } else {
+          next.bgBeatMode = "speed";
+        }
+      } else if ("bgBeatSync" in saved) {
+        next.bgBeatMode = saved.bgBeatSync ? "speed" : "off";
+      }
     }
     // Migracao: sidebar "collapsed"/"expanded" -> "icons"/"labels"
     if (saved.sidebar === "collapsed") next.sidebar = "icons";

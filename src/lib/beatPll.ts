@@ -1,31 +1,64 @@
 /* ============================================================
-   beatPll.ts — beat-sync via PLL (phase-locked loop).
+   beatPll.ts — beat-sync do bg: modo SPEED + modo PULSE (PLL).
 
-   Substitui o beat-boost de velocidade (beatBoost.ts, removido):
-   modular a derivada do relógio lia como solavanco, e low_band_mag
-   é magnitude contínua — reativa, atrasada, borrada.
+   SPEED (default): a energia do kick (low_band_mag expandido pra
+   faixa dinâmica real) empurra a DERIVADA do relógio virtual via
+   envelope rápido — o movimento acelera no beat, contínuo e
+   imediato. É o comportamento clássico da v0.2.52, preferido pelo
+   usuário ("mais agressivo, mas melhor", 2026-07-17), agora sobre
+   o sinal de ~62 Hz consertado (o emitter colapsava pra ~7 Hz).
 
-   O caminho novo: detectar ONSETS do kick (transiente vs média
-   móvel) → travar um oscilador em FASE no tempo da música (PLL:
-   correção proporcional de fase + integral lenta de período) →
-   sintetizar um pulso limpo da fase ("thump": attack rápido +
-   decay exponencial). O pulso modula AMPLITUDE, nunca velocidade
-   nem fase do shape. Preditivo, não reativo.
-
-   Números copiados 1:1 do handoff (docs/design-refs/
-   design_handoff_persistent_background/PATCH-beat-sync-PLL.md),
-   validados na bancada Beat Sync Lab.html do mesmo diretório.
+   PULSE (experimental): detectar ONSETS do kick (transiente vs
+   média móvel) → travar um oscilador em FASE (PLL) → pulso
+   "thump" modula AMPLITUDE. Estrutura do PATCH-beat-sync-PLL
+   (docs/design-refs/design_handoff_persistent_background/), mas o
+   detector foi RECALIBRADO com série real gravada no app
+   (2026-07-17, "So It Goes" 105s @ 61.9 Hz): opera sobre o sinal
+   EXPANDIDO com ratio 1.4 / floor 0.20 — a melhor variante medida
+   (47 onsets/min vs 20 da calibração do lab; lockMean 0.175 vs
+   0.113). Em música real com bass sustentado o envelope da low
+   band não entrega trem de onsets limpo, então o lock é PARCIAL
+   por natureza — o gate (0.4 + 0.6·lock) protege.
 
    Estado explícito + funções puras: o SpectrumCanvas guarda um
    BeatPll e chama pllStep/beatPulse por frame (~10 ops, zero
    impacto no orçamento 60fps).
    ============================================================ */
 
-// ── Onset detection ─────────────────────────────────────────
-/** mag/avg acima disto = candidato a onset. */
-export const ONSET_RATIO = 1.6;
-/** mag mínima absoluta (ignora ruído de fundo). */
-export const ONSET_FLOOR = 0.25;
+// ── Faixa dinâmica real do kick ─────────────────────────────
+/** Piso do low_band_mag: abaixo disto é ruído/silêncio. */
+export const KICK_FLOOR = 0.1;
+/** Teto: onde um kick forte satura (p90 ~0.63, max 0.75-0.82 medidos
+    em 2026-07-12 e 2026-07-17 no app real). */
+export const KICK_CEIL = 0.6;
+
+/** Remapeia o low_band_mag da faixa dinâmica REAL [FLOOR, CEIL] pra
+    [0,1], clampado. Kick fraco/silêncio → 0; kick forte → 1. Usado
+    pelo modo speed (energia) e pelo detector de onset (contraste). */
+export function expandKick(low: number): number {
+  const t = (low - KICK_FLOOR) / (KICK_CEIL - KICK_FLOOR);
+  return Math.max(0, Math.min(1, t));
+}
+
+// ── Modo speed ──────────────────────────────────────────────
+/** Tau (s) do envelope que suaviza o kick antes de modular a
+    velocidade. Só refina a transição — o attack/release grosso já
+    vem do Rust (pw_capture.rs). */
+export const BEAT_TAU = 0.09;
+
+/** Ganho de velocidade do modo speed a partir do depth do Tweaks:
+    linear, com depth 0.55 (Default) reproduzindo o ganho 1.5
+    calibrado na v0.2.52. Velocidade = dt·bgSpeed·(1 + gain·env). */
+export function speedBoostGain(depth: number): number {
+  return depth * (1.5 / 0.55);
+}
+
+// ── Onset detection (modo pulse; sobre o sinal EXPANDIDO) ───
+/** mag/avg acima disto = candidato a onset. (Lab: 1.6 sobre sim de
+    kick seco; recalibrado pra 1.4 sobre o envelope real expandido.) */
+export const ONSET_RATIO = 1.4;
+/** mag expandida mínima absoluta (ignora ruído de fundo). */
+export const ONSET_FLOOR = 0.2;
 /** s — refratário entre onsets (evita double-trigger). */
 export const ONSET_COOLDOWN = 0.2;
 /** s — janela da média móvel do nível. */
@@ -69,10 +102,11 @@ export function createBeatPll(): BeatPll {
   return { avgMag: 0, lastOnsetT: -1, period: 0.5, phase: 0, locked: 0 };
 }
 
-/** Um passo do detector + PLL. `mag` = low_band_mag cru; `t` = relógio
-    REAL em segundos (performance.now()*0.001 — nunca o clock virtual,
-    senão o lock deriva quando bgSpeed != 1); `fresh` = stream de FFT
-    vivo. Muta o estado. Retorna true no frame de onset. */
+/** Um passo do detector + PLL. `mag` = low_band_mag CRU (a expansão
+    pra faixa real acontece aqui dentro); `t` = relógio REAL em segundos
+    (performance.now()*0.001 — nunca o clock virtual, senão o lock
+    deriva quando bgSpeed != 1); `fresh` = stream de FFT vivo. Muta o
+    estado. Retorna true no frame de onset. */
 export function pllStep(
   s: BeatPll,
   mag: number,
@@ -80,13 +114,16 @@ export function pllStep(
   dt: number,
   fresh: boolean,
 ): boolean {
-  // Onset detection sobre a low band (kick). Só quando o stream está vivo.
+  // Onset detection sobre o kick EXPANDIDO (contraste restaurado — na
+  // faixa crua o bass sustentado esmaga o ratio; medido 2026-07-17).
+  // Só quando o stream está vivo.
   let onset = false;
   if (fresh) {
-    s.avgMag += (mag - s.avgMag) * (1 - Math.exp(-dt / ONSET_AVG_TAU));
-    const ratio = mag / (s.avgMag + 1e-4);
+    const m = expandKick(mag);
+    s.avgMag += (m - s.avgMag) * (1 - Math.exp(-dt / ONSET_AVG_TAU));
+    const ratio = m / (s.avgMag + 1e-4);
     onset =
-      ratio > ONSET_RATIO && mag > ONSET_FLOOR && t - s.lastOnsetT > ONSET_COOLDOWN;
+      ratio > ONSET_RATIO && m > ONSET_FLOOR && t - s.lastOnsetT > ONSET_COOLDOWN;
     if (onset) s.lastOnsetT = t;
   }
 

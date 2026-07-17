@@ -118,44 +118,61 @@ describe("bgInkCycle (paleta alternante do bg)", () => {
   });
 });
 
-describe("bgBeatDepth (beat-sync PLL do bg)", () => {
-  it("default é 0.55 e applyTweaks escreve --bg-beat-sync=1 + --bg-beat-depth", () => {
-    // Estado salvo sem o campo (versão antiga) também cai aqui: o load
+describe("bgBeatMode + bgBeatDepth (beat-sync do bg)", () => {
+  it("default é mode=speed depth=0.55 e escreve as 3 vars", () => {
+    // Estado salvo sem os campos (versão antiga) também cai aqui: o load
     // preenche com DEFAULTS.
     localStorage.setItem("kv-tweaks", "{}");
     loadTweaks();
+    expect(DEFAULTS.bgBeatMode).toBe("speed");
     expect(DEFAULTS.bgBeatDepth).toBe(0.55);
-    expect(tweaks().bgBeatDepth).toBe(0.55);
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("1");
+    expect(html().style.getPropertyValue("--bg-beat-mode")).toBe("1");
     expect(html().style.getPropertyValue("--bg-beat-depth")).toBe("0.55");
   });
 
-  it("depth 0 (Off) escreve --bg-beat-sync = 0", () => {
+  it("mode off escreve --bg-beat-sync=0 e --bg-beat-mode=0", () => {
     localStorage.setItem("kv-tweaks", "{}");
     loadTweaks();
-    updateTweak("bgBeatDepth", 0);
+    updateTweak("bgBeatMode", "off");
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
-    expect(html().style.getPropertyValue("--bg-beat-depth")).toBe("0.00");
+    expect(html().style.getPropertyValue("--bg-beat-mode")).toBe("0");
+  });
+
+  it("mode pulse escreve --bg-beat-mode=2", () => {
+    localStorage.setItem("kv-tweaks", "{}");
+    loadTweaks();
+    updateTweak("bgBeatMode", "pulse");
+    expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("1");
+    expect(html().style.getPropertyValue("--bg-beat-mode")).toBe("2");
   });
 
   it("depth salvo é respeitado no boot", () => {
-    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatDepth: 0.85 }));
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatMode: "speed", bgBeatDepth: 0.85 }));
     loadTweaks();
     expect(tweaks().bgBeatDepth).toBe(0.85);
     expect(html().style.getPropertyValue("--bg-beat-depth")).toBe("0.85");
   });
 
-  it("migra bgBeatSync=false do schema antigo pra depth 0", () => {
+  it("migra bgBeatSync=false (schema v1) pra mode off", () => {
     localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatSync: false }));
     loadTweaks();
-    expect(tweaks().bgBeatDepth).toBe(0);
+    expect(tweaks().bgBeatMode).toBe("off");
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
   });
 
-  it("bgBeatSync=true do schema antigo vira o depth default", () => {
-    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatSync: true }));
+  it("migra bgBeatDepth=0 (schema v2, off embutido) pra mode off + depth default", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatDepth: 0 }));
     loadTweaks();
+    expect(tweaks().bgBeatMode).toBe("off");
     expect(tweaks().bgBeatDepth).toBe(0.55);
+  });
+
+  it("bgBeatDepth>0 do schema v2 vira mode speed preservando o depth", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatDepth: 0.85 }));
+    loadTweaks();
+    expect(tweaks().bgBeatMode).toBe("speed");
+    expect(tweaks().bgBeatDepth).toBe(0.85);
   });
 });
 

@@ -14,6 +14,8 @@ import {
   pllStep,
   pulseShape,
   beatPulse,
+  expandKick,
+  speedBoostGain,
   PLL_PERIOD_MIN,
   PLL_PERIOD_MAX,
 } from "./beatPll";
@@ -45,6 +47,26 @@ function simulate(
   }
   return { onsets };
 }
+
+describe("expandKick (faixa dinâmica real do kick)", () => {
+  it("remapeia [0.10, 0.60] pra [0,1], clampado", () => {
+    expect(expandKick(0.1)).toBe(0);
+    expect(expandKick(0.35)).toBeCloseTo(0.5, 10);
+    expect(expandKick(0.6)).toBe(1);
+    expect(expandKick(0.05)).toBe(0);   // silêncio/ruído
+    expect(expandKick(0.75)).toBe(1);   // satura (max real medido 0.824)
+  });
+});
+
+describe("speedBoostGain (modo speed)", () => {
+  it("depth default 0.55 reproduz o ganho calibrado 1.5 da v0.2.52", () => {
+    expect(speedBoostGain(0.55)).toBeCloseTo(1.5, 10);
+  });
+  it("escala linear com o depth", () => {
+    expect(speedBoostGain(0.85)).toBeGreaterThan(speedBoostGain(0.55));
+    expect(speedBoostGain(0)).toBe(0);
+  });
+});
 
 describe("pulseShape (thump)", () => {
   it("é 0 na batida exata e atinge o pico 1.0 em ph=0.04", () => {
@@ -79,7 +101,7 @@ describe("onset detection", () => {
     expect(onsets).toBe(0);
   });
 
-  it("respeita o floor: transiente abaixo de 0.25 não é onset", () => {
+  it("respeita o floor: transiente fraco (abaixo do floor expandido) não é onset", () => {
     const s = createBeatPll();
     const { onsets } = simulate(s, 120, 5, { kickAmp: 0.2 });
     expect(onsets).toBe(0);
