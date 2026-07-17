@@ -295,7 +295,7 @@ describe("Resume station inicia playback (fix: tracks eram descartadas)", () => 
     expect(player.queueScope).toBe("curated");
     // Fase 0 do session-awareness: a fila de station carrega o contexto —
     // continuações logam origin="station" (régua + behavioral_signals).
-    expect(player.queueContext).toBe("station");
+    expect(player.queueSource?.kind).toBe("station");
     expect(player.currentTrack?.id).toBe("3940784406639047387");
     expect(vi.mocked(playTrack)).toHaveBeenCalledWith(
       expect.objectContaining({ id: "3940784406639047387" }),

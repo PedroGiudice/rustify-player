@@ -87,7 +87,7 @@ describe("Albums — botao card__play", () => {
     await vi.waitFor(() => mockSetQueue.mock.calls.length > 0);
 
     expect(tauri.libGetTracksByAlbum).toHaveBeenCalledWith("Album X");
-    expect(mockSetQueue).toHaveBeenCalledWith(mockTracks, 0, "curated");
+    expect(mockSetQueue).toHaveBeenCalledWith(mockTracks, 0, "curated", { kind: "album", name: "Album X" });
     expect(mockPlayTrack).toHaveBeenCalledWith(mockTracks[0]);
   });
 

@@ -32,13 +32,13 @@ export default function AlbumView() {
   function play(t: Track) {
     const all = tracks() ?? [];
     const idx = all.indexOf(t);
-    setQueue(all, idx >= 0 ? idx : 0, "curated");
+    setQueue(all, idx >= 0 ? idx : 0, "curated", { kind: "album", name: title() ?? undefined });
     playTrack(t);
   }
 
   function playAll() {
     const all = tracks() ?? [];
-    if (all.length) { setQueue(all, 0, "curated"); playTrack(all[0]); }
+    if (all.length) { setQueue(all, 0, "curated", { kind: "album", name: title() ?? undefined }); playTrack(all[0]); }
   }
 
   return (

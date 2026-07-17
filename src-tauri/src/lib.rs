@@ -2737,14 +2737,17 @@ pub fn run() {
                                 }
                                 continue;
                             }
-                            // PW capture writes (0, data) — detect change via content hash
-                            let gen = buf.1.len() as u64
-                                ^ (buf.1[0] as u64) << 8
-                                ^ (*buf.1.last().unwrap_or(&0) as u64) << 16;
-                            if gen == last_gen {
+                            // Frame novo? O FFT worker incrementa buf.0 a cada
+                            // janela produzida (contador de geração). O dedup
+                            // antigo por hash do 1º/último byte era frágil:
+                            // com esses bins estáveis (kick saturado, agudo
+                            // ~0) a emissão colapsava de ~60 Hz pra ~7 Hz e o
+                            // beat-sync PLL ficava surdo (onsets quantizados
+                            // em ~120 ms nunca travam fase).
+                            if buf.0 == last_gen {
                                 continue;
                             }
-                            last_gen = gen;
+                            last_gen = buf.0;
                             buf.1.clone()
                         } else {
                             continue;

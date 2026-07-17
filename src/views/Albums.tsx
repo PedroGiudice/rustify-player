@@ -18,7 +18,7 @@ export default function Albums() {
   async function play(album: Album) {
     const tracks = await libGetTracksByAlbum(album.title);
     // scope "curated": album e uma unidade coerente — shuffle embaralha so este.
-    if (tracks.length) { setQueue(tracks, 0, "curated"); playTrack(tracks[0]); }
+    if (tracks.length) { setQueue(tracks, 0, "curated", { kind: "album", name: album.title }); playTrack(tracks[0]); }
   }
 
   const standalone = () => route().path === "/albums";

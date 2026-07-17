@@ -93,7 +93,7 @@ describe("Home — botao card__play no grid de albums", () => {
     await vi.waitFor(() => mockSetQueue.mock.calls.length > 0);
 
     expect(tauri.libGetTracksByAlbum).toHaveBeenCalledWith("Great Album");
-    expect(mockSetQueue).toHaveBeenCalledWith(mockTracks, 0, "curated");
+    expect(mockSetQueue).toHaveBeenCalledWith(mockTracks, 0, "curated", { kind: "album", name: "Great Album" });
     expect(mockPlayTrack).toHaveBeenCalledWith(mockTracks[0]);
   });
 

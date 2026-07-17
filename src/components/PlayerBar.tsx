@@ -290,7 +290,7 @@ export function PlayerBar() {
       const recs = await libAutoplayNext(seed, [...recentlyPlayedIds], 1);
       if (!recs.length) return;
       const current = player.currentTrack!;
-      setQueue([current, ...recs], 0, "open");
+      setQueue([current, ...recs], 0, "open", { kind: "radio" });
     } catch (e) {
       console.error("[shuffle] radio populate failed:", e);
     }
@@ -414,6 +414,17 @@ export function PlayerBar() {
             {player.currentTrack?.title ?? "—"}
           </span>
           <span class="pb-artist" id="pb-artist">
+            {/* Chip de proveniência: station / playlist / álbum / rádio /
+                solta. Nome completo (station/playlist) vai no tooltip. */}
+            <Show when={player.currentTrack}>
+              <span
+                class="pb-src"
+                data-kind={player.queueSource?.kind ?? "solta"}
+                title={player.queueSource?.name}
+              >
+                {queueSourceLabel(player.queueSource?.kind)}
+              </span>
+            </Show>
             {player.currentTrack?.artist_name ?? "—"}
             <Show when={player.currentTrack?.album_title}>
               {(album) => <> · {album()}</>}
@@ -597,7 +608,18 @@ export function PlayerBar() {
     skip-rate por origin subconta e o behavioral_signals descarta a
     escuta (exclui album_seq dos positives). Fase 0 do session-awareness. */
 export function contOrigin(def: string): string {
-  return player.queueContext === "station" ? "station" : def;
+  return player.queueSource?.kind === "station" ? "station" : def;
+}
+
+/** Label PT do chip de proveniência da fila na barra. */
+export function queueSourceLabel(kind: string | undefined): string {
+  switch (kind) {
+    case "station": return "station";
+    case "playlist": return "playlist";
+    case "album": return "álbum";
+    case "radio": return "rádio";
+    default: return "solta";
+  }
 }
 
 export async function playTrack(track: import("../tauri").Track, origin = "manual") {

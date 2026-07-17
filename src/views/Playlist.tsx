@@ -56,14 +56,14 @@ export default function PlaylistView() {
   function play(t: Track) {
     const all = tracks() ?? [];
     const idx = all.indexOf(t);
-    setQueue(all, idx >= 0 ? idx : 0, "curated");
+    setQueue(all, idx >= 0 ? idx : 0, "curated", { kind: "playlist", name: name() ?? undefined });
     playTrack(t);
   }
 
   function playAll() {
     const all = tracks() ?? [];
     if (all.length) {
-      setQueue(all, 0, "curated");
+      setQueue(all, 0, "curated", { kind: "playlist", name: name() ?? undefined });
       playTrack(all[0]);
     }
   }

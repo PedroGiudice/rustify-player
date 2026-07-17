@@ -30,6 +30,14 @@ export interface TechInfo {
 //             a queue por [current_track, ...autoplayNext()].
 export type QueueScope = "curated" | "open";
 
+/** Proveniência da fila — alimenta o chip de origem da PlayerBar e o
+    origin das continuações (contOrigin no PlayerBar). null = música
+    solta / fila avulsa (library, busca, história, single). */
+export interface QueueSource {
+  kind: "station" | "playlist" | "album" | "radio";
+  name?: string;
+}
+
 export interface PlayerStore {
   // Faixa atual
   currentTrack: Track | null;
@@ -38,9 +46,10 @@ export interface PlayerStore {
   queue: Track[];
   queueIndex: number;
   queueScope: QueueScope;
-  /** Proveniência da fila: "station" faz continuações logarem
-      origin="station" (régua + behavioral_signals). null = fila comum. */
-  queueContext: "station" | null;
+  /** Proveniência da fila. kind="station" faz continuações logarem
+      origin="station" (régua + behavioral_signals — Fase 0 do
+      session-awareness). null = fila comum (chip "solta"). */
+  queueSource: QueueSource | null;
   // Estado de reprodução
   isPlaying: boolean;
   isLiked: boolean;
@@ -67,7 +76,7 @@ export const [player, setPlayer] = createStore<PlayerStore>({
   queue: [],
   queueIndex: -1,
   queueScope: "open",
-  queueContext: null,
+  queueSource: null,
   isPlaying: false,
   isLiked: false,
   isTransitioning: false,
@@ -132,24 +141,25 @@ export async function applyPersistedVolume(retries = 5): Promise<void> {
 // Default "open" porque a maioria das views serve listagens genericas;
 // playlist/station devem passar "curated" explicito.
 //
-// `context` marca a PROVENIENCIA da fila alem do scope: "station" faz as
-// continuacoes (auto-advance e skip) logarem play_events com
-// origin="station" em vez de "album_seq"/"queue" — sem isso so a 1a
-// faixa de uma station carrega o origin certo, a regua de skip-rate por
-// origin subconta e o behavioral_signals ignora a escuta (exclui
-// album_seq dos positives). Default null: qualquer setQueue de outra
-// fonte limpa o contexto.
+// `source` marca a PROVENIENCIA da fila alem do scope. Dois consumidores:
+// (a) o chip de origem da PlayerBar (station/playlist/álbum/rádio/solta);
+// (b) kind="station" faz as continuacoes (auto-advance e skip) logarem
+// play_events com origin="station" em vez de "album_seq"/"queue" — sem
+// isso so a 1a faixa de uma station carrega o origin certo, a regua de
+// skip-rate por origin subconta e o behavioral_signals ignora a escuta
+// (exclui album_seq dos positives). Default null: qualquer setQueue de
+// outra fonte limpa a proveniencia (vira "solta").
 export function setQueue(
   tracks: Track[],
   startIndex: number,
   scope: QueueScope = "open",
-  context: "station" | null = null,
+  source: QueueSource | null = null,
 ) {
   setPlayer({
     queue: tracks,
     queueIndex: startIndex,
     queueScope: scope,
-    queueContext: context,
+    queueSource: source,
     currentTrack: tracks[startIndex] ?? null,
   });
 }

@@ -471,9 +471,17 @@ fn fft_worker_loop(
         }
         rms_env = rms_env.clamp(0.0, 1.0);
 
-        // Write spectrum to shared buffer. Timestamp 0 = render immediately.
+        // Write spectrum to shared buffer. O campo .0 é um CONTADOR DE
+        // GERAÇÃO: incrementa a cada janela nova produzida. O
+        // spectrum-emitter usa isto pra saber que há frame novo — o
+        // dedup antigo por "hash" do primeiro/último byte colapsava a
+        // cadência real de ~60 Hz pra ~7 Hz em música com extremos do
+        // espectro estáveis (kick saturando o 1º bin), matando o
+        // onset-detector do beat-sync (medido 2026-07-17 no app real).
+        // Em pausa o worker não produz (accum < FFT_SIZE) → gen para →
+        // emitter silencia, igual antes.
         if let Ok(mut guard) = spectrum_buf.lock() {
-            guard.0 = 0;
+            guard.0 = guard.0.wrapping_add(1);
             guard.1.clear();
             guard.1.extend_from_slice(&magnitudes);
         }
