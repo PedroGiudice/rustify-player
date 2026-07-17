@@ -102,7 +102,7 @@ Você roda na VM e acessa serviços na cmr-auto via Tailscale.
 |---------|----------|-----|
 | `discover.py` | `scripts/curator/discover.py` | Motor de artista (rode primeiro) |
 | `discover_tracks.py` | `scripts/curator/discover_tracks.py` | Motor de faixa (rode segundo) |
-| Qdrant | `http://100.102.249.9:6333` | Lido pelos motores; você raramente toca |
+| Qdrant | `http://127.0.0.1:16333` via túnel SSH (bind loopback na cmr-auto desde 2026-07-17) | Lido pelos motores; ANTES de rodá-los: `ssh -f -N -o ExitOnForwardFailure=yes -L 16333:localhost:6333 cmr-auto@100.102.249.9` (se a porta já estiver aberta, o túnel existe — siga) |
 | MusicBrainz | `https://musicbrainz.org/ws/2` | Validação + discografia (álbum mode) |
 | ListenBrainz Labs | `https://labs.api.listenbrainz.org` | Usado pelos motores |
 | slskd | `http://100.102.249.9:5030` | Referência — você não chama |

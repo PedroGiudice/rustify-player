@@ -26,6 +26,30 @@ sudo dpkg -i /tmp/rustify-player_0.1.0_amd64.deb
 Nao compilar localmente na cmr-auto — i5 8th gen leva minutos. A VM leva
 segundos. Release.sh e o unico caminho.
 
+## Superfície de rede (hardening 2026-07-17, v0.2.59)
+
+Todas as portas do app na cmr-auto escutam SÓ em 127.0.0.1 — MCP bridge
+(:9223), Qdrant sidecar (:6333/:6334), media server (:19876). Spec:
+`docs/superpowers/specs/2026-07-17-full-pro-design.md`. NUNCA reabrir
+bind pra 0.0.0.0 (o bridge executa JS/IPC arbitrário sem auth = RCE na
+LAN). Acesso da VM é por túnel SSH (idempotente — porta local já
+respondendo = túnel de pé):
+
+```bash
+# Probes MCP no app real:
+ssh -f -N -o ExitOnForwardFailure=yes -L 9223:localhost:9223 cmr-auto@100.102.249.9
+# driver_session: host=127.0.0.1 port=9223
+
+# Qdrant (curator, scripts de classificação):
+ssh -f -N -o ExitOnForwardFailure=yes -L 16333:localhost:6333 cmr-auto@100.102.249.9
+# CURATOR_QDRANT default já aponta pra http://127.0.0.1:16333
+```
+
+CSP sem hosts externos: Instrument Sans é bundlada
+(`src/assets/fonts/` + @font-face no extractor-lab.css) — não
+reintroduzir @import/CDN de fontes. JWT + rustify.aidvlabs.com ficaram
+RESERVADOS (sem serviço exposto a proteger); gatilho de reabertura na spec.
+
 ## Branch atual
 
 `main` — trabalho commitado direto em `main`, com rolling dev release
@@ -210,8 +234,11 @@ finais (inclusive curveball/eixo-artista, que NAO passaram pelo is_owned do pool
 e remove o que ja esta no acervo. Entrega lista markdown com query slskd
 pre-formada + a meta dos JSONs como prova de execucao.
 
-Comandos do motor:
+Comandos do motor (o Qdrant da cmr-auto escuta SÓ em 127.0.0.1 desde o
+hardening 2026-07-17 — o túnel SSH é pré-requisito; idempotente: se a
+porta 16333 já responde, o túnel está de pé):
 ```bash
+ssh -f -N -o ExitOnForwardFailure=yes -L 16333:localhost:6333 cmr-auto@100.102.249.9
 python3 scripts/curator/discover.py --top-seeds 8 --pool-size 60 --out /tmp/curator-pool.json
 python3 scripts/curator/discover_tracks.py --mode mix --pool-size 50 --out /tmp/curator-tracks.json
 # verificacao anti-duplicata (stdin JSON):

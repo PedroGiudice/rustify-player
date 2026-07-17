@@ -15,7 +15,9 @@ Separa o trabalho DETERMINISTICO (onde jq corrompe u64 e o LLM erra) do
 trabalho EDITORIAL do subagente (curar, justificar, validar album/ano,
 montar query slskd). O subagente le este JSON e cura por cima.
 
-Roda na VM; acessa o Qdrant da cmr-auto via Tailscale (100.102.249.9:6333).
+Roda na VM; o Qdrant da cmr-auto escuta SO em 127.0.0.1 (hardening
+2026-07-17) — abrir o tunel SSH antes de rodar:
+  ssh -f -N -o ExitOnForwardFailure=yes -L 16333:localhost:6333 cmr-auto@100.102.249.9
 
 Uso:
     python3 scripts/curator/discover.py                       # perfil automatico
@@ -44,7 +46,8 @@ import urllib.parse
 import urllib.request
 
 # ── Config ──────────────────────────────────────────────────────────────────
-QDRANT = os.environ.get("CURATOR_QDRANT", "http://100.102.249.9:6333")
+# 16333 = tunel SSH local -> cmr-auto:6333 (bind loopback desde 2026-07-17).
+QDRANT = os.environ.get("CURATOR_QDRANT", "http://127.0.0.1:16333")
 MB_BASE = "https://musicbrainz.org/ws/2"
 LB_SIMILAR = "https://labs.api.listenbrainz.org/similar-artists/json"
 # Enum fechado do ListenBrainz; days_7500 = ~20 anos de janela, filter on, 100 results.

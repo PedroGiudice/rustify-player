@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-QDRANT_URL = "http://100.102.249.9:6333"
+QDRANT_URL = "http://127.0.0.1:16333"  # tunel SSH -> cmr-auto:6333 (bind loopback desde 2026-07-17)
 TRACKS_COLLECTION = "rustify_tracks"
 ENRICHMENTS_COLLECTION = "track_enrichments"
 OUTPUT_PATH = Path(__file__).parent.parent / "data" / "mood-classifications.json"

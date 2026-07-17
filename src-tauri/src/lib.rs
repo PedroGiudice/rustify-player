@@ -2607,8 +2607,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
+            // 127.0.0.1 SEMPRE: o bridge executa JS/IPC arbitrário no app
+            // sem auth — em 0.0.0.0 qualquer nó da LAN/tailnet vira RCE
+            // (hardening 2026-07-17, spec full-pro). Probes de dev via
+            // túnel SSH: ssh -L 9223:localhost:9223 cmr-auto@...
             tauri_plugin_mcp_bridge::Builder::new()
-                .bind_address("0.0.0.0")
+                .bind_address("127.0.0.1")
                 .build(),
         )
         .setup(move |_app| {

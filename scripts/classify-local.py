@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
-QDRANT_URL = "http://100.102.249.9:6333"
+QDRANT_URL = "http://127.0.0.1:16333"  # tunel SSH -> cmr-auto:6333 (bind loopback desde 2026-07-17)
 OLLAMA_URL = "http://100.123.73.128:11434"
 MODEL = "qwen3:14b"
 COLLECTION = "rustify_tracks"

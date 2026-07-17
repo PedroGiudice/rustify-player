@@ -20,6 +20,11 @@ impl QdrantProcess {
 
         let child = Command::new(&binary)
             .env("QDRANT__STORAGE__STORAGE_PATH", &storage_path)
+            // Loopback only: sem HOST o Qdrant escuta em 0.0.0.0 e expõe a
+            // biblioteca inteira (leitura E escrita, sem auth) pra LAN
+            // (hardening 2026-07-17, spec full-pro). Consumidores na VM
+            // usam túnel SSH: ssh -L 16333:localhost:6333 cmr-auto@...
+            .env("QDRANT__SERVICE__HOST", "127.0.0.1")
             .env("QDRANT__SERVICE__HTTP_PORT", "6333")
             .env("QDRANT__SERVICE__GRPC_PORT", "6334")
             .env("QDRANT__TELEMETRY_DISABLED", "true")
