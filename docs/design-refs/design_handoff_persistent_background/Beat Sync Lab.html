@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Rustify · Beat Sync Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --paper:#f5f4f1;--paper-2:#faf9f7;--ink:#171717;--fg-5:#737373;--fg-6:#8a8a8a;--line:#e5e5e5;
+  --blue:#2563eb;--green:#059669;--amber:#b45309;--rose:#be123c;
+  --mono:ui-monospace,'SF Mono','Menlo','Consolas',monospace;
+  --sans:'Instrument Sans',ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);overflow:hidden}
+#stage{position:fixed;inset:0}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+.hud{position:fixed;top:16px;left:16px;z-index:10;background:rgba(255,255,255,.82);backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:230px;box-shadow:0 6px 18px rgba(0,0,0,.05);font-variant-numeric:tabular-nums}
+.hud__row{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:3px 0}
+.hud__k{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-5)}
+.hud__v{font-family:var(--mono);font-size:12px;color:var(--ink);font-weight:600}
+.hud__fps{font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:-.02em}
+.hud__fps.ok{color:var(--green)}.hud__fps.warn{color:var(--amber)}.hud__fps.bad{color:var(--rose)}
+.hud__sep{height:1px;background:var(--line);margin:8px 0}
+.lock{font-family:var(--mono);font-size:11px;font-weight:600}
+.lock.locked{color:var(--green)}.lock.hunting{color:var(--amber)}.lock.off{color:var(--fg-6)}
+.hud__hint{font-family:var(--mono);font-size:9.5px;color:var(--fg-6);margin-top:8px;line-height:1.7;letter-spacing:-.01em}
+.hud__hint b{color:var(--ink);font-weight:600}
+
+.panel{position:fixed;top:16px;right:16px;z-index:10;background:rgba(255,255,255,.82);backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:230px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
+.panel__title{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-5);margin-bottom:8px}
+.panel__title+.panel__title{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.ctl{margin:9px 0}
+.ctl__lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-5);margin-bottom:5px}
+.ctl__val{font-family:var(--mono);font-size:11px;color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--line);border-radius:999px;outline:0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--ink);border:2px solid var(--paper-2);box-shadow:0 1px 2px rgba(0,0,0,.2);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--ink);border:2px solid var(--paper-2);cursor:pointer}
+.seg{display:flex;gap:3px;flex-wrap:wrap}
+.seg button{font-family:var(--mono);font-size:10.5px;color:var(--fg-5);border:1px solid var(--line);background:var(--paper-2);padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s;flex:1;white-space:nowrap}
+.seg button:hover{color:var(--ink);border-color:var(--fg-6)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.seg--stack button{flex:1 1 100%}
+
+/* Scope */
+.scope{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:10;background:rgba(255,255,255,.86);backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:12px;padding:8px 10px 6px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
+.scope__lbl{display:flex;gap:14px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px;padding:0 2px}
+.scope__lbl i{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+.scope__lbl i::before{content:'';width:14px;height:2px;border-radius:2px;background:currentColor}
+.dot{color:var(--fg-5)}.mag{color:var(--fg-6)}.onset{color:var(--rose)}.pll{color:var(--blue)}.pulse{color:var(--green)}
+#scopeC{display:block;border-radius:6px}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+
+<div class="hud">
+  <div class="hud__row"><span class="hud__k">FPS</span><span class="hud__fps ok" id="fps">60</span></div>
+  <div class="hud__sep"></div>
+  <div class="hud__row"><span class="hud__k">Mode</span><span class="hud__v" id="hMode">PLL · amp</span></div>
+  <div class="hud__row"><span class="hud__k">Song BPM</span><span class="hud__v" id="hSong">112</span></div>
+  <div class="hud__row"><span class="hud__k">PLL lock</span><span class="lock off" id="hLock">—</span></div>
+  <div class="hud__row"><span class="hud__k">Est. BPM</span><span class="hud__v" id="hEst">—</span></div>
+  <div class="hud__row"><span class="hud__k">Phase err</span><span class="hud__v" id="hErr">—</span></div>
+  <div class="hud__hint"><b>space</b> pause · <b>k</b> manual kick · <b>1–4</b> mode<br><b>[ ]</b> shape · <b>d</b> drop (tempo jump)</div>
+</div>
+
+<div class="panel">
+  <div class="panel__title">Sync mode</div>
+  <div class="seg seg--stack" id="segMode">
+    <button data-m="off">Off — pure time</button>
+    <button data-m="speed">Reactive → speed <i style="opacity:.6">(old)</i></button>
+    <button data-m="amp">Reactive → amplitude</button>
+    <button data-m="pll" aria-pressed="true">PLL lock → amplitude</button>
+  </div>
+
+  <div class="panel__title">Simulated track</div>
+  <div class="ctl">
+    <div class="ctl__lbl"><span>BPM</span><span class="ctl__val" id="vBpm">112</span></div>
+    <input type="range" id="rBpm" min="60" max="180" step="1" value="112">
+  </div>
+  <div class="ctl">
+    <div class="ctl__lbl"><span>Timing jitter</span><span class="ctl__val" id="vJit">8%</span></div>
+    <input type="range" id="rJit" min="0" max="30" step="1" value="8">
+  </div>
+  <div class="ctl">
+    <div class="ctl__lbl"><span>Swing</span><span class="ctl__val" id="vSwing">0%</span></div>
+    <input type="range" id="rSwing" min="0" max="60" step="1" value="0">
+  </div>
+  <div class="ctl">
+    <div class="ctl__lbl"><span>Pulse depth</span><span class="ctl__val" id="vDepth">0.55</span></div>
+    <input type="range" id="rDepth" min="0" max="1" step="0.01" value="0.55">
+  </div>
+  <div class="ctl">
+    <div class="ctl__lbl"><span>Feel</span></div>
+    <div class="seg" id="segFeel">
+      <button data-f="thump" aria-pressed="true">Thump</button>
+      <button data-f="swell">Swell</button>
+      <button data-f="tick">Tick</button>
+    </div>
+  </div>
+</div>
+
+<div class="scope">
+  <div class="scope__lbl">
+    <i class="mag">band mag</i><i class="onset">onset</i><i class="pll">PLL beat</i><i class="pulse">pulse out</i>
+  </div>
+  <canvas id="scopeC" width="440" height="70"></canvas>
+</div>
+
+<script>
+const INK='23,23,23',TAU=Math.PI*2,c01=x=>x<0?0:x>1?1:x,lerp=(a,b,t)=>a+(b-a)*t;
+
+/* ── shapes (subset) ─────────────────────────────────────────── */
+const SHAPES=[
+  {name:'vortex',fn:(u,v,t)=>{const du=u-.5,dv=v-.5,r=Math.hypot(du,dv),th=Math.atan2(dv,du);return c01(.5+.5*Math.sin(th*2+r*20-t*.9)*Math.exp(-r*.8));}},
+  {name:'interference',fn:(u,v,t)=>{const d1=Math.hypot(u-.32,v-.4),d2=Math.hypot(u-.7,v-.62);return c01(.5+.5*Math.sin(d1*34-t*.6)*Math.sin(d2*30+t*.4));}},
+  {name:'basin',fn:(u,v,t)=>{const r=Math.hypot(u-.5,v-.52);return c01(.5+.5*Math.sin(r*17-1.1-t*.5));}},
+  {name:'ember',fn:(u,v,t)=>{const cx=.5+Math.sin(t*.4)*.025,w=6+v*22,du=u-cx,env=Math.exp(-Math.pow(v-.62,2)*5),fl=.86+.14*Math.sin(t*4.5+v*9);return c01(Math.exp(-du*du*w)*env*fl);}},
+];
+let shapeIdx=0;
+
+/* contour renderer — ink density is the ONLY thing beat touches besides amp */
+function contour(ctx,w,h,fn,t,amp,ink,pulse){
+  const NB=66,NP=108,topY=h*.05,botY=h*.97;
+  for(let i=0;i<NB;i++){const v=i/(NB-1),base=topY+(botY-topY)*v;let pk=0;ctx.beginPath();
+    for(let j=0;j<=NP;j++){const u=j/NP,x=u*w,s=fn(u,v,t);if(s>pk)pk=s;const wv=Math.sin(u*Math.PI*3.2+t*.55)*s*amp*1.5,y=base-wv;j===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    const a=(0.05+0.34*pk)*(1+0.5*pulse); // pulse lifts ink density subtly
+    ctx.strokeStyle=`rgba(${ink},${Math.min(0.9,a).toFixed(3)})`;ctx.lineWidth=0.6+1.7*pk;ctx.stroke();}
+}
+
+/* ── canvas ──────────────────────────────────────────────────── */
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let w=0,h=0,dpr=1;const PXB=1.8e6;
+function resize(){const r=cv.getBoundingClientRect();w=Math.max(1,r.width);h=Math.max(1,r.height);
+  const raw=Math.min(devicePixelRatio||1,2),fit=Math.sqrt(PXB/(w*h));dpr=Math.min(raw,Math.max(.75,fit));
+  cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
+new ResizeObserver(resize).observe(cv);resize();
+const PAPER=getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()||'#f5f4f1';
+
+/* ── state ───────────────────────────────────────────────────── */
+let mode='pll', feel='thump', paused=false;
+let songBpm=112, jitter=0.08, swing=0, depth=0.55;
+
+/* ── SIMULATED AUDIO ─────────────────────────────────────────────
+   Stand-in for pw_capture.rs low_band_mag. Schedules kick impulses at
+   the song tempo (+jitter +swing), each decaying like an envelope
+   follower. In production this whole block is replaced by the real
+   low_band_mag stream — the detector + PLL below consume it unchanged. */
+let nextKickT=0, kickAmp=1, mag=0, magPeakHold=0;
+let beatCount=0;
+function scheduleNext(t){
+  const base=60/songBpm;
+  // swing: delay every other beat
+  const sw=(beatCount%2===1)?base*(swing/100)*0.5:0;
+  const jit=(Math.random()*2-1)*jitter*base;
+  nextKickT=t+base+sw+jit;
+  kickAmp=0.8+Math.random()*0.2;
+  beatCount++;
+}
+function audioSim(t,dt){
+  if(nextKickT===0)scheduleNext(t);
+  let hit=false;
+  if(t>=nextKickT){ mag=kickAmp; hit=true; scheduleNext(t); }
+  // envelope-follower-like decay (fast attack already applied as step)
+  mag*=Math.exp(-dt/0.11);
+  return hit;
+}
+
+/* ── ONSET DETECTION (mirrors FluidBackground: running avg + delta) ── */
+let avgMag=0, lastOnsetT=-1, onsetFlash=0;
+const detectedTimes=[]; // recent onset timestamps for BPM estimate
+function detectOnset(t,dt){
+  avgMag=lerp(avgMag,mag,1-Math.exp(-dt/0.35));
+  const ratio=mag/(avgMag+1e-4);
+  const isOnset=(ratio>1.6)&&(mag>0.25)&&(t-lastOnsetT>0.20);
+  if(isOnset){ lastOnsetT=t; onsetFlash=1; detectedTimes.push(t); if(detectedTimes.length>16)detectedTimes.shift(); }
+  onsetFlash*=Math.exp(-dt/0.06);
+  return isOnset;
+}
+
+/* ── PLL: phase-locked oscillator tracking the beat grid ─────────
+   period P (s). phase φ∈[0,1) advances dt/P each frame. On each onset,
+   measure how far φ sits from the nearest beat boundary (0 or 1) and
+   nudge BOTH phase (fast) and period (slow integral). A clean pulse is
+   synthesised from φ — smooth between beats, locked at beats. */
+let pllPeriod=60/112, pllPhase=0, pllLocked=0, pllErr=0;
+function pllUpdate(t,dt,onset){
+  pllPhase+=dt/pllPeriod;
+  if(pllPhase>=1)pllPhase-=1;
+  if(onset){
+    // signed phase error to nearest beat, in [-0.5,0.5]
+    let e=pllPhase; if(e>0.5)e-=1;
+    pllErr=e;
+    // proportional phase correction (snap toward beat)
+    pllPhase-=e*0.5;
+    if(pllPhase<0)pllPhase+=1;
+    // integral tempo correction (slow): if we're consistently late/early, adjust period
+    pllPeriod*=(1+e*0.06);
+    pllPeriod=Math.min(1.2,Math.max(0.3,pllPeriod));
+    // lock confidence rises as |e| shrinks
+    pllLocked=lerp(pllLocked,c01(1-Math.abs(e)*3),0.3);
+  }else{
+    pllLocked*=Math.exp(-dt/2.5); // decays if no onsets
+  }
+}
+// pulse shapes from a phase in [0,1) (0 = on the beat)
+function pulseShape(ph){
+  if(feel==='thump'){ // fast attack, exp decay — kick drum feel
+    return ph<0.04?ph/0.04:Math.exp(-(ph-0.04)*6.5);
+  }else if(feel==='swell'){ // smooth raised-cosine — breathe
+    return 0.5-0.5*Math.cos(TAU*(1-ph));
+  }else{ // tick — narrow spike
+    return Math.exp(-ph*ph*90);
+  }
+}
+
+/* ── reactive envelope (for the two non-PLL modes) ──────────────── */
+let smoothedMag=0;
+
+/* ── FPS ─────────────────────────────────────────────────────── */
+const fpsEl=document.getElementById('fps');
+let framesW=0,winStart=performance.now(),lastReport=0;
+
+/* ── clocks ──────────────────────────────────────────────────── */
+let bgClock=0,last=performance.now(),simT=0;
+const scopeC=document.getElementById('scopeC'),sctx=scopeC.getContext('2d');
+const scopeHist=[];
+
+function frame(now){
+  requestAnimationFrame(frame);
+  const dtReal=Math.min(0.05,(now-last)*0.001);last=now;
+  if(document.hidden)return;
+  framesW++;
+
+  const dt=paused?0:dtReal;
+  simT+=dt;
+  const t=simT;
+
+  // 1. audio (sim) → mag + onset
+  const hit=audioSim(t,dt);
+  const onset=detectOnset(t,dt);
+  pllUpdate(t,dt,onset);
+
+  // 2. envelope for reactive modes
+  smoothedMag=lerp(smoothedMag,mag,1-Math.exp(-dt/0.18));
+
+  // 3. compute animation clock advance + amplitude pulse per mode
+  let speedMul=1, ampPulse=0, inkPulse=0;
+  if(mode==='off'){ }
+  else if(mode==='speed'){ speedMul=1+0.9*smoothedMag; }           // OLD: lurchy
+  else if(mode==='amp'){ ampPulse=depth*smoothedMag; inkPulse=0.4*smoothedMag; } // reactive, late/mushy
+  else if(mode==='pll'){ const p=pulseShape(pllPhase); ampPulse=depth*p*(0.4+0.6*pllLocked); inkPulse=0.5*p*pllLocked; }
+
+  bgClock+=dt*(1+ (mode==='speed'?(speedMul-1):0));
+  const at=bgClock;
+
+  // 4. render
+  ctx.fillStyle=PAPER;ctx.fillRect(0,0,w,h);
+  ctx.lineJoin='round';ctx.lineCap='round';
+  const breath=0.9+0.1*Math.sin(at*0.4);
+  const amp=h*0.16*breath*(1+ampPulse);
+  contour(ctx,w,h,SHAPES[shapeIdx].fn,at,amp,INK,inkPulse);
+
+  // 5. scope
+  scopeHist.push({mag,onset:onsetFlash,pll:pulseShape(pllPhase),beat:pllPhase<0.03?1:0});
+  if(scopeHist.length>220)scopeHist.shift();
+  drawScope();
+
+  // 6. HUD ~2x/s
+  if(now-lastReport>500){
+    const fps=framesW/((now-winStart)/1000);framesW=0;winStart=now;lastReport=now;
+    fpsEl.textContent=Math.round(fps);fpsEl.className='hud__fps '+(fps>=55?'ok':fps>=40?'warn':'bad');
+    const estBpm=60/pllPeriod;
+    document.getElementById('hEst').textContent=(mode==='pll')?estBpm.toFixed(1):'—';
+    document.getElementById('hErr').textContent=(mode==='pll')?(pllErr*pllPeriod*1000).toFixed(0)+' ms':'—';
+    const lk=document.getElementById('hLock');
+    if(mode!=='pll'){lk.textContent='n/a';lk.className='lock off';}
+    else if(pllLocked>0.6){lk.textContent='LOCKED';lk.className='lock locked';}
+    else{lk.textContent='hunting…';lk.className='lock hunting';}
+  }
+}
+requestAnimationFrame(frame);
+
+function drawScope(){
+  const W=440,H=70;sctx.clearRect(0,0,W,H);
+  sctx.fillStyle='#fcfbf9';sctx.fillRect(0,0,W,H);
+  const n=scopeHist.length;if(!n)return;
+  // mag (gray fill)
+  sctx.beginPath();sctx.moveTo(0,H);
+  for(let i=0;i<n;i++){const x=(i/(n-1))*W,y=H-scopeHist[i].mag*H*0.8;i===0?sctx.moveTo(x,y):sctx.lineTo(x,y);}
+  sctx.lineTo(W,H);sctx.closePath();sctx.fillStyle='rgba(138,138,138,.18)';sctx.fill();
+  // onsets (rose ticks)
+  sctx.strokeStyle='rgba(190,18,60,.75)';sctx.lineWidth=1.5;
+  for(let i=0;i<n;i++){if(scopeHist[i].onset>0.5){const x=(i/(n-1))*W;sctx.beginPath();sctx.moveTo(x,4);sctx.lineTo(x,H-4);sctx.stroke();}}
+  // PLL beat markers (blue ticks at phase wrap)
+  sctx.strokeStyle='rgba(37,99,235,.8)';
+  sctx.lineWidth=1;
+  for(let i=0;i<n;i++){if(scopeHist[i].beat){const x=(i/(n-1))*W;sctx.beginPath();sctx.moveTo(x,0);sctx.lineTo(x,H);sctx.stroke();}}
+  // pulse out (green line)
+  sctx.beginPath();
+  for(let i=0;i<n;i++){const x=(i/(n-1))*W,y=H-scopeHist[i].pll*H*0.8;i===0?sctx.moveTo(x,y):sctx.lineTo(x,y);}
+  sctx.strokeStyle='rgba(5,150,105,.9)';sctx.lineWidth=1.4;sctx.stroke();
+}
+
+/* ── controls ────────────────────────────────────────────────── */
+function bindRange(id,vid,set,fmt){const r=document.getElementById(id),v=document.getElementById(vid);const u=()=>v.textContent=fmt(parseFloat(r.value));r.addEventListener('input',()=>{set(parseFloat(r.value));u();});u();}
+bindRange('rBpm','vBpm',x=>{songBpm=x;document.getElementById('hSong').textContent=x;},x=>String(x|0));
+bindRange('rJit','vJit',x=>jitter=x/100,x=>(x|0)+'%');
+bindRange('rSwing','vSwing',x=>swing=x,x=>(x|0)+'%');
+bindRange('rDepth','vDepth',x=>depth=x,x=>x.toFixed(2));
+function bindSeg(id,attr,set,cur){const g=document.getElementById(id);g.querySelectorAll('button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset[attr]===cur()));b.onclick=()=>{set(b.dataset[attr]);g.querySelectorAll('button').forEach(x=>x.removeAttribute('aria-pressed'));b.setAttribute('aria-pressed','true');};});}
+const MODE_LBL={off:'Off · pure time',speed:'Reactive · speed (old)',amp:'Reactive · amplitude',pll:'PLL · amp'};
+bindSeg('segMode','m',v=>{mode=v;document.getElementById('hMode').textContent=MODE_LBL[v];},()=>mode);
+bindSeg('segFeel','f',v=>feel=v,()=>feel);
+
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+  if(k===' '){e.preventDefault();paused=!paused;}
+  else if(k==='k'){mag=1;detectedTimes.push(simT);} // manual kick
+  else if(k==='d'){songBpm=Math.max(60,Math.min(180,songBpm+(Math.random()<.5?-24:24)));document.getElementById('rBpm').value=songBpm;document.getElementById('vBpm').textContent=songBpm;document.getElementById('hSong').textContent=songBpm;}
+  else if(k==='['){shapeIdx=(shapeIdx-1+SHAPES.length)%SHAPES.length;}
+  else if(k===']'){shapeIdx=(shapeIdx+1)%SHAPES.length;}
+  else if(k>='1'&&k<='4'){const m=['off','speed','amp','pll'][+k-1];mode=m;document.getElementById('hMode').textContent=MODE_LBL[m];document.querySelectorAll('#segMode button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.m===m)));}
+});
+</script>
+</body>
+</html>

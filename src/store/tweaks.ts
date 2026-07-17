@@ -60,11 +60,14 @@ export interface TweaksState {
       time-dependent — mudanças do slider afetam só a derivada,
       sem saltos de fase. */
   bgSpeed: number;
-  /** Beat sync: o kick (low band do audio-fft) empurra a DERIVADA do
-      relógio virtual do bg — a animação acelera no beat, contínua e
-      suavizada, sem salto de fase. Off = velocidade puramente nominal
-      (bgSpeed). Consumido pelo SpectrumCanvas via --bg-beat-sync. */
-  bgBeatSync: boolean;
+  /** Beat sync via PLL: onsets do kick (low band do audio-fft) travam
+      um oscilador em fase no tempo da música (lib/beatPll.ts); o pulso
+      sintetizado modula a AMPLITUDE do bg — nunca velocidade nem fase
+      (spec: PATCH-beat-sync-PLL.md). O valor é a profundidade do pulso
+      (BEAT_DEPTH): 0 = off, 0.3 sutil, 0.55 default, 0.85 pulse.
+      Consumido pelo SpectrumCanvas via --bg-beat-sync (0/1, derivado
+      de depth > 0) + --bg-beat-depth. */
+  bgBeatDepth: number;
 
   // ── Loudness ────────────────────────────────────────────────
   /** Normalização de loudness ligada. Default ON (alvo streaming).
@@ -104,7 +107,7 @@ export const DEFAULTS: TweaksState = {
   bgTrebleGain: 0.8,
   bgSmoothing: 0.3,
   bgSpeed: 1.0,
-  bgBeatSync: true,
+  bgBeatDepth: 0.55,
   loudnessNorm: true,
   loudnessTarget: -14,
   adaptiveInk: true,
@@ -245,9 +248,11 @@ export function applyTweaks(s: TweaksState = state()) {
   html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
   html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
   html.style.setProperty("--bg-speed", s.bgSpeed.toFixed(3));
-  // Beat sync como flag numérica ("1"/"0"): o canvas lê com parseFloat
-  // no mesmo batch das outras vars, sem parsing especial de bool.
-  html.style.setProperty("--bg-beat-sync", s.bgBeatSync ? "1" : "0");
+  // Beat sync: flag numérica ("1"/"0", derivada de depth > 0) + a
+  // profundidade do pulso PLL. O canvas lê com parseFloat no mesmo
+  // batch das outras vars, sem parsing especial de bool.
+  html.style.setProperty("--bg-beat-sync", s.bgBeatDepth > 0 ? "1" : "0");
+  html.style.setProperty("--bg-beat-depth", s.bgBeatDepth.toFixed(2));
 }
 
 /** Deriva e escreve as vars do lyrics glass a partir do slider. */
@@ -440,6 +445,12 @@ export function loadTweaks() {
     }
     // Migracao: schema antigo usa "zoom" como controle separado.
     if (!("scale" in saved) && "zoom" in saved) next.scale = saved.zoom;
+    // Migracao: bgBeatSync boolean (schema antigo, beat na velocidade)
+    // -> bgBeatDepth (PLL). Off persistido continua off; on vira o
+    // depth default.
+    if (!("bgBeatDepth" in saved) && "bgBeatSync" in saved) {
+      next.bgBeatDepth = saved.bgBeatSync ? DEFAULTS.bgBeatDepth : 0;
+    }
     // Migracao: sidebar "collapsed"/"expanded" -> "icons"/"labels"
     if (saved.sidebar === "collapsed") next.sidebar = "icons";
     if (saved.sidebar === "expanded") next.sidebar = "labels";

@@ -6,13 +6,16 @@
    sabe qual shape está ativo, por isso as listas se multiplicam
    (18 shapes × 5 renderers) sem custo.
 
-   Assinatura: (ctx, w, h, t, shapeFn, amp, breath, ink, env).
-   `ink` é a tinta "r, g, b" (vinda de --bg-ink-rgb via Tweaks);
-   cada renderer aplica o próprio alpha. `amp` (pixels, já contém
-   o envelope de áudio) desloca geometria em TODOS os renderers —
-   inclusive dots, que cavalga o mesmo campo de onda do mesh.
-   `breath` (LFO 4.5s) e `env` (envelope FFT 0..1) são consumidos
-   só por dots: raio respira/pulsa, alpha flasheia.
+   Assinatura: (ctx, w, h, t, shapeFn, amp, breath, ink, env,
+   inkBoost?). `ink` é a tinta "r, g, b" (vinda de --bg-ink-rgb via
+   Tweaks); cada renderer aplica o próprio alpha. `amp` (pixels, já
+   contém o envelope de áudio + pulso do beat) desloca geometria em
+   TODOS os renderers — inclusive dots, que cavalga o mesmo campo
+   de onda do mesh. `breath` (LFO 4.5s) e `env` (envelope FFT 0..1)
+   são consumidos só por dots: raio respira/pulsa, alpha flasheia.
+   `inkBoost` (>= 1, pulso do beat-sync PLL) levanta a densidade de
+   tinta sutilmente NO CONTOUR apenas — os demais ignoram (spec:
+   PATCH-beat-sync-PLL.md, demo no Beat Sync Lab.html).
 
    Densidades e alphas copiados 1:1 do handoff (docs/design-refs/
    design_handoff_persistent_background). index 0 = mesh = o
@@ -33,6 +36,7 @@ export interface Renderer {
     breath: number,
     ink: string,
     env: number,
+    inkBoost?: number,
   ) => void;
 }
 
@@ -147,12 +151,16 @@ function drawDots(
   ctx.globalAlpha = 1;
 }
 
-/* contour — poucas bandas; espessura/alpha ∝ pico da banda → topográfico. */
+/* contour — poucas bandas; espessura/alpha ∝ pico da banda → topográfico.
+   Único renderer que consome inkBoost: o pulso do beat-sync levanta a
+   densidade de tinta sutilmente (lab: a·(1+0.5·pulse), cap 0.9). */
 function drawContour(
   ctx: CanvasRenderingContext2D, w: number, h: number, t: number,
   shapeFn: ShapeFn, amp: number, _breath: number, ink: string, _env: number,
+  inkBoost?: number,
 ) {
   const topY = h * 0.04, botY = h * 0.98;
+  const boost = inkBoost ?? 1;
   for (let i = 0; i < NBANDS; i++) {
     const v = i / (NBANDS - 1);
     const baselineY = topY + (botY - topY) * v;
@@ -167,15 +175,18 @@ function drawContour(
       const y = baselineY - wave;
       if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = `rgba(${ink}, ${0.05 + 0.32 * peak})`;
+    const a = Math.min(0.9, (0.05 + 0.32 * peak) * boost);
+    ctx.strokeStyle = `rgba(${ink}, ${a})`;
     ctx.lineWidth   = 0.6 + 1.6 * peak;
     ctx.stroke();
   }
 }
 
 export const RENDERERS: Renderer[] = [
-  { name: "mesh",    fn: drawMesh },
-  { name: "columns", fn: drawColumns },
+  // mesh/columns têm um 10º param interno (style, usado pelo weave) que
+  // NÃO é o inkBoost da interface — o wrapper isola o contrato público.
+  { name: "mesh",    fn: (ctx, w, h, t, sf, amp, br, ink, env) => drawMesh(ctx, w, h, t, sf, amp, br, ink, env) },
+  { name: "columns", fn: (ctx, w, h, t, sf, amp, br, ink, env) => drawColumns(ctx, w, h, t, sf, amp, br, ink, env) },
   { name: "weave",   fn: drawWeave },
   { name: "dots",    fn: drawDots },
   { name: "contour", fn: drawContour },

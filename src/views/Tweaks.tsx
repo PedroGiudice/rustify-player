@@ -282,10 +282,10 @@ export function Tweaks() {
           />
           <Segmented
             label="Beat sync"
-            key="bgBeatSync"
-            options={[[true, "On"], [false, "Off"]]}
+            key="bgBeatDepth"
+            options={[[0, "Off"], [0.3, "Subtle"], [0.55, "Default"], [0.85, "Pulse"]]}
           />
-          <div class="tweaks__hint">Kick acelera o movimento do fundo</div>
+          <div class="tweaks__hint">Pulso do kick na amplitude, travado no tempo da música</div>
 
           <div class="tweaks__divider"><span>Loudness</span></div>
           <Segmented

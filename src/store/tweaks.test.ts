@@ -103,29 +103,44 @@ describe("migração de estado salvo sem __dirty", () => {
   });
 });
 
-describe("bgBeatSync (beat-sync do bg)", () => {
-  it("default é true e applyTweaks escreve --bg-beat-sync = 1", () => {
+describe("bgBeatDepth (beat-sync PLL do bg)", () => {
+  it("default é 0.55 e applyTweaks escreve --bg-beat-sync=1 + --bg-beat-depth", () => {
     // Estado salvo sem o campo (versão antiga) também cai aqui: o load
     // preenche com DEFAULTS.
     localStorage.setItem("kv-tweaks", "{}");
     loadTweaks();
-    expect(DEFAULTS.bgBeatSync).toBe(true);
-    expect(tweaks().bgBeatSync).toBe(true);
+    expect(DEFAULTS.bgBeatDepth).toBe(0.55);
+    expect(tweaks().bgBeatDepth).toBe(0.55);
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("1");
+    expect(html().style.getPropertyValue("--bg-beat-depth")).toBe("0.55");
   });
 
-  it("toggle off escreve --bg-beat-sync = 0", () => {
+  it("depth 0 (Off) escreve --bg-beat-sync = 0", () => {
     localStorage.setItem("kv-tweaks", "{}");
     loadTweaks();
-    updateTweak("bgBeatSync", false);
+    updateTweak("bgBeatDepth", 0);
+    expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
+    expect(html().style.getPropertyValue("--bg-beat-depth")).toBe("0.00");
+  });
+
+  it("depth salvo é respeitado no boot", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatDepth: 0.85 }));
+    loadTweaks();
+    expect(tweaks().bgBeatDepth).toBe(0.85);
+    expect(html().style.getPropertyValue("--bg-beat-depth")).toBe("0.85");
+  });
+
+  it("migra bgBeatSync=false do schema antigo pra depth 0", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatSync: false }));
+    loadTweaks();
+    expect(tweaks().bgBeatDepth).toBe(0);
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
   });
 
-  it("estado salvo false é respeitado no boot", () => {
-    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatSync: false }));
+  it("bgBeatSync=true do schema antigo vira o depth default", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgBeatSync: true }));
     loadTweaks();
-    expect(tweaks().bgBeatSync).toBe(false);
-    expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
+    expect(tweaks().bgBeatDepth).toBe(0.55);
   });
 });
 

@@ -169,6 +169,9 @@ Arquivos adicionais no projeto remoto (não sincronizados aqui por peso):
 - `covers/` — 18 renders estáticos 1200×1200 do motor. Ideia de produto
   registrada: cover art gerativa determinística por hash do álbum
   (álbum sem capa → mesma shape sempre).
-- Beat-sync: fórmula fechada no README remoto
-  (`reactive = 1 + SYNC · ((rmsEnergy − 0.7) + lowBandMag · 0.32)`,
-  modula só amplitude/tinta, nunca fase).
+- Beat-sync: a fórmula reativa esboçada no README remoto
+  (`reactive = 1 + SYNC · (…)`) foi SUPERADA pelo design PLL — spec
+  em `PATCH-beat-sync-PLL.md` (neste diretório), bancada de validação
+  em `Beat Sync Lab.html` (idem). Onsets do kick travam um oscilador
+  em fase; o pulso modula amplitude (+ lift sutil de tinta no
+  contour), nunca velocidade/fase. Implementado em `src/lib/beatPll.ts`.

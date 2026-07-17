@@ -18,11 +18,15 @@
    --bg-smoothing (0..1 → tau em ENV_TAU_MIN..ENV_TAU_MAX).
 
    Regra crítica: o envelope só modula amplitude. NUNCA toca em
-   fase nem em ink density — caso contrário vira screensaver.
-   Exceção deliberada (beat-sync, opt-in via --bg-beat-sync): o kick
-   (low band) modula a DERIVADA do relógio virtual — a velocidade
-   acelera no beat, contínua e suavizada (BEAT_TAU). Salto ou
-   descontinuidade de FASE segue proibido.
+   fase nem em velocidade — caso contrário vira screensaver.
+   Beat-sync (opt-in via --bg-beat-sync): onsets do kick travam um
+   oscilador em fase (PLL, lib/beatPll.ts) no tempo da música; o
+   pulso sintetizado modula AMPLITUDE (profundidade em
+   --bg-beat-depth) e dá um lift sutil de ink density no contour
+   (INK_PULSE). Relógio/fase seguem intocados — a exceção antiga
+   (beat na derivada do clock) foi REMOVIDA: lia como solavanco.
+   Spec: docs/design-refs/design_handoff_persistent_background/
+   PATCH-beat-sync-PLL.md (validado no Beat Sync Lab.html).
 
    Tinta puxada da CSS var --bg-ink-rgb (Tweaks panel). Default
    carbono 23, 23, 23; alpha por renderer (renderers.ts).
@@ -41,7 +45,7 @@ import { createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
 import { RENDERERS } from "../renderers";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
-import { expandKick, BEAT_GAIN } from "../lib/beatBoost";
+import { createBeatPll, pllStep, beatPulse, BEAT_DEPTH_DEFAULT, INK_PULSE } from "../lib/beatPll";
 
 const SHAPE_KEY = "rustify-mock-shape";
 const RENDER_KEY = "rustify-mock-renderer";
@@ -52,12 +56,8 @@ const FFT_STALE_MS = 250;
 /** Quanto o envelope contínuo modula amplitude (1 + ENV_GAIN * env). */
 const ENV_GAIN = 0.5;
 
-// BEAT_GAIN vem de lib/beatBoost.ts junto com expandKick — calibrados
-// com a faixa dinâmica REAL do kick medida no app (p50~0.32, max~0.68).
-
-/** Tau (s) da resposta do beat-boost. Só refina a transição — o
-    attack/release grosso do envelope já vem do Rust (pw_capture.rs). */
-const BEAT_TAU = 0.09;
+// Beat-sync: detector de onset + PLL + shaping do pulso vivem em
+// lib/beatPll.ts (puro, testado). Aqui só o estado por instância.
 
 /** Limites de tau (s) para o decay do envelope. Mapeados pelo slider
     bgSmoothing dos Tweaks: 0 → ENV_TAU_MIN (resposta crua), 1 → ENV_TAU_MAX
@@ -138,10 +138,12 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let smoothedEnv = 0;
   let lastFrameMs = performance.now();
 
-  // Beat-sync: envelope do kick que empurra a derivada do relógio
-  // (beatEnv) + flag lida de --bg-beat-sync (1 = on, 0 = off).
-  let beatEnv = 0;
+  // Beat-sync: onset detector + PLL (estado em lib/beatPll.ts).
+  // beatSync = flag de --bg-beat-sync (1 = on, 0 = off); beatDepth =
+  // profundidade do pulso de --bg-beat-depth (0.3/0.55/0.85 no Tweaks).
+  const pll = createBeatPll();
   let beatSync = 1;
+  let beatDepth = BEAT_DEPTH_DEFAULT;
 
   // Cor da tinta + ganhos por banda + smoothing. Lidos das CSS
   // vars que Tweaks escreve no <html> (~3x/s, sem listener).
@@ -221,20 +223,21 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         const sm = parseFloat(cs.getPropertyValue("--bg-smoothing"));
         const sp = parseFloat(cs.getPropertyValue("--bg-speed"));
         const bs = parseFloat(cs.getPropertyValue("--bg-beat-sync"));
+        const bd = parseFloat(cs.getPropertyValue("--bg-beat-depth"));
         if (Number.isFinite(b)) bassGain = b;
         if (Number.isFinite(m)) midGain = m;
         if (Number.isFinite(tr)) trebleGain = tr;
         if (Number.isFinite(sm)) smoothing = sm;
         if (Number.isFinite(sp)) speed = sp;
         if (Number.isFinite(bs)) beatSync = bs;
+        if (Number.isFinite(bd)) beatDepth = bd;
       }
 
       const tMs = performance.now();
       // dt clampado em 100ms: no retorno de foreground (document.hidden
       // congela lastFrameMs mas o áudio/FFT seguem vivos) o dt seria a
-      // duração oculta inteira — um salto de fase que o beat-boost ainda
-      // amplificaria (kBeat satura com dt >> BEAT_TAU). O clamp preserva
-      // o invariante "sem salto de fase" do cabeçalho pra QUALQUER dt.
+      // duração oculta inteira — um salto de fase. O clamp preserva o
+      // invariante "sem salto de fase" do cabeçalho pra QUALQUER dt.
       const dt = Math.max(0, Math.min(0.1, (tMs - lastFrameMs) * 0.001));
       lastFrameMs = tMs;
 
@@ -245,24 +248,23 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       inkCur.g += (inkTgt.g - inkCur.g) * kInk;
       inkCur.b += (inkTgt.b - inkCur.b) * kInk;
       inkRgb = `${Math.round(inkCur.r)}, ${Math.round(inkCur.g)}, ${Math.round(inkCur.b)}`;
-      // Stream de FFT considerado vivo? Computado ANTES do avanço do
-      // clock porque o beat-boost depende dele; reusado no target do
-      // envelope de amplitude logo abaixo.
+      // Stream de FFT considerado vivo? Usado pelo onset detector e
+      // pelo target do envelope de amplitude logo abaixo.
       const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
 
-      // Beat-boost: o kick (low band) empurra a DERIVADA do relógio —
-      // contínuo e suavizado, nunca salto de fase. Opt-in via Tweaks
-      // (--bg-beat-sync). Em silêncio/pausa beatEnv decai e a
-      // velocidade volta à nominal. expandKick remapeia a faixa real
-      // do kick ([0.10, 0.60] medido) pra [0,1] — sem isso o boost
-      // usava só ~40% do range e ficava imperceptível.
-      const beatTarget = fresh && beatSync > 0.5 ? expandKick(lastLow) : 0;
-      const kBeat = 1 - Math.exp(-dt / BEAT_TAU);
-      beatEnv += (beatTarget - beatEnv) * kBeat;
+      // Onset + PLL: detecta transientes do kick na low band e trava
+      // um oscilador em fase no tempo da música. Roda sempre que há
+      // FFT (mantém o lock pronto mesmo com beat-sync off); o gate do
+      // Tweaks entra só no pulso. t = relógio REAL em segundos — nunca
+      // o bgClock virtual, senão o lock deriva quando bgSpeed != 1.
+      // Sem FFT fresco não há onsets, o lock decai e o pulso zera —
+      // o bg volta ao breath contínuo puro, sem fallback time-driven.
+      pllStep(pll, lastLow, tMs * 0.001, dt, fresh);
 
-      // Avança o relógio virtual da animação. bgSpeed=0 congela,
-      // 1 = nominal, 2 = dobro. Independente do dt do envelope.
-      bgClock += dt * speed * (1 + BEAT_GAIN * beatEnv);
+      // Avança o relógio virtual da animação SEMPRE à velocidade
+      // nominal (bgSpeed): 0 congela, 1 nominal, 2 dobro. O beat não
+      // toca mais nisto — modular a derivada lia como solavanco.
+      bgClock += dt * speed;
       const t = bgClock;
       ctx.clearRect(0, 0, w, h);
 
@@ -286,15 +288,25 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       // Macro breathing — preservado do original. 4.5 s period.
       const breath = 0.85 + 0.15 * Math.sin(t * 0.4);
 
-      // Reatividade contínua: envelope só modula amplitude (nunca
+      // Pulso do PLL (só com beat-sync ligado). "Thump": attack rápido
+      // + decay exponencial, escalado pela confiança de lock pra não
+      // pulsar no escuro enquanto o PLL ainda caça o tempo.
+      const pulse = beatSync > 0.5 ? beatPulse(pll, beatDepth) : 0;
+
+      // Amplitude: breath (contínuo) × envelope contínuo + pulso do
+      // beat (discreto). Envelope e pulso só modulam amplitude (nunca
       // fase, nunca tinta — senão vira Winamp).
-      const reactive = 1 + ENV_GAIN * smoothedEnv;
+      const reactive = 1 + ENV_GAIN * smoothedEnv + pulse;
       const amp = h * 0.17 * breath * reactive;
+
+      // Lift sutil de ink density no pulso (normalizado pra [0,1] pelo
+      // depth) — consumido só pelo contour; os demais renderers ignoram.
+      const inkBoost = 1 + INK_PULSE * (beatDepth > 0 ? pulse / beatDepth : 0);
 
       // Despacha pro renderer ativo — todo renderer consome o mesmo
       // campo shapeFn(u,v,t); só o índice muda entre eles.
       const shapeFn = SHAPES[shapeIdx()].fn;
-      RENDERERS[renderIdx()].fn(ctx, w, h, t, shapeFn, amp, breath, inkRgb, smoothedEnv);
+      RENDERERS[renderIdx()].fn(ctx, w, h, t, shapeFn, amp, breath, inkRgb, smoothedEnv, inkBoost);
     }
     raf = requestAnimationFrame(frame);
 
