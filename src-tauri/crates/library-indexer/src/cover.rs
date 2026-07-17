@@ -134,14 +134,37 @@ pub fn process_album_cover(
 /// weighted mean with s² × mid-lightness, so the saturated core defines the
 /// color and washed-out members stop diluting it.
 pub fn dominant_color(source: &CoverSource) -> Option<String> {
+    dominant_palette(source, 1)?.into_iter().next()
+}
+
+/// Bins do histograma de hue (15° cada) — compartilhado pelos 2 passes.
+const HUE_BINS: usize = 24;
+/// Saturação abaixo disto vota no partido acromático.
+const ACHROMATIC_S: f64 = 0.08;
+/// Separação mínima (em bins, wrap-aware) entre famílias da paleta: 3
+/// bins = 45° — evita devolver três tons da mesma cor.
+const PALETTE_MIN_HUE_DIST: usize = 3;
+/// Piso de relevância de uma família extra: fração dos votos da
+/// vencedora. Abaixo disto é detalhe/ruído, não cor da capa.
+const PALETTE_VOTE_FLOOR: f64 = 0.22;
+
+/// Paleta dominante da capa: até `max_colors` famílias de hue DISTINTAS,
+/// ordenadas por densidade de voto (área × saturação^1.5 × luminância
+/// útil). O item 0 reproduz `dominant_color` (mesma eleição, mesmo núcleo
+/// saturado — `dominant_color` é wrapper com max_colors=1). Famílias
+/// extras exigem separação de hue >= 45° e votos >= 22% da vencedora;
+/// capas monocromáticas rendem 1 cor, bicromáticas 2, etc. Capa
+/// essencialmente acromática rende 1 cinza (identidade preservada).
+pub fn dominant_palette(source: &CoverSource, max_colors: usize) -> Option<Vec<String>> {
+    if max_colors == 0 {
+        return Some(Vec::new());
+    }
     let img = load_source(source).ok()?;
     let small = img.resize_exact(48, 48, FilterType::Triangle).to_rgb8();
 
-    const HUE_BINS: usize = 24;
-    const ACHROMATIC_S: f64 = 0.08;
     let light_w = |l: f64| (1.0 - (l - 0.5).abs() * 1.6).max(0.10);
 
-    // Pass 1: eleição da família de hue (+ partido acromático).
+    // Pass 1: eleição das famílias de hue (+ partido acromático).
     let mut votes = [0f64; HUE_BINS];
     let mut gray = (0f64, 0f64, 0f64, 0f64); // (peso, r, g, b)
     for px in small.pixels() {
@@ -172,20 +195,43 @@ pub fn dominant_color(source: &CoverSource) -> Option<String> {
         .enumerate()
         .max_by(|a, b| a.1.total_cmp(b.1))?;
 
-    // Sem presença cromática real: capa acromática fica acromática.
+    // Sem presença cromática real: capa acromática fica acromática (1 cor).
     if win_votes * 4.0 < gray.0 || win_votes <= f64::EPSILON {
         if gray.0 <= f64::EPSILON {
             return None;
         }
         let to8 = |v: f64| ((v / gray.0) * 255.0).round().clamp(0.0, 255.0) as u8;
-        return Some(format!("#{:02x}{:02x}{:02x}", to8(gray.1), to8(gray.2), to8(gray.3)));
+        return Some(vec![format!(
+            "#{:02x}{:02x}{:02x}",
+            to8(gray.1),
+            to8(gray.2),
+            to8(gray.3)
+        )]);
     }
 
-    // Pass 2: núcleo saturado da família vencedora (win ± 1, com wrap).
-    let in_family = |hb: usize| {
-        hb == win || hb == (win + 1) % HUE_BINS || hb == (win + HUE_BINS - 1) % HUE_BINS
+    // Eleição multi-pico: maior voto entre bins não excluídos; cada
+    // vencedor exclui a vizinhança (< PALETTE_MIN_HUE_DIST, wrap-aware).
+    let wrap_dist = |a: usize, b: usize| {
+        let d = a.abs_diff(b);
+        d.min(HUE_BINS - d)
     };
-    let mut acc = (0f64, 0f64, 0f64, 0f64);
+    let mut winners: Vec<usize> = vec![win];
+    while winners.len() < max_colors {
+        let cand = smooth
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| winners.iter().all(|w| wrap_dist(*i, *w) >= PALETTE_MIN_HUE_DIST))
+            .max_by(|a, b| a.1.total_cmp(b.1));
+        match cand {
+            Some((i, &v)) if v >= win_votes * PALETTE_VOTE_FLOOR && v > f64::EPSILON => {
+                winners.push(i);
+            }
+            _ => break,
+        }
+    }
+
+    // Pass 2 por família: núcleo saturado (win ± 1, com wrap).
+    let mut accs = vec![(0f64, 0f64, 0f64, 0f64); winners.len()];
     for px in small.pixels() {
         let r = f64::from(px[0]) / 255.0;
         let g = f64::from(px[1]) / 255.0;
@@ -195,20 +241,28 @@ pub fn dominant_color(source: &CoverSource) -> Option<String> {
             continue;
         }
         let hb = ((h * HUE_BINS as f64) as usize).min(HUE_BINS - 1);
-        if !in_family(hb) {
-            continue;
+        if let Some(fi) = winners.iter().position(|w| wrap_dist(hb, *w) <= 1) {
+            let w = s * s * light_w(l);
+            let acc = &mut accs[fi];
+            acc.0 += w;
+            acc.1 += r * w;
+            acc.2 += g * w;
+            acc.3 += b * w;
         }
-        let w = s * s * light_w(l);
-        acc.0 += w;
-        acc.1 += r * w;
-        acc.2 += g * w;
-        acc.3 += b * w;
     }
-    if acc.0 <= f64::EPSILON {
+
+    let palette: Vec<String> = accs
+        .into_iter()
+        .filter(|acc| acc.0 > f64::EPSILON)
+        .map(|acc| {
+            let to8 = |v: f64| ((v / acc.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+            format!("#{:02x}{:02x}{:02x}", to8(acc.1), to8(acc.2), to8(acc.3))
+        })
+        .collect();
+    if palette.is_empty() {
         return None;
     }
-    let to8 = |v: f64| ((v / acc.0) * 255.0).round().clamp(0.0, 255.0) as u8;
-    Some(format!("#{:02x}{:02x}{:02x}", to8(acc.1), to8(acc.2), to8(acc.3)))
+    Some(palette)
 }
 
 /// RGB (0..1) → HSL (all 0..1). Hue 0..1 wraps the circle.
@@ -290,6 +344,110 @@ mod tests {
             .write_image(&img, w, h, ExtendedColorType::Rgb8)
             .unwrap();
         buf
+    }
+
+    fn png_bytes(img: &RgbImage) -> Vec<u8> {
+        let mut buf = Vec::new();
+        PngEncoder::new(&mut buf)
+            .write_image(img, img.width(), img.height(), ExtendedColorType::Rgb8)
+            .unwrap();
+        buf
+    }
+
+    fn hex_rgb(hex: &str) -> (i32, i32, i32) {
+        (
+            i32::from_str_radix(&hex[1..3], 16).unwrap(),
+            i32::from_str_radix(&hex[3..5], 16).unwrap(),
+            i32::from_str_radix(&hex[5..7], 16).unwrap(),
+        )
+    }
+
+    #[test]
+    fn dominant_palette_two_color_cover_yields_two_families_by_density() {
+        // 55% vermelho + 35% azul + 10% cinza: duas famílias reais,
+        // vermelho mais denso → [vermelho, azul].
+        let mut img = RgbImage::from_pixel(60, 60, Rgb([128, 128, 128]));
+        for y in 0..60 {
+            for x in 0..33 {
+                img.put_pixel(x, y, Rgb([200, 30, 30]));
+            }
+            for x in 33..54 {
+                img.put_pixel(x, y, Rgb([30, 60, 200]));
+            }
+        }
+        let palette = dominant_palette(
+            &CoverSource::EmbeddedBytes { data: png_bytes(&img), mime_hint: String::new() },
+            3,
+        )
+        .expect("paleta extraída");
+        assert_eq!(palette.len(), 2, "esperava 2 famílias, veio {palette:?}");
+        let (r0, g0, b0) = hex_rgb(&palette[0]);
+        assert!(r0 > 150 && g0 < 90 && b0 < 90, "palette[0] devia ser vermelho: {palette:?}");
+        let (r1, _g1, b1) = hex_rgb(&palette[1]);
+        assert!(b1 > 120 && r1 < 100, "palette[1] devia ser azul: {palette:?}");
+    }
+
+    #[test]
+    fn dominant_palette_same_hue_gradient_collapses_to_one() {
+        // Tons do MESMO azul (luminâncias variadas) → 1 família, não 3.
+        let mut img = RgbImage::new(60, 60);
+        for y in 0..60 {
+            for x in 0..60 {
+                let l = 60 + ((x * 2) as u8);
+                img.put_pixel(x, y, Rgb([l / 4, l / 2, l]));
+            }
+        }
+        let palette = dominant_palette(
+            &CoverSource::EmbeddedBytes { data: png_bytes(&img), mime_hint: String::new() },
+            3,
+        )
+        .expect("paleta extraída");
+        assert_eq!(palette.len(), 1, "gradiente monocromático devia render 1 cor: {palette:?}");
+    }
+
+    #[test]
+    fn dominant_palette_first_item_matches_dominant_color() {
+        let mut img = RgbImage::from_pixel(60, 60, Rgb([128, 128, 128]));
+        for y in 0..60 {
+            for x in 0..18 {
+                img.put_pixel(x, y, Rgb([200, 30, 30]));
+            }
+        }
+        let src = CoverSource::EmbeddedBytes { data: png_bytes(&img), mime_hint: String::new() };
+        let single = dominant_color(&src).expect("cor");
+        let palette = dominant_palette(&src, 3).expect("paleta");
+        assert_eq!(palette[0], single, "palette[0] deve reproduzir dominant_color");
+    }
+
+    #[test]
+    fn dominant_palette_grayscale_yields_single_gray() {
+        let img = RgbImage::from_pixel(60, 60, Rgb([90, 90, 90]));
+        let palette = dominant_palette(
+            &CoverSource::EmbeddedBytes { data: png_bytes(&img), mime_hint: String::new() },
+            3,
+        )
+        .expect("paleta extraída");
+        assert_eq!(palette.len(), 1);
+        let (r, g, b) = hex_rgb(&palette[0]);
+        assert!((r - g).abs() <= 6 && (g - b).abs() <= 6, "cinza devia ficar cinza: {palette:?}");
+    }
+
+    #[test]
+    fn dominant_palette_weak_speck_below_floor_is_ignored() {
+        // 92% vermelho + ~4% verde: o verde fica abaixo do piso de
+        // relevância (fração dos votos da vencedora) → 1 cor só.
+        let mut img = RgbImage::from_pixel(60, 60, Rgb([200, 30, 30]));
+        for y in 0..60 {
+            for x in 0..2 {
+                img.put_pixel(x, y, Rgb([30, 200, 40]));
+            }
+        }
+        let palette = dominant_palette(
+            &CoverSource::EmbeddedBytes { data: png_bytes(&img), mime_hint: String::new() },
+            3,
+        )
+        .expect("paleta extraída");
+        assert_eq!(palette.len(), 1, "verde de 4% não é família: {palette:?}");
     }
 
     #[test]

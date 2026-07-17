@@ -1375,6 +1375,54 @@ fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, Stri
     Ok(String::new())
 }
 
+/// Paleta dominante da capa (até 3 famílias de hue, ordenadas por
+/// densidade — item 0 == dominant_color). Cache lazy no enrichment
+/// `dominant_palette_v4`, mesmo padrão versionado do v3: valores de
+/// versões antigas são ignorados, cada faixa recalcula no 1º uso.
+/// Escreve o v3 junto (mesma matemática do item 0) pra manter o
+/// `get_track_color` legado consistente.
+#[tauri::command]
+fn get_track_palette(lib: State<Library>, track_id: String) -> Result<Vec<String>, String> {
+    let tid = parse_id(&track_id)?;
+    let client = lib.handle.client();
+
+    let enr = client.get_enrichment(tid).map_err(err)?;
+    if let Some(arr) = enr["dominant_palette_v4"].as_array() {
+        let palette: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        if !palette.is_empty() {
+            return Ok(palette);
+        }
+    }
+
+    // Fallback: computa da capa cacheada e persiste no enrichment.
+    let payload = client.get_payload(tid).map_err(err)?;
+    if let Some(rel) = payload["cover_path"].as_str() {
+        let cover_file = lib.cache_dir.join(rel);
+        if cover_file.exists() {
+            let source = library_indexer::CoverSource::FolderFile(cover_file);
+            if let Some(palette) = library_indexer::dominant_palette(&source, 3) {
+                client
+                    .set_enrichment(
+                        tid,
+                        serde_json::json!({
+                            "dominant_palette_v4": palette,
+                            "dominant_color_v3": palette[0],
+                        }),
+                    )
+                    .ok();
+                return Ok(palette);
+            }
+        }
+    }
+
+    Ok(Vec::new())
+}
+
 // qdrant_sync removed — pipeline writes directly to Qdrant during scan.
 
 #[tauri::command]
@@ -3144,6 +3192,7 @@ pub fn run() {
             load_theme,
             watch_theme,
             get_track_color,
+            get_track_palette,
             log_event,
             fs_read_text,
             fs_write_text,

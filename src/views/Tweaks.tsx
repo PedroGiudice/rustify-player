@@ -229,6 +229,12 @@ export function Tweaks() {
             options={[[true, "Album"], [false, "Off"]]}
           />
           <Segmented
+            label="Ink cycle"
+            key="bgInkCycle"
+            options={[[true, "Alterna"], [false, "Fixa"]]}
+          />
+          <div class="tweaks__hint">Bg alterna entre as cores dominantes da capa (~40s)</div>
+          <Segmented
             label="Adaptive accent"
             key="adaptiveAccent"
             options={[[true, "Album"], [false, "Off"]]}

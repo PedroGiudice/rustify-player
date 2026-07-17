@@ -216,6 +216,11 @@ export const listBackgrounds = () => invoke<string[]>("list_backgrounds");
 export const getTrackColor = (trackId: string) =>
   invoke<string>("get_track_color", { trackId });
 
+/** Paleta dominante da capa (até 3 cores, ordenadas por densidade;
+    item 0 == dominant_color). Cache lazy dominant_palette_v4. */
+export const getTrackPalette = (trackId: string) =>
+  invoke<string[]>("get_track_palette", { trackId });
+
 // ── Event listeners ────────────────────────────────────────────
 
 export const onPlayerState = (cb: (payload: PlayerStatePayload) => void) =>

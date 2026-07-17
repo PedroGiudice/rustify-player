@@ -4,11 +4,14 @@
    Opcionalmente o ACCENT da UI (--primary e família) segue junto.
 
    Fluxo: TrackStarted atualiza player.currentTrackInfo → effect
-   busca current_library_track (id) via getState → getTrackColor
-   (enrichment dominant_color no backend, com fallback que computa
-   da capa e persiste) → deriveInk/deriveAccent normalizam pros
-   papéis → setAdaptiveColor/setAdaptiveAccent (store/tweaks
-   resolve precedência e aplica).
+   busca current_library_track (id) via getState → getTrackPalette
+   (enrichment dominant_palette_v4 no backend — até 3 famílias de
+   hue por densidade, [0] = dominante; fallback computa da capa e
+   persiste) → deriveInk/deriveAccent normalizam pros papéis →
+   setAdaptiveColor/setAdaptiveAccent (store/tweaks resolve
+   precedência e aplica). Com o knob bgInkCycle (Tweaks) e paleta
+   2+, o ink do bg ALTERNA entre as cores a cada ~40s (crossfade
+   nativo); o accent da UI fica fixo na dominante.
 
    v3: derivação orientada a CONTRASTE. A v2 ancorava a luminância
    do ink na "profundidade do tema" (themeL + 0.24) — como todos os
@@ -18,7 +21,7 @@
    desce, em tema claro) até o alvo, preservando o hue da capa.
    ============================================================ */
 
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createRoot, createSignal } from "solid-js";
 import { player } from "../store/player";
 import {
   tweaks,
@@ -27,7 +30,7 @@ import {
   themeInkBase,
   type AdaptiveAccent,
 } from "../store/tweaks";
-import { getState, getTrackColor } from "../tauri";
+import { getState, getTrackPalette } from "../tauri";
 import {
   hexToHsl,
   hslToHex,
@@ -98,16 +101,43 @@ export function deriveAccent(coverHex: string, baseInkHex: string): AdaptiveAcce
 
 // ── Wiring ────────────────────────────────────────────────────
 
-let _reqSeq = 0;
-// Cor BRUTA da capa da faixa corrente. Guardada pra re-derivar quando o
-// TEMA troca mid-track (os alvos de contraste dependem do canvas do tema —
-// sem re-derivação a cor ficaria calibrada pro tema antigo).
-let _lastCoverHex: string | null = null;
+/** Período do ciclo de cores do bg (paleta da capa). */
+const INK_CYCLE_MS = 40_000;
 
-function applyDerived(hex: string | null) {
-  _lastCoverHex = hex;
-  setAdaptiveColor(hex ? deriveInk(hex, themeInkBase()) : null);
-  setAdaptiveAccent(hex ? deriveAccent(hex, themeInkBase()) : null);
+let _reqSeq = 0;
+// Paleta BRUTA da capa da faixa corrente (até 3 cores, ordenadas por
+// densidade — [0] é a dominante). Guardada pra re-derivar quando o TEMA
+// troca mid-track (os alvos de contraste dependem do canvas do tema —
+// sem re-derivação as cores ficariam calibradas pro tema antigo).
+let _lastPalette: string[] | null = null;
+
+// Inks DERIVADOS (contraste garantido) da paleta corrente — signal pra
+// o effect do ciclo reagir a troca de faixa/tema sem re-derivar por tick.
+const [derivedInks, setDerivedInks] = createSignal<string[] | null>(null);
+let _cycleIdx = 0;
+
+function applyDerived(palette: string[] | null) {
+  _lastPalette = palette && palette.length ? palette : null;
+  _cycleIdx = 0;
+  if (!_lastPalette) {
+    setDerivedInks(null);
+    setAdaptiveColor(null);
+    setAdaptiveAccent(null);
+    return;
+  }
+  const base = themeInkBase();
+  // Cada cor da paleta passa pelo MESMO piso de contraste da dominante;
+  // dedup mantém o ciclo honesto (cores que derivam pro mesmo ink não
+  // contam duas vezes).
+  const inks = [...new Set(
+    _lastPalette.map((hex) => deriveInk(hex, base)).filter((c): c is string => !!c),
+  )];
+  setDerivedInks(inks.length ? inks : null);
+  // Sempre COMEÇA na dominante; o accent da UI fica FIXO nela (chips e
+  // botões trocando de cor a cada ciclo seria ruído — o bg é ambiental,
+  // a UI não).
+  setAdaptiveColor(inks[0] ?? null);
+  setAdaptiveAccent(deriveAccent(_lastPalette[0], base));
 }
 
 // O retry PRESERVA o seq da requisição original (achado da auditoria: a
@@ -131,9 +161,9 @@ async function fetchAndApply(expectedPath: string, retryLeft = 5, seq = ++_reqSe
     // pode vir vazio OU ainda com a faixa ANTERIOR. Validar contra o path
     // que disparou o effect evita aplicar a cor da capa errada num skip.
     if (!track || track.path !== expectedPath) { retry(); return; }
-    const hex = await getTrackColor(String(track.id));
+    const palette = await getTrackPalette(String(track.id));
     if (seq !== _reqSeq) return;
-    applyDerived(hex || null);
+    applyDerived(palette?.length ? palette : null);
   } catch {
     if (seq === _reqSeq) applyDerived(null);
   }
@@ -160,13 +190,31 @@ export function wireAdaptiveInk() {
       if (!on || !path) { applyDerived(null); return; }
       void fetchAndApply(path);
     });
+
+    // Ciclo de cores do bg: com 2+ inks derivados e o knob ligado, alterna
+    // a cada INK_CYCLE_MS voltando sempre pra dominante ([0]) no wrap. O
+    // crossfade visual vem de graça: --bg-ink é custom property registrada
+    // (transition 480ms) e o canvas tem lerp próprio (tau 350ms). Troca de
+    // faixa/tema recria a paleta → applyDerived reseta pro índice 0.
+    let cycleTimer: ReturnType<typeof setInterval> | undefined;
+    createEffect(() => {
+      const inks = derivedInks();
+      const t = tweaks();
+      clearInterval(cycleTimer);
+      cycleTimer = undefined;
+      if (!t.adaptiveInk || !t.bgInkCycle || !inks || inks.length < 2) return;
+      cycleTimer = setInterval(() => {
+        _cycleIdx = (_cycleIdx + 1) % inks.length;
+        setAdaptiveColor(inks[_cycleIdx]);
+      }, INK_CYCLE_MS);
+    });
   });
-  // Tema trocou mid-track: re-deriva a cor da capa contra o canvas do tema
-  // novo (tweaks.ts registra o listener dele primeiro, então themeInkBase()
-  // já reflete o tema novo quando este handler roda).
+  // Tema trocou mid-track: re-deriva a paleta da capa contra o canvas do
+  // tema novo (tweaks.ts registra o listener dele primeiro, então
+  // themeInkBase() já reflete o tema novo quando este handler roda).
   window.addEventListener("rustify:theme-applied", () => {
-    if (_lastCoverHex && (tweaks().adaptiveInk || tweaks().adaptiveAccent)) {
-      applyDerived(_lastCoverHex);
+    if (_lastPalette && (tweaks().adaptiveInk || tweaks().adaptiveAccent)) {
+      applyDerived(_lastPalette);
     }
   });
 }

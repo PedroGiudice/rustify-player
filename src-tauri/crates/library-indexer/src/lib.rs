@@ -29,7 +29,7 @@ pub mod rerank;
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
 pub use qdrant_client::{MoodFilters, QdrantClient, ACTIVITY_VOCAB, MOOD_VOCAB};
-pub use cover::{CoverSource, dominant_color};
+pub use cover::{CoverSource, dominant_color, dominant_palette};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};

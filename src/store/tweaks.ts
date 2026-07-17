@@ -83,6 +83,11 @@ export interface TweaksState {
       dominante da capa da faixa tocando. Precedência do ink:
       usuário (bgInk tocado) > capa (este toggle) > tema > default. */
   adaptiveInk: boolean;
+  /** Paleta alternante: com adaptiveInk ligado e capa com 2+ famílias de
+      cor (dominant_palette_v4), o ink do bg alterna entre elas a cada
+      ~40s, sempre começando/voltando pela dominante. O ciclo vive em
+      lib/adaptiveInk.ts (JS puro, sem CSS var); accent da UI não cicla. */
+  bgInkCycle: boolean;
   /** Accent adaptativo: --primary e família (container, on-primary,
       blue-fg/bg/ring — chips, halos, botões) seguem o hue da capa da
       faixa tocando, com contraste garantido na derivação. Desligado ou
@@ -111,6 +116,7 @@ export const DEFAULTS: TweaksState = {
   loudnessNorm: true,
   loudnessTarget: -14,
   adaptiveInk: true,
+  bgInkCycle: true,
   adaptiveAccent: true,
 };
 

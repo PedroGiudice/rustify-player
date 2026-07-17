@@ -103,6 +103,21 @@ describe("migração de estado salvo sem __dirty", () => {
   });
 });
 
+describe("bgInkCycle (paleta alternante do bg)", () => {
+  it("default é true (alternar cores da capa ligado)", () => {
+    localStorage.setItem("kv-tweaks", "{}");
+    loadTweaks();
+    expect(DEFAULTS.bgInkCycle).toBe(true);
+    expect(tweaks().bgInkCycle).toBe(true);
+  });
+
+  it("estado salvo false é respeitado no boot", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ bgInkCycle: false }));
+    loadTweaks();
+    expect(tweaks().bgInkCycle).toBe(false);
+  });
+});
+
 describe("bgBeatDepth (beat-sync PLL do bg)", () => {
   it("default é 0.55 e applyTweaks escreve --bg-beat-sync=1 + --bg-beat-depth", () => {
     // Estado salvo sem o campo (versão antiga) também cai aqui: o load
