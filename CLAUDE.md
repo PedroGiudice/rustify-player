@@ -247,6 +247,20 @@ ssh cmr-auto@100.102.249.9 'bash -lc "cd ~ && nohup uv run --with slskd-api --wi
 Gotchas:
 - **Rodar via `uv run --with slskd-api --with mutagen`** — o python3 puro da
   cmr-auto NAO tem `slskd_api`. `uv` precisa de `bash -lc` (PATH no login shell).
+- **slskd acumula searches persistidas e passa a devolver 409 Conflict** em
+  TODA busca nova quando o historico enche (incidente 2026-07-17: 1270
+  acumuladas de runs interrompidas → leva inteira varrida em vazio). ANTES de
+  qualquer leva grande, limpar via API: `c.searches.get_all()` +
+  `c.searches.delete(id)` (auth user/senha slskd/slskd). Restart do container
+  NAO limpa (persiste em disco).
+- **A rede Soulseek penaliza burst de searches** (centenas em sequencia →
+  respostas zeram mesmo com server Connected/LoggedIn; ate busca manual volta
+  vazia). Sintoma: "sem candidatos" em faixas onipresentes (Deep Purple, James
+  Brown). Diagnostico: 1 busca manual via API com sleep 12s — 0 responses =
+  throttled; esperar (dezenas de min/horas) antes de re-rodar com --retry-all.
+  Mitigacao futura: pacing/lotes entre buscas.
+- **`pkill -f` via ssh se auto-mata** (o pattern casa com a cmdline do proprio
+  shell remoto) — usar o truque do colchete: `pkill -f "[b]aixar_soulseek"`.
 - **Log fica vazio** (block-buffering do Python redirecionado). Monitorar pela
   fonte de verdade: `~/slskd_dados/downloads/` (completos) + `incomplete/`.
 - **`|` no titulo da faixa quebra o CSV** (ex: TA13OO 'TABOO | TA13OO'). O

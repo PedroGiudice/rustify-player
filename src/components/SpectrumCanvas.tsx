@@ -168,6 +168,10 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let trebleGain = 0.8;
   let smoothing = 0.3;
   let speed = 1.0;
+  // Tau (s) do lerp da tinta. Default 0.35 (troca de faixa/tema responde
+  // rápido); o CICLO da paleta (adaptiveInk) seta --bg-ink-morph com um
+  // tau longo antes de trocar a cor — deriva ambiental, não evento.
+  let inkMorphTau = 0.35;
   let cfgCheckTick = 0;
 
   // Cleanup do listener de FFT.
@@ -234,6 +238,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         const bs = parseFloat(cs.getPropertyValue("--bg-beat-sync"));
         const bm = parseFloat(cs.getPropertyValue("--bg-beat-mode"));
         const bd = parseFloat(cs.getPropertyValue("--bg-beat-depth"));
+        const im = parseFloat(cs.getPropertyValue("--bg-ink-morph"));
         if (Number.isFinite(b)) bassGain = b;
         if (Number.isFinite(m)) midGain = m;
         if (Number.isFinite(tr)) trebleGain = tr;
@@ -242,6 +247,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
         if (Number.isFinite(bs)) beatSync = bs;
         if (Number.isFinite(bm)) beatMode = bm;
         if (Number.isFinite(bd)) beatDepth = bd;
+        inkMorphTau = Number.isFinite(im) && im > 0 ? im : 0.35;
       }
 
       const tMs = performance.now();
@@ -254,7 +260,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
 
       // Lerp da tinta a cada frame (tau ~350ms): converge pro alvo
       // amostrado, morph contínuo independente da cadência de 3Hz.
-      const kInk = 1 - Math.exp(-dt / 0.35);
+      const kInk = 1 - Math.exp(-dt / inkMorphTau);
       inkCur.r += (inkTgt.r - inkCur.r) * kInk;
       inkCur.g += (inkTgt.g - inkCur.g) * kInk;
       inkCur.b += (inkTgt.b - inkCur.b) * kInk;

@@ -103,6 +103,10 @@ export function deriveAccent(coverHex: string, baseInkHex: string): AdaptiveAcce
 
 /** Período do ciclo de cores do bg (paleta da capa). */
 const INK_CYCLE_MS = 40_000;
+/** Tau (s) da deriva de cor DO CICLO — bem mais lento que o lerp padrão
+    (0.35s, troca de faixa/tema): a cor migra ao longo de ~10s, deriva
+    ambiental em vez de evento. Anunciado ao canvas via --bg-ink-morph. */
+const INK_CYCLE_MORPH_TAU = 3.5;
 
 let _reqSeq = 0;
 // Paleta BRUTA da capa da faixa corrente (até 3 cores, ordenadas por
@@ -119,6 +123,9 @@ let _cycleIdx = 0;
 function applyDerived(palette: string[] | null) {
   _lastPalette = palette && palette.length ? palette : null;
   _cycleIdx = 0;
+  // Mudança de faixa/tema/toggle: volta o lerp da tinta pro tau rápido
+  // (o tau longo é só da deriva do ciclo).
+  document.documentElement.style.removeProperty("--bg-ink-morph");
   if (!_lastPalette) {
     setDerivedInks(null);
     setAdaptiveColor(null);
@@ -205,6 +212,12 @@ export function wireAdaptiveInk() {
       if (!t.adaptiveInk || !t.bgInkCycle || !inks || inks.length < 2) return;
       cycleTimer = setInterval(() => {
         _cycleIdx = (_cycleIdx + 1) % inks.length;
+        // Deriva lenta: anuncia o tau longo ANTES de trocar a cor — o
+        // canvas lê --bg-ink-morph no batch de 3Hz e suaviza o lerp.
+        document.documentElement.style.setProperty(
+          "--bg-ink-morph",
+          String(INK_CYCLE_MORPH_TAU),
+        );
         setAdaptiveColor(inks[_cycleIdx]);
       }, INK_CYCLE_MS);
     });
