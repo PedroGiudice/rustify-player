@@ -47,10 +47,13 @@ export function expandKick(low: number): number {
 export const BEAT_TAU = 0.09;
 
 /** Ganho de velocidade do modo speed a partir do depth do Tweaks:
-    linear, com depth 0.55 (Default) reproduzindo o ganho 1.5
-    calibrado na v0.2.52. Velocidade = dt·bgSpeed·(1 + gain·env). */
+    linear, com depth 0.55 (default) dando ganho 1.0. Recalibrado
+    2026-07-19: o 1.5 da v0.2.52 foi ajustado sobre o sinal COLAPSADO
+    de 7Hz; com o emitter são (62Hz) o envelope responde 8x mais
+    fresco e o mesmo ganho ficou agressivo ("speed forte demais").
+    Velocidade = dt·bgSpeed·(1 + gain·env). */
 export function speedBoostGain(depth: number): number {
-  return depth * (1.5 / 0.55);
+  return depth * (1.0 / 0.55);
 }
 
 // ── Onset detection (modo pulse; sobre o sinal EXPANDIDO) ───
@@ -150,10 +153,17 @@ export function pulseShape(ph: number): number {
   return ph < 0.04 ? ph / 0.04 : Math.exp(-(ph - 0.04) * 6.5);
 }
 
-/** Pulso final pro frame: depth × shape(fase) × confiança de lock.
-    O fator (0.4 + 0.6·locked) evita pulsar no escuro sem zerar a
-    resposta enquanto o PLL ainda está caçando o tempo. */
+/** Reforço do modo pulse sobre o depth compartilhado do Tweaks.
+    2026-07-19 ("pulse meio fraco"): com o lock parcial típico (~0.175
+    medido em faixa real) o gate antigo (0.4+0.6·lock) cortava o pulso
+    pela metade. Um knob só serve os dois modos, então a divergência de
+    calibração vive nos coeficientes por modo. */
+export const PULSE_GAIN = 1.35;
+
+/** Pulso final pro frame: depth × PULSE_GAIN × shape(fase) × gate de
+    lock. O gate (0.55 + 0.45·locked) evita pulsar no escuro sem
+    esmagar a resposta enquanto o PLL ainda caça o tempo. */
 export function beatPulse(s: BeatPll, depth: number): number {
   if (depth <= 0) return 0;
-  return depth * pulseShape(s.phase) * (0.4 + 0.6 * s.locked);
+  return depth * PULSE_GAIN * pulseShape(s.phase) * (0.55 + 0.45 * s.locked);
 }

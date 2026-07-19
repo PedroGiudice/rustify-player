@@ -59,8 +59,8 @@ describe("expandKick (faixa dinâmica real do kick)", () => {
 });
 
 describe("speedBoostGain (modo speed)", () => {
-  it("depth default 0.55 reproduz o ganho calibrado 1.5 da v0.2.52", () => {
-    expect(speedBoostGain(0.55)).toBeCloseTo(1.5, 10);
+  it("depth default 0.55 dá ganho 1.0 (recalibrado 2026-07-19: o 1.5 da v0.2.52 foi calibrado sobre o sinal colapsado de 7Hz; com o emitter são a 62Hz ficou forte demais — feedback do usuário)", () => {
+    expect(speedBoostGain(0.55)).toBeCloseTo(1.0, 10);
   });
   it("escala linear com o depth", () => {
     expect(speedBoostGain(0.85)).toBeGreaterThan(speedBoostGain(0.55));
@@ -175,17 +175,19 @@ describe("beatPulse", () => {
     expect(beatPulse(s, 0)).toBe(0);
   });
 
-  it("no pico com lock pleno vale depth", () => {
+  it("no pico com lock pleno vale depth × PULSE_GAIN (1.35 — reforço 2026-07-19, feedback 'pulse fraco')", () => {
     const s = createBeatPll();
     s.phase = 0.04;
     s.locked = 1;
-    expect(beatPulse(s, 0.55)).toBeCloseTo(0.55, 10);
+    // 0.55 × 1.35 × shape(0.04)=1 × gate(lock=1)=1
+    expect(beatPulse(s, 0.55)).toBeCloseTo(0.7425, 10);
   });
 
-  it("sem lock, o pulso é atenuado pra 40% (não pulsa no escuro)", () => {
+  it("sem lock, o pulso é atenuado pra 55% (piso subiu de 40% — lock parcial ~0.175 medido cortava o pulso pela metade)", () => {
     const s = createBeatPll();
     s.phase = 0.04;
     s.locked = 0;
-    expect(beatPulse(s, 1)).toBeCloseTo(0.4, 10);
+    // 1 × 1.35 × 1 × 0.55
+    expect(beatPulse(s, 1)).toBeCloseTo(0.7425, 10);
   });
 });

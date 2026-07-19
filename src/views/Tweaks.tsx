@@ -86,6 +86,7 @@ function NumberSlider(props: {
     | "bgTrebleGain"
     | "bgSmoothing"
     | "bgSpeed"
+    | "bgBeatDepth"
     | "loudnessTarget";
   min: number;
   max: number;
@@ -292,10 +293,16 @@ export function Tweaks() {
             options={[["off", "Off"], ["speed", "Speed"], ["pulse", "Pulse"]]}
           />
           <div class="tweaks__hint">Speed: kick acelera o movimento · Pulse: pulso de amplitude no tempo</div>
-          <Segmented
+          {/* Slider contínuo (2026-07-19): o pipeline sempre foi contínuo
+              (--bg-beat-depth); os 3 presets eram só amarra da UI. Ajuste
+              fino sem esperar release. 0.55 segue o default calibrado. */}
+          <NumberSlider
             label="Beat depth"
             key="bgBeatDepth"
-            options={[[0.3, "Subtle"], [0.55, "Default"], [0.85, "Strong"]]}
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => v.toFixed(2)}
           />
 
           <div class="tweaks__divider"><span>Loudness</span></div>
