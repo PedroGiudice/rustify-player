@@ -13,10 +13,22 @@ Por padrao roda em DRY-RUN (so relatorio). Com --apply, move (mv) os 'novo'
 para ~/Music/<DEST>/<album>/. Nada e deletado: dup_interno e ja_no_acervo
 ficam em downloads para decisao posterior.
 
+Levas multi-genero: --map aponta um JSON {"Artista": "Playlist", ...}
+(nomes humanos; as chaves passam pelo artist_main() do proprio script).
+Com --map ativo, 'novo' sem artista mapeado NAO move (vira 'sem_mapa') —
+melhor sobrar em downloads do que cair na playlist errada.
+
+GOTCHA re-run (2026-07-20): o dedup interno compara so o que esta em
+downloads. Num segundo --apply, o par de pior bitrate de um dup_interno
+da primeira passada vira 'novo' (o melhor ja saiu) e move DUPLICADO pra
+Music. Re-run so apos rescan do app (acervo no Qdrant atualizado), ou
+conferir dup_interno da run anterior antes.
+
 Uso:
     python3 stage_downloads.py                      # dry-run, dest "Rap & Hip-Hop"
     python3 stage_downloads.py --apply
     python3 stage_downloads.py --dest "Rap & Hip-Hop"
+    python3 stage_downloads.py --map leva.json --apply
 """
 import argparse
 import json
@@ -103,7 +115,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="mover de fato (default: dry-run)")
     ap.add_argument("--dest", default="Rap & Hip-Hop", help="pasta de 1o nivel destino")
+    ap.add_argument("--map", dest="map_path", default=None,
+                    help="JSON {artista: playlist} para leva multi-genero")
     args = ap.parse_args()
+
+    artist_dest = None
+    if args.map_path:
+        with open(args.map_path) as fh:
+            raw_map = json.load(fh)
+        # Mesma normalizacao usada nas keys dos items — nomes humanos no JSON.
+        artist_dest = {artist_main(k): v for k, v in raw_map.items()}
 
     flacs = []
     for dp, _, fns in os.walk(DOWNLOADS):
@@ -150,10 +171,37 @@ def main():
         else:
             dup_interno.append(it)
 
+    # dest por item: mapa por artista (quando --map) ou --dest global
+    sem_mapa = []
+    if artist_dest is not None:
+        mapped = []
+        for it in novo:
+            d = artist_dest.get(it["key"][0])
+            if d is None:
+                sem_mapa.append(it)
+            else:
+                it["dest"] = d
+                mapped.append(it)
+        novo = mapped
+    else:
+        for it in novo:
+            it["dest"] = args.dest
+
     print(f"=== CLASSIFICACAO ===")
     print(f"  ja_no_acervo : {len(ja_acervo)}  (nao mover)")
     print(f"  dup_interno  : {len(dup_interno)}  (manter so melhor bitrate)")
-    print(f"  novo         : {len(novo)}  (MOVER -> {args.dest})")
+    print(f"  novo         : {len(novo)}  (MOVER{' via mapa' if artist_dest is not None else ' -> ' + args.dest})")
+    if artist_dest is not None:
+        print(f"  sem_mapa     : {len(sem_mapa)}  (artista fora do mapa — NAO mover)")
+        by_dest = defaultdict(int)
+        for it in novo:
+            by_dest[it["dest"]] += 1
+        for d, n in sorted(by_dest.items(), key=lambda x: -x[1]):
+            print(f"      {n:3d} -> {d}")
+        if sem_mapa:
+            print("  --- sem_mapa (artista - titulo):")
+            for it in sem_mapa[:20]:
+                print(f"      {it['artist'] or it['album']} - {it['title']}")
     print(f"  sem metadata : {no_meta}")
     print()
 
@@ -177,18 +225,21 @@ def main():
         print("\n[DRY-RUN] nada movido. Rode com --apply para mover os 'novo'.")
         return
 
-    dest_root = os.path.join(MUSIC, args.dest)
     moved = 0
+    moved_by_dest = defaultdict(int)
     for it in novo:
         alb = os.path.basename(os.path.dirname(it["path"]))
-        dest_dir = os.path.join(dest_root, alb)
+        dest_dir = os.path.join(MUSIC, it["dest"], alb)
         os.makedirs(dest_dir, exist_ok=True)
         dest = os.path.join(dest_dir, os.path.basename(it["path"]))
         if os.path.exists(dest):
             continue
         shutil.move(it["path"], dest)
         moved += 1
-    print(f"\n[APPLY] movidos {moved} flac -> {dest_root}/<album>/")
+        moved_by_dest[it["dest"]] += 1
+    print(f"\n[APPLY] movidos {moved} flac:")
+    for d, n in sorted(moved_by_dest.items(), key=lambda x: -x[1]):
+        print(f"  {n:3d} -> {os.path.join(MUSIC, d)}/<album>/")
     print("Rode o rescan no app (ou lib_rescan) para indexar.")
 
 
