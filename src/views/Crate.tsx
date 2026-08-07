@@ -520,7 +520,11 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
           <div class="crate-r-sub">{props.job.username}</div>
         </div>
 
-        <span class="crate-badge">{formatSize(props.job.size)}</span>
+        {/* Rótulo da fonte atual; vazio só em job reconciliado de um
+            slsk_jobs.json anterior ao campo — aí cai no tamanho. */}
+        <span class="crate-badge">
+          {props.job.quality_label || formatSize(props.job.size)}
+        </span>
 
         <span class="crate-chip">
           <span>{props.job.alternates.length + 1} fontes</span>

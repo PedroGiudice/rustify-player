@@ -211,6 +211,10 @@ struct PersistedJob {
     dest_playlist: String,
     #[serde(default)]
     alternates: Vec<Candidate>,
+    /// `default` = arquivo gravado antes do campo existir — job volta com
+    /// rótulo vazio e o frontend cai no tamanho.
+    #[serde(default)]
+    quality_label: String,
     created_at: i64,
 }
 
@@ -460,6 +464,7 @@ impl Coordinator {
                 remote_filename: j.remote_filename,
                 dest_playlist: j.dest_playlist,
                 alternates: j.alternates,
+                quality_label: j.quality_label,
                 created_at: j.created_at,
             })
             .collect();
@@ -519,6 +524,7 @@ impl Coordinator {
                 // localmente antes de um novo `try_other_source`, que já
                 // grava o `size` certo da alternativa escolhida.
                 size: 0,
+                quality_label: pj.quality_label.clone(),
                 alternates: pj.alternates,
                 tried_source_ids: Vec::new(),
                 created_at: pj.created_at,
@@ -892,6 +898,10 @@ impl Coordinator {
             dest_playlist: dest_playlist.to_string(),
             state: JobState::Queued,
             size: candidate.size,
+            quality_label: slskd_client::rank::quality_label(
+                candidate.bit_depth,
+                candidate.sample_rate,
+            ),
             alternates: alternates.iter().map(Candidate::from).collect(),
             tried_source_ids: Vec::new(),
             created_at: unix_now(),
@@ -1012,6 +1022,7 @@ impl Coordinator {
             tried_source_ids: tried,
             state: JobState::Queued,
             size: next.size,
+            quality_label: slskd_client::rank::quality_label(next.bit_depth, next.sample_rate),
             ..job
         });
         self.mark_dirty();
@@ -2048,6 +2059,7 @@ mod tests {
                 username: format!("busy_peer{i}"),
                 remote_filename: format!("Busy{i}.flac"),
                 display: "busy".to_string(),
+                quality_label: "FLAC 16/44".to_string(),
                 dest_playlist: "P".to_string(),
                 state: JobState::Downloading { pct: 1.0, bps: 1, eta_s: None },
                 size: 1,
@@ -2082,6 +2094,7 @@ mod tests {
             remote_filename: "Artist\\Title.flac".to_string(),
             dest_playlist: "Trance".to_string(),
             alternates: vec![],
+            quality_label: "FLAC 16/44".to_string(),
             created_at: unix_now(),
         }];
         std::fs::write(&jobs_path, serde_json::to_string(&persisted).unwrap()).unwrap();
@@ -2123,6 +2136,7 @@ mod tests {
             remote_filename: "Artist\\Album\\01 - Title.flac".to_string(),
             dest_playlist: "Trance".to_string(),
             alternates: vec![],
+            quality_label: "FLAC 16/44".to_string(),
             created_at: unix_now(),
         }];
         std::fs::write(&jobs_path, serde_json::to_string(&persisted).unwrap()).unwrap();
@@ -2238,6 +2252,7 @@ mod tests {
             dest_playlist: "Rap & Hip-Hop".to_string(),
             state: JobState::Indexing,
             size: 1000,
+            quality_label: "FLAC 16/44".to_string(),
             alternates: vec![],
             tried_source_ids: vec![],
             created_at: unix_now(),
@@ -2353,15 +2368,23 @@ mod tests {
         let coord = make_coordinator(tmp.path(), fake.clone());
         let now = Instant::now();
 
-        let alt = candidate("peer2", "Artist\\Title.flac", 1000);
+        // Fonte alternativa hi-res: o rótulo de qualidade do job precisa
+        // acompanhar a troca (aba Fila mostra o rótulo da fonte ATUAL).
+        let alt = slskd_client::rank::Candidate {
+            bit_depth: Some(24),
+            sample_rate: Some(96_000),
+            ..candidate("peer2", "Artist\\Title.flac", 1000)
+        };
         let cand = candidate("peer1", "Artist\\Title.flac", 1000);
         let job_id = coord.start_download(&cand, vec![alt], "Rap & Hip-Hop", now).unwrap();
+        assert_eq!(coord.board.get(&job_id).unwrap().quality_label, "FLAC 16/44");
 
         let result = coord.try_other_source(&job_id, now + Duration::from_secs(1));
         assert!(result.is_ok());
         let job = coord.board.get(&job_id).unwrap();
         assert_eq!(job.username, "peer2");
         assert_eq!(job.tried_source_ids.len(), 1);
+        assert_eq!(job.quality_label, "FLAC 24/96");
         // IM-6: o state precisa refletir a troca (Enqueued da nova fonte),
         // nao ficar clobbereado de volta pro estado da fonte antiga.
         assert!(matches!(job.state, JobState::Enqueued { .. }));
@@ -2404,6 +2427,7 @@ mod tests {
             dest_playlist: "P".to_string(),
             state: JobState::Ready { track_id: "1".to_string() },
             size: 0,
+            quality_label: "FLAC 16/44".to_string(),
             alternates: vec![],
             tried_source_ids: vec![],
             created_at: 0,

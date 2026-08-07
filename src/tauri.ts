@@ -532,6 +532,9 @@ export interface DownloadJob {
   dest_playlist: string;
   state: JobState;
   size: number;
+  /** "FLAC 16/44" da fonte atual; "" em job reconciliado de um
+      slsk_jobs.json anterior ao campo (frontend cai no tamanho). */
+  quality_label: string;
   alternates: Candidate[];
   tried_source_ids: string[];
   created_at: number;

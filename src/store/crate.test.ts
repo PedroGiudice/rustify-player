@@ -29,6 +29,7 @@ function job(id: string, kind: DownloadJob["state"]["kind"], extra: Record<strin
     dest_playlist: "Rap & Hip-Hop",
     state: { kind, ...extra } as DownloadJob["state"],
     size: 1000,
+    quality_label: "FLAC 16/44",
     alternates: [],
     tried_source_ids: [],
     created_at: 0,

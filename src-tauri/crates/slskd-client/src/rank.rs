@@ -409,16 +409,18 @@ fn apply_duration_outlier_warns(raws: &mut [RawCandidate]) {
     }
 }
 
-fn quality_label_for(candidate: &Candidate) -> String {
-    let bit = candidate
-        .bit_depth
-        .map(|b| b.to_string())
-        .unwrap_or_else(|| "?".to_string());
-    let khz = candidate
-        .sample_rate
+/// "FLAC 16/44" a partir dos metadados do arquivo — compartilhado entre o
+/// agrupamento da busca e o rótulo gravado no DownloadJob (aba Fila).
+pub fn quality_label(bit_depth: Option<u16>, sample_rate: Option<u32>) -> String {
+    let bit = bit_depth.map(|b| b.to_string()).unwrap_or_else(|| "?".to_string());
+    let khz = sample_rate
         .map(|s| (s / 1000).to_string())
         .unwrap_or_else(|| "?".to_string());
     format!("FLAC {bit}/{khz}")
+}
+
+fn quality_label_for(candidate: &Candidate) -> String {
+    quality_label(candidate.bit_depth, candidate.sample_rate)
 }
 
 /// Agrega respostas de busca por faixa: aplica filtros duros (só FLAC,

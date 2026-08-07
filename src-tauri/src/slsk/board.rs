@@ -208,6 +208,11 @@ pub struct DownloadJob {
     /// sem isso o enqueue ia com `size:0`). Atualizado junto com
     /// `username`/`remote_filename` sempre que a fonte troca.
     pub size: u64,
+    /// Rótulo "FLAC 16/44" da fonte ATUAL — atualizado junto com
+    /// `username`/`remote_filename` na troca de fonte. Vazio em jobs
+    /// reconciliados de um `slsk_jobs.json` anterior a este campo
+    /// (o frontend cai no tamanho do arquivo nesse caso).
+    pub quality_label: String,
     pub alternates: Vec<Candidate>,
     pub tried_source_ids: Vec<String>,
     pub created_at: i64,
@@ -360,6 +365,7 @@ mod tests {
             dest_playlist: "Rap & Hip-Hop".to_string(),
             state,
             size: 1_000,
+            quality_label: "FLAC 16/44".to_string(),
             alternates: Vec::new(),
             tried_source_ids: Vec::new(),
             created_at: 0,
