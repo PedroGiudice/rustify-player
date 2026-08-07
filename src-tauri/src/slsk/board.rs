@@ -271,6 +271,10 @@ impl JobBoard {
         guard.get(id).cloned()
     }
 
+    /// Sem chamador de produção desde o fix round 2 (NB-1): `create_or_get_job`
+    /// passou a usar `get` direto pra também inspecionar o `state` (idempotência
+    /// real depende de saber se o job existente é terminal ou não, não só se existe).
+    #[allow(dead_code)]
     pub(crate) fn contains(&self, id: &str) -> bool {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
         guard.contains_key(id)
@@ -294,7 +298,11 @@ impl JobBoard {
     }
 
     /// Jobs com transfer vivo no slskd (`is_in_flight` — exclui `Queued` e
-    /// terminais). Gate real de `MAX_ACTIVE_TRANSFERS` (CR-2).
+    /// terminais). Sem chamador de produção desde o fix round 2 (NB-2):
+    /// `fail_network_dependent_jobs` precisa de um conjunto MAIS ESTREITO
+    /// (só `Enqueued`/`Downloading`/`Stalled`, não `Processing`/`Indexing`)
+    /// e filtra direto por `state`.
+    #[allow(dead_code)]
     pub(crate) fn in_flight_ids(&self) -> Vec<String> {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
         guard

@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
@@ -51,6 +51,10 @@ const OWNED_INDEX_TTL: Duration = Duration::from_secs(60);
 const LOCATE_RETRY_WINDOW: Duration = Duration::from_secs(30);
 const TERMINAL_PRUNE_AGE_SECS: i64 = 7 * 24 * 60 * 60;
 const MISSING_TRANSFER_TIMEOUT_SECS: u64 = 120;
+/// Falhas consecutivas de `api.downloads()` antes de declarar "slskd
+/// fora do ar" (review NB-2) — mesmo espírito de `EMPTY_STREAK_TRIP` do
+/// `Pacer` (slskd-client/pacing.rs): um blip isolado não é queda.
+const DOWNLOADS_FAIL_THRESHOLD: u32 = 3;
 const INGEST_MAX_RETRIES: u8 = 5;
 const INGEST_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 const JOBS_FILE_NAME: &str = "slsk_jobs.json";
@@ -336,6 +340,12 @@ pub struct Coordinator {
     /// `Indexing`, retenta a cada `INGEST_RETRY_INTERVAL` até
     /// `INGEST_MAX_RETRIES`, só então vira `Failed`.
     indexing_retry: Mutex<HashMap<String, (u8, Instant, PathBuf)>>,
+    /// Falhas CONSECUTIVAS de `api.downloads()` — só declara "slskd fora"
+    /// depois de `DOWNLOADS_FAIL_THRESHOLD` seguidas (review NB-2: um
+    /// único 500/timeout sob carga não é "caiu", e derrubava jobs em
+    /// `Processing`/`Indexing` que nem dependem mais do slskd). Zera em
+    /// qualquer sucesso.
+    downloads_fail_streak: AtomicU32,
     jobs_path: PathBuf,
     dirty: Mutex<bool>,
     last_emit: Mutex<Option<Instant>>,
@@ -369,6 +379,7 @@ impl Coordinator {
             last_seen: Mutex::new(HashMap::new()),
             locating: Mutex::new(HashMap::new()),
             indexing_retry: Mutex::new(HashMap::new()),
+            downloads_fail_streak: AtomicU32::new(0),
             jobs_path,
             dirty: Mutex::new(false),
             last_emit: Mutex::new(None),
@@ -633,11 +644,20 @@ impl Coordinator {
                 if let Some(prev) = active.take() {
                     let _ = self.api.delete_search(&prev.remote_id);
                 }
+                // NB-3: `started_at` precisa ser o instante em que a
+                // busca REALMENTE começou no slskd — não o `now` (param
+                // de `handle_search`) capturado antes de `ensure_swept`/
+                // `start_search`. Um sweep lento (o cenário exato que o
+                // §6.3 existe pra tratar: centenas de DELETE sequenciais)
+                // "comia" a janela de 25s antes da busca sequer começar;
+                // o primeiro poll via `window_over`, marcava `Empty` e
+                // alimentava o detector de rede fria com um falso vazio.
+                let started_at = Instant::now();
                 *active = Some(ActiveSearch {
                     local_id,
                     remote_id,
-                    started_at: now,
-                    next_poll_at: now,
+                    started_at,
+                    next_poll_at: started_at,
                 });
             }
             Err(e) => {
@@ -800,26 +820,47 @@ impl Coordinator {
         dest_playlist: &str,
         now: Instant,
     ) -> Result<String, String> {
-        let job_id = self.create_or_get_job(candidate, alternates, dest_playlist);
-        if self.board.in_flight_count() >= MAX_ACTIVE_TRANSFERS {
+        let (job_id, needs_enqueue) = self.create_or_get_job(candidate, alternates, dest_playlist);
+        if !needs_enqueue || self.board.in_flight_count() >= MAX_ACTIVE_TRANSFERS {
             return Ok(job_id);
         }
         self.enqueue_job(&job_id, &candidate.username, &candidate.filename, candidate.size, now);
         Ok(job_id)
     }
 
-    /// Parte memory-only de criar um job — idempotente por `job_id`. Não
-    /// faz I/O nenhuma, então é seguro chamar ANTES de responder um
-    /// `reply` (CR-1).
+    /// Parte memory-only de criar um job. Não faz I/O nenhuma, então é
+    /// seguro chamar ANTES de responder um `reply` (CR-1). Devolve
+    /// `(job_id, needs_enqueue)` (review NB-2 do fix round 1 quebrou a
+    /// idempotência ao virar só `String`: um job já EM VOO — não-terminal
+    /// — devolvia o mesmo `job_id` mas `needs_enqueue` ficava implícito
+    /// "sempre true" nos dois chamadores, então dois cliques no mesmo
+    /// candidato mandavam dois `POST /transfers/downloads`; pior, um job
+    /// já `Ready` (terminal) tentava `Ready -> Enqueued`, ilegal na
+    /// matriz, então o `enqueue_job` ainda batia na rede e baixava de
+    /// novo, mas o `board.transition` falhava em silêncio e NENHUM job
+    /// acompanhava o download — arquivo órfão em `downloads_dir`).
+    ///
+    /// Semântica real agora: job não existe -> cria `Queued`,
+    /// `needs_enqueue=true`. Job existe e NÃO é terminal (já em voo ou
+    /// `Queued` esperando vaga) -> devolve o mesmo, `needs_enqueue=false`
+    /// (idempotente de verdade — não reenfileira o que já está andando).
+    /// Job existe e é terminal (`Ready`/`Rejected`/`Failed`/`Manual`/
+    /// `Canceled`) -> **recria** como um pedido novo (reseta
+    /// `tried_source_ids`, `created_at`, `alternates` pros atuais,
+    /// `state: Queued`), `needs_enqueue=true` — clicar `[Baixar]` de novo
+    /// num job terminado é uma intenção explícita de tentar de novo, não
+    /// um duplicado a ignorar.
     fn create_or_get_job(
         &self,
         candidate: &slskd_client::rank::Candidate,
         alternates: Vec<slskd_client::rank::Candidate>,
         dest_playlist: &str,
-    ) -> String {
+    ) -> (String, bool) {
         let job_id = super::board::job_id(&candidate.username, &candidate.filename);
-        if self.board.contains(&job_id) {
-            return job_id;
+        if let Some(existing) = self.board.get(&job_id) {
+            if !super::board::is_terminal(&existing.state) {
+                return (job_id, false);
+            }
         }
         let display = slskd_client::rank::guess_artist_title(&candidate.filename)
             .map(|(a, t)| format!("{a} - {t}"))
@@ -838,7 +879,7 @@ impl Coordinator {
             created_at: unix_now(),
         });
         self.mark_dirty();
-        job_id
+        (job_id, true)
     }
 
     fn enqueue_job(&self, job_id: &str, username: &str, filename: &str, size: u64, now: Instant) {
@@ -914,10 +955,10 @@ impl Coordinator {
             }
         };
 
-        let job_id = self.create_or_get_job(&candidate, alternates, dest);
+        let (job_id, needs_enqueue) = self.create_or_get_job(&candidate, alternates, dest);
         let _ = reply.send(Ok(job_id.clone()));
 
-        if self.board.in_flight_count() >= MAX_ACTIVE_TRANSFERS {
+        if !needs_enqueue || self.board.in_flight_count() >= MAX_ACTIVE_TRANSFERS {
             return;
         }
         self.enqueue_job(&job_id, &candidate.username, &candidate.filename, candidate.size, now);
@@ -1015,20 +1056,35 @@ impl Coordinator {
 
     /// Um ciclo de poll sobre TODOS os jobs ativos. Chamado pelo loop real
     /// a cada `POLL_ACTIVE`/`POLL_IDLE`; os testes chamam direto com `now`
-    /// fabricado. Se `api.downloads()` falhar (slskd fora do ar), TODOS os
-    /// jobs in-flight viram `Failed{retryable:true}` (review IM-10b) — sem
-    /// isso ficavam presos indefinidamente em `Downloading`/`Enqueued`.
+    /// fabricado.
+    ///
+    /// `api.downloads()` falhando não interrompe o tick inteiro (review
+    /// NB-2): jobs em `Processing`/`Indexing` NÃO dependem mais do slskd
+    /// nesse ponto (o arquivo já saiu de `downloads_dir` — `Processing`
+    /// está localizando localmente, `Indexing` está retentando o Qdrant)
+    /// e continuam progredindo mesmo com o slskd fora. Só depois de
+    /// `DOWNLOADS_FAIL_THRESHOLD` falhas CONSECUTIVAS (não uma só — um
+    /// 500/timeout isolado sob carga não é "caiu") os jobs que REALMENTE
+    /// dependem do slskd (`Enqueued`/`Downloading`/`Stalled`, os únicos
+    /// com transfer ativo lá) viram `Failed{retryable:true}`.
     fn poll_active_transfers_once(&self, now: Instant) {
         let active_ids = self.board.active_ids();
         if active_ids.is_empty() {
             return;
         }
+
         let downloads = match self.api.downloads() {
-            Ok(d) => d,
+            Ok(d) => {
+                self.downloads_fail_streak.store(0, Ordering::SeqCst);
+                Some(d)
+            }
             Err(e) => {
-                tracing::warn!(?e, "slsk-coord: poll de transfers falhou — slskd parece fora do ar");
-                self.fail_all_in_flight("slskd inalcancavel");
-                return;
+                let streak = self.downloads_fail_streak.fetch_add(1, Ordering::SeqCst) + 1;
+                tracing::warn!(?e, streak, "slsk-coord: poll de transfers falhou");
+                if streak >= DOWNLOADS_FAIL_THRESHOLD {
+                    self.fail_network_dependent_jobs("slskd inalcancavel");
+                }
+                None
             }
         };
 
@@ -1036,7 +1092,12 @@ impl Coordinator {
             let Some(job) = self.board.get(&job_id) else { continue };
             match &job.state {
                 JobState::Enqueued { .. } | JobState::Downloading { .. } | JobState::Stalled { .. } => {
-                    self.poll_one_transfer(&job, &downloads, now);
+                    if let Some(downloads) = downloads.as_deref() {
+                        self.poll_one_transfer(&job, downloads, now);
+                    }
+                    // Sem `downloads` (slskd fora, ainda sob o threshold
+                    // ou já falhado): nada de novo pra ver, o job so
+                    // espera o próximo tick.
                 }
                 JobState::Processing => {
                     let pending = self.locating.lock().unwrap_or_else(|p| p.into_inner()).contains_key(&job_id);
@@ -1051,12 +1112,22 @@ impl Coordinator {
             }
         }
 
-        self.promote_queued(now);
+        if downloads.is_some() {
+            self.promote_queued(now);
+        }
     }
 
-    fn fail_all_in_flight(&self, reason: &str) {
-        for job_id in self.board.in_flight_ids() {
-            if self.board.transition(&job_id, JobState::Failed { reason: reason.to_string(), retryable: true }) {
+    /// Só os estados com transfer ATIVO no slskd (review NB-2:
+    /// `Processing`/`Indexing` não entram — não dependem mais do slskd
+    /// nesse ponto do pipeline, e falhá-los derrubava faixas já staged
+    /// só esperando o Qdrant voltar).
+    fn fail_network_dependent_jobs(&self, reason: &str) {
+        for job in self.board.snapshot() {
+            if matches!(
+                job.state,
+                JobState::Enqueued { .. } | JobState::Downloading { .. } | JobState::Stalled { .. }
+            ) && self.board.transition(&job.job_id, JobState::Failed { reason: reason.to_string(), retryable: true })
+            {
                 self.mark_dirty();
             }
         }
@@ -1747,6 +1818,66 @@ mod tests {
     }
 
     #[test]
+    fn start_download_idempotent_while_job_still_in_flight() {
+        // NB-1: dois cliques no MESMO candidato enquanto o job ainda esta
+        // em voo (Enqueued/Downloading/...) nao podem mandar dois
+        // POST /transfers/downloads.
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        fake.push_enqueue(Ok(()));
+        let coord = make_coordinator(tmp.path(), fake.clone());
+        let now = Instant::now();
+        let cand = candidate("peer1", "Artist\\Title.flac", 1000);
+
+        let job_id1 = coord.start_download(&cand, vec![], "Rap & Hip-Hop", now).unwrap();
+        let job_id2 = coord.start_download(&cand, vec![], "Rap & Hip-Hop", now).unwrap();
+
+        assert_eq!(job_id1, job_id2);
+        assert_eq!(
+            fake.enqueue_calls.lock().unwrap().len(),
+            1,
+            "clicar 2x no mesmo candidato ainda em voo deve ser idempotente"
+        );
+    }
+
+    #[test]
+    fn start_download_on_terminal_job_recreates_and_reenqueues() {
+        // NB-1: o refactor de start_download em create_or_get_job +
+        // enqueue_job perdeu o early-return de board.contains — a funcao
+        // devolvia o job_id existente SEM sinalizar "ja existia", e os
+        // chamadores enfileiravam mesmo assim. Pior caso: job ja Ready
+        // (terminal) -> a transicao pra Enqueued e recusada em silencio
+        // (Ready->Enqueued nao esta na matriz) mas o enqueue_job ja tinha
+        // batido na rede — arquivo baixado de novo, orfao, sem job
+        // nenhum acompanhando. Fix: job terminal e RECRIADO (reset pra
+        // Queued) antes de reenfileirar de verdade.
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        fake.push_enqueue(Ok(()));
+        let coord = make_coordinator(tmp.path(), fake.clone());
+        let now = Instant::now();
+        let cand = candidate("peer1", "Artist\\Title.flac", 1000);
+
+        let job_id = coord.start_download(&cand, vec![], "Rap & Hip-Hop", now).unwrap();
+        let job = coord.board.get(&job_id).unwrap();
+        coord.board.upsert(DownloadJob { state: JobState::Ready { track_id: "1".to_string() }, ..job });
+
+        fake.push_enqueue(Ok(()));
+        let job_id2 = coord.start_download(&cand, vec![], "Rap & Hip-Hop", now).unwrap();
+
+        assert_eq!(job_id2, job_id, "job_id continua deterministico (mesmo username+filename)");
+        assert_eq!(
+            fake.enqueue_calls.lock().unwrap().len(),
+            2,
+            "job recriado a partir de Ready deveria ter enfileirado de novo"
+        );
+        assert!(
+            matches!(coord.board.get(&job_id).unwrap().state, JobState::Enqueued { .. }),
+            "apos recriar e reenfileirar, o job devia estar Enqueued, nao preso em Ready"
+        );
+    }
+
+    #[test]
     fn max_active_transfers_holds_fourth_in_queued() {
         let tmp = tempfile::tempdir().unwrap();
         let fake = Arc::new(FakeSlskd::new());
@@ -1963,8 +2094,10 @@ mod tests {
 
     #[test]
     fn poll_fails_in_flight_jobs_when_slskd_unreachable() {
-        // IM-10b: slskd cai -> jobs in-flight viram Failed{retryable},
-        // nao ficam presos em Downloading indefinidamente.
+        // IM-10b (ajustado pelo NB-2 do fix round 2): slskd cai -> apos
+        // DOWNLOADS_FAIL_THRESHOLD falhas CONSECUTIVAS, jobs Enqueued/
+        // Downloading/Stalled viram Failed{retryable}. Uma falha ISOLADA
+        // (abaixo do threshold) nao pode derrubar nada.
         let tmp = tempfile::tempdir().unwrap();
         let fake = Arc::new(FakeSlskd::new());
         fake.push_enqueue(Ok(()));
@@ -1973,13 +2106,57 @@ mod tests {
         let cand = candidate("peer1", "Artist\\Title.flac", 1000);
         let job_id = coord.start_download(&cand, vec![], "Rap & Hip-Hop", now).unwrap();
 
+        for i in 0..(DOWNLOADS_FAIL_THRESHOLD - 1) {
+            fake.downloads_script.lock().unwrap().push_back(Err(SlskdError::Network("offline".to_string())));
+            coord.poll_active_transfers_once(now + Duration::from_secs(i as u64 + 1));
+            assert!(
+                matches!(coord.board.get(&job_id).unwrap().state, JobState::Enqueued { .. }),
+                "abaixo do threshold de falhas consecutivas ainda nao pode falhar"
+            );
+        }
+
         fake.downloads_script.lock().unwrap().push_back(Err(SlskdError::Network("offline".to_string())));
-        coord.poll_active_transfers_once(now + Duration::from_secs(1));
+        coord.poll_active_transfers_once(now + Duration::from_secs(DOWNLOADS_FAIL_THRESHOLD as u64 + 1));
 
         match coord.board.get(&job_id).unwrap().state {
             JobState::Failed { retryable: true, .. } => {}
-            other => panic!("esperava Failed{{retryable:true}}, veio {other:?}"),
+            other => panic!("esperava Failed{{retryable:true}} apos o threshold, veio {other:?}"),
         }
+    }
+
+    #[test]
+    fn poll_does_not_fail_processing_or_indexing_jobs_when_slskd_unreachable() {
+        // NB-2: Processing (localizando localmente) e Indexing (retentando
+        // o Qdrant) nao dependem mais do slskd nesse ponto do pipeline —
+        // um blip do slskd nao pode derrubar uma faixa ja staged em
+        // ~/Music so esperando o Qdrant voltar.
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        let coord = make_coordinator(tmp.path(), fake.clone());
+        let now = Instant::now();
+
+        coord.board.upsert(DownloadJob {
+            job_id: "indexing1".to_string(),
+            username: "peer1".to_string(),
+            remote_filename: "Artist\\Title.flac".to_string(),
+            display: "Artist - Title".to_string(),
+            dest_playlist: "Rap & Hip-Hop".to_string(),
+            state: JobState::Indexing,
+            size: 1000,
+            alternates: vec![],
+            tried_source_ids: vec![],
+            created_at: unix_now(),
+        });
+
+        for i in 0..(DOWNLOADS_FAIL_THRESHOLD + 2) {
+            fake.downloads_script.lock().unwrap().push_back(Err(SlskdError::Network("offline".to_string())));
+            coord.poll_active_transfers_once(now + Duration::from_secs(i as u64 + 1));
+        }
+
+        assert!(
+            matches!(coord.board.get("indexing1").unwrap().state, JobState::Indexing),
+            "job em Indexing nao deveria ser afetado por falhas de downloads(), mesmo muitas"
+        );
     }
 
     #[test]
@@ -2108,7 +2285,7 @@ mod tests {
 
         let alt = candidate("peer2", "Artist\\Title.flac", 1000);
         let cand = candidate("peer1", "Artist\\Title.flac", 1000);
-        let job_id = coord.create_or_get_job(&cand, vec![alt], "Rap & Hip-Hop");
+        let (job_id, _) = coord.create_or_get_job(&cand, vec![alt], "Rap & Hip-Hop");
         coord.board.upsert(DownloadJob {
             state: JobState::Failed { reason: "x".to_string(), retryable: false },
             ..coord.board.get(&job_id).unwrap()
@@ -2279,7 +2456,12 @@ mod tests {
         coord.handle_search("artist title live".to_string(), false, now, reply_tx);
         let search_id = reply_rx.recv().unwrap().unwrap();
 
-        coord.poll_active_search_once(now);
+        // NB-3: started_at/next_poll_at agora são carimbados DENTRO de
+        // handle_search (depois do start_search), não com o `now` capturado
+        // antes de chamá-lo — então pollar com esse `now` antigo poderia
+        // cair antes de `next_poll_at` e não pollar nada. Usa um instante
+        // fresco, capturado depois de handle_search já ter retornado.
+        coord.poll_active_search_once(Instant::now());
         let snapshot = coord.searches.read().unwrap().snapshot(&search_id).unwrap();
         assert_eq!(snapshot.groups.len(), 1);
         // A query pedia "live" explicitamente -> NAO deveria levar o
@@ -2309,5 +2491,73 @@ mod tests {
 
         let deleted = fake.delete_search_calls.lock().unwrap().clone();
         assert!(deleted.contains(&"remote-old".to_string()), "busca anterior deveria ter sido deletada ao trocar");
+    }
+
+    #[test]
+    fn active_search_window_not_consumed_by_slow_sweep() {
+        // NB-3: started_at precisa ser carimbado DEPOIS do sweep+
+        // start_search, nao no `now` de handle_task (capturado antes dos
+        // dois). Prova: segura list_searches (chamado por ensure_swept)
+        // por ~300ms via rendezvous; se started_at fosse carimbado antes
+        // disso, o elapsed_ms reportado no poll imediatamente apos seria
+        // proximo de 300ms; com o fix, e proximo de 0 (o relogio so
+        // comeca a contar depois do gate liberar).
+        struct SlowSweepApi {
+            gate_rx: StdMutex<crossbeam_channel::Receiver<()>>,
+        }
+        impl SlskdApi for SlowSweepApi {
+            fn status(&self) -> Result<ServerStatus, SlskdError> {
+                Ok(ServerStatus::default())
+            }
+            fn start_search(&self, _text: &str) -> Result<String, SlskdError> {
+                Ok("remote-1".to_string())
+            }
+            fn search_state(&self, _id: &str) -> Result<ApiSearch, SlskdError> {
+                Ok(ApiSearch::default())
+            }
+            fn search_responses(&self, _id: &str) -> Result<Vec<ApiSearchResponse>, SlskdError> {
+                Ok(Vec::new())
+            }
+            fn delete_search(&self, _id: &str) -> Result<(), SlskdError> {
+                Ok(())
+            }
+            fn list_searches(&self) -> Result<Vec<ApiSearch>, SlskdError> {
+                let _ = self.gate_rx.lock().unwrap().recv();
+                Ok(Vec::new())
+            }
+            fn enqueue(&self, _u: &str, _f: &str, _s: u64) -> Result<(), SlskdError> {
+                Ok(())
+            }
+            fn downloads(&self) -> Result<Vec<ApiTransferUser>, SlskdError> {
+                Ok(Vec::new())
+            }
+            fn cancel_download(&self, _u: &str, _id: &str) -> Result<(), SlskdError> {
+                Ok(())
+            }
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let (gate_tx, gate_rx) = crossbeam_channel::bounded::<()>(0);
+        let api: Arc<dyn SlskdApi> = Arc::new(SlowSweepApi { gate_rx: StdMutex::new(gate_rx) });
+        let coord = Arc::new(make_coordinator(tmp.path(), api));
+
+        let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
+        let coord2 = coord.clone();
+        let handle = std::thread::spawn(move || {
+            coord2.handle_search("query".to_string(), false, Instant::now(), reply_tx);
+        });
+        let search_id = reply_rx.recv().unwrap().unwrap();
+
+        std::thread::sleep(Duration::from_millis(300));
+        gate_tx.send(()).unwrap();
+        handle.join().unwrap();
+
+        coord.poll_active_search_once(Instant::now());
+        let snapshot = coord.searches.read().unwrap().snapshot(&search_id).unwrap();
+        assert!(
+            snapshot.elapsed_ms < 100,
+            "started_at deveria ser carimbado apos o sweep (que levou ~300ms), elapsed_ms={}",
+            snapshot.elapsed_ms
+        );
     }
 }
