@@ -169,7 +169,11 @@ pub struct OwnedIndex {
     entries: Vec<OwnedVerdict>,
     by_key: HashMap<(String, String), usize>,
     by_title: HashMap<String, Vec<usize>>,
-    by_artist_folder: HashMap<String, String>,
+    /// `artist_main` -> (folder -> contagem de faixas). `folder_for_artist`
+    /// escolhe o mais frequente (empate: lexicograficamente menor) em vez
+    /// da primeira pasta vista — determinístico independente da ordem de
+    /// chegada das linhas do scroll do Qdrant.
+    by_artist_folder_counts: HashMap<String, HashMap<String, u32>>,
 }
 
 impl OwnedIndex {
@@ -178,7 +182,7 @@ impl OwnedIndex {
             entries: Vec::new(),
             by_key: HashMap::new(),
             by_title: HashMap::new(),
-            by_artist_folder: HashMap::new(),
+            by_artist_folder_counts: HashMap::new(),
         }
     }
 
@@ -187,9 +191,12 @@ impl OwnedIndex {
         let title_key = norm(&verdict.title);
 
         if let Some(folder) = verdict.folder.as_ref() {
-            self.by_artist_folder
+            *self
+                .by_artist_folder_counts
                 .entry(artist_key.clone())
-                .or_insert_with(|| folder.clone());
+                .or_default()
+                .entry(folder.clone())
+                .or_insert(0) += 1;
         }
 
         let idx = self.entries.len();
@@ -200,8 +207,11 @@ impl OwnedIndex {
 
     /// Constrói o índice a partir do acervo inteiro no Qdrant — ~1300
     /// pontos, três campos, <200ms (spec §5.1). Linhas sem `artist`/`title`
-    /// (payload incompleto) são ignoradas.
-    pub fn build(client: &QdrantClient) -> Result<Self, IndexerError> {
+    /// (payload incompleto) são ignoradas. `music_root` é o mesmo root
+    /// absoluto usado por `query::list_folders` — o campo `path` do payload
+    /// é sempre absoluto (`build_track_payload` grava `entry.path`, que vem
+    /// de `walk_music_root(music_root)`).
+    pub fn build(client: &QdrantClient, music_root: &Path) -> Result<Self, IndexerError> {
         let rows = client.scroll_all_payloads(&["artist", "title", "path"])?;
         let mut idx = OwnedIndex::empty();
         for (id, payload) in rows {
@@ -210,7 +220,9 @@ impl OwnedIndex {
             if artist.is_empty() || title.is_empty() {
                 continue;
             }
-            let folder = payload["path"].as_str().and_then(folder_from_path);
+            let folder = payload["path"]
+                .as_str()
+                .and_then(|p| folder_from_path(music_root, p));
             idx.insert(OwnedVerdict {
                 track_id: id,
                 title,
@@ -252,28 +264,34 @@ impl OwnedIndex {
 
     /// Pasta (playlist de 1º nível) onde o artista já mora no acervo — usada
     /// para `suggested_dest`. `None` quando o artista não tem faixa indexada
-    /// com `path` resolvível ao layout canônico.
+    /// com `path` resolvível sob `music_root`. Entre pastas empatadas em
+    /// contagem, a lexicograficamente menor vence — desempate determinístico,
+    /// não depende da ordem de chegada do scroll do Qdrant.
     pub fn folder_for_artist(&self, artist: &str) -> Option<&str> {
-        self.by_artist_folder
-            .get(&artist_main(artist))
-            .map(|s| s.as_str())
+        let counts = self.by_artist_folder_counts.get(&artist_main(artist))?;
+        counts
+            .iter()
+            .max_by(|(fa, ca), (fb, cb)| ca.cmp(cb).then_with(|| fb.cmp(fa)))
+            .map(|(f, _)| f.as_str())
     }
 }
 
-/// Playlist de 1º nível a partir de um path absoluto de faixa, assumindo o
-/// layout canônico `<music_root>/<Playlist>/<Artist>/<YYYY - Album>/NN -
-/// Title.flac` (`scan.rs` doc). Deriva o componente contando 3 níveis de
-/// diretório a partir do arquivo — não precisa conhecer `music_root`, só a
-/// profundidade canônica. `None` para faixas fora do layout canônico (menos
-/// de 3 diretórios acima do arquivo).
-fn folder_from_path(path: &str) -> Option<String> {
-    Path::new(path)
-        .parent()?
-        .parent()?
-        .parent()?
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string())
+/// Playlist de 1º nível a partir de um path de faixa, relativo a
+/// `music_root` — mesma definição de "playlist" que `query::list_folders`
+/// (`query.rs:702`, canônica): `strip_prefix(music_root)` e a PRIMEIRA
+/// componente do relativo, exigindo pelo menos mais um componente depois
+/// dela (senão o "primeiro componente" seria o próprio arquivo, não uma
+/// pasta). Agnóstico de profundidade — funciona tanto para o layout
+/// canônico de 3 níveis (`Playlist/Artist/YYYY - Album/NN - Title.flac`)
+/// quanto para o layout mais raso predominante no acervo real
+/// (`Playlist/Album/NN - Title.flac`). `None` quando `path` não está sob
+/// `music_root`, ou quando o arquivo está direto na raiz (sem pasta).
+fn folder_from_path(music_root: &Path, path: &str) -> Option<String> {
+    let rel = Path::new(path).strip_prefix(music_root).ok()?;
+    let mut components = rel.components();
+    let first = components.next()?;
+    components.next()?;
+    first.as_os_str().to_str().map(|s| s.to_string())
 }
 
 #[cfg(test)]
@@ -357,15 +375,19 @@ mod tests {
 
     #[test]
     fn folder_for_artist_returns_first_path_component() {
+        let root = Path::new("/home/cmr-auto/Music");
         let path = "/home/cmr-auto/Music/Rap & Hip-Hop/Baco Exu do Blues/2018 - Bluesman/01 - Queima Minha Pele.flac";
-        assert_eq!(folder_from_path(path).as_deref(), Some("Rap & Hip-Hop"));
+        assert_eq!(
+            folder_from_path(root, path).as_deref(),
+            Some("Rap & Hip-Hop")
+        );
 
         let mut idx = OwnedIndex::empty();
         idx.insert(OwnedVerdict {
             track_id: 7,
             title: "queima minha pele".to_string(),
             artist: "Baco Exu do Blues".to_string(),
-            folder: folder_from_path(path),
+            folder: folder_from_path(root, path),
         });
 
         assert_eq!(
@@ -373,5 +395,93 @@ mod tests {
             Some("Rap & Hip-Hop")
         );
         assert_eq!(idx.folder_for_artist("Unknown Artist"), None);
+    }
+
+    // ── folder_from_path — profundidade mista do acervo real ───────────
+
+    #[test]
+    fn folder_from_path_two_levels() {
+        // Layout raso predominante no acervo: <Playlist>/<Album>/<file>,
+        // sem pasta de artista. O bug original (3x .parent() fixo) devolvia
+        // "Music" (o próprio music_root) nesse caso.
+        let root = Path::new("/home/cmr-auto/Music");
+        let path = "/home/cmr-auto/Music/Rap & Hip-Hop/2018 - Bluesman/01 - Queima Minha Pele.flac";
+        assert_eq!(
+            folder_from_path(root, path).as_deref(),
+            Some("Rap & Hip-Hop")
+        );
+    }
+
+    #[test]
+    fn folder_from_path_three_plus_levels() {
+        // Layout canônico: <Playlist>/<Artist>/<YYYY - Album>/<file>.
+        let root = Path::new("/home/cmr-auto/Music");
+        let path = "/home/cmr-auto/Music/Rap & Hip-Hop/Baco Exu do Blues/2018 - Bluesman/01 - Queima Minha Pele.flac";
+        assert_eq!(
+            folder_from_path(root, path).as_deref(),
+            Some("Rap & Hip-Hop")
+        );
+    }
+
+    #[test]
+    fn folder_from_path_none_outside_music_root() {
+        let root = Path::new("/home/cmr-auto/Music");
+        let path = "/home/cmr-auto/Downloads/Rap & Hip-Hop/track.flac";
+        assert_eq!(folder_from_path(root, path), None);
+    }
+
+    #[test]
+    fn folder_from_path_none_when_file_directly_in_root() {
+        // Sem pasta nenhuma acima do arquivo — não há playlist a reportar,
+        // mesma regra de query::list_folders (exige >= 2 componentes).
+        let root = Path::new("/home/cmr-auto/Music");
+        let path = "/home/cmr-auto/Music/orphan.flac";
+        assert_eq!(folder_from_path(root, path), None);
+    }
+
+    #[test]
+    fn folder_for_artist_prefers_most_frequent_then_lexicographic_tiebreak() {
+        let root = Path::new("/music");
+
+        // 2 faixas em "Rap & Hip-Hop" vs 1 em "Old Rap" — a mais frequente
+        // vence, não a primeira inserida.
+        let mut idx = OwnedIndex::empty();
+        idx.insert(OwnedVerdict {
+            track_id: 1,
+            title: "a".to_string(),
+            artist: "X".to_string(),
+            folder: folder_from_path(root, "/music/Old Rap/Album/00.flac"),
+        });
+        idx.insert(OwnedVerdict {
+            track_id: 2,
+            title: "b".to_string(),
+            artist: "X".to_string(),
+            folder: folder_from_path(root, "/music/Rap & Hip-Hop/Album/01.flac"),
+        });
+        idx.insert(OwnedVerdict {
+            track_id: 3,
+            title: "c".to_string(),
+            artist: "X".to_string(),
+            folder: folder_from_path(root, "/music/Rap & Hip-Hop/Album/02.flac"),
+        });
+        assert_eq!(idx.folder_for_artist("X"), Some("Rap & Hip-Hop"));
+
+        // Empate 1x1 entre "B Folder" e "A Folder" — desempate determinístico
+        // pela ordem lexicográfica, não pela ordem de inserção (inseri "B"
+        // primeiro de propósito).
+        let mut tie = OwnedIndex::empty();
+        tie.insert(OwnedVerdict {
+            track_id: 10,
+            title: "a".to_string(),
+            artist: "Y".to_string(),
+            folder: folder_from_path(root, "/music/B Folder/Album/01.flac"),
+        });
+        tie.insert(OwnedVerdict {
+            track_id: 11,
+            title: "b".to_string(),
+            artist: "Y".to_string(),
+            folder: folder_from_path(root, "/music/A Folder/Album/02.flac"),
+        });
+        assert_eq!(tie.folder_for_artist("Y"), Some("A Folder"));
     }
 }
