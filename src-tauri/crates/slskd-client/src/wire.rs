@@ -73,3 +73,12 @@ pub struct ApiTransferUser {
     pub username: String,
     pub directories: Vec<ApiTransferDir>,
 }
+
+/// `GET /api/v0/server` — os dois campos que distinguem os três estados
+/// do §3.3 (reachable/logged_in/network).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ServerStatus {
+    pub is_connected: bool,
+    pub is_logged_in: bool,
+}
