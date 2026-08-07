@@ -778,9 +778,13 @@ impl Coordinator {
             }
         }
 
-        self.lock_pacer().record_result(now, responses.len() as u32);
-
         if window_over {
+            // Outcome do pacer é POR BUSCA FECHADA (§6.2: "3 buscas vazias
+            // seguidas" = rede throttled), nunca por poll: os primeiros
+            // ticks de toda busca vêm zerados enquanto a rede responde, e
+            // contá-los como strikes armava cold com penalidade dobrada em
+            // uso humano normal (2 buscas manuais -> 60 min de pausa).
+            self.lock_pacer().record_result(now, responses.len() as u32);
             let _guard = SearchGuard(self.api.as_ref(), remote_id);
             let mut active = self.active_search.lock().unwrap_or_else(|p| p.into_inner());
             *active = None;
@@ -2559,6 +2563,64 @@ mod tests {
         // warn de derank (prova que rank::aggregate recebeu a query real,
         // nao "").
         assert_ne!(snapshot.groups[0].best.warn.as_deref(), Some("parece live"));
+    }
+
+    #[test]
+    fn pacer_outcome_e_por_busca_fechada_nao_por_poll() {
+        // Bug de produção (teste real do usuário, 2026-08-07): os primeiros
+        // ticks de TODA busca vêm com 0 respostas (a rede demora segundos) e
+        // cada poll de 700ms contava um strike no pacer — 3 ticks armavam
+        // cold e os seguintes dobravam a penalidade até 60 min, mesmo a
+        // busca terminando COM resultado. O outcome do §6.2 é da BUSCA
+        // ("3 buscas vazias seguidas"), registrado só no fim da janela.
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        fake.start_search_script.lock().unwrap().push_back(Ok("remote-1".to_string()));
+        // 4 polls com a rede ainda calada...
+        for _ in 0..4 {
+            fake.search_responses_script.lock().unwrap().push_back(Ok(vec![]));
+        }
+        // ...e a resposta chega antes da janela fechar.
+        fake.search_responses_script.lock().unwrap().push_back(Ok(vec![ApiSearchResponse {
+            username: "peer1".to_string(),
+            file_count: 1,
+            files: vec![slskd_client::wire::ApiFile {
+                filename: "Sidoka - UFA.flac".to_string(),
+                size: 30_000_000,
+                extension: "flac".to_string(),
+                bit_depth: Some(16),
+                sample_rate: Some(44_100),
+                length: Some(200),
+                is_locked: false,
+            }],
+            has_free_upload_slot: true,
+            locked_file_count: 0,
+            queue_length: 0,
+            upload_speed: 100_000,
+        }]));
+        let coord = make_coordinator(tmp.path(), fake.clone());
+
+        let (r1_tx, r1_rx) = crossbeam_channel::bounded(1);
+        let t0 = Instant::now();
+        coord.handle_search("sidoka".to_string(), false, t0, r1_tx);
+        r1_rx.recv().unwrap().unwrap();
+
+        // Polls dentro da janela, espaçados de SEARCH_POLL (base fresca —
+        // started_at é carimbado dentro de handle_search, ver NB-3).
+        let base = Instant::now();
+        for k in 1..=4u32 {
+            coord.poll_active_search_once(base + SEARCH_POLL * k + Duration::from_millis(50));
+        }
+        // Fecha a janela com a resposta presente.
+        coord.poll_active_search_once(base + SEARCH_WINDOW + Duration::from_secs(1));
+
+        // Busca seguinte, bem depois do intervalo mínimo: a anterior fechou
+        // COM resultado, então NUNCA pode vir "cold".
+        fake.start_search_script.lock().unwrap().push_back(Ok("remote-2".to_string()));
+        let (r2_tx, r2_rx) = crossbeam_channel::bounded(1);
+        coord.handle_search("sidoka mob".to_string(), false, base + SEARCH_WINDOW + Duration::from_secs(10), r2_tx);
+        let second = r2_rx.recv().unwrap();
+        assert!(second.is_ok(), "segunda busca bloqueada pelo pacer: {:?}", second.err());
     }
 
     #[test]
