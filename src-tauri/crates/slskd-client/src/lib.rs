@@ -7,4 +7,5 @@
 pub mod error;
 pub mod pacing;
 pub mod rank;
+pub mod stage_plan;
 pub mod wire;
