@@ -21,11 +21,11 @@ use tauri::{Emitter, Manager, State};
 // State wrappers
 // ---------------------------------------------------------------------------
 
-struct Library {
-    handle: IndexerHandle,
-    cache_dir: PathBuf,
-    music_root: PathBuf,
-    data_dir: PathBuf,
+pub(crate) struct Library {
+    pub(crate) handle: IndexerHandle,
+    pub(crate) cache_dir: PathBuf,
+    pub(crate) music_root: PathBuf,
+    pub(crate) data_dir: PathBuf,
 }
 struct Player(Mutex<Option<EngineHandle>>);
 // Qdrant state removed — IndexerHandle now owns the QdrantClient.
@@ -2703,6 +2703,8 @@ pub fn run() {
 
             let indexer = Indexer::open(config).expect("failed to open library indexer");
             let indexer_for_events = indexer.clone();
+            let indexer_for_slsk = indexer.clone();
+            let music_root_for_slsk = music_root.clone();
             let cache_dir_for_events = cache_dir.clone();
             let library = Library {
                 handle: indexer,
@@ -2713,6 +2715,18 @@ pub fn run() {
             // Cria a station "Your Mix" caso o usuario nao tenha nenhuma ainda.
             maybe_seed_default_station(&library);
             _app.manage(library);
+
+            // Crate — busca e download Soulseek in-app (spec docs/superpowers/
+            // specs/2026-08-07-crate-in-app-downloads-design.md). DEPOIS do
+            // indexer existir: o coordinator injeta IndexerHandle::ingest_paths
+            // e ::client() (pra OwnedIndex::build) direto no handle real.
+            let slsk_state = slsk::Slsk::new(
+                _app.handle().clone(),
+                &data_dir,
+                music_root_for_slsk,
+                indexer_for_slsk,
+            );
+            _app.manage(slsk_state);
 
             let engine = Engine::start().expect("failed to start audio engine");
 
@@ -3277,6 +3291,16 @@ pub fn run() {
             lib_delete_station,
             lib_play_station,
             lib_station_next,
+            slsk::slsk_status,
+            slsk::slsk_search,
+            slsk::slsk_results,
+            slsk::slsk_cancel_search,
+            slsk::slsk_dedup_probe,
+            slsk::slsk_download,
+            slsk::slsk_jobs,
+            slsk::slsk_try_other_source,
+            slsk::slsk_cancel,
+            slsk::slsk_clear_finished,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
