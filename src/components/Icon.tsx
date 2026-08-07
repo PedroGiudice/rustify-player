@@ -65,9 +65,13 @@ export const ICONS = {
   close:        "lucide:x",
   chevronLeft:  "lucide:chevron-left",
   chevronRight: "lucide:chevron-right",
+  chevronDown:  "lucide:chevron-down",
   arrowRight:   "lucide:arrow-right",
   bolt:         "lucide:zap",
   timer:        "lucide:timer",
   check:        "lucide:check",
   plus:         "lucide:plus",
+  download:     "lucide:download",
+  refresh:      "lucide:refresh-cw",
+  folderOpen:   "lucide:folder-open",
 } as const;
