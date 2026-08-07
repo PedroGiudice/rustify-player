@@ -12,6 +12,7 @@
 
 mod board;
 mod config;
+mod coordinator;
 mod stage;
 
 pub use board::JobBoard;

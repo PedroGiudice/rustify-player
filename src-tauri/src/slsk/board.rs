@@ -9,13 +9,14 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Candidato de download — espelho do `slskd_client::rank::Candidate`, mas
-/// com `Serialize` (o crate A é PURO, sem serde — este tipo é o de fronteira
-/// IPC/persistência). `bit_rate` é derivado (size/duração), não vem do wire
+/// com `Serialize`/`Deserialize` (o crate A é PURO, sem serde — este tipo é
+/// o de fronteira IPC/persistência; `Deserialize` é pro round-trip de
+/// `slsk_jobs.json`). `bit_rate` é derivado (size/duração), não vem do wire
 /// da API; `None` quando falta duração pra calcular.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Candidate {
     pub id: String,
@@ -132,6 +133,10 @@ pub fn can_transition(from: &JobState, to: &JobState) -> bool {
             | ("queued", "canceled")
             | ("queued", "failed")
             | ("enqueued", "downloading")
+            // Poll pode nunca ver o transfer em "InProgress" entre dois
+            // ciclos (arquivo pequeno, ou o poll simplesmente perdeu a
+            // janela) — o slskd já reporta "Completed, Succeeded" direto.
+            | ("enqueued", "processing")
             | ("enqueued", "stalled")
             | ("enqueued", "canceled")
             | ("enqueued", "failed")
@@ -142,6 +147,9 @@ pub fn can_transition(from: &JobState, to: &JobState) -> bool {
             | ("downloading", "failed")
             | ("downloading", "queued")
             | ("stalled", "downloading")
+            // Mesma razao do enqueued->processing: o job pode ter sido
+            // marcado Stalled num ciclo e concluido antes do proximo poll.
+            | ("stalled", "processing")
             | ("stalled", "queued")
             | ("stalled", "canceled")
             | ("stalled", "failed")
