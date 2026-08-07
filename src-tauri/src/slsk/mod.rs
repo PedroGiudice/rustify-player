@@ -12,6 +12,7 @@
 
 mod board;
 mod config;
+mod stage;
 
 pub use board::JobBoard;
 pub use config::SlskConfig;
