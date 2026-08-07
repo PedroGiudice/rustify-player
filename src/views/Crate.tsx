@@ -325,7 +325,13 @@ function CrateRow(props: {
                 <Show when={c.warn}><span>⚠ {c.warn}</span></Show>
                 <button
                   type="button"
-                  onClick={() => { if (props.dest) props.onDownload(c.id, props.dest); }}
+                  onClick={() => {
+                    // Sem dest resolvido, mesmo comportamento do [Baixar]
+                    // (spec §4.5 caso 4): abre o seletor em vez de ficar
+                    // silencioso (minor da review da Etapa D).
+                    if (props.dest) props.onDownload(c.id, props.dest);
+                    else setDestOpen(true);
+                  }}
                 >
                   Usar
                 </button>
@@ -423,7 +429,12 @@ export default function Crate(props: { param?: string | null }) {
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
   const [folders, setFolders] = createSignal<FolderPlaylist[]>([]);
-  const [destOverride, setDestOverride] = createSignal<string | null>(loadLastDest());
+  // NUNCA semear com loadLastDest() (bug IM-D1, review da Etapa D): isso
+  // promove o nível 3 da precedência (último destino usado) a nível 1
+  // (override da toolbar), fazendo suggested_dest — artista já no acervo,
+  // nível 2 — nunca vencer até o usuário clicar no ×. `null` = toolbar sem
+  // override; loadLastDest() só entra como fallback dentro de resolvedDest.
+  const [destOverride, setDestOverride] = createSignal<string | null>(null);
   const [toolbarDestOpen, setToolbarDestOpen] = createSignal(false);
   const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>({});
   const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>({});

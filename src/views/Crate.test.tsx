@@ -346,6 +346,50 @@ describe("Crate — destino: override da toolbar", () => {
   });
 });
 
+describe("Crate — destino: precedência (regressão IM-D1)", () => {
+  // Bug: destOverride() era semeado com loadLastDest() no mount, promovendo
+  // o nível 3 (último destino usado) a nível 1 (override da toolbar) —
+  // suggested_dest (nível 2, artista já no acervo) nunca vencia. Nenhum
+  // teste anterior combinava kv-crate-dest preenchido com suggested_dest
+  // divergente (o teste de override da toolbar acima SETA o override de
+  // propósito, o que mascarava o bug).
+  it("kv-crate-dest preenchido não vira override — suggested_dest ainda vence sem toque na toolbar", async () => {
+    localStorage.setItem("kv-crate-dest", "Trance");
+    const g = group({ group_key: "k1", suggested_dest: "Rap & Hip-Hop" });
+    const { container } = await searchAndRender([g]);
+
+    // Toolbar não deve mostrar o kv-crate-dest como se fosse override ativo.
+    const toolbarBtn = container.querySelector(".crate-toolbar .crate-dest__btn")!;
+    expect(toolbarBtn.textContent).not.toContain("Trance");
+    expect(container.querySelector(".crate-toolbar .crate-dest__clear")).toBeFalsy();
+
+    const row = container.querySelector(".crate-row")!;
+    const baixarBtn = Array.from(row.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixarBtn);
+    await waitFor(() => {
+      expect(tauriApi.slskDownload).toHaveBeenCalledWith("srch1", g.group_key, g.best.id, "Rap & Hip-Hop");
+    });
+  });
+
+  it("kv-crate-dest preenchido resolve como fallback quando não há suggested_dest", async () => {
+    localStorage.setItem("kv-crate-dest", "Trance");
+    const g = group({ group_key: "k2", suggested_dest: null });
+    const { container } = await searchAndRender([g]);
+
+    const row = container.querySelector(".crate-row")!;
+    expect(row.textContent).toContain("Trance");
+    const baixarBtn = Array.from(row.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixarBtn);
+    await waitFor(() => {
+      expect(tauriApi.slskDownload).toHaveBeenCalledWith("srch1", g.group_key, g.best.id, "Trance");
+    });
+  });
+});
+
 describe("Crate — poll de resultados", () => {
   it("clearInterval é chamado no onCleanup", async () => {
     const clearSpy = vi.spyOn(globalThis, "clearInterval");
