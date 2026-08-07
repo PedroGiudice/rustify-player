@@ -24,6 +24,7 @@ pub mod dedup;
 
 pub mod loudness;
 pub mod lyrics;
+pub mod lyrics_fetch;
 pub mod qdrant_client;
 pub mod rerank;
 
