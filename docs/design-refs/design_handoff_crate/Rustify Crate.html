@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Rustify · Crate</title>
+<meta name="viewport" content="width=1400">
+<style>
+/* ════════════════════════════════════════════════════════════════════
+   RUSTIFY · CRATE — handoff de implementação
+   Tokens = Editorial Paper (src/styles/extractor-lab.css). Nada novo.
+   --accent é injetado em runtime pelo extractor de capa; aqui cai no
+   fallback carbono. NUNCA hard-code accent.
+   ════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg-canvas:#fafafa;--bg-paper:#ffffff;--bg-soft:#f7f6f3;--bg-sunken:#fcfcfc;--bg-tint:#f5f5f5;--bg-faint:#f4f4f4;
+  --fg-1:#171717;--fg-2:#262626;--fg-3:#404040;--fg-4:#525252;--fg-5:#737373;--fg-6:#767676;--fg-7:#b0b0b0;--fg-8:#d4d4d4;
+  --line-1:#ececec;--line-2:#e5e5e5;--line-3:#f5f5f5;
+  --blue-ring:#3b82f6;--blue-bg:#eff6ff;--blue-fg:#2563eb;
+  --green-ring:#10b981;--green-bg:#ecfdf5;--green-fg:#047857;
+  --amber-ring:#f59e0b;--amber-bg:#fffbeb;--amber-fg:#b45309;
+  --rose-ring:#ef4444;--rose-bg:#fef2f2;--rose-fg:#be123c;
+  --purple-ring:#7c3aed;--purple-bg:#f5f3ff;--purple-fg:#7c3aed;
+  --tone-lavender-bg:#f1eefa;--tone-lavender-border:#e7e2f4;--tone-mint-bg:#e8f5ee;--tone-mint-border:#dcefe2;
+  --tone-peach-bg:#fbf1e6;--tone-peach-border:#f4e7d6;--tone-sky-bg:#e9f0fa;--tone-sky-border:#dde6f3;
+  --tone-rose-bg:#fbeef0;--tone-rose-border:#f4e3e6;--tone-butter-bg:#faf4dd;--tone-butter-border:#f1ead0;
+  --tone-paper-bg:#f4f4f4;--tone-paper-border:#e9e9e9;--tone-bone-bg:#f8f6f1;--tone-bone-border:#ece9e1;
+  --font-sans:'Instrument Sans',ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,'SF Mono','Menlo','Consolas',monospace;
+  --radius-xs:4px;--radius-sm:5px;--radius-md:8px;--radius-lg:10px;--radius-xl:12px;--radius-2xl:14px;--radius-pill:999px;
+  --shadow-hairline:0 1px 0 rgba(0,0,0,0.02);--shadow-card:0 1px 4px rgba(0,0,0,0.04);--shadow-hover:0 8px 24px rgba(0,0,0,0.06);
+  --ring-focus:0 0 0 2px rgba(163,163,163,0.15);
+  --ease-out:cubic-bezier(0.4,0,0.2,1);--dur-base:.15s;--dur-med:.18s;
+  /* runtime: window.setAccent(cover) sobrescreve estes dois */
+  --accent:var(--fg-1);--accent-soft:var(--bg-faint);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg-canvas);color:var(--fg-1);font-family:var(--font-sans);font-size:14px;line-height:1.5;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:0}
+/* ── demo strip (não faz parte da tela) ───────────────────────────── */
+.demo{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;padding:8px 40px;background:var(--fg-1);color:#fff}
+.demo span{font:700 9.5px/1.4 var(--font-sans);letter-spacing:.08em;text-transform:uppercase;color:var(--fg-8)}
+.demo .grp{display:flex;gap:2px;background:rgba(255,255,255,.08);border-radius:var(--radius-sm);padding:2px}
+.demo button{padding:4px 10px;border-radius:var(--radius-xs);font:500 11px/1.3 var(--font-sans);color:var(--fg-8)}
+.demo button[aria-pressed="true"]{background:#fff;color:var(--fg-1)}
+
+/* ── view shell ───────────────────────────────────────────────────── */
+.view{min-width:1200px;max-width:1400px;margin:0 auto;background:var(--bg-canvas);min-height:100vh}
+.view-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:28px 40px 0}
+.view-title{font:600 22px/1.18 var(--font-sans);letter-spacing:-.015em;color:var(--fg-1);margin:0}
+.view-hint{font:400 12px/1.3 var(--font-sans);color:var(--fg-5);margin:5px 0 0;white-space:nowrap}
+.view-stats{font:500 11px/1.4 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg-6);padding-top:6px;white-space:nowrap}
+
+/* ── tabs ─────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:22px;padding:0 40px;margin-top:18px;border-bottom:1px solid var(--line-2)}
+.tab{display:flex;align-items:center;gap:7px;padding:0 0 11px;margin-bottom:-1px;border-bottom:2px solid transparent;font:500 13.5px/1.4 var(--font-sans);color:var(--fg-5);transition:color var(--dur-base) var(--ease-out)}
+.tab:hover{color:var(--fg-2)}
+.tab[aria-selected="true"]{color:var(--fg-1);font-weight:600;border-bottom-color:var(--accent)}
+.tab-count{font:500 10.5px/1.3 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg-6);background:var(--bg-tint);border-radius:var(--radius-pill);padding:1.5px 7px}
+.tab[aria-selected="true"] .tab-count{color:var(--fg-3);background:var(--bg-faint)}
+
+/* ── toolbar ──────────────────────────────────────────────────────── */
+.toolbar{display:flex;align-items:center;gap:10px;padding:18px 40px 0}
+.search{position:relative;flex:1;min-width:0;max-width:560px}
+.search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--fg-6);pointer-events:none}
+.search input{width:100%;height:40px;padding:0 92px 0 37px;background:var(--bg-paper);border:1px solid var(--line-2);border-radius:var(--radius-lg);font:500 13.5px/1.4 var(--font-sans);color:var(--fg-1);outline:0;transition:border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}
+.search input::placeholder{color:var(--fg-6);font-weight:400}
+.search input:focus{border-color:var(--fg-8);box-shadow:var(--ring-focus)}
+.search .kbd-in{position:absolute;right:11px;top:50%;transform:translateY(-50%);display:flex;gap:4px;pointer-events:none}
+kbd{font:500 10px/1.3 var(--font-mono);background:var(--bg-tint);border:1px solid var(--line-2);border-radius:var(--radius-xs);padding:2px 5px;color:var(--fg-5)}
+.btn-search{display:flex;align-items:center;gap:8px;height:40px;padding:0 18px;background:var(--fg-1);color:#fff;border-radius:var(--radius-lg);font:600 13px/1.3 var(--font-sans);transition:opacity var(--dur-base) var(--ease-out)}
+.btn-search:hover{opacity:.88}
+.btn-search[data-cooldown="true"]{background:var(--bg-tint);color:var(--fg-6);cursor:default;pointer-events:none}
+.cooldown-ring{width:15px;height:15px;flex:none;display:none}
+.btn-search[data-cooldown="true"] .cooldown-ring{display:block}
+.cooldown-ring circle{fill:none;stroke-width:2}
+.cooldown-ring .trk{stroke:var(--fg-8)}
+.cooldown-ring .val{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:37.7;stroke-dashoffset:13.2;transform:rotate(-90deg);transform-origin:50% 50%}
+.netstat{display:flex;align-items:center;gap:7px;height:40px;padding:0 12px;border:1px solid var(--line-2);border-radius:var(--radius-lg);background:var(--bg-paper);font:500 11.5px/1.3 var(--font-sans);color:var(--fg-4);white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.dot--ok{background:var(--green-ring)}
+.dot--off{background:var(--fg-7)}
+.netstat[data-net="off"]{color:var(--fg-6)}
+.dest-chip{display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border:1px solid var(--line-2);border-radius:var(--radius-lg);background:var(--bg-paper);font:500 12.5px/1.3 var(--font-sans);color:var(--fg-3);white-space:nowrap;transition:border-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out)}
+.dest-chip:hover{border-color:var(--fg-8);color:var(--fg-1)}
+.dest-chip .arrow{color:var(--fg-6)}
+.dest-chip .d-lbl{font:700 9.5px/1.4 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-6);margin-right:2px}
+/* chip de destino por linha: herda o destino global ate ser trocado na propria linha */
+.chip--dest[data-override="true"]{background:var(--bg-faint);border-color:var(--fg-8);color:var(--fg-1)}
+.dest-chip svg{width:12px;height:12px;color:var(--fg-6)}
+
+
+/* ── banners ──────────────────────────────────────────────────────── */
+.banners{display:flex;flex-direction:column;gap:8px;padding:16px 40px 0}
+.banner{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--radius-lg);border:1px solid;font:500 12.5px/1.4 var(--font-sans)}
+.banner svg{width:15px;height:15px;flex:none}
+.banner p{margin:0;font:inherit}
+.banner .b-sub{display:block;font:400 11.5px/1.4 var(--font-sans);margin-top:2px}
+.banner .sp{flex:1}
+.banner--dedup{background:var(--tone-mint-bg);border-color:var(--tone-mint-border);color:var(--fg-2)}
+.banner--dedup svg{color:var(--green-fg)}
+.banner--cold{background:var(--tone-butter-bg);border-color:var(--tone-butter-border);color:var(--fg-2)}
+.banner--cold svg{color:var(--amber-fg)}
+.banner--cold .b-sub{color:var(--fg-4)}
+.b-act{display:flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:var(--radius-md);border:1px solid rgba(23,23,23,.10);background:rgba(255,255,255,.72);font:600 11.5px/1.3 var(--font-sans);color:var(--fg-1);transition:background var(--dur-base) var(--ease-out)}
+.b-act:hover{background:#fff}
+.b-act svg{width:11px;height:11px;color:var(--fg-2)}
+
+/* ── list ─────────────────────────────────────────────────────────── */
+.list-head{display:flex;align-items:center;justify-content:space-between;padding:22px 40px 9px}
+.list-head h2{font:700 11px/1.4 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-5);margin:0;white-space:nowrap}
+.list-head .keys{white-space:nowrap}
+.list-head .keys{display:flex;align-items:center;gap:6px;font:400 11px/1.3 var(--font-sans);color:var(--fg-6)}
+.list{padding:0 40px 56px}
+
+/* row grid — mesma grade nas duas densidades */
+.row{display:grid;grid-template-columns:minmax(240px,1fr) 112px 104px 186px 48px 118px;align-items:center;column-gap:16px;position:relative;transition:background var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-med) var(--ease-out)}
+.r-main{min-width:0}
+.r-title{font:500 13.5px/1.35 var(--font-sans);color:var(--fg-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-sub{font:400 12px/1.3 var(--font-sans);color:var(--fg-5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-dur{font:500 11.5px/1.3 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg-6);text-align:right;white-space:nowrap}
+.r-act{display:flex;justify-content:flex-end;gap:6px}
+
+/* ---- densidade A: compacta (tabela) ---- */
+[data-density="compact"] .row{min-height:54px;padding:9px 12px;border-radius:0}
+[data-density="compact"] .row-wrap+.row-wrap{border-top:1px solid var(--line-2)}
+[data-density="compact"] .list-inner{border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2)}
+[data-density="compact"] .r-title{font-weight:600}
+[data-density="compact"] .r-main{display:flex;align-items:baseline;gap:10px}
+[data-density="compact"] .r-title{flex:0 1 auto;min-width:0;flex-shrink:1}
+[data-density="compact"] .r-sub{flex:0 1 auto;min-width:0;flex-shrink:6}
+[data-density="compact"] .r-sub::before{content:'';display:none}
+[data-density="compact"] .row:hover{background:var(--bg-soft)}
+[data-density="compact"] .r-state{grid-column:1/-1;margin-top:7px}
+
+/* ---- densidade B: espaçada (card-row) ---- */
+[data-density="roomy"] .list-inner{display:flex;flex-direction:column;gap:10px}
+[data-density="roomy"] .row-wrap{background:var(--bg-paper);border:1px solid var(--line-2);border-radius:var(--radius-xl);box-shadow:var(--shadow-hairline);overflow:hidden;transition:border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-med) var(--ease-out),transform var(--dur-med) var(--ease-out)}
+[data-density="roomy"] .row-wrap:hover{border-color:var(--fg-8);box-shadow:var(--shadow-hover);transform:translateY(-2px)}
+[data-density="roomy"] .row{min-height:68px;padding:14px 18px}
+[data-density="roomy"] .r-main{display:flex;flex-direction:column;gap:3px}
+[data-density="roomy"] .r-state{grid-column:1/-1;margin-top:9px}
+[data-density="compact"] .row-wrap{position:relative}
+[data-density="compact"] .row-wrap:hover{background:var(--bg-soft)}
+
+.row{cursor:pointer}
+.row .r-act,.row .chip,.row .badge{cursor:auto}
+.row .r-act button,.row .chip{cursor:pointer}
+.row-wrap[data-focus="true"]{box-shadow:var(--ring-focus);border-color:var(--fg-8);background:var(--bg-soft)}
+
+/* badges & chips dentro da row */
+.badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:var(--radius-xs);border:1px solid var(--line-2);background:var(--bg-tint);font:500 10.5px/1 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg-4);white-space:nowrap}
+.badge--lossy{background:var(--bg-paper);color:var(--fg-6)}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:var(--radius-pill);border:1px solid var(--line-2);background:var(--bg-paper);font:500 11.5px/1 var(--font-sans);color:var(--fg-4);white-space:nowrap;max-width:100%;transition:border-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out)}
+.chip:hover{border-color:var(--fg-8);color:var(--fg-1)}
+.chip svg{width:11px;height:11px;flex:none;color:var(--fg-6)}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip[aria-expanded="true"]{background:var(--bg-faint);border-color:var(--fg-8);color:var(--fg-1)}
+.chip[aria-expanded="true"] svg{transform:rotate(180deg);color:var(--fg-3)}
+
+/* botões de ação da row */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--line-2);background:var(--bg-paper);font:600 12px/1.3 var(--font-sans);color:var(--fg-2);white-space:nowrap;transition:background var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out)}
+.btn:hover{border-color:var(--fg-8);background:var(--bg-soft);color:var(--fg-1)}
+.btn svg{width:12px;height:12px}
+.btn--primary{background:var(--fg-1);border-color:var(--fg-1);color:#fff}
+.btn--primary:hover{background:var(--fg-2);border-color:var(--fg-2);color:#fff}
+.btn--quiet{border-color:transparent;background:transparent;color:var(--fg-5)}
+.btn--quiet:hover{border-color:var(--line-2);background:var(--bg-soft);color:var(--fg-1)}
+
+/* linha de estado (abaixo do conteúdo principal) */
+.r-state{display:flex;align-items:center;gap:9px;font:500 11.5px/1.4 var(--font-sans);white-space:nowrap;min-width:0}
+.r-state>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:0}
+.pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:var(--radius-pill);border:1px solid;font:600 10.5px/1 var(--font-sans);letter-spacing:-.005em;white-space:nowrap}
+.pill--live{background:var(--blue-bg);border-color:#dbe8fd;color:var(--blue-fg)}
+.pill--ready{background:var(--green-bg);border-color:#d6f2e5;color:var(--green-fg)}
+.pill--warn{background:var(--tone-butter-bg);border-color:var(--tone-butter-border);color:var(--amber-fg)}
+.pill--err{background:var(--rose-bg);border-color:#fadfe1;color:var(--rose-fg)}
+.pill--own{background:var(--tone-mint-bg);border-color:var(--tone-mint-border);color:var(--green-fg)}
+.pill--sub{background:var(--bg-tint);border-color:var(--line-2);color:var(--fg-5);font-weight:500}
+.st-txt--live{color:var(--blue-fg)}
+.st-txt--warn{color:var(--amber-fg)}
+.st-txt--err{color:var(--rose-fg)}
+.st-txt--ready{color:var(--green-fg)}
+
+/* progresso fino */
+.prog{position:relative;height:2px;flex:0 1 220px;min-width:80px;background:var(--line-2);border-radius:var(--radius-pill);overflow:hidden}
+.prog i{position:absolute;inset:0 auto 0 0;background:var(--blue-ring);border-radius:inherit;transition:width var(--dur-med) var(--ease-out)}
+.prog--row{position:absolute;left:0;right:0;bottom:0;max-width:none;height:2px;background:transparent}
+.prog--row i{background:var(--blue-ring)}
+
+/* ── expansão de fontes ───────────────────────────────────────────── */
+.sources{background:var(--bg-soft);border-top:1px solid var(--line-2);padding:10px 16px 12px}
+[data-density="compact"] .sources{margin:0 -12px;border-radius:0}
+.src-head{display:grid;grid-template-columns:minmax(160px,1fr) 112px 78px 78px 88px 78px;column-gap:16px;align-items:center;padding:0 8px 7px;font:700 9.5px/1.4 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-6)}
+.src{display:grid;grid-template-columns:minmax(160px,1fr) 112px 78px 78px 88px 78px;column-gap:16px;align-items:center;min-height:40px;padding:6px 8px;border-radius:var(--radius-md);border:1px solid transparent;transition:background var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out)}
+.src:hover{background:var(--bg-paper);border-color:var(--line-2)}
+.src-peer{font:500 12px/1.3 var(--font-sans);color:var(--fg-2);display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}
+.src-peer .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-path bdi{direction:ltr;unicode-bidi:embed}
+.src-path{grid-column:1/-1;min-width:0;font:500 10.5px/1.4 var(--font-mono);color:var(--fg-6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;padding-left:8px;margin-top:1px}
+.src-val{font:500 11px/1.3 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg-4)}
+.src-val--dim{color:var(--fg-6)}
+.src-free{font:500 11px/1.3 var(--font-mono);color:var(--green-fg)}
+.src-queued{font:500 11px/1.3 var(--font-mono);color:var(--amber-fg)}
+.src .r-act{justify-content:flex-end}
+.src[data-flag="live"]{background:var(--tone-butter-bg);border-color:var(--tone-butter-border)}
+.src[data-flag="live"]:hover{background:var(--tone-butter-bg)}
+
+/* ── empty state ──────────────────────────────────────────────────── */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;margin:0 40px;padding:96px 40px;border:1px dashed var(--line-2);border-radius:var(--radius-xl);background:var(--bg-paper)}
+.empty svg{width:26px;height:26px;color:var(--fg-7)}
+.empty h3{font:600 13.5px/1.3 var(--font-sans);color:var(--fg-1);margin:0}
+.empty p{font:400 12px/1.4 var(--font-sans);color:var(--fg-5);margin:0}
+.empty .hintline{display:flex;align-items:center;gap:6px;margin-top:2px;font:400 11.5px/1.3 var(--font-sans);color:var(--fg-6)}
+
+/* ── fila ─────────────────────────────────────────────────────────── */
+.q-sec{padding:0 40px}
+.q-sec h2{font:700 11px/1.4 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-5);margin:22px 0 9px}
+.terminal{display:flex;align-items:flex-start;gap:12px;padding:13px 15px;border:1px solid var(--tone-butter-border);background:var(--tone-butter-bg);border-radius:var(--radius-xl)}
+.terminal svg.lead{width:15px;height:15px;color:var(--amber-fg);margin-top:1px;flex:none}
+.terminal .t-body{flex:1;min-width:0}
+.terminal .t-t{font:600 12.5px/1.4 var(--font-sans);color:var(--fg-2)}
+.terminal .t-p{font:500 11px/1.5 var(--font-mono);color:var(--fg-4);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<!-- ICONES: copiados verbatim de assets/icons.svg (sprite canonico do produto).
+     No app, NAO redeclarar: o sprite ja e injetado no DOM; use <svg class="icon"><use href="#icon-NAME"/></svg>.
+     Convencao do sprite: fill none, stroke currentColor 1.6, caps/joins round.
+     Os alias #i-* abaixo apenas rotacionam simbolos do sprite; so 2 glifos NAO existem
+     no sprite (marcados FALTA NO SPRITE) e precisam ser adicionados a assets/icons.svg. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></symbol>
+<symbol id="icon-play" viewBox="0 0 24 24"><path d="M6 4v16l14-8z" fill="currentColor" stroke="none"></path></symbol>
+<symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></symbol>
+<symbol id="icon-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 5l-6 7 6 7"></path></symbol>
+<symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></symbol>
+<symbol id="icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l3-3h4l2 2h9v13H3z"></path></symbol>
+<symbol id="icon-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"></path></symbol>
+<symbol id="icon-library" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h3v16H4zM10 4h3v16h-3zM16 4l5 1.5-3 14.5-5-1.5z"></path></symbol>
+<!-- FALTA NO SPRITE: adicionar a assets/icons.svg com estes ids e geometria -->
+<symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></symbol>
+<symbol id="icon-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5L1.8 20.5h20.4z"></path><path d="M12 10v4.4M12 17.6v.1"></path></symbol>
+<!-- alias locais: mesma geometria do sprite, so rotacionada -->
+<symbol id="i-search" viewBox="0 0 24 24"><use href="#icon-search"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><use href="#icon-play"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><use href="#icon-folder"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><use href="#icon-check"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><use href="#icon-alert-triangle"/></symbol>
+<symbol id="i-swap" viewBox="0 0 24 24"><use href="#icon-repeat"/></symbol>
+<symbol id="i-crate" viewBox="0 0 24 24"><use href="#icon-library"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><use href="#icon-chevron-right" transform="rotate(90 12 12)"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><use href="#icon-arrow-left" transform="rotate(-90 12 12)"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><use href="#icon-plus" transform="rotate(45 12 12)"/></symbol>
+</defs></svg>
+
+<div class="demo">
+  <span>Demo</span>
+  <div class="grp" id="densGrp">
+    <button data-dens="compact" aria-pressed="true">A · compacta</button>
+    <button data-dens="roomy" aria-pressed="false">B · espaçada</button>
+  </div>
+  <div class="grp" id="viewGrp">
+    <button data-vw="search" aria-pressed="true">Buscar</button>
+    <button data-vw="queue" aria-pressed="false">Fila</button>
+    <button data-vw="empty" aria-pressed="false">Pré-busca</button>
+  </div>
+  <div class="grp" id="flagGrp">
+    <button data-flag="cold" aria-pressed="false">Rede fria</button>
+    <button data-flag="src" aria-pressed="true">Fontes abertas</button>
+    <button data-flag="cool" aria-pressed="false">Cooldown 4s</button>
+  </div>
+</div>
+
+<div class="view" data-density="compact">
+
+  <header class="view-head">
+    <div>
+      <h1 class="view-title">Crate</h1>
+      <p class="view-hint">Busque na rede e traga pro acervo.</p>
+    </div>
+    <div class="view-stats">1.312 no acervo · 3 baixando</div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="search">Buscar<span class="tab-count">28</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="queue">Fila<span class="tab-count">6</span></button>
+  </nav>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg><use href="#i-search"/></svg>
+      <input type="text" value="travis scott astroworld" spellcheck="false">
+      <div class="kbd-in"><kbd>Enter</kbd><kbd>↑↓</kbd><kbd>→</kbd></div>
+    </div>
+    <button class="btn-search" id="btnSearch">
+      <svg class="cooldown-ring" viewBox="0 0 15 15"><circle class="trk" cx="7.5" cy="7.5" r="6"/><circle class="val" cx="7.5" cy="7.5" r="6"/></svg>
+      <span id="btnSearchLabel">Buscar</span>
+    </button>
+    <div class="netstat" data-net="ok" id="netstat"><i class="dot dot--ok"></i><span>rede ok</span></div>
+    <button class="dest-chip" title="Destino padrao de tudo que for baixado nesta busca"><span class="d-lbl">Destino</span><span class="arrow">→</span><span>Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+  </div>
+
+  <!-- ═══ BUSCAR ═══════════════════════════════════════════════════ -->
+  <section id="vwSearch">
+    <div class="banners">
+      <div class="banner banner--cold" id="bnCold" hidden>
+        <svg><use href="#i-alert"/></svg>
+        <p>A rede Soulseek parou de responder (3 buscas em branco).<span class="b-sub">Pausado por 9 min — isso é da rede, não do app.</span></p>
+        <span class="sp"></span>
+        <button class="b-act">Buscar mesmo assim</button>
+      </div>
+      <div class="banner banner--dedup">
+        <svg><use href="#i-check"/></svg>
+        <p>Já tem no acervo: <strong>Travis Scott — STARGAZING</strong> <span style="color:var(--fg-5)">(ASTROWORLD)</span></p>
+        <span class="sp"></span>
+        <button class="b-act"><svg><use href="#i-play"/></svg>Tocar</button>
+      </div>
+    </div>
+
+    <div class="list-head">
+      <h2>Resultados · 28&nbsp;faixas</h2>
+      <div class="keys"><kbd>↑↓</kbd> navegar <kbd>→</kbd> fontes <kbd>Enter</kbd> baixar</div>
+    </div>
+
+    <div class="list"><div class="list-inner">
+
+      <!-- (a) normal -->
+      <div class="row-wrap" data-focus="true">
+        <div class="row">
+          <div class="r-main"><div class="r-title">SICKO MODE</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>7 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">5:12</div>
+          <div class="r-act"><button class="btn btn--primary"><svg><use href="#i-dl"/></svg>Baixar</button></div>
+        </div>
+      </div>
+
+      <!-- (b) já no acervo -->
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">STARGAZING</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>4 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest" data-override="true"><span>&rarr; Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">4:30</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-play"/></svg>Tocar</button></div>
+          <div class="r-state"><span class="pill pill--own"><svg width="10" height="10"><use href="#i-check"/></svg>no acervo</span><span style="color:var(--fg-5);font-weight:400">j&aacute; est&aacute; em Rap &amp; Hip-Hop</span></div>
+        </div>
+      </div>
+
+      <!-- (c) baixando -->
+      <div class="row-wrap" id="rowDl">
+        <div class="row">
+          <div class="r-main"><div class="r-title">CAROUSEL</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>9 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">3:00</div>
+          <div class="r-act"><button class="btn btn--quiet"><svg><use href="#i-x"/></svg>Cancelar</button></div>
+          <div class="r-state">
+            <span class="pill pill--live">baixando</span>
+            <div class="prog"><i style="width:34%"></i></div>
+            <span class="st-mono st-txt--live">34% · 1.2 MB/s · ~40s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- (d) fila do peer -->
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">R.I.P. SCREW</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>3 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">3:32</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-swap"/></svg>Trocar fonte</button></div>
+          <div class="r-state">
+            <span class="pill pill--warn">na fila</span>
+            <span class="st-mono st-txt--warn">fila do peer: 43</span>
+            <span style="color:var(--fg-6);font-weight:400">sem estimativa — o peer decide a ordem</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- (e) pronta -->
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">STOP TRYING TO BE GOD</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>6 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">5:38</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-play"/></svg>Tocar</button></div>
+          <div class="r-state">
+            <span class="pill pill--ready"><svg width="10" height="10"><use href="#i-check"/></svg>pronta</span>
+            <span class="st-txt--ready">em Rap &amp; Hip-Hop</span>
+            <span class="pill pill--sub">analisando…</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- (f) rejeitada -->
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">NC-17</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 32/192</span>
+          <button class="chip" aria-expanded="false"><span>2 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">3:04</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-swap"/></svg>Trocar fonte</button></div>
+          <div class="r-state">
+            <span class="pill pill--err">falhou</span>
+            <span class="st-txt--err">o peer caiu no meio da transferência (62%)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- linha com expansão de fontes aberta -->
+      <div class="row-wrap" id="rowSrc">
+        <div class="row">
+          <div class="r-main"><div class="r-title">ASTROTHUNDER</div><div class="r-sub">Travis Scott · ASTROWORLD</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="true"><span>5 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">2:23</div>
+          <div class="r-act"><button class="btn btn--primary"><svg><use href="#i-dl"/></svg>Baixar</button></div>
+        </div>
+        <div class="sources" id="srcPanel">
+          <div class="src-head"><div>Peer</div><div>Qualidade</div><div>Tamanho</div><div>Fila</div><div>Velocidade</div><div></div></div>
+          <div class="src">
+            <div class="src-peer"><span class="nm">vinylghost_88</span></div>
+            <span class="badge mono">FLAC 16/44</span>
+            <div class="src-val">28.4 MB</div>
+            <div class="src-free">livre</div>
+            <div class="src-val">1.4 MB/s</div>
+            <div class="r-act"><button class="btn">Usar</button></div>
+            <div class="src-path mono"><bdi>/mnt/media/Music/Travis Scott/ASTROWORLD (2018) [FLAC]/09 - ASTROTHUNDER.flac</bdi></div>
+          </div>
+          <div class="src">
+            <div class="src-peer"><span class="nm">crate_digger_br</span></div>
+            <span class="badge mono">FLAC 16/44</span>
+            <div class="src-val">27.9 MB</div>
+            <div class="src-queued">fila 3</div>
+            <div class="src-val">640 kB/s</div>
+            <div class="r-act"><button class="btn">Usar</button></div>
+            <div class="src-path mono"><bdi>/home/dg/Musica/hiphop/travis-scott/astroworld-web-flac/09-astrothunder.flac</bdi></div>
+          </div>
+          <div class="src" data-flag="live">
+            <div class="src-peer"><span class="nm">boots_n_tapes</span><span class="pill pill--warn">⚠ parece live</span></div>
+            <span class="badge mono">FLAC 24/48</span>
+            <div class="src-val">41.2 MB</div>
+            <div class="src-free">livre</div>
+            <div class="src-val">2.1 MB/s</div>
+            <div class="r-act"><button class="btn">Usar</button></div>
+            <div class="src-path mono"><bdi>/downloads/bootlegs/Travis Scott - Live at Rolling Loud 2018/09 Astrothunder (live).flac</bdi></div>
+          </div>
+          <div class="src">
+            <div class="src-peer"><span class="nm">audiofilo_sp</span></div>
+            <span class="badge mono">FLAC 24/96</span>
+            <div class="src-val">62.8 MB</div>
+            <div class="src-free">livre</div>
+            <div class="src-val">3.0 MB/s</div>
+            <div class="r-act"><button class="btn">Usar</button></div>
+            <div class="src-path mono"><bdi>/var/share/soulseek/complete/Travis Scott/ASTROWORLD [24-96]/09 Astrothunder.flac</bdi></div>
+          </div>
+          <div class="src">
+            <div class="src-peer"><span class="nm">nightowl.flac</span></div>
+            <span class="badge mono">FLAC 16/44</span>
+            <div class="src-val">28.4 MB</div>
+            <div class="src-queued">fila 11</div>
+            <div class="src-val src-val--dim">210 kB/s</div>
+            <div class="r-act"><button class="btn">Usar</button></div>
+            <div class="src-path mono"><bdi>/media/hdd2/rips/2018/travis_scott_astroworld_16bit/09_astrothunder.flac</bdi></div>
+          </div>
+        </div>
+      </div>
+
+    </div></div>
+  </section>
+
+  <!-- ═══ FILA ═════════════════════════════════════════════════════ -->
+  <section id="vwQueue" hidden>
+    <div class="q-sec"><h2>Em voo · 3</h2></div>
+    <div class="list" style="padding-top:0"><div class="list-inner">
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">CAROUSEL</div><div class="r-sub">Travis Scott · ASTROWORLD · vinylghost_88</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>9 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">3:00</div>
+          <div class="r-act"><button class="btn btn--quiet"><svg><use href="#i-x"/></svg>Cancelar</button></div>
+          <div class="r-state"><span class="pill pill--live">baixando</span><div class="prog"><i style="width:34%"></i></div><span class="st-mono st-txt--live">34% · 1.2 MB/s · ~40s</span></div>
+        </div>
+      </div>
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">SKELETONS</div><div class="r-sub">Travis Scott · ASTROWORLD · nightowl.flac</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>5 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">2:24</div>
+          <div class="r-act"><button class="btn btn--quiet"><svg><use href="#i-x"/></svg>Cancelar</button></div>
+          <div class="r-state"><span class="pill pill--live">baixando</span><div class="prog"><i style="width:81%"></i></div><span class="st-mono st-txt--live">81% · 940 kB/s · ~6s</span></div>
+        </div>
+      </div>
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">R.I.P. SCREW</div><div class="r-sub">Travis Scott · ASTROWORLD · crate_digger_br</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>3 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">3:32</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-swap"/></svg>Trocar fonte</button></div>
+          <div class="r-state"><span class="pill pill--warn">na fila</span><span class="st-mono st-txt--warn">fila do peer: 43</span></div>
+        </div>
+      </div>
+    </div></div>
+
+    <div class="q-sec"><h2>Terminadas · 3</h2></div>
+    <div class="list" style="padding-top:0"><div class="list-inner">
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">STOP TRYING TO BE GOD</div><div class="r-sub">Travis Scott · ASTROWORLD · vinylghost_88</div></div>
+          <span class="badge mono">FLAC 16/44</span>
+          <button class="chip" aria-expanded="false"><span>6 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>→ Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">5:38</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-play"/></svg>Tocar</button></div>
+          <div class="r-state"><span class="pill pill--ready"><svg width="10" height="10"><use href="#i-check"/></svg>pronta</span><span class="st-txt--ready">em Rap &amp; Hip-Hop</span><span class="pill pill--sub">analisando…</span></div>
+        </div>
+      </div>
+      <div class="row-wrap">
+        <div class="row">
+          <div class="r-main"><div class="r-title">NC-17</div><div class="r-sub">Travis Scott · ASTROWORLD · boots_n_tapes</div></div>
+          <span class="badge mono">FLAC 32/192</span>
+          <button class="chip" aria-expanded="false"><span>2 fontes</span><svg><use href="#i-down"/></svg></button>
+          <button class="chip chip--dest"><span>&rarr; Rap &amp; Hip-Hop</span><svg><use href="#i-down"/></svg></button>
+          <div class="r-dur">3:04</div>
+          <div class="r-act"><button class="btn"><svg><use href="#i-swap"/></svg>Trocar fonte</button></div>
+          <div class="r-state"><span class="pill pill--err">falhou</span><span class="st-txt--err">o peer caiu no meio da transferência (62%)</span></div>
+        </div>
+      </div>
+      <div class="row-wrap" style="border:0;box-shadow:none;background:transparent">
+        <div class="terminal">
+          <svg class="lead"><use href="#i-alert"/></svg>
+          <div class="t-body">
+            <div class="t-t">Baixou, mas não achei o arquivo pra mover</div>
+            <div class="t-p">~/slskd_dados/downloads · 5 BUTTERFLY EFFECT.flac</div>
+          </div>
+          <button class="b-act"><svg><use href="#i-folder"/></svg>Abrir pasta</button>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ═══ PRÉ-BUSCA ════════════════════════════════════════════════ -->
+  <section id="vwEmpty" hidden>
+    <div style="padding:28px 0 56px">
+      <div class="empty">
+        <svg><use href="#i-crate"/></svg>
+        <h3>Nada buscado ainda</h3>
+        <p>A busca só dispara no Enter — o Crate nunca busca enquanto você digita.</p>
+        <div class="hintline"><kbd>⌘K</kbd> → digite → <kbd>Procurar na rede</kbd></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// demo only — troca de estados. Nada disso vai pro app.
+const view=document.querySelector('.view');
+function press(grp,attr,val){grp.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[attr]===val)))}
+densGrp.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;press(densGrp,'dens',b.dataset.dens);view.dataset.density=b.dataset.dens});
+viewGrp.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const v=b.dataset.vw;press(viewGrp,'vw',v);
+  vwSearch.hidden=v!=='search';vwQueue.hidden=v!=='queue';vwEmpty.hidden=v!=='empty';
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===(v==='queue'?'queue':'search'))));
+  document.querySelector('.banners').hidden=v!=='search';document.querySelector('.list-head').hidden=v!=='search';});
+flagGrp.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',String(on));
+  if(b.dataset.flag==='cold'){bnCold.hidden=!on;netstat.dataset.net=on?'off':'ok';netstat.querySelector('.dot').className='dot '+(on?'dot--off':'dot--ok');netstat.querySelector('span').textContent=on?'fora da rede':'rede ok'}
+  if(b.dataset.flag==='src'){toggleRow(rowSrc,on)}
+  if(b.dataset.flag==='cool'){btnSearch.dataset.cooldown=String(on);btnSearchLabel.textContent=on?'4s':'Buscar'}});
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  const v=t.dataset.tab;press(viewGrp,'vw',v);vwSearch.hidden=v!=='search';vwQueue.hidden=v!=='queue';vwEmpty.hidden=true;
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x===t)));
+  document.querySelector('.banners').hidden=v!=='search';document.querySelector('.list-head').hidden=v!=='search';}));
+// demo: clicar na linha (ou no chip "N fontes") abre os peers daquela faixa.
+// No app cada faixa traz suas proprias fontes; aqui o painel autorado e clonado.
+const srcTpl=srcPanel.cloneNode(true);srcTpl.removeAttribute('id');
+function toggleRow(wrap,force){
+  const chip=wrap.querySelector('.chip[aria-expanded]');if(!chip)return;
+  const openNow=chip.getAttribute('aria-expanded')==='true';const want=force!==undefined?force:!openNow;
+  if(want){document.querySelectorAll('.row-wrap').forEach(w=>{if(w!==wrap)toggleRow(w,false)})}
+  chip.setAttribute('aria-expanded',String(want));
+  let panel=wrap.querySelector('.sources');
+  if(want&&!panel){panel=srcTpl.cloneNode(true);wrap.appendChild(panel)}
+  if(panel)panel.hidden=!want;
+  if(wrap===rowSrc)flagGrp.querySelector('[data-flag="src"]').setAttribute('aria-pressed',String(want));
+}
+document.querySelectorAll('.row-wrap').forEach(wrap=>{
+  const row=wrap.querySelector('.row');if(!row||!wrap.querySelector('.chip[aria-expanded]'))return;
+  row.addEventListener('click',e=>{if(e.target.closest('.r-act button')||e.target.closest('.chip:not([aria-expanded])'))return;toggleRow(wrap)});
+});
+</script>
+</body>
+</html>
