@@ -5,5 +5,6 @@
 //! (coordinator, board, staging no disco) mora em `src-tauri/src/slsk/`.
 
 pub mod error;
+pub mod pacing;
 pub mod rank;
 pub mod wire;
