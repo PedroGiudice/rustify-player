@@ -110,16 +110,29 @@ fn tag(s: &JobState) -> &'static str {
 const TERMINALS: &[&str] = &["ready", "rejected", "manual", "failed", "canceled"];
 
 /// Matriz de transições legais. Terminal nunca sai (nem pra si mesmo —
-/// `Canceled -> Canceled` também é ilegal). Não-terminal -> mesmo `tag` é
-/// sempre legal (atualização de progresso: `Downloading{34%} ->
-/// Downloading{40%}`). O resto é uma tabela explícita: `Queued..Enqueued
-/// ..Downloading..Processing..Indexing..Ready` é o caminho feliz;
-/// `Downloading<->Stalled` é o ciclo de stall/retomada;
+/// `Canceled -> Canceled` também é ilegal) — **exceto** a aresta
+/// `{failed,rejected} -> queued`, aberta deliberadamente pro `[Tentar outra
+/// fonte]`/`[Trocar fonte]` do spec §4.6 (review CR-3: sem essa exceção o
+/// botão é inalcançável exatamente nos estados onde a spec o define como
+/// ação primária). `Failed`/`Rejected` continuam terminais pra tudo mais —
+/// `is_terminal()` não muda, então `retain_recent_terminals`/contagem de
+/// in-flight seguem tratando os dois como "em repouso, podável". A janela
+/// de corrida (job podado do board antes do clique) resolve em `Err("job
+/// nao encontrado")`, não em pânico. `Manual`/`Canceled` NÃO ganham essa
+/// aresta: `manual` usa `[Abrir pasta]`, `canceled` foi decisão do usuário.
+///
+/// Não-terminal -> mesmo `tag` é sempre legal (atualização de progresso:
+/// `Downloading{34%} -> Downloading{40%}`). O resto é uma tabela explícita:
+/// `Queued..Enqueued..Downloading..Processing..Indexing..Ready` é o
+/// caminho feliz; `Downloading<->Stalled` é o ciclo de stall/retomada;
 /// `{Downloading,Enqueued,Stalled} -> Queued` é o retry automático de fonte
 /// (spec §5.6 — a 1ª falha reenfileira em silêncio, só a 2ª vira `Failed`
-/// visível, então `Failed` nunca é origem de transição nenhuma).
+/// visível).
 pub fn can_transition(from: &JobState, to: &JobState) -> bool {
     let (f, t) = (tag(from), tag(to));
+    if matches!((f, t), ("failed", "queued") | ("rejected", "queued")) {
+        return true;
+    }
     if TERMINALS.contains(&f) {
         return false;
     }
@@ -167,6 +180,18 @@ pub fn is_terminal(s: &JobState) -> bool {
     TERMINALS.contains(&tag(s))
 }
 
+const IN_FLIGHT: &[&str] = &["enqueued", "downloading", "stalled", "processing", "indexing"];
+
+/// `true` quando o job tem (ou teve recentíssimo) um transfer vivo no
+/// slskd — usado pro gate de `MAX_ACTIVE_TRANSFERS` (review CR-2: contar
+/// `Queued` ali causava starvation permanente acima do limite, porque
+/// promover um `Queued` não reduzia a contagem de "não-terminal").
+/// `Queued` (esperando vaga local, nunca chamou `enqueue`) e os terminais
+/// ficam de fora.
+pub fn is_in_flight(s: &JobState) -> bool {
+    IN_FLIGHT.contains(&tag(s))
+}
+
 /// Um download em curso (ou terminado) no Crate.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -177,6 +202,12 @@ pub struct DownloadJob {
     pub display: String,
     pub dest_playlist: String,
     pub state: JobState,
+    /// Tamanho em bytes da fonte ATUAL (`username`/`remote_filename`) —
+    /// necessário pro corpo de `POST /transfers/downloads/{user}` quando
+    /// `promote_queued` reenfileira depois de uma vaga abrir (review IM-7:
+    /// sem isso o enqueue ia com `size:0`). Atualizado junto com
+    /// `username`/`remote_filename` sempre que a fonte troca.
+    pub size: u64,
     pub alternates: Vec<Candidate>,
     pub tried_source_ids: Vec<String>,
     pub created_at: i64,
@@ -262,6 +293,22 @@ impl JobBoard {
         guard.values().filter(|j| !is_terminal(&j.state)).count()
     }
 
+    /// Jobs com transfer vivo no slskd (`is_in_flight` — exclui `Queued` e
+    /// terminais). Gate real de `MAX_ACTIVE_TRANSFERS` (CR-2).
+    pub(crate) fn in_flight_ids(&self) -> Vec<String> {
+        let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
+        guard
+            .values()
+            .filter(|j| is_in_flight(&j.state))
+            .map(|j| j.job_id.clone())
+            .collect()
+    }
+
+    pub(crate) fn in_flight_count(&self) -> usize {
+        let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
+        guard.values().filter(|j| is_in_flight(&j.state)).count()
+    }
+
     /// Mantém só os `cap` terminais mais recentes (FIFO por `created_at`) —
     /// `JOBS_RETAINED` (spec §6.4): o board não cresce sem limite numa
     /// sessão longa. Jobs ativos nunca são removidos aqui.
@@ -304,6 +351,7 @@ mod tests {
             display: "Artist - Title".to_string(),
             dest_playlist: "Rap & Hip-Hop".to_string(),
             state,
+            size: 1_000,
             alternates: Vec::new(),
             tried_source_ids: Vec::new(),
             created_at: 0,
@@ -362,10 +410,40 @@ mod tests {
             &JobState::Canceled,
             &JobState::Ready { track_id: "1".to_string() }
         ));
-        assert!(!can_transition(
+
+        // CR-3: excecao estreita — failed/rejected -> queued e legal (o
+        // [Tentar outra fonte]/[Trocar fonte] do §4.6), mas so essa aresta.
+        assert!(can_transition(
             &JobState::Failed { reason: "x".to_string(), retryable: false },
             &JobState::Queued
         ));
+        assert!(can_transition(
+            &JobState::Rejected { reason: RejectReason::Bit32Unsupported },
+            &JobState::Queued
+        ));
+        // Continuam terminais pra tudo mais — nao viram porta aberta.
+        assert!(!can_transition(
+            &JobState::Failed { reason: "x".to_string(), retryable: false },
+            &JobState::Enqueued { queue_position: None }
+        ));
+        assert!(!can_transition(
+            &JobState::Failed { reason: "x".to_string(), retryable: false },
+            &JobState::Failed { reason: "x".to_string(), retryable: false }
+        ));
+        // Manual/Canceled NAO ganham a excecao — so failed/rejected.
+        assert!(!can_transition(
+            &JobState::Manual { path: "p".to_string(), why: "w".to_string() },
+            &JobState::Queued
+        ));
+        assert!(!can_transition(&JobState::Canceled, &JobState::Queued));
+    }
+
+    #[test]
+    fn is_terminal_unchanged_by_cr3_exception() {
+        // A excecao de can_transition NAO deve mudar is_terminal — Failed/
+        // Rejected continuam contando como terminal pra pruning/in-flight.
+        assert!(is_terminal(&JobState::Failed { reason: "x".to_string(), retryable: false }));
+        assert!(is_terminal(&JobState::Rejected { reason: RejectReason::NotFlac }));
     }
 
     #[test]
@@ -409,6 +487,26 @@ mod tests {
 
         assert_eq!(board.active_count(), 1);
         assert_eq!(board.active_ids(), vec!["active".to_string()]);
+    }
+
+    #[test]
+    fn in_flight_count_excludes_queued_and_terminals() {
+        // CR-2: Queued NAO conta como in-flight — sem isso, promover um
+        // Queued nunca reduzia a contagem de "nao-terminal" e a fila
+        // travava permanentemente acima de MAX_ACTIVE_TRANSFERS.
+        let board = JobBoard::new();
+        board.upsert(job("q1", JobState::Queued));
+        board.upsert(job("q2", JobState::Queued));
+        board.upsert(job("enq", JobState::Enqueued { queue_position: None }));
+        board.upsert(job("dl", JobState::Downloading { pct: 1.0, bps: 1, eta_s: None }));
+        board.upsert(job("done", JobState::Ready { track_id: "1".to_string() }));
+
+        assert_eq!(board.in_flight_count(), 2);
+        let mut ids = board.in_flight_ids();
+        ids.sort();
+        assert_eq!(ids, vec!["dl".to_string(), "enq".to_string()]);
+        // active_count (mais amplo) continua contando Queued tambem.
+        assert_eq!(board.active_count(), 4);
     }
 
     #[test]

@@ -132,16 +132,28 @@ impl Slsk {
         Slsk { board, searches, status, cmd_tx }
     }
 
+    /// `recv_timeout` (não `recv` puro) — defesa em profundidade (review
+    /// CR-1): o coordinator agora responde a `Search`/`Download`/
+    /// `TryOtherSource` ANTES de qualquer I/O de rede (ver
+    /// `coordinator::handle_search`/`handle_task_download`/
+    /// `handle_try_other_source`), então o `recv` normal já deveria ser
+    /// rápido — mas nada impede o coordinator de estar temporariamente
+    /// ocupado processando um poll tick anterior quando a tarefa chega na
+    /// fila. Timeout generoso (bem acima do que qualquer caminho feliz
+    /// leva) garante que o comando NUNCA trava pra sempre.
     fn send_and_wait(&self, build: impl FnOnce(Sender<Result<String, String>>) -> SlskTask) -> Result<String, String> {
         let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
         self.cmd_tx
             .send(build(reply_tx))
             .map_err(|_| "coordinator indisponivel".to_string())?;
-        reply_rx
-            .recv()
-            .map_err(|_| "coordinator nao respondeu".to_string())?
+        match reply_rx.recv_timeout(SEND_AND_WAIT_TIMEOUT) {
+            Ok(inner) => inner,
+            Err(_) => Err("coordinator nao respondeu a tempo".to_string()),
+        }
     }
 }
+
+const SEND_AND_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 // ── Comandos IPC (spec §3.5) ────────────────────────────────────────────
 // Convenção do repo: `slsk_` snake_case; argumentos chegam em camelCase do
@@ -233,7 +245,7 @@ pub(crate) fn slsk_clear_finished(sl: State<Slsk>) -> u32 {
     if sl.cmd_tx.send(SlskTask::ClearFinished { reply: reply_tx }).is_err() {
         return 0;
     }
-    reply_rx.recv().unwrap_or(0)
+    reply_rx.recv_timeout(SEND_AND_WAIT_TIMEOUT).unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -29,6 +29,10 @@ pub struct FakeSlskd {
     pub enqueue_calls: Mutex<Vec<(String, String, u64)>>,
     pub downloads_script: Mutex<VecDeque<Result<Vec<ApiTransferUser>, SlskdError>>>,
     pub cancel_download_script: Mutex<VecDeque<Result<(), SlskdError>>>,
+    /// Registra `(username, id)` de cada chamada — usado pra assertar que
+    /// o cancelamento usa o `id` REAL do transfer no slskd
+    /// (`ApiTransferFile.id`), não um hash local (Etapa C, review IM-3).
+    pub cancel_download_calls: Mutex<Vec<(String, String)>>,
 }
 
 impl FakeSlskd {
@@ -115,7 +119,11 @@ impl SlskdApi for FakeSlskd {
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 
-    fn cancel_download(&self, _username: &str, _id: &str) -> Result<(), SlskdError> {
+    fn cancel_download(&self, username: &str, id: &str) -> Result<(), SlskdError> {
+        self.cancel_download_calls
+            .lock()
+            .unwrap()
+            .push((username.to_string(), id.to_string()));
         self.cancel_download_script
             .lock()
             .unwrap()

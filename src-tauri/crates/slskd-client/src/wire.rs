@@ -41,6 +41,11 @@ pub struct ApiSearch {
     pub response_count: u32,
     pub file_count: u32,
     pub is_complete: bool,
+    /// ISO8601 UTC (ex.: `"2026-08-07T02:14:33.77Z"`) — confirmado contra o
+    /// slskd real da cmr-auto (review da Etapa C, IM-9). Habilita o critério
+    /// de idade (>1h) do sweep de buscas em `src-tauri/src/slsk/coordinator.rs`.
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
