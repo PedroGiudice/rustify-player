@@ -24,6 +24,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
 use crossbeam_channel::{Receiver, Sender};
+use library_indexer::lyrics_fetch::{spawn_lyrics_worker, Lrclib, LyricsJob};
 use library_indexer::{IndexerHandle, IngestOutcome, OwnedIndex};
 use serde::{Deserialize, Serialize};
 use slskd_client::pacing::{PaceDecision, Pacer};
@@ -347,6 +348,11 @@ pub struct Coordinator {
     /// qualquer sucesso.
     downloads_fail_streak: AtomicU32,
     jobs_path: PathBuf,
+    /// Canal pro worker `slsk-lyrics` (Etapa E): o coordinator só faz
+    /// `try_send` após ingest OK — fila cheia descarta (letra é
+    /// enriquecimento best-effort, nunca backpressure no pipeline).
+    /// `None` nos testes que não exercitam letras.
+    lyrics_tx: Option<Sender<LyricsJob>>,
     dirty: Mutex<bool>,
     last_emit: Mutex<Option<Instant>>,
 }
@@ -381,9 +387,17 @@ impl Coordinator {
             indexing_retry: Mutex::new(HashMap::new()),
             downloads_fail_streak: AtomicU32::new(0),
             jobs_path,
+            lyrics_tx: None,
             dirty: Mutex::new(false),
             last_emit: Mutex::new(None),
         }
+    }
+
+    /// Liga o canal do worker de letras (Etapa E). Encadeado por
+    /// `spawn_coordinator`; testes que não exercitam letras ficam com `None`.
+    fn with_lyrics_tx(mut self, tx: Sender<LyricsJob>) -> Self {
+        self.lyrics_tx = Some(tx);
+        self
     }
 
     fn lock_pacer(&self) -> std::sync::MutexGuard<'_, Pacer> {
@@ -1382,6 +1396,7 @@ impl Coordinator {
             Some(IngestOutcome { result: Ok(track_id), .. }) => {
                 self.indexing_retry.lock().unwrap_or_else(|p| p.into_inner()).remove(&job.job_id);
                 self.board.transition(&job.job_id, JobState::Ready { track_id: track_id.to_string() });
+                self.send_lyrics_job(track_id, &final_path);
             }
             Some(IngestOutcome { result: Err(e), .. }) => {
                 self.schedule_ingest_retry(job, final_path, now, e);
@@ -1396,6 +1411,32 @@ impl Coordinator {
             }
         }
         self.mark_dirty();
+    }
+
+    /// Enfileira a busca de letra da faixa recém-ingerida (Etapa E). Tags
+    /// saem do próprio arquivo staged (`parse_flac` local, ~ms) — não do
+    /// nome de arquivo do peer. `try_send`: fila cheia descarta em debug,
+    /// letra nunca gera backpressure nem erro de job.
+    fn send_lyrics_job(&self, track_id: u64, final_path: &std::path::Path) {
+        let Some(tx) = &self.lyrics_tx else { return };
+        let md = match library_indexer::parse_flac(final_path) {
+            Ok(md) => md,
+            Err(e) => {
+                tracing::debug!(track_id, %e, "lyrics: parse do staged falhou — sem job");
+                return;
+            }
+        };
+        let job = LyricsJob {
+            track_id,
+            flac_path: final_path.to_path_buf(),
+            artist: md.artist.unwrap_or_default(),
+            title: md.title.unwrap_or_default(),
+            album: md.album,
+            duration_secs: u32::try_from(md.duration_ms / 1000).ok().filter(|d| *d > 0),
+        };
+        if tx.try_send(job).is_err() {
+            tracing::debug!(track_id, "lyrics: fila cheia — job descartado");
+        }
     }
 
     fn schedule_ingest_retry(&self, job: &DownloadJob, final_path: PathBuf, now: Instant, reason: String) {
@@ -1555,10 +1596,22 @@ pub fn spawn_coordinator(
 
     let jobs_path = jobs_path_from_cfg(&cfg);
 
+    // Worker de letras (Etapa E): thread própria, canal bounded — o
+    // coordinator só faz try_send. O worker encerra sozinho quando o
+    // coordinator morrer (tx dropado -> canal fecha -> iter termina).
+    let (lyrics_tx, lyrics_rx) = crossbeam_channel::bounded::<LyricsJob>(64);
+    let user_agent = format!(
+        "rustify-player/{} (+https://github.com/PedroGiudice/rustify-player)",
+        env!("CARGO_PKG_VERSION")
+    );
+    let _lyrics_worker = spawn_lyrics_worker(lyrics_rx, Arc::new(Lrclib::new(user_agent)));
+
     std::thread::Builder::new()
         .name("slsk-coord".to_string())
         .spawn(move || {
-            let coordinator = Coordinator::new(cfg, api, board, searches, ingest, owned_index_provider, jobs_path);
+            let coordinator =
+                Coordinator::new(cfg, api, board, searches, ingest, owned_index_provider, jobs_path)
+                    .with_lyrics_tx(lyrics_tx);
             coordinator.reconcile_boot(unix_now());
             coordinator.run_loop(&app, &cmd_rx);
         })
@@ -1755,6 +1808,44 @@ mod tests {
             JobState::Ready { .. } => {}
             other => panic!("esperava Ready, veio {other:?}"),
         }
+    }
+
+    /// Etapa E: ingest OK dispara UM LyricsJob no canal, com track_id do
+    /// ingest e tags lidas do PRÓPRIO arquivo staged (não do nome remoto).
+    #[test]
+    fn ready_dispara_lyrics_job_com_tags_do_arquivo_staged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        fake.push_enqueue(Ok(()));
+        let (lyrics_tx, lyrics_rx) = crossbeam_channel::bounded(4);
+        let coord = make_coordinator(tmp.path(), fake.clone()).with_lyrics_tx(lyrics_tx);
+
+        let now = Instant::now();
+        let cand = candidate("peer1", "Artist\\Album\\01 - Title.flac", 1000);
+        let job_id = coord.start_download(&cand, vec![], "Rap & Hip-Hop", now).unwrap();
+
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/audio-engine/tests/fixtures/track_01.flac");
+        let dl_dir = tmp.path().join("downloads").join("Album");
+        std::fs::create_dir_all(&dl_dir).unwrap();
+        std::fs::copy(&fixture, dl_dir.join("01 - Title.flac")).unwrap();
+
+        fake.downloads_script.lock().unwrap().push_back(Ok(vec![transfer_user(
+            "peer1",
+            "Artist\\Album\\01 - Title.flac",
+            "Completed, Succeeded",
+            1000,
+            1000,
+        )]));
+        coord.poll_active_transfers_once(now + Duration::from_secs(1));
+        assert!(matches!(coord.board.get(&job_id).unwrap().state, JobState::Ready { .. }));
+
+        let sent = lyrics_rx.try_recv().expect("ingest OK deveria enfileirar LyricsJob");
+        let md = library_indexer::parse_flac(&fixture).unwrap();
+        assert_eq!(sent.artist, md.artist.unwrap_or_default());
+        assert_eq!(sent.title, md.title.unwrap_or_default());
+        assert!(sent.flac_path.starts_with(tmp.path().join("Music")), "path staged sob music_root");
+        assert!(lyrics_rx.try_recv().is_err(), "exatamente um job por ingest");
     }
 
     #[test]
