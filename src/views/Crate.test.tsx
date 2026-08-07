@@ -134,7 +134,7 @@ describe("Crate — resultados de busca", () => {
     const { container } = await searchAndRender([group(), group({ group_key: "k2", display_title: "R.I.P. Screw" })]);
     const rows = container.querySelectorAll(".crate-row");
     expect(rows.length).toBe(2);
-    expect(rows[0].querySelector(".badge-fmt")?.textContent).toContain("FLAC 16/44");
+    expect(rows[0].querySelector(".crate-badge")?.textContent).toContain("FLAC 16/44");
     expect(rows[0].querySelector(".crate-row__sources")?.textContent).toContain("2 fontes");
   });
 
@@ -192,8 +192,26 @@ describe("Crate — busca nunca dispara on-input", () => {
 });
 
 describe("Crate — cooldown", () => {
-  it("Err('cooldown:8') mostra banner e '[Buscar mesmo assim]' força reenvio", async () => {
-    vi.mocked(tauriApi.slskSearch).mockRejectedValueOnce("cooldown:8");
+  // v1.1: os dois canais são visualmente distintos — min-interval
+  // (Err "cooldown:N") vira countdown NO BOTÃO, sem banner; rede fria
+  // (Err "cold:N") é a única que abre o banner âmbar.
+  it("Err('cooldown:4') vira countdown no botão, sem banner", async () => {
+    vi.mocked(tauriApi.slskSearch).mockRejectedValueOnce("cooldown:4");
+    const { container } = render(() => <Crate />);
+    const input = container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko mode" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const btn = container.querySelector(".crate-btn-search") as HTMLButtonElement;
+    await waitFor(() => {
+      expect(btn.getAttribute("data-cooldown")).toBe("true");
+    });
+    expect(btn.textContent).toContain("4s");
+    expect(container.querySelector(".crate-banner")).toBeFalsy();
+  });
+
+  it("Err('cold:540') mostra banner e '[Buscar mesmo assim]' força reenvio", async () => {
+    vi.mocked(tauriApi.slskSearch).mockRejectedValueOnce("cold:540");
     const { container, getByText } = render(() => <Crate />);
     const input = container.querySelector(".coll-search input") as HTMLInputElement;
     fireEvent.input(input, { target: { value: "sicko mode" } });
