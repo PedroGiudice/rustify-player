@@ -276,8 +276,22 @@ ssh cmr-auto@100.102.249.9 'bash -lc "cd ~ && nohup uv run --with slskd-api --wi
 ```
 
 Gotchas:
+- **Conta Soulseek atual: `cmr-auto-rp`** (desde 2026-08-07; creds SO em
+  `~/slskd_dados/slskd.yml` na cmr-auto, chmod 600 — a conta antiga `cmr-auto`
+  morreu com a senha no incidente abaixo). O yml tambem ativa share de `/music`
+  (cidadania na rede; peers recusam leecher).
+- **Incidente 2026-07-28: `~/slskd_dados` foi deletado na cmr-auto.** O Docker
+  recria o bind mount vazio como root:root e o container entra em crash-loop
+  ("/app is not readable and/or writable"). Fix: `sudo chown 1000:1000
+  ~/slskd_dados` + restart; a config renasce DEFAULT (sem creds Soulseek, sem
+  shares) — reconfigurar o yml e restartar. Backup das creds nao existe fora
+  do yml: se sumir de novo, e criar conta nova na rede.
+- **Copia canonica do `baixar_soulseek_teste.py` e a da VM**
+  (`/home/opc/baixar_soulseek_teste.py`) — a da cmr-auto sumiu no mesmo
+  incidente; restaurar com `scp` da VM se faltar.
 - **Rodar via `uv run --with slskd-api --with mutagen`** — o python3 puro da
-  cmr-auto NAO tem `slskd_api`. `uv` precisa de `bash -lc` (PATH no login shell).
+  cmr-auto NAO tem `slskd_api`. `uv` fora de `bash -lc` exige caminho absoluto
+  (`~/.local/bin/uv`; o PATH do login shell nao cobre ssh nao-interativo).
 - **slskd acumula searches persistidas e passa a devolver 409 Conflict** em
   TODA busca nova quando o historico enche (incidente 2026-07-17: 1270
   acumuladas de runs interrompidas → leva inteira varrida em vazio). ANTES de
