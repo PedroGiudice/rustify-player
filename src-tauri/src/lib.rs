@@ -1,5 +1,6 @@
 mod persistence;
 mod qdrant_process;
+mod slsk;
 
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,

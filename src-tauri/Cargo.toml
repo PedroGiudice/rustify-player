@@ -69,6 +69,7 @@ serde = { workspace = true }
 serde_json = "1"
 tracing-subscriber = { workspace = true }
 library-indexer = { path = "crates/library-indexer" }
+slskd-client = { path = "crates/slskd-client" }
 audio-engine = { path = "crates/audio-engine", features = ["serde"] }
 tauri-plugin-fs = "2.5.0"
 tauri-plugin-dialog = "2"
@@ -79,6 +80,8 @@ tracing = { workspace = true }
 ureq = { workspace = true }
 serde_yaml = "0.9"
 notify = { workspace = true }
+walkdir = { workspace = true }
+symphonia = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -4812,7 +4812,9 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "slskd-client",
  "souvlaki",
+ "symphonia",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -4824,6 +4826,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ureq",
+ "walkdir",
 ]
 
 [[package]]
