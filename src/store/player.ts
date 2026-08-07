@@ -12,6 +12,7 @@
 import { createStore } from "solid-js/store";
 import type { Track, TrackInfo } from "../tauri";
 import { setVolume as ipcSetVolume } from "../tauri";
+import { resetRadioSession } from "./radioSession";
 
 // ── Tipos ──────────────────────────────────────────────────────
 
@@ -155,6 +156,16 @@ export function setQueue(
   scope: QueueScope = "open",
   source: QueueSource | null = null,
 ) {
+  // Troca de contexto de fila pra algo que NAO e station encerra a rodada
+  // de sessao (Fase 2/3 do session-awareness) — sem isto, seenIds/
+  // skippedIds de uma station vazariam pra recomendacao de outra, ou
+  // sobreviveriam depois do usuario ter saido pra uma playlist/album.
+  // kind === "station" preserva a rodada corrente: tanto o handleResume
+  // (que ja chamou startRadioSession antes) quanto o topup (que reusa o
+  // mesmo source) passam por aqui sem clobber.
+  if (source?.kind !== "station") {
+    resetRadioSession();
+  }
   setPlayer({
     queue: tracks,
     queueIndex: startIndex,
@@ -189,6 +200,17 @@ export function retreatQueue(): Track | null {
   if (prev < 0) return null;
   const track = player.queue[prev];
   setPlayer({ queueIndex: prev, currentTrack: track });
+  return track;
+}
+
+/** Pula direto pra um índice arbitrário da fila — distinto de
+    advanceQueue/retreatQueue (sempre ±1). Usado quando o clique vem de
+    uma posição qualquer (ex.: item da lista "Up next" na queue), não
+    sequencial. Fora de alcance retorna null sem mexer no estado. */
+export function jumpToQueueIndex(index: number): Track | null {
+  if (index < 0 || index >= player.queue.length) return null;
+  const track = player.queue[index];
+  setPlayer({ queueIndex: index, currentTrack: track });
   return track;
 }
 

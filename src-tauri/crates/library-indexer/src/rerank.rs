@@ -148,24 +148,46 @@ pub fn hybrid_rerank_pools(
     scored.into_iter().map(|(_, t)| t).collect()
 }
 
+/// Normaliza o nome de artista pra chave de agrupamento do cap: lowercase,
+/// só caracteres alfanuméricos ("J. Cole" e "J Cole" contam juntos — lixo
+/// de metadata real do acervo). `None` ou string só-pontuação viram chave
+/// vazia, que os callers tratam como "sem artista, sem cap".
+pub fn artist_key(artist_name: Option<&str>) -> String {
+    artist_name
+        .unwrap_or("")
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 /// [`cap_per_artist`] com piso: aplica o cap e, se o resultado ficar
 /// abaixo de `min_len`, completa com os cortados na ordem original —
 /// relaxa a diversidade em vez de entregar lista curta (uma station de
 /// 40 pedidas não pode voltar com 14 porque os vizinhos MERT se
 /// concentram em poucos artistas).
+///
+/// Wrapper de [`cap_per_artist_soft_seeded`] sem contagem inicial — zero
+/// mudança de comportamento para os chamadores atuais.
 pub fn cap_per_artist_soft(tracks: Vec<Track>, cap: usize, min_len: usize) -> Vec<Track> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
+    cap_per_artist_soft_seeded(tracks, cap, min_len, &HashMap::new())
+}
+
+/// Variante de [`cap_per_artist_soft`] com contagem inicial por artista —
+/// dá continuidade ao cap entre lotes (station topup): sem isto, o cap
+/// aplicado por chamada não impede repetição entre o lote inicial e o
+/// topup, porque cada chamada recomeçava a contagem do zero.
+pub fn cap_per_artist_soft_seeded(
+    tracks: Vec<Track>,
+    cap: usize,
+    min_len: usize,
+    seed_counts: &HashMap<String, usize>,
+) -> Vec<Track> {
+    let mut counts: HashMap<String, usize> = seed_counts.clone();
     let mut kept: Vec<Track> = Vec::new();
     let mut cut: Vec<Track> = Vec::new();
     for t in tracks {
-        let key: String = t
-            .artist_name
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .flat_map(char::to_lowercase)
-            .collect();
+        let key = artist_key(t.artist_name.as_deref());
         if key.is_empty() {
             kept.push(t);
             continue;
@@ -529,6 +551,56 @@ mod tests {
         let tracks = vec![track(1, Some("A")), track(2, Some("A")), track(3, Some("A"))];
         let out = cap_per_artist_soft(tracks, 1, 10);
         assert_eq!(out.len(), 3, "não há de onde tirar mais — devolve todas");
+    }
+
+    // ── cap_per_artist_soft_seeded ─────────────────────────────────────────
+
+    #[test]
+    fn cap_per_artist_soft_seeded_conta_a_partir_do_seed_inicial() {
+        // Seed diz que "A" já apareceu 2x no lote anterior (cap=2). O novo
+        // lote só tem tracks de A e B; A deve ser inteiramente cortado (já
+        // no limite) e o resultado final não precisa de A pra bater o piso.
+        let tracks = vec![
+            track(1, Some("A")), // 3ª ocorrência de A (seed=2) -> cortada
+            track(2, Some("B")), // 1ª de B -> mantida
+            track(3, Some("B")), // 2ª de B -> mantida
+            track(4, Some("B")), // 3ª de B -> cortada
+        ];
+        let mut seed_counts = HashMap::new();
+        seed_counts.insert("a".to_string(), 2);
+        let out = cap_per_artist_soft_seeded(tracks, 2, 2, &seed_counts);
+        assert_eq!(out.iter().map(|t| t.id).collect::<Vec<_>>(), vec![2, 3]);
+    }
+
+    #[test]
+    fn cap_per_artist_soft_seeded_sem_seed_e_identico_ao_nao_seeded() {
+        let tracks = vec![
+            track(1, Some("A")),
+            track(2, Some("A")),
+            track(3, Some("A")),
+            track(4, Some("B")),
+        ];
+        let seeded = cap_per_artist_soft_seeded(tracks.clone(), 2, 3, &HashMap::new());
+        let plain = cap_per_artist_soft(tracks, 2, 3);
+        assert_eq!(
+            seeded.iter().map(|t| t.id).collect::<Vec<_>>(),
+            plain.iter().map(|t| t.id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn cap_per_artist_soft_seeded_completa_piso_com_deficit_considerando_seed() {
+        // Piso 3, seed já contabiliza 2 de "A" — restam só as cortadas de A
+        // pra completar o déficit, na ordem original.
+        let tracks = vec![
+            track(10, Some("A")), // cortada (seed=2, cap=2)
+            track(11, Some("B")), // mantida
+            track(12, Some("A")), // cortada
+        ];
+        let mut seed_counts = HashMap::new();
+        seed_counts.insert("a".to_string(), 2);
+        let out = cap_per_artist_soft_seeded(tracks, 2, 3, &seed_counts);
+        assert_eq!(out.iter().map(|t| t.id).collect::<Vec<_>>(), vec![11, 10, 12]);
     }
 
     #[test]

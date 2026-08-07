@@ -79,8 +79,15 @@ export type PlayerStatePayload =
 
 // ── Player commands ────────────────────────────────────────────
 
-export const playerPlay = (path: string, origin: string, trackId: string | null) =>
-  invoke<void>("player_play", { path, origin, trackId });
+// contextId (4º parâmetro): identifica a RODADA de audição corrente (ex.:
+// sessão de station) — aditivo, Fase 2 do session-awareness. Opcional,
+// default null preserva o comportamento de todo call-site pré-existente.
+export const playerPlay = (
+  path: string,
+  origin: string,
+  trackId: string | null,
+  contextId: string | null = null,
+) => invoke<void>("player_play", { path, origin, trackId, contextId });
 
 export const playerPause = () => invoke<void>("player_pause");
 export const playerResume = () => invoke<void>("player_resume");
@@ -88,8 +95,11 @@ export const playerSeek = (seconds: number) => invoke<void>("player_seek", { sec
 export const playerEnqueueNext = (path: string) => invoke<void>("player_enqueue_next", { path });
 export const playerLoadPaused = (path: string, positionMs: number, trackId: string | null) =>
   invoke<void>("player_load_paused", { path, positionMs, trackId });
-export const playerSetOrigin = (origin: string, trackId: string | null) =>
-  invoke<void>("player_set_origin", { origin, trackId });
+export const playerSetOrigin = (
+  origin: string,
+  trackId: string | null,
+  contextId: string | null = null,
+) => invoke<void>("player_set_origin", { origin, trackId, contextId });
 
 // ── Session persistence ────────────────────────────────────────
 // IDs sao string porque os track_ids do Qdrant sao u64 hashes que
@@ -409,3 +419,22 @@ export const libDeleteStation = (id: string) =>
 
 export const libPlayStation = (id: string, limit?: number) =>
   invoke<Track[]>("lib_play_station", { id, limit: limit ?? 40 });
+
+/** Lote incremental de uma station EM ANDAMENTO (Fase 2 do
+    session-awareness) — usado pelo topup (topUpStation em PlayerBar.tsx),
+    disparado perto do fim da fila ou imediatamente após um skip cedo
+    (Fase 3). excludeIds = seenIds da rodada (hard filter); sessionNegativeIds
+    = skippedIds da rodada (penaliza candidatos parecidos com o que foi
+    rejeitado). Default de limit (6) espelha o topup do autoplay/radio. */
+export const libStationNext = (
+  stationId: string,
+  excludeIds: string[],
+  sessionNegativeIds: string[],
+  limit?: number,
+) =>
+  invoke<Track[]>("lib_station_next", {
+    stationId,
+    excludeIds,
+    sessionNegativeIds,
+    limit: limit ?? 6,
+  });

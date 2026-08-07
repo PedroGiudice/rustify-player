@@ -22,6 +22,15 @@ import {
 } from "../tauri";
 import { player, setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
+import { startRadioSession, registerSeen } from "../store/radioSession";
+
+// Lote inicial reduzido (Fase 2 do session-awareness): a station vira fila
+// incremental — o topup (PlayerBar.tsx topUpStation) busca mais conforme a
+// audição avança, com o sinal de sessão (seenIds/skippedIds) já ativo desde
+// o 2º lote. 40 tracks de uma vez congelava a recomendação no momento do
+// clique; 8 é o mesmo espelho de UX que o modo radio/shuffle já tem hoje
+// via prefetchRadio.
+const STATION_INITIAL_BATCH = 8;
 
 // ── Tipo de tone ─────────────────────────────────────────────────
 type Tone =
@@ -314,17 +323,23 @@ export default function Stations() {
 
   async function handleResume(id: string) {
     try {
+      // Fase 2 do session-awareness: inicia a rodada (contextId novo,
+      // seen/skipped zerados) ANTES de buscar o lote — startRadioSession
+      // já reseta qualquer sessão anterior de outra station.
+      const contextId = startRadioSession(id);
       // lib_play_station atualiza stats E retorna as tracks geradas —
       // a fila entra em scope "curated" (shuffle embaralha o contexto,
-      // nao vira radio) e a primeira track toca imediatamente.
-      const tracks = await libPlayStation(id);
+      // nao vira radio), lote inicial reduzido (fila incremental) e a
+      // primeira track toca imediatamente.
+      const tracks = await libPlayStation(id, STATION_INITIAL_BATCH);
       if (tracks.length > 0) {
         // source "station": continuações (auto-advance/skip) logam
         // origin="station" — régua e behavioral_signals dependem disso.
         // O nome alimenta o tooltip do chip de origem da PlayerBar.
         const name = stations()?.find((s) => s.id === id)?.name;
         setQueue(tracks, 0, "curated", { kind: "station", name });
-        playTrack(tracks[0], "station");
+        registerSeen(tracks.map((t) => t.id));
+        playTrack(tracks[0], "station", contextId);
       }
       // Refetch para atualizar estatisticas de played/last_played_at.
       refetch();

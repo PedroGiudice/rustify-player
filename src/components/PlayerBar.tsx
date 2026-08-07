@@ -13,16 +13,17 @@ import { onMount, onCleanup, Show } from "solid-js";
 import {
   player, setPlayer,
   applyTrackStarted, updatePosition, setPlayingState,
-  setLiked, cycleRepeat, advanceQueue, retreatQueue,
+  setLiked, cycleRepeat, advanceQueue, retreatQueue, jumpToQueueIndex,
   shuffleQueue, reconcileFromState, setQueue, changeVolume,
 } from "../store/player";
+import { registerSeen, registerSkipIfEarly, currentSession } from "../store/radioSession";
 import { dsp } from "../store/dsp";
 import { tweaks, updateTweak } from "../store/tweaks";
 import {
   playerPlay, playerPause, playerResume, playerSeek,
   playerEnqueueNext, playerSetOrigin, playerLoadPaused,
   setVolume, libIsLiked, libToggleLike, libRecordPlay,
-  libAutoplayNext, getState, cycleRepeat as ipcCycleRepeat,
+  libAutoplayNext, libStationNext, getState, cycleRepeat as ipcCycleRepeat,
   coverUrl, formatDuration, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds,
 } from "../tauri";
@@ -122,10 +123,15 @@ export function PlayerBar() {
         // Auto-advance
         const next = advanceQueue();
         if (next) {
-          await playTrack(next, contOrigin("album_seq"));
-          // Radio mode: top up the queue before it runs dry so playback
-          // stays continuous without a Qdrant roundtrip gap at the end.
-          if (
+          await playTrack(next, contOrigin("album_seq"), contContextId());
+          // Station topup (Fase 2): fila incremental, topa antes de secar —
+          // sem isto so a leva inicial (8 tracks) tocaria e a fila acabaria
+          // sem re-fetch. Independente de shuffle (station != radio mode).
+          if (player.queueSource?.kind === "station" && player.queueIndex >= player.queue.length - 2) {
+            void topUpStation();
+          } else if (
+            // Radio mode: top up the queue before it runs dry so playback
+            // stays continuous without a Qdrant roundtrip gap at the end.
             player.shuffle &&
             player.queueIndex >= player.queue.length - 2 &&
             next.id
@@ -140,12 +146,19 @@ export function PlayerBar() {
 
     unlistenMpris = await onMprisCommand(async (cmd) => {
       if (cmd === "next") {
+        const skippedTrack = player.currentTrack;
+        const posAtSkip = player.positionSecs;
+        const durAtSkip = player.durationSecs;
         const next = advanceQueue();
-        if (next) await playTrack(next, contOrigin("queue"));
-        else if (player.currentTrack?.id) await doAutoplay(player.currentTrack.id);
+        if (next) {
+          await playTrack(next, contOrigin("queue"), contContextId());
+          reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
+        } else if (player.currentTrack?.id) {
+          await doAutoplay(player.currentTrack.id);
+        }
       } else if (cmd === "previous") {
         const prev = retreatQueue();
-        if (prev) await playTrack(prev, contOrigin("queue"));
+        if (prev) await playTrack(prev, contOrigin("queue"), contContextId());
       }
     });
 
@@ -475,7 +488,7 @@ export function PlayerBar() {
             aria-disabled={player.queueIndex <= 0}
             aria-label="Previous"
             title="Previous"
-            onClick={() => { const t = retreatQueue(); if (t) playTrack(t, contOrigin("queue")); }}
+            onClick={() => { const t = retreatQueue(); if (t) playTrack(t, contOrigin("queue"), contContextId()); }}
           >
             <Icon name={ICONS.prev} size={14} />
           </button>
@@ -505,7 +518,16 @@ export function PlayerBar() {
             aria-disabled={player.queueIndex >= player.queue.length - 1}
             aria-label="Next"
             title="Next"
-            onClick={() => { const t = advanceQueue(); if (t) playTrack(t, contOrigin("queue")); }}
+            onClick={() => {
+              const skippedTrack = player.currentTrack;
+              const posAtSkip = player.positionSecs;
+              const durAtSkip = player.durationSecs;
+              const t = advanceQueue();
+              if (t) {
+                playTrack(t, contOrigin("queue"), contContextId());
+                reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
+              }
+            }}
           >
             <Icon name={ICONS.next} size={14} />
           </button>
@@ -622,7 +644,86 @@ export function queueSourceLabel(kind: string | undefined): string {
   }
 }
 
-export async function playTrack(track: import("../tauri").Track, origin = "manual") {
+/** contextId da rodada de station corrente (radioSession), ou undefined
+    fora dela — repassado a playTrack/playerPlay pra gravar context_id no
+    play_event (Fase 2 do session-awareness: skip-rate por posição). */
+function contContextId(): string | undefined {
+  return player.queueSource?.kind === "station"
+    ? currentSession().contextId ?? undefined
+    : undefined;
+}
+
+/** Topup incremental da station em andamento (Fase 2): busca um lote novo
+    excluindo o que já apareceu na rodada (seenIds) e penalizando o que foi
+    rejeitado cedo (skippedIds, Fase 3), estende a fila sem interromper
+    playback. Mesmo espírito de prefetchRadio (shuffle/radio), mas para
+    station — preserva o nome da station no chip de proveniência. */
+async function topUpStation() {
+  const session = currentSession();
+  if (!session.stationId) return;
+  try {
+    const tracks = await libStationNext(session.stationId, session.seenIds, session.skippedIds, 6);
+    if (!tracks.length) return;
+    setQueue([...player.queue, ...tracks], player.queueIndex, "curated", {
+      kind: "station",
+      name: player.queueSource?.name,
+    });
+    registerSeen(tracks.map((t) => t.id));
+  } catch (e) {
+    console.error("[station] topup failed:", e);
+  }
+}
+
+/** Fase 3 do session-awareness: reação a skip manual (botão next, MPRIS
+    next, clique em "Up next" na queue) ENQUANTO a fila ativa é uma
+    station — registra rejeição de sessão se o skip foi cedo, trunca a
+    cauda ainda não tocada da fila e dispara o topup imediatamente (não
+    espera chegar perto do fim).
+
+    Trunca só o que vem DEPOIS do índice NOVO (pós-avanço/pulo, já
+    refletido em player.queueIndex quando isto é chamado): o preload
+    gapless (playerEnqueueNext, ver TrackStarted acima) só aponta 1
+    posição à frente do índice ANTERIOR ao skip — que é sempre <= o novo
+    índice. Cortar estritamente depois do novo índice nunca remove o que
+    já foi pré-carregado no engine, então o truncamento pode ser síncrono
+    ao clique (não precisa adiar pro próximo TrackStarted). */
+function reactToStationSkip(
+  skippedTrack: import("../tauri").Track | null,
+  posAtSkip: number,
+  durAtSkip: number,
+) {
+  if (player.queueSource?.kind !== "station") return;
+  if (skippedTrack?.id) {
+    registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
+  }
+  setPlayer("queue", (q) => q.slice(0, player.queueIndex + 1));
+  void topUpStation();
+}
+
+/** Toca uma track da lista "Up next" (QueueDrawer/Queue.tsx). Distinto de
+    advanceQueue/retreatQueue (sempre ±1): o clique pode pular mais de uma
+    posição de uma vez. Só reage como skip de sessão (Fase 3) quando o
+    índice clicado está À FRENTE do atual — clicar em algo já tocado
+    (Now playing/History) é replay/rewind, não rejeição, e não mexe no
+    índice da fila (mesmo comportamento de antes). */
+export async function playQueueUpcoming(track: import("../tauri").Track) {
+  const idx = player.queue.findIndex((t) => t === track);
+  const skippedTrack = player.currentTrack;
+  const posAtSkip = player.positionSecs;
+  const durAtSkip = player.durationSecs;
+  if (idx > player.queueIndex && jumpToQueueIndex(idx)) {
+    await playTrack(track, contOrigin("queue"), contContextId());
+    reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
+  } else {
+    await playTrack(track, contOrigin("queue"), contContextId());
+  }
+}
+
+export async function playTrack(
+  track: import("../tauri").Track,
+  origin = "manual",
+  contextId?: string,
+) {
   setPlayer({
     currentTrack: track,
     durationSecs: (track.duration_ms ?? 0) / 1000,
@@ -637,7 +738,7 @@ export async function playTrack(track: import("../tauri").Track, origin = "manua
     setLiked(false);
   }
 
-  playerPlay(track.path, origin, track.id ?? null).catch((e) =>
+  playerPlay(track.path, origin, track.id ?? null, contextId ?? null).catch((e) =>
     console.error("[player] play failed:", e)
   );
 

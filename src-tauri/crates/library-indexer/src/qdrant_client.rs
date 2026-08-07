@@ -1011,6 +1011,11 @@ impl QdrantClient {
             ("started_at", json!({"type": "integer"})),
             ("event_type", json!({"type": "keyword"})),
             ("origin", json!({"type": "keyword"})),
+            // context_id (Fase 2 do session-awareness): criado no boot, antes
+            // de qualquer ponto ter o campo — cobertura 100% desde o primeiro
+            // write, evita o problema de index parcial pós-dados (ver
+            // ~/.claude/rules/qdrant-bulk-ops.md).
+            ("context_id", json!({"type": "keyword"})),
         ];
 
         for (field, schema) in &indices {
@@ -1181,6 +1186,13 @@ impl QdrantClient {
     /// `timestamp` is the unix epoch when the event was logged (i.e. when the
     /// track ended/was skipped). `started_at` is when playback began. Both are
     /// integers — string ISO format was retired.
+    ///
+    /// `context_id` identifica a RODADA de audição (ex.: uma sessão de
+    /// station) — aditivo, gravado no payload só quando `Some`. Pontos
+    /// antigos e eventos fora de uma rodada rastreada continuam sem o
+    /// campo; não é migração retroativa, é cobertura desde a Fase 2 do
+    /// session-awareness. Habilita skip-rate por posição-na-rodada.
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_play_event(
         &self,
         event_type: &str,
@@ -1190,6 +1202,7 @@ impl QdrantClient {
         timestamp: i64,
         end_position_ms: u64,
         duration_ms: u64,
+        context_id: Option<&str>,
     ) -> Result<(), IndexerError> {
         let listen_pct = if duration_ms == 0 {
             0.0_f64
@@ -1199,20 +1212,25 @@ impl QdrantClient {
 
         let point_id = uuid::Uuid::new_v4().to_string();
 
+        let mut payload = json!({
+            "event_type": event_type,
+            "timestamp": timestamp,
+            "track_id": track_id,
+            "origin": origin,
+            "started_at": started_at,
+            "end_position_ms": end_position_ms,
+            "duration_ms": duration_ms,
+            "listen_pct": listen_pct
+        });
+        if let Some(cid) = context_id {
+            payload["context_id"] = json!(cid);
+        }
+
         let body = json!({
             "points": [{
                 "id": point_id,
                 "vector": [0.0],
-                "payload": {
-                    "event_type": event_type,
-                    "timestamp": timestamp,
-                    "track_id": track_id,
-                    "origin": origin,
-                    "started_at": started_at,
-                    "end_position_ms": end_position_ms,
-                    "duration_ms": duration_ms,
-                    "listen_pct": listen_pct
-                }
+                "payload": payload
             }]
         });
 

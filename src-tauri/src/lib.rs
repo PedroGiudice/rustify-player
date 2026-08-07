@@ -10,6 +10,7 @@ use library_indexer::{
     Track, TrackFilter, TrackOrder,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -81,6 +82,10 @@ struct PlayerSnapshot {
     volume: f32,
     current_origin: Option<String>,
     current_track_id: Option<u64>,
+    /// Identificador da RODADA de audição corrente (ex.: sessão de station),
+    /// aditivo — Fase 2 do session-awareness. `None` fora de uma rodada
+    /// rastreada (playlist, álbum, busca...).
+    current_context_id: Option<String>,
     started_at: Option<i64>,
     last_position_ms: Option<i64>,
 }
@@ -110,6 +115,7 @@ fn flush_play_event(
     };
 
     let end_pos = snap.last_position_ms.unwrap_or(0).max(0) as u64;
+    let context_id = snap.current_context_id.clone();
 
     if let Err(e) = indexer.client().insert_play_event(
         event_type,
@@ -119,6 +125,7 @@ fn flush_play_event(
         unix_now(),
         end_pos,
         duration,
+        context_id.as_deref(),
     ) {
         tracing::warn!(?e, track_id, event_type, "failed to record play event");
         return false;
@@ -126,6 +133,7 @@ fn flush_play_event(
 
     snap.current_origin = None;
     snap.current_track_id = None;
+    snap.current_context_id = None;
     snap.started_at = None;
     snap.last_position_ms = None;
     true
@@ -1452,6 +1460,7 @@ fn player_play(
     path: String,
     origin: Option<String>,
     track_id: Option<String>,
+    context_id: Option<String>,
 ) -> Result<(), String> {
     let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
     if let Ok(mut s) = snapshot.0.lock() {
@@ -1461,6 +1470,7 @@ fn player_play(
         flush_play_event(&mut s, &library.handle, "track_skipped");
         s.current_origin = origin.or_else(|| Some("manual".to_string()));
         s.current_track_id = tid;
+        s.current_context_id = context_id;
         s.started_at = None;
         s.last_position_ms = None;
     }
@@ -1477,11 +1487,13 @@ fn player_set_origin(
     snapshot: State<Snapshot>,
     origin: String,
     track_id: Option<String>,
+    context_id: Option<String>,
 ) -> Result<(), String> {
     let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
     if let Ok(mut s) = snapshot.0.lock() {
         s.current_origin = Some(origin);
         s.current_track_id = tid;
+        s.current_context_id = context_id;
         if s.started_at.is_none() {
             s.started_at = Some(unix_now());
         }
@@ -3263,6 +3275,7 @@ pub fn run() {
             lib_create_station,
             lib_delete_station,
             lib_play_station,
+            lib_station_next,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -3427,8 +3440,39 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
-/// Gera tracks para uma station conforme seu kind.
+/// Gera tracks para uma station conforme seu kind — sem contexto de sessão
+/// (nenhum exclude/negative/seed de lote anterior). Wrapper fino de
+/// [`generate_station_batch`]: usado pelo preview (`lib_get_station`) e pelo
+/// primeiro lote de `lib_play_station`, onde não há sessão em andamento
+/// ainda. Comportamento idêntico ao pré-Fase-2.
 fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Vec<Track> {
+    generate_station_batch(station, lib, &[], &[], &HashMap::new(), limit)
+}
+
+/// Gera um LOTE de tracks para uma station, com contexto de sessão
+/// (Fase 2 do session-awareness):
+/// - `exclude_ids` — hard filter (`must_not has_id`): tracks já vistas
+///   nesta rodada (seenIds do `radioSession` client-side).
+/// - `session_negatives` — penaliza candidatos próximos dos skips desta
+///   rodada (`skippedIds`), fundidos com os negativos GLOBAIS de
+///   `behavioral_signals()` numa única chamada antes do loop de seeds.
+/// - `seed_counts` — contagem de artistas já presentes na fila (lote(s)
+///   anterior(es)), dá continuidade ao cap por artista entre chamadas
+///   (`cap_per_artist_soft_seeded`).
+fn generate_station_batch(
+    station: &Station,
+    lib: &Library,
+    exclude_ids: &[u64],
+    session_negatives: &[u64],
+    seed_counts: &HashMap<String, usize>,
+    limit: usize,
+) -> Vec<Track> {
+    tracing::debug!(
+        station_id = %station.id,
+        exclude_count = exclude_ids.len(),
+        session_negatives_count = session_negatives.len(),
+        "generate_station_batch: gerando lote de station"
+    );
     match station.kind {
         StationKind::Seed => {
             // Para cada seed track, busca similares (rank MERT), re-rankeia
@@ -3446,10 +3490,11 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
             // antes do corte em per_seed.
             let per_seed_fetch = per_seed * 3;
             // Negativos GLOBAIS dos behavioral_signals — paridade com o
-            // autoplay (Fase 0 do session-awareness): a station nunca
+            // autoplay (Fase 0/1 do session-awareness): a station nunca
             // recebia negatives, entao candidatos parecidos com skips
             // fortes do usuario entravam livremente. Falha degrada pra
-            // vazio (station segue funcionando sem o sinal).
+            // vazio (station segue funcionando sem o sinal). UMA chamada
+            // antes do loop de seeds — evita N roundtrips redundantes.
             let global_negatives = lib
                 .handle
                 .behavioral_signals()
@@ -3458,11 +3503,36 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
                     tracing::warn!(error = %e, "station: behavioral_signals falhou — sem negatives");
                     Vec::new()
                 });
+            // session_negatives (skips desta rodada) UNIAO negativos globais,
+            // dedup — e o que penaliza o recommend na tentativa principal.
+            let combined_negatives: Vec<u64> = {
+                let mut set: std::collections::HashSet<u64> =
+                    session_negatives.iter().copied().collect();
+                set.extend(global_negatives.iter().copied());
+                set.into_iter().collect()
+            };
             for &sid in &seeds {
-                let Ok(recs) = client.recommend(&[sid], &global_negatives, &[], per_seed_fetch)
-                else {
-                    continue;
-                };
+                // Fallback em camadas por seed, mesmo espirito do pool duplo
+                // de lib_autoplay_next: combined_negatives -> so globais ->
+                // sem negatives (== comportamento pre-Fase-2) antes de
+                // desistir daquele seed. exclude_ids (hard filter) e
+                // constante nas 3 tentativas.
+                let recs = client
+                    .recommend(&[sid], &combined_negatives, exclude_ids, per_seed_fetch)
+                    .ok()
+                    .filter(|r| !r.is_empty())
+                    .or_else(|| {
+                        client
+                            .recommend(&[sid], &global_negatives, exclude_ids, per_seed_fetch)
+                            .ok()
+                            .filter(|r| !r.is_empty())
+                    })
+                    .or_else(|| {
+                        client
+                            .recommend(&[sid], &[], exclude_ids, per_seed_fetch)
+                            .ok()
+                    })
+                    .unwrap_or_default();
                 // Resolve as tracks preservando a ordem (= rank MERT).
                 let mut cands: Vec<Track> = Vec::new();
                 for (track_id, _score) in recs {
@@ -3482,12 +3552,13 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
                     }
                 }
             }
-            // Cap global por artista antes do corte final — sem isto uma
-            // station podia sair dominada por um artista so. Versao SOFT:
-            // se o cap derrubar o total abaixo do limit pedido (vizinhos
-            // MERT concentrados em poucos artistas), completa com os
-            // cortados — station curta e pior que station repetida.
-            let mut tracks = rerank::cap_per_artist_soft(tracks, 2, limit);
+            // Cap por artista antes do corte final — sem isto uma station
+            // podia sair dominada por um artista so. Versao SOFT com
+            // continuidade de sessao (seed_counts): se o cap derrubar o
+            // total abaixo do limit pedido (vizinhos MERT concentrados em
+            // poucos artistas), completa com os cortados — station curta e
+            // pior que station repetida.
+            let mut tracks = rerank::cap_per_artist_soft_seeded(tracks, 2, limit, seed_counts);
             tracks.truncate(limit);
             tracks
         }
@@ -3501,12 +3572,23 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
             if filters.is_empty() {
                 return Vec::new();
             }
-            let ids = match client.mood_search_enrichments(&filters, limit) {
+            // session_negatives NAO se aplica aqui — scroll de enrichments
+            // nao e vetorial, negativos reais nao tem como penalizar. Only
+            // exclude_ids (hard filter, client-side pos-scroll). Over-fetch
+            // proporcional ao exclude pra manter a chance de bater `limit`
+            // apos o filtro — com exclude vazio (wrapper sem sessao) e
+            // identico ao comportamento pre-Fase-2 (fetch == limit).
+            let ids = match client.mood_search_enrichments(&filters, limit + exclude_ids.len()) {
                 Ok(v) => v,
                 Err(_) => return Vec::new(),
             };
+            let exclude_set: std::collections::HashSet<u64> =
+                exclude_ids.iter().copied().collect();
             let mut tracks = Vec::new();
             for track_id in ids {
+                if exclude_set.contains(&track_id) {
+                    continue;
+                }
                 if let Ok(Some(mut t)) = lib.handle.track(track_id) {
                     if let Some(rel) = &t.album_cover_path {
                         t.album_cover_path = Some(lib.cache_dir.join(rel));
@@ -3521,11 +3603,33 @@ fn generate_station_tracks(station: &Station, lib: &Library, limit: usize) -> Ve
                         }
                     }
                     tracks.push(t);
+                    if tracks.len() >= limit {
+                        break;
+                    }
                 }
             }
             tracks
         }
     }
+}
+
+/// Resolve a contagem de artistas já presentes na fila (por track IDs) pra
+/// alimentar `cap_per_artist_soft_seeded` — sem isto o cap por artista do
+/// topup não teria memória do(s) lote(s) anterior(es). Mesma normalização
+/// de chave do cap real (`rerank::artist_key`), senão a contagem diverge do
+/// que o cap efetivamente compara.
+fn resolve_artist_counts(lib: &Library, ids: &[u64]) -> HashMap<String, usize> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for &id in ids {
+        if let Ok(Some(t)) = lib.handle.track(id) {
+            let key = rerank::artist_key(t.artist_name.as_deref());
+            if key.is_empty() {
+                continue;
+            }
+            *counts.entry(key).or_insert(0) += 1;
+        }
+    }
+    counts
 }
 
 // ── Commands de stations ─────────────────────────────────────────────────────
@@ -3621,6 +3725,44 @@ fn lib_play_station(
 
     let tracks = generate_station_tracks(&updated, &lib, limit.unwrap_or(40));
     Ok(tracks)
+}
+
+/// Lote incremental de uma station EM ANDAMENTO (Fase 2 do
+/// session-awareness) — usado pelo topup do frontend (imediato apos skip,
+/// Fase 3, ou perto do fim da fila). `exclude_ids`/`session_negative_ids`
+/// chegam como String no wire (track IDs sao u64 > 2^53); IDs que nao
+/// parseiam sao silenciosamente ignorados (`filter_map`), mesmo padrao de
+/// `lib_autoplay_next`/`lib_get_tracks_by_ids`. `seed_counts` e resolvido
+/// server-side a partir dos proprios `exclude_ids` (== tracks ja na fila
+/// desta rodada), entao o cap por artista tem continuidade sem o frontend
+/// precisar mandar contagens.
+#[tauri::command]
+fn lib_station_next(
+    lib: State<Library>,
+    station_id: String,
+    exclude_ids: Vec<String>,
+    session_negative_ids: Vec<String>,
+    limit: Option<usize>,
+) -> Result<Vec<Track>, String> {
+    let stations = read_all_stations(&lib.data_dir);
+    let station = stations
+        .into_iter()
+        .find(|s| s.id == station_id)
+        .ok_or_else(|| format!("station '{station_id}' nao encontrada"))?;
+    let exclude: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
+    let negatives: Vec<u64> = session_negative_ids
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    let seed_counts = resolve_artist_counts(&lib, &exclude);
+    Ok(generate_station_batch(
+        &station,
+        &lib,
+        &exclude,
+        &negatives,
+        &seed_counts,
+        limit.unwrap_or(6),
+    ))
 }
 
 /// Cria a station "Your Mix" (seed baseada em behavioral_signals) se o

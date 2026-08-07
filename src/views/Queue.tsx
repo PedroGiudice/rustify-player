@@ -6,7 +6,7 @@
 import { For, Show } from "solid-js";
 import { player } from "../store/player";
 import { TrackRowList } from "../components/TrackRowList";
-import { playTrack } from "../components/PlayerBar";
+import { playTrack, playQueueUpcoming } from "../components/PlayerBar";
 
 export default function Queue() {
   const upcoming = () => player.queue.slice(player.queueIndex + 1);
@@ -38,7 +38,7 @@ export default function Queue() {
             <div class="section__head"><h2 class="section__title">Up next · {upcoming().length}</h2></div>
             <div class="row-list">
               <For each={upcoming()}>
-                {(t) => <TrackRowList track={t} onClick={() => playTrack(t)} noWhen />}
+                {(t) => <TrackRowList track={t} onClick={() => playQueueUpcoming(t)} noWhen />}
               </For>
             </div>
           </section>

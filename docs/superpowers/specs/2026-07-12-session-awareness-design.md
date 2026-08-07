@@ -3,8 +3,15 @@
 **Data:** 2026-07-12
 **Método:** workflow multi-agente (3 propostas independentes: backend-minimal,
 event-sourced, product-first × 3 juízes: engenharia, produto, dados × síntese).
-**Status:** Fase 0 (fix de medição: origin="station" nas continuações +
-negatives globais na station) IMPLEMENTADA na v0.2.51. Fases 1+ pendentes.
+**Status:** Fases 0-1 (origin="station" nas continuações + negatives globais
+na station) IMPLEMENTADAS na v0.2.51. Fases 2-3 (fila incremental com
+`lib_station_next`/`radioSession` + skip re-fetch com truncamento de cauda)
+IMPLEMENTADAS na v0.2.61 (2026-08-07). Divergências de nomes vs este doc:
+o store usa `queueSource` (não `queueOrigin`); o truncamento no skip é
+síncrono (a colisão com o preload gapless prevista aqui não ocorre — o
+preload nunca aponta além do novo índice; racional inline em
+`reactToStationSkip`, PlayerBar.tsx). Fase 4 (calibração) pendente de
+medição contra a régua.
 
 ## Resumo executivo
 

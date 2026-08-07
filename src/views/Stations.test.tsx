@@ -297,9 +297,12 @@ describe("Resume station inicia playback (fix: tracks eram descartadas)", () => 
     // continuações logam origin="station" (régua + behavioral_signals).
     expect(player.queueSource?.kind).toBe("station");
     expect(player.currentTrack?.id).toBe("3940784406639047387");
+    // Fase 2 do session-awareness: playTrack recebe o contextId da rodada
+    // (startRadioSession, formato "station:<id>:<timestamp>") como 3º arg.
     expect(vi.mocked(playTrack)).toHaveBeenCalledWith(
       expect.objectContaining({ id: "3940784406639047387" }),
-      expect.anything(),
+      "station",
+      expect.stringMatching(/^station:midnight-1:\d+$/),
     );
   });
 

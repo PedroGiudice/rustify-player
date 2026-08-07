@@ -10,7 +10,7 @@ import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { Icon, ICONS } from "./Icon";
 import { TrackRowList } from "./TrackRowList";
 import { player, setQueue } from "../store/player";
-import { playTrack } from "./PlayerBar";
+import { playTrack, playQueueUpcoming } from "./PlayerBar";
 import { fmtDur } from "../lib/format";
 
 export const QUEUE_EVENT = "rustify:open-queue";
@@ -86,7 +86,7 @@ export function QueueDrawer() {
               </button>
             </div>
             <For each={upcoming()}>
-              {(track) => <TrackRowList track={track} onClick={() => playTrack(track)} size="compact" />}
+              {(track) => <TrackRowList track={track} onClick={() => playQueueUpcoming(track)} size="compact" />}
             </For>
           </Show>
 
