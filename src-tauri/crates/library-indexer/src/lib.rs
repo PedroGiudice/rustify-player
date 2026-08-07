@@ -14,12 +14,13 @@ pub mod error;
 pub mod types;
 
 mod scan;
-mod metadata;
+pub mod metadata;
 mod cover;
 mod watch;
 mod retry;
 pub mod query;
 mod pipeline;
+pub mod dedup;
 
 pub mod loudness;
 pub mod lyrics;
@@ -30,8 +31,10 @@ mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
 pub use qdrant_client::{MoodFilters, QdrantClient, ACTIVITY_VOCAB, MOOD_VOCAB};
 pub use cover::{CoverSource, dominant_color, dominant_palette};
+pub use dedup::{OwnedIndex, OwnedVerdict};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
+pub use metadata::{parse_flac, ParsedFlacMetadata};
 pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};
 pub use rerank::{cap_per_artist, hybrid_rerank, vibe_from_enrichment, VibeProfile};
 pub use types::{
