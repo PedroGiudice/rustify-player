@@ -438,3 +438,170 @@ export const libStationNext = (
     sessionNegativeIds,
     limit: limit ?? 6,
   });
+
+// ── Crate (busca + download Soulseek in-app) ────────────────────
+// Tipos espelham EXATAMENTE o que o Rust serializa
+// (src-tauri/src/slsk/{mod,board,coordinator}.rs) — não o esboço da spec.
+
+/** Três estados distinguíveis (spec §3.3) — nunca colapsar. */
+export interface SlskStatus {
+  reachable: boolean;
+  logged_in: boolean;
+  network_connected: boolean;
+  message: string;
+}
+
+export type SearchState = "running" | "done" | "empty" | "failed" | "canceled";
+
+export interface OwnedVerdict {
+  track_id: string;
+  title: string;
+  artist: string;
+}
+
+/** Candidato de download — um peer/arquivo dentro de um ResultGroup. */
+export interface Candidate {
+  id: string;
+  username: string;
+  filename: string;
+  directory: string;
+  size: number;
+  bit_depth: number | null;
+  sample_rate: number | null;
+  bit_rate: number | null;
+  length_secs: number | null;
+  free_slot: boolean;
+  upload_speed: number;
+  queue_length: number;
+  score: number;
+  warn: string | null;
+}
+
+/** Faixa agregada (N peers colapsados por artista+título+duração). */
+export interface ResultGroup {
+  group_key: string;
+  display_title: string;
+  display_artist: string | null;
+  album_hint: string | null;
+  duration_secs: number | null;
+  quality_label: string;
+  owned: OwnedVerdict | null;
+  suggested_dest: string | null;
+  best: Candidate;
+  alternates: Candidate[];
+}
+
+export interface SearchSnapshot {
+  state: SearchState;
+  elapsed_ms: number;
+  responses_seen: number;
+  groups: ResultGroup[];
+  note: string | null;
+}
+
+/** RejectReason — serde externally-tagged (sem `tag=`, board.rs):
+    variantes unitárias viram string snake_case; `AlreadyOwned` vira
+    `{ already_owned: { track_id } }`. */
+export type RejectReason =
+  | { already_owned: { track_id: string } }
+  | "bit32_unsupported"
+  | "not_flac"
+  | "corrupt";
+
+/** JobState — 11 estados, `#[serde(tag = "kind")]` (board.rs): internamente
+    tagged, `kind` sempre presente. Terminais: ready/rejected/manual/failed/
+    canceled (podem voltar a `queued` via [Trocar fonte] — CR-3 no backend). */
+export type JobState =
+  | { kind: "queued" }
+  | { kind: "enqueued"; queue_position: number | null }
+  | { kind: "downloading"; pct: number; bps: number; eta_s: number | null }
+  | { kind: "stalled"; since_secs: number }
+  | { kind: "processing" }
+  | { kind: "indexing" }
+  | { kind: "ready"; track_id: string }
+  | { kind: "rejected"; reason: RejectReason }
+  | { kind: "manual"; path: string; why: string }
+  | { kind: "failed"; reason: string; retryable: boolean }
+  | { kind: "canceled" };
+
+export interface DownloadJob {
+  job_id: string;
+  username: string;
+  remote_filename: string;
+  display: string;
+  dest_playlist: string;
+  state: JobState;
+  size: number;
+  alternates: Candidate[];
+  tried_source_ids: string[];
+  created_at: number;
+}
+
+export const slskStatus = () => invoke<SlskStatus>("slsk_status");
+
+/** Fire-and-forget: `Ok(search_id)` ou `Err("cooldown:N"|"cold:N"|"busy"|"offline")`
+    — usar parseSlskSearchError() no catch pra decidir o banner. */
+export const slskSearch = (query: string, force = false) =>
+  invoke<string>("slsk_search", { query, force });
+
+export const slskResults = (searchId: string) =>
+  invoke<SearchSnapshot>("slsk_results", { searchId });
+
+export const slskCancelSearch = (searchId: string) =>
+  invoke<void>("slsk_cancel_search", { searchId });
+
+/** Camada 1 de dedup (confiável, spec §5.1): Qdrant local com a string que
+    o usuário digitou — não é rede, não passa pelo coordinator. */
+export const slskDedupProbe = (query: string) =>
+  invoke<Track[]>("slsk_dedup_probe", { query });
+
+export const slskDownload = (
+  searchId: string,
+  groupKey: string,
+  sourceId: string,
+  destPlaylist: string,
+) =>
+  invoke<string>("slsk_download", {
+    searchId,
+    groupKey,
+    sourceId,
+    destPlaylist,
+  });
+
+export const slskJobs = () => invoke<DownloadJob[]>("slsk_jobs");
+
+export const slskTryOtherSource = (jobId: string) =>
+  invoke<string>("slsk_try_other_source", { jobId });
+
+export const slskCancel = (jobId: string) => invoke<void>("slsk_cancel", { jobId });
+
+export const slskClearFinished = () => invoke<number>("slsk_clear_finished");
+
+/** Board inteiro por evento (spec §3.5) — throttle 500ms no backend, só
+    quando dirty. Nunca diffs incrementais. */
+export const onSlskJobs = (cb: (jobs: DownloadJob[]) => void) =>
+  listen<DownloadJob[]>("slsk-jobs", (e) => cb(e.payload));
+
+/** Parseia o `Err(string)` de slskSearch pro banner (spec §6.2/§6.3).
+    `unknown` cobre "busy"/"offline"/qualquer mensagem não reconhecida —
+    o caller decide o texto genérico nesse caso. */
+export type SlskSearchErrorKind = "cooldown" | "cold" | "offline" | "busy" | "unknown";
+
+export interface SlskSearchError {
+  kind: SlskSearchErrorKind;
+  seconds?: number;
+}
+
+export function parseSlskSearchError(err: unknown): SlskSearchError {
+  const raw =
+    typeof err === "string"
+      ? err
+      : err && typeof err === "object" && "message" in err
+        ? String((err as { message: unknown }).message)
+        : String(err ?? "");
+  const m = /^(cooldown|cold):(\d+)$/.exec(raw);
+  if (m) return { kind: m[1] as "cooldown" | "cold", seconds: parseInt(m[2], 10) };
+  if (raw === "offline") return { kind: "offline" };
+  if (raw === "busy") return { kind: "busy" };
+  return { kind: "unknown" };
+}
