@@ -11,9 +11,10 @@
      - postMessage opening cmd palette via custom event
    ============================================================ */
 
-import { For, Index, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Index, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
+import { activeCount } from "../store/crate";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
@@ -22,6 +23,9 @@ import logoCassette from "../assets/logo-cassette.png";
 const PRIMARY = [
   { route: "/home",    icon: ICONS.home,    label: "Home" },
   { route: "/search",  icon: ICONS.search,  label: "Search", kbd: "⌘K", action: "search" as const },
+  // Logo abaixo de Search (spec §4.1): é busca, só que além do acervo.
+  // Badge de jobs ativos (não-terminais) via store/crate — some em 0.
+  { route: "/crate",   icon: ICONS.packageOpen, label: "Crate" },
   { route: "/library", icon: ICONS.library, label: "Library" },
 ];
 
@@ -88,6 +92,9 @@ export function Sidebar() {
               <Icon name={item.icon} size={16} />
               <span>{item.label}</span>
               {item.kbd && <span class="nav-item__kbd">{item.kbd}</span>}
+              <Show when={item.route === "/crate" && activeCount() > 0}>
+                <span class="nav-item__badge">{activeCount()}</span>
+              </Show>
             </a>
           )}
         </For>

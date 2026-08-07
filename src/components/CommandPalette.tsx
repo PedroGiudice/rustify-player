@@ -86,6 +86,20 @@ export function CommandPalette() {
     return !!r && (r.tracks.length + r.albums.length + r.artists.length) > 0;
   };
 
+  // ActionItem do Crate: sempre presente com query digitada (busca na rede
+  // Soulseek), promovido ao topo quando o acervo local não achou nada — é
+  // o gancho de descoberta inteiro (spec §4.1): o usuário procura, não
+  // tem, e a saída está exatamente ali.
+  const crateAction = (): ActionItem | null => {
+    const q = query().trim();
+    if (!q) return null;
+    return {
+      kind: "action", id: "crate-search", icon: ICONS.packageOpen,
+      title: `Procurar "${q}" na rede →`, sub: "busca na rede Soulseek (Crate)",
+      run: () => { navigate(`/crate/${encodeURIComponent(q)}`); close(); },
+    };
+  };
+
   const actions = (): ActionItem[] => [
     {
       kind: "action", id: "shuffle", icon: ICONS.bolt,
@@ -122,13 +136,16 @@ export function CommandPalette() {
 
   const items = createMemo<Item[]>(() => {
     const r = searchResults();
+    const ca = crateAction();
     if (!r || (r.tracks.length + r.albums.length + r.artists.length) === 0) {
-      return actions();
+      // Sem resultados locais: promovido ao topo, antes das demais actions.
+      return ca ? [ca, ...actions()] : actions();
     }
     const tracks = r.tracks.map<TrackItem>((t) => ({ kind: "track", track: t }));
     const albums = r.albums.map<AlbumItem>((a) => ({ kind: "album", album: a }));
     const artists = r.artists.map<ArtistItem>((a) => ({ kind: "artist", artist: a }));
-    return [...tracks, ...albums, ...artists, ...actions()];
+    const acts = ca ? [...actions(), ca] : actions();
+    return [...tracks, ...albums, ...artists, ...acts];
   });
 
   // Indices das fronteiras de secao (para inserir headers no render).

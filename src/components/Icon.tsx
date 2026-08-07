@@ -74,4 +74,5 @@ export const ICONS = {
   download:     "lucide:download",
   refresh:      "lucide:refresh-cw",
   folderOpen:   "lucide:folder-open",
+  packageOpen:  "lucide:package-open",
 } as const;

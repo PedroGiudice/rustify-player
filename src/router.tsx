@@ -21,6 +21,7 @@ const VIEWS: Record<string, Component<{ param?: string | null }>> = {
   "/playlists":   lazy(() => import("./views/Playlists")),
   "/playlist":    lazy(() => import("./views/Playlist")),
   "/stations":    lazy(() => import("./views/Stations")),
+  "/crate":       lazy(() => import("./views/Crate")),
   "/queue":       lazy(() => import("./views/Queue")),
   "/now-playing": lazy(() => import("./views/NowPlaying")),
   "/signal":      lazy(() => import("./views/Signal")),

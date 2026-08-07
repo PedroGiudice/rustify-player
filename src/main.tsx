@@ -38,6 +38,10 @@ import { applyFullDspState } from "./store/dsp";
 import { applyLoudnessState } from "./store/tweaks";
 // Restaura o volume persistido (kv-volume) e empurra pro engine
 import { applyPersistedVolume } from "./store/player";
+// Board do Crate: ciclo LONGO, atravessa views — precisa estar de pé
+// desde o boot pra alimentar o badge da sidebar mesmo com a view
+// desmontada (spec §3.5, M6).
+import { bootCrateStore } from "./store/crate";
 // Ink adaptativo: bg/linhas seguem a cor da capa da faixa tocando
 import { wireAdaptiveInk } from "./lib/adaptiveInk";
 // Custom properties de cor tipadas (<color>) — habilita a transition
@@ -51,6 +55,7 @@ async function boot() {
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
   applyLoudnessState().catch((e) => console.warn("[loudness] initial sync failed:", e));
   applyPersistedVolume().catch((e) => console.warn("[volume] initial sync failed:", e));
+  bootCrateStore().catch((e) => console.warn("[crate] boot failed:", e));
 
   const savedTheme = localStorage.getItem("rustify-theme");
   if (savedTheme) {
