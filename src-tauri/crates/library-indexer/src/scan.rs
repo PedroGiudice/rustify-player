@@ -61,34 +61,7 @@ pub fn walk_music_root(
                 if !entry.file_type().is_file() {
                     return None;
                 }
-                let path = entry.path();
-                if !is_flac(path) {
-                    return None;
-                }
-                let meta = match entry.metadata() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        warn!(target: "library_indexer::scan", ?path, error = %e, "metadata read failed");
-                        return None;
-                    }
-                };
-                let mtime = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let parts = extract_path_parts(&root, path);
-                Some(FileEntry {
-                    path: path.to_path_buf(),
-                    mtime,
-                    size: meta.len(),
-                    genre_from_path: parts.genre,
-                    album_artist_from_path: parts.album_artist,
-                    album_from_path: parts.album_title,
-                    year_from_path: parts.year,
-                    is_compilation: parts.is_compilation,
-                })
+                entry_for_path(&root, entry.path())
             }
             Err(e) => {
                 warn!(target: "library_indexer::scan", error = %e, "walkdir entry failed");
@@ -96,6 +69,46 @@ pub fn walk_music_root(
             }
         });
     Ok(iter)
+}
+
+/// Build a [`FileEntry`] for a single path under `root`, if it's a `.flac`
+/// file. Used both by `walk_music_root` (per `DirEntry`, above — same
+/// path→metadata logic, just extracted) and directly by
+/// `IndexerCommand::IngestPaths` (crate download indexing, no `WalkDir`
+/// involved). Returns `None` for non-FLAC paths, paths outside `root`,
+/// non-file paths, or paths whose metadata can't be read.
+pub fn entry_for_path(root: &Path, path: &Path) -> Option<FileEntry> {
+    if !is_flac(path) {
+        return None;
+    }
+    if path.strip_prefix(root).is_err() {
+        return None;
+    }
+    let meta = match path.metadata() {
+        Ok(m) if m.is_file() => m,
+        Ok(_) => return None,
+        Err(e) => {
+            warn!(target: "library_indexer::scan", ?path, error = %e, "metadata read failed");
+            return None;
+        }
+    };
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let parts = extract_path_parts(root, path);
+    Some(FileEntry {
+        path: path.to_path_buf(),
+        mtime,
+        size: meta.len(),
+        genre_from_path: parts.genre,
+        album_artist_from_path: parts.album_artist,
+        album_from_path: parts.album_title,
+        year_from_path: parts.year,
+        is_compilation: parts.is_compilation,
+    })
 }
 
 fn is_hidden(path: &Path) -> bool {
@@ -316,6 +329,48 @@ mod tests {
         let entries: Vec<_> = walk_music_root(root).unwrap().collect();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].path.to_string_lossy().contains("Rock"));
+    }
+
+    #[test]
+    fn entry_for_path_matches_walk_music_root() {
+        // Refactor de extração: entry_for_path deve produzir exatamente o
+        // mesmo FileEntry que o closure do walk_music_root para o mesmo
+        // arquivo — zero mudança de comportamento.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let album_dir = root.join("Rock/Artist/2000 - Album");
+        fs::create_dir_all(&album_dir).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../audio-engine/tests/fixtures/track_01.flac");
+        let file = album_dir.join("01 - Song.flac");
+        fs::copy(&fixture, &file).unwrap();
+
+        let via_walk: Vec<FileEntry> = walk_music_root(root).unwrap().collect();
+        assert_eq!(via_walk.len(), 1);
+
+        let via_direct =
+            entry_for_path(root, &file).expect("entry_for_path deve achar o arquivo");
+        assert_eq!(via_walk[0], via_direct);
+    }
+
+    #[test]
+    fn entry_for_path_rejects_non_flac_and_outside_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        fs::create_dir_all(&root).unwrap();
+
+        // Extensão não-FLAC, dentro do root.
+        let mp3 = root.join("track.mp3");
+        fs::write(&mp3, b"fake").unwrap();
+        assert!(entry_for_path(&root, &mp3).is_none());
+
+        // Extensão FLAC, mas fora do root — o coordinator do Crate manda
+        // "not a flac under music_root" pra esse mesmo caso (pipeline.rs).
+        let outside_dir = tmp.path().join("elsewhere");
+        fs::create_dir_all(&outside_dir).unwrap();
+        let outside_flac = outside_dir.join("track.flac");
+        fs::write(&outside_flac, b"fake").unwrap();
+        assert!(entry_for_path(&root, &outside_flac).is_none());
     }
 
     #[test]

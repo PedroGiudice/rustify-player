@@ -14,7 +14,7 @@ use crate::lyrics;
 use crate::metadata::{self, ParsedFlacMetadata, PictureUsage};
 use crate::qdrant_client::QdrantClient;
 use crate::scan::{self, FileEntry};
-use crate::types::{IndexerCommand, IndexerEvent, IndexerSnapshot, path_to_id};
+use crate::types::{IndexerCommand, IndexerEvent, IndexerSnapshot, IngestOutcome, path_to_id};
 use crate::watch::{FsWatcher, WatchEvent};
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use serde_json::json;
@@ -226,6 +226,11 @@ fn coordinator_loop(
                         let _ = evt_tx.send(IndexerEvent::Error(e.to_string()));
                     }
                 }
+                Ok(IndexerCommand::IngestPaths { paths, reply }) => {
+                    let out = ingest_paths(&client, &config, &paths, &embed_job_tx);
+                    state.refresh(&client);
+                    let _ = reply.send(out);
+                }
                 Ok(IndexerCommand::Shutdown) | Err(_) => break,
             },
             recv(embed_result_rx) -> msg => match msg {
@@ -387,6 +392,46 @@ fn run_scan(
         removed,
     });
     Ok(())
+}
+
+/// Indexação determinística de paths específicos — braço de
+/// `IndexerCommand::IngestPaths` (spec §5.5). Reusa exatamente o que
+/// `run_scan` faz por arquivo (`entry_for_path` + `build_track_payload` +
+/// `path_to_id` + `upsert_tracks` + `EmbedJob`), mas devolve um
+/// `Result<u64, String>` por path em vez de eventos de progresso — é o que
+/// permite ao chamador (Crate) correlacionar path→track_id sem poll.
+fn ingest_paths(
+    client: &QdrantClient,
+    config: &PipelineConfig,
+    paths: &[PathBuf],
+    embed_job_tx: &Sender<EmbedJob>,
+) -> Vec<IngestOutcome> {
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        let result = scan::entry_for_path(&config.music_root, p)
+            .ok_or_else(|| "not a flac under music_root".to_string())
+            .and_then(|entry| {
+                build_track_payload(config, &entry)
+                    .map(|payload| (entry, payload))
+                    .map_err(|e| e.to_string())
+            })
+            .and_then(|(entry, payload)| {
+                let id = path_to_id(&entry.path);
+                client
+                    .upsert_tracks(&[(id, payload, None)])
+                    .map_err(|e| e.to_string())?;
+                let _ = embed_job_tx.send(EmbedJob {
+                    track_id: id,
+                    path: entry.path.clone(),
+                });
+                Ok(id)
+            });
+        out.push(IngestOutcome {
+            path: p.clone(),
+            result,
+        });
+    }
+    out
 }
 
 /// One-shot bulk pass: find every track in Qdrant whose `lufs_integrated`

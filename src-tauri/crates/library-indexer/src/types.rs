@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 
+use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 
 /// Top-level genre, aggregated from track payloads.
@@ -163,7 +164,22 @@ pub struct MoodPlaylist {
 #[derive(Debug, Clone)]
 pub enum IndexerCommand {
     Rescan,
+    /// Indexação determinística de paths específicos (ex.: faixas recém
+    /// baixadas via Crate, já staged sob `music_root`). Diferente de
+    /// `Rescan`, correlaciona path→track_id por `reply` — ver
+    /// `pipeline.rs::coordinator_loop`.
+    IngestPaths {
+        paths: Vec<PathBuf>,
+        reply: Sender<Vec<IngestOutcome>>,
+    },
     Shutdown,
+}
+
+/// Resultado de ingerir um único path via `IndexerCommand::IngestPaths`.
+#[derive(Debug, Clone)]
+pub struct IngestOutcome {
+    pub path: PathBuf,
+    pub result: Result<u64, String>,
 }
 
 /// Events broadcast by the indexer coordinator.

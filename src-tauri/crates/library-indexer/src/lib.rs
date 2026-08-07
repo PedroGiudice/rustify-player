@@ -39,8 +39,8 @@ pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};
 pub use rerank::{cap_per_artist, hybrid_rerank, vibe_from_enrichment, VibeProfile};
 pub use types::{
     Album, AlbumFilter, Artist, ArtistFilter, EmbeddingStatus, Genre, IndexerCommand,
-    IndexerEvent, IndexerSnapshot, MoodPlaylist, SearchResults, Track, TrackFilter,
-    TrackOrder,
+    IndexerEvent, IndexerSnapshot, IngestOutcome, MoodPlaylist, SearchResults, Track,
+    TrackFilter, TrackOrder,
 };
 
 use crossbeam_channel::{Receiver, Sender};
@@ -203,6 +203,43 @@ impl IndexerHandle {
 
     pub fn get_lyrics(&self, track_id: u64) -> Result<Vec<LyricLine>, IndexerError> {
         query::get_lyrics(&self.inner.client, track_id)
+    }
+
+    /// Indexação determinística de paths específicos, bloqueante até o
+    /// coordinator responder (ou timeout de 30s). Usado pelo Crate depois
+    /// de mover uma faixa (ou álbum) baixada pra dentro de `music_root` —
+    /// diferente de `send(IndexerCommand::Rescan)`, devolve `track_id` por
+    /// path em vez de só disparar um scan (spec §5.5).
+    pub fn ingest_paths(&self, paths: Vec<PathBuf>) -> Vec<IngestOutcome> {
+        let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
+        if self
+            .inner
+            .cmd_tx
+            .send(IndexerCommand::IngestPaths {
+                paths: paths.clone(),
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return paths
+                .into_iter()
+                .map(|path| IngestOutcome {
+                    path,
+                    result: Err("indexer shutdown".to_string()),
+                })
+                .collect();
+        }
+
+        match reply_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(outcomes) => outcomes,
+            Err(_) => paths
+                .into_iter()
+                .map(|path| IngestOutcome {
+                    path,
+                    result: Err("timeout aguardando IngestPaths".to_string()),
+                })
+                .collect(),
+        }
     }
 
     // --- Write operations -----------------------------------------------------
