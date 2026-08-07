@@ -24,6 +24,7 @@ import {
 import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from "../store/crate";
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 const POLL_MS = 800;
 
@@ -67,6 +68,21 @@ async function playById(trackId: string) {
     if (tracks[0]) playTrack(tracks[0], "crate");
   } catch (e) {
     console.error("[crate] playById falhou:", e);
+  }
+}
+
+/** Estado `manual` (spec §5.2 degrau 3 — slskd não reportou path local e a
+    varredura não achou o arquivo por basename/mtime): abre o gerenciador de
+    arquivos na pasta downloads via `opener:allow-reveal-item-in-dir` (única
+    permissão do plugin concedida — sem open-url/open-path genérico, spec
+    R15 superfície mínima). Falha (plataforma sem suporte, path inválido) →
+    fallback pro clipboard, nunca quebra o clique. */
+async function openManualPath(path: string) {
+  try {
+    await revealItemInDir(path);
+  } catch (e) {
+    console.warn("[crate] revealItemInDir falhou, copiando caminho:", e);
+    try { await navigator.clipboard?.writeText(path); } catch {}
   }
 }
 
@@ -287,10 +303,10 @@ function CrateRow(props: {
               onClick={(e) => {
                 e.stopPropagation();
                 if (props.job && props.job.state.kind === "manual") {
-                  navigator.clipboard?.writeText(props.job.state.path).catch(() => {});
+                  openManualPath(props.job.state.path);
                 }
               }}
-              title="Copia o caminho — abrir a pasta no gerenciador de arquivos é manual (v1)"
+              title="Abre a pasta no gerenciador de arquivos"
             >
               <Icon name={ICONS.folderOpen} size={13} /> Abrir pasta
             </button>
@@ -377,6 +393,16 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
             onClick={() => { if (props.job.state.kind === "ready") playById(props.job.state.track_id); }}
           >
             <Icon name={ICONS.play} size={13} /> Tocar
+          </button>
+        </Show>
+        <Show when={props.job.state.kind === "manual"}>
+          <button
+            type="button"
+            class="pl-action-btn crate-row__action"
+            onClick={() => { if (props.job.state.kind === "manual") openManualPath(props.job.state.path); }}
+            title="Abre a pasta no gerenciador de arquivos"
+          >
+            <Icon name={ICONS.folderOpen} size={13} /> Abrir pasta
           </button>
         </Show>
       </div>

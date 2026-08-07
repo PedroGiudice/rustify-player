@@ -14,6 +14,7 @@ import { render, cleanup, fireEvent, waitFor } from "@solidjs/testing-library";
 import type { ResultGroup, SearchSnapshot, DownloadJob, Track, FolderPlaylist } from "../tauri";
 
 vi.mock("../components/PlayerBar", () => ({ playTrack: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => undefined) }));
 
 vi.mock("../tauri", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../tauri")>();
@@ -41,6 +42,7 @@ vi.mock("../tauri", async (importOriginal) => {
 });
 
 import * as tauriApi from "../tauri";
+import * as opener from "@tauri-apps/plugin-opener";
 import { __resetForTests } from "../store/crate";
 import Crate from "./Crate";
 
@@ -106,6 +108,7 @@ beforeEach(() => {
   vi.mocked(tauriApi.slskJobs).mockResolvedValue([]);
   vi.mocked(tauriApi.onSlskJobs).mockImplementation(async () => () => {});
   vi.mocked(tauriApi.libListFolders).mockResolvedValue([]);
+  vi.mocked(opener.revealItemInDir).mockResolvedValue(undefined);
   localStorage.clear();
   __resetForTests();
 });
@@ -243,6 +246,73 @@ describe("Crate — evento slsk-jobs", () => {
     });
     const buttons = Array.from(row.querySelectorAll("button")).map((b) => b.textContent ?? "");
     expect(buttons.some((t) => t.includes("Tocar"))).toBe(true);
+  });
+});
+
+describe("Crate — Abrir pasta (estado manual, plugin-opener)", () => {
+  async function downloadIntoManual() {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    const g = group({ suggested_dest: "Rap & Hip-Hop" });
+    const utils = await searchAndRender([g]);
+    const row = utils.container.querySelector(".crate-row")!;
+    const baixarBtn = Array.from(row.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixarBtn);
+    await waitFor(() => expect(tauriApi.slskDownload).toHaveBeenCalled());
+    await waitFor(() => expect(emit).not.toBeNull());
+
+    emit!([
+      {
+        job_id: "job1",
+        username: "peer_a",
+        remote_filename: g.best.filename,
+        display: "Sicko Mode",
+        dest_playlist: "Rap & Hip-Hop",
+        state: { kind: "manual", path: "/home/cmr-auto/slskd_dados/downloads", why: "basename não bateu" },
+        size: g.best.size,
+        alternates: [],
+        tried_source_ids: [],
+        created_at: 0,
+      },
+    ]);
+    await waitFor(() => {
+      expect(utils.container.querySelector(".crate-row")!.getAttribute("data-state")).toBe("manual");
+    });
+    return utils;
+  }
+
+  it("clicar em '[Abrir pasta]' chama revealItemInDir com o path do job", async () => {
+    const { container } = await downloadIntoManual();
+    const row = container.querySelector(".crate-row")!;
+    const openBtn = Array.from(row.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Abrir pasta"),
+    )!;
+    fireEvent.click(openBtn);
+    await waitFor(() => {
+      expect(opener.revealItemInDir).toHaveBeenCalledWith("/home/cmr-auto/slskd_dados/downloads");
+    });
+  });
+
+  it("se revealItemInDir falhar, cai no fallback de copiar o caminho pro clipboard", async () => {
+    vi.mocked(opener.revealItemInDir).mockRejectedValueOnce(new Error("unsupported"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const { container } = await downloadIntoManual();
+    const row = container.querySelector(".crate-row")!;
+    const openBtn = Array.from(row.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Abrir pasta"),
+    )!;
+    fireEvent.click(openBtn);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("/home/cmr-auto/slskd_dados/downloads");
+    });
   });
 });
 
