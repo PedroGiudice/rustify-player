@@ -339,3 +339,39 @@ Gotchas:
   faixa obscura entre as candidatas, nao necessariamente deep cut da discografia
   do artista. Fonte A (co-listening) e hit-pesada; a fonte B (cauda) tem cota
   reservada (`SOURCE_B_SHARE`) pra nao ser soterrada.
+
+## Crate — busca + download Soulseek in-app (v0.2.62)
+
+Aba **Crate** (sidebar abaixo de Search, rota `/crate`, entrada pelo ⌘K):
+busca na rede Soulseek via slskd local da cmr-auto e baixa direto pro
+acervo, com validacao, dedup e indexacao automatica. Substitui o fluxo
+CSV+scp+script pra **faixas avulsas**; levas grandes de curadoria continuam
+no `baixar_soulseek_teste.py`. Spec (fonte da verdade, com adendo do spike
+da API real): `docs/superpowers/specs/2026-08-07-crate-in-app-downloads-design.md`.
+QA manual roteirizado: `docs/soulseek/manual-qa.md`.
+
+- **Backend**: `src-tauri/crates/slskd-client` (protocolo puro, fixtures
+  reais) + `src-tauri/src/slsk/` (coordinator em thread unica `slsk-coord`,
+  JobBoard escritor unico com 11 estados tagged `kind`, staging em
+  `.rustify-incoming` + rename atomico pro layout canonico
+  `~/Music/<playlist>/<Artista>/<Album>/`). Indexacao deterministica via
+  `IndexerCommand::IngestPaths` (devolve track_id por path).
+- **Letras junto**: worker paralelo `slsk-lyrics`
+  (`library-indexer/src/lyrics_fetch.rs`) consulta lrclib.net pos-download
+  e grava sidecar `.lrc` (nunca sobrescreve). Canal bounded(64), try_send —
+  nunca bloqueia o coordinator.
+- **Destino**: playlist = pasta de 1o nivel. Precedencia (spec §4.5):
+  override da toolbar > artista ja no acervo (`suggested_dest`) > ultimo
+  usado (`kv-crate-dest`) > seletor obrigatorio. NUNCA semear o override
+  com o ultimo usado (bug IM-D1, corrigido em 63ec14f).
+- **Guard-rails de rede**: pacer (min 4s entre buscas, cap 40/h), cold-down
+  com banner + "buscar mesmo assim", sweep de searches persistidas no boot.
+  Nao contornar — a rede Soulseek pune burst (gotcha documentado acima).
+- **Config**: `http://127.0.0.1:5030` default; api key via
+  `RUSTIFY_SLSKD_API_KEY` ou config file no data dir do app. Creds do
+  Soulseek SO em `~/slskd_dados/slskd.yml` na cmr-auto (0600) — nunca em
+  log ou disco do app. CSP nao ganha `:5030` (o HTTP e feito no Rust).
+- **Opener**: capability restrita a `opener:allow-reveal-item-in-dir`
+  (estado `manual` abre o gerenciador de arquivos). Nao alargar.
+- **v1.1 pendente**: handoff visual do claude design (usuario itera a tela);
+  popovers fechando em clique fora; Fase 2 = album inteiro.
