@@ -1,0 +1,13 @@
+[package]
+name = "slskd-client"
+version = "0.1.0"
+description = "Cliente Rust puro para a API do slskd (Soulseek daemon) — protocolo, ranking, pacing e destino de staging. Sem dependência de Tauri/Qdrant."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

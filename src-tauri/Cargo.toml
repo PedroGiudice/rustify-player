@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/audio-engine", "crates/library-indexer"]
+members = [".", "crates/audio-engine", "crates/library-indexer", "crates/slskd-client"]
 resolver = "2"
 
 [workspace.package]
