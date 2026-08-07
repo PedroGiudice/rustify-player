@@ -75,4 +75,5 @@ export const ICONS = {
   refresh:      "lucide:refresh-cw",
   folderOpen:   "lucide:folder-open",
   packageOpen:  "lucide:package-open",
+  alert:        "lucide:triangle-alert",
 } as const;

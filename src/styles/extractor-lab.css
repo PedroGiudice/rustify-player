@@ -3273,10 +3273,19 @@ html { --glow: 0; }
 
 /* ── Crate ─────────────────────────────────────────────────────
    Busca + download Soulseek in-app (docs/superpowers/specs/
-   2026-08-07-crate-in-app-downloads-design.md §4). Tokens de tema
-   apenas — os quatro estados visuais (em voo/pronto/atenção/erro)
-   usam os triplets semânticos ring/bg/fg já existentes no arquivo
-   (blue/green/amber/rose), nunca hex literal.
+   2026-08-07-crate-in-app-downloads-design.md §4), restyle v1.1 =
+   docs/design-refs/design_handoff_crate/"Rustify Crate.html"
+   (fonte da verdade dos números: grids, tamanhos, pesos, gaps).
+
+   Tokens de tema apenas — nenhum hex literal. Os hex embutidos no
+   handoff (bordas das pills, #fff dos botões pretos) viram
+   color-mix() sobre os triplets ring/bg/fg e pares fg-1/bg-canvas,
+   que sobrevivem a tema escuro. `--accent` do handoff =
+   var(--primary) (accent adaptativo da capa), com fallback.
+
+   Densidade: só a COMPACTA do handoff está implementada. O grid da
+   linha é comum às duas densidades — a variante `roomy` entra
+   depois como bloco `[data-density="roomy"]` sem tocar no resto.
    ──────────────────────────────────────────────────────────────── */
 
 .nav-item__badge {
@@ -3289,56 +3298,128 @@ html { --glow: 0; }
   min-width: 18px; text-align: center;
 }
 
-.crate-toolbar { padding: 0 40px; }
-.crate-net-status {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--fg-5);
-  white-space: nowrap;
-}
-.crate-net-status .sig-stat__dot { width: 6px; height: 6px; }
-.crate-net-status[data-on="true"] .sig-stat__dot { background: var(--green-ring); }
-.crate-net-status[data-on="false"] .sig-stat__dot { background: var(--rose-ring); }
+/* A view Crate desenha suas próprias faixas horizontais (toolbar,
+   banners, list-head) — o padding vertical/gap do .view__body padrão
+   duplicaria os espaçamentos do handoff. */
+.crate-body { padding: 0; gap: 0; }
 
-.crate-banner {
-  margin: 0 40px 18px;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 14px; flex-wrap: wrap;
-  padding: 10px 16px;
-  border-radius: var(--radius-lg);
-  font-size: 12.5px;
+/* ── toolbar ─────────────────────────────────────────────────── */
+.crate-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 18px 40px 0;
+  flex-wrap: wrap;
 }
-.crate-banner[data-tone="amber"] {
-  background: var(--amber-bg); color: var(--amber-fg);
-  border: 1px solid color-mix(in srgb, var(--amber-ring) 35%, transparent);
+.crate-search {
+  position: relative;
+  flex: 1; min-width: 240px; max-width: 560px;
+  display: block;
+  height: 40px;
+  padding: 0;
+  border: 0; background: none; border-radius: 0;
 }
-.crate-banner[data-tone="mint"] {
-  background: var(--green-bg); color: var(--green-fg);
-  border: 1px solid color-mix(in srgb, var(--green-ring) 35%, transparent);
+.crate-search > iconify-icon {
+  position: absolute; left: 13px; top: 50%;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  color: var(--fg-6); pointer-events: none;
 }
-.crate-banner button {
-  font-size: 12px; font-weight: 600;
-  color: inherit; text-decoration: underline;
-  white-space: nowrap;
-}
-
-/* Destino: chip "→ <playlist> ▾" com popover de pastas (reusa
-   libListFolders — mesma fonte que Playlists.tsx). --warn quando não há
-   destino resolvido (spec §4.5 caso 4 — seletor obrigatório). */
-.crate-dest { position: relative; }
-.crate-dest__btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-family: var(--font-mono); font-size: 11.5px;
-  color: var(--fg-4);
+.crate-search input {
+  width: 100%; height: 40px;
+  padding: 0 92px 0 37px;
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
-  border-radius: var(--radius-pill);
-  padding: 4px 10px;
+  border-radius: var(--radius-lg);
+  font-size: 13.5px; font-weight: 500;
+  color: var(--fg-1);
+  outline: 0;
+  transition: border-color var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
+}
+.crate-search input::placeholder { color: var(--fg-6); font-weight: 400; }
+.crate-search input:focus { border-color: var(--fg-8); box-shadow: var(--ring-focus); }
+.crate-search__kbd {
+  position: absolute; right: 11px; top: 50%;
+  transform: translateY(-50%);
+  display: flex; gap: 4px; pointer-events: none;
+}
+
+.crate-kbd {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  background: var(--bg-tint);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xs);
+  padding: 2px 5px;
+  color: var(--fg-5);
+}
+
+/* Botão Buscar: preto do handoff = par fg-1/bg-canvas (sobrevive a
+   tema escuro; #fff hard-coded não sobreviveria). */
+.crate-btn-search {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 18px;
+  background: var(--fg-1); color: var(--bg-canvas);
+  border: 0; border-radius: var(--radius-lg);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.crate-btn-search:hover { opacity: 0.88; }
+.crate-btn-search:disabled { opacity: 0.55; cursor: default; }
+.crate-btn-search[data-cooldown="true"] {
+  background: var(--bg-tint); color: var(--fg-6);
+  cursor: default; pointer-events: none;
+}
+.crate-cooldown-ring { width: 15px; height: 15px; flex: none; }
+.crate-cooldown-ring circle { fill: none; stroke-width: 2; }
+.crate-cooldown-ring .trk { stroke: var(--fg-8); }
+.crate-cooldown-ring .val {
+  stroke: var(--primary, var(--blue-ring));
+  stroke-linecap: round;
+  stroke-dasharray: 37.7;
+  transform: rotate(-90deg); transform-origin: 50% 50%;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.crate-net-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--bg-paper);
+  font-size: 11.5px; font-weight: 500;
+  color: var(--fg-4);
   white-space: nowrap;
 }
-.crate-dest__btn:hover { border-color: var(--fg-7); color: var(--fg-1); }
+.crate-net-status[data-on="false"] { color: var(--fg-6); }
+.crate-net-status__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.crate-net-status[data-on="true"]  .crate-net-status__dot { background: var(--green-ring); }
+.crate-net-status[data-on="false"] .crate-net-status__dot { background: var(--fg-7); }
+
+/* ── destino (toolbar e por linha) ───────────────────────────── */
+.crate-dest { position: relative; }
+.crate-dest__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 40px; padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--bg-paper);
+  font-size: 12.5px; font-weight: 500;
+  color: var(--fg-3);
+  white-space: nowrap;
+  transition: border-color var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}
+.crate-dest__btn:hover { border-color: var(--fg-8); color: var(--fg-1); }
+.crate-dest__btn iconify-icon { width: 12px; height: 12px; color: var(--fg-6); }
+.crate-dest__lbl {
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-6); margin-right: 2px;
+}
+.crate-dest__arrow { color: var(--fg-6); }
 .crate-dest__btn--warn {
-  color: var(--amber-fg); background: var(--amber-bg);
-  border-color: color-mix(in srgb, var(--amber-ring) 40%, transparent);
+  color: var(--amber-fg); background: var(--tone-butter-bg);
+  border-color: var(--tone-butter-border);
 }
 .crate-dest__menu {
   position: absolute; z-index: 20; top: calc(100% + 4px); right: 0;
@@ -3352,82 +3433,351 @@ html { --glow: 0; }
 }
 .crate-dest__opt {
   padding: 6px 10px; font-size: 12.5px; color: var(--fg-2);
-  border-radius: 6px; text-align: left;
+  border-radius: var(--radius-sm); text-align: left;
 }
 .crate-dest__opt:hover { background: var(--bg-soft); }
-.crate-dest__clear { color: var(--fg-5); font-size: 15px; padding: 0 4px; }
+.crate-dest__clear {
+  height: 40px; padding: 0 8px;
+  color: var(--fg-5); font-size: 15px;
+}
 .crate-dest__clear:hover { color: var(--fg-1); }
 
-/* Linha de resultado — grid PRÓPRIO (P4: .row é fixo 5 colunas, não serve
-   aqui). Estados por data-state, cor só nos elementos de destaque. */
+/* Chip de destino DENTRO da linha: mesma pílula dos outros chips da
+   row, não a caixa alta da toolbar. */
+.crate-chip.crate-dest__btn {
+  height: 24px; padding: 0 9px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  color: var(--fg-4);
+}
+.crate-chip.crate-dest__btn[data-override="true"] {
+  background: var(--bg-faint); border-color: var(--fg-8); color: var(--fg-1);
+}
+
+/* ── banners ─────────────────────────────────────────────────── */
+.crate-banners { display: flex; flex-direction: column; gap: 8px; padding: 16px 40px 0; }
+.crate-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+  font-size: 12.5px; font-weight: 500;
+}
+.crate-banner iconify-icon { width: 15px; height: 15px; flex: none; }
+.crate-banner p { margin: 0; font: inherit; }
+.crate-banner__sub {
+  display: block;
+  font-size: 11.5px; font-weight: 400;
+  margin-top: 2px;
+}
+.crate-banner__sp { flex: 1; }
+.crate-banner[data-tone="mint"] {
+  background: var(--tone-mint-bg); border-color: var(--tone-mint-border); color: var(--fg-2);
+}
+.crate-banner[data-tone="mint"] iconify-icon { color: var(--green-fg); }
+.crate-banner[data-tone="amber"] {
+  background: var(--tone-butter-bg); border-color: var(--tone-butter-border); color: var(--fg-2);
+}
+.crate-banner[data-tone="amber"] iconify-icon { color: var(--amber-fg); }
+.crate-banner[data-tone="amber"] .crate-banner__sub { color: var(--fg-4); }
+.crate-banner__dim { color: var(--fg-5); }
+.crate-banner__act {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 11px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--fg-1) 10%, transparent);
+  background: color-mix(in srgb, var(--bg-paper) 72%, transparent);
+  font-size: 11.5px; font-weight: 600;
+  color: var(--fg-1);
+  white-space: nowrap;
+  transition: background var(--dur-base) var(--ease-out);
+}
+.crate-banner__act:hover { background: var(--bg-paper); }
+.crate-banner__act iconify-icon { width: 11px; height: 11px; color: var(--fg-2); }
+
+/* ── cabeçalho da lista ──────────────────────────────────────── */
+.crate-list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  padding: 22px 40px 9px;
+}
+.crate-list-head h2 {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-5); margin: 0; white-space: nowrap;
+}
+.crate-keys {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-6); white-space: nowrap;
+}
+
+.crate-list { padding: 0 40px 56px; }
+.crate-list-inner {
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+}
+.crate-row-wrap { position: relative; }
+.crate-row-wrap + .crate-row-wrap { border-top: 1px solid var(--line-2); }
+.crate-row-wrap:hover { background: var(--bg-soft); }
+.crate-row-wrap[data-focus="true"] {
+  box-shadow: var(--ring-focus);
+  background: var(--bg-soft);
+}
+
+/* ── linha (grid de 6 colunas do handoff) ────────────────────── */
 .crate-row {
   display: grid;
-  grid-template-columns: 96px 1fr auto auto;
+  grid-template-columns: minmax(240px, 1fr) 112px 104px 186px 48px 118px;
   align-items: center;
-  gap: 14px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line-3);
+  column-gap: 16px;
+  position: relative;
+  min-height: 54px;
+  padding: 9px 12px;
   cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out);
 }
-.crate-row__aux { display: flex; align-items: center; gap: 10px; justify-self: end; }
-.crate-row[data-selected="true"] { background: var(--bg-faint); }
-.crate-row:hover { background: var(--bg-soft); }
-.crate-row[data-state="ready"] { background: color-mix(in srgb, var(--green-bg) 55%, transparent); }
-.crate-row[data-state="failed"],
-.crate-row[data-state="rejected"] { background: color-mix(in srgb, var(--rose-bg) 45%, transparent); }
-.crate-row[data-state="stalled"],
-.crate-row[data-state="manual"] { background: color-mix(in srgb, var(--amber-bg) 45%, transparent); }
+.crate-row .crate-r-act,
+.crate-row .crate-badge { cursor: auto; }
+.crate-row .crate-r-act button,
+.crate-row .crate-chip { cursor: pointer; }
 
-.crate-row__fmt-status { display: flex; align-items: center; }
-.crate-row__fmt-status .chip { pointer-events: none; }
-.crate-row__meta { min-width: 0; line-height: 1.3; }
-.crate-row__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crate-row__sub { font-size: 12px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crate-row__status { font-size: 11.5px; color: var(--fg-5); }
-.crate-row[data-state="ready"] .crate-row__status { color: var(--green-fg); }
-.crate-row[data-state="failed"] .crate-row__status,
-.crate-row[data-state="rejected"] .crate-row__status { color: var(--rose-fg); }
-.crate-row[data-state="stalled"] .crate-row__status,
-.crate-row[data-state="manual"] .crate-row__status { color: var(--amber-fg); }
-
-.crate-row__sources {
-  font-family: var(--font-mono); font-size: 11px; color: var(--fg-5);
-  white-space: nowrap;
+/* compacta: título e sub na mesma baseline */
+.crate-r-main { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.crate-r-title {
+  font-size: 13.5px; font-weight: 600; line-height: 1.35;
+  color: var(--fg-1);
+  flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.crate-row__sources:hover { color: var(--fg-1); }
+.crate-r-sub {
+  font-size: 12px; font-weight: 400; line-height: 1.3;
+  color: var(--fg-5);
+  flex: 0 1 auto; min-width: 0; flex-shrink: 6;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.crate-r-dur {
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-6); text-align: right; white-space: nowrap;
+}
+.crate-r-act { display: flex; justify-content: flex-end; gap: 6px; }
 
-.crate-row__action { height: 30px; padding: 0 12px; font-size: 12px; }
+.crate-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 20px; padding: 0 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line-2);
+  background: var(--bg-tint);
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-4); white-space: nowrap;
+}
 
-.crate-row__alt-list {
+.crate-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-2);
+  background: var(--bg-paper);
+  font-size: 11.5px; font-weight: 500; line-height: 1;
+  color: var(--fg-4); white-space: nowrap; max-width: 100%;
+  transition: border-color var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}
+.crate-chip:hover { border-color: var(--fg-8); color: var(--fg-1); }
+.crate-chip iconify-icon { width: 11px; height: 11px; flex: none; color: var(--fg-6); }
+.crate-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crate-chip[aria-expanded="true"] {
+  background: var(--bg-faint); border-color: var(--fg-8); color: var(--fg-1);
+}
+.crate-chip[aria-expanded="true"] iconify-icon { transform: rotate(180deg); color: var(--fg-3); }
+
+/* botões de ação da linha */
+.crate-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-2);
+  background: var(--bg-paper);
+  font-size: 12px; font-weight: 600;
+  color: var(--fg-2); white-space: nowrap;
+  transition: background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}
+.crate-btn:hover { border-color: var(--fg-8); background: var(--bg-soft); color: var(--fg-1); }
+.crate-btn iconify-icon { width: 12px; height: 12px; }
+.crate-btn--primary {
+  background: var(--fg-1); border-color: var(--fg-1); color: var(--bg-canvas);
+}
+.crate-btn--primary:hover {
+  background: var(--fg-2); border-color: var(--fg-2); color: var(--bg-canvas);
+}
+.crate-btn--quiet { border-color: transparent; background: transparent; color: var(--fg-5); }
+.crate-btn--quiet:hover { border-color: var(--line-2); background: var(--bg-soft); color: var(--fg-1); }
+
+/* ── linha de estado (full-width abaixo do conteúdo) ─────────── */
+.crate-r-state {
   grid-column: 1 / -1;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 10px 0 2px 110px;
+  margin-top: 7px;
+  display: flex; align-items: center; gap: 9px;
+  font-size: 11.5px; font-weight: 500;
+  white-space: nowrap; min-width: 0;
 }
-.crate-row__alt {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 11.5px; color: var(--fg-5);
+.crate-r-state > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crate-st-mono {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0;
 }
-.crate-row__alt-name { color: var(--fg-2); font-weight: 500; min-width: 110px; }
-.crate-row__alt-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crate-row__alt button {
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--blue-fg);
-  white-space: nowrap;
+.crate-st-dim { color: var(--fg-6); font-weight: 400; }
+
+.crate-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 20px; padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid;
+  font-size: 10.5px; font-weight: 600; line-height: 1;
+  letter-spacing: -0.005em; white-space: nowrap;
+}
+.crate-pill iconify-icon { width: 10px; height: 10px; }
+.crate-pill--live {
+  background: var(--blue-bg);
+  border-color: color-mix(in srgb, var(--blue-ring) 25%, var(--bg-paper));
+  color: var(--blue-fg);
+}
+.crate-pill--ready {
+  background: var(--green-bg);
+  border-color: color-mix(in srgb, var(--green-ring) 25%, var(--bg-paper));
+  color: var(--green-fg);
+}
+.crate-pill--warn {
+  background: var(--tone-butter-bg); border-color: var(--tone-butter-border); color: var(--amber-fg);
+}
+.crate-pill--err {
+  background: var(--rose-bg);
+  border-color: color-mix(in srgb, var(--rose-ring) 25%, var(--bg-paper));
+  color: var(--rose-fg);
+}
+.crate-pill--own {
+  background: var(--tone-mint-bg); border-color: var(--tone-mint-border); color: var(--green-fg);
+}
+.crate-pill--sub {
+  background: var(--bg-tint); border-color: var(--line-2); color: var(--fg-5); font-weight: 500;
+}
+.crate-st-txt--live  { color: var(--blue-fg); }
+.crate-st-txt--warn  { color: var(--amber-fg); }
+.crate-st-txt--err   { color: var(--rose-fg); }
+.crate-st-txt--ready { color: var(--green-fg); }
+
+/* progresso fino (2px) */
+.crate-prog {
+  position: relative; height: 2px;
+  flex: 0 1 220px; min-width: 80px;
+  background: var(--line-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.crate-prog i {
+  position: absolute; inset: 0 auto 0 0;
+  background: var(--blue-ring); border-radius: inherit;
+  transition: width var(--dur-med) var(--ease-out);
 }
 
-/* Fila — linha de job (progresso + ação). Reusa .progress/.progress__fill. */
-.crate-job {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 10px 14px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line-3);
+/* ── expansão de fontes ──────────────────────────────────────── */
+.crate-sources {
+  background: var(--bg-soft);
+  border-top: 1px solid var(--line-2);
+  padding: 10px 16px 12px;
+  margin: 0 -12px;
 }
-.crate-job__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); }
-.crate-job__status { font-size: 11.5px; color: var(--fg-5); margin-top: 2px; }
-.crate-job__progress { grid-column: 1 / -1; }
-.crate-job[data-state="ready"] .crate-job__status { color: var(--green-fg); }
-.crate-job[data-state="failed"] .crate-job__status,
-.crate-job[data-state="rejected"] .crate-job__status { color: var(--rose-fg); }
-.crate-job[data-state="stalled"] .crate-job__status,
-.crate-job[data-state="manual"] .crate-job__status { color: var(--amber-fg); }
+.crate-src-head,
+.crate-src {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 112px 78px 78px 88px 78px;
+  column-gap: 16px;
+  align-items: center;
+}
+.crate-src-head {
+  padding: 0 8px 7px;
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-6);
+}
+.crate-src {
+  min-height: 40px; padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out);
+}
+.crate-src:hover { background: var(--bg-paper); border-color: var(--line-2); }
+.crate-src[data-flag="live"] {
+  background: var(--tone-butter-bg); border-color: var(--tone-butter-border);
+}
+.crate-src[data-flag="live"]:hover { background: var(--tone-butter-bg); }
+.crate-src-peer {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  font-size: 12px; font-weight: 500; color: var(--fg-2); white-space: nowrap;
+}
+.crate-src-peer .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crate-src-val {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  font-variant-numeric: tabular-nums; color: var(--fg-4);
+}
+.crate-src-val--dim { color: var(--fg-6); }
+.crate-src-free   { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--green-fg); }
+.crate-src-queued { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--amber-fg); }
+/* caminho remoto: ellipsis à ESQUERDA (o que importa é o fim do path).
+   direction:rtl no container + <bdi> pra não embaralhar a leitura. */
+.crate-src-path {
+  grid-column: 1 / -1; min-width: 0;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; line-height: 1.4;
+  color: var(--fg-6);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  direction: rtl; text-align: left;
+  padding-left: 8px; margin-top: 1px;
+}
+.crate-src-path bdi { direction: ltr; unicode-bidi: embed; }
+
+/* ── empty state (pré-busca e sem resultado) ─────────────────── */
+.crate-empty-wrap { padding: 28px 0 56px; }
+.crate-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px;
+  margin: 0 40px;
+  padding: 96px 40px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius-xl);
+  background: var(--bg-paper);
+}
+.crate-empty iconify-icon { width: 26px; height: 26px; color: var(--fg-7); }
+.crate-empty h3 { font-size: 13.5px; font-weight: 600; color: var(--fg-1); margin: 0; }
+.crate-empty p { font-size: 12px; color: var(--fg-5); margin: 0; }
+.crate-empty__hintline {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  font-size: 11.5px; color: var(--fg-6);
+}
+
+/* ── fila ────────────────────────────────────────────────────── */
+.crate-q-sec { padding: 0 40px; }
+.crate-q-sec h2 {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-5); margin: 22px 0 9px;
+}
+.crate-terminal {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--tone-butter-border);
+  background: var(--tone-butter-bg);
+  border-radius: var(--radius-xl);
+}
+.crate-terminal > iconify-icon {
+  width: 15px; height: 15px; color: var(--amber-fg); margin-top: 1px; flex: none;
+}
+.crate-terminal__body { flex: 1; min-width: 0; }
+.crate-terminal__t { font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--fg-2); }
+.crate-terminal__p {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; line-height: 1.5;
+  color: var(--fg-4); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
