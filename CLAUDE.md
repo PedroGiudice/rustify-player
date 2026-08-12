@@ -356,8 +356,8 @@ decisoes). O que importa pro dia-a-dia:
   lp<0.30 janela 300 cap 40, conflito pos/neg por recencia. Positives
   DISTINTOS (weight por repeticao e inocuo sob `best_score` — nao
   reintroduzir). Tunables sao as consts no topo da funcao.
-- **Regua automatica**: `scripts/metrics/autoplay_regua.py` roda toda
-  segunda 09:00 (systemd user timer `rustify-regua.timer` na VM), grava
+- **Regua automatica**: `scripts/metrics/autoplay_regua.py` roda DIARIO
+  09:00 (systemd user timer `rustify-regua.timer` na VM), grava
   `docs/metrics/regua-latest.md` + historico `.jsonl`; o hook
   SessionStart do repo (`.claude/settings.json`) injeta o ultimo
   veredito em TODA sessao — a promessa "medir depois" nao depende mais
