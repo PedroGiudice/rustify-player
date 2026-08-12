@@ -1309,21 +1309,20 @@ impl QdrantClient {
     /// Derive behavioral signals (positives and negatives) from play events.
     ///
     /// v3 — a derivação em si é pura ([`derive_behavioral_signals`]); aqui só
-    /// vive o I/O. Contrato:
-    /// - **Positives:** sinal CONTÍNUO por listen_pct — peso
-    ///   `clamp((lp − 0.30)/0.50)` (60% de escuta = envolvimento real, não
-    ///   zero como no threshold binário antigo), com decay temporal
-    ///   (meia-vida 14d) e desconto 0.6 pra origens passivas
-    ///   (autoplay/station/playlist) — anti-feedback-loop. Qualificação por
-    ///   peso acumulado >= 0.55 (60% ativo qualifica sozinho; passivo
-    ///   parcial exige recorrência; escutas rasas não somam por contagem).
-    ///   Distintos (repetição é inócua sob `best_score`), até 25
-    ///   comportamentais + likes explícitos recentes (top 10 por
-    ///   `liked_at`), cap total 35.
-    /// - **Negatives:** até 40 distintos dos últimos 300 eventos com
-    ///   `listen_pct < 0.30`.
-    /// - Conflito pos/neg (track com escuta boa E skip): vence o lado com o
-    ///   evento mais recente.
+    /// vive o I/O. Contrato (balanço líquido por track):
+    /// - Cada evento vira peso CONTÍNUO `clamp((lp − 0.30)/0.50, −0.6, 1.0)`
+    ///   — 60% de escuta = +0.6 (envolvimento real, não zero como no
+    ///   threshold binário antigo); skip imediato = −0.6. Lado positivo
+    ///   ganha piso de atenção (90s: full de skit de 40s ≈ 0.44) e desconto
+    ///   0.6 pra origens passivas (anti-feedback-loop); skips não têm
+    ///   desconto. Tudo com decay de meia-vida 14d, somado num SALDO único
+    ///   por track — escutas boas e skips da mesma track se compensam.
+    /// - **Positives:** saldo > 0 e peso positivo acumulado >= 0.55 (60%
+    ///   ativo qualifica sozinho; passivo/skit exige recorrência), top 25
+    ///   por saldo, distintos + likes explícitos (top 10), cap 35.
+    /// - **Negatives:** saldo <= −0.30, mais rejeitadas primeiro, cap 40 —
+    ///   skip único EXPIRA sozinho pelo decay (~2 semanas); aversão
+    ///   recorrente permanece.
     pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
         // event_type accepts both natural completion and interrupted plays —
         // listen_pct is the actual discriminator. We just need to keep
@@ -1680,6 +1679,18 @@ const POSITIVE_RAMP_SPAN: f64 = 0.50;
 /// passiva parcial precisa de recorrência (0.6·0.6 = 0.36); escutas rasas
 /// não somam qualificação por contagem (2×35% = 0.2).
 const QUALIFY_FLOOR: f64 = 0.55;
+/// Piso do peso negativo: skip imediato (lp=0) vale −0.6 contra +1.0 de um
+/// full listen — rejeitar é sinal mais barato/impulsivo que 4 minutos de
+/// atenção, então não pesa simétrico.
+const NEGATIVE_WEIGHT_FLOOR: f64 = -0.6;
+/// Saldo líquido (com decay) abaixo do qual a track vira negative. Um skip
+/// único envelhece e EXPIRA sozinho (−0.6 cai a −0.30 em ~14 dias);
+/// aversão recorrente permanece.
+const NEGATIVE_NET_THRESHOLD: f64 = -0.30;
+/// Piso de atenção pro lado positivo: abaixo de 90s ouvidos o peso é
+/// proporcional ao tempo (full listen de um skit de 40s = 0.44, não 1.0).
+/// Nunca bonifica faixas longas — o fator satura em 1.
+const FULL_ATTENTION_MS: f64 = 90_000.0;
 /// Desconto aplicado ao peso de eventos de origem passiva.
 const PASSIVE_WEIGHT: f64 = 0.6;
 /// Meia-vida do decay temporal dos positives, em dias.
@@ -1701,68 +1712,65 @@ pub(crate) fn derive_behavioral_signals(
     liked_recent: &[u64],
     now: i64,
 ) -> (Vec<u64>, Vec<u64>) {
-    struct PosAcc {
-        score: f64,
-        raw: f64,
+    // Balanço líquido por track: escutas somam, skips subtraem, tudo com o
+    // mesmo decay — o SALDO decide o lado (o "percentual geral" da track,
+    // acumulado no tempo). Peso contínuo através do piso de 30%:
+    // clamp((lp − 0.30)/0.50, −0.6, 1.0).
+    struct Acc {
+        net: f64,
+        raw_pos: f64,
         last_at: i64,
     }
-    let mut pos_acc: HashMap<u64, PosAcc> = HashMap::new();
-    for p in pos_payloads {
+    let mut acc: HashMap<u64, Acc> = HashMap::new();
+    for p in pos_payloads.iter().chain(neg_payloads.iter()) {
         let Some(tid) = p["track_id"].as_u64() else {
             continue;
         };
         let started = p["started_at"].as_i64().unwrap_or(0);
         let age_days = (now - started).max(0) as f64 / 86_400.0;
         let decay = 0.5_f64.powf(age_days / HALF_LIFE_DAYS);
-        let origin = p["origin"].as_str().unwrap_or("");
-        let weight = if PASSIVE_ORIGINS.contains(&origin) {
-            PASSIVE_WEIGHT
-        } else {
-            1.0
-        };
         let lp = p["listen_pct"].as_f64().unwrap_or(0.0);
-        let w = ((lp - POSITIVE_MIN_LISTEN_PCT) / POSITIVE_RAMP_SPAN).clamp(0.0, 1.0);
-        let e = pos_acc.entry(tid).or_insert(PosAcc {
-            score: 0.0,
-            raw: 0.0,
+        let w = ((lp - POSITIVE_MIN_LISTEN_PCT) / POSITIVE_RAMP_SPAN)
+            .clamp(NEGATIVE_WEIGHT_FLOOR, 1.0);
+        let e = acc.entry(tid).or_insert(Acc {
+            net: 0.0,
+            raw_pos: 0.0,
             last_at: i64::MIN,
         });
-        e.score += w * weight * decay;
-        e.raw += w * weight;
+        if w > 0.0 {
+            // Piso de atenção (só no lado positivo): full listen de um skit
+            // de 40s não é o compromisso de 4 minutos. Payload sem duração
+            // (fixtures/legado) = atenção plena.
+            let listened_ms = p["end_position_ms"]
+                .as_f64()
+                .or_else(|| p["duration_ms"].as_f64().map(|d| d * lp))
+                .unwrap_or(f64::INFINITY);
+            let attention = (listened_ms / FULL_ATTENTION_MS).min(1.0);
+            let origin = p["origin"].as_str().unwrap_or("");
+            let origin_w = if PASSIVE_ORIGINS.contains(&origin) {
+                PASSIVE_WEIGHT
+            } else {
+                1.0
+            };
+            let w = w * attention * origin_w;
+            e.net += w * decay;
+            e.raw_pos += w;
+        } else {
+            // Skip: sem desconto de origem — rejeição de sugestão é
+            // exatamente o erro que o autoplay precisa aprender.
+            e.net += w * decay;
+        }
         e.last_at = e.last_at.max(started);
     }
 
-    // Negatives: última ocorrência por track. A ordem de entrada (desc por
-    // started_at) faz da primeira ocorrência a mais recente.
-    let mut neg_last: HashMap<u64, i64> = HashMap::new();
-    let mut neg_order: Vec<u64> = Vec::new();
-    for p in neg_payloads {
-        let Some(tid) = p["track_id"].as_u64() else {
-            continue;
-        };
-        let started = p["started_at"].as_i64().unwrap_or(0);
-        match neg_last.get_mut(&tid) {
-            Some(last) => *last = (*last).max(started),
-            None => {
-                neg_last.insert(tid, started);
-                neg_order.push(tid);
-            }
-        }
-    }
-
-    // Qualificação por peso acumulado (QUALIFY_FLOOR) + conflito pos/neg:
-    // o lado com o evento mais recente vence (empate → negative, defensivo).
-    // map_or (não is_none_or): o workspace declara rust-version 1.78.
-    let mut qualified: Vec<(u64, f64, i64)> = pos_acc
-        .into_iter()
-        .filter(|(_, a)| a.raw >= QUALIFY_FLOOR)
-        .filter(|(tid, a)| neg_last.get(tid).map_or(true, |neg_at| a.last_at > *neg_at))
-        .map(|(tid, a)| (tid, a.score, a.last_at))
+    // Positives: qualificação por peso positivo acumulado E saldo líquido
+    // positivo; rank por saldo. Saldo positivo fora do top-25 NUNCA vira
+    // negative (os lados são disjuntos por construção: net > 0 vs ≤ −0.30).
+    let mut qualified: Vec<(u64, f64, i64)> = acc
+        .iter()
+        .filter(|(_, a)| a.raw_pos >= QUALIFY_FLOOR && a.net > 0.0)
+        .map(|(tid, a)| (*tid, a.net, a.last_at))
         .collect();
-    // Quem venceu o conflito fica protegido dos negatives MESMO se o
-    // truncate do top-25 a cortar dos positives — rebaixar uma track
-    // replayada ontem a negative por ter rankeado 26ª inverteria o sinal.
-    let conflict_winners: HashSet<u64> = qualified.iter().map(|(tid, ..)| *tid).collect();
     qualified.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -1772,12 +1780,23 @@ pub(crate) fn derive_behavioral_signals(
     qualified.truncate(MAX_BEHAVIORAL_POSITIVES);
     let mut positives: Vec<u64> = qualified.iter().map(|(tid, ..)| *tid).collect();
 
-    let mut pos_seen: HashSet<u64> = positives.iter().copied().collect();
-    let negatives: Vec<u64> = neg_order
-        .into_iter()
-        .filter(|tid| !conflict_winners.contains(tid))
-        .take(MAX_NEGATIVES)
+    // Negatives: saldo abaixo do limiar, mais rejeitadas primeiro. O decay
+    // faz um skip único expirar sozinho; aversão recorrente permanece.
+    let mut negs: Vec<(u64, f64, i64)> = acc
+        .iter()
+        .filter(|(_, a)| a.net <= NEGATIVE_NET_THRESHOLD)
+        .map(|(tid, a)| (*tid, a.net, a.last_at))
         .collect();
+    negs.sort_by(|a, b| {
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.2.cmp(&a.2))
+            .then(a.0.cmp(&b.0))
+    });
+    negs.truncate(MAX_NEGATIVES);
+    let negatives: Vec<u64> = negs.into_iter().map(|(tid, ..)| tid).collect();
+
+    let mut pos_seen: HashSet<u64> = positives.iter().copied().collect();
 
     // Likes explícitos: apendados sem duplicar nem contrariar um negative
     // (skip recente > like antigo).
@@ -1998,23 +2017,48 @@ mod tests {
         assert_eq!(positives, vec![2, 1]);
     }
 
+    // ── balanço líquido por track: escutas somam, skips subtraem ───────────
+    //
+    // O saldo (com decay) decide o lado — não há mais regra de "conflito":
+    // a mesma track pode ter escutas boas e skips, e o que vale é o
+    // percentual geral acumulado dela.
+
     #[test]
-    fn derive_conflito_pos_neg_resolvido_por_recencia() {
-        // track 1: full antigo + skip recente → só negative.
-        // track 2: skip antigo + full recente → só positive.
+    fn derive_balanco_liquido_decide_o_lado() {
+        // track 1: 2 fulls recentes + 1 skip recente → saldo positivo
+        //   (+1 +1 −0.6 = +1.4) → positive apesar do skip.
+        // track 2: 1 full de 30 dias (+0.23 após decay) + 2 skips recentes
+        //   (−1.2) → saldo bem negativo → negative apesar do full antigo.
         let pos = vec![
-            ev(1, 1.0, "manual", NOW - 10 * DAY),
-            ev(2, 1.0, "manual", NOW),
+            ev(1, 1.0, "manual", NOW),
+            ev(1, 1.0, "manual", NOW - DAY),
+            ev(2, 1.0, "manual", NOW - 30 * DAY),
         ];
         let neg = vec![
-            ev(1, 0.05, "queue", NOW),
-            ev(2, 0.05, "queue", NOW - 10 * DAY),
+            ev(1, 0.0, "queue", NOW),
+            ev(2, 0.0, "queue", NOW),
+            ev(2, 0.0, "queue", NOW - DAY),
         ];
         let (positives, negatives) = derive_behavioral_signals(&pos, &neg, &[], NOW);
-        assert!(!positives.contains(&1));
-        assert!(negatives.contains(&1));
-        assert!(positives.contains(&2));
-        assert!(!negatives.contains(&2));
+        assert!(positives.contains(&1), "saldo positivo vence 1 skip");
+        assert!(!negatives.contains(&1));
+        assert!(negatives.contains(&2), "2 skips recentes afundam full antigo");
+        assert!(!positives.contains(&2));
+    }
+
+    #[test]
+    fn derive_skip_unico_antigo_envelhece_e_sai_dos_negatives() {
+        // Skip único de 20 dias: −0.6·0.5^(20/14) ≈ −0.22 — acima do piso
+        // de −0.30: a aversão de UM skip expira sozinha (~2,5 semanas).
+        // Skips REPETIDOS antigos permanecem (2×−0.22 ≈ −0.44).
+        let neg = vec![
+            ev(1, 0.0, "queue", NOW - 20 * DAY),
+            ev(2, 0.0, "queue", NOW - 20 * DAY),
+            ev(2, 0.0, "queue", NOW - 21 * DAY),
+        ];
+        let (_, negatives) = derive_behavioral_signals(&[], &neg, &[], NOW);
+        assert!(!negatives.contains(&1), "skip único antigo expira");
+        assert!(negatives.contains(&2), "aversão recorrente permanece");
     }
 
     #[test]
@@ -2046,11 +2090,10 @@ mod tests {
     }
 
     #[test]
-    fn derive_conflito_vencido_protege_do_negative_mesmo_fora_do_top25() {
-        // 26 tracks qualificadas; a track 999 tem o MENOR score (1 full
-        // listen antigo) e fica fora do top-25 — mas o full listen dela é
-        // mais recente que o skip antigo, então ela venceu o conflito e NÃO
-        // pode aparecer nos negatives (o truncate não desfaz a vitória).
+    fn derive_saldo_positivo_fora_do_top25_nao_vira_negative() {
+        // 26 tracks de saldo positivo; a track 999 (full de 5 dias + skip
+        // de 20 dias, saldo ≈ +0.56) fica fora do top-25 por score — mas
+        // saldo positivo NUNCA vira negative por causa do truncate.
         let mut pos = Vec::new();
         for i in 0..25u64 {
             pos.push(ev(500 + i, 1.0, "manual", NOW));
@@ -2060,10 +2103,54 @@ mod tests {
         let neg = vec![ev(999, 0.05, "queue", NOW - 20 * DAY)];
         let (positives, negatives) = derive_behavioral_signals(&pos, &neg, &[], NOW);
         assert!(!positives.contains(&999), "fora do top-25 por score");
-        assert!(
-            !negatives.contains(&999),
-            "venceu o conflito por recência — truncar do top-25 não pode rebaixá-la a negative"
-        );
+        assert!(!negatives.contains(&999), "saldo positivo jamais vira negative");
+    }
+
+    // ── piso de atenção: full listen de skit não é compromisso ─────────────
+
+    fn ev_dur(tid: u64, lp: f64, origin: &str, started_at: i64, duration_ms: u64) -> Value {
+        json!({
+            "track_id": tid,
+            "listen_pct": lp,
+            "origin": origin,
+            "started_at": started_at,
+            "duration_ms": duration_ms,
+            "end_position_ms": (lp * duration_ms as f64) as u64
+        })
+    }
+
+    #[test]
+    fn derive_full_de_skit_curto_nao_qualifica_sozinho() {
+        // Skit de 40s ouvido inteiro: 40s de atenção → peso 1.0·(40/90) ≈
+        // 0.44 < 0.55 — não qualifica sozinho (com recorrência, sim).
+        // Música de 3min ouvida inteira qualifica normal.
+        let uma = vec![ev_dur(50, 1.0, "manual", NOW, 40_000)];
+        let (positives, _) = derive_behavioral_signals(&uma, &[], &[], NOW);
+        assert!(!positives.contains(&50), "skit full único não qualifica");
+
+        let musica = vec![ev_dur(51, 1.0, "manual", NOW, 180_000)];
+        let (positives, _) = derive_behavioral_signals(&musica, &[], &[], NOW);
+        assert!(positives.contains(&51), "3min full qualifica");
+
+        let duas = vec![
+            ev_dur(50, 1.0, "manual", NOW, 40_000),
+            ev_dur(50, 1.0, "manual", NOW - DAY, 40_000),
+        ];
+        let (positives, _) = derive_behavioral_signals(&duas, &[], &[], NOW);
+        assert!(positives.contains(&50), "skit recorrente qualifica");
+    }
+
+    #[test]
+    fn derive_piso_de_atencao_nao_bonifica_faixas_longas() {
+        // 60% de 8min (288s ouvidos) e 60% de 3min (108s) — ambos acima do
+        // piso de 90s: peso IGUAL (0.6). Duração absoluta não bonifica.
+        let pos = vec![
+            ev_dur(60, 0.60, "manual", NOW, 480_000),
+            ev_dur(61, 0.60, "manual", NOW, 180_000),
+        ];
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert!(positives.contains(&60));
+        assert!(positives.contains(&61));
     }
 
     #[test]
