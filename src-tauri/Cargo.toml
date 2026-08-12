@@ -23,7 +23,13 @@ gstreamer-audio = "0.25"
 
 # Foundational
 thiserror = "2"
-tracing = "0.1"
+# feature "log": sem subscriber de tracing instalado no binario do app, todo
+# `tracing::info!/warn!` do library-indexer e do audio-engine caia no vazio —
+# o backfill de letras, as falhas de embed e o diagnostico do scan eram
+# invisiveis (log do app: 624 bytes, zero mencao ao pipeline). Com a feature,
+# cada evento vira um record do facade `log`, que o tauri-plugin-log ja roteia
+# pra stdout + webview + ~/.local/share/dev.cmr.rustifyplayer/logs/.
+tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

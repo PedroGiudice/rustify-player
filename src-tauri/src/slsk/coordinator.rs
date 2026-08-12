@@ -1602,6 +1602,8 @@ pub fn spawn_coordinator(
     let ingest: Box<dyn Fn(Vec<PathBuf>) -> Vec<IngestOutcome> + Send + Sync> =
         Box::new(move |paths| ingest_indexer.ingest_paths(paths));
 
+    let sink_indexer = indexer.clone();
+
     let qdrant_indexer = indexer;
     let music_root_for_owned = cfg.music_root.clone();
     let owned_index_provider: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync> =
@@ -1619,7 +1621,11 @@ pub fn spawn_coordinator(
         "rustify-player/{} (+https://github.com/PedroGiudice/rustify-player)",
         env!("CARGO_PKG_VERSION")
     );
-    let _lyrics_worker = spawn_lyrics_worker(lyrics_rx, Arc::new(Lrclib::new(user_agent)));
+    // Sink: fecha o ciclo da faixa nova (payload + vetor `lyrics`) assim que a
+    // letra chega. Sem ele a letra baixada só virava vetor no próximo boot.
+    let lyrics_sink = sink_indexer.lyrics_sink();
+    let _lyrics_worker =
+        spawn_lyrics_worker(lyrics_rx, Arc::new(Lrclib::new(user_agent)), lyrics_sink);
 
     std::thread::Builder::new()
         .name("slsk-coord".to_string())

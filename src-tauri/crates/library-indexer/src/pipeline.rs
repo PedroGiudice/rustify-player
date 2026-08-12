@@ -854,6 +854,50 @@ fn read_clean_lrc(path: &Path) -> Option<String> {
     (cleaned.chars().count() > MIN_LYRICS_CHARS).then_some(cleaned)
 }
 
+/// Sink de letras do worker do Crate: fecha o ciclo de uma track recém-baixada
+/// gravando payload + vetor `lyrics` na hora, em vez de esperar o backfill do
+/// próximo boot do app.
+pub struct QdrantLyricsSink {
+    client: QdrantClient,
+    embedder: LyricsEmbedClient,
+}
+
+impl QdrantLyricsSink {
+    pub fn new(client: QdrantClient, embedder: LyricsEmbedClient) -> Self {
+        Self { client, embedder }
+    }
+}
+
+impl crate::lyrics_fetch::LyricsSink for QdrantLyricsSink {
+    fn persist(&self, track_id: u64, lrc_path: Option<&Path>, text: &str) -> Result<(), String> {
+        let cleaned = lyrics::clean_lyrics_text(text);
+        if cleaned.chars().count() <= MIN_LYRICS_CHARS {
+            // Placeholder de instrumental ("[Instrumental]") ou fragmento: o
+            // mesmo guard do backfill, pra não poluir o índice com ruído.
+            return Ok(());
+        }
+
+        let payload = match lrc_path {
+            Some(p) => json!({ "lrc_path": p.to_string_lossy() }),
+            // Sem sidecar (letra não sincronizada): guarda o texto no payload.
+            // `embedded_lyrics` é a primeira fonte que `resolve_lyrics` consulta,
+            // então o backfill futuro re-embeda sem precisar da rede de novo.
+            None => json!({ "embedded_lyrics": text }),
+        };
+        self.client
+            .set_payload(&[track_id], payload)
+            .map_err(|e| format!("set_payload: {e}"))?;
+
+        let vector = self
+            .embedder
+            .embed_text(&cleaned)
+            .map_err(|e| format!("embed: {e}"))?;
+        self.client
+            .upsert_lyrics_batch(&[(track_id, vector.as_slice())])
+            .map_err(|e| format!("upsert vetor: {e}"))
+    }
+}
+
 /// Ponto de entrada `pub(crate)` para disparar o backfill de lyrics sob
 /// demanda (ex.: `IndexerHandle::sync_lyrics_to_qdrant`). Mesma lógica que roda
 /// no startup do coordinator. Retorna o número de vetores `lyrics` escritos.

@@ -89,6 +89,7 @@ impl Indexer {
                 evt_rx,
                 state,
                 client,
+                lyrics_client: config.lyrics_client,
             }),
         })
     }
@@ -99,6 +100,7 @@ struct HandleInner {
     evt_rx: Receiver<IndexerEvent>,
     state: Arc<pipeline::SharedState>,
     client: QdrantClient,
+    lyrics_client: Option<LyricsEmbedClient>,
 }
 
 /// Handle to a running indexer. Clone-able, Send-safe.
@@ -126,6 +128,18 @@ impl IndexerHandle {
     /// Access the underlying QdrantClient for direct operations.
     pub fn client(&self) -> &QdrantClient {
         &self.inner.client
+    }
+
+    /// Sink de letras para o worker do Crate (`slsk-lyrics`): grava payload +
+    /// vetor `lyrics` assim que a letra chega, sem esperar o backfill do
+    /// próximo boot. `None` quando não há cliente de embedding de texto
+    /// configurado — nesse caso o worker segue só gravando o sidecar.
+    pub fn lyrics_sink(&self) -> Option<Arc<dyn lyrics_fetch::LyricsSink>> {
+        let embedder = self.inner.lyrics_client.clone()?;
+        Some(Arc::new(pipeline::QdrantLyricsSink::new(
+            self.inner.client.clone(),
+            embedder,
+        )))
     }
 
     // --- Read queries ---------------------------------------------------------

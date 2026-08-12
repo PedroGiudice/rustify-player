@@ -23,6 +23,7 @@ vi.mock("../tauri", async (importOriginal) => {
     libListStations: vi.fn(async () => []),
     libPlayStation: vi.fn(async () => []),
     libCreateStation: vi.fn(async () => null),
+    libDeleteStation: vi.fn(async () => true),
     libMoodVocabulary: vi.fn(async () => ({
       moods: ["dark", "uplifting", "chill"],
       activities: ["workout", "study"],
@@ -154,6 +155,29 @@ import { fireEvent, waitFor } from "@solidjs/testing-library";
 import { player, setQueue } from "../store/player";
 
 describe("Stations view", () => {
+  it("apagar station chama o backend e recarrega a lista", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    const { container } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".st-card__delete").length).toBeGreaterThan(0);
+    });
+    const chamadasAntes = vi.mocked(tauriApi.libListStations).mock.calls.length;
+    const btn = container.querySelector(".st-card__delete") as HTMLButtonElement;
+    fireEvent.click(btn); // arma
+    fireEvent.click(btn); // confirma
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libDeleteStation)).toHaveBeenCalledWith("midnight-1");
+    });
+    // refetch apos apagar (a lista nao pode ficar com a station morta)
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libListStations).mock.calls.length).toBeGreaterThan(chamadasAntes);
+    });
+    // clearAllMocks limpa historico mas NAO a implementacao — restaurar o
+    // default da factory, senao os testes seguintes veem stations e o
+    // empty-state deste describe quebra.
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+  });
+
   it("renderiza heading + stats", async () => {
     const { getByText, container } = render(() => <Stations />);
     expect(getByText("Stations")).toBeTruthy();
@@ -464,6 +488,32 @@ describe("StationCard (reatividade de isFirst/seedLine)", () => {
     expect(container.querySelector(".st-card__live")).toBeTruthy();
     setFirst(false);
     expect(container.querySelector(".st-card__live")).toBeFalsy();
+  });
+
+  it("botao de apagar exige confirmacao e nao dispara o play do card", () => {
+    // O card inteiro e clicavel (onResume). O delete e destrutivo, entao
+    // pede 2 cliques (arma -> confirma) e nunca pode vazar o clique pro card.
+    const onDelete = vi.fn();
+    const onResume = vi.fn();
+    const { container } = render(() => (
+      <StationCard
+        station={MOCK_STATIONS[0]}
+        isFirst={false}
+        onResume={onResume}
+        onDelete={onDelete}
+      />
+    ));
+    const btn = container.querySelector(".st-card__delete") as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+
+    fireEvent.click(btn);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onResume).not.toHaveBeenCalled();
+    expect(btn.classList.contains("is-armed")).toBe(true);
+
+    fireEvent.click(btn);
+    expect(onDelete).toHaveBeenCalledWith("midnight-1");
+    expect(onResume).not.toHaveBeenCalled();
   });
 
   it("seedLine re-deriva quando a station muda de kind", () => {

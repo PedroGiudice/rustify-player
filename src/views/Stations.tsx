@@ -17,6 +17,7 @@ import {
   libListStations,
   libPlayStation,
   libCreateStation,
+  libDeleteStation,
   libMoodVocabulary,
   Station,
 } from "../tauri";
@@ -159,6 +160,7 @@ export function StationCard(props: {
   station: Station;
   isFirst: boolean;
   onResume: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   // Sem destructuring de props (quebra reatividade no Solid): isFirst vem
   // do signal de indice do <For> e station pode trocar sob a mesma row.
@@ -166,6 +168,25 @@ export function StationCard(props: {
     props.station.kind === "seed"
       ? `seed · ${props.station.seed_track_ids.length} tracks`
       : `mood · ${props.station.query ?? ""}`;
+
+  // Exclusao e destrutiva e o card inteiro dispara play: 1o clique arma,
+  // 2o confirma. Desarma sozinho em 4s pra nao ficar uma bomba engatilhada
+  // esperando um clique distraido.
+  const [armed, setArmed] = createSignal(false);
+  let disarmTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(disarmTimer));
+
+  function handleDeleteClick(e: MouseEvent) {
+    e.stopPropagation();
+    clearTimeout(disarmTimer);
+    if (!armed()) {
+      setArmed(true);
+      disarmTimer = setTimeout(() => setArmed(false), 4000);
+      return;
+    }
+    setArmed(false);
+    props.onDelete?.(props.station.id);
+  }
 
   return (
     <div class="st-card" onClick={() => props.onResume(props.station.id)}>
@@ -175,6 +196,23 @@ export function StationCard(props: {
           Live
         </span>
       </Show>
+      <button
+        type="button"
+        class={`st-card__delete${armed() ? " is-armed" : ""}`}
+        title={armed() ? "Clique de novo para apagar" : "Apagar station"}
+        aria-label={armed() ? `Confirmar exclusao de ${props.station.name}` : `Apagar ${props.station.name}`}
+        onClick={handleDeleteClick}
+      >
+        <Show
+          when={armed()}
+          fallback={
+            /* @ts-ignore */
+            <iconify-icon icon="lucide:trash-2" noobserver />
+          }
+        >
+          Apagar?
+        </Show>
+      </button>
       <div class="st-card__top">
         <div class={`st-card__cover ${props.station.tone}`}>
           {/* @ts-ignore */}
@@ -348,6 +386,17 @@ export default function Stations() {
     }
   }
 
+  async function handleDelete(id: string) {
+    try {
+      await libDeleteStation(id);
+    } catch (err) {
+      console.error("[stations] apagar falhou:", err);
+    }
+    // Refetch mesmo em erro: se o arquivo ja nao existia, a lista em tela
+    // e que esta stale.
+    refetch();
+  }
+
   async function handleNewFromCurrent() {
     // Sem track tocando nao ha seed — nada a criar.
     const current = player.currentTrack;
@@ -511,6 +560,7 @@ export default function Stations() {
                     station={s}
                     isFirst={i() === 0}
                     onResume={handleResume}
+                    onDelete={handleDelete}
                   />
                 )}
               </For>
