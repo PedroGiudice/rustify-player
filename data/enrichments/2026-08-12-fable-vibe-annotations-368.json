@@ -1,0 +1,5824 @@
+{
+ "78058785331690245": {
+  "energy": 0.3,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "bittersweet",
+   "chill",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "87010990969341551": {
+  "energy": 0.75,
+  "valence": 0.45,
+  "mood_tags": [
+   "aggressive",
+   "confident",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "163153443942989635": {
+  "energy": 0.55,
+  "valence": 0.45,
+  "mood_tags": [
+   "groovy",
+   "bittersweet",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "176533031529300906": {
+  "energy": 0.65,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "driving",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "259788529872377049": {
+  "energy": 0.45,
+  "valence": 0.5,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "259975381573257182": {
+  "energy": 0.8,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "groovy",
+   "confident",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "425479805862597412": {
+  "energy": 0.5,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "dreamy",
+   "raw"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "441054061587819132": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "energetic",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "481352277162258719": {
+  "energy": 0.5,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "intense",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "494415578175223537": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "aggressive",
+   "driving",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "534564962656476604": {
+  "energy": 0.8,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "energetic",
+   "confident"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "536382451549680614": {
+  "energy": 0.8,
+  "valence": 0.85,
+  "mood_tags": [
+   "triumphant",
+   "uplifting",
+   "groovy",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "596740771821176806": {
+  "energy": 0.4,
+  "valence": 0.4,
+  "mood_tags": [
+   "dreamy",
+   "focus",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "644864266181294542": {
+  "energy": 0.9,
+  "valence": 0.65,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "raw",
+   "playful"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "665048265303791728": {
+  "energy": 0.45,
+  "valence": 0.4,
+  "mood_tags": [
+   "sensual",
+   "dark",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "low"
+ },
+ "702144940405576541": {
+  "energy": 0.85,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "811467542358967383": {
+  "energy": 0.75,
+  "valence": 0.65,
+  "mood_tags": [
+   "confident",
+   "raw",
+   "groovy",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "839537436947763782": {
+  "energy": 0.35,
+  "valence": 0.5,
+  "mood_tags": [
+   "chill",
+   "dreamy",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "858589595438830607": {
+  "energy": 0.65,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "driving",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "911093023454903399": {
+  "energy": 0.9,
+  "valence": 0.7,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "intense",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "926486136066207806": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "aggressive",
+   "sensual",
+   "raw",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "982019833885447812": {
+  "energy": 0.9,
+  "valence": 0.6,
+  "mood_tags": [
+   "ethereal",
+   "intense",
+   "driving",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1090069543192892563": {
+  "energy": 0.4,
+  "valence": 0.5,
+  "mood_tags": [
+   "romantic",
+   "bittersweet",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1220244409503360349": {
+  "energy": 0.6,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "melancholic",
+   "confident",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "commute",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1358336720039595713": {
+  "energy": 0.4,
+  "valence": 0.5,
+  "mood_tags": [
+   "ethereal",
+   "dreamy",
+   "peaceful",
+   "focus"
+  ],
+  "activity_tags": [
+   "meditation",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1404100947134553191": {
+  "energy": 0.35,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "dreamy",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1452014429461902661": {
+  "energy": 0.72,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1475340316419128996": {
+  "energy": 0.6,
+  "valence": 0.45,
+  "mood_tags": [
+   "raw",
+   "dark",
+   "groovy",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1476548542253228021": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1478686939728160423": {
+  "energy": 0.4,
+  "valence": 0.45,
+  "mood_tags": [
+   "dreamy",
+   "groovy",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1627808517713257220": {
+  "energy": 0.55,
+  "valence": 0.62,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1666856140894444815": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1723073665857484726": {
+  "energy": 0.25,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "bittersweet",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1744066865700514052": {
+  "energy": 0.5,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "anxious"
+  ],
+  "activity_tags": [
+   "gaming",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1773222598469583183": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "1779480545724697703": {
+  "energy": 0.7,
+  "valence": 0.55,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "dark"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1897099367761783408": {
+  "energy": 0.35,
+  "valence": 0.5,
+  "mood_tags": [
+   "chill",
+   "dreamy",
+   "groovy"
+  ],
+  "activity_tags": [
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "1959394945143873488": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "sensual",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2072679148892684247": {
+  "energy": 0.9,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "driving",
+   "intense",
+   "energetic"
+  ],
+  "activity_tags": [
+   "workout",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2103373227101767158": {
+  "energy": 0.8,
+  "valence": 0.6,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "dreamy",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2136022834292980525": {
+  "energy": 0.4,
+  "valence": 0.45,
+  "mood_tags": [
+   "bittersweet",
+   "melancholic",
+   "romantic"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "2164835404746984571": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "nostalgic",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "commute",
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2240812552856323748": {
+  "energy": 0.88,
+  "valence": 0.55,
+  "mood_tags": [
+   "raw",
+   "aggressive",
+   "energetic",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "2296929740828312419": {
+  "energy": 0.72,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "playful"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2353954025913294663": {
+  "energy": 0.65,
+  "valence": 0.45,
+  "mood_tags": [
+   "raw",
+   "bittersweet",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "2483840056287267280": {
+  "energy": 0.3,
+  "valence": 0.55,
+  "mood_tags": [
+   "peaceful",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "2517742685297570799": {
+  "energy": 0.45,
+  "valence": 0.68,
+  "mood_tags": [
+   "romantic",
+   "dreamy",
+   "groovy",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2551955259018892743": {
+  "energy": 0.55,
+  "valence": 0.75,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "2620600997233293572": {
+  "energy": 0.95,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "intense",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2621871755832391376": {
+  "energy": 0.55,
+  "valence": 0.62,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "confident"
+  ],
+  "activity_tags": [
+   "study",
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2632965107268983853": {
+  "energy": 0.8,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2663692850359953393": {
+  "energy": 0.4,
+  "valence": 0.65,
+  "mood_tags": [
+   "dreamy",
+   "uplifting",
+   "chill",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2823701149249288590": {
+  "energy": 0.4,
+  "valence": 0.7,
+  "mood_tags": [
+   "chill",
+   "romantic",
+   "groovy",
+   "peaceful"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2841438639550159842": {
+  "energy": 0.5,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "chill",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2846678194038837958": {
+  "energy": 0.55,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "2921978416668040971": {
+  "energy": 0.8,
+  "valence": 0.9,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "energetic",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "social",
+   "cleaning"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3033025504754276826": {
+  "energy": 0.9,
+  "valence": 0.35,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "3117790580995432739": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "sensual",
+   "groovy",
+   "chill",
+   "romantic"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3127373873443014180": {
+  "energy": 0.8,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "aggressive",
+   "driving",
+   "intense"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3183566945171215155": {
+  "energy": 0.25,
+  "valence": 0.45,
+  "mood_tags": [
+   "melancholic",
+   "dreamy",
+   "romantic",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "sleep"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3209531304087215885": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "nostalgic",
+   "dreamy",
+   "groovy",
+   "peaceful"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3277180349963595428": {
+  "energy": 0.5,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "playful"
+  ],
+  "activity_tags": [
+   "chill",
+   "social",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3322677491203323370": {
+  "energy": 0.25,
+  "valence": 0.35,
+  "mood_tags": [
+   "melancholic",
+   "ethereal",
+   "raw",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3332229340891355168": {
+  "energy": 0.45,
+  "valence": 0.65,
+  "mood_tags": [
+   "uplifting",
+   "dreamy",
+   "groovy",
+   "peaceful"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3437916671665490321": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "intense",
+   "driving",
+   "triumphant",
+   "energetic"
+  ],
+  "activity_tags": [
+   "focus",
+   "workout",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "3442103840645772910": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "3472423325715146493": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3503628880150476401": {
+  "energy": 0.7,
+  "valence": 0.45,
+  "mood_tags": [
+   "dark",
+   "groovy",
+   "confident",
+   "driving"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3508339441151309894": {
+  "energy": 0.75,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "social",
+   "cleaning"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3526055739178862516": {
+  "energy": 0.5,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "groovy",
+   "dreamy",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3528776336396734651": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3567797300182752135": {
+  "energy": 0.45,
+  "valence": 0.45,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "dark",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3598737543349798047": {
+  "energy": 0.85,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "intense",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3607355996772727099": {
+  "energy": 0.4,
+  "valence": 0.5,
+  "mood_tags": [
+   "bittersweet",
+   "raw",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "3688059798471253408": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "confident",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "driving",
+   "social",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3703231931102956050": {
+  "energy": 0.4,
+  "valence": 0.5,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "sensual",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3727214279195814656": {
+  "energy": 0.78,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "playful",
+   "intense",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3730615597045267245": {
+  "energy": 0.85,
+  "valence": 0.35,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "rebellious",
+   "intense"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3757697019854030617": {
+  "energy": 0.3,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "melancholic",
+   "sensual",
+   "raw"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3823846784000366590": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "sensual"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "3900866934187497707": {
+  "energy": 0.68,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "driving",
+   "intense"
+  ],
+  "activity_tags": [
+   "driving",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "3930670979255248641": {
+  "energy": 0.55,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "chill"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4002914182661402707": {
+  "energy": 0.75,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "confident",
+   "intense"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4018844680125404398": {
+  "energy": 0.72,
+  "valence": 0.85,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "energetic",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4080148478277034329": {
+  "energy": 0.6,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "intense"
+  ],
+  "activity_tags": [
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4088072444210410512": {
+  "energy": 0.45,
+  "valence": 0.25,
+  "mood_tags": [
+   "melancholic",
+   "dark",
+   "dreamy",
+   "intense"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4189355478429763218": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "dreamy",
+   "groovy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "study",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4197813398435677452": {
+  "energy": 0.7,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "driving",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "party",
+   "focus",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4208564070293559814": {
+  "energy": 0.5,
+  "valence": 0.35,
+  "mood_tags": [
+   "raw",
+   "rebellious",
+   "dark"
+  ],
+  "activity_tags": [
+   "gaming",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4277844926964726423": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "playful",
+   "groovy",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "party",
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4300487111630449409": {
+  "energy": 0.75,
+  "valence": 0.45,
+  "mood_tags": [
+   "driving",
+   "raw",
+   "intense",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4322663809490268182": {
+  "energy": 0.5,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "dreamy",
+   "intense"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4326941832001029109": {
+  "energy": 0.4,
+  "valence": 0.25,
+  "mood_tags": [
+   "melancholic",
+   "ethereal",
+   "dark",
+   "intense"
+  ],
+  "activity_tags": [
+   "meditation",
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4369390370733067039": {
+  "energy": 0.35,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "sensual",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4396374907356172970": {
+  "energy": 0.3,
+  "valence": 0.4,
+  "mood_tags": [
+   "chill",
+   "dreamy",
+   "sensual",
+   "dark"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4424168703600206548": {
+  "energy": 0.75,
+  "valence": 0.45,
+  "mood_tags": [
+   "driving",
+   "dark",
+   "ethereal",
+   "focus"
+  ],
+  "activity_tags": [
+   "party",
+   "driving",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4425178988478140009": {
+  "energy": 0.72,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4448483574312779236": {
+  "energy": 0.7,
+  "valence": 0.5,
+  "mood_tags": [
+   "raw",
+   "groovy",
+   "confident",
+   "driving"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4469802313846174235": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4509033985764858350": {
+  "energy": 0.45,
+  "valence": 0.65,
+  "mood_tags": [
+   "dreamy",
+   "chill",
+   "groovy",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4581987036289051995": {
+  "energy": 0.4,
+  "valence": 0.65,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4596512561259701717": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4610842415967778912": {
+  "energy": 0.7,
+  "valence": 0.75,
+  "mood_tags": [
+   "playful",
+   "confident",
+   "groovy"
+  ],
+  "activity_tags": [
+   "party",
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4792356724362552404": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "driving",
+   "dreamy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4810050882728735937": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "nostalgic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "commute",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "4827362214597094610": {
+  "energy": 0.5,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "4861699685411038196": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "driving",
+   "uplifting",
+   "romantic",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5183730953791252193": {
+  "energy": 0.7,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5226679737072192873": {
+  "energy": 0.75,
+  "valence": 0.5,
+  "mood_tags": [
+   "driving",
+   "melancholic",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5244500056257314346": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5363185895487503171": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "energetic",
+   "playful"
+  ],
+  "activity_tags": [
+   "party",
+   "social",
+   "cleaning"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5387346808492749061": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "groovy",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5415064472565911937": {
+  "energy": 0.4,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "groovy",
+   "raw",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5470621486428622826": {
+  "energy": 0.75,
+  "valence": 0.35,
+  "mood_tags": [
+   "raw",
+   "dark",
+   "intense",
+   "aggressive"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5479237278697723017": {
+  "energy": 0.7,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "playful",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "cleaning",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5722385611519762129": {
+  "energy": 0.3,
+  "valence": 0.5,
+  "mood_tags": [
+   "chill",
+   "bittersweet",
+   "romantic"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "5725939972336825753": {
+  "energy": 0.4,
+  "valence": 0.45,
+  "mood_tags": [
+   "melancholic",
+   "dreamy",
+   "raw",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5822397422751981181": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "study",
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "5979358500020323425": {
+  "energy": 0.3,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "meditation"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6027606304033381534": {
+  "energy": 0.85,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "rebellious",
+   "intense"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6053837605166682527": {
+  "energy": 0.6,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "intense"
+  ],
+  "activity_tags": [
+   "gaming",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6056957220349636943": {
+  "energy": 0.45,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "melancholic",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6063222296161902872": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6066740311782340530": {
+  "energy": 0.55,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "melancholic",
+   "dreamy",
+   "intense"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6071060177628130822": {
+  "energy": 0.9,
+  "valence": 0.35,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6094695468687432247": {
+  "energy": 0.35,
+  "valence": 0.5,
+  "mood_tags": [
+   "dreamy",
+   "chill",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6209653401973811361": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "raw",
+   "nostalgic",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6234524668169966308": {
+  "energy": 0.3,
+  "valence": 0.35,
+  "mood_tags": [
+   "dreamy",
+   "sensual",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6313415842651153313": {
+  "energy": 0.35,
+  "valence": 0.55,
+  "mood_tags": [
+   "ethereal",
+   "dreamy",
+   "peaceful"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6326939454375406808": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "nostalgic",
+   "uplifting",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6350010314043756789": {
+  "energy": 0.5,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "peaceful",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6568959534314434523": {
+  "energy": 0.75,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "dark",
+   "driving",
+   "intense"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6594625583278463172": {
+  "energy": 0.4,
+  "valence": 0.35,
+  "mood_tags": [
+   "sensual",
+   "melancholic",
+   "dark"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6649390592712904006": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "confident",
+   "dark",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6734210041233614686": {
+  "energy": 0.85,
+  "valence": 0.3,
+  "mood_tags": [
+   "aggressive",
+   "intense",
+   "dark",
+   "raw"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "6829946240791504388": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "6921218058524628008": {
+  "energy": 0.55,
+  "valence": 0.5,
+  "mood_tags": [
+   "groovy",
+   "bittersweet",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7004943892364042546": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "ethereal",
+   "dreamy",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7031402587612078358": {
+  "energy": 0.55,
+  "valence": 0.75,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute",
+   "cleaning"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7057464632176045023": {
+  "energy": 0.55,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7098781052324213502": {
+  "energy": 0.9,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "dark",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7137887100031202563": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "confident",
+   "nostalgic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7214605935125087569": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "uplifting",
+   "peaceful",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7233956758718889143": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "ethereal",
+   "intense",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "focus",
+   "meditation"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7240794347303070065": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7324887426808253498": {
+  "energy": 0.7,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "rebellious",
+   "energetic"
+  ],
+  "activity_tags": [
+   "gaming",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7364146244606739281": {
+  "energy": 0.75,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "driving",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "low"
+ },
+ "7408145959976235732": {
+  "energy": 0.7,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "confident",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7432858402156439584": {
+  "energy": 0.75,
+  "valence": 0.45,
+  "mood_tags": [
+   "rebellious",
+   "driving",
+   "raw",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7475314644551178647": {
+  "energy": 0.45,
+  "valence": 0.65,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "chill",
+   "romantic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7527715630295155128": {
+  "energy": 0.45,
+  "valence": 0.25,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7528927364811723954": {
+  "energy": 0.65,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "playful"
+  ],
+  "activity_tags": [
+   "cooking",
+   "party",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7550038742545625341": {
+  "energy": 0.92,
+  "valence": 0.7,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "intense",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7668698171993891420": {
+  "energy": 0.4,
+  "valence": 0.4,
+  "mood_tags": [
+   "dreamy",
+   "melancholic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7672694241390341230": {
+  "energy": 0.65,
+  "valence": 0.7,
+  "mood_tags": [
+   "triumphant",
+   "uplifting",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7678378391488186484": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7734765774360078217": {
+  "energy": 0.5,
+  "valence": 0.4,
+  "mood_tags": [
+   "melancholic",
+   "groovy",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7743031835129131117": {
+  "energy": 0.65,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "party",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7780789474060364559": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "driving"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7827182316450598580": {
+  "energy": 0.45,
+  "valence": 0.25,
+  "mood_tags": [
+   "anxious",
+   "dark",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7877355177966228021": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "playful",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7891284855760299867": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7894583107637206033": {
+  "energy": 0.7,
+  "valence": 0.55,
+  "mood_tags": [
+   "confident",
+   "aggressive",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "7927690289858990935": {
+  "energy": 0.55,
+  "valence": 0.5,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "7981425255657713014": {
+  "energy": 0.3,
+  "valence": 0.35,
+  "mood_tags": [
+   "dreamy",
+   "melancholic",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "sleep",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8158944908138080555": {
+  "energy": 0.65,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "bittersweet",
+   "confident"
+  ],
+  "activity_tags": [
+   "commute",
+   "cooking",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8173897666815109977": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "bittersweet",
+   "nostalgic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8190703044594595458": {
+  "energy": 0.3,
+  "valence": 0.15,
+  "mood_tags": [
+   "dark",
+   "melancholic",
+   "raw"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8262050089479686088": {
+  "energy": 0.4,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "raw",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8266279770606215610": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "nostalgic",
+   "peaceful",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8284748970687205156": {
+  "energy": 0.4,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "raw",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8406737719036100695": {
+  "energy": 0.5,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "8439836196163433625": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "ethereal",
+   "peaceful",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "meditation",
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8592320444524736312": {
+  "energy": 0.85,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "8641447139155789689": {
+  "energy": 0.55,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "sensual",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8733615016789733935": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8750809588889384719": {
+  "energy": 0.75,
+  "valence": 0.9,
+  "mood_tags": [
+   "groovy",
+   "social",
+   "playful",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "social",
+   "cleaning"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8765265522487686340": {
+  "energy": 0.85,
+  "valence": 0.65,
+  "mood_tags": [
+   "driving",
+   "ethereal",
+   "energetic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8884553739630273576": {
+  "energy": 0.85,
+  "valence": 0.5,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "energetic",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "8895540277359138844": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "8976669114630571143": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "nostalgic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9073749237780414102": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "ethereal",
+   "peaceful",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "meditation",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9081143681096347207": {
+  "energy": 0.65,
+  "valence": 0.55,
+  "mood_tags": [
+   "intense",
+   "triumphant",
+   "ethereal",
+   "driving"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9118648421536385138": {
+  "energy": 0.65,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "confident"
+  ],
+  "activity_tags": [
+   "cooking",
+   "cleaning",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9144783080446833654": {
+  "energy": 0.8,
+  "valence": 0.45,
+  "mood_tags": [
+   "raw",
+   "driving",
+   "intense",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9334044969166262382": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "driving",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "9374971355945909939": {
+  "energy": 0.9,
+  "valence": 0.8,
+  "mood_tags": [
+   "uplifting",
+   "energetic",
+   "driving",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "workout",
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9417784995564908635": {
+  "energy": 0.6,
+  "valence": 0.65,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9479743714109605582": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "groovy",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9543403436158699091": {
+  "energy": 0.85,
+  "valence": 0.6,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "intense",
+   "playful"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9588757265297414926": {
+  "energy": 0.35,
+  "valence": 0.45,
+  "mood_tags": [
+   "chill",
+   "sensual",
+   "dreamy",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9611678672069617002": {
+  "energy": 0.55,
+  "valence": 0.45,
+  "mood_tags": [
+   "groovy",
+   "bittersweet",
+   "confident"
+  ],
+  "activity_tags": [
+   "commute",
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9654817298129192994": {
+  "energy": 0.45,
+  "valence": 0.45,
+  "mood_tags": [
+   "sensual",
+   "dreamy",
+   "chill",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9662796974398499624": {
+  "energy": 0.75,
+  "valence": 0.5,
+  "mood_tags": [
+   "confident",
+   "dark",
+   "intense"
+  ],
+  "activity_tags": [
+   "workout",
+   "party",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9706166063295820822": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "9767390684676264685": {
+  "energy": 0.3,
+  "valence": 0.55,
+  "mood_tags": [
+   "peaceful",
+   "dreamy",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "9811462867038015891": {
+  "energy": 0.45,
+  "valence": 0.65,
+  "mood_tags": [
+   "peaceful",
+   "uplifting",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9914443643061033456": {
+  "energy": 0.75,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "social",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "cleaning",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9926674000019524814": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "peaceful",
+   "groovy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "9962347278773303780": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "bittersweet",
+   "groovy",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "9982624886009823206": {
+  "energy": 0.65,
+  "valence": 0.45,
+  "mood_tags": [
+   "melancholic",
+   "nostalgic",
+   "dreamy",
+   "driving"
+  ],
+  "activity_tags": [
+   "driving",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10004434895353242408": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10046623844885690113": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10094861210758570035": {
+  "energy": 0.8,
+  "valence": 0.45,
+  "mood_tags": [
+   "driving",
+   "intense",
+   "dark",
+   "confident"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10344552892511699362": {
+  "energy": 0.55,
+  "valence": 0.65,
+  "mood_tags": [
+   "uplifting",
+   "triumphant",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10358192351066274452": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "10365464673043849217": {
+  "energy": 0.75,
+  "valence": 0.6,
+  "mood_tags": [
+   "raw",
+   "sensual",
+   "confident",
+   "groovy"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10368107214873198338": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10391552571318465296": {
+  "energy": 0.65,
+  "valence": 0.75,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "driving",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "10455540248126182413": {
+  "energy": 0.95,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "intense",
+   "dark",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10526062978787341133": {
+  "energy": 0.55,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "chill"
+  ],
+  "activity_tags": [
+   "driving",
+   "cooking",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10544529612112420670": {
+  "energy": 0.5,
+  "valence": 0.4,
+  "mood_tags": [
+   "bittersweet",
+   "melancholic",
+   "raw"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "10560060003819764213": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "driving",
+   "ethereal",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "focus",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10797967342422204121": {
+  "energy": 0.25,
+  "valence": 0.35,
+  "mood_tags": [
+   "dreamy",
+   "melancholic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "10809929044164075772": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "bittersweet",
+   "nostalgic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "10880698384141371787": {
+  "energy": 0.7,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10916294172361421146": {
+  "energy": 0.4,
+  "valence": 0.4,
+  "mood_tags": [
+   "melancholic",
+   "nostalgic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10956139409460145382": {
+  "energy": 0.75,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "social",
+   "playful",
+   "confident"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10959974328681035793": {
+  "energy": 0.35,
+  "valence": 0.35,
+  "mood_tags": [
+   "melancholic",
+   "raw",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10984086768965791976": {
+  "energy": 0.45,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "melancholic",
+   "raw"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "10994702113016641258": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "playful",
+   "rebellious",
+   "groovy"
+  ],
+  "activity_tags": [
+   "driving",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "11019541856757931282": {
+  "energy": 0.85,
+  "valence": 0.75,
+  "mood_tags": [
+   "driving",
+   "uplifting",
+   "energetic",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11024359222208030258": {
+  "energy": 0.65,
+  "valence": 0.55,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "party",
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "11072230395031686994": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "11130331037762752869": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "sensual",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11141115329266643931": {
+  "energy": 0.5,
+  "valence": 0.62,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11195656611713593116": {
+  "energy": 0.82,
+  "valence": 0.5,
+  "mood_tags": [
+   "driving",
+   "dark",
+   "dreamy",
+   "energetic"
+  ],
+  "activity_tags": [
+   "focus",
+   "workout",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11231611067310858296": {
+  "energy": 0.4,
+  "valence": 0.25,
+  "mood_tags": [
+   "melancholic",
+   "raw",
+   "dark",
+   "focus"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11273369029085716676": {
+  "energy": 0.65,
+  "valence": 0.25,
+  "mood_tags": [
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11351853779623386381": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11370651732685688431": {
+  "energy": 0.5,
+  "valence": 0.68,
+  "mood_tags": [
+   "groovy",
+   "romantic",
+   "nostalgic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11466996921606215172": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11493154592752537043": {
+  "energy": 0.78,
+  "valence": 0.55,
+  "mood_tags": [
+   "aggressive",
+   "confident",
+   "rebellious",
+   "intense"
+  ],
+  "activity_tags": [
+   "workout",
+   "commute",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11634541263939159374": {
+  "energy": 0.5,
+  "valence": 0.45,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "playful"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11643819136370715629": {
+  "energy": 0.5,
+  "valence": 0.68,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11674700173392655880": {
+  "energy": 0.72,
+  "valence": 0.7,
+  "mood_tags": [
+   "dreamy",
+   "driving",
+   "uplifting",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "focus",
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11675254274706041794": {
+  "energy": 0.75,
+  "valence": 0.35,
+  "mood_tags": [
+   "raw",
+   "dark",
+   "driving",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "11706646829276672252": {
+  "energy": 0.85,
+  "valence": 0.55,
+  "mood_tags": [
+   "raw",
+   "energetic",
+   "aggressive",
+   "groovy"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11760007211781893745": {
+  "energy": 0.35,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "chill",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11862449733425297192": {
+  "energy": 0.6,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "party",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11910067466988309034": {
+  "energy": 0.65,
+  "valence": 0.6,
+  "mood_tags": [
+   "triumphant",
+   "intense",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "11965279109744638866": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "nostalgic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12076092493280213974": {
+  "energy": 0.65,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "driving",
+   "intense"
+  ],
+  "activity_tags": [
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12080593847807206364": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "chill"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12141114298241651838": {
+  "energy": 0.55,
+  "valence": 0.4,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "dark"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12304435769667397670": {
+  "energy": 0.7,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12335710247403513427": {
+  "energy": 0.35,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "playful",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12373970432453783414": {
+  "energy": 0.62,
+  "valence": 0.65,
+  "mood_tags": [
+   "playful",
+   "groovy",
+   "confident"
+  ],
+  "activity_tags": [
+   "commute",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12474753494866018736": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12477852329722555944": {
+  "energy": 0.8,
+  "valence": 0.6,
+  "mood_tags": [
+   "driving",
+   "dreamy",
+   "energetic",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "focus",
+   "workout",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12598340527566681211": {
+  "energy": 0.45,
+  "valence": 0.25,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12604148724818894079": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "driving",
+   "dark",
+   "intense",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "12624448971158958650": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "sensual",
+   "groovy",
+   "romantic",
+   "chill"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12705140192395208794": {
+  "energy": 0.65,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "driving",
+   "energetic"
+  ],
+  "activity_tags": [
+   "focus",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "12813278248788758753": {
+  "energy": 0.8,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "intense",
+   "aggressive"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "12991093840548471035": {
+  "energy": 0.55,
+  "valence": 0.75,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13067573578846033979": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "13236184747990180189": {
+  "energy": 0.45,
+  "valence": 0.5,
+  "mood_tags": [
+   "raw",
+   "groovy",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13289970498192227641": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13295614721831190845": {
+  "energy": 0.75,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "intense",
+   "groovy",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13379316794542006459": {
+  "energy": 0.55,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13474395894724436555": {
+  "energy": 0.7,
+  "valence": 0.65,
+  "mood_tags": [
+   "dreamy",
+   "driving",
+   "nostalgic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13507709016183321319": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "13520347590152937935": {
+  "energy": 0.8,
+  "valence": 0.35,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "raw",
+   "driving"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13587981445578147300": {
+  "energy": 0.65,
+  "valence": 0.35,
+  "mood_tags": [
+   "raw",
+   "rebellious",
+   "dark"
+  ],
+  "activity_tags": [
+   "gaming",
+   "commute",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13627292361400669261": {
+  "energy": 0.8,
+  "valence": 0.65,
+  "mood_tags": [
+   "driving",
+   "groovy",
+   "energetic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13654905197195491647": {
+  "energy": 0.7,
+  "valence": 0.25,
+  "mood_tags": [
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13737289246732761818": {
+  "energy": 0.9,
+  "valence": 0.3,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "intense",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13740783220819989781": {
+  "energy": 0.35,
+  "valence": 0.5,
+  "mood_tags": [
+   "romantic",
+   "sensual",
+   "bittersweet",
+   "chill"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13778664144444197491": {
+  "energy": 0.85,
+  "valence": 0.8,
+  "mood_tags": [
+   "uplifting",
+   "energetic",
+   "driving",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13860087854432432405": {
+  "energy": 0.55,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "sensual",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13928729392587157898": {
+  "energy": 0.4,
+  "valence": 0.8,
+  "mood_tags": [
+   "chill",
+   "dreamy",
+   "peaceful",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "13982362699935964797": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "chill",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "meditation"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "14009066374248645938": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "nostalgic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14018413058966259169": {
+  "energy": 0.9,
+  "valence": 0.3,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "14098431505051194054": {
+  "energy": 0.4,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "raw",
+   "dark"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14271505532708435266": {
+  "energy": 0.35,
+  "valence": 0.55,
+  "mood_tags": [
+   "ethereal",
+   "peaceful",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "meditation",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14276915028291001440": {
+  "energy": 0.6,
+  "valence": 0.35,
+  "mood_tags": [
+   "intense",
+   "dark",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14325426727284021360": {
+  "energy": 0.5,
+  "valence": 0.75,
+  "mood_tags": [
+   "uplifting",
+   "nostalgic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "social",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14335344875911792625": {
+  "energy": 0.85,
+  "valence": 0.8,
+  "mood_tags": [
+   "uplifting",
+   "energetic",
+   "driving",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14341937672746315773": {
+  "energy": 0.45,
+  "valence": 0.3,
+  "mood_tags": [
+   "raw",
+   "melancholic",
+   "dark"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14362071669701027576": {
+  "energy": 0.75,
+  "valence": 0.7,
+  "mood_tags": [
+   "driving",
+   "dreamy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "14444237576650390908": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "energetic",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "14465022040423629764": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "intense",
+   "triumphant",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14515027892604812226": {
+  "energy": 0.55,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "sensual"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "14542883019193876857": {
+  "energy": 0.4,
+  "valence": 0.55,
+  "mood_tags": [
+   "dreamy",
+   "peaceful",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "14612306364990739737": {
+  "energy": 0.6,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "rebellious",
+   "groovy"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14690262797287690293": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "sensual",
+   "romantic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14771215632944726725": {
+  "energy": 0.3,
+  "valence": 0.35,
+  "mood_tags": [
+   "melancholic",
+   "sensual",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14827332151473989094": {
+  "energy": 0.65,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "driving",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14920899996623642307": {
+  "energy": 0.7,
+  "valence": 0.65,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "14942196072063346987": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "15090072283941293060": {
+  "energy": 0.8,
+  "valence": 0.9,
+  "mood_tags": [
+   "uplifting",
+   "energetic",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "cleaning",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15166712621342506633": {
+  "energy": 0.55,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15229905560662778507": {
+  "energy": 0.95,
+  "valence": 0.35,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15241528630288571948": {
+  "energy": 0.65,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "energetic"
+  ],
+  "activity_tags": [
+   "driving",
+   "party",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15253126652754036514": {
+  "energy": 0.85,
+  "valence": 0.6,
+  "mood_tags": [
+   "uplifting",
+   "driving",
+   "bittersweet",
+   "energetic"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15270204384183101681": {
+  "energy": 0.4,
+  "valence": 0.7,
+  "mood_tags": [
+   "romantic",
+   "sensual",
+   "chill"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15277064001969988180": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "15369579896967395975": {
+  "energy": 0.35,
+  "valence": 0.55,
+  "mood_tags": [
+   "sensual",
+   "chill",
+   "nostalgic",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15442657426784557697": {
+  "energy": 0.25,
+  "valence": 0.35,
+  "mood_tags": [
+   "chill",
+   "raw",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15542007869342445963": {
+  "energy": 0.7,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "driving",
+   "party",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15643076302735535243": {
+  "energy": 0.9,
+  "valence": 0.65,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15647253872068975042": {
+  "energy": 0.35,
+  "valence": 0.55,
+  "mood_tags": [
+   "sensual",
+   "romantic",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15692788647506645291": {
+  "energy": 0.65,
+  "valence": 0.5,
+  "mood_tags": [
+   "groovy",
+   "dark",
+   "playful"
+  ],
+  "activity_tags": [
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15775619748913398524": {
+  "energy": 0.6,
+  "valence": 0.35,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15837667789602590449": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "commute",
+   "social",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15881109732605832932": {
+  "energy": 0.45,
+  "valence": 0.4,
+  "mood_tags": [
+   "focus",
+   "dark",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "study",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15981918406053846756": {
+  "energy": 0.55,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "social"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "15987797680769933803": {
+  "energy": 0.6,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "aggressive",
+   "confident"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "15998143107298515559": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16034681124651335078": {
+  "energy": 0.7,
+  "valence": 0.85,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "social",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "party",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16041644523679426466": {
+  "energy": 0.85,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "intense",
+   "aggressive",
+   "driving"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16054405167908366190": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "sensual"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16090472179896809976": {
+  "energy": 0.5,
+  "valence": 0.55,
+  "mood_tags": [
+   "bittersweet",
+   "nostalgic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16090634909892831263": {
+  "energy": 0.5,
+  "valence": 0.7,
+  "mood_tags": [
+   "dreamy",
+   "romantic",
+   "groovy",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16117149760852893267": {
+  "energy": 0.5,
+  "valence": 0.45,
+  "mood_tags": [
+   "focus",
+   "dreamy",
+   "groovy"
+  ],
+  "activity_tags": [
+   "study",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16169511556769863301": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16172904862922623448": {
+  "energy": 0.35,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "peaceful"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "meditation"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16212804791676897242": {
+  "energy": 0.8,
+  "valence": 0.65,
+  "mood_tags": [
+   "ethereal",
+   "driving",
+   "dreamy",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16240589734684381802": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "playful"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16336114471307121955": {
+  "energy": 0.4,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "dreamy",
+   "melancholic",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16501511731795077179": {
+  "energy": 0.75,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "ethereal",
+   "focus",
+   "intense"
+  ],
+  "activity_tags": [
+   "focus",
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16519975212199039896": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "sensual",
+   "confident",
+   "chill"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16561643510266230398": {
+  "energy": 0.6,
+  "valence": 0.55,
+  "mood_tags": [
+   "triumphant",
+   "dreamy",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16615488181312844575": {
+  "energy": 0.92,
+  "valence": 0.72,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "uplifting",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16669901657853963080": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "social",
+   "chill"
+  ],
+  "activity_tags": [
+   "cooking",
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16685032064853317617": {
+  "energy": 0.88,
+  "valence": 0.3,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "intense",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "workout",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16694647284708358586": {
+  "energy": 0.62,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "energetic",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "16922190129537791334": {
+  "energy": 0.6,
+  "valence": 0.62,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "16944716727127469405": {
+  "energy": 0.45,
+  "valence": 0.6,
+  "mood_tags": [
+   "sensual",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17111675291973860506": {
+  "energy": 0.65,
+  "valence": 0.55,
+  "mood_tags": [
+   "confident",
+   "sensual",
+   "groovy"
+  ],
+  "activity_tags": [
+   "party",
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17123846839603538191": {
+  "energy": 0.32,
+  "valence": 0.28,
+  "mood_tags": [
+   "dark",
+   "melancholic",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17127097317526055685": {
+  "energy": 0.78,
+  "valence": 0.5,
+  "mood_tags": [
+   "driving",
+   "dark",
+   "dreamy",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "workout",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17172556854808289423": {
+  "energy": 0.55,
+  "valence": 0.5,
+  "mood_tags": [
+   "bittersweet",
+   "romantic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17192702650846584252": {
+  "energy": 0.35,
+  "valence": 0.6,
+  "mood_tags": [
+   "peaceful",
+   "dreamy",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "meditation"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17207418607879970699": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17242177163770475992": {
+  "energy": 0.5,
+  "valence": 0.62,
+  "mood_tags": [
+   "dreamy",
+   "groovy",
+   "chill"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17279352273029263846": {
+  "energy": 0.55,
+  "valence": 0.55,
+  "mood_tags": [
+   "groovy",
+   "focus",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17287108304445995122": {
+  "energy": 0.65,
+  "valence": 0.55,
+  "mood_tags": [
+   "energetic",
+   "raw",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17300234975077052519": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17314383323037817307": {
+  "energy": 0.55,
+  "valence": 0.22,
+  "mood_tags": [
+   "dark",
+   "melancholic",
+   "intense"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17374365405991231722": {
+  "energy": 0.6,
+  "valence": 0.72,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17410144117161705928": {
+  "energy": 0.68,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "rebellious",
+   "raw"
+  ],
+  "activity_tags": [
+   "gaming",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17415647854685924063": {
+  "energy": 0.45,
+  "valence": 0.35,
+  "mood_tags": [
+   "dark",
+   "chill",
+   "confident",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17422507990044276168": {
+  "energy": 0.5,
+  "valence": 0.45,
+  "mood_tags": [
+   "groovy",
+   "raw",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17427946980086586192": {
+  "energy": 0.72,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "energetic",
+   "playful",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17466883139399033838": {
+  "energy": 0.72,
+  "valence": 0.55,
+  "mood_tags": [
+   "driving",
+   "groovy",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "party",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17595074064905606287": {
+  "energy": 0.6,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "social"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17640338879307809826": {
+  "energy": 0.92,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "intense",
+   "dark"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17645060688404501905": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "social",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17714217014901396517": {
+  "energy": 0.3,
+  "valence": 0.65,
+  "mood_tags": [
+   "chill",
+   "peaceful",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17723086082851380116": {
+  "energy": 0.7,
+  "valence": 0.25,
+  "mood_tags": [
+   "dark",
+   "intense",
+   "melancholic",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17723097497675284822": {
+  "energy": 0.45,
+  "valence": 0.55,
+  "mood_tags": [
+   "chill",
+   "groovy",
+   "playful"
+  ],
+  "activity_tags": [
+   "chill",
+   "party"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17725195870342384407": {
+  "energy": 0.5,
+  "valence": 0.65,
+  "mood_tags": [
+   "groovy",
+   "chill",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "study",
+   "cooking"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17775843728187035410": {
+  "energy": 0.65,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "energetic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "commute",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "17779262036258210982": {
+  "energy": 0.9,
+  "valence": 0.8,
+  "mood_tags": [
+   "energetic",
+   "uplifting",
+   "driving",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "workout",
+   "party",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17872045298498427398": {
+  "energy": 0.65,
+  "valence": 0.5,
+  "mood_tags": [
+   "dreamy",
+   "driving",
+   "nostalgic",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "chill"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17913243856741503097": {
+  "energy": 0.7,
+  "valence": 0.55,
+  "mood_tags": [
+   "intense",
+   "energetic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "17968095462946849386": {
+  "energy": 0.3,
+  "valence": 0.7,
+  "mood_tags": [
+   "playful",
+   "nostalgic",
+   "social"
+  ],
+  "activity_tags": [
+   "chill",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "18069135244699410673": {
+  "energy": 0.8,
+  "valence": 0.75,
+  "mood_tags": [
+   "groovy",
+   "energetic",
+   "confident"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "18097281054092827940": {
+  "energy": 0.65,
+  "valence": 0.55,
+  "mood_tags": [
+   "confident",
+   "rebellious",
+   "raw"
+  ],
+  "activity_tags": [
+   "workout",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "18162115386307601554": {
+  "energy": 0.75,
+  "valence": 0.6,
+  "mood_tags": [
+   "ethereal",
+   "dreamy",
+   "driving",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "driving",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "18347694434578518226": {
+  "energy": 0.55,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "nostalgic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "18349037940417590503": {
+  "energy": 0.3,
+  "valence": 0.45,
+  "mood_tags": [
+   "ethereal",
+   "dreamy",
+   "peaceful"
+  ],
+  "activity_tags": [
+   "meditation",
+   "focus"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "18354907917660745921": {
+  "energy": 0.25,
+  "valence": 0.6,
+  "mood_tags": [
+   "peaceful",
+   "chill",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "medium"
+ },
+ "18412131388236672062": {
+  "energy": 0.75,
+  "valence": 0.75,
+  "mood_tags": [
+   "playful",
+   "energetic",
+   "groovy"
+  ],
+  "activity_tags": [
+   "gaming",
+   "party",
+   "commute"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ },
+ "18438320751113707700": {
+  "energy": 0.9,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "intense",
+   "driving",
+   "raw"
+  ],
+  "activity_tags": [
+   "workout",
+   "driving",
+   "gaming"
+  ],
+  "annotated_by": "fable-batch-2026-08-12",
+  "annotation_confidence": "high"
+ }
+}

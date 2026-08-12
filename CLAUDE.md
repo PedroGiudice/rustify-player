@@ -315,8 +315,9 @@ Gotchas:
 
 ### Limitacoes conhecidas
 
-- `liked_at` esta sempre 0 no Qdrant — likes explicitos nao sao usados.
-  Toda inferencia de gosto vem de `play_events` (listen_pct, replays).
+- `liked_at` vive em `track_enrichments` (76+ likes reais desde 07/2026;
+  a afirmacao antiga "sempre 0" valia pro campo fossil de rustify_tracks).
+  O discover.py ainda nao consome likes; behavioral_signals v3 sim.
 - Qualidade da curadoria depende de massa de eventos: com < 30 positives
   qualificadas o subagente sinaliza baixa confianca.
 - **Perfil de nicho/BR** (rap BR, funk BR): o grafo do ListenBrainz e esparso
@@ -339,6 +340,32 @@ Gotchas:
   faixa obscura entre as candidatas, nao necessariamente deep cut da discografia
   do artista. Fonte A (co-listening) e hit-pesada; a fonte B (cauda) tem cota
   reservada (`SOURCE_B_SHARE`) pra nao ser soterrada.
+
+## Motor de inteligencia — sinal v3 (v0.2.66, 2026-08-12)
+
+Vistoria completa + redesign do sinal em
+`docs/contexto/12082026-autoplay-vistoria-sinal-v3.md` (regua, dados,
+decisoes). O que importa pro dia-a-dia:
+
+- **behavioral_signals v3** (`qdrant_client.rs`, derivacao pura testavel
+  `derive_behavioral_signals`): positives DISTINTOS (weight por repeticao
+  e inocuo sob `best_score` — nao reintroduzir), decay 14d, desconto 0.6
+  pra origens passivas (`autoplay`/`station`/`playlist`), likes top-10,
+  negatives lp<0.30 janela 300 cap 40, conflito pos/neg por recencia.
+  Tunables sao as consts no topo da funcao.
+- **Origins**: continuacoes de fila radio logam `autoplay` (contOrigin,
+  PlayerBar.tsx), playlist loga `playlist`, repeat-one loga `repeat`.
+  `album_seq` segue FORA dos sinais. NAO comparar skip-rate por origin
+  cru com dados pre-v0.2.66 — o significado mudou.
+- **record_play roda 1x por play** (no playTrack; nunca re-adicionar no
+  TrackEnded — dobrava play_count).
+- **Anotacao de vibe NAO e automatica**: leva nova do Crate entra sem
+  energy/valence/moods (neutro 0.5 no re-rank) ate rodar o batch
+  (CMR-178; processo replicavel na doc de contexto). Cobertura em
+  2026-08-12: 1746/1746.
+- Deferidos rastreados: CMR-177 (double-load gapless), CMR-178
+  (anotacao automatica + GC orfaos), CMR-179 (aversion list, station
+  Mood, restore de queueSource).
 
 ## Crate — busca + download Soulseek in-app (v0.2.62)
 
