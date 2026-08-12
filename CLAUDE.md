@@ -365,7 +365,11 @@ decisoes). O que importa pro dia-a-dia:
   `docs/metrics/regua-latest.md` + historico `.jsonl`; o hook
   SessionStart do repo (`.claude/settings.json`) injeta o ultimo
   veredito em TODA sessao — a promessa "medir depois" nao depende mais
-  de memoria de ninguem.
+  de memoria de ninguem. Desde v0.2.69 reporta tambem a COBERTURA do
+  motor (MERT / letra / vibe): o gap reabre a cada leva do Crate e nao
+  havia alarme nenhum. A cobertura de letra e medida contra as
+  ALCANCAVEIS (total menos `lyrics_status` none/instrumental) — perseguir
+  100% e impossivel: instrumental nao tem letra.
 - **Origins**: continuacoes de fila radio logam `autoplay` (contOrigin,
   PlayerBar.tsx), playlist loga `playlist`, repeat-one loga `repeat`.
   `album_seq` segue FORA dos sinais. NAO comparar skip-rate por origin
@@ -375,7 +379,12 @@ decisoes). O que importa pro dia-a-dia:
 - **Anotacao de vibe NAO e automatica**: leva nova do Crate entra sem
   energy/valence/moods (neutro 0.5 no re-rank) ate rodar o batch
   (CMR-178; processo replicavel na doc de contexto). Cobertura em
-  2026-08-12: 1746/1746.
+  2026-08-12: 1746/1746. E o unico dos tres vetores/anotacoes que
+  continua manual — MERT e letra fecham sozinhos no ingest desde
+  v0.2.69. Nenhum script commitado produz as anotacoes em uso: as tres
+  levas (372, 72, 368) sairam de subagentes LLM, e o processo e prosa em
+  doc, nao codigo. Decisao pendente do CEO: batch periodico agendado vs
+  chamada LLM no ingest (custo recorrente + latencia por faixa).
 - Deferidos rastreados: CMR-177 (double-load gapless), CMR-178
   (anotacao automatica + GC orfaos), CMR-179 (aversion list, station
   Mood, restore de queueSource).
@@ -397,9 +406,15 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   `~/Music/<playlist>/<Artista>/<Album>/`). Indexacao deterministica via
   `IndexerCommand::IngestPaths` (devolve track_id por path).
 - **Letras junto**: worker paralelo `slsk-lyrics`
-  (`library-indexer/src/lyrics_fetch.rs`) consulta lrclib.net pos-download
-  e grava sidecar `.lrc` (nunca sobrescreve). Canal bounded(64), try_send —
-  nunca bloqueia o coordinator.
+  (`library-indexer/src/lyrics_fetch.rs`) consulta lrclib.net pos-download.
+  Canal bounded(64), try_send — nunca bloqueia o coordinator. Desde
+  v0.2.69 ele FECHA O CICLO via `LyricsSink` (`QdrantLyricsSink`, injetado
+  por `IndexerHandle::lyrics_sink`): grava payload + vetor `lyrics` na hora,
+  em vez de esperar o `backfill_lyrics` do proximo boot. Sidecar `.lrc` so
+  nasce de letra SINCRONIZADA (a view de letra depende dos timestamps);
+  letra `plain` vai pro payload `embedded_lyrics` e alimenta so o vetor —
+  ~60% do que o lrclib tem e so plain, e descartar isso custava o vetor.
+  Sidecar preexistente nunca e sobrescrito, mas ainda fecha o ciclo.
 - **Destino**: playlist = pasta de 1o nivel. Precedencia (spec §4.5):
   override da toolbar > artista ja no acervo (`suggested_dest`) > ultimo
   usado (`kv-crate-dest`) > seletor obrigatorio. NUNCA semear o override

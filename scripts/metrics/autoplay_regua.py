@@ -57,6 +57,68 @@ def ensure_tunnel() -> bool:
     return qdrant_ok()
 
 
+def count(collection: str, body: dict) -> int:
+    """POST /points/count — 0 se a collection não responder."""
+    try:
+        req = urllib.request.Request(
+            f"{QDRANT}/collections/{collection}/points/count",
+            data=json.dumps({"exact": True, **body}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)["result"]["count"]
+    except (urllib.error.URLError, OSError, KeyError):
+        return 0
+
+
+def coverage() -> dict:
+    """Cobertura do motor: uma faixa sem vetor não é recomendável, e sem vibe
+    compete com 0.5 neutro no re-rank. O gap REABRE a cada leva nova do Crate
+    (a anotação de vibe ainda é batch manual — CMR-178), então a régua diária
+    é o único lugar onde a regressão aparece sem alguém ir procurar.
+    """
+    total = count("rustify_tracks", {})
+    return {
+        "tracks": total,
+        "mert": count("rustify_tracks", {"filter": {"must": [{"has_vector": "mert"}]}}),
+        "lyrics": count("rustify_tracks", {"filter": {"must": [{"has_vector": "lyrics"}]}}),
+        # Faixas sem letra conhecida: miss do lrclib ou instrumental. Não são
+        # defeito — separá-las evita perseguir uma cobertura de 100% impossível.
+        "lyrics_sem_fonte": count(
+            "rustify_tracks",
+            {"filter": {"must": [{"key": "lyrics_status", "match": {"any": ["none", "instrumental"]}}]}},
+        ),
+        "vibe": count(
+            "track_enrichments",
+            {"filter": {"must_not": [{"is_empty": {"key": "energy"}}]}},
+        ),
+    }
+
+
+def cobertura_md(cov: dict) -> str:
+    """Bloco de cobertura do relatório. Faixa sem vetor/vibe é buraco no motor,
+    não estatística: por isso vem com o número absoluto do que falta."""
+    total = cov["tracks"] or 1
+    faltam_mert = cov["tracks"] - cov["mert"]
+    faltam_vibe = cov["tracks"] - cov["vibe"]
+    # Alcançável = total menos as que comprovadamente não têm letra em lugar
+    # nenhum (instrumental ou miss definitivo do lrclib).
+    alcancavel = max(cov["tracks"] - cov["lyrics_sem_fonte"], 1)
+    faltam_letra = alcancavel - cov["lyrics"]
+    linhas = [
+        "Cobertura do motor (faixa sem vetor não é recomendável; sem vibe entra neutra no re-rank):",
+        f"- MERT (áudio): {cov['mert']}/{cov['tracks']} ({cov['mert'] / total:.0%})"
+        + (f" — faltam {faltam_mert}" if faltam_mert > 0 else ""),
+        f"- Letra: {cov['lyrics']}/{alcancavel} das alcançáveis ({cov['lyrics'] / alcancavel:.0%})"
+        + (f" — faltam {faltam_letra}" if faltam_letra > 0 else "")
+        + f"; {cov['lyrics_sem_fonte']} sem letra em lugar nenhum (instrumental/miss).",
+        f"- Vibe: {cov['vibe']}/{cov['tracks']} ({cov['vibe'] / total:.0%})"
+        + (f" — faltam {faltam_vibe} (anotação ainda é batch manual, CMR-178)" if faltam_vibe > 0 else ""),
+    ]
+    return "\n".join(linhas) + "\n"
+
+
 def scroll_events():
     pts, offset = [], None
     while True:
@@ -145,6 +207,7 @@ def main() -> int:
             w[0] += 1
             w[1] += 1 if e["event_type"] == "track_skipped" else 0
 
+    cov = coverage()
     record = {
         "measured_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "events_pos_v3": len(pos_v3),
@@ -159,6 +222,7 @@ def main() -> int:
             "max": max(streaks) if streaks else None,
         },
         "meta_skip": META_SKIP,
+        "coverage": cov,
     }
     with open(OUT_DIR / "regua-autoplay.jsonl", "a") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -202,6 +266,7 @@ def main() -> int:
             if s["n"] > 0
         )
         + "\n\nAutoplay por semana:\n" + weeks_md + "\n\n"
+        + cobertura_md(cov) + "\n"
         "Histórico completo: docs/metrics/regua-autoplay.jsonl. "
         "Medir à mão: `python3 scripts/metrics/autoplay_regua.py`.\n"
     )
