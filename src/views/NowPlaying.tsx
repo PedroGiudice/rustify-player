@@ -47,10 +47,17 @@ export default function NowPlaying() {
     async (id) => (id ? await libGetLyrics(id).catch(() => [] as LyricLine[]) : [] as LyricLine[]),
   );
 
+  // Letra SEM sincronismo chega com t=0 em todas as linhas (lyrics_from_embedded
+  // faz esse fallback quando o texto não tem timestamps — caso de tag ID3 com
+  // letra corrida, 73 faixas do acervo em 08/2026). Tratá-la como sincronizada
+  // trava o card: `activeLine` elege a ÚLTIMA linha já em pos=0 e o rail fixa o
+  // scroll no fim durante a música inteira, anunciando "synced".
+  const isSynced = createMemo(() => (lyrics() ?? []).some((l) => l.t > 0));
+
   // Find the active lyric index based on positionSecs
   const activeLine = createMemo(() => {
     const ls = lyrics() ?? [];
-    if (ls.length === 0) return -1;
+    if (ls.length === 0 || !isSynced()) return -1;
     const pos = player.positionSecs;
     let idx = -1;
     for (let i = 0; i < ls.length; i++) {
@@ -206,7 +213,14 @@ export default function NowPlaying() {
   onMount(() => {
     const apply = () => {
       const i = activeLine();
-      if (i < 0 || !railEl || !railViewportEl) return;
+      if (!railEl || !railViewportEl) return;
+      if (i < 0) {
+        // Sem linha ativa (letra não sincronizada, ou faixa sem letra): zera o
+        // deslocamento — senão o rail herda o offset da faixa anterior e o
+        // texto nasce cortado.
+        if (railEl.style.transform) railEl.style.transform = "";
+        return;
+      }
       const line = railEl.children[i] as HTMLElement | undefined;
       if (!line) return;
       const offset = line.offsetTop + line.offsetHeight / 2 - railViewportEl.clientHeight / 2;
@@ -337,10 +351,18 @@ export default function NowPlaying() {
               }}
             >
               <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste pra mover">
-                <span class="np__lyrics-label">Lyrics · synced</span>
-                <span class="np__lyrics-source mono">aligned</span>
+                <span class="np__lyrics-label">
+                  Lyrics{isSynced() ? " · synced" : ""}
+                </span>
+                <span class="np__lyrics-source mono">
+                  {isSynced() ? "aligned" : "unsynced"}
+                </span>
               </div>
-              <div class="np__lyrics-viewport" ref={railViewportEl!}>
+              <div
+                class="np__lyrics-viewport"
+                classList={{ "is-unsynced": !isSynced() }}
+                ref={railViewportEl!}
+              >
                 <div class="np__lyrics-rail" ref={railEl!}>
                   <For each={lyrics() ?? []}>
                     {(line, i) => {

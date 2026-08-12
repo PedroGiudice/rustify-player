@@ -18,6 +18,7 @@ use crate::types::{IndexerCommand, IndexerEvent, IndexerSnapshot, IngestOutcome,
 use crate::watch::{FsWatcher, WatchEvent};
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -297,7 +298,7 @@ fn run_scan(
     let entries: Vec<FileEntry> = scan::walk_music_root(&config.music_root)?.collect();
     let total = entries.len() as u64;
 
-    let existing = load_existing_from_qdrant(client)?;
+    let (existing, external_lyrics) = load_existing_from_qdrant(client)?;
     info!(
         target: "library_indexer::pipeline",
         files_on_disk = total,
@@ -344,8 +345,13 @@ fn run_scan(
 
         if needs_ingest {
             match build_track_payload(config, &entry) {
-                Ok(payload) => {
+                Ok(mut payload) => {
                     let id = path_to_id(&entry.path);
+                    // A letra externa não vem do arquivo: sem isto, retaggear
+                    // o FLAC apagaria o que veio do lrclib para sempre.
+                    if let Some(kept) = external_lyrics.get(&id) {
+                        merge_external_lyrics(&mut payload, kept);
+                    }
                     batch.push((id, payload, None));
                     if prior.is_none() {
                         added += 1;
@@ -415,8 +421,15 @@ fn ingest_paths(
                     .map(|payload| (entry, payload))
                     .map_err(|e| e.to_string())
             })
-            .and_then(|(entry, payload)| {
+            .and_then(|(entry, mut payload)| {
                 let id = path_to_id(&entry.path);
+                // Re-download do MESMO arquivo cai aqui: preserva a letra
+                // externa do ponto anterior, que não vem das tags.
+                if let Ok(Some(point)) = client.get_point(id) {
+                    if let Some(kept) = external_lyrics_fields(&point["payload"]) {
+                        merge_external_lyrics(&mut payload, &kept);
+                    }
+                }
                 client
                     .upsert_tracks(&[(id, payload, None)])
                     .map_err(|e| e.to_string())?;
@@ -518,20 +531,62 @@ fn backfill_missing_lufs(client: &QdrantClient) -> Result<(), IndexerError> {
     Ok(())
 }
 
+/// Campos do payload que NÃO vêm do arquivo e por isso não sobrevivem a um
+/// re-ingest: `build_track_payload` os reconstrói do zero e o `upsert_tracks`
+/// (PUT /points) reescreve o ponto inteiro.
+///
+/// Regravar tags de um álbum (Picard, ReplayGain, capa) muda mtime/size e
+/// dispara re-ingest; sem preservar isto, a letra obtida do lrclib e o veredito
+/// de miss se perdiam de vez — não há cópia em disco para o backfill recuperar,
+/// e o app não reconsulta o lrclib para faixa já indexada.
+const EXTERNAL_LYRICS_FIELDS: [&str; 2] = [FIELD_LYRICS_TEXT, "lyrics_status"];
+
+type ExistingRows = Vec<(u64, PathBuf, u64, u64, bool)>;
+
 fn load_existing_from_qdrant(
     client: &QdrantClient,
-) -> Result<Vec<(u64, PathBuf, u64, u64, bool)>, IndexerError> {
-    let all = client.scroll_all_payloads(&["path", "mtime", "size_bytes", "embedding_status"])?;
-    Ok(all
-        .into_iter()
-        .map(|(id, payload)| {
-            let path = PathBuf::from(payload["path"].as_str().unwrap_or(""));
-            let mtime = payload["mtime"].as_u64().unwrap_or(0);
-            let size = payload["size_bytes"].as_u64().unwrap_or(0);
-            let embedded = payload["embedding_status"].as_str() == Some("done");
-            (id, path, mtime, size, embedded)
-        })
-        .collect())
+) -> Result<(ExistingRows, HashMap<u64, serde_json::Value>), IndexerError> {
+    let mut fields = vec!["path", "mtime", "size_bytes", "embedding_status"];
+    fields.extend_from_slice(&EXTERNAL_LYRICS_FIELDS);
+    let all = client.scroll_all_payloads(&fields)?;
+
+    let mut rows = Vec::with_capacity(all.len());
+    let mut external = HashMap::new();
+    for (id, payload) in all {
+        let path = PathBuf::from(payload["path"].as_str().unwrap_or(""));
+        let mtime = payload["mtime"].as_u64().unwrap_or(0);
+        let size = payload["size_bytes"].as_u64().unwrap_or(0);
+        let embedded = payload["embedding_status"].as_str() == Some("done");
+        if let Some(kept) = external_lyrics_fields(&payload) {
+            external.insert(id, kept);
+        }
+        rows.push((id, path, mtime, size, embedded));
+    }
+    Ok((rows, external))
+}
+
+/// Extrai de um payload os campos de letra externa dignos de preservação, ou
+/// `None` se não houver nenhum.
+fn external_lyrics_fields(payload: &serde_json::Value) -> Option<serde_json::Value> {
+    let mut kept = serde_json::Map::new();
+    for field in EXTERNAL_LYRICS_FIELDS {
+        if let Some(v) = payload.get(field) {
+            if !v.is_null() {
+                kept.insert(field.to_string(), v.clone());
+            }
+        }
+    }
+    (!kept.is_empty()).then(|| serde_json::Value::Object(kept))
+}
+
+/// Reaplica ao payload recém-construído os campos externos preservados.
+fn merge_external_lyrics(payload: &mut serde_json::Value, kept: &serde_json::Value) {
+    let (Some(dst), Some(src)) = (payload.as_object_mut(), kept.as_object()) else {
+        return;
+    };
+    for (k, v) in src {
+        dst.insert(k.clone(), v.clone());
+    }
 }
 
 fn build_track_payload(
@@ -1214,6 +1269,34 @@ mod tests {
         });
         let r = resolve_lyrics(&payload);
         assert_eq!(r.text.as_deref(), Some("letra das tags do arquivo, mais confiavel"));
+    }
+
+    #[test]
+    fn re_ingest_preserva_letra_externa_que_nao_vem_do_arquivo() {
+        // Retaggear o FLAC (Picard, ReplayGain) muda mtime/size e dispara
+        // re-ingest; build_track_payload reconstrói do zero e o upsert reescreve
+        // o ponto inteiro. Sem o merge, a letra do lrclib sumia para sempre —
+        // não há cópia em disco e o app não reconsulta faixa já indexada.
+        let antigo = json!({
+            "path": "/m/a.flac",
+            FIELD_LYRICS_TEXT: LETRA,
+            "lyrics_status": "found",
+        });
+        let kept = external_lyrics_fields(&antigo).unwrap();
+
+        let mut novo = json!({ "path": "/m/a.flac", "title": "A" });
+        merge_external_lyrics(&mut novo, &kept);
+        assert_eq!(novo[FIELD_LYRICS_TEXT], LETRA);
+        assert_eq!(novo["lyrics_status"], "found");
+        assert_eq!(novo["title"], "A", "campos do arquivo seguem os novos");
+    }
+
+    #[test]
+    fn nada_a_preservar_quando_o_ponto_nao_tem_letra_externa() {
+        assert!(external_lyrics_fields(&json!({ "path": "/m/a.flac" })).is_none());
+        // Campo presente porém nulo (Qdrant devolve assim quando foi apagado)
+        // não é dado — preservá-lo escreveria null por cima do payload novo.
+        assert!(external_lyrics_fields(&json!({ FIELD_LYRICS_TEXT: null })).is_none());
     }
 
     #[test]

@@ -813,6 +813,12 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   -webkit-mask-image: linear-gradient(to bottom, black 0, black 78%, transparent 100%);
           mask-image: linear-gradient(to bottom, black 0, black 78%, transparent 100%);
 }
+/* Letra sem sincronismo: não há linha ativa pra centralizar, então o rail não
+   se move sozinho — o usuário rola. Sem isto o texto fica preso no topo com o
+   resto inalcançável (overflow: hidden). */
+.np__lyrics-viewport.is-unsynced {
+  overflow-y: auto;
+}
 .np__lyrics-resize {
   position: absolute;
   right: 2px;
