@@ -1308,33 +1308,35 @@ impl QdrantClient {
 
     /// Derive behavioral signals (positives and negatives) from play events.
     ///
-    /// - **Positives:** top 25 distinct track_ids by weight from the last 300
-    ///   events with `listen_pct >= 0.9` AND `origin != "album_seq"`. A track
-    ///   only qualifies if it has been replayed (count >= 2) OR has at least
-    ///   one full listen (`pct == 1.0`) — filters out the "listened once
-    ///   distractedly" noise. Weight = `min(count, 5)` so the centroid skews
-    ///   toward tracks the user actively replays without letting a single
-    ///   obsession single-handedly hijack the recommendation vector.
-    /// - **Negatives:** up to 30 distinct track_ids from the last 200 events
-    ///   with `listen_pct < 0.15` AND `origin != "album_seq"`. Wider window
-    ///   and more entries (vs. previous 50/15) give skips real bite — a track
-    ///   skipped a week ago no longer resurfaces tomorrow.
+    /// v3 — a derivação em si é pura ([`derive_behavioral_signals`]); aqui só
+    /// vive o I/O. Contrato:
+    /// - **Positives:** distintos (sem repetição por peso — inócua sob
+    ///   `best_score`, onde o score é o MELHOR match individual), até 25
+    ///   comportamentais selecionados por score com decay temporal (meia-vida
+    ///   14d) e desconto 0.6 pra origens passivas (autoplay/station/playlist)
+    ///   — anti-feedback-loop: escuta passiva do que o próprio autoplay tocou
+    ///   vale menos que escolha ativa. Likes explícitos recentes (top 10 por
+    ///   `liked_at`) são apendados sem duplicar, cap total 35.
+    /// - **Negatives:** até 40 distintos dos últimos 300 eventos com
+    ///   `listen_pct < 0.30` — skips até 30% são rejeição (a distribuição
+    ///   real é bimodal em U: 67% dos eventos < 0.1, 22% > 0.9; o meio é
+    ///   raro mas direcionalmente negativo).
+    /// - Conflito pos/neg (track com full listen E skip): vence o lado com o
+    ///   evento mais recente.
     pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
         // event_type accepts both natural completion and interrupted plays —
         // listen_pct is the actual discriminator. We just need to keep
         // search/click events out of the play-affinity derivation.
+        // origin="album_seq" fica fora dos dois lados: deixar um álbum rolar
+        // não é sinal por track ("playlist" ENTRA, com desconto passivo).
         let event_type_filter = json!({
             "key": "event_type",
             "match": { "any": ["track_ended", "track_skipped"] }
         });
 
-        // --- Positives ---
-        // Tighter listen_pct threshold (0.9 vs 0.8) drops casual half-listens.
-        // Wider scroll window (300 vs 100) preserves long-term taste across
-        // days of active use instead of being washed away by a single binge.
         let pos_filter = json!({
             "must": [
-                event_type_filter,
+                event_type_filter.clone(),
                 { "key": "listen_pct", "range": { "gte": 0.9 } }
             ],
             "must_not": [
@@ -1343,70 +1345,72 @@ impl QdrantClient {
         });
         let pos_payloads = self.scroll_play_events(pos_filter, 300)?;
 
-        // (count, had_full_listen) per track. A "full listen" (pct == 1.0)
-        // qualifies a track on its own; otherwise it needs at least one
-        // replay (count >= 2).
-        let mut track_stats: HashMap<u64, (usize, bool)> = HashMap::new();
-        for p in &pos_payloads {
-            if let Some(tid) = p["track_id"].as_u64() {
-                let entry = track_stats.entry(tid).or_insert((0, false));
-                entry.0 += 1;
-                if p["listen_pct"].as_f64().unwrap_or(0.0) >= 0.999 {
-                    entry.1 = true;
-                }
-            }
-        }
-
-        // Filter: needs >=2 listens OR at least one full listen.
-        let mut qualified: Vec<(u64, usize)> = track_stats
-            .into_iter()
-            .filter(|(_, (count, full))| *count >= 2 || *full)
-            .map(|(tid, (count, _))| (tid, count))
-            .collect();
-
-        // Sort by count descending, take top 25 distinct.
-        qualified.sort_by(|a, b| b.1.cmp(&a.1));
-        qualified.truncate(25);
-
-        // Weight = min(count, 5). One play -> 1 entry; 10 plays -> 5 entries.
-        // Cap prevents a single obsession from monopolizing the centroid.
-        let mut positives: Vec<u64> = Vec::new();
-        for (tid, count) in &qualified {
-            let weight = (*count).min(5);
-            for _ in 0..weight {
-                positives.push(*tid);
-            }
-        }
-
-        // --- Negatives ---
         let neg_filter = json!({
             "must": [
-                {
-                    "key": "event_type",
-                    "match": { "any": ["track_ended", "track_skipped"] }
-                },
-                { "key": "listen_pct", "range": { "lt": 0.15 } }
+                event_type_filter,
+                { "key": "listen_pct", "range": { "lt": 0.30 } }
             ],
             "must_not": [
                 { "key": "origin", "match": { "value": "album_seq" } }
             ]
         });
-        let neg_payloads = self.scroll_play_events(neg_filter, 200)?;
+        let neg_payloads = self.scroll_play_events(neg_filter, 300)?;
 
-        let mut neg_seen: HashSet<u64> = HashSet::new();
-        let mut negatives: Vec<u64> = Vec::new();
-        for p in &neg_payloads {
-            if let Some(tid) = p["track_id"].as_u64() {
-                if neg_seen.insert(tid) {
-                    negatives.push(tid);
-                    if negatives.len() >= 30 {
-                        break;
-                    }
+        // Likes explícitos são o sinal mais honesto disponível; falha aqui
+        // não pode derrubar os sinais comportamentais.
+        let liked = self.recent_likes(10).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "behavioral_signals: recent_likes falhou — seguindo sem likes");
+            Vec::new()
+        });
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        Ok(derive_behavioral_signals(
+            &pos_payloads,
+            &neg_payloads,
+            &liked,
+            now,
+        ))
+    }
+
+    /// Track ids com like explícito, mais recentes primeiro (por `liked_at`).
+    /// Ordenação client-side — `order_by` no Qdrant exigiria índice range em
+    /// `liked_at`. Página única de 1000 com payload restrito a `liked_at`
+    /// (o enrichment inteiro seria tráfego inútil no hot path do autoplay);
+    /// acima de 1000 likes o top-N degradaria pra um subconjunto — hoje o
+    /// acervo inteiro tem 1746 tracks.
+    fn recent_likes(&self, limit: usize) -> Result<Vec<u64>, IndexerError> {
+        let body = json!({
+            "filter": { "must": [{ "key": "liked_at", "range": { "gt": 0 } }] },
+            "limit": 1000,
+            "with_payload": { "include": ["liked_at"] },
+            "with_vector": false
+        });
+        let resp: Value = self
+            .agent
+            .post(&format!(
+                "{}/collections/{ENRICHMENTS_COLLECTION}/points/scroll",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant scroll likes: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+
+        let mut likes: Vec<(u64, i64)> = Vec::new();
+        if let Some(points) = resp["result"]["points"].as_array() {
+            for p in points {
+                if let (Some(id), Some(at)) = (p["id"].as_u64(), p["payload"]["liked_at"].as_i64())
+                {
+                    likes.push((id, at));
                 }
             }
         }
-
-        Ok((positives, negatives))
+        likes.sort_by(|a, b| b.1.cmp(&a.1));
+        likes.truncate(limit);
+        Ok(likes.into_iter().map(|(id, _)| id).collect())
     }
 
     // sync_lyrics removed — pipeline will handle lyrics embedding directly.
@@ -1657,6 +1661,128 @@ fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
 ///
 /// `exclude_ids` becomes a hard `must_not has_id` filter (only when
 /// non-empty); `negative_ids` is omitted when empty.
+/// Origens "passivas": a track tocou porque o SISTEMA escolheu (autoplay/
+/// station) ou porque uma playlist rolou sozinha. Escuta completa vinda daí
+/// vale menos que escolha ativa — sem o desconto, o autoplay reforça o que
+/// ele mesmo tocou (feedback loop).
+const PASSIVE_ORIGINS: &[&str] = &["autoplay", "station", "playlist"];
+/// Desconto aplicado ao peso de eventos de origem passiva.
+const PASSIVE_WEIGHT: f64 = 0.6;
+/// Meia-vida do decay temporal dos positives, em dias.
+const HALF_LIFE_DAYS: f64 = 14.0;
+/// Máximo de positives comportamentais (antes dos likes).
+const MAX_BEHAVIORAL_POSITIVES: usize = 25;
+/// Máximo de positives totais (comportamentais + likes explícitos).
+const MAX_TOTAL_POSITIVES: usize = 35;
+/// Máximo de negatives.
+const MAX_NEGATIVES: usize = 40;
+
+/// Derivação PURA dos sinais comportamentais — ver contrato no doc de
+/// [`QdrantClient::behavioral_signals`]. `pos_payloads`/`neg_payloads` vêm
+/// ordenados por `started_at` desc (mais recentes primeiro); `liked_recent`
+/// já vem limitado e ordenado por recência do like.
+pub(crate) fn derive_behavioral_signals(
+    pos_payloads: &[Value],
+    neg_payloads: &[Value],
+    liked_recent: &[u64],
+    now: i64,
+) -> (Vec<u64>, Vec<u64>) {
+    struct PosAcc {
+        score: f64,
+        count: usize,
+        full: bool,
+        last_at: i64,
+    }
+    let mut pos_acc: HashMap<u64, PosAcc> = HashMap::new();
+    for p in pos_payloads {
+        let Some(tid) = p["track_id"].as_u64() else {
+            continue;
+        };
+        let started = p["started_at"].as_i64().unwrap_or(0);
+        let age_days = (now - started).max(0) as f64 / 86_400.0;
+        let decay = 0.5_f64.powf(age_days / HALF_LIFE_DAYS);
+        let origin = p["origin"].as_str().unwrap_or("");
+        let weight = if PASSIVE_ORIGINS.contains(&origin) {
+            PASSIVE_WEIGHT
+        } else {
+            1.0
+        };
+        let e = pos_acc.entry(tid).or_insert(PosAcc {
+            score: 0.0,
+            count: 0,
+            full: false,
+            last_at: i64::MIN,
+        });
+        e.score += weight * decay;
+        e.count += 1;
+        if p["listen_pct"].as_f64().unwrap_or(0.0) >= 0.999 {
+            e.full = true;
+        }
+        e.last_at = e.last_at.max(started);
+    }
+
+    // Negatives: última ocorrência por track. A ordem de entrada (desc por
+    // started_at) faz da primeira ocorrência a mais recente.
+    let mut neg_last: HashMap<u64, i64> = HashMap::new();
+    let mut neg_order: Vec<u64> = Vec::new();
+    for p in neg_payloads {
+        let Some(tid) = p["track_id"].as_u64() else {
+            continue;
+        };
+        let started = p["started_at"].as_i64().unwrap_or(0);
+        match neg_last.get_mut(&tid) {
+            Some(last) => *last = (*last).max(started),
+            None => {
+                neg_last.insert(tid, started);
+                neg_order.push(tid);
+            }
+        }
+    }
+
+    // Qualificação (replay OU full listen) + conflito pos/neg: o lado com o
+    // evento mais recente vence (empate → negative, defensivo).
+    // map_or (não is_none_or): o workspace declara rust-version 1.78.
+    let mut qualified: Vec<(u64, f64, i64)> = pos_acc
+        .into_iter()
+        .filter(|(_, a)| a.count >= 2 || a.full)
+        .filter(|(tid, a)| neg_last.get(tid).map_or(true, |neg_at| a.last_at > *neg_at))
+        .map(|(tid, a)| (tid, a.score, a.last_at))
+        .collect();
+    // Quem venceu o conflito fica protegido dos negatives MESMO se o
+    // truncate do top-25 a cortar dos positives — rebaixar uma track
+    // replayada ontem a negative por ter rankeado 26ª inverteria o sinal.
+    let conflict_winners: HashSet<u64> = qualified.iter().map(|(tid, ..)| *tid).collect();
+    qualified.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.2.cmp(&a.2))
+            .then(a.0.cmp(&b.0))
+    });
+    qualified.truncate(MAX_BEHAVIORAL_POSITIVES);
+    let mut positives: Vec<u64> = qualified.iter().map(|(tid, ..)| *tid).collect();
+
+    let mut pos_seen: HashSet<u64> = positives.iter().copied().collect();
+    let negatives: Vec<u64> = neg_order
+        .into_iter()
+        .filter(|tid| !conflict_winners.contains(tid))
+        .take(MAX_NEGATIVES)
+        .collect();
+
+    // Likes explícitos: apendados sem duplicar nem contrariar um negative
+    // (skip recente > like antigo).
+    let neg_set: HashSet<u64> = negatives.iter().copied().collect();
+    for tid in liked_recent {
+        if positives.len() >= MAX_TOTAL_POSITIVES {
+            break;
+        }
+        if !neg_set.contains(tid) && pos_seen.insert(*tid) {
+            positives.push(*tid);
+        }
+    }
+
+    (positives, negatives)
+}
+
 pub(crate) fn build_recommend_body(
     positive_ids: &[u64],
     negative_ids: &[u64],
@@ -1736,6 +1862,159 @@ mod tests {
         assert!(sem.get("filter").is_none(), "sem exclude → sem filter");
         let com = build_recommend_body(&[1], &[], &[7, 8], 5);
         assert_eq!(com["filter"]["must_not"][0]["has_id"], json!([7, 8]));
+    }
+
+    // ── derive_behavioral_signals — derivação pura dos sinais ──────────────
+    //
+    // Contrato v3: positives DISTINTOS (sem repetição por peso — inócua sob
+    // best_score), selecionados por score com decay temporal (meia-vida 14d)
+    // e desconto 0.6 pra origens passivas (autoplay/station/playlist);
+    // negatives distintos por recência com cap 40; conflito pos/neg resolvido
+    // pela recência do evento mais recente de cada lado; likes explícitos
+    // apendados aos positives sem duplicar.
+
+    const DAY: i64 = 86_400;
+    const NOW: i64 = 1_700_000_000;
+
+    fn ev(tid: u64, lp: f64, origin: &str, started_at: i64) -> Value {
+        json!({
+            "track_id": tid,
+            "listen_pct": lp,
+            "origin": origin,
+            "started_at": started_at
+        })
+    }
+
+    #[test]
+    fn derive_positives_distintos_e_qualificacao() {
+        // track 1: 3 full listens → qualifica, aparece UMA vez (sem peso por
+        // repetição). track 2: 1 evento 0.95 (não-full, count 1) → fora.
+        // track 3: 1 full listen → qualifica sozinho.
+        let pos = vec![
+            ev(1, 1.0, "manual", NOW - DAY),
+            ev(1, 1.0, "manual", NOW - 2 * DAY),
+            ev(1, 1.0, "manual", NOW - 3 * DAY),
+            ev(2, 0.95, "manual", NOW - DAY),
+            ev(3, 1.0, "manual", NOW - DAY),
+        ];
+        let (positives, negatives) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert_eq!(positives.iter().filter(|id| **id == 1).count(), 1, "sem repetição");
+        assert!(positives.contains(&3));
+        assert!(!positives.contains(&2), "0.95 sem replay não qualifica");
+        assert!(negatives.is_empty());
+    }
+
+    #[test]
+    fn derive_decay_prioriza_recente_sobre_count_antigo() {
+        // 3 fulls há 60 dias (score ~3·0.052) perdem de 2 fulls de hoje (~2.0).
+        let pos = vec![
+            ev(1, 1.0, "manual", NOW - 60 * DAY),
+            ev(1, 1.0, "manual", NOW - 60 * DAY),
+            ev(1, 1.0, "manual", NOW - 61 * DAY),
+            ev(2, 1.0, "manual", NOW),
+            ev(2, 1.0, "manual", NOW - DAY),
+        ];
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert_eq!(positives[0], 2, "recência com decay vence count antigo");
+        assert!(positives.contains(&1));
+    }
+
+    #[test]
+    fn derive_desconto_origem_passiva() {
+        // Mesmo count/idade: plays passivos (autoplay) valem 0.6 — escolha
+        // ativa (manual) rankeia acima.
+        let pos = vec![
+            ev(1, 1.0, "autoplay", NOW),
+            ev(1, 1.0, "autoplay", NOW),
+            ev(2, 1.0, "manual", NOW),
+            ev(2, 1.0, "manual", NOW),
+        ];
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert_eq!(positives, vec![2, 1]);
+    }
+
+    #[test]
+    fn derive_conflito_pos_neg_resolvido_por_recencia() {
+        // track 1: full antigo + skip recente → só negative.
+        // track 2: skip antigo + full recente → só positive.
+        let pos = vec![
+            ev(1, 1.0, "manual", NOW - 10 * DAY),
+            ev(2, 1.0, "manual", NOW),
+        ];
+        let neg = vec![
+            ev(1, 0.05, "queue", NOW),
+            ev(2, 0.05, "queue", NOW - 10 * DAY),
+        ];
+        let (positives, negatives) = derive_behavioral_signals(&pos, &neg, &[], NOW);
+        assert!(!positives.contains(&1));
+        assert!(negatives.contains(&1));
+        assert!(positives.contains(&2));
+        assert!(!negatives.contains(&2));
+    }
+
+    #[test]
+    fn derive_negatives_dedup_recencia_e_cap_40() {
+        // 45 tracks distintas com skips (mais recentes primeiro) + repetições
+        // da primeira: dedup preserva a primeira ocorrência, cap em 40.
+        let mut neg = Vec::new();
+        for i in 0..45u64 {
+            neg.push(ev(100 + i, 0.02, "queue", NOW - i as i64));
+        }
+        neg.push(ev(100, 0.02, "queue", NOW - 100));
+        let (_, negatives) = derive_behavioral_signals(&[], &neg, &[], NOW);
+        assert_eq!(negatives.len(), 40);
+        assert_eq!(negatives[0], 100);
+        assert_eq!(negatives.iter().filter(|id| **id == 100).count(), 1);
+    }
+
+    #[test]
+    fn derive_likes_apendados_sem_duplicar_nem_contrariar_negatives() {
+        // like 5 é novo → entra; like 1 já é positive comportamental → não
+        // duplica; like 9 está nos negatives → fica fora.
+        let pos = vec![ev(1, 1.0, "manual", NOW), ev(1, 1.0, "manual", NOW)];
+        let neg = vec![ev(9, 0.02, "queue", NOW)];
+        let (positives, negatives) = derive_behavioral_signals(&pos, &neg, &[5, 1, 9], NOW);
+        assert_eq!(positives.iter().filter(|id| **id == 1).count(), 1);
+        assert!(positives.contains(&5));
+        assert!(!positives.contains(&9));
+        assert!(negatives.contains(&9));
+    }
+
+    #[test]
+    fn derive_conflito_vencido_protege_do_negative_mesmo_fora_do_top25() {
+        // 26 tracks qualificadas; a track 999 tem o MENOR score (1 full
+        // listen antigo) e fica fora do top-25 — mas o full listen dela é
+        // mais recente que o skip antigo, então ela venceu o conflito e NÃO
+        // pode aparecer nos negatives (o truncate não desfaz a vitória).
+        let mut pos = Vec::new();
+        for i in 0..25u64 {
+            pos.push(ev(500 + i, 1.0, "manual", NOW));
+            pos.push(ev(500 + i, 1.0, "manual", NOW - DAY));
+        }
+        pos.push(ev(999, 1.0, "manual", NOW - 5 * DAY));
+        let neg = vec![ev(999, 0.05, "queue", NOW - 20 * DAY)];
+        let (positives, negatives) = derive_behavioral_signals(&pos, &neg, &[], NOW);
+        assert!(!positives.contains(&999), "fora do top-25 por score");
+        assert!(
+            !negatives.contains(&999),
+            "venceu o conflito por recência — truncar do top-25 não pode rebaixá-la a negative"
+        );
+    }
+
+    #[test]
+    fn derive_cap_25_comportamentais_e_desempate_deterministico() {
+        // 30 tracks qualificadas com score idêntico → 25 no resultado, e o
+        // desempate final é por track_id (determinístico entre execuções —
+        // o HashMap não pode decidir a ordem).
+        let mut pos = Vec::new();
+        for i in 0..30u64 {
+            pos.push(ev(200 + i, 1.0, "manual", NOW));
+        }
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert_eq!(positives.len(), 25);
+        let mut sorted = positives.clone();
+        sorted.sort();
+        assert_eq!(positives, sorted, "empate total → ordem por track_id");
     }
 
     #[test]

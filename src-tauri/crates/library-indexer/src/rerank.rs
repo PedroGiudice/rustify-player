@@ -5,8 +5,9 @@
 //! enquanto o melhor candidato techno contra um seed techno fica em ~0.599).
 //! Por isso o re-rank usa apenas a POSIÇÃO do rank MERT, normalizada, e
 //! mistura com a similaridade de vibe derivada dos enrichments
-//! (energy/valence/mood_tags — cobertura 100% do acervo desde 2026-07-11)
-//! mais o genre do payload da track.
+//! (energy/valence/mood_tags — cobertura alta mas NÃO garantida: tracks
+//! recém-baixadas ficam sem vibe até a próxima leva de anotação e competem
+//! com componentes neutros 0.5) mais o genre do payload da track.
 //!
 //! Pesos (v1, calibráveis — ver CMR-123):
 //! - score final = 0.5·mert_norm + 0.5·vibe_similarity
