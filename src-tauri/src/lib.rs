@@ -508,12 +508,20 @@ fn lib_autoplay_next(
                 let mut positives: Vec<u64> = vec![track_id];
                 positives.extend(history.into_iter().filter(|id| *id != track_id));
                 let fetch = lim.max(RECOMMEND_FETCH);
-                let seed_pool = client
+                let mut seed_pool = client
                     .recommend(&[track_id], &negatives, &exclude_ids, fetch)
                     .unwrap_or_else(|e| {
                         tracing::warn!(track_id, error = %e, "autoplay: seed-pool recommend falhou");
                         Vec::new()
                     });
+                // Negatives podem esvaziar a vizinhanca de um seed "cercado"
+                // de skips; sem retry o resultado ignoraria o seed em silencio
+                // (so gosto global). Paridade com a cadeia das stations.
+                if seed_pool.is_empty() && !negatives.is_empty() {
+                    seed_pool = client
+                        .recommend(&[track_id], &[], &exclude_ids, fetch)
+                        .unwrap_or_default();
+                }
                 // Sem historico, positives == [seed] e o taste-pool seria
                 // uma copia identica do seed-pool — pula a segunda chamada.
                 let taste_pool = if positives.len() > 1 {
@@ -545,14 +553,15 @@ fn lib_autoplay_next(
                     ranked = rerank::cap_per_artist(ranked, 2);
 
                     // Variedade entre chamadas sem destruir o re-rank:
-                    // Fisher-Yates (xorshift inline, sem crate rand) so
-                    // sobre o topo (lim*3) do resultado, depois corta.
+                    // sorteio ponderado geometrico (r=0.7) sobre o topo —
+                    // com o lookahead 1 do frontend, o rank-1 vence ~30%
+                    // das vezes e a cauda do top-8 participa.
                     let seed = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_nanos() as u64)
                         .unwrap_or(0x9E3779B97F4A7C15)
                         .wrapping_add(track_id);
-                    shuffle_prefix(&mut ranked, lim * 3, seed);
+                    weighted_pick_prefix(&mut ranked, (lim * 5).max(8), seed);
                     ranked.truncate(lim);
 
                     for t in &mut ranked {
@@ -2628,6 +2637,32 @@ pub fn run() {
                 .bind_address("127.0.0.1")
                 .build(),
         )
+        .on_window_event(|window, event| {
+            // Última chance de flush do play_event pendente — sem isto a
+            // track corrente morre sem evento quando o usuário fecha a
+            // janela (caminho dominante; app.exit/SIGTERM seguem sem
+            // cobertura). event_type "session_interrupted": fechar o app
+            // não é rejeição da música — os filtros do behavioral_signals
+            // só consomem track_ended/track_skipped, então o evento fica
+            // fora de positives E negatives, mas preserva o dado.
+            // O insert roda FORA do lock do Snapshot: com o sidecar hung o
+            // ureq pode segurar ~30s e o lock preso travaria o fechamento.
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if let (Some(snap), Some(lib)) = (
+                    window.try_state::<Snapshot>(),
+                    window.try_state::<Library>(),
+                ) {
+                    let pending = snap.0.lock().ok().map(|mut s| {
+                        let mut owned = PlayerSnapshot::default();
+                        std::mem::swap(&mut *s, &mut owned);
+                        owned
+                    });
+                    if let Some(mut owned) = pending {
+                        flush_play_event(&mut owned, &lib.handle, "session_interrupted");
+                    }
+                }
+            }
+        })
         .setup(move |_app| {
             // Devtools so abre quando o usuario pede (Ctrl+Shift+I), nao no startup.
             // Pra debug agressivo, descomente o bloco abaixo:
@@ -3367,27 +3402,58 @@ mod seed_ids_wire {
     }
 }
 
-/// Fisher-Yates com xorshift apenas sobre os primeiros `prefix` elementos.
-/// Variedade entre chamadas sem destruir o rank do restante da lista —
-/// usado pelo autoplay pra embaralhar so o topo do resultado re-rankeado.
-fn shuffle_prefix<T>(items: &mut [T], prefix: usize, seed: u64) {
+/// Sorteio ponderado geometrico sobre os primeiros `prefix` elementos:
+/// amostragem SEM reposicao com peso `r^i` (r = 0.7, i = posicao original no
+/// rank). O rank-1 segue o mais provavel (~30% com prefix 8), mas a cauda
+/// participa — variedade entre chamadas com exploracao leve. Substitui o
+/// Fisher-Yates uniforme, que dava a MESMA chance ao rank-1 e ao rank-N do
+/// prefixo, achatando o re-rank hibrido que custou 2 roundtrips + batch de
+/// enrichments pra computar. xorshift inline — sem crate rand.
+fn weighted_pick_prefix<T>(items: &mut Vec<T>, prefix: usize, seed: u64) {
+    const R: f64 = 0.7;
     let n = prefix.min(items.len());
     if n < 2 {
         return;
     }
-    let mut state = seed | 1;
-    for i in (1..n).rev() {
+    // xorshift* — o scrambling multiplicativo e obrigatorio: sem ele, seeds
+    // pequenas (timestamps proximos) produzem uma primeira saida quase-zero
+    // e o sorteio degenera em "rank-1 sempre vence".
+    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    let mut rand01 = move || -> f64 {
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;
-        let j = (state as usize) % (i + 1);
-        items.swap(i, j);
+        (state.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let mut pool: Vec<(usize, f64)> = (0..n).map(|i| (i, R.powi(i as i32))).collect();
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    while pool.len() > 1 {
+        let total: f64 = pool.iter().map(|(_, w)| w).sum();
+        let mut target = rand01() * total;
+        let mut chosen = pool.len() - 1;
+        for (k, (_, w)) in pool.iter().enumerate() {
+            if target < *w {
+                chosen = k;
+                break;
+            }
+            target -= *w;
+        }
+        order.push(pool.remove(chosen).0);
     }
+    order.push(pool[0].0);
+
+    let mut head: Vec<Option<T>> = items.drain(..n).map(Some).collect();
+    let mut out: Vec<T> = order
+        .into_iter()
+        .map(|i| head[i].take().expect("indice sorteado unico"))
+        .collect();
+    out.extend(items.drain(..));
+    *items = out;
 }
 
-/// Remove duplicatas preservando a ordem de primeira ocorrencia.
-/// `behavioral_signals` retorna positives PONDERADOS (mesmo id repetido ate
-/// 5x por design) — seeds de station devem ser tracks distintas.
+/// Remove duplicatas preservando a ordem de primeira ocorrencia. Desde a v3
+/// `behavioral_signals` ja retorna positives distintos — isto e cinto de
+/// seguranca de contrato pra seeds de station.
 fn dedup_preserving_order(ids: &[u64]) -> Vec<u64> {
     let mut seen = std::collections::HashSet::new();
     ids.iter().copied().filter(|id| seen.insert(*id)).collect()
@@ -3871,41 +3937,80 @@ mod tests {
 
     #[test]
     fn dedup_preserving_order_remove_duplicatas_mantendo_ordem() {
-        // behavioral_signals retorna positives PONDERADOS (mesmo id repetido
-        // ate 5x) — seeds de station precisam ser distintos.
+        // Cinto de seguranca: behavioral_signals v3 ja retorna distintos,
+        // mas seeds de station nao podem depender desse contrato.
         let input = vec![7u64, 7, 7, 3, 7, 3, 9];
         assert_eq!(dedup_preserving_order(&input), vec![7, 3, 9]);
         assert_eq!(dedup_preserving_order(&[]), Vec::<u64>::new());
     }
 
     #[test]
-    fn shuffle_prefix_so_embaralha_o_topo_e_preserva_elementos() {
+    fn weighted_pick_preserva_elementos_e_sufixo() {
         let original: Vec<u64> = (0..20).collect();
         let mut v = original.clone();
-        shuffle_prefix(&mut v, 5, 12345);
+        weighted_pick_prefix(&mut v, 8, 12345);
         // Sufixo (alem do prefix) fica intocado — o rank do re-rank hibrido
         // so pode ser perturbado no topo.
-        assert_eq!(&v[5..], &original[5..]);
-        // Prefixo e uma permutacao dos mesmos elementos...
-        let mut pre: Vec<u64> = v[..5].to_vec();
+        assert_eq!(&v[8..], &original[8..]);
+        // Prefixo e uma permutacao dos mesmos elementos.
+        let mut pre: Vec<u64> = v[..8].to_vec();
         pre.sort_unstable();
-        assert_eq!(pre, vec![0, 1, 2, 3, 4]);
-        // ...e EMBARALHOU de fato: com seed fixa o resultado e
-        // deterministico e diferente da identidade — um xorshift quebrado
-        // que degenerasse em no-op passaria no assert de permutacao acima
-        // sem este.
-        assert_ne!(&v[..5], &original[..5], "prefixo identico ao original: shuffle virou no-op");
+        assert_eq!(pre, (0..8).collect::<Vec<u64>>());
         // prefix maior que o slice nao panica e preserva os elementos.
         let mut w = vec![1u64, 2];
-        shuffle_prefix(&mut w, 10, 7);
+        weighted_pick_prefix(&mut w, 10, 7);
         let mut ws = w.clone();
         ws.sort_unstable();
         assert_eq!(ws, vec![1, 2]);
-        // Slice vazio / prefix 0 sao no-ops.
-        shuffle_prefix(&mut Vec::<u64>::new(), 5, 7);
-        let mut único = vec![9u64];
-        shuffle_prefix(&mut único, 0, 7);
-        assert_eq!(único, vec![9]);
+        // Slice vazio / prefix <= 1 sao no-ops.
+        weighted_pick_prefix(&mut Vec::<u64>::new(), 5, 7);
+        let mut unico = vec![9u64, 3];
+        weighted_pick_prefix(&mut unico, 1, 7);
+        assert_eq!(unico, vec![9, 3]);
+    }
+
+    #[test]
+    fn weighted_pick_deterministico_por_seed_e_varia_entre_seeds() {
+        let original: Vec<u64> = (0..10).collect();
+        let mut a = original.clone();
+        let mut b = original.clone();
+        weighted_pick_prefix(&mut a, 8, 42);
+        weighted_pick_prefix(&mut b, 8, 42);
+        assert_eq!(a, b, "mesma seed → mesmo resultado");
+        // Alguma seed em 1..64 produz primeira posicao diferente da seed 42
+        // — o sorteio nao pode ser constante.
+        let varia = (1..64u64).any(|s| {
+            let mut c = original.clone();
+            weighted_pick_prefix(&mut c, 8, s);
+            c[0] != a[0]
+        });
+        assert!(varia, "64 seeds com o mesmo vencedor: sorteio degenerou");
+    }
+
+    #[test]
+    fn weighted_pick_favorece_o_topo_do_rank() {
+        // Estatistico deterministico (seeds 0..400): o rank-1 original deve
+        // vencer a primeira posicao mais vezes que o ultimo do prefixo —
+        // o sorteio e ponderado (r=0.7), nao uniforme.
+        let original: Vec<u64> = (0..8).collect();
+        let mut wins_top = 0usize;
+        let mut wins_last = 0usize;
+        for seed in 0..400u64 {
+            let mut v = original.clone();
+            weighted_pick_prefix(&mut v, 8, seed);
+            if v[0] == 0 {
+                wins_top += 1;
+            }
+            if v[0] == 7 {
+                wins_last += 1;
+            }
+        }
+        assert!(
+            wins_top > wins_last * 2,
+            "rank-1 deveria vencer bem mais que o rank-8: top={wins_top} last={wins_last}"
+        );
+        // E o rank-1 nao pode vencer sempre (senao nao ha variedade).
+        assert!(wins_top < 400, "rank-1 venceu sempre: virou deterministico");
     }
 
     // YAML minimo representando um tema legado (vocabulario surfaces/text/accent/signal).

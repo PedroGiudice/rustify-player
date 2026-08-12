@@ -48,6 +48,15 @@ pub struct PersistedState {
     pub recently_played: Vec<String>,
     /// Unix epoch (seconds) when this snapshot was written.
     pub saved_at: i64,
+    /// Escopo da fila ("open" | "curated"). Opcional: snapshots legados
+    /// não têm o campo (serde: Option ausente vira None).
+    pub queue_scope: Option<String>,
+    /// Proveniência da fila ("station" | "playlist" | "album" | "radio").
+    /// Sem ela o restore rebaixava fila radio a "solta" e o contOrigin
+    /// perdia o mapeamento radio→autoplay a cada restart.
+    pub queue_source_kind: Option<String>,
+    /// Nome exibido no chip (station/playlist/álbum), se houver.
+    pub queue_source_name: Option<String>,
 }
 
 fn state_path(data_dir: &PathBuf) -> PathBuf {
