@@ -787,6 +787,11 @@ fn apply_embed_result(
 /// curtos são ruído (instrumentais marcados, fragmentos).
 const MIN_LYRICS_CHARS: usize = 20;
 
+/// Payload que guarda letra NÃO sincronizada obtida de fonte externa (lrclib).
+/// Existe só para alimentar o vetor `lyrics`: a aba de letra do app não lê este
+/// campo, porque sem timestamps ela renderizaria tudo em t=0.
+pub const FIELD_LYRICS_TEXT: &str = "lyrics_text";
+
 /// Resultado da resolução de letra de uma track a partir do seu payload + disco.
 struct LyricsResolution {
     /// Texto limpo (sem timestamps) pronto para embedding, se houver.
@@ -822,7 +827,19 @@ fn resolve_lyrics(payload: &serde_json::Value) -> LyricsResolution {
         }
     }
 
-    // 2. lrc_path já registrado no payload.
+    // 2. Letra plain de fonte externa, gravada pelo worker/backfill de
+    //    aquisição. Só alimenta o vetor — a aba de letra ignora este campo.
+    if let Some(raw) = payload[FIELD_LYRICS_TEXT].as_str() {
+        let cleaned = lyrics::clean_lyrics_text(raw);
+        if cleaned.chars().count() > MIN_LYRICS_CHARS {
+            return LyricsResolution {
+                text: Some(cleaned),
+                lrc_path_for_payload: None,
+            };
+        }
+    }
+
+    // 3. lrc_path já registrado no payload.
     if let Some(lrc) = payload["lrc_path"].as_str() {
         if let Some(cleaned) = read_clean_lrc(Path::new(lrc)) {
             return LyricsResolution {
@@ -832,7 +849,7 @@ fn resolve_lyrics(payload: &serde_json::Value) -> LyricsResolution {
         }
     }
 
-    // 3. Sidecar novo no disco, ainda fora do payload (Gap A).
+    // 4. Sidecar novo no disco, ainda fora do payload (Gap A).
     if let Some(audio) = payload["path"].as_str() {
         if let Some(sidecar) = lyrics::find_lrc_sidecar(Path::new(audio)) {
             if let Some(cleaned) = read_clean_lrc(&sidecar) {
@@ -873,15 +890,21 @@ impl QdrantLyricsSink {
 ///
 /// Pura para ser testável: é a regra que separa letra sincronizada (vira
 /// `lrc_path`, o sidecar já está no disco) de letra plain (vira
-/// `embedded_lyrics` — primeira fonte que `resolve_lyrics` consulta, então o
-/// backfill futuro re-embeda sem voltar à rede).
+/// [`FIELD_LYRICS_TEXT`]).
+///
+/// O plain NÃO pode ir para `embedded_lyrics`: aquele campo é a letra das TAGS
+/// do arquivo (metadata.rs lê LYRICS/UNSYNCEDLYRICS/USLT) e costuma trazer LRC
+/// completo com timestamps — sobrescrevê-lo destrói metadado do FLAC. Pior,
+/// `get_lyrics` (query.rs) o exibe na aba de letra parseado como LRC: texto sem
+/// timestamp volta com todas as linhas em t=0, empilhadas. Campo separado
+/// mantém a aba de letra só com letra sincronizada de verdade.
 fn lyrics_payload(lrc_path: Option<&Path>, text: &str) -> Option<serde_json::Value> {
     if lyrics::clean_lyrics_text(text).chars().count() <= MIN_LYRICS_CHARS {
         return None;
     }
     Some(match lrc_path {
         Some(p) => json!({ "lrc_path": p.to_string_lossy() }),
-        None => json!({ "embedded_lyrics": text }),
+        None => json!({ FIELD_LYRICS_TEXT: text }),
     })
 }
 
@@ -937,7 +960,12 @@ fn backfill_lyrics(
     client: &QdrantClient,
     lyrics_client: &LyricsEmbedClient,
 ) -> Result<usize, IndexerError> {
-    let rows = client.scroll_all_lyrics_state(&["path", "lrc_path", "embedded_lyrics"])?;
+    let rows = client.scroll_all_lyrics_state(&[
+        "path",
+        "lrc_path",
+        "embedded_lyrics",
+        FIELD_LYRICS_TEXT,
+    ])?;
     if rows.is_empty() {
         info!(target: "library_indexer::pipeline", "lyrics backfill: collection vazia");
         return Ok(0);
@@ -1159,12 +1187,33 @@ mod tests {
     }
 
     #[test]
-    fn payload_de_letra_plain_guarda_o_texto_no_ponto() {
+    fn payload_de_letra_plain_usa_campo_proprio_e_nao_toca_nas_tags() {
         // Sem sidecar no disco, o texto precisa sobreviver no payload — senão
         // o backfill do próximo boot volta à rede pra buscar o que já temos.
+        // Mas NÃO em `embedded_lyrics`: aquele campo é a letra das tags do
+        // arquivo, e a aba de letra o renderiza como LRC (t=0 em tudo).
         let p = lyrics_payload(None, LETRA).unwrap();
-        assert_eq!(p["embedded_lyrics"], LETRA);
+        assert_eq!(p[FIELD_LYRICS_TEXT], LETRA);
+        assert!(p.get("embedded_lyrics").is_none());
         assert!(p.get("lrc_path").is_none());
+    }
+
+    #[test]
+    fn resolve_lyrics_le_o_campo_de_letra_plain() {
+        let payload = json!({ FIELD_LYRICS_TEXT: LETRA });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(r.text.as_deref(), Some(LETRA));
+        assert_eq!(r.lrc_path_for_payload, None);
+    }
+
+    #[test]
+    fn tags_do_arquivo_tem_precedencia_sobre_a_letra_plain_externa() {
+        let payload = json!({
+            "embedded_lyrics": "letra das tags do arquivo, mais confiavel",
+            FIELD_LYRICS_TEXT: LETRA,
+        });
+        let r = resolve_lyrics(&payload);
+        assert_eq!(r.text.as_deref(), Some("letra das tags do arquivo, mais confiavel"));
     }
 
     #[test]

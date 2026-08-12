@@ -2742,6 +2742,9 @@ html { --glow: 0; }
   text-wrap: pretty;
 }
 .st-card__stats {
+  /* Reserva a faixa do .st-card__delete (absoluto no canto): sem isto o botao
+     cobre o fim da linha de stats e sequestra o clique dali. */
+  padding-right: 40px;
   display: flex; align-items: center; gap: 0;
   font-family: var(--font-mono);
   font-size: 10.5px;

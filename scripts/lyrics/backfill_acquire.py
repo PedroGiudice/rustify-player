@@ -48,17 +48,23 @@ MIN_LYRICS_CHARS = 20
 # Cortesia com um serviço gratuito (o worker do app usa 500ms).
 REQUEST_GAP = 0.6
 
+# Campo que guarda letra NÃO sincronizada de fonte externa. Deliberadamente
+# separado de `embedded_lyrics` (letra das TAGS do arquivo, que a aba de letra
+# do app renderiza como LRC — texto sem timestamp viria todo em t=0).
+FIELD_LYRICS_TEXT = "lyrics_text"
+
 TIMESTAMP_RE = re.compile(r"\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]")
-METADATA_RE = re.compile(r"^\[[a-z]+:.*\]$", re.IGNORECASE)
 
 
 def clean_lyrics_text(raw: str) -> str:
-    """Remove timestamps e linhas de metadado — espelha lyrics::clean_lyrics_text."""
+    """Remove timestamps de cada linha — espelha lyrics::clean_lyrics_text (Rust).
+
+    Só remove `[mm:ss.cc]`; linhas de metadado (`[ar:...]`) são preservadas, como
+    no Rust. O guard de tamanho depende deste comportamento: divergir aqui faria
+    o script aceitar textos que o app rejeita (e vice-versa).
+    """
     out = []
     for line in raw.splitlines():
-        line = line.strip()
-        if not line or METADATA_RE.match(line):
-            continue
         line = TIMESTAMP_RE.sub("", line).strip()
         if line:
             out.append(line)
@@ -97,7 +103,7 @@ def scroll_candidates() -> list[dict]:
             "with_payload": {
                 "include": [
                     "path", "artist", "title", "album_title", "duration_ms",
-                    "lrc_path", "embedded_lyrics", "lyrics_status",
+                    "lrc_path", "embedded_lyrics", "lyrics_text", "lyrics_status",
                 ]
             },
             "with_vector": ["lyrics"],
@@ -116,20 +122,28 @@ def scroll_candidates() -> list[dict]:
     return out
 
 
-def existing_text(pt: dict) -> str | None:
-    """Texto de letra que o ponto JÁ tem (payload ou sidecar no disco)."""
-    emb = pt.get("embedded_lyrics")
-    if emb and len(clean_lyrics_text(emb)) > MIN_LYRICS_CHARS:
-        return emb
+def existing_text(pt: dict) -> tuple[str, Path | None] | None:
+    """Texto de letra que o ponto JÁ tem, e o sidecar de onde veio (se veio de um).
+
+    Mesma ordem de precedência do `resolve_lyrics` do Rust. O segundo elemento
+    é o `.lrc` no disco quando o texto saiu dele — inclusive o caso do sidecar
+    ÓRFÃO (existe no disco, não está no payload), que precisa virar `lrc_path`
+    e não texto solto.
+    """
+    for field in ("embedded_lyrics", FIELD_LYRICS_TEXT):
+        val = pt.get(field)
+        if val and len(clean_lyrics_text(val)) > MIN_LYRICS_CHARS:
+            return (val, None)
     for candidate in (pt.get("lrc_path"), sidecar_for(pt.get("path"))):
         if not candidate:
             continue
+        p = Path(candidate)
         try:
-            raw = Path(candidate).read_text(encoding="utf-8", errors="replace")
+            raw = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         if len(clean_lyrics_text(raw)) > MIN_LYRICS_CHARS:
-            return raw
+            return (raw, p)
     return None
 
 
@@ -215,8 +229,11 @@ def main() -> int:
 
     stats = {"vetor": 0, "sidecar": 0, "plain": 0, "miss": 0, "erro": 0}
     for i, pt in enumerate(fila, 1):
-        text = existing_text(pt)
-        wrote_sidecar = False
+        found = existing_text(pt)
+        text, from_sidecar = found if found else (None, None)
+        # Sidecar já no disco (inclusive órfão) vira lrc_path, não texto solto.
+        sidecar_to_record = from_sidecar if from_sidecar and not pt.get("lrc_path") else None
+        wrote_sidecar = sidecar_to_record is not None
         if text is None:
             synced, plain, status = fetch_lrclib(pt)
             time.sleep(REQUEST_GAP)
@@ -234,6 +251,7 @@ def main() -> int:
                 if sc and not sc.exists():
                     try:
                         sc.write_text(synced, encoding="utf-8")
+                        sidecar_to_record = sc
                         wrote_sidecar = True
                         stats["sidecar"] += 1
                     except OSError as e:
@@ -256,9 +274,11 @@ def main() -> int:
             vec = embed(cleaned)
             payload = {"lyrics_status": "found"}
             if wrote_sidecar:
-                payload["lrc_path"] = str(sidecar_for(pt["path"]))
-            elif not pt.get("lrc_path"):
-                payload["embedded_lyrics"] = text
+                payload["lrc_path"] = str(sidecar_to_record)
+            elif not pt.get("lrc_path") and not pt.get("embedded_lyrics"):
+                # Campo próprio: `embedded_lyrics` é a letra das TAGS do arquivo
+                # e a aba de letra do app o renderiza como LRC (t=0 em tudo).
+                payload[FIELD_LYRICS_TEXT] = text
             set_payload(pt["id"], payload)
             set_vector(pt["id"], vec)
             stats["vetor"] += 1

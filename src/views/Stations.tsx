@@ -172,7 +172,14 @@ export function StationCard(props: {
   // Exclusao e destrutiva e o card inteiro dispara play: 1o clique arma,
   // 2o confirma. Desarma sozinho em 4s pra nao ficar uma bomba engatilhada
   // esperando um clique distraido.
-  const [armed, setArmed] = createSignal(false);
+  //
+  // O estado guarda o ID da station, nao um booleano: o <For> do grid nao e
+  // keyed, entao a MESMA instancia do card recebe outra station quando a lista
+  // muda (o refetch pos-delete faz exatamente isso). Com booleano, o card
+  // ficava armado e o clique seguinte apagava a station ERRADA — mesmo motivo
+  // pelo qual isFirst/seedLine derivam de props em vez de const.
+  const [armedId, setArmedId] = createSignal<string | null>(null);
+  const armed = () => armedId() === props.station.id;
   let disarmTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(disarmTimer));
 
@@ -180,11 +187,11 @@ export function StationCard(props: {
     e.stopPropagation();
     clearTimeout(disarmTimer);
     if (!armed()) {
-      setArmed(true);
-      disarmTimer = setTimeout(() => setArmed(false), 4000);
+      setArmedId(props.station.id);
+      disarmTimer = setTimeout(() => setArmedId(null), 4000);
       return;
     }
-    setArmed(false);
+    setArmedId(null);
     props.onDelete?.(props.station.id);
   }
 

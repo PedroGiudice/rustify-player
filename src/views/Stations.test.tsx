@@ -8,7 +8,7 @@
    sem precisar do runtime Tauri.
    ============================================================ */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 import { render, cleanup } from "@solidjs/testing-library";
 import type { Station } from "../tauri";
 
@@ -156,6 +156,12 @@ import { player, setQueue } from "../store/player";
 
 describe("Stations view", () => {
   it("apagar station chama o backend e recarrega a lista", async () => {
+    // Restaura o default da factory mesmo se o teste falhar no meio:
+    // clearAllMocks limpa histórico, não implementação, e um mock vazado faz
+    // o teste de empty-state deste mesmo describe quebrar.
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
     vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
     const { container } = render(() => <Stations />);
     await waitFor(() => {
@@ -172,10 +178,6 @@ describe("Stations view", () => {
     await waitFor(() => {
       expect(vi.mocked(tauriApi.libListStations).mock.calls.length).toBeGreaterThan(chamadasAntes);
     });
-    // clearAllMocks limpa historico mas NAO a implementacao — restaurar o
-    // default da factory, senao os testes seguintes veem stations e o
-    // empty-state deste describe quebra.
-    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
   });
 
   it("renderiza heading + stats", async () => {
@@ -514,6 +516,28 @@ describe("StationCard (reatividade de isFirst/seedLine)", () => {
     fireEvent.click(btn);
     expect(onDelete).toHaveBeenCalledWith("midnight-1");
     expect(onResume).not.toHaveBeenCalled();
+  });
+
+  it("armar o delete e depois trocar a station sob a mesma instancia nao apaga a errada", () => {
+    // O <For> do grid nao e keyed: a mesma instancia recebe outra station
+    // quando a lista muda (o refetch pos-delete faz isso). Se o estado armado
+    // fosse um booleano, o clique seguinte apagaria a station nova.
+    const onDelete = vi.fn();
+    const [st, setSt] = createSignal<Station>(MOCK_STATIONS[0]);
+    const { container } = render(() => (
+      <StationCard station={st()} isFirst={false} onResume={() => {}} onDelete={onDelete} />
+    ));
+    const btn = container.querySelector(".st-card__delete") as HTMLButtonElement;
+    fireEvent.click(btn); // arma a station 0
+    expect(btn.classList.contains("is-armed")).toBe(true);
+
+    setSt(MOCK_STATIONS[1]); // outra station sob a MESMA instancia
+    expect(btn.classList.contains("is-armed")).toBe(false);
+
+    fireEvent.click(btn); // primeiro clique na nova: so arma, nao apaga
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.click(btn);
+    expect(onDelete).toHaveBeenCalledWith(MOCK_STATIONS[1].id);
   });
 
   it("seedLine re-deriva quando a station muda de kind", () => {
