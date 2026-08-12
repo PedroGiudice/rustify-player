@@ -415,9 +415,23 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   por `IndexerHandle::lyrics_sink`): grava payload + vetor `lyrics` na hora,
   em vez de esperar o `backfill_lyrics` do proximo boot. Sidecar `.lrc` so
   nasce de letra SINCRONIZADA (a view de letra depende dos timestamps);
-  letra `plain` vai pro payload `embedded_lyrics` e alimenta so o vetor —
+  letra `plain` vai pro payload **`lyrics_text`** e alimenta so o vetor —
   ~60% do que o lrclib tem e so plain, e descartar isso custava o vetor.
   Sidecar preexistente nunca e sobrescrito, mas ainda fecha o ciclo.
+
+  **Nunca gravar letra externa em `embedded_lyrics`** (regra dura, v0.2.71):
+  aquele campo e a letra das TAGS do arquivo (`metadata.rs` le LYRICS/
+  UNSYNCEDLYRICS/USLT, costuma trazer LRC completo) e a aba de letra o
+  renderiza como LRC — texto sem timestamp volta com t=0 em todas as linhas
+  e o card trava no ultimo verso a musica inteira. Precedencia em
+  `resolve_lyrics`: tags > `lyrics_text` > `lrc_path` > sidecar novo no disco.
+  No frontend, `isSynced` (NowPlaying.tsx) detecta t=0 em tudo e desliga
+  auto-scroll/linha ativa, rotula "unsynced" e torna o viewport rolavel.
+
+  `lyrics_text`/`lyrics_status` NAO vem do arquivo, entao o re-ingest
+  (retag muda mtime => `upsert_tracks` faz PUT e reescreve o ponto inteiro)
+  os apagaria junto com o vetor; os dois caminhos de ingest preservam esses
+  campos (`external_lyrics_fields` + `merge_external_lyrics`).
 - **Destino**: playlist = pasta de 1o nivel. Precedencia (spec §4.5):
   override da toolbar > artista ja no acervo (`suggested_dest`) > ultimo
   usado (`kv-crate-dest`) > seletor obrigatorio. NUNCA semear o override
