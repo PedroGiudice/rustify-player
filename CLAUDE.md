@@ -348,11 +348,20 @@ Vistoria completa + redesign do sinal em
 decisoes). O que importa pro dia-a-dia:
 
 - **behavioral_signals v3** (`qdrant_client.rs`, derivacao pura testavel
-  `derive_behavioral_signals`): positives DISTINTOS (weight por repeticao
-  e inocuo sob `best_score` — nao reintroduzir), decay 14d, desconto 0.6
-  pra origens passivas (`autoplay`/`station`/`playlist`), likes top-10,
-  negatives lp<0.30 janela 300 cap 40, conflito pos/neg por recencia.
-  Tunables sao as consts no topo da funcao.
+  `derive_behavioral_signals`): sinal de escuta CONTINUO — peso
+  `clamp((lp-0.30)/0.50)` (60% de escuta = 0.6, nao zero; decisao de
+  produto do CEO 2026-08-12, nao voltar a threshold binario), decay 14d,
+  desconto 0.6 pra origens passivas (`autoplay`/`station`/`playlist`),
+  qualificacao por peso acumulado >= 0.55, likes top-10, negatives
+  lp<0.30 janela 300 cap 40, conflito pos/neg por recencia. Positives
+  DISTINTOS (weight por repeticao e inocuo sob `best_score` — nao
+  reintroduzir). Tunables sao as consts no topo da funcao.
+- **Regua automatica**: `scripts/metrics/autoplay_regua.py` roda toda
+  segunda 09:00 (systemd user timer `rustify-regua.timer` na VM), grava
+  `docs/metrics/regua-latest.md` + historico `.jsonl`; o hook
+  SessionStart do repo (`.claude/settings.json`) injeta o ultimo
+  veredito em TODA sessao — a promessa "medir depois" nao depende mais
+  de memoria de ninguem.
 - **Origins**: continuacoes de fila radio logam `autoplay` (contOrigin,
   PlayerBar.tsx), playlist loga `playlist`, repeat-one loga `repeat`.
   `album_seq` segue FORA dos sinais. NAO comparar skip-rate por origin

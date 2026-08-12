@@ -1310,18 +1310,19 @@ impl QdrantClient {
     ///
     /// v3 — a derivação em si é pura ([`derive_behavioral_signals`]); aqui só
     /// vive o I/O. Contrato:
-    /// - **Positives:** distintos (sem repetição por peso — inócua sob
-    ///   `best_score`, onde o score é o MELHOR match individual), até 25
-    ///   comportamentais selecionados por score com decay temporal (meia-vida
-    ///   14d) e desconto 0.6 pra origens passivas (autoplay/station/playlist)
-    ///   — anti-feedback-loop: escuta passiva do que o próprio autoplay tocou
-    ///   vale menos que escolha ativa. Likes explícitos recentes (top 10 por
-    ///   `liked_at`) são apendados sem duplicar, cap total 35.
+    /// - **Positives:** sinal CONTÍNUO por listen_pct — peso
+    ///   `clamp((lp − 0.30)/0.50)` (60% de escuta = envolvimento real, não
+    ///   zero como no threshold binário antigo), com decay temporal
+    ///   (meia-vida 14d) e desconto 0.6 pra origens passivas
+    ///   (autoplay/station/playlist) — anti-feedback-loop. Qualificação por
+    ///   peso acumulado >= 0.55 (60% ativo qualifica sozinho; passivo
+    ///   parcial exige recorrência; escutas rasas não somam por contagem).
+    ///   Distintos (repetição é inócua sob `best_score`), até 25
+    ///   comportamentais + likes explícitos recentes (top 10 por
+    ///   `liked_at`), cap total 35.
     /// - **Negatives:** até 40 distintos dos últimos 300 eventos com
-    ///   `listen_pct < 0.30` — skips até 30% são rejeição (a distribuição
-    ///   real é bimodal em U: 67% dos eventos < 0.1, 22% > 0.9; o meio é
-    ///   raro mas direcionalmente negativo).
-    /// - Conflito pos/neg (track com full listen E skip): vence o lado com o
+    ///   `listen_pct < 0.30`.
+    /// - Conflito pos/neg (track com escuta boa E skip): vence o lado com o
     ///   evento mais recente.
     pub fn behavioral_signals(&self) -> Result<(Vec<u64>, Vec<u64>), IndexerError> {
         // event_type accepts both natural completion and interrupted plays —
@@ -1337,7 +1338,7 @@ impl QdrantClient {
         let pos_filter = json!({
             "must": [
                 event_type_filter.clone(),
-                { "key": "listen_pct", "range": { "gte": 0.9 } }
+                { "key": "listen_pct", "range": { "gte": POSITIVE_MIN_LISTEN_PCT } }
             ],
             "must_not": [
                 { "key": "origin", "match": { "value": "album_seq" } }
@@ -1666,6 +1667,19 @@ fn bytes_to_f32(bytes: &[u8]) -> Vec<f32> {
 /// vale menos que escolha ativa — sem o desconto, o autoplay reforça o que
 /// ele mesmo tocou (feedback loop).
 const PASSIVE_ORIGINS: &[&str] = &["autoplay", "station", "playlist"];
+/// Piso de listen_pct pra um evento entrar no lado positivo; abaixo disso
+/// é rejeição (lado dos negatives).
+const POSITIVE_MIN_LISTEN_PCT: f64 = 0.30;
+/// Rampa do peso positivo: w = clamp((lp − 0.30)/0.50, 0, 1). O sinal é
+/// CONTÍNUO — ouvir 60% de uma música é envolvimento real (w = 0.6), não
+/// zero como no threshold binário antigo (>= 0.9 ou nada); 80%+ satura em
+/// peso cheio.
+const POSITIVE_RAMP_SPAN: f64 = 0.50;
+/// Peso acumulado (com desconto de origem, SEM decay) pra uma track
+/// qualificar como positive: um 60% ativo qualifica sozinho (0.6); escuta
+/// passiva parcial precisa de recorrência (0.6·0.6 = 0.36); escutas rasas
+/// não somam qualificação por contagem (2×35% = 0.2).
+const QUALIFY_FLOOR: f64 = 0.55;
 /// Desconto aplicado ao peso de eventos de origem passiva.
 const PASSIVE_WEIGHT: f64 = 0.6;
 /// Meia-vida do decay temporal dos positives, em dias.
@@ -1689,8 +1703,7 @@ pub(crate) fn derive_behavioral_signals(
 ) -> (Vec<u64>, Vec<u64>) {
     struct PosAcc {
         score: f64,
-        count: usize,
-        full: bool,
+        raw: f64,
         last_at: i64,
     }
     let mut pos_acc: HashMap<u64, PosAcc> = HashMap::new();
@@ -1707,17 +1720,15 @@ pub(crate) fn derive_behavioral_signals(
         } else {
             1.0
         };
+        let lp = p["listen_pct"].as_f64().unwrap_or(0.0);
+        let w = ((lp - POSITIVE_MIN_LISTEN_PCT) / POSITIVE_RAMP_SPAN).clamp(0.0, 1.0);
         let e = pos_acc.entry(tid).or_insert(PosAcc {
             score: 0.0,
-            count: 0,
-            full: false,
+            raw: 0.0,
             last_at: i64::MIN,
         });
-        e.score += weight * decay;
-        e.count += 1;
-        if p["listen_pct"].as_f64().unwrap_or(0.0) >= 0.999 {
-            e.full = true;
-        }
+        e.score += w * weight * decay;
+        e.raw += w * weight;
         e.last_at = e.last_at.max(started);
     }
 
@@ -1739,12 +1750,12 @@ pub(crate) fn derive_behavioral_signals(
         }
     }
 
-    // Qualificação (replay OU full listen) + conflito pos/neg: o lado com o
-    // evento mais recente vence (empate → negative, defensivo).
+    // Qualificação por peso acumulado (QUALIFY_FLOOR) + conflito pos/neg:
+    // o lado com o evento mais recente vence (empate → negative, defensivo).
     // map_or (não is_none_or): o workspace declara rust-version 1.78.
     let mut qualified: Vec<(u64, f64, i64)> = pos_acc
         .into_iter()
-        .filter(|(_, a)| a.count >= 2 || a.full)
+        .filter(|(_, a)| a.raw >= QUALIFY_FLOOR)
         .filter(|(tid, a)| neg_last.get(tid).map_or(true, |neg_at| a.last_at > *neg_at))
         .map(|(tid, a)| (tid, a.score, a.last_at))
         .collect();
@@ -1888,20 +1899,74 @@ mod tests {
     #[test]
     fn derive_positives_distintos_e_qualificacao() {
         // track 1: 3 full listens → qualifica, aparece UMA vez (sem peso por
-        // repetição). track 2: 1 evento 0.95 (não-full, count 1) → fora.
+        // repetição). track 2: 1 escuta rasa (0.40, peso ~0.2) → fora.
         // track 3: 1 full listen → qualifica sozinho.
         let pos = vec![
             ev(1, 1.0, "manual", NOW - DAY),
             ev(1, 1.0, "manual", NOW - 2 * DAY),
             ev(1, 1.0, "manual", NOW - 3 * DAY),
-            ev(2, 0.95, "manual", NOW - DAY),
+            ev(2, 0.40, "manual", NOW - DAY),
             ev(3, 1.0, "manual", NOW - DAY),
         ];
         let (positives, negatives) = derive_behavioral_signals(&pos, &[], &[], NOW);
         assert_eq!(positives.iter().filter(|id| **id == 1).count(), 1, "sem repetição");
         assert!(positives.contains(&3));
-        assert!(!positives.contains(&2), "0.95 sem replay não qualifica");
+        assert!(!positives.contains(&2), "escuta única rasa não qualifica");
         assert!(negatives.is_empty());
+    }
+
+    // ── nuance de listen_pct: sinal contínuo, não threshold binário ────────
+    //
+    // Ouvir 60% de uma música é envolvimento real — o antigo corte binário
+    // (>= 0.9 vale 1, abaixo vale 0) descartava a banda média inteira.
+    // Peso w(lp) = clamp((lp − 0.30) / 0.50): 40% → 0.2, 60% → 0.6,
+    // 80%+ → 1.0. Qualificação = peso acumulado (com desconto de origem,
+    // sem decay) >= 0.55.
+
+    #[test]
+    fn derive_escuta_unica_de_60pct_ativa_qualifica() {
+        let pos = vec![ev(10, 0.60, "manual", NOW)];
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert!(positives.contains(&10), "60% ativo é sinal positivo por si");
+    }
+
+    #[test]
+    fn derive_escuta_parcial_pesa_menos_que_full_no_ranking() {
+        // Mesmo decay e origem: full listen deve rankear acima de 60%.
+        let pos = vec![
+            ev(20, 0.60, "manual", NOW),
+            ev(21, 1.0, "manual", NOW),
+        ];
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert_eq!(positives, vec![21, 20]);
+    }
+
+    #[test]
+    fn derive_60pct_passivo_exige_recorrencia() {
+        // 60% vindo do próprio autoplay: peso 0.6·0.6 = 0.36 < 0.55 — não
+        // qualifica sozinho (anti-feedback-loop), qualifica ao repetir.
+        let uma = vec![ev(30, 0.60, "autoplay", NOW)];
+        let (positives, _) = derive_behavioral_signals(&uma, &[], &[], NOW);
+        assert!(!positives.contains(&30), "passivo parcial único não qualifica");
+
+        let duas = vec![
+            ev(30, 0.60, "autoplay", NOW),
+            ev(30, 0.65, "autoplay", NOW - DAY),
+        ];
+        let (positives, _) = derive_behavioral_signals(&duas, &[], &[], NOW);
+        assert!(positives.contains(&30), "recorrência passiva qualifica");
+    }
+
+    #[test]
+    fn derive_escutas_rasas_nao_somam_qualificacao_por_count() {
+        // Duas escutas de 35% (peso ~0.1 cada) não viram positivo só por
+        // serem duas — o critério é peso acumulado, não contagem.
+        let pos = vec![
+            ev(40, 0.35, "manual", NOW),
+            ev(40, 0.35, "manual", NOW - DAY),
+        ];
+        let (positives, _) = derive_behavioral_signals(&pos, &[], &[], NOW);
+        assert!(!positives.contains(&40));
     }
 
     #[test]
