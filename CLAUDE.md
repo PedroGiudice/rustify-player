@@ -19,8 +19,11 @@ cargo check --manifest-path src-tauri/Cargo.toml
 A cmr-auto puxa com:
 
 ```bash
-gh release download -R PedroGiudice/rustify-player -p '*.deb' -D /tmp --clobber
-sudo dpkg -i /tmp/rustify-player_0.1.0_amd64.deb
+# A tag `dev` acumula TODOS os .deb ja publicados (69 em 08/2026) — baixar
+# com '*.deb' puxa a colecao inteira. Sempre nomear a versao:
+V=0.2.69
+gh release download -R PedroGiudice/rustify-player -p "rustify-player_${V}_amd64.deb" -D /tmp --clobber
+sudo dpkg -i /tmp/rustify-player_${V}_amd64.deb
 ```
 
 Nao compilar localmente na cmr-auto — i5 8th gen leva minutos. A VM leva
