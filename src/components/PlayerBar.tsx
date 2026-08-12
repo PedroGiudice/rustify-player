@@ -15,7 +15,9 @@ import {
   applyTrackStarted, updatePosition, setPlayingState,
   setLiked, cycleRepeat, advanceQueue, retreatQueue, jumpToQueueIndex,
   shuffleQueue, reconcileFromState, setQueue, changeVolume,
+  rememberRecent, recentlyPlayed,
 } from "../store/player";
+import type { QueueScope, QueueSource } from "../store/player";
 import { registerSeen, registerSkipIfEarly, currentSession } from "../store/radioSession";
 import { dsp } from "../store/dsp";
 import { tweaks, updateTweak } from "../store/tweaks";
@@ -23,7 +25,7 @@ import {
   playerPlay, playerPause, playerResume, playerSeek,
   playerEnqueueNext, playerSetOrigin, playerLoadPaused,
   setVolume, libIsLiked, libToggleLike, libRecordPlay,
-  libAutoplayNext, libStationNext, getState, cycleRepeat as ipcCycleRepeat,
+  libAutoplayNext, libStationNext, getState,
   coverUrl, formatDuration, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds,
 } from "../tauri";
@@ -37,7 +39,8 @@ import { navigate } from "../router";
 // Re-export para que outros call-sites possam importar daqui.
 export { CMD_PALETTE_EVENT };
 
-const recentlyPlayedIds = new Set<string>();
+// Exclusão do autoplay: vive no store (rememberRecent/recentlyPlayed) —
+// os setters de fila são o choke point que registra qualquer troca.
 
 // Throttle disk writes — saving every position tick would be wasteful;
 // every 10s plus lifecycle events (track change, pause, seek, beforeunload)
@@ -97,8 +100,12 @@ export function PlayerBar() {
     unlistenPlayer = await onPlayerState(async (p) => {
       if ("TrackStarted" in p) {
         applyTrackStarted(p.TrackStarted);
-        // Pre-load next para gapless
-        const next = player.queue[player.queueIndex + 1];
+        // Pre-load next para gapless — repeat-aware: "one" pré-carrega a
+        // própria track (loop gapless), "all" volta ao início no fim da fila.
+        const next = player.repeatMode === "one"
+          ? player.currentTrack
+          : player.queue[player.queueIndex + 1] ??
+            (player.repeatMode === "all" ? player.queue[0] : undefined);
         if (next) playerEnqueueNext(next.path).catch(console.error);
         void saveSession();
 
@@ -113,12 +120,15 @@ export function PlayerBar() {
 
       } else if ("TrackEnded" in p) {
         const ended = player.currentTrack;
-        if (ended?.id) {
-          libRecordPlay(ended.id).catch(console.error);
-          recentlyPlayedIds.add(ended.id);
-          if (recentlyPlayedIds.size > 30) {
-            recentlyPlayedIds.delete(recentlyPlayedIds.values().next().value);
-          }
+        // record_play roda no playTrack (início) — registrar aqui de novo
+        // dobrava o play_count de toda escuta completa.
+        if (ended?.id) rememberRecent(ended.id);
+        // Repeat one: re-toca a mesma track sem avançar a fila. Origin
+        // "repeat" — loop deliberado é sinal positivo pleno pro
+        // behavioral_signals (não é passivo nem album_seq).
+        if (player.repeatMode === "one" && ended) {
+          await playTrack(ended, "repeat", contContextId());
+          return;
         }
         // Auto-advance
         const next = advanceQueue();
@@ -132,12 +142,20 @@ export function PlayerBar() {
           } else if (
             // Radio mode: top up the queue before it runs dry so playback
             // stays continuous without a Qdrant roundtrip gap at the end.
+            // SÓ em fila radio — sem o check de kind, um álbum embaralhado
+            // perto do fim era re-estampado como radio e as faixas
+            // restantes DO ÁLBUM logavam origin "autoplay".
             player.shuffle &&
+            player.queueSource?.kind === "radio" &&
             player.queueIndex >= player.queue.length - 2 &&
             next.id
           ) {
             void prefetchRadio(next.id);
           }
+        } else if (player.repeatMode === "all" && player.queue.length > 0) {
+          // Repeat all: fim da fila volta pra primeira track.
+          const first = jumpToQueueIndex(0);
+          if (first) await playTrack(first, contOrigin("album_seq"), contContextId());
         } else if (ended?.id) {
           await doAutoplay(ended.id);
         }
@@ -185,7 +203,13 @@ export function PlayerBar() {
       // the current track if it's still there; otherwise bail.
       const newIndex = tracks.findIndex((t) => t.id === snap.track_id);
       if (newIndex < 0) return;
-      setQueue(tracks, newIndex);
+      // Re-arma a proveniência da fila — sem isto uma fila radio/station
+      // volta como "solta" e o contOrigin perde o mapeamento (as
+      // continuações voltariam a logar album_seq, que os sinais excluem).
+      const restoredSource: QueueSource | null = snap.queue_source_kind
+        ? { kind: snap.queue_source_kind as QueueSource["kind"], name: snap.queue_source_name ?? undefined }
+        : null;
+      setQueue(tracks, newIndex, (snap.queue_scope as QueueScope) ?? "open", restoredSource);
       setPlayer({
         shuffle: snap.shuffle,
         repeatMode: (snap.repeat_mode as "off" | "all" | "one") ?? "off",
@@ -194,7 +218,7 @@ export function PlayerBar() {
       });
       // Repopulate the recently-played exclusion set so autoplay/radio
       // don't immediately suggest tracks the user heard last session.
-      for (const id of snap.recently_played) recentlyPlayedIds.add(id);
+      for (const id of snap.recently_played) rememberRecent(id);
       const current = tracks[newIndex];
       await playerLoadPaused(current.path, snap.position_ms, current.id);
       if (current.id) {
@@ -217,8 +241,11 @@ export function PlayerBar() {
         queue_index: player.queueIndex,
         shuffle: player.shuffle,
         repeat_mode: player.repeatMode,
-        recently_played: Array.from(recentlyPlayedIds),
+        recently_played: recentlyPlayed(),
         saved_at: Math.floor(Date.now() / 1000),
+        queue_scope: player.queueScope,
+        queue_source_kind: player.queueSource?.kind ?? null,
+        queue_source_name: player.queueSource?.name ?? null,
       });
     } catch (e) {
       console.warn("[resume] save failed:", e);
@@ -241,12 +268,14 @@ export function PlayerBar() {
       // behavioral mais recente. Sem isso, uma chamada com limit>1
       // pré-computa uma queue que envelhece — a 5ª track ainda
       // reflete a vibe da 1ª, sem influência do que aconteceu no meio.
-      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 1);
+      const tracks = await libAutoplayNext(seedId, recentlyPlayed(), 1);
       if (!tracks.length) return;
-      // Append new tracks to queue and advance index by 1 (same as vanilla)
+      // Append new tracks to queue and advance index by 1 (same as vanilla).
+      // A partir daqui quem abastece a fila é o autoplay — proveniência
+      // "radio", pra contOrigin logar as continuações como "autoplay".
       const newQueue = [...player.queue, ...tracks];
       const newIndex = player.queueIndex + 1;
-      setQueue(newQueue, newIndex);
+      setQueue(newQueue, newIndex, "open", { kind: "radio" });
       const next = newQueue[newIndex];
       if (next) await playTrack(next, "autoplay");
     } catch (e) {
@@ -264,9 +293,12 @@ export function PlayerBar() {
       // player chega às 2 últimas posições da queue (ver TrackEnded
       // handler). Garante 1 track sempre à frente, recalculada com
       // base no que toca agora.
-      const tracks = await libAutoplayNext(seedId, [...recentlyPlayedIds], 1);
+      const tracks = await libAutoplayNext(seedId, recentlyPlayed(), 1);
       if (!tracks.length) return;
-      setQueue([...player.queue, ...tracks], player.queueIndex);
+      // Re-passa a proveniência radio — o setQueue com defaults zerava o
+      // source e o chip virava "solta" no primeiro top-up (e o contOrigin
+      // perdia o mapeamento radio→autoplay).
+      setQueue([...player.queue, ...tracks], player.queueIndex, "open", { kind: "radio" });
     } catch (e) {
       console.error("[shuffle] radio prefetch failed:", e);
     }
@@ -300,7 +332,7 @@ export function PlayerBar() {
     const seed = player.currentTrack?.id;
     if (!seed) return;
     try {
-      const recs = await libAutoplayNext(seed, [...recentlyPlayedIds], 1);
+      const recs = await libAutoplayNext(seed, recentlyPlayed(), 1);
       if (!recs.length) return;
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open", { kind: "radio" });
@@ -526,6 +558,10 @@ export function PlayerBar() {
               if (t) {
                 playTrack(t, contOrigin("queue"), contContextId());
                 reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
+              } else if (skippedTrack?.id) {
+                // Fim da fila: mesmo gesto que o MPRIS next — segue em
+                // autoplay em vez de morrer num botão que parece quebrado.
+                void doAutoplay(skippedTrack.id);
               }
             }}
           >
@@ -539,7 +575,18 @@ export function PlayerBar() {
             aria-pressed={player.repeatMode !== "off" ? "true" : "false"}
             data-repeat-mode={player.repeatMode}
             title={`Repeat: ${player.repeatMode}`}
-            onClick={() => { cycleRepeat(); ipcCycleRepeat().catch(console.error); }}
+            onClick={() => {
+              cycleRepeat();
+              // Re-alinha o preload gapless: o engine consome o next_path
+              // pré-enfileirado de forma AUTÔNOMA no EOS — um next stale
+              // tocaria um blip da track errada (repeat one ligado no meio
+              // da track) ou loopararia a mesma (desligado no meio).
+              const next = player.repeatMode === "one"
+                ? player.currentTrack
+                : player.queue[player.queueIndex + 1] ??
+                  (player.repeatMode === "all" ? player.queue[0] : undefined);
+              if (next) playerEnqueueNext(next.path).catch(console.error);
+            }}
           >
             <Icon name={player.repeatMode === "one" ? ICONS.repeatOne : ICONS.repeat} size={14} />
           </button>
@@ -624,13 +671,23 @@ export function PlayerBar() {
 
 // ── playTrack — equivalente ao playTrack() de player-bar.js ───
 
-/** Origem real de uma CONTINUAÇÃO de fila: fila vinda de station loga
-    origin="station" em vez do default ("album_seq"/"queue") — sem isto
-    só a 1ª faixa da station carrega o origin certo, a régua de
-    skip-rate por origin subconta e o behavioral_signals descarta a
-    escuta (exclui album_seq dos positives). Fase 0 do session-awareness. */
+/** Origem real de uma CONTINUAÇÃO de fila. Sem o mapeamento, só a 1ª
+    faixa de cada contexto carrega o origin certo e o resto cai no default
+    ("album_seq" no avanço natural, "queue" no skip) — o behavioral_signals
+    EXCLUI album_seq dos positives, então toda escuta completa em radio
+    mode era invisível pro perfil enquanto os skips contavam contra: o
+    motor ficava cego pros próprios acertos.
+    - station → "station" (Fase 0 do session-awareness)
+    - radio (fila abastecida pelo autoplay) → "autoplay"
+    - playlist → "playlist" (positivo com desconto passivo no backend)
+    - album/solta → default (album_seq segue fora dos sinais por design) */
 export function contOrigin(def: string): string {
-  return player.queueSource?.kind === "station" ? "station" : def;
+  switch (player.queueSource?.kind) {
+    case "station": return "station";
+    case "radio": return "autoplay";
+    case "playlist": return "playlist";
+    default: return def;
+  }
 }
 
 /** Label PT do chip de proveniência da fila na barra. */

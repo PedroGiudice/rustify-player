@@ -115,13 +115,17 @@ export interface PersistedState {
   repeat_mode: string;
   recently_played: string[];
   saved_at: number;
+  // Proveniência da fila (chip + contOrigin) — opcionais pra snapshots
+  // legados; ausência = fila "solta".
+  queue_scope?: string | null;
+  queue_source_kind?: string | null;
+  queue_source_name?: string | null;
 }
 export const persistLoadState = () => invoke<PersistedState | null>("persist_load_state");
 export const persistSaveState = (state: PersistedState) =>
   invoke<void>("persist_save_state", { state });
 export const libGetTracksByIds = (ids: string[]) =>
   invoke<Track[]>("lib_get_tracks_by_ids", { ids });
-export const cycleRepeat = () => invoke<void>("cycle_repeat");
 export const setVolume = (volume: number) => invoke<void>("player_set_volume", { volume });
 
 // ── Loudness normalization ─────────────────────────────────────

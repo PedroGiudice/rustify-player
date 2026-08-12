@@ -150,12 +150,43 @@ export async function applyPersistedVolume(retries = 5): Promise<void> {
 // skip-rate por origin subconta e o behavioral_signals ignora a escuta
 // (exclui album_seq dos positives). Default null: qualquer setQueue de
 // outra fonte limpa a proveniencia (vira "solta").
+// ── Exclusão do autoplay ────────────────────────────────────────────────
+// Tracks que acabaram de tocar (terminadas OU interrompidas), FIFO cap 30.
+// Vive AQUI porque os setters de fila são o choke point: qualquer troca de
+// track passa por eles — call-sites manuais espalhados furavam o contrato
+// (clicar numa track da biblioteca no meio de uma sugestão ruim não
+// registrava a rejeitada, que voltava como sugestão).
+const recentlyPlayedIds = new Set<string>();
+
+/** Registra uma track na exclusão do autoplay. delete-antes-de-add é
+    obrigatório: Set.add de membro existente NÃO refresca a posição de
+    inserção — sem o delete, uma track recém-replayada continuaria a mais
+    antiga do FIFO e seria evictada logo depois de tocar. */
+export function rememberRecent(id: string) {
+  recentlyPlayedIds.delete(id);
+  recentlyPlayedIds.add(id);
+  if (recentlyPlayedIds.size > 30) {
+    recentlyPlayedIds.delete(recentlyPlayedIds.values().next().value!);
+  }
+}
+
+/** Snapshot da exclusão — excludeIds do lib_autoplay_next e persistência. */
+export function recentlyPlayed(): string[] {
+  return [...recentlyPlayedIds];
+}
+
+function rememberCurrent() {
+  const cur = player.currentTrack;
+  if (cur?.id) rememberRecent(cur.id);
+}
+
 export function setQueue(
   tracks: Track[],
   startIndex: number,
   scope: QueueScope = "open",
   source: QueueSource | null = null,
 ) {
+  rememberCurrent();
   // Troca de contexto de fila pra algo que NAO e station encerra a rodada
   // de sessao (Fase 2/3 do session-awareness) — sem isto, seenIds/
   // skippedIds de uma station vazariam pra recomendacao de outra, ou
@@ -190,6 +221,7 @@ export function enqueueEnd(track: Track) {
 export function advanceQueue(): Track | null {
   const next = player.queueIndex + 1;
   if (next >= player.queue.length) return null;
+  rememberCurrent();
   const track = player.queue[next];
   setPlayer({ queueIndex: next, currentTrack: track });
   return track;
@@ -198,6 +230,7 @@ export function advanceQueue(): Track | null {
 export function retreatQueue(): Track | null {
   const prev = player.queueIndex - 1;
   if (prev < 0) return null;
+  rememberCurrent();
   const track = player.queue[prev];
   setPlayer({ queueIndex: prev, currentTrack: track });
   return track;
@@ -209,6 +242,7 @@ export function retreatQueue(): Track | null {
     sequencial. Fora de alcance retorna null sem mexer no estado. */
 export function jumpToQueueIndex(index: number): Track | null {
   if (index < 0 || index >= player.queue.length) return null;
+  rememberCurrent();
   const track = player.queue[index];
   setPlayer({ queueIndex: index, currentTrack: track });
   return track;
