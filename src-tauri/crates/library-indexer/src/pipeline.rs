@@ -868,22 +868,29 @@ impl QdrantLyricsSink {
     }
 }
 
+/// Payload a gravar para uma letra recém-obtida, ou `None` quando o texto não
+/// vale embedding (placeholder de instrumental, fragmento).
+///
+/// Pura para ser testável: é a regra que separa letra sincronizada (vira
+/// `lrc_path`, o sidecar já está no disco) de letra plain (vira
+/// `embedded_lyrics` — primeira fonte que `resolve_lyrics` consulta, então o
+/// backfill futuro re-embeda sem voltar à rede).
+fn lyrics_payload(lrc_path: Option<&Path>, text: &str) -> Option<serde_json::Value> {
+    if lyrics::clean_lyrics_text(text).chars().count() <= MIN_LYRICS_CHARS {
+        return None;
+    }
+    Some(match lrc_path {
+        Some(p) => json!({ "lrc_path": p.to_string_lossy() }),
+        None => json!({ "embedded_lyrics": text }),
+    })
+}
+
 impl crate::lyrics_fetch::LyricsSink for QdrantLyricsSink {
     fn persist(&self, track_id: u64, lrc_path: Option<&Path>, text: &str) -> Result<(), String> {
-        let cleaned = lyrics::clean_lyrics_text(text);
-        if cleaned.chars().count() <= MIN_LYRICS_CHARS {
-            // Placeholder de instrumental ("[Instrumental]") ou fragmento: o
-            // mesmo guard do backfill, pra não poluir o índice com ruído.
+        let Some(payload) = lyrics_payload(lrc_path, text) else {
             return Ok(());
-        }
-
-        let payload = match lrc_path {
-            Some(p) => json!({ "lrc_path": p.to_string_lossy() }),
-            // Sem sidecar (letra não sincronizada): guarda o texto no payload.
-            // `embedded_lyrics` é a primeira fonte que `resolve_lyrics` consulta,
-            // então o backfill futuro re-embeda sem precisar da rede de novo.
-            None => json!({ "embedded_lyrics": text }),
         };
+        let cleaned = lyrics::clean_lyrics_text(text);
         self.client
             .set_payload(&[track_id], payload)
             .map_err(|e| format!("set_payload: {e}"))?;
@@ -1140,5 +1147,31 @@ mod tests {
         let r = resolve_lyrics(&payload);
         assert_eq!(r.text, None);
         assert_eq!(r.lrc_path_for_payload, None);
+    }
+
+    const LETRA: &str = "primeira linha da letra\nsegunda linha\nterceira linha";
+
+    #[test]
+    fn payload_de_letra_sincronizada_grava_o_caminho_do_sidecar() {
+        let p = lyrics_payload(Some(Path::new("/m/a.lrc")), LETRA).unwrap();
+        assert_eq!(p["lrc_path"], "/m/a.lrc");
+        assert!(p.get("embedded_lyrics").is_none());
+    }
+
+    #[test]
+    fn payload_de_letra_plain_guarda_o_texto_no_ponto() {
+        // Sem sidecar no disco, o texto precisa sobreviver no payload — senão
+        // o backfill do próximo boot volta à rede pra buscar o que já temos.
+        let p = lyrics_payload(None, LETRA).unwrap();
+        assert_eq!(p["embedded_lyrics"], LETRA);
+        assert!(p.get("lrc_path").is_none());
+    }
+
+    #[test]
+    fn payload_recusa_placeholder_de_instrumental() {
+        // Caso real do acervo: .lrc de 17-64 bytes com "[Instrumental]".
+        assert!(lyrics_payload(Some(Path::new("/m/a.lrc")), "[00:00.00] [Instrumental]").is_none());
+        assert!(lyrics_payload(None, "").is_none());
+        assert!(lyrics_payload(None, "curto").is_none());
     }
 }
