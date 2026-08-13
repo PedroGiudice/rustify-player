@@ -38,8 +38,23 @@ pub(crate) fn load_or_create(data_dir: &Path) -> String {
     id
 }
 
+/// Android: o hostname do kernel é "localhost" — inútil como identidade. A
+/// semente legível é o modelo do aparelho (SM-S921B → "sm-s921b").
+/// device.json continua vencendo: semear outro id antes do 1º boot é
+/// suportado (adb run-as em build debug).
+#[cfg(target_os = "android")]
+fn hostname() -> Option<String> {
+    std::process::Command::new("getprop")
+        .arg("ro.product.model")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Hostname da máquina. O app só shippa .deb Linux hoje — os caminhos de
 /// procfs/etc cobrem o caso real; env `HOSTNAME` é o último recurso.
+#[cfg(not(target_os = "android"))]
 fn hostname() -> Option<String> {
     for path in ["/proc/sys/kernel/hostname", "/etc/hostname"] {
         if let Ok(s) = std::fs::read_to_string(path) {

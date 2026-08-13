@@ -1,5 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["/storage/emulated/0/Music/**"]
+      }
+    }
+  },
   "bundle": {
     "externalBin": null
   }

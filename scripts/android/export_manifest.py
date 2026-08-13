@@ -85,7 +85,8 @@ def main() -> int:
             "track_number": to_int(pl.get("track_number")),
             "disc_number": to_int(pl.get("disc_number"), 1),
             "genre": pl.get("genre") or "",
-            "album_year": pl.get("album_year") or "",
+            # payload heterogêneo no Qdrant: "1995" (str) e 2025 (int) coexistem
+            "album_year": to_int(pl.get("album_year")) or None,
         })
 
     tracks.sort(key=lambda t: t["rel_path"])

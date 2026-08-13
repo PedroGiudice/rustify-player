@@ -6,8 +6,11 @@
 // WebView + UI SolidJS; playback via plugin Kotlin Media3 (passo 2 do plano
 // docs/prompts/13082026-rustify-android-v0.md).
 
-// Módulos cross-platform (std + serde apenas).
+// Módulos cross-platform (std + serde apenas). mobile_library compila em
+// todos os targets para os testes de canon_stem rodarem no host.
 pub(crate) mod device_identity;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod mobile_library;
 #[cfg(not(target_os = "android"))]
 pub(crate) mod persistence;
 
