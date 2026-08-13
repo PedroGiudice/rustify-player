@@ -11,6 +11,8 @@
 pub(crate) mod device_identity;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) mod mobile_library;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod mobile_sync;
 #[cfg(not(target_os = "android"))]
 pub(crate) mod persistence;
 
@@ -20,6 +22,8 @@ pub(crate) mod persistence;
 pub(crate) mod qdrant_process;
 #[cfg(not(target_os = "android"))]
 pub(crate) mod slsk;
+#[cfg(not(target_os = "android"))]
+pub(crate) mod sync_receiver;
 
 #[cfg(not(target_os = "android"))]
 #[path = "desktop.rs"]

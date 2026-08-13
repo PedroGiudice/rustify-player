@@ -59,6 +59,7 @@ pub fn run() {
             // ficaria invisível pro get_state inicial — v0 aceita o load
             // síncrono no setup.
             app.manage(Library(Mutex::new(MobileLibrary::load())));
+            crate::mobile_sync::worker::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

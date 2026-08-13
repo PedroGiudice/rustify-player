@@ -78,8 +78,11 @@ tauri-plugin-dialog = "2"
 tracing = { workspace = true }
 
 # Camada de playback do Android v0 (Media3/ExoPlayer + journal de eventos).
+# ureq SEM tls: o sync fala http com IP tailscale — o WireGuard da tailnet é
+# o canal cifrado; rustls/ring exigiria clang do NDK à toa.
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-rustify-audio = { path = "crates/tauri-plugin-rustify-audio" }
+ureq = { version = "2", default-features = false, features = ["json"] }
 
 # Desktop-only: audio-engine arrasta PipeWire/libspa (Linux puro), souvlaki
 # arrasta zbus/D-Bus, o mcp-bridge é ferramenta de dev desktop, e

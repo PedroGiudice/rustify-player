@@ -1808,7 +1808,7 @@ fn stamp_provenance(payload: &mut Value, provenance: Option<&Provenance>) {
 /// testável. `listen_pct` deriva de `end_position_ms / duration_ms`
 /// (clamp 0..1; duração zero → 0.0).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build_play_event_payload(
+pub fn build_play_event_payload(
     event_type: &str,
     track_id: u64,
     origin: &str,

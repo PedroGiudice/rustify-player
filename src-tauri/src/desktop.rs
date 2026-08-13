@@ -1,4 +1,4 @@
-use crate::{device_identity, persistence, qdrant_process, slsk};
+use crate::{device_identity, persistence, qdrant_process, slsk, sync_receiver};
 
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
@@ -2753,6 +2753,9 @@ pub fn run() {
             };
             // Cria a station "Your Mix" caso o usuario nao tenha nenhuma ainda.
             maybe_seed_default_station(&library);
+            // Receptor do sync de play_events de outros dispositivos (S24).
+            // Escuta no IP tailscale; sem tailnet simplesmente não sobe.
+            sync_receiver::start(library.handle.client().clone());
             _app.manage(library);
 
             // Crate — busca e download Soulseek in-app (spec docs/superpowers/
