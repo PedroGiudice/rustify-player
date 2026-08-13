@@ -1,4 +1,5 @@
 mod persistence;
+mod device_identity;
 mod qdrant_process;
 mod slsk;
 
@@ -2706,12 +2707,19 @@ pub fn run() {
             let lyrics_url = std::env::var("RUSTIFY_LYRICS_EMBED_URL")
                 .unwrap_or_else(|_| "http://100.123.73.128:3939".to_string());
 
+            // Proveniência dos eventos (spec 2026-08-13): identidade estável
+            // do dispositivo + versão do app (autoridade: tauri.conf.json).
+            let device_id = device_identity::load_or_create(&data_dir);
+            let app_version = _app.package_info().version.to_string();
+
             let config = IndexerConfig {
                 qdrant_url: qdrant_url.clone(),
                 music_root: music_root.clone(),
                 cache_dir: cache_dir.clone(),
                 embed_client: embed_url.as_deref().map(EmbedClient::new),
                 lyrics_client: Some(library_indexer::LyricsEmbedClient::new(lyrics_url)),
+                device_id,
+                app_version,
             };
 
             // Spawn Qdrant sidecar BEFORE the health probe — otherwise the

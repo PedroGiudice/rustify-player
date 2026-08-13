@@ -30,7 +30,7 @@ pub mod rerank;
 
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
-pub use qdrant_client::{MoodFilters, QdrantClient, ACTIVITY_VOCAB, MOOD_VOCAB};
+pub use qdrant_client::{MoodFilters, Provenance, QdrantClient, ACTIVITY_VOCAB, MOOD_VOCAB};
 pub use cover::{CoverSource, dominant_color, dominant_palette};
 pub use dedup::{OwnedIndex, OwnedVerdict};
 pub use error::IndexerError;
@@ -62,6 +62,11 @@ pub struct IndexerConfig {
     /// Optional text-embedding client (cogmem BGE-M3) for `lyrics` vectors.
     /// When present, the indexer runs the lyrics backfill on startup.
     pub lyrics_client: Option<LyricsEmbedClient>,
+    /// Identidade do dispositivo (slug estável, ex. `cmr-auto`) — estampada
+    /// em todo evento gravado. Ver spec 2026-08-13-event-provenance.
+    pub device_id: String,
+    /// Versão do app (autoridade: tauri.conf.json via `package_info()`).
+    pub app_version: String,
 }
 
 /// Entry point. Stateless; calling [`Indexer::open`] spawns threads.
@@ -71,7 +76,10 @@ impl Indexer {
     /// Opens (or initializes) the library, ensures Qdrant collections exist,
     /// and spawns the coordinator + embedding worker threads.
     pub fn open(config: IndexerConfig) -> Result<IndexerHandle, IndexerError> {
-        let client = QdrantClient::new(&config.qdrant_url);
+        let client = QdrantClient::new(&config.qdrant_url).with_provenance(Provenance {
+            device_id: config.device_id.clone(),
+            app_version: config.app_version.clone(),
+        });
         client.ensure_collection()?;
         client.ensure_play_events_collection()?;
         client.ensure_enrichments_collection()?;

@@ -97,6 +97,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cache_dir,
         embed_client: args.embed_url.as_deref().map(EmbedClient::new),
         lyrics_client: None,
+        device_id: "scan-folder-cli".to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
     };
 
     let indexer = Indexer::open(config)?;

@@ -36,7 +36,23 @@ TUNNEL_CMD = [
 REPO = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO / "docs" / "metrics"
 # Corte do sinal v3 (v0.2.66): origins ganharam significado novo.
+# Desde a v0.2.72 cada evento carrega `signal_schema` (estampado no backend,
+# spec 2026-08-13-event-provenance) e o corte é auto-descritivo; o timestamp
+# abaixo fica APENAS como fallback pros eventos legados sem o campo.
 V3_CUTOFF = 1786500000  # 2026-08-12 ~02:00 UTC
+SIGNAL_SCHEMA_V3 = 3
+
+
+def is_pos_v3(e: dict) -> bool:
+    """Evento gerado sob a semântica v3 dos sinais/origins.
+
+    `signal_schema` é a autoridade quando presente; eventos anteriores à
+    v0.2.72 não têm o campo e caem no fallback por timestamp.
+    """
+    schema = e.get("signal_schema")
+    if schema is not None:
+        return schema >= SIGNAL_SCHEMA_V3
+    return e["_ts"] >= V3_CUTOFF
 META_SKIP = 0.55
 SESSION_GAP_S = 30 * 60
 
@@ -162,7 +178,7 @@ def main() -> int:
     for e in events:
         e["_ts"] = e.get("timestamp") or e.get("started_at") or 0
 
-    pos_v3 = [e for e in events if e["_ts"] >= V3_CUTOFF]
+    pos_v3 = [e for e in events if is_pos_v3(e)]
 
     def stats(evs):
         n = len(evs)
@@ -207,6 +223,14 @@ def main() -> int:
             w[0] += 1
             w[1] += 1 if e["event_type"] == "track_skipped" else 0
 
+    # Proveniência: segmentação por dispositivo. Linha morta enquanto só a
+    # cmr-auto gera eventos; ganha vida no primeiro dispositivo novo.
+    by_device = {}
+    for e in pos_v3:
+        d = e.get("device_id") or "(legado)"
+        by_device.setdefault(d, []).append(e)
+    by_device = {d: stats(evs) for d, evs in by_device.items()}
+
     cov = coverage()
     record = {
         "measured_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -222,6 +246,7 @@ def main() -> int:
             "max": max(streaks) if streaks else None,
         },
         "meta_skip": META_SKIP,
+        "by_device": by_device,
         "coverage": cov,
     }
     with open(OUT_DIR / "regua-autoplay.jsonl", "a") as f:
@@ -255,7 +280,7 @@ def main() -> int:
     (OUT_DIR / "regua-latest.md").write_text(
         f"# Régua do autoplay — medição {now:%Y-%m-%d}\n\n"
         f"**Veredito: {veredito}**\n\n"
-        f"Eventos pós-sinal-v3 (>= 2026-08-12): {len(pos_v3)}. Meta: skip do "
+        f"Eventos pós-sinal-v3 (signal_schema>=3; legado por data): {len(pos_v3)}. Meta: skip do "
         f"autoplay <= {META_SKIP:.0%} (CMR-123). Streak de aceitação: média "
         f"{record['streaks']['mean']}, max {record['streaks']['max']} "
         f"({record['streaks']['count']} ciclos).\n\n"
@@ -264,6 +289,16 @@ def main() -> int:
             f"{o} {s['skip_rate']:.0%} (n={s['n']})"
             for o, s in by_origin.items()
             if s["n"] > 0
+        )
+        + (
+            "\n\nPor dispositivo: "
+            + ", ".join(
+                f"{d} skip {s['skip_rate']:.0%} (n={s['n']})"
+                for d, s in sorted(by_device.items())
+                if s["n"] > 0
+            )
+            if len(by_device) >= 2
+            else ""
         )
         + "\n\nAutoplay por semana:\n" + weeks_md + "\n\n"
         + cobertura_md(cov) + "\n"

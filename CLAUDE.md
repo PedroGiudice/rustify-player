@@ -373,6 +373,18 @@ decisoes). O que importa pro dia-a-dia:
   havia alarme nenhum. A cobertura de letra e medida contra as
   ALCANCAVEIS (total menos `lyrics_status` none/instrumental) — perseguir
   100% e impossivel: instrumental nao tem letra.
+- **Proveniencia dos eventos (v0.2.72, spec 2026-08-13-event-provenance)**:
+  todo ponto novo em `play_events` sai estampado com `device_id` (slug do
+  hostname, persistido em `device.json` no data dir — IMUTAVEL depois de
+  criado), `app_version` (autoridade: tauri.conf.json via `package_info()`)
+  e `signal_schema` (const `SIGNAL_SCHEMA` em `qdrant_client.rs`). Like
+  grava `liked_device`. O backend estampa POR CIMA do que vier do frontend
+  (`log_event`). Mudou a semantica dos sinais/origins? Incrementar
+  `SIGNAL_SCHEMA` — a regua le o campo e o `V3_CUTOFF` por timestamp e so
+  fallback pra eventos legados. Sem migracao retroativa (padrao context_id).
+  E o pre-requisito do sync multi-dispositivo (uniao de conjuntos dos logs;
+  fase futura na spec). Eventos de dispositivo novo aparecem sozinhos na
+  regua (breakdown por device quando houver 2+).
 - **Origins**: continuacoes de fila radio logam `autoplay` (contOrigin,
   PlayerBar.tsx), playlist loga `playlist`, repeat-one loga `repeat`.
   `album_seq` segue FORA dos sinais. NAO comparar skip-rate por origin

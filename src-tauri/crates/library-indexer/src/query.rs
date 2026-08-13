@@ -532,11 +532,16 @@ pub fn toggle_like(client: &QdrantClient, track_id: u64) -> Result<bool, Indexer
     let currently_liked = existing["liked_at"].as_i64().is_some();
 
     if currently_liked {
-        client.set_enrichment(track_id, json!({"liked_at": null}))?;
+        client.set_enrichment(track_id, json!({"liked_at": null, "liked_device": null}))?;
         Ok(false)
     } else {
         let now = unix_now();
-        client.set_enrichment(track_id, json!({"liked_at": now}))?;
+        // liked_device = quem deu o like VIGENTE (enrichment é mutável, não é
+        // log) — proveniência pro sync multi-dispositivo, não histórico.
+        client.set_enrichment(
+            track_id,
+            json!({"liked_at": now, "liked_device": client.device_id()}),
+        )?;
         Ok(true)
     }
 }

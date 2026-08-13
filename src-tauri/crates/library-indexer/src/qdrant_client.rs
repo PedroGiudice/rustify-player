@@ -238,6 +238,21 @@ const PLAY_EVENTS_COLLECTION: &str = "play_events";
 /// Separated from rustify_tracks so library rescans never destroy user/enrichment data.
 const ENRICHMENTS_COLLECTION: &str = "track_enrichments";
 
+/// Versão vigente do ESQUEMA DE SINAL — estampada em todo evento novo como
+/// `signal_schema`. Incrementar QUANDO a semântica dos sinais/origins mudar
+/// (a v0.2.66 teria sido o corte 2→3); a régua usa este campo no lugar do
+/// timestamp hardcoded `V3_CUTOFF` para eventos que o possuem.
+pub const SIGNAL_SCHEMA: i64 = 3;
+
+/// Identidade de proveniência estampada em cada evento gravado — qual
+/// dispositivo e qual versão do app geraram o ponto. Pré-requisito do sync
+/// multi-dispositivo (spec 2026-08-13-event-provenance).
+#[derive(Clone, Debug)]
+pub struct Provenance {
+    pub device_id: String,
+    pub app_version: String,
+}
+
 /// Synchronous HTTP client for the Qdrant REST API.
 ///
 /// Cheap to clone — the inner `ureq::Agent` shares connection pools via `Arc`.
@@ -245,6 +260,7 @@ const ENRICHMENTS_COLLECTION: &str = "track_enrichments";
 pub struct QdrantClient {
     agent: ureq::Agent,
     base_url: String,
+    provenance: Option<Provenance>,
 }
 
 impl QdrantClient {
@@ -260,7 +276,21 @@ impl QdrantClient {
         Self {
             agent,
             base_url: base_url.into().trim_end_matches('/').to_string(),
+            provenance: None,
         }
+    }
+
+    /// Attach provenance — every event written afterwards carries
+    /// `device_id`/`app_version`. Clients without it (health probe, scripts)
+    /// still work; they only stamp `signal_schema`.
+    pub fn with_provenance(mut self, provenance: Provenance) -> Self {
+        self.provenance = Some(provenance);
+        self
+    }
+
+    /// Device id vigente, se o client tem provenance anexada.
+    pub fn device_id(&self) -> Option<&str> {
+        self.provenance.as_ref().map(|p| p.device_id.as_str())
     }
 
     /// Returns `true` if Qdrant is reachable and healthy.
@@ -1016,6 +1046,10 @@ impl QdrantClient {
             // write, evita o problema de index parcial pós-dados (ver
             // ~/.claude/rules/qdrant-bulk-ops.md).
             ("context_id", json!({"type": "keyword"})),
+            // Proveniência (spec 2026-08-13): mesmos motivos do context_id —
+            // índice nasce antes do primeiro ponto estampado.
+            ("device_id", json!({"type": "keyword"})),
+            ("signal_schema", json!({"type": "integer"})),
         ];
 
         for (field, schema) in &indices {
@@ -1204,27 +1238,19 @@ impl QdrantClient {
         duration_ms: u64,
         context_id: Option<&str>,
     ) -> Result<(), IndexerError> {
-        let listen_pct = if duration_ms == 0 {
-            0.0_f64
-        } else {
-            (end_position_ms as f64 / duration_ms as f64).clamp(0.0, 1.0)
-        };
-
         let point_id = uuid::Uuid::new_v4().to_string();
 
-        let mut payload = json!({
-            "event_type": event_type,
-            "timestamp": timestamp,
-            "track_id": track_id,
-            "origin": origin,
-            "started_at": started_at,
-            "end_position_ms": end_position_ms,
-            "duration_ms": duration_ms,
-            "listen_pct": listen_pct
-        });
-        if let Some(cid) = context_id {
-            payload["context_id"] = json!(cid);
-        }
+        let payload = build_play_event_payload(
+            event_type,
+            track_id,
+            origin,
+            started_at,
+            timestamp,
+            end_position_ms,
+            duration_ms,
+            context_id,
+            self.provenance.as_ref(),
+        );
 
         let body = json!({
             "points": [{
@@ -1247,6 +1273,11 @@ impl QdrantClient {
 
     pub fn insert_raw_event(&self, payload: &Value) -> Result<(), IndexerError> {
         let point_id = uuid::Uuid::new_v4().to_string();
+        // O backend é a autoridade da proveniência: estampa por cima do que
+        // vier do frontend via log_event.
+        let mut payload = payload.clone();
+        stamp_provenance(&mut payload, self.provenance.as_ref());
+        let payload = &payload;
         let body = json!({
             "points": [{
                 "id": point_id,
@@ -1702,6 +1733,54 @@ const MAX_TOTAL_POSITIVES: usize = 35;
 /// Máximo de negatives.
 const MAX_NEGATIVES: usize = 40;
 
+/// Estampa a proveniência num payload de evento: `signal_schema` sempre;
+/// `device_id`/`app_version` quando o client tem [`Provenance`] anexada.
+fn stamp_provenance(payload: &mut Value, provenance: Option<&Provenance>) {
+    payload["signal_schema"] = json!(SIGNAL_SCHEMA);
+    if let Some(p) = provenance {
+        payload["device_id"] = json!(p.device_id);
+        payload["app_version"] = json!(p.app_version);
+    }
+}
+
+/// Montagem PURA do payload de um play event — separada do HTTP para ser
+/// testável. `listen_pct` deriva de `end_position_ms / duration_ms`
+/// (clamp 0..1; duração zero → 0.0).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_play_event_payload(
+    event_type: &str,
+    track_id: u64,
+    origin: &str,
+    started_at: i64,
+    timestamp: i64,
+    end_position_ms: u64,
+    duration_ms: u64,
+    context_id: Option<&str>,
+    provenance: Option<&Provenance>,
+) -> Value {
+    let listen_pct = if duration_ms == 0 {
+        0.0_f64
+    } else {
+        (end_position_ms as f64 / duration_ms as f64).clamp(0.0, 1.0)
+    };
+
+    let mut payload = json!({
+        "event_type": event_type,
+        "timestamp": timestamp,
+        "track_id": track_id,
+        "origin": origin,
+        "started_at": started_at,
+        "end_position_ms": end_position_ms,
+        "duration_ms": duration_ms,
+        "listen_pct": listen_pct
+    });
+    if let Some(cid) = context_id {
+        payload["context_id"] = json!(cid);
+    }
+    stamp_provenance(&mut payload, provenance);
+    payload
+}
+
 /// Derivação PURA dos sinais comportamentais — ver contrato no doc de
 /// [`QdrantClient::behavioral_signals`]. `pos_payloads`/`neg_payloads` vêm
 /// ordenados por `started_at` desc (mais recentes primeiro); `liked_recent`
@@ -1892,6 +1971,75 @@ mod tests {
         assert!(sem.get("filter").is_none(), "sem exclude → sem filter");
         let com = build_recommend_body(&[1], &[], &[7, 8], 5);
         assert_eq!(com["filter"]["must_not"][0]["has_id"], json!([7, 8]));
+    }
+
+    // ── build_play_event_payload — proveniência (spec 2026-08-13) ──────────
+
+    #[test]
+    fn payload_com_provenance_estampa_os_tres_campos() {
+        let p = Provenance {
+            device_id: "cmr-auto".into(),
+            app_version: "0.2.72".into(),
+        };
+        let payload = build_play_event_payload(
+            "track_ended",
+            42,
+            "autoplay",
+            1_700_000_000,
+            1_700_000_200,
+            180_000,
+            200_000,
+            Some("ctx-1"),
+            Some(&p),
+        );
+        assert_eq!(payload["device_id"], json!("cmr-auto"));
+        assert_eq!(payload["app_version"], json!("0.2.72"));
+        assert_eq!(payload["signal_schema"], json!(SIGNAL_SCHEMA));
+        // campos pré-existentes preservados
+        assert_eq!(payload["event_type"], json!("track_ended"));
+        assert_eq!(payload["track_id"], json!(42));
+        assert_eq!(payload["context_id"], json!("ctx-1"));
+        assert!((payload["listen_pct"].as_f64().unwrap() - 0.9).abs() < 1e-9);
+    }
+
+    #[test]
+    fn payload_sem_provenance_estampa_so_signal_schema() {
+        let payload = build_play_event_payload(
+            "track_skipped",
+            7,
+            "queue",
+            100,
+            110,
+            0,
+            0,
+            None,
+            None,
+        );
+        assert_eq!(payload["signal_schema"], json!(SIGNAL_SCHEMA));
+        assert!(payload.get("device_id").is_none());
+        assert!(payload.get("app_version").is_none());
+        assert!(payload.get("context_id").is_none());
+        assert_eq!(payload["listen_pct"], json!(0.0), "duração zero → 0.0");
+    }
+
+    #[test]
+    fn stamp_provenance_sobrescreve_campos_vindos_do_frontend() {
+        // log_event aceita payload arbitrário do frontend; o backend é a
+        // autoridade — valores forjados são sobrescritos.
+        let p = Provenance {
+            device_id: "cmr-auto".into(),
+            app_version: "0.2.72".into(),
+        };
+        let mut payload = json!({
+            "event_type": "ui_event",
+            "timestamp": 1,
+            "device_id": "forjado",
+            "signal_schema": 999
+        });
+        stamp_provenance(&mut payload, Some(&p));
+        assert_eq!(payload["device_id"], json!("cmr-auto"));
+        assert_eq!(payload["signal_schema"], json!(SIGNAL_SCHEMA));
+        assert_eq!(payload["event_type"], json!("ui_event"));
     }
 
     // ── derive_behavioral_signals — derivação pura dos sinais ──────────────
