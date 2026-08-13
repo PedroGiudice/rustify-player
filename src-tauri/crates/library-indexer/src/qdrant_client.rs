@@ -1295,6 +1295,39 @@ impl QdrantClient {
         Ok(())
     }
 
+    /// Upsert IDEMPOTENTE de um evento sincado de OUTRO dispositivo (fase 2
+    /// do sync — união de conjuntos). `point_id` é o UUID que nasceu no
+    /// dispositivo de origem: re-enviar o mesmo evento sobrescreve o mesmo
+    /// ponto, nunca duplica. A proveniência NÃO é re-estampada — o carimbo
+    /// do dispositivo de origem É o dado; estampar aqui destruiria o
+    /// breakdown by_device da régua.
+    pub fn insert_synced_event(
+        &self,
+        point_id: &str,
+        payload: &Value,
+    ) -> Result<(), IndexerError> {
+        if let Some(reason) = synced_event_error(payload) {
+            return Err(IndexerError::Embedding(format!(
+                "synced event rejeitado: {reason}"
+            )));
+        }
+        let body = json!({
+            "points": [{
+                "id": point_id,
+                "vector": [0.0],
+                "payload": payload
+            }]
+        });
+        self.agent
+            .put(&format!(
+                "{}/collections/{PLAY_EVENTS_COLLECTION}/points",
+                self.base_url
+            ))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant insert synced event: {e}")))?;
+        Ok(())
+    }
+
     /// Scroll the `play_events` collection with a filter, ordered by `started_at` descending.
     ///
     /// Returns the payload of each matching point (up to `limit`).
@@ -1733,6 +1766,34 @@ const MAX_TOTAL_POSITIVES: usize = 35;
 /// Máximo de negatives.
 const MAX_NEGATIVES: usize = 40;
 
+/// Validação PURA de um evento vindo pelo trilho de sync: evento sem
+/// proveniência completa não entra — o objetivo do sync é exatamente o
+/// breakdown por dispositivo, e um ponto sem carimbo seria indistinguível
+/// de dado legado.
+pub(crate) fn synced_event_error(payload: &Value) -> Option<&'static str> {
+    if payload
+        .get("device_id")
+        .and_then(Value::as_str)
+        .map_or(true, str::is_empty)
+    {
+        return Some("sem device_id");
+    }
+    if payload.get("signal_schema").and_then(Value::as_i64).is_none() {
+        return Some("sem signal_schema");
+    }
+    if payload
+        .get("event_type")
+        .and_then(Value::as_str)
+        .map_or(true, str::is_empty)
+    {
+        return Some("sem event_type");
+    }
+    if payload.get("track_id").and_then(Value::as_u64).is_none() {
+        return Some("track_id ausente ou não-u64");
+    }
+    None
+}
+
 /// Estampa a proveniência num payload de evento: `signal_schema` sempre;
 /// `device_id`/`app_version` quando o client tem [`Provenance`] anexada.
 fn stamp_provenance(payload: &mut Value, provenance: Option<&Provenance>) {
@@ -2020,6 +2081,34 @@ mod tests {
         assert!(payload.get("app_version").is_none());
         assert!(payload.get("context_id").is_none());
         assert_eq!(payload["listen_pct"], json!(0.0), "duração zero → 0.0");
+    }
+
+    #[test]
+    fn synced_event_exige_proveniencia_completa() {
+        let ok = json!({
+            "event_type": "track_ended", "track_id": 12755931536157556u64,
+            "device_id": "sm-s921b", "app_version": "0.1.0",
+            "signal_schema": 3, "origin": "playlist",
+            "started_at": 1, "timestamp": 2,
+        });
+        assert_eq!(synced_event_error(&ok), None);
+
+        let mut sem_device = ok.clone();
+        sem_device["device_id"] = json!("");
+        assert_eq!(synced_event_error(&sem_device), Some("sem device_id"));
+
+        let mut sem_schema = ok.clone();
+        sem_schema.as_object_mut().unwrap().remove("signal_schema");
+        assert_eq!(synced_event_error(&sem_schema), Some("sem signal_schema"));
+
+        // track_id string (como viaja no JSON do celular sem conversão) é
+        // rejeitado — o flush converte pra u64 ANTES do upsert.
+        let mut tid_string = ok.clone();
+        tid_string["track_id"] = json!("12755931536157556");
+        assert_eq!(
+            synced_event_error(&tid_string),
+            Some("track_id ausente ou não-u64")
+        );
     }
 
     #[test]
