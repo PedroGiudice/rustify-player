@@ -1,0 +1,394 @@
+/* ============================================================
+   tokens.css — porte de docs/design-refs/design_handoff_mobile/
+   tokens.css. Só carrega no Android (import dinâmico em main.tsx).
+
+   Desvios do handoff, todos marcados com [v0]:
+   - fontes: o @import do Google Fonts saiu (CSP proíbe host
+     externo). As MESMAS famílias entram self-hosted via
+     @fontsource, importadas em MobileApp.tsx.
+   - a moldura de protótipo (.wrap/.label/body centrado e
+     .device 360x780 com raio e sombra) virou viewport cheia.
+   - .statusbar e .sysnav eram simulação do chrome do Android —
+     o aparelho real desenha os dois. Removidos.
+   ============================================================ */
+
+:root {
+  --s-lowest: #050505;
+  --s-base: #0c0c0c;
+  --s-low: #111;
+  --s-c: #161616;
+  --s-high: #1c1c1c;
+  --s-highest: #242424;
+  --div-subtle: rgba(255, 255, 255, 0.08);
+  --div-prom: rgba(255, 255, 255, 0.16);
+  --accent: #997081;
+  --accent-c: #4d3740;
+  --on-accent: #0a0a0a;
+  --on-accent-c: #ede9eb;
+  --accent-dim: #a0a0a0;
+  --t1: #f0f0f0;
+  --t2: #b8b8b8;
+  --t3: #808080;
+  --t4: #6e6e6e;
+  --outline: rgba(240, 240, 240, 0.16);
+  --ok: #809078;
+  --warn: #908870;
+  --err: #8b7575;
+  /* [v0] famílias idênticas ao handoff; fallback de sistema no fim */
+  --font: "Inter", -apple-system, system-ui, sans-serif;
+  --display: "Fraunces", Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 14px;
+  --r-pill: 999px;
+  --sh-card: 0 1px 4px rgba(0, 0, 0, 0.5);
+  --sh-hover: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --bg-ink-rgb: 240, 240, 240;
+  --bg-bass-gain: 1;
+  --bg-mid-gain: 1;
+  --bg-treble-gain: 0.8;
+  --bg-smoothing: 0.3;
+  --bg-speed: 1;
+  --bg-beat-sync: 1;
+  --bg-beat-mode: 1;
+  --bg-beat-depth: 0.55;
+  --bg-ink-morph: 0.35;
+  --tone-mint: #171c1a;
+  --tone-mint-b: #282f2d;
+  --tone-sky: #171a1c;
+  --tone-sky-b: #282c2f;
+  --tone-peach: #1c1917;
+  --tone-peach-b: #2f2b28;
+  --tone-rose: #1c1718;
+  --tone-rose-b: #2f282a;
+  --tone-lav: #1a171c;
+  --tone-lav-b: #2c282f;
+  --tone-butter: #1c1b17;
+  --tone-butter-b: #2f2d28;
+  --tone-bone: #1b1a18;
+  --tone-bone-b: #2e2c29;
+  --tone-paper: #1a1a1a;
+  --tone-paper-b: #2b2b2b;
+  --tabbar-h: 56px;
+  --mini-h: 56px;
+  /* [v0] recortes do aparelho (notch / barra de gestos) */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* [v0] o protótipo centralizava a moldura numa página; aqui o app É a página */
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--s-base);
+  font-family: var(--font);
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* [v0] .device era 360x780 com raio/sombra de mockup; vira viewport cheia */
+.device {
+  width: 100%;
+  height: 100dvh;
+  background: var(--s-base);
+  overflow: hidden;
+  position: relative;
+  color: var(--t1);
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  padding-top: var(--safe-t);
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+.viewhead {
+  padding: 8px 20px 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.viewhead h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.viewhead .sub {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--t3);
+  margin-top: 5px;
+  letter-spacing: 0.02em;
+}
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.sec {
+  padding: 0 20px;
+  margin-bottom: 22px;
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.sec-head a {
+  font-size: 11px;
+  color: var(--t3);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  font-family: inherit;
+}
+.card {
+  background: var(--s-c);
+  border: 1px solid var(--div-subtle);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-card);
+}
+.qs-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 0 20px 4px;
+  margin-bottom: 22px;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 20px;
+  touch-action: pan-x;
+}
+.qs-row::-webkit-scrollbar {
+  display: none;
+}
+.qs {
+  scroll-snap-align: start;
+  flex: 0 0 210px;
+  padding: 14px;
+  height: 112px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--s-c);
+  border: 1px solid var(--div-subtle);
+  border-radius: var(--r-xl);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+.qs h3 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.qs .meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--t3);
+}
+.trk {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--div-subtle);
+}
+.trk:last-child {
+  border-bottom: 0;
+}
+.cov {
+  flex: 0 0 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--div-subtle);
+  display: grid;
+  place-items: center;
+  color: var(--t4);
+  overflow: hidden;
+}
+.cov svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.6;
+}
+.cov img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.trk .info {
+  min-width: 0;
+  flex: 1;
+}
+.trk .tt {
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trk .ts {
+  font-size: 11.5px;
+  color: var(--t3);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trk .dur {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t4);
+  font-variant-numeric: tabular-nums;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.alb {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+  min-width: 0;
+}
+.alb .art {
+  aspect-ratio: 1;
+  border-radius: var(--r-2xl);
+  border: 1px solid var(--div-subtle);
+  display: grid;
+  place-items: center;
+  color: var(--t4);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.alb .art svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.5;
+}
+.alb .art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.alb .t {
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.alb .s {
+  font-size: 11px;
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mini {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 14px;
+  height: var(--mini-h);
+  background: rgba(22, 22, 22, 0.92);
+  border-top: 1px solid var(--div-subtle);
+}
+.mini .cov {
+  flex: 0 0 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+}
+.mini .tt {
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mini .ts {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 1px;
+}
+.iconbtn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--t2);
+  border-radius: var(--r-pill);
+}
+.iconbtn svg {
+  width: 20px;
+  height: 20px;
+}
+.iconbtn:disabled {
+  opacity: 0.35;
+}
+.tabbar {
+  display: flex;
+  height: var(--tabbar-h);
+  background: var(--s-low);
+  border-top: 1px solid var(--div-subtle);
+}
+.tab {
+  flex: 1;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--t4);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+.tab svg {
+  width: 21px;
+  height: 21px;
+}
+.tab[data-on] {
+  color: var(--accent);
+}
