@@ -1,0 +1,155 @@
+<!DOCTYPE html><html lang="pt-br"><head><meta charset="utf-8"><title>Rustify Mobile</title><link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="app.css"><style>a,a:hover{color:var(--t2)}</style></head><body>
+<div id="sprite" hidden></div>
+<div class="wrap"><div class="label">Rustify · mobile · 360×780</div>
+<div class="device" id="app">
+<div class="app-bg" id="appbg" data-mode="ambient" aria-hidden="true"><div class="app-bg__curtain"></div><canvas class="app-bg__canvas" id="bgcanvas"></canvas></div>
+<div class="statusbar"><span id="clock">08:28</span><span class="right"><span>FLAC</span><span>·</span><span>44.1</span></span></div>
+<div class="shell">
+<div id="view"></div>
+<div class="dock">
+<div class="prog"><i id="dprog"></i></div>
+<div class="mini" id="mini">
+<div class="cov" id="minicov" style="background:var(--tone-mint);border-color:var(--tone-mint-b)"></div>
+<div class="info" id="miniinfo" style="flex:1;min-width:0"><div class="tt" id="minit">Neighbors</div><div class="ts"><span class="srcbadge" id="minisrc" data-src="radio">rádio</span><span id="minia">J. Cole</span></div></div>
+<div class="vu" id="vu"><i></i><i></i><i></i><i></i></div>
+<button class="iconbtn" id="miniplay"></button>
+<button class="iconbtn" id="mininext"></button>
+</div>
+<nav class="tabbar" id="tabs"></nav>
+</div>
+</div>
+<div class="np" id="np">
+<div class="veil"></div>
+<div class="inner">
+<div class="grab"></div>
+<div class="nphead"><div class="eyebrow">Now playing</div><div style="display:flex;align-items:center;gap:6px"><button class="shapebtn" id="renderbtn"></button><button class="shapebtn" id="shapebtn"></button><button class="iconbtn" id="npclose"></button></div></div>
+<div class="cover" id="npcover" style="background:var(--tone-mint);border-color:var(--tone-mint-b)"></div>
+<div class="title" id="npt">Neighbors</div>
+<div class="artist"><span class="srcbadge" id="npsrc" data-src="radio">rádio</span><span id="npa">J. Cole · 4 Your Eyez Only</span></div>
+<div class="metarow"><button class="tech" id="techbtn">Track info</button><button class="lyrbtn" id="lyrbtn" aria-pressed="true" aria-label="Mostrar letras"></button></div>
+<div class="lyrics"><div class="lrail" id="lrail"></div></div>
+<div class="bar"><div class="track"><i id="npprog"></i></div><div class="times"><span id="tcur">0:00</span><span id="tdur">3:37</span></div></div>
+<div class="ctrls">
+<button class="iconbtn" id="c-shuffle"></button>
+<button class="iconbtn" id="c-prev"></button>
+<button class="fab" id="c-play"></button>
+<button class="iconbtn" id="c-next"></button>
+<button class="iconbtn" id="c-repeat"></button>
+</div>
+</div>
+</div>
+<div class="sheet" id="sheet"><div class="scrim" data-close></div><div class="panel"><div class="grab"></div><div class="eyebrow" style="margin-bottom:10px">Track info</div><div id="sheetbody"></div></div></div>
+<div class="sheet" id="moodsheet"><div class="scrim" data-close></div><div class="panel"><div class="grab"></div><div id="moodbody"></div></div></div>
+<div class="toast" id="toast"></div>
+<nav class="sysnav" aria-label="Navegação do sistema">
+<button class="sysbtn" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 4.5 6 12l9.5 7.5z"></path></svg></button>
+<button class="sysbtn" aria-label="Início"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7.5"></circle></svg></button>
+<button class="sysbtn" aria-label="Apps recentes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1.5"></rect></svg></button>
+</nav>
+</div></div>
+<script src="shapes.js"></script><script src="renderers.js"></script><script src="beat-pll.js"></script><script src="spectrum-bg.js"></script><script src="data.js"></script><script src="screens.js"></script>
+<script>
+const I=window.ICONS,D=window.DATA,S=window.SCREENS,$=s=>document.querySelector(s);
+const TABS=[['home','Home','home'],['search','Search','search'],['library','Library','library'],['crate','Crate','crate'],['settings','Settings','settings']];
+let route='home',playing=true,pos=48,idx=0;
+$('#tabs').innerHTML=TABS.map(t=>`<button class="tab" data-nav="${t[0]}">${I[t[2]]}<span>${t[1]}</span></button>`).join('');
+$('#miniplay').innerHTML=I.pause;$('#mininext').innerHTML=I.next;$('#npclose').innerHTML=I.down;
+$('#c-shuffle').innerHTML=I.shuffle;$('#c-prev').innerHTML=I.prev;$('#c-next').innerHTML=I.next;$('#c-repeat').innerHTML=I.repeat;$('#c-play').innerHTML=I.pause;
+$('#minicov').innerHTML=I.note;$('#npcover').innerHTML=I.note;$('#techbtn').innerHTML=I.info+'<span>Track info</span>';
+$('#lyrbtn').innerHTML=I.note;
+$('#lyrbtn').onclick=()=>{const on=$('#np').hasAttribute('data-nolyr');$('#np').toggleAttribute('data-nolyr',!on);$('#lyrbtn').setAttribute('aria-pressed',String(on));toast(on?'Letras · on':'Letras · off')};
+$('#lrail').innerHTML=D.lyrics.map((l,i)=>`<p${i===2?' data-on':''}>${l}</p>`).join('');
+$('#sheetbody').innerHTML=D.now.tech.map(r=>`<div class="kv"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('');
+
+function go(r){if(!S[r])return;route=r;$('#view').innerHTML=S[r]();$('#view').scrollTop=0;
+document.querySelectorAll('.tab').forEach(t=>t.toggleAttribute('data-on',t.dataset.nav===r));}
+document.addEventListener('click',e=>{
+const nav=e.target.closest('[data-nav]');if(nav){go(nav.dataset.nav);return;}
+const pl=e.target.closest('[data-play]');if(pl){setSource(srcOf(pl));setPlaying(true);toast('Playing · '+pl.dataset.play);openNP();return;}
+if(e.target.closest('[data-close]')||e.target.closest('.sheet .scrim'))document.querySelectorAll('.sheet').forEach(s=>s.removeAttribute('data-open'));
+if(e.target.closest('[data-mood]')){$('#moodbody').innerHTML=S.moodSheet();$('#moodsheet').setAttribute('data-open','');return;}
+if(e.target.closest('[data-newseed]')){toast('Station criada · seed: '+D.tracks[idx].t);return;}
+const del=e.target.closest('[data-del]');if(del){const c=del.closest('.stcard');const n=c.querySelector('.stcard__n').textContent;c.remove();toast('Station removida · '+n);return;}
+const mc=e.target.closest('.chipwrap .chip');if(mc){mc.toggleAttribute('data-on');syncMoodName();return;}
+if(e.target.closest('#moodgo')){createMood();return;}
+const ch=e.target.closest('.chip');if(ch&&ch.parentElement.classList.contains('chiprow')){[...ch.parentElement.children].forEach(c=>c.removeAttribute('data-on'));ch.setAttribute('data-on','');}
+});
+document.addEventListener('click',e=>{
+const tg=e.target.closest('[data-tog]');if(tg)tg.setAttribute('aria-pressed',tg.getAttribute('aria-pressed')==='true'?'false':'true');
+const sb=e.target.closest('[data-seg] button');if(sb){[...sb.parentElement.children].forEach(b=>b.setAttribute('aria-pressed','false'));sb.setAttribute('aria-pressed','true');}
+});
+$('#techbtn').onclick=()=>$('#sheet').setAttribute('data-open','');
+$('#npclose').onclick=closeNP;
+$('#miniplay').onclick=e=>{e.stopPropagation();setPlaying(!playing)};
+$('#c-play').onclick=()=>setPlaying(!playing);
+$('#mininext').onclick=e=>{e.stopPropagation();skip(1)};
+$('#c-next').onclick=()=>skip(1);$('#c-prev').onclick=()=>skip(-1);
+const SRC={radio:'rádio',playlist:'playlist',solta:'solta'};
+function srcOf(el){if(el.closest('.stcard')||el.closest('.livecard')||route==='stations')return 'radio';
+if(route==='playlist'||route==='playlists'||el.closest('[data-nav="playlist"]'))return 'playlist';return 'solta';}
+function setSource(k){[$('#minisrc'),$('#npsrc')].forEach(el=>{el.dataset.src=k;el.textContent=SRC[k]});}
+function setPlaying(v){playing=v;$('#miniplay').innerHTML=v?I.pause:I.play;$('#c-play').innerHTML=v?I.pause:I.play;}
+function skip(d){idx=(idx+d+D.tracks.length)%D.tracks.length;const t=D.tracks[idx];pos=0;
+$('#minit').textContent=t.t;$('#minia').textContent=t.a;$('#npt').textContent=t.t;$('#npa').textContent=t.a+' · '+t.al;
+setPlaying(true);toast(d>0?'Next · '+t.t:'Previous · '+t.t);}
+function openNP(){$('#np').setAttribute('data-open','');$('#appbg').dataset.mode='focused'}
+function closeNP(){$('#np').removeAttribute('data-open');$('#appbg').dataset.mode='ambient'}
+function moodPicks(){return [...document.querySelectorAll('#moodbody .chip[data-on]')].map(c=>c.textContent);}
+function syncMoodName(){const el=$('#moodname');if(el)el.placeholder=moodPicks().join(' · ')||'Nome da station';}
+function createMood(){const picks=moodPicks();if(!picks.length){toast('Escolha ao menos um mood');return;}
+const name=($('#moodname').value||picks.join(' · ')).trim();
+D.smart.splice(1,0,{n:name,k:'mood',tags:picks.join(' '),d:picks.join(' '),p:0,last:'agora'});
+$('#moodsheet').removeAttribute('data-open');go('stations');toast('Mood station criada · '+name);}
+let tid;function toast(m){const el=$('#toast');el.textContent=m;el.setAttribute('data-on','');clearTimeout(tid);tid=setTimeout(()=>el.removeAttribute('data-on'),1400)}
+
+/* gestos: swipe horizontal no mini = prev/next, swipe pra cima = abre now playing */
+let sx=0,sy=0,st=0;
+const mini=$('#mini');
+mini.addEventListener('pointerdown',e=>{sx=e.clientX;sy=e.clientY;st=Date.now()});
+mini.addEventListener('pointerup',e=>{const dx=e.clientX-sx,dy=e.clientY-sy;
+if(Date.now()-st>600)return;
+if(Math.abs(dx)>44&&Math.abs(dx)>Math.abs(dy)){skip(dx<0?1:-1);return}
+if(dy<-40&&Math.abs(dy)>Math.abs(dx)){openNP();return}
+if(Math.abs(dx)<8&&Math.abs(dy)<8&&!e.target.closest('button'))openNP();});
+const np=$('#np');let ny=0,nt=0;
+np.addEventListener('pointerdown',e=>{ny=e.clientY;nt=Date.now()});
+np.addEventListener('pointerup',e=>{if(Date.now()-nt<600&&e.clientY-ny>60)closeNP()});
+
+/* arrastar carrosseis horizontais com o mouse/dedo */
+document.addEventListener('pointerdown',e=>{
+const rail=e.target.closest('.qs-row,.chiprow');if(!rail)return;
+let x=e.clientX,l=rail.scrollLeft,moved=false;
+const mv=ev=>{const dx=ev.clientX-x;if(Math.abs(dx)>3)moved=true;rail.scrollLeft=l-dx};
+const up=ev=>{document.removeEventListener('pointermove',mv);document.removeEventListener('pointerup',up);
+if(moved){ev.preventDefault();ev.stopPropagation();}};
+document.addEventListener('pointermove',mv);document.addEventListener('pointerup',up,{capture:true,once:true});
+},true);
+
+/* progresso + letras + VU */
+const dur=D.now.dur;
+setInterval(()=>{if(playing)pos=(pos+1)%dur;
+const p=pos/dur;$('#dprog').style.width=(p*100)+'%';$('#npprog').style.width=(p*100)+'%';
+$('#tcur').textContent=Math.floor(pos/60)+':'+String(pos%60).padStart(2,'0');
+const li=Math.min(D.lyrics.length-1,Math.floor(p*D.lyrics.length));
+const ps=$('#lrail').children;[...ps].forEach((el,i)=>el.toggleAttribute('data-on',i===li));
+$('#lrail').style.transform='translateY(-'+(li*30)+'px)';
+[...$('#vu').children].forEach(b=>b.style.height=(playing?4+Math.random()*10:3)+'px');
+},1000);
+
+/* background persistente — canvas monta uma vez, telas passam por cima */
+window.mountSpectrum($('#bgcanvas'));
+window.mockFft(()=>playing);
+const shape=window.useShape,renderer=window.useRenderer;
+shape.on(()=>{$('#shapebtn').textContent=shape.name();const sel=$('#shapesel');if(sel)sel.textContent=shape.name()});
+renderer.on(()=>{$('#renderbtn').textContent=renderer.name();const sel=$('#rendersel');if(sel)sel.textContent=renderer.name()});
+$('#shapebtn').onclick=()=>{shape.next();toast('Shape · '+shape.name())};
+$('#renderbtn').onclick=()=>{renderer.next();toast('Render · '+renderer.name())};
+/* Beat sync (Settings → Appearance) escreve --bg-beat-depth, igual ao Tweaks do app */
+const BEAT_DEPTH={'Off':0,'Subtle':0.3,'Default':0.55,'Pulse':0.85};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-beat] button');if(!b)return;
+document.documentElement.style.setProperty('--bg-beat-depth',BEAT_DEPTH[b.textContent]);
+document.documentElement.style.setProperty('--bg-beat-mode',b.textContent==='Pulse'?'2':'1')});
+
+fetch('assets/icons.svg').then(r=>r.text()).then(t=>{document.getElementById('sprite').innerHTML=t});
+go('home');
+</script></body></html>
