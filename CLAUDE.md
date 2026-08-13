@@ -513,6 +513,10 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
 
 ```bash
 # Build na VM (NUNCA na cmr-auto) — debug e instalavel; release-unsigned NAO
+# NAO ha beforeBuildCommand no tauri.conf.json: o bun run build e MANUAL e
+# OBRIGATORIO antes (o frontend e embutido no .so via generate_context —
+# sem ele o APK sai com o dist velho e a UI "nao muda"; mordeu 13/08).
+bun run build
 cd src-tauri && cargo tauri android build --debug
 # APK: src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 scp <apk> cmr-auto@100.102.249.9:/tmp/ && ssh cmr-auto@100.102.249.9 'adb install -r /tmp/app-universal-debug.apk'
