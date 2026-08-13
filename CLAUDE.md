@@ -16,6 +16,11 @@ cargo check --manifest-path src-tauri/Cargo.toml
 ./scripts/release.sh
 ```
 
+**release.sh NAO bumpa versao** — le `tauri.conf.json` e sobe o asset com
+`--clobber`. Bump manual (`chore: bump X.Y.Z`) ANTES de rodar, senao o .deb
+publicado da versao anterior e sobrescrito por um binario diferente com o
+mesmo nome (aconteceu na 0.2.72→0.2.73, 13/08).
+
 A cmr-auto puxa com:
 
 ```bash
@@ -33,7 +38,11 @@ segundos. Release.sh e o unico caminho.
 
 Todas as portas do app na cmr-auto escutam SÓ em 127.0.0.1 — MCP bridge
 (:9223), Qdrant sidecar (:6333/:6334), media server (:19876). Spec:
-`docs/superpowers/specs/2026-07-17-full-pro-design.md`. NUNCA reabrir
+`docs/superpowers/specs/2026-07-17-full-pro-design.md`. EXCECAO deliberada
+(v0.2.73): o **sync receiver** (`src/sync_receiver.rs`) escuta em
+`<ip-tailscale>:19878` — e o alvo do sync de play_events do S24 e so a
+tailnet alcanca (WireGuard e o canal cifrado; sem tailnet ele nem sobe).
+Nao "corrigir" pra loopback: quebraria o sync mobile. NUNCA reabrir
 bind pra 0.0.0.0 (o bridge executa JS/IPC arbitrário sem auth = RCE na
 LAN). Acesso da VM é por túnel SSH (idempotente — porta local já
 respondendo = túnel de pé):
@@ -459,3 +468,65 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   (estado `manual` abre o gerenciador de arquivos). Nao alargar.
 - **v1.1 pendente**: handoff visual do claude design (usuario itera a tela);
   popovers fechando em clique fora; Fase 2 = album inteiro.
+
+## Android (v0 — tocar + registrar, 2026-08-13)
+
+O mesmo repo produz o app Android (S24). Escopo v0: reproduzir o acervo
+local e gerar `play_events` com proveniencia — SEM motor de inteligencia,
+SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
+`docs/contexto/13082026-rustify-android-v0.md`; contrato IPC pra UI:
+`docs/android/ipc-contrato-v0.md`.
+
+### Arquitetura (dispatch por target)
+
+- `src/lib.rs` = raiz fina: mods cross + `#[path]` dispatch pra
+  `desktop.rs` (corpo antigo integral) ou `mobile.rs` (shell Android).
+  Deps desktop-only (audio-engine/PipeWire, souvlaki, mcp-bridge,
+  library-indexer, slskd-client) sao target-gated no Cargo.toml.
+- Playback Android = plugin proprio `crates/tauri-plugin-rustify-audio`
+  (Kotlin: Media3/ExoPlayer + MediaSessionService, fila NATIVA com
+  auto-advance sem JS, EventJournal JSONL com fsync). README do crate =
+  contrato. Regra dura: command novo no plugin DEVE ser `async fn` com
+  `AppHandle<R>` (State sincrono deadlocka a main thread).
+  Media3 fixo em 1.10.1 (1.11 arrasta kotlin-stdlib 2.2, quebra com o
+  KGP 1.9.25 do projeto gerado).
+- Biblioteca mobile: manifest exportado do Qdrant da cmr-auto
+  (`scripts/android/export_manifest.py`, tunel 16333) com o track_id
+  CANONICO do desktop (hash do path de la — o celular nao o deriva);
+  resolucao por stem canonico em `mobile_library.rs` (1746/1746 no S24).
+  Manifest vive em `/sdcard/Music/.rustify/manifest.json`; apos novo
+  sync de acervo, `lib_rescan`.
+- Proveniencia: `device.json` no **dataDir raiz** do app Android
+  (`/data/data/dev.cmr.rustifyplayer/device.json` — NAO em `files/`),
+  device_id do S24 = `s24`, imutavel. APK carimba `app_version` proprio.
+- Sync fase 2: worker Android (60s) drena o journal e POSTa em
+  `http://100.102.249.9:19878/sync/events` (override:
+  `sync.json` no data dir). Receptor no app DESKTOP
+  (`src/sync_receiver.rs`, sobe no setup, bind SO no IP tailscale).
+  Ack pos-200; upsert idempotente por UUID (`insert_synced_event` NAO
+  re-estampa proveniencia). Payload validado por teste byte a byte
+  contra o builder desktop. E2E validado 13/08 (regua mostra
+  `s24` no breakdown por device). ureq no Android e SEM TLS —
+  WireGuard da tailnet e o canal (rustls/ring exigiria clang do NDK).
+
+### Build, install e debug
+
+```bash
+# Build na VM (NUNCA na cmr-auto) — debug e instalavel; release-unsigned NAO
+cd src-tauri && cargo tauri android build --debug
+# APK: src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+scp <apk> cmr-auto@100.102.249.9:/tmp/ && ssh cmr-auto@100.102.249.9 'adb install -r /tmp/app-universal-debug.apk'
+# Permissao de acervo (uma vez por install limpo):
+ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EXTERNAL_STORAGE allow'
+```
+
+- Distribuicao v0 = APK debug-signed via adb (sem loja, sem updater).
+- Log Rust NAO roteia pro logcat — ler via
+  `adb shell run-as dev.cmr.rustifyplayer tail logs/rustify-player.log`.
+- Smoke test CDP (WebView): `localabstract:webview_devtools_remote_<pid>`,
+  `suppress_origin=True`, tela ligada via `svc power stayon usb`.
+  Referencia: scratchpad da sessao 13/08 (`smoke_audio.py`).
+- `.cargo/config.toml` alinha o .so a 16KB (`max-page-size=16384`,
+  Android 15+). Nao remover.
+- UI mobile Solid em `src/mobile/` (dynamic import; desktop intocado),
+  montada por deteccao de user agent no `main.tsx`.
