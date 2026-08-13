@@ -52,6 +52,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_rustify_audio::init())
         .setup(|app| {
             use tauri::Manager;
             // Walk de ~3k arquivos é rápido (<1s), mas fora da main thread

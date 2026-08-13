@@ -1,0 +1,21 @@
+[package]
+name = "tauri-plugin-rustify-audio"
+version = "0.1.0"
+description = "Camada de playback Android do Rustify Player: fila nativa Media3/ExoPlayer em MediaSessionService + journal append-only de play_events."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+# `links` e obrigatorio em plugin Tauri mobile: o build.rs publica
+# `cargo:android_library_path` e o tauri-cli le esse metadado pra incluir o
+# projeto Gradle do plugin no app.
+links = "tauri-plugin-rustify-audio"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tauri = { version = "2", default-features = false }
+
+[build-dependencies]
+tauri-plugin = { version = "2.5", features = ["build"] }

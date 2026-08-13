@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Permissões do build Android (plugin de playback nativo)",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": ["rustify-audio:default"]
+}

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/audio-engine", "crates/library-indexer", "crates/slskd-client"]
+members = [".", "crates/audio-engine", "crates/library-indexer", "crates/slskd-client", "crates/tauri-plugin-rustify-audio"]
 resolver = "2"
 
 [workspace.package]
@@ -76,6 +76,10 @@ serde_json = "1"
 tauri-plugin-fs = "2.5.0"
 tauri-plugin-dialog = "2"
 tracing = { workspace = true }
+
+# Camada de playback do Android v0 (Media3/ExoPlayer + journal de eventos).
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-rustify-audio = { path = "crates/tauri-plugin-rustify-audio" }
 
 # Desktop-only: audio-engine arrasta PipeWire/libspa (Linux puro), souvlaki
 # arrasta zbus/D-Bus, o mcp-bridge é ferramenta de dev desktop, e

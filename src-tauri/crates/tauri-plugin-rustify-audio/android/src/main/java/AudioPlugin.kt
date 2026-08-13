@@ -1,0 +1,309 @@
+package app.tauri.rustifyaudio
+
+import android.Manifest
+import android.app.Activity
+import android.content.ComponentName
+import android.net.Uri
+import android.os.Build
+import android.webkit.WebView
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import app.tauri.Logger
+import app.tauri.PermissionState
+import app.tauri.annotation.Command
+import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
+import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSObject
+import app.tauri.plugin.Plugin
+import com.google.common.util.concurrent.ListenableFuture
+import org.json.JSONObject
+
+private const val ALIAS_POST_NOTIFICATIONS = "postNotifications"
+
+@InvokeArg
+class QueueItemArg {
+    lateinit var trackId: String
+    lateinit var uri: String
+    var title: String = ""
+    var artist: String = ""
+    var album: String = ""
+    var artworkUri: String? = null
+    var durationMs: Long = 0L
+}
+
+@InvokeArg
+class SetQueueArgs {
+    // Array (nao List) pelo mesmo motivo dos plugins oficiais: o Jackson do
+    // tauri-android resolve array sem depender do modulo Kotlin.
+    var items: Array<QueueItemArg> = emptyArray()
+    var startIndex: Int = 0
+    var origin: String = "unknown"
+    var contextId: String? = null
+    var playNow: Boolean = true
+}
+
+@InvokeArg
+class SeekToArgs {
+    var positionMs: Long = 0L
+}
+
+@InvokeArg
+class SkipToIndexArgs {
+    var index: Int = 0
+}
+
+@InvokeArg
+class DrainEventsArgs {
+    var afterSeq: Long = 0L
+}
+
+@InvokeArg
+class AckEventsArgs {
+    var uptoSeq: Long = 0L
+}
+
+@UnstableApi
+@TauriPlugin(
+    permissions = [
+        Permission(
+            strings = [Manifest.permission.POST_NOTIFICATIONS],
+            alias = ALIAS_POST_NOTIFICATIONS
+        )
+    ]
+)
+class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBus.Sink {
+
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
+    private val pending = ArrayDeque<(MediaController) -> Unit>()
+
+    override fun load(webView: WebView) {
+        PlaybackBus.sink = this
+    }
+
+    override fun onDestroy() {
+        // so limpa se o sink ainda for este: numa recriacao de Activity o
+        // plugin novo ja registrou o dele antes do onDestroy do antigo chegar
+        if (PlaybackBus.sink === this) {
+            PlaybackBus.sink = null
+        }
+        releaseController()
+    }
+
+    // -------------------------------------------------------------- commands
+
+    @Command
+    fun initialize(invoke: Invoke) {
+        ensureController()
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            getPermissionState(ALIAS_POST_NOTIFICATIONS) != PermissionState.GRANTED
+        if (needsPermission) {
+            requestPermissionForAlias(ALIAS_POST_NOTIFICATIONS, invoke, "notificationPermissionCallback")
+        } else {
+            invoke.resolve()
+        }
+    }
+
+    @PermissionCallback
+    fun notificationPermissionCallback(invoke: Invoke) {
+        // Playback nao depende da permissao — negada, some so a notificacao de
+        // midia. Nao ha razao pra falhar o initialize por isso.
+        invoke.resolve()
+    }
+
+    @Command
+    fun setQueue(invoke: Invoke) {
+        val args = invoke.parseArgs(SetQueueArgs::class.java)
+        val items = args.items.map { buildMediaItem(it) }
+        val durations = HashMap<String, Long>(args.items.size)
+        for (item in args.items) {
+            durations[item.trackId] = item.durationMs
+        }
+        val origin = args.origin
+        val contextId = args.contextId
+        val playNow = args.playNow
+        val startIndex = if (items.isEmpty()) 0 else args.startIndex.coerceIn(0, items.size - 1)
+
+        withController { c ->
+            // O QueueMeta e escrito DENTRO do lambda pra manter a ordem com o
+            // setMediaItems: o service le o meta ao adotar a faixa nova, e a
+            // faixa velha ja foi congelada nos campos dele.
+            QueueMeta.set(origin, contextId, durations)
+            if (items.isEmpty()) {
+                c.clearMediaItems()
+            } else {
+                c.setMediaItems(items, startIndex, 0L)
+                c.prepare()
+                if (playNow) c.play()
+            }
+        }
+        invoke.resolve()
+    }
+
+    @Command
+    fun play(invoke: Invoke) {
+        withController { it.play() }
+        invoke.resolve()
+    }
+
+    @Command
+    fun pause(invoke: Invoke) {
+        withController { it.pause() }
+        invoke.resolve()
+    }
+
+    @Command
+    fun seekTo(invoke: Invoke) {
+        val args = invoke.parseArgs(SeekToArgs::class.java)
+        val position = args.positionMs.coerceAtLeast(0L)
+        withController { it.seekTo(position) }
+        invoke.resolve()
+    }
+
+    @Command
+    fun next(invoke: Invoke) {
+        withController { c ->
+            if (c.hasNextMediaItem()) c.seekToNextMediaItem()
+        }
+        invoke.resolve()
+    }
+
+    @Command
+    fun previous(invoke: Invoke) {
+        // "previous" e sempre faixa anterior; sem o comportamento de reiniciar a
+        // atual quando ja passou de N segundos (o journal veria isso como nada).
+        withController { c ->
+            if (c.hasPreviousMediaItem()) c.seekToPreviousMediaItem() else c.seekTo(0L)
+        }
+        invoke.resolve()
+    }
+
+    @Command
+    fun skipToIndex(invoke: Invoke) {
+        val args = invoke.parseArgs(SkipToIndexArgs::class.java)
+        withController { c ->
+            val count = c.mediaItemCount
+            if (count > 0) c.seekTo(args.index.coerceIn(0, count - 1), 0L)
+        }
+        invoke.resolve()
+    }
+
+    @Command
+    fun getState(invoke: Invoke) {
+        invoke.resolve(snapshotToJs(snapshotOf(controller)))
+    }
+
+    @Command
+    fun drainEvents(invoke: Invoke) {
+        val args = invoke.parseArgs(DrainEventsArgs::class.java)
+        val result = EventJournal.drain(activity, args.afterSeq)
+        val payload = JSObject()
+        payload.put("events", result.events)
+        payload.put("lastSeq", result.lastSeq)
+        invoke.resolve(payload)
+    }
+
+    @Command
+    fun ackEvents(invoke: Invoke) {
+        val args = invoke.parseArgs(AckEventsArgs::class.java)
+        EventJournal.ack(activity, args.uptoSeq)
+        invoke.resolve()
+    }
+
+    // ---------------------------------------------------------------- eventos
+
+    override fun onPlaybackEvent(event: String, snapshot: PlaybackSnapshot) {
+        if (!hasListener(event)) return
+        trigger(event, snapshotToJs(snapshot))
+    }
+
+    // --------------------------------------------------------------- interno
+
+    /**
+     * Conecta ao [AudioService] via MediaController — caminho documentado do
+     * Media3, que cuida de subir/derrubar o foreground service. A conexao e
+     * assincrona, entao comandos que chegam antes dela ficam na fila [pending].
+     */
+    private fun ensureController() {
+        if (controllerFuture != null) return
+        val token = SessionToken(activity, ComponentName(activity, AudioService::class.java))
+        val future = MediaController.Builder(activity, token).buildAsync()
+        controllerFuture = future
+        future.addListener(
+            {
+                try {
+                    val connected = future.get()
+                    controller = connected
+                    while (pending.isNotEmpty()) {
+                        pending.removeFirst().invoke(connected)
+                    }
+                } catch (e: Exception) {
+                    Logger.error("rustify-audio: falha conectando ao AudioService", e)
+                    controllerFuture = null
+                    pending.clear()
+                }
+            },
+            ContextCompat.getMainExecutor(activity)
+        )
+    }
+
+    private fun withController(op: (MediaController) -> Unit) {
+        val connected = controller
+        if (connected != null) {
+            op(connected)
+            return
+        }
+        pending.addLast(op)
+        ensureController()
+    }
+
+    private fun releaseController() {
+        controller?.release()
+        controller = null
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
+        pending.clear()
+    }
+
+    private fun buildMediaItem(item: QueueItemArg): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(item.title)
+            .setArtist(item.artist)
+            .setAlbumTitle(item.album)
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+        if (item.durationMs > 0L) {
+            metadata.setDurationMs(item.durationMs)
+        }
+        item.artworkUri?.takeIf { it.isNotEmpty() }?.let {
+            metadata.setArtworkUri(Uri.parse(it))
+        }
+        return MediaItem.Builder()
+            // mediaId carrega o track_id atraves do IPC do Media3; e o unico
+            // elo entre o item tocando e o journal.
+            .setMediaId(item.trackId)
+            .setUri(item.uri)
+            .setMediaMetadata(metadata.build())
+            .build()
+    }
+
+    private fun snapshotToJs(snapshot: PlaybackSnapshot): JSObject {
+        val obj = JSObject()
+        obj.put("status", snapshot.status)
+        obj.put("index", snapshot.index)
+        // JSONObject.NULL em vez de null: `put(key, null)` REMOVE a chave e o
+        // lado Rust perderia o campo.
+        obj.put("trackId", snapshot.trackId ?: JSONObject.NULL)
+        obj.put("positionMs", snapshot.positionMs)
+        obj.put("durationMs", snapshot.durationMs)
+        obj.put("isPlaying", snapshot.isPlaying)
+        return obj
+    }
+}

@@ -4822,6 +4822,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-mcp-bridge",
  "tauri-plugin-opener",
+ "tauri-plugin-rustify-audio",
  "tempfile",
  "tracing",
  "tracing-subscriber",
@@ -5924,6 +5925,17 @@ dependencies = [
  "url",
  "windows 0.61.3",
  "zbus 5.14.0",
+]
+
+[[package]]
+name = "tauri-plugin-rustify-audio"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

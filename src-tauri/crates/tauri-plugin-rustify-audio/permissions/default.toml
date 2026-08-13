@@ -1,0 +1,23 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Libera toda a superficie do plugin de playback. E um plugin interno do app
+(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar
+os commands em permissoes separadas.
+"""
+permissions = [
+  "allow-initialize",
+  "allow-set-queue",
+  "allow-play",
+  "allow-pause",
+  "allow-seek-to",
+  "allow-next",
+  "allow-previous",
+  "allow-skip-to-index",
+  "allow-get-state",
+  "allow-drain-events",
+  "allow-ack-events",
+  "allow-register-listener",
+  "allow-remove-listener",
+]

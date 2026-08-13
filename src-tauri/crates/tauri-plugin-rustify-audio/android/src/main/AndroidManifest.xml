@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissoes intrinsecas do plugin. O manifest merger junta com as do
+         app; declarar aqui evita que a integracao esqueca alguma. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <!-- exported=false: so o proprio app conecta um MediaController. A
+             notificacao de midia e os botoes de fone continuam funcionando (vao
+             pela MediaSession, nao pelo bind do service). Virar true so se um
+             dia quisermos Android Auto / Assistant. -->
+        <service
+            android:name="app.tauri.rustifyaudio.AudioService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>
