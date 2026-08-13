@@ -73,16 +73,22 @@ tauri-plugin-log = { version = "2", features = ["colored"] }
 log = "0.4"
 serde = { workspace = true }
 serde_json = "1"
+tauri-plugin-fs = "2.5.0"
+tauri-plugin-dialog = "2"
+tracing = { workspace = true }
+
+# Desktop-only: audio-engine arrasta PipeWire/libspa (Linux puro), souvlaki
+# arrasta zbus/D-Bus, o mcp-bridge é ferramenta de dev desktop, e
+# library-indexer/slskd-client servem o motor que no Android v0 não existe
+# (eventos locais + sync, sem Qdrant). Nada disso entra no build Android.
+[target.'cfg(not(target_os = "android"))'.dependencies]
 tracing-subscriber = { workspace = true }
 library-indexer = { path = "crates/library-indexer" }
 slskd-client = { path = "crates/slskd-client" }
 audio-engine = { path = "crates/audio-engine", features = ["serde"] }
-tauri-plugin-fs = "2.5.0"
-tauri-plugin-dialog = "2"
 tauri-plugin-mcp-bridge = "0.11.1"
 souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] }
 crossbeam-channel = { workspace = true }
-tracing = { workspace = true }
 ureq = { workspace = true }
 serde_yaml = "0.9"
 notify = { workspace = true }
