@@ -54,7 +54,23 @@ class AudioService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        val exo = ExoPlayer.Builder(this)
+        // Sink com o tap de spectrum (CMR-192): passthrough + bandas de FFT
+        // pro bg do WebView. Ver SpectrumTap.kt.
+        val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(SpectrumTap()))
+                    .build()
+            }
+        }
+
+        val exo = ExoPlayer.Builder(this, renderersFactory)
             // handleAudioFocus=true: pausa em ligacao/outro app, retoma depois
             .setAudioAttributes(attributes, true)
             // desplugar o fone pausa em vez de vazar som no alto-falante

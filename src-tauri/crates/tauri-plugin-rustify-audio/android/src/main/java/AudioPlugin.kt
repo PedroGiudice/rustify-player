@@ -26,6 +26,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import org.json.JSONObject
 
 private const val ALIAS_POST_NOTIFICATIONS = "postNotifications"
+private const val EVENT_FFT = "fft"
 
 @InvokeArg
 class QueueItemArg {
@@ -78,7 +79,8 @@ class AckEventsArgs {
         )
     ]
 )
-class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBus.Sink {
+class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBus.Sink,
+    SpectrumBus.Sink {
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -86,6 +88,7 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
 
     override fun load(webView: WebView) {
         PlaybackBus.sink = this
+        SpectrumBus.sink = this
     }
 
     override fun onDestroy() {
@@ -93,6 +96,9 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         // plugin novo ja registrou o dele antes do onDestroy do antigo chegar
         if (PlaybackBus.sink === this) {
             PlaybackBus.sink = null
+        }
+        if (SpectrumBus.sink === this) {
+            SpectrumBus.sink = null
         }
         releaseController()
     }
@@ -222,6 +228,16 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
     override fun onPlaybackEvent(event: String, snapshot: PlaybackSnapshot) {
         if (!hasListener(event)) return
         trigger(event, snapshotToJs(snapshot))
+    }
+
+    /** Bandas do SpectrumTap (~25Hz, thread própria) → evento `fft`. */
+    override fun onFft(low: Float, mid: Float, high: Float) {
+        if (!hasListener(EVENT_FFT)) return
+        val payload = JSObject()
+        payload.put("low", low)
+        payload.put("mid", mid)
+        payload.put("high", high)
+        trigger(EVENT_FFT, payload)
     }
 
     // --------------------------------------------------------------- interno

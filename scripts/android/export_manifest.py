@@ -51,6 +51,7 @@ STAGING = "/home/cmr-auto/.cache/phone-sync/Music"
 FIELDS = [
     "path", "title", "artist", "album_title", "duration_ms",
     "track_number", "disc_number", "genre", "album_year", "cover_path",
+    "dominant_color",
 ]
 
 # ── Constantes do sinal v3 — espelho de qdrant_client.rs (fonte da verdade) ──
@@ -141,6 +142,8 @@ def build_manifest(points: list[dict]) -> dict:
             "genre": pl.get("genre") or "",
             # payload heterogêneo no Qdrant: "1995" (str) e 2025 (int) coexistem
             "album_year": to_int(pl.get("album_year")) or None,
+            # hex "#rrggbb" do cover.rs (ink/accent adaptativos no aparelho)
+            "dominant_color": pl.get("dominant_color") or None,
         })
     tracks.sort(key=lambda t: t["rel_path"])
     if skipped:

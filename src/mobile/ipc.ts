@@ -71,6 +71,12 @@ export const onStateChanged = (cb: (s: PlaybackState) => void) => on("state_chan
 export const onTrackChanged = (cb: (s: PlaybackState) => void) => on("track_changed", cb);
 export const onPosition = (cb: (s: PlaybackState) => void) => on("position", cb);
 
+/** Bandas reais do SpectrumTap (CMR-192), ~25Hz enquanto toca. */
+export const onFft = (cb: (f: { low: number; mid: number; high: number }) => void) =>
+  addPluginListener(PLUGIN, "fft", cb as (payload: unknown) => void).then(
+    (h) => () => h.unregister(),
+  );
+
 // ── Arquivos locais ───────────────────────────────────────────
 
 /** Capa/arquivo local → URL que o WebView consegue carregar. */

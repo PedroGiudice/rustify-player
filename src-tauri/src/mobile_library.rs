@@ -40,6 +40,8 @@ struct ManifestTrack {
     genre: String,
     #[serde(default)]
     album_year: Option<i64>,
+    #[serde(default)]
+    dominant_color: Option<String>,
 }
 
 /// Espelha a interface `Track` de src/tauri.ts (subset que o mobile provê).
@@ -56,6 +58,8 @@ pub struct Track {
     pub lrc_path: Option<String>,
     pub track_number: Option<i64>,
     pub genre_name: Option<String>,
+    /// Hex "#rrggbb" da capa (enrichment do desktop) — ink/accent adaptativos.
+    pub dominant_color: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -259,6 +263,7 @@ impl MobileLibrary {
                 lrc_path: lrc.get(&stem).map(|p| p.to_string_lossy().to_string()),
                 track_number: (mt.track_number > 0).then_some(mt.track_number),
                 genre_name: (!mt.genre.is_empty()).then_some(mt.genre),
+                dominant_color: mt.dominant_color,
             });
         }
         if unresolved > 0 {

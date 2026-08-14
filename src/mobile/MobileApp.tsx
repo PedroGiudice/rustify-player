@@ -41,9 +41,11 @@ import { Queue } from "./screens/Queue";
 import { Settings } from "./screens/Settings";
 import { Stations } from "./screens/Stations";
 import { baseRoute, bootRoute, isNpOpen } from "./nav";
-import { bootStore, pb, toast } from "./store";
+import { bootStore, current, pb, toast } from "./store";
+import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
-import { mockFft, mountSpectrum } from "./bg/spectrum";
+import { mockFft, mountSpectrum, pushFft } from "./bg/spectrum";
+import { onFft } from "./ipc";
 
 /* Chamada como expressão no JSX (`{screen()}`), NÃO como <screen />:
    corpo de componente Solid roda uma vez e a leitura de baseRoute()
@@ -77,10 +79,25 @@ function SpectrumBg() {
   let canvas: HTMLCanvasElement | undefined;
   onMount(() => {
     if (!canvas) return;
-    const stopFft = mockFft(() => pb.isPlaying);
+    // Mock até o primeiro frame REAL do SpectrumTap (CMR-192) chegar —
+    // aí o gerador sintético desliga e o bg passa a ouvir a música.
+    let stopMock: (() => void) | null = mockFft(() => pb.isPlaying);
+    let stopFftListener: (() => void) | undefined;
+    onFft((f) => {
+      if (stopMock) {
+        stopMock();
+        stopMock = null;
+      }
+      pushFft(f.low, f.mid, f.high);
+    })
+      .then((un) => {
+        stopFftListener = un;
+      })
+      .catch((e) => console.warn("[mobile] listener fft:", e));
     const stopRaf = mountSpectrum(canvas);
     onCleanup(() => {
-      stopFft();
+      stopMock?.();
+      stopFftListener?.();
       stopRaf();
     });
   });
@@ -98,6 +115,11 @@ export function MobileApp() {
   createEffect(() => {
     baseRoute();
     if (viewEl) viewEl.scrollTop = 0;
+  });
+
+  // Ink do bg + accents seguem a dominante da capa da faixa corrente.
+  createEffect(() => {
+    applyAdaptiveColor(current()?.dominant_color);
   });
 
   return (

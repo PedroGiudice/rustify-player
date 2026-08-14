@@ -28,6 +28,7 @@ function track(p: Partial<Track> & { id: string }): Track {
     lrc_path: null,
     track_number: null,
     genre_name: null,
+    dominant_color: null,
     ...p,
   };
 }

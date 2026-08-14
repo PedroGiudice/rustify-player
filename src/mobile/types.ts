@@ -21,6 +21,8 @@ export interface Track {
   lrc_path: string | null;
   track_number: number | null;
   genre_name: string | null;
+  /** Hex "#rrggbb" da capa (enrichment do desktop) — ink/accent adaptativos. */
+  dominant_color: string | null;
 }
 
 export interface Folder {
