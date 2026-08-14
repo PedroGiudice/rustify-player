@@ -270,16 +270,43 @@ async function loadLibrary() {
   setFolders(f ?? []);
 }
 
+// Invoke disparado no boot frio pode se perder antes de a bridge nativa do
+// WebView anexar — a promise nunca liquida e pendura o boot inteiro
+// (visto no S24 em 14/08: "Carregando biblioteca…" eterno; reload quente
+// funcionava). Corrida com timeout + retry resolve os dois casos: mensagem
+// perdida (re-invoca) e lentidão real (segunda chance).
+async function bootCall<T>(
+  label: string,
+  call: () => Promise<T>,
+  timeoutMs: number,
+  tries = 3,
+): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await Promise.race([
+        call(),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error(`${label}: timeout ${timeoutMs}ms`)), timeoutMs),
+        ),
+      ]);
+    } catch (e) {
+      if (i >= tries) throw e;
+      console.warn(`[mobile] ${label} tentativa ${i}:`, e);
+      await new Promise((r) => setTimeout(r, 400 * i));
+    }
+  }
+}
+
 export async function bootStore() {
   // initialize PRECISA vir antes de qualquer outra chamada ao plugin.
   try {
-    await ipc.playerInitialize();
+    await bootCall("initialize", () => ipc.playerInitialize(), 3000);
   } catch (e) {
     console.error("[mobile] initialize falhou:", e);
   }
 
   try {
-    await loadLibrary();
+    await bootCall("loadLibrary", loadLibrary, 6000);
     setLibError(null);
   } catch (e) {
     console.error("[mobile] carga da biblioteca falhou:", e);
