@@ -122,4 +122,25 @@ export const Icon = {
       <path d="m6 9 6 6 6-6" />
     </svg>
   ),
+  lyrics: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M4 6h16M4 11h16M4 16h9" />
+      <circle cx="18" cy="17.5" r="2.2" />
+      <path d="M20.2 17.5V12l1.6.6" />
+    </svg>
+  ),
+  radio: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" />
+      <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
+      <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
+    </svg>
+  ),
+  sparkle: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M12 3.5 13.6 9 19 10.5 13.6 12 12 17.5 10.4 12 5 10.5 10.4 9zM18.5 15.5l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7z" />
+    </svg>
+  ),
 };

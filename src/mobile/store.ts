@@ -14,7 +14,7 @@ import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
-import type { Folder, Origin, PlaybackState, Track } from "./types";
+import type { Folder, Origin, PlaybackState, StationMeta, Track } from "./types";
 
 const QUEUE_KEY = "kv-mobile-queue";
 
@@ -35,6 +35,25 @@ const byId = createMemo(() => {
   for (const t of tracks()) m.set(t.id, t);
   return m;
 });
+
+// ── Inteligência local (CMR-190) ──────────────────────────────
+// Alimentada pelos artefatos de .rustify/ — sem eles, listas vazias
+// e as seções somem da UI. Carga best-effort pós-boot.
+
+const [stations, setStations] = createSignal<StationMeta[]>([]);
+const [favorites, setFavorites] = createSignal<Track[]>([]);
+
+export { stations, favorites };
+
+async function loadIntel() {
+  try {
+    const [st, fav] = await Promise.all([ipc.libListStations(), ipc.libTastePositives()]);
+    setStations(st ?? []);
+    setFavorites(fav ?? []);
+  } catch (e) {
+    console.warn("[mobile] carga de stations/favorites falhou:", e);
+  }
+}
 
 // ── Playback (espelho do serviço) ─────────────────────────────
 
@@ -196,6 +215,39 @@ export const playAlbum = (list: Track[], key: string) => playList(list, 0, "albu
 export const shuffleList = (list: Track[]) => playList(shuffled(list), 0, "shuffle");
 export const shuffleAll = () => shuffleList(tracks());
 
+/** Toca uma station: lote do pool precomputado + re-rank local.
+ *  origin `station` — o sinal v3 desconta origem passiva. */
+export async function playStation(st: StationMeta) {
+  try {
+    const batch = await ipc.libPlayStation(st.id, 40);
+    if (!batch.length) {
+      showToast("Station sem faixas no acervo");
+      return;
+    }
+    await playList(batch, 0, "station", st.id);
+  } catch (e) {
+    console.error("[mobile] lib_play_station falhou:", e);
+    showToast("Falha ao iniciar a station");
+  }
+}
+
+/** Rádio da faixa: vizinhos por similaridade viram a fila.
+ *  Requer vectors.bin no aparelho — sem ele, toast e nada muda. */
+export async function playSimilar(track: Track) {
+  try {
+    const similar = await ipc.libSimilarTracks(track.id, 30);
+    if (!similar.length) {
+      showToast("Sem vetores no aparelho — rode o export");
+      return;
+    }
+    await playList(similar, 0, "station", `similar:${track.id}`);
+    showToast(`Rádio: ${track.title}`);
+  } catch (e) {
+    console.error("[mobile] lib_similar_tracks falhou:", e);
+    showToast("Falha ao montar o rádio");
+  }
+}
+
 export async function toggle() {
   try {
     if (pb.isPlaying) await ipc.playerPause();
@@ -253,6 +305,7 @@ export async function rescan() {
   try {
     const count = await ipc.libRescan();
     await loadLibrary();
+    await loadIntel();
     showToast(`Biblioteca re-indexada · ${count} faixas`);
   } catch (e) {
     console.error("[mobile] lib_rescan falhou:", e);
@@ -317,6 +370,7 @@ export async function bootStore() {
 
   rehydrateQueue();
   await syncState();
+  void loadIntel();
 
   ipc.onStateChanged(applyState).catch((e) => console.warn("[mobile] listener state_changed:", e));
   ipc.onTrackChanged(applyState).catch((e) => console.warn("[mobile] listener track_changed:", e));

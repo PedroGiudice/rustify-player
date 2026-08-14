@@ -39,6 +39,7 @@ import { Album } from "./screens/Album";
 import { Artist } from "./screens/Artist";
 import { Queue } from "./screens/Queue";
 import { Settings } from "./screens/Settings";
+import { Stations } from "./screens/Stations";
 import { baseRoute, bootRoute, isNpOpen } from "./nav";
 import { bootStore, pb, toast } from "./store";
 import { applyBeatMode } from "./bg/beatSetting";
@@ -65,6 +66,8 @@ function screen() {
       return <Artist param={r.param} />;
     case "/queue":
       return <Queue />;
+    case "/stations":
+      return <Stations />;
     default:
       return <Home />;
   }

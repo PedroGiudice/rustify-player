@@ -30,6 +30,32 @@ duration_ms, path, lrc_path, track_number, genre_name }`.
 
 `Folder`: `{ name, track_count }`.
 
+## Inteligência local (CMR-190 — desde v1)
+
+Alimentada pelos artefatos de `.rustify/` (export do desktop:
+`scripts/android/export_manifest.py`). TODOS opcionais: sem eles os commands
+devolvem lista vazia — a UI esconde as seções, nunca quebra.
+
+```ts
+invoke<Track[]>('lib_similar_tracks', { id, k? })      // vizinhos mert (default 20)
+invoke<StationMeta[]>('lib_list_stations')
+invoke<Track[]>('lib_play_station', { id, limit? })    // 1º lote (default 40)
+invoke<Track[]>('lib_station_next', {                  // lote incremental
+  stationId, excludeIds: string[], limit?,             // default 6
+})
+invoke<Track[]>('lib_taste_positives')                 // "Based on your favorites"
+invoke<LyricLine[]>('lib_get_lyrics', { trackId })     // sidecar .lrc; [] sem letra
+```
+
+`LyricLine`: `{ t: number (segundos), line, header }` — mesmo wire do desktop.
+
+`StationMeta`: `{ id, name, icon, tone, desc, kind: 'seed'|'mood', query,
+pool_size }`. `pool_size === 0` = station sem candidatos no acervo — mostrar
+desabilitada ou esconder.
+
+Play de station: `set_queue(..., origin: 'station', contextId: station.id)` —
+o sinal v3 já desconta origem passiva; o evento volta pro desktop via sync.
+
 ## Player (plugin rustify-audio)
 
 `invoke('plugin:rustify-audio|<cmd>', args)` — args camelCase.
@@ -77,14 +103,17 @@ await addPluginListener('rustify-audio', 'position', s => {...})  // 500ms, só 
 | Play numa playlist/pasta | `playlist` |
 | Play num álbum em sequência | `album_seq` |
 | Shuffle burro do acervo | `shuffle` |
+| Play/next de uma station | `station` |
+| Fila continuada pelo motor | `autoplay` (ainda sem uso no mobile) |
 
-Sem `autoplay`/`station` no v0 (não há motor local). O desconto de origem
-passiva do behavioral_signals v3 só conhece autoplay/station/playlist —
-`shuffle` novo é neutro até decisão em contrário.
+O desconto de origem passiva do behavioral_signals v3 conhece
+autoplay/station/playlist — `shuffle` é neutro até decisão em contrário.
 
-## O que NÃO existe no v0 (não desenhar em cima)
+## O que NÃO existe no mobile (não desenhar em cima)
 
-Crate (slskd fica na cmr-auto), stations/autoplay, busca semântica, likes
-com sync (toggle local ainda sem trilho), EQ/DSP/volume por app (volume =
-botões físicos), letras sincronizadas na tela (lrc_path existe — exibição é
-fase seguinte), temas YAML.
+Crate (slskd fica na cmr-auto), autoplay contínuo pós-fila, busca semântica
+por texto (exigiria embedder no aparelho — similar/stations são vetor→vetor,
+offline), likes com sync (toggle local ainda sem trilho), EQ/DSP/volume por
+app (volume = botões físicos), temas YAML, beat sync real do bg (o spectrum
+roda com mockFft — FFT do player exigiria Visualizer no plugin Kotlin).
+Letras ENTRARAM em 14/08 (`lib_get_lyrics` + rail no Now Playing).

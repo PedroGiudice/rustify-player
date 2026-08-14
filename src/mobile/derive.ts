@@ -140,6 +140,7 @@ export function originLabel(o: Origin): string {
     case "playlist": return "playlist";
     case "album_seq": return "álbum";
     case "shuffle": return "shuffle";
+    case "station": return "station";
     default: return "solta";
   }
 }

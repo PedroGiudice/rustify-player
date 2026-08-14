@@ -11,7 +11,7 @@
    ============================================================ */
 
 import { addPluginListener, convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Folder, Origin, PlaybackState, QueueItem, Track } from "./types";
+import type { Folder, LyricLine, Origin, PlaybackState, QueueItem, StationMeta, Track } from "./types";
 
 const PLUGIN = "rustify-audio";
 const cmd = (name: string) => `plugin:${PLUGIN}|${name}`;
@@ -23,6 +23,19 @@ export const libListFolderTracks = (name: string) => invoke<Track[]>("lib_list_f
 export const libListTracks = () => invoke<Track[]>("lib_list_tracks");
 export const libGetTracksByIds = (ids: string[]) => invoke<Track[]>("lib_get_tracks_by_ids", { ids });
 export const libRescan = () => invoke<number>("lib_rescan");
+
+// ── Inteligência local (CMR-190 — artefatos de .rustify/) ─────
+// Sem artefatos exportados, tudo devolve lista vazia — a UI esconde.
+
+export const libSimilarTracks = (id: string, k?: number) =>
+  invoke<Track[]>("lib_similar_tracks", { id, k });
+export const libListStations = () => invoke<StationMeta[]>("lib_list_stations");
+export const libPlayStation = (id: string, limit?: number) =>
+  invoke<Track[]>("lib_play_station", { id, limit });
+export const libStationNext = (stationId: string, excludeIds: string[], limit?: number) =>
+  invoke<Track[]>("lib_station_next", { stationId, excludeIds, limit });
+export const libTastePositives = () => invoke<Track[]>("lib_taste_positives");
+export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
 
 // ── Player (plugin rustify-audio) ─────────────────────────────
 

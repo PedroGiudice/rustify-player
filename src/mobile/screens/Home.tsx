@@ -2,10 +2,11 @@
    Home.tsx — porte de S.home do handoff.
 
    O protótipo tinha três quick starts (Shuffle / Station /
-   Crate): station e crate não existem no v0, então sobrou o
-   Shuffle all — que é real (set_queue do acervo embaralhado,
-   origin `shuffle`). "Recently played" e "Genres" também saíram:
-   não há command de histórico no v0.
+   Crate): Station entrou com o trilho CMR-190 (stations.json
+   exportada do desktop); Crate segue fora (slskd na cmr-auto).
+   "Based on your favorites" é o taste snapshot do mesmo trilho.
+   "Recently played" e "Genres" seguem fora: sem command de
+   histórico no aparelho.
    ============================================================ */
 
 import { For, Show } from "solid-js";
@@ -13,7 +14,16 @@ import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
 import { Empty, SecHead, ViewHead } from "../components/ui";
 import { navigate } from "../nav";
-import { albums, folders, libReady, shuffleAll, tracks } from "../store";
+import {
+  albums,
+  favorites,
+  folders,
+  libReady,
+  playTrackFrom,
+  shuffleAll,
+  stations,
+  tracks,
+} from "../store";
 import { fmtCount } from "../derive";
 
 export function Home() {
@@ -54,7 +64,31 @@ export function Home() {
             <h3>Shuffle all</h3>
             <div class="meta">{fmtCount(tracks().length)} tracks</div>
           </button>
+          <Show when={stations().length}>
+            <button class="qs" onClick={() => navigate("/stations")}>
+              <div class="eyebrow">Station</div>
+              <h3>Stations</h3>
+              <div class="meta">{stations().filter((s) => s.pool_size > 0).length} prontas</div>
+            </button>
+          </Show>
         </div>
+
+        <Show when={favorites().length}>
+          <div class="sec">
+            <SecHead label="Based on your favorites" />
+            <div class="grid">
+              <For each={favorites().slice(0, 4)}>
+                {(t, i) => (
+                  <button class="alb" onClick={() => void playTrackFrom(favorites(), i())}>
+                    <Cover path={t.album_cover_path} seed={t.id} cls="art" icon="note" />
+                    <div class="t">{t.title}</div>
+                    <div class="s">{t.artist_name ?? "—"}</div>
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
 
         <Show when={folders().length}>
           <div class="sec">

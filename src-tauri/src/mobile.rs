@@ -6,11 +6,21 @@
 // leitura do contrato desktop (src/tauri.ts) para a UI navegar; a fila
 // nativa entra via plugin.
 
+use crate::mobile_intel::StationMeta;
 use crate::mobile_library::{Folder, MobileLibrary, Track};
 use std::sync::Mutex;
 use tauri::State;
 
 struct Library(Mutex<MobileLibrary>);
+
+/// Seed de sorteio pros lotes de station — tempo corrente (variedade entre
+/// chamadas; determinismo só nos testes das funções puras).
+fn shuffle_seed() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(1)
+}
 
 #[tauri::command]
 fn lib_list_folders(lib: State<Library>) -> Vec<Folder> {
@@ -30,6 +40,74 @@ fn lib_list_tracks(lib: State<Library>) -> Vec<Track> {
 #[tauri::command]
 fn lib_get_tracks_by_ids(lib: State<Library>, ids: Vec<String>) -> Vec<Track> {
     lib.0.lock().expect("library lock").by_ids(&ids)
+}
+
+// ── Inteligência local (CMR-190) — vetores + gosto + stations exportados ────
+
+#[tauri::command]
+fn lib_similar_tracks(lib: State<Library>, id: String, k: Option<usize>) -> Vec<Track> {
+    lib.0
+        .lock()
+        .expect("library lock")
+        .similar_tracks(&id, k.unwrap_or(20))
+}
+
+#[tauri::command]
+fn lib_list_stations(lib: State<Library>) -> Vec<StationMeta> {
+    lib.0.lock().expect("library lock").stations_meta()
+}
+
+/// Primeiro lote de uma station (espelha o contrato do desktop; stats de
+/// played ficam no desktop — aqui o play volta via sync de play_events).
+#[tauri::command]
+fn lib_play_station(lib: State<Library>, id: String, limit: Option<usize>) -> Vec<Track> {
+    lib.0
+        .lock()
+        .expect("library lock")
+        .station_batch(&id, &[], limit.unwrap_or(40), shuffle_seed())
+}
+
+/// Lote incremental com contexto de rodada (exclui já vistas).
+#[tauri::command]
+fn lib_station_next(
+    lib: State<Library>,
+    station_id: String,
+    exclude_ids: Vec<String>,
+    limit: Option<usize>,
+) -> Vec<Track> {
+    lib.0
+        .lock()
+        .expect("library lock")
+        .station_batch(&station_id, &exclude_ids, limit.unwrap_or(6), shuffle_seed())
+}
+
+/// Rail "Based on your favorites" — positives do snapshot de gosto.
+#[tauri::command]
+fn lib_taste_positives(lib: State<Library>) -> Vec<Track> {
+    lib.0.lock().expect("library lock").taste_positive_tracks()
+}
+
+/// Letra da faixa a partir do sidecar `.lrc` do acervo (1328 no S24 em
+/// 14/08). Mesmo nome e wire do desktop (`LyricLine { t, line, header }`);
+/// sem sidecar → lista vazia e a UI esconde o toggle.
+#[tauri::command]
+fn lib_get_lyrics(lib: State<Library>, track_id: String) -> Vec<crate::mobile_lyrics::LyricLine> {
+    let lrc = lib
+        .0
+        .lock()
+        .expect("library lock")
+        .by_ids(&[track_id])
+        .into_iter()
+        .next()
+        .and_then(|t| t.lrc_path);
+    let Some(path) = lrc else { return Vec::new() };
+    match std::fs::read_to_string(&path) {
+        Ok(content) => crate::mobile_lyrics::parse_lrc(&content),
+        Err(e) => {
+            tracing::warn!(%e, path, "lib_get_lyrics: sidecar ilegível");
+            Vec::new()
+        }
+    }
 }
 
 /// Recarrega manifest + walk do acervo (após sync ou concessão de permissão).
@@ -67,6 +145,12 @@ pub fn run() {
             lib_list_folder_tracks,
             lib_list_tracks,
             lib_get_tracks_by_ids,
+            lib_similar_tracks,
+            lib_list_stations,
+            lib_play_station,
+            lib_station_next,
+            lib_taste_positives,
+            lib_get_lyrics,
             lib_rescan,
         ])
         .run(tauri::generate_context!())

@@ -29,7 +29,27 @@ export interface Folder {
 }
 
 /** Origins do contrato — nomes EXATOS, o motor de sinal lê isso. */
-export type Origin = "manual" | "playlist" | "album_seq" | "shuffle";
+export type Origin = "manual" | "playlist" | "album_seq" | "shuffle" | "station";
+
+/** Station exportada do desktop (stations.json). pool_size 0 = sem
+ *  candidatos no acervo — a UI mostra desabilitada. */
+export interface StationMeta {
+  id: string;
+  name: string;
+  icon: string;
+  tone: string;
+  desc: string;
+  kind: "seed" | "mood";
+  query: string | null;
+  pool_size: number;
+}
+
+/** Linha de letra — mesmo wire do desktop (t em segundos). */
+export interface LyricLine {
+  t: number;
+  line: string;
+  header: boolean;
+}
 
 export interface QueueItem {
   trackId: string;

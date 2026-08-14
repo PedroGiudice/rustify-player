@@ -66,6 +66,7 @@ export function activeTab(): string {
   if (p === "/folder" || p === "/album" || p === "/artist" || p === "/queue") {
     return "/library";
   }
+  if (p === "/stations") return "/home";
   return (TABS as readonly string[]).includes(p) ? p : DEFAULT_ROUTE;
 }
 

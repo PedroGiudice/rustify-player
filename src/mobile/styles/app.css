@@ -760,3 +760,137 @@
   color: var(--t1);
   border-color: var(--outline);
 }
+
+/* ── Stations (CMR-190) — porte do handoff, stcard__body virou button ── */
+.stlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.stcard {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--s-c);
+  border: 1px solid var(--div-subtle);
+  border-radius: var(--r-xl);
+}
+.stcard[data-dead] {
+  opacity: 0.45;
+}
+.stcard__tile {
+  flex: 0 0 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--div-subtle);
+  display: grid;
+  place-items: center;
+  color: var(--t4);
+}
+.stcard__tile svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+.stcard__body {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.stcard__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stcard__n {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stcard__tags {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t4);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stcard__meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t3);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.stcard__acts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.iconbtn.sm {
+  width: 30px;
+  height: 30px;
+}
+.iconbtn.sm svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Letras (handoff, fase 2) — [data-lyr] restaura a geometria com letra ── */
+.np[data-lyr] .cover {
+  width: 172px;
+  height: 172px;
+  transition: width var(--dur-med, 180ms) var(--ease), height var(--dur-med, 180ms) var(--ease);
+}
+.np[data-lyr] .bar {
+  margin-top: 12px;
+}
+.np .lyrics {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 16px;
+  position: relative;
+  mask-image: linear-gradient(180deg, transparent, #000 22%, #000 72%, transparent);
+}
+.np .lyrics[data-static] {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.np .lrail {
+  transition: transform 0.6s var(--ease);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.np .lrail p {
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--t4);
+  transition: color 0.3s var(--ease), opacity 0.3s var(--ease);
+  opacity: 0.6;
+  margin: 0;
+}
+.np .lrail p[data-on] {
+  color: var(--t1);
+  opacity: 1;
+  font-weight: 500;
+}
+.np .lrail p[data-header] {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t3);
+}

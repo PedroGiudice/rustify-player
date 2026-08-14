@@ -1,10 +1,11 @@
 /* ============================================================
    NowPlaying.tsx — overlay do handoff.
 
-   Diferenças do protótipo, todas por falta de trilho no v0:
-   - sem letras (o toggle e o trilho de lyrics saíram; lrc_path
-     existe no Track mas exibir é a fase seguinte). Por isso a capa
-     já nasce no tamanho do estado "sem letra" do handoff;
+   Diferenças do protótipo:
+   - letras ENTRARAM (14/08, pedido do CEO): lib_get_lyrics lê o
+     sidecar .lrc, a rail sincroniza com positionMs e o estado
+     [data-lyr] encolhe a capa como no handoff. Sem sidecar, o
+     toggle some e vale a geometria "sem letra";
    - sem sheet de "track info" (codec/bitrate não existem no shape
      do Track) e sem coração (não há trilho de like);
    - shuffle/repeat saíram dos controles: o plugin não tem command
@@ -12,17 +13,64 @@
    O seek É real: o contrato tem seek_to.
    ============================================================ */
 
-import { Show, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
 import { back, isNpOpen, navigate } from "../nav";
-import { current, next, pb, previous, queueOrigin, seek, showToast, toggle } from "../store";
+import { current, next, pb, playSimilar, previous, queueOrigin, seek, showToast, toggle } from "../store";
 import { fmtDuration, originLabel, originSrc } from "../derive";
 import { useRenderer, useShape } from "../bg/spectrum";
+import { libGetLyrics } from "../ipc";
+import type { LyricLine } from "../types";
+
+const LYR_KEY = "kv-mobile-lyrics";
 
 export function NowPlaying() {
   const [scrub, setScrub] = createSignal<number | null>(null);
   let trackEl: HTMLDivElement | undefined;
+
+  // ── Letras (sidecar .lrc via lib_get_lyrics) ────────────────
+  const [lyrOn, setLyrOn] = createSignal(localStorage.getItem(LYR_KEY) !== "off");
+  const toggleLyrics = () => {
+    const on = !lyrOn();
+    setLyrOn(on);
+    localStorage.setItem(LYR_KEY, on ? "on" : "off");
+  };
+  const [lyrics] = createResource(
+    () => current()?.id ?? null,
+    async (id) => (id ? await libGetLyrics(id).catch(() => [] as LyricLine[]) : []),
+    { initialValue: [] as LyricLine[] },
+  );
+  // Sidecar só nasce de letra sincronizada, mas t=0 em tudo = unsynced
+  // (mesma detecção do desktop): vira viewport rolável sem linha ativa.
+  const isSynced = createMemo(() => lyrics().some((l) => l.t > 0));
+  const showLyrics = createMemo(() => lyrOn() && lyrics().length > 0);
+  const activeIdx = createMemo(() => {
+    if (!isSynced()) return -1;
+    const pos = pb.positionMs / 1000;
+    let idx = -1;
+    for (const [i, l] of lyrics().entries()) {
+      if (l.t <= pos) idx = i;
+      else break;
+    }
+    return idx;
+  });
+
+  let lyricsEl: HTMLDivElement | undefined;
+  let railEl: HTMLDivElement | undefined;
+  createEffect(() => {
+    const idx = activeIdx();
+    if (!railEl || !lyricsEl || !showLyrics()) return;
+    if (idx < 0) {
+      railEl.style.transform = "translateY(0)";
+      return;
+    }
+    const line = railEl.children[idx] as HTMLElement | undefined;
+    if (!line) return;
+    // Linha ativa a ~1/3 do viewport (a mask apaga topo e rodapé).
+    const target = Math.max(0, line.offsetTop - lyricsEl.clientHeight * 0.32);
+    railEl.style.transform = `translateY(${-target}px)`;
+  });
 
   const ratio = () => {
     const s = scrub();
@@ -69,7 +117,13 @@ export function NowPlaying() {
   };
 
   return (
-    <div class="np" attr:data-open={isNpOpen() ? "" : undefined} onPointerDown={onDown} onPointerUp={onUp}>
+    <div
+      class="np"
+      attr:data-open={isNpOpen() ? "" : undefined}
+      attr:data-lyr={showLyrics() ? "" : undefined}
+      onPointerDown={onDown}
+      onPointerUp={onUp}
+    >
       <div class="veil" />
       <div class="inner">
         <div class="grab" />
@@ -94,6 +148,28 @@ export function NowPlaying() {
             >
               {useShape.name()}
             </button>
+            <Show when={lyrics().length > 0}>
+              <button
+                class="iconbtn"
+                aria-label="Letra"
+                aria-pressed={lyrOn()}
+                style={lyrOn() ? { color: "var(--accent)" } : undefined}
+                onClick={toggleLyrics}
+              >
+                <Icon.lyrics />
+              </button>
+            </Show>
+            <Show when={current()}>
+              {(t) => (
+                <button
+                  class="iconbtn"
+                  aria-label="Rádio da faixa"
+                  onClick={() => void playSimilar(t())}
+                >
+                  <Icon.radio />
+                </button>
+              )}
+            </Show>
             <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>
               <Icon.queue />
             </button>
@@ -122,6 +198,23 @@ export function NowPlaying() {
                 </span>
                 <span>{[t().artist_name, t().album_title].filter(Boolean).join(" · ") || "—"}</span>
               </div>
+
+              <Show when={showLyrics()}>
+                <div class="lyrics" ref={lyricsEl} attr:data-static={isSynced() ? undefined : ""}>
+                  <div class="lrail" ref={railEl}>
+                    <For each={lyrics()}>
+                      {(l, i) => (
+                        <p
+                          attr:data-on={isSynced() && i() === activeIdx() ? "" : undefined}
+                          attr:data-header={l.header ? "" : undefined}
+                        >
+                          {l.line || "…"}
+                        </p>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
 
               <div class="bar">
                 <div

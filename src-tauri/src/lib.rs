@@ -10,7 +10,11 @@
 // todos os targets para os testes de canon_stem rodarem no host.
 pub(crate) mod device_identity;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod mobile_intel;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) mod mobile_library;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod mobile_lyrics;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) mod mobile_sync;
 #[cfg(not(target_os = "android"))]
