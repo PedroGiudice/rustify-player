@@ -25,37 +25,22 @@ local no mobile), começando pela pesquisa do Qdrant Edge.
 - `docs/design-refs/design_handoff_mobile/` — spec visual (inclui telas v1 ainda não implementadas)
 - Linear CMR-190 — base vetorial mobile (arquitetura proposta + pesquisa Qdrant Edge)
 
+## ATUALIZAÇÃO (madrugada de 14/08, mesma sessão)
+
+**O APK com a UI nova FOI entregue e validado em boot frio no S24** —
+screenshot com a Home carregada (1.746 faixas, 12 pastas). No caminho caiu
+mais um bug real: **race do boot frio do WebView** — o primeiro invoke se
+perdia antes de a bridge nativa anexar, a promise nunca liquidava e a UI
+pendurava em "Carregando biblioteca…" (reload quente funcionava). Fix:
+`bootCall` (timeout+retry) em `src/mobile/store.ts`, commit `fix(mobile):
+boot resiliente`. Os passos 1-2 abaixo do plano original estão FEITOS,
+exceto um resíduo: **primeiro play disparado pela UI** ainda não foi
+observado — o uso real do CEO valida sozinho (conferir `device_id=s24` > 2
+no Qdrant / régua do dia seguinte, comando no passo antigo 2).
+
 ## Próximos passos (por prioridade)
 
-### 1. Entregar o APK com a UI nova no S24
-**Onde:** VM (build) + cmr-auto (adb, celular via cabo USB).
-**O que:** build fresco e install — rodar na ordem, sem pipe mascarando erro:
-```bash
-cd /home/opc/rustify-player && bun run build   # OBRIGATÓRIO (frontend embutido no .so)
-ls dist/assets/ | grep MobileApp               # chunk presente = dist certo
-cd src-tauri && cargo tauri android build --debug
-APK=gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
-stat -c '%y' $APK                              # mtime tem que ser AGORA
-scp $APK cmr-auto@100.102.249.9:/tmp/ && ssh cmr-auto@100.102.249.9 'adb install -r /tmp/app-universal-debug.apk'
-```
-**Por que:** é a única pendência entre o trabalho mergeado e o CEO ver a UI.
-**Verificar:** abrir o app no S24 → dock de 4 abas (Home/Search/Library/
-Settings) no lugar da UI desktop. Smoke CDP (referência:
-`smoke_audio.py` no scratchpad da sessão 13/08; `localabstract:
-webview_devtools_remote_<pid>`, `suppress_origin=True`, tela via
-`svc power stayon usb`). Screenshot pro CEO.
-
-### 2. Smoke funcional da UI no aparelho
-**Onde:** S24 via CDP/adb.
-**O que:** biblioteca lista pastas; play por pasta seta fila com origin
-`playlist`; mini player reflete estado; evento cai no journal
-(`run-as dev.cmr.rustifyplayer tail files/play_events.jsonl`) e sincroniza
-(contar `device_id=s24` no Qdrant: deve passar de 2).
-**Por que:** a integração IPC foi escrita contra o contrato, nunca executada
-em Android.
-**Verificar:** `curl -s http://127.0.0.1:16333/collections/play_events/points/count -d '{"filter":{"must":[{"key":"device_id","match":{"value":"s24"}}]},"exact":true}' -H 'Content-Type: application/json'` (túnel: `ssh -f -N -L 16333:localhost:6333 cmr-auto@100.102.249.9`).
-
-### 3. CMR-190 — base vetorial local (tema principal da sessão, decisão do CEO)
+### 1. CMR-190 — base vetorial local (tema principal da sessão, decisão do CEO)
 **Onde:** pesquisa primeiro; depois `scripts/android/export_manifest.py` +
 `src-tauri/src/mobile_library.rs`.
 **O que:** (a) **WebSearch: status do Qdrant Edge em 2026** (GA? Android/
@@ -67,7 +52,7 @@ derivado no desktop (o gap real das stations não é vetor, é sinal).
 decisão "sem processo sidecar".
 **Verificar:** issue CMR-190 tem a arquitetura proposta e os números.
 
-### 4. Oportunista: parear wireless adb (CEO presente com o aparelho)
+### 2. Oportunista: parear wireless adb (CEO presente com o aparelho)
 **O que:** Depuração por Wi-Fi no S24 → `adb pair` da cmr-auto (ou da VM,
 que tem platform-tools) → `adb connect <ip-tailscale-s24>`. CEO avisa que
 despareia com frequência — se falhar 2x, ficar no cabo sem insistir.
