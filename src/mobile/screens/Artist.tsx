@@ -72,6 +72,7 @@ export function Artist(props: { param: string | null }) {
                   {(t, i) => (
                     <TrackRow
                       track={t}
+                      context={{ list: list(), index: i() }}
                       sub={t.album_title ?? ""}
                       onPlay={() => void playTrackFrom(list(), i())}
                     />

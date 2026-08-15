@@ -56,6 +56,17 @@ export function openNowPlaying() {
   navigate(NP_ROUTE);
 }
 
+/**
+ * Navega A PARTIR do Now Playing. Usa replace em vez de push: o /np é uma
+ * entrada empilhada e navegar por cima dela faria o botão voltar devolver o
+ * usuário ao Now Playing, não à tela de origem.
+ */
+export function navigateFromNp(path: string, param?: string) {
+  const target = param != null ? `${path}/${encodeURIComponent(param)}` : path;
+  window.location.replace(`#${target}`);
+  sync();
+}
+
 export function back() {
   window.history.back();
 }

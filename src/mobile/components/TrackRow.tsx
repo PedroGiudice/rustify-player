@@ -1,10 +1,16 @@
 /* ============================================================
    TrackRow.tsx — linha de faixa (.trk do handoff), nas duas
    variantes que as telas usam: com capa e com número da faixa.
+
+   Segurar a linha abre a sheet de ações (o gesto canônico do
+   Android). O click que vem depois do long-press é engolido —
+   senão o gesto também tocaria a faixa.
    ============================================================ */
 
-import { Show } from "solid-js";
+import { Show, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
+import { openTrackSheet } from "./Sheet";
+import { createLongPress } from "../lib/longPress";
 import { fmtDuration } from "../derive";
 import { pb } from "../store";
 import type { Track } from "../types";
@@ -17,13 +23,41 @@ export function TrackRow(props: {
   /** Segunda linha alternativa (default: artista · álbum). */
   sub?: string;
   right?: string;
+  /** Lista em que esta faixa vive — habilita "tocar a partir daqui". */
+  context?: { list: Track[]; index: number };
+  /** Desliga o long-press (linha da faixa que já está tocando). */
+  noSheet?: boolean;
 }) {
   const playing = () => pb.trackId != null && pb.trackId === props.track.id;
   const sub = () =>
     props.sub ??
     [props.track.artist_name, props.track.album_title].filter(Boolean).join(" · ");
+
+  const lp = createLongPress({
+    onFire: () => {
+      if (props.noSheet) return;
+      // Vibração curta confirma o gesto às cegas (o dedo cobre a linha).
+      navigator.vibrate?.(12);
+      openTrackSheet(props.track, props.context);
+    },
+  });
+  onCleanup(lp.dispose);
+
   return (
-    <button class="trk" onClick={props.onPlay} attr:data-playing={playing() ? "" : undefined}>
+    <button
+      class="trk"
+      onClick={() => {
+        if (lp.consumedClick()) return;
+        props.onPlay();
+      }}
+      onPointerDown={lp.handlers.onPointerDown}
+      onPointerMove={lp.handlers.onPointerMove}
+      onPointerUp={lp.handlers.onPointerUp}
+      onPointerCancel={lp.handlers.onPointerCancel}
+      // O menu nativo de seleção de texto do WebView compete com o gesto.
+      onContextMenu={(e) => e.preventDefault()}
+      attr:data-playing={playing() ? "" : undefined}
+    >
       <Show
         when={props.ordinal == null}
         fallback={

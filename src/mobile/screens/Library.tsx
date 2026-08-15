@@ -109,7 +109,13 @@ export function Library() {
           <Show when={tracks().length} fallback={<Empty title="Acervo vazio" />}>
             <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
               <LazyList items={tracks()} chunk={60}>
-                {(t, i) => <TrackRow track={t} onPlay={() => void playTrackFrom(tracks(), i())} />}
+                {(t, i) => (
+                  <TrackRow
+                    track={t}
+                    context={{ list: tracks(), index: i() }}
+                    onPlay={() => void playTrackFrom(tracks(), i())}
+                  />
+                )}
               </LazyList>
             </div>
           </Show>

@@ -31,6 +31,8 @@ import "./styles/app.css";
 
 import { Dock } from "./components/Dock";
 import { NowPlaying } from "./components/NowPlaying";
+import { Sheet } from "./components/Sheet";
+import { initSheetHistory } from "./sheet";
 import { Home } from "./screens/Home";
 import { Search } from "./screens/Search";
 import { Library } from "./screens/Library";
@@ -130,6 +132,7 @@ export function MobileApp() {
         <Dock />
       </div>
       <NowPlaying />
+      <Sheet />
       <Show when={toast()}>
         {(msg) => (
           <div class="toast" attr:data-on="">
@@ -156,6 +159,9 @@ export function mountMobile() {
 
   applyBeatMode();
   bootRoute();
+  // Sentinela de history da sheet: o voltar do Android fecha a sheet
+  // antes de sair da tela.
+  initSheetHistory();
 
   const root = document.getElementById("app");
   if (!root) throw new Error("[mobile] #app não encontrado");

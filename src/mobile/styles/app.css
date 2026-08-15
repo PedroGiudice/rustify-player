@@ -3,11 +3,12 @@
    app.css (shell, telas, now playing).
 
    Desvios do handoff, marcados com [v0]:
-   - saíram as regras de telas que o v0 não tem: stations
-     (.livecard/.scatter/.stcard/.newmood/.stlist/.livetag),
-     mood sheet (.moodgrp/.chipwrap/.field), sheet técnica
-     (.sheet/.kv), letras (.lyrics/.lrail/.lyrbtn) e os
-     controles de Settings sem trilho IPC (.tog/.range/.pill).
+   - saíram as regras de telas que o v0 não tem: mood sheet
+     (.moodgrp/.chipwrap/.field) e os controles de Settings sem
+     trilho IPC (.tog/.range/.pill).
+     JÁ VOLTARAM: .lyrics/.lrail/.lyrbtn (letras, 14/08),
+     .stcard e cia (stations, 14/08) e .sheet/.panel/.grab/.kv
+     (bottom-sheet, 15/08 — no fim deste arquivo).
    - a geometria que o handoff dava ao estado data-nolyr (capa
      maior, barra empurrada pro rodapé) foi assada direto no
      .np: no v0 NÃO existe letra, então esse é o único estado.
@@ -893,4 +894,164 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--t3);
+}
+
+/* ── Bottom-sheet (porte de .sheet/.panel/.grab/.kv do handoff) ──
+   O primitivo das ações secundárias: long-press de faixa, info,
+   e o que vier depois (fila, like). Fecha por scrim, arraste do
+   grab e botão voltar do Android (sentinela em sheet.ts). */
+.sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: none;
+}
+.sheet[data-open] {
+  display: block;
+}
+.sheet .scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 5, 0.6);
+}
+.sheet .panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(12, 12, 12, 0.92);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--div-subtle);
+  border-radius: 16px 16px 0 0;
+  /* a safe-area evita que o último item fique sob a barra de gestos */
+  padding: 16px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+  max-height: 76%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  transition: transform 0.16s var(--ease);
+}
+.sheet .panel::-webkit-scrollbar {
+  display: none;
+}
+.sheet .grab {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--div-prom);
+  margin: 0 auto 14px;
+  /* alvo de toque real por cima do traço de 4px */
+  position: relative;
+  touch-action: none;
+}
+.sheet .grab::after {
+  content: "";
+  position: absolute;
+  left: -40px;
+  right: -40px;
+  top: -14px;
+  bottom: -14px;
+}
+.sheet__head {
+  margin-bottom: 10px;
+}
+.sheet__title {
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.sheet__sub {
+  font-size: 12.5px;
+  color: var(--t3);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet__act {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  /* 48dp de alvo: a diretriz do Android, que o resto do app ainda deve */
+  min-height: 48px;
+  padding: 11px 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--div-subtle);
+  color: var(--t1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet__act:last-child {
+  border-bottom: 0;
+}
+.sheet__act:active {
+  background: var(--s-high);
+}
+.sheet__act svg.lead {
+  width: 19px;
+  height: 19px;
+  color: var(--t3);
+  flex: 0 0 19px;
+}
+.sheet__actlabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sheet__actlabel span:first-child {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.sheet__acthint {
+  font-size: 11.5px;
+  color: var(--t3);
+}
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--div-subtle);
+  font-size: 12.5px;
+}
+.kv:last-child {
+  border-bottom: 0;
+}
+.kv span:first-child {
+  color: var(--t3);
+  flex: 0 0 auto;
+}
+.kv span:last-child {
+  font-family: var(--mono);
+  color: var(--t1);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Artista/álbum navegáveis no Now Playing. O link herda o texto da
+   linha — só o sublinhado sutil denuncia que é tocável. */
+.np .npmeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np .npmeta__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--div-prom);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.np .npmeta__link:active {
+  color: var(--accent);
 }

@@ -49,7 +49,13 @@ export function Folder(props: { param: string | null }) {
         </div>
         <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
           <LazyList items={list()} chunk={60}>
-            {(t, i) => <TrackRow track={t} onPlay={() => void playTrackFrom(list(), i())} />}
+            {(t, i) => (
+              <TrackRow
+                track={t}
+                context={{ list: list(), index: i() }}
+                onPlay={() => void playTrackFrom(list(), i())}
+              />
+            )}
           </LazyList>
         </div>
         <div style={{ height: "16px" }} />

@@ -6,8 +6,10 @@
      sidecar .lrc, a rail sincroniza com positionMs e o estado
      [data-lyr] encolhe a capa como no handoff. Sem sidecar, o
      toggle some e vale a geometria "sem letra";
-   - sem sheet de "track info" (codec/bitrate não existem no shape
-     do Track) e sem coração (não há trilho de like);
+   - artista e álbum são navegáveis (15/08) e a sheet de "track
+     info" existe via long-press na linha da faixa — mas ainda sem
+     codec/bitrate, que não estão no shape do Track;
+   - sem coração: não há trilho de like (epic C);
    - shuffle/repeat saíram dos controles: o plugin não tem command
      para nenhum dos dois. No lugar, o acesso à fila.
    O seek É real: o contrato tem seek_to.
@@ -16,9 +18,9 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
-import { back, isNpOpen, navigate } from "../nav";
+import { back, isNpOpen, navigate, navigateFromNp } from "../nav";
 import { current, next, pb, playSimilar, previous, queueOrigin, seek, showToast, toggle } from "../store";
-import { fmtDuration, originLabel, originSrc } from "../derive";
+import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
 import { useRenderer, useShape } from "../bg/spectrum";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
@@ -196,7 +198,30 @@ export function NowPlaying() {
                 <span class="srcbadge" attr:data-src={originSrc(queueOrigin())}>
                   {originLabel(queueOrigin())}
                 </span>
-                <span>{[t().artist_name, t().album_title].filter(Boolean).join(" · ") || "—"}</span>
+                {/* Artista e álbum navegáveis: ouvir algo bom e ir direto ao
+                    álbum é o gesto de exploração mais barato que existe. */}
+                <span class="npmeta">
+                  <Show when={t().artist_name} fallback={<span>—</span>}>
+                    {(name) => (
+                      <button class="npmeta__link" onClick={() => navigateFromNp("/artist", name())}>
+                        {name()}
+                      </button>
+                    )}
+                  </Show>
+                  <Show when={t().album_title}>
+                    {(album) => (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <button
+                          class="npmeta__link"
+                          onClick={() => navigateFromNp("/album", albumKey(t()))}
+                        >
+                          {album()}
+                        </button>
+                      </>
+                    )}
+                  </Show>
+                </span>
               </div>
 
               <Show when={showLyrics()}>
