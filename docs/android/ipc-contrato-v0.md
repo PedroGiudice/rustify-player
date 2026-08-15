@@ -93,8 +93,21 @@ const q = await invoke('plugin:rustify-audio|get_queue')
 // { items: [{ trackId, origin, contextId, durationMs }], index }  (index -1 = vazia)
 ```
 
-`origin`/`contextId` são **por item** no wire de `get_queue` (hoje o Kotlin
-devolve o escalar da fila para todos os itens; o formato já é o definitivo).
+```ts
+// Enfileira sem destruir a fila viva. Devolve o snapshot novo.
+await invoke('plugin:rustify-audio|add_items', {
+  items: [{ ...toQueueItem(t), origin: 'manual', contextId: null }],
+  origin: 'manual',
+  mode: 'next',   // 'next' = depois da corrente · 'end' = fim da fila
+})
+```
+
+`origin`/`contextId` são **por item**. Uma faixa enfileirada à mão dentro de
+uma station loga `origin: manual` — é escolha explícita do usuário (peso cheio
+no sinal v3), não escuta passiva. O desktop ainda carimba por fila nesse caso;
+divergência consciente, registrada no plano de paridade.
+
+`add_items` nunca recebe índice: o `mode` é resolvido no Kotlin contra o player.
 
 Ler a fila é o que sustenta a tela de Queue sobreviver ao WebView reiniciar com
 o serviço tocando. O espelho em `localStorage` (`kv-mobile-queue`) **foi

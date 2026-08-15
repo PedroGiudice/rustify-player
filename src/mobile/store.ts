@@ -269,6 +269,36 @@ export async function playSimilar(track: Track) {
   }
 }
 
+/**
+ * Enfileira uma faixa sem interromper o que toca.
+ *
+ * `origin: "manual"` mesmo dentro de uma station: pôr a faixa na fila é
+ * escolha EXPLÍCITA do usuário e o sinal v3 dá peso cheio a isso — herdar
+ * `station` marcaria como escuta passiva e o motor aprenderia errado. A
+ * origem viaja por item (o desktop ainda carimba por fila; divergência
+ * consciente, registrada no plano).
+ */
+async function enqueue(track: Track, mode: "next" | "end") {
+  try {
+    const snap = await ipc.playerAddItems({
+      items: [{ ...ipc.toQueueItem(track), origin: "manual", contextId: null }],
+      origin: "manual",
+      mode,
+    });
+    // Aplica o que o serviço devolveu — nunca o que a UI supôs.
+    setQueueEntries(snap?.items ?? []);
+    if (typeof snap?.index === "number") setPb("index", snap.index);
+    showToast(mode === "next" ? "Toca em seguida" : "Adicionada ao fim da fila");
+  } catch (e) {
+    console.error("[mobile] add_items falhou:", e);
+    showToast("Falha ao enfileirar");
+    await syncQueue();
+  }
+}
+
+export const enqueueNext = (t: Track) => enqueue(t, "next");
+export const enqueueEnd = (t: Track) => enqueue(t, "end");
+
 export async function toggle() {
   try {
     if (pb.isPlaying) await ipc.playerPause();

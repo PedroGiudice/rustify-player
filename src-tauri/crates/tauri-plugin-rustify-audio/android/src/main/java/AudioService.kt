@@ -206,9 +206,12 @@ class AudioService : MediaSessionService() {
     private fun adoptCurrent(activePlayer: Player) {
         val trackId = activePlayer.currentMediaItem?.mediaId?.takeIf { it.isNotEmpty() }
         curTrackId = trackId
-        curOrigin = QueueMeta.origin
-        curContextId = QueueMeta.contextId
-        curDurationMs = if (trackId != null) QueueMeta.durationFor(trackId) else 0L
+        // Origem POR ITEM: a faixa enfileirada a mao dentro de uma station e
+        // escolha explicita (peso cheio no v3), nao escuta passiva.
+        val meta = if (trackId != null) QueueMeta.metaFor(trackId) else null
+        curOrigin = meta?.origin ?: QueueMeta.origin
+        curContextId = meta?.contextId ?: QueueMeta.contextId
+        curDurationMs = meta?.durationMs ?: 0L
         val duration = activePlayer.duration
         if (duration != C.TIME_UNSET && duration > 0L) {
             curDurationMs = duration

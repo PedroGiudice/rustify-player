@@ -61,6 +61,9 @@ export interface QueueItem {
   album: string;
   artworkUri: string | null;
   durationMs: number;
+  /** Override de origem POR ITEM; ausente herda a da fila. */
+  origin?: Origin;
+  contextId?: string | null;
 }
 
 /** Item da fila NATIVA, como o serviço a enxerga. `origin`/`contextId`

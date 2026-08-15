@@ -12,6 +12,7 @@ const COMMANDS: &[&str] = &[
     "skip_to_index",
     "get_state",
     "get_queue",
+    "add_items",
     "drain_events",
     "ack_events",
     "register_listener",

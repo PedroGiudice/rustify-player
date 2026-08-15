@@ -71,6 +71,19 @@ export const playerGetState = () => invoke<PlaybackState>(cmd("get_state"));
 /** Fila REAL do serviço. A UI não mantém espelho: esta é a verdade. */
 export const playerGetQueue = () => invoke<QueueSnapshot>(cmd("get_queue"));
 
+/**
+ * Enfileira sem destruir a fila viva. O `mode` é resolvido no Kotlin contra o
+ * índice do próprio player — a UI NUNCA calcula posição de fila, porque a fila
+ * é nativa e avança sozinha (o índice do JS já pode estar velho na chegada).
+ * Devolve o snapshot novo: o store aplica o que voltou, não o que supôs.
+ */
+export const playerAddItems = (args: {
+  items: QueueItem[];
+  origin: Origin;
+  contextId?: string | null;
+  mode: "next" | "end";
+}) => invoke<QueueSnapshot>(cmd("add_items"), args as unknown as Record<string, unknown>);
+
 // ── Eventos (best-effort: perder não perde dado) ───────────────
 
 type Unlisten = () => void;

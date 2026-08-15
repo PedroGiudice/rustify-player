@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the ack_events command without any pre-configured scope."
         },
         {
+          "description": "Enables the add_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-add-items",
+          "markdownDescription": "Enables the add_items command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the add_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-add-items",
+          "markdownDescription": "Denies the add_items command without any pre-configured scope."
+        },
+        {
           "description": "Enables the drain_events command without any pre-configured scope.",
           "type": "string",
           "const": "allow-drain-events",
@@ -463,10 +475,10 @@
           "markdownDescription": "Denies the skip_to_index command without any pre-configured scope."
         },
         {
-          "description": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-register-listener`\n- `allow-remove-listener`",
+          "description": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-add-items`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-register-listener`\n- `allow-remove-listener`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-register-listener`\n- `allow-remove-listener`"
+          "markdownDescription": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-add-items`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-register-listener`\n- `allow-remove-listener`"
         }
       ]
     }

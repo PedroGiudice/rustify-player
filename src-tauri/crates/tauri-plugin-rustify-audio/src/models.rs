@@ -18,6 +18,34 @@ pub struct QueueItem {
     pub artwork_uri: Option<String>,
     #[serde(default)]
     pub duration_ms: i64,
+    /// Override de origem POR ITEM; `None` herda a da fila. Existe para que a
+    /// faixa enfileirada a mao dentro de uma station nao seja registrada como
+    /// escuta passiva no sinal v3.
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub context_id: Option<String>,
+}
+
+/// Onde os itens entram na fila viva. O indice concreto e resolvido no Kotlin
+/// contra o player — o JS nunca calcula posicao de fila (ela avanca sozinha).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AddMode {
+    /// Logo depois da faixa corrente.
+    Next,
+    /// Fim da fila.
+    End,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddItemsRequest {
+    pub items: Vec<QueueItem>,
+    pub origin: String,
+    #[serde(default)]
+    pub context_id: Option<String>,
+    pub mode: AddMode,
 }
 
 /// Substitui a fila inteira do player. `origin`/`context_id` sao carimbados em
@@ -182,6 +210,51 @@ mod tests {
         let snap: QueueSnapshot = serde_json::from_str(r#"{"items": [], "index": -1}"#).unwrap();
         assert!(snap.items.is_empty());
         assert_eq!(snap.index, -1);
+    }
+
+    /// O modo viaja como string minúscula ("next"/"end") — o Kotlin compara
+    /// com `args.mode == "next"`. Um rename aqui viraria "enfileirou no fim
+    /// quando pediu em seguida", que é silencioso.
+    #[test]
+    fn add_mode_serializa_minusculo() {
+        assert_eq!(serde_json::to_string(&AddMode::Next).unwrap(), "\"next\"");
+        assert_eq!(serde_json::to_string(&AddMode::End).unwrap(), "\"end\"");
+        let m: AddMode = serde_json::from_str("\"next\"").unwrap();
+        assert_eq!(m, AddMode::Next);
+    }
+
+    #[test]
+    fn add_items_request_carrega_origem_por_item() {
+        let req = AddItemsRequest {
+            items: vec![QueueItem {
+                track_id: "9".into(),
+                uri: "file:///m/a.opus".into(),
+                title: "a".into(),
+                artist: String::new(),
+                album: String::new(),
+                artwork_uri: None,
+                duration_ms: 1000,
+                origin: Some("manual".into()),
+                context_id: None,
+            }],
+            origin: "manual".into(),
+            context_id: None,
+            mode: AddMode::Next,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"mode\":\"next\""), "{json}");
+        assert!(json.contains("\"origin\":\"manual\""), "{json}");
+        assert!(json.contains("\"contextId\":null"), "{json}");
+    }
+
+    /// Fila montada por set_queue não manda origem por item — o parser precisa
+    /// aceitar a ausência, senão todo caller antigo quebra.
+    #[test]
+    fn queue_item_sem_origem_por_item_continua_valido() {
+        let wire = r#"{"trackId":"1","uri":"file:///a","durationMs":10}"#;
+        let item: QueueItem = serde_json::from_str(wire).unwrap();
+        assert_eq!(item.origin, None);
+        assert_eq!(item.context_id, None);
     }
 
     #[test]

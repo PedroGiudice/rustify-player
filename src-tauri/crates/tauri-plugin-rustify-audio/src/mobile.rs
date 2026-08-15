@@ -100,6 +100,10 @@ impl<R: Runtime> RustifyAudio<R> {
         self.call("getQueue", EmptyArgs {}).await
     }
 
+    pub async fn add_items(&self, request: AddItemsRequest) -> crate::Result<QueueSnapshot> {
+        self.call("addItems", request).await
+    }
+
     pub async fn drain_events(&self, after_seq: i64) -> crate::Result<DrainEventsResponse> {
         self.call("drainEvents", DrainEventsRequest { after_seq })
             .await

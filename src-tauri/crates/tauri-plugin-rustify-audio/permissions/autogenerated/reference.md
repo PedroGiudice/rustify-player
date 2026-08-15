@@ -16,6 +16,7 @@ os commands em permissoes separadas.
 - `allow-skip-to-index`
 - `allow-get-state`
 - `allow-get-queue`
+- `allow-add-items`
 - `allow-drain-events`
 - `allow-ack-events`
 - `allow-register-listener`
@@ -52,6 +53,32 @@ Enables the ack_events command without any pre-configured scope.
 <td>
 
 Denies the ack_events command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-add-items`
+
+</td>
+<td>
+
+Enables the add_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-add-items`
+
+</td>
+<td>
+
+Denies the add_items command without any pre-configured scope.
 
 </td>
 </tr>

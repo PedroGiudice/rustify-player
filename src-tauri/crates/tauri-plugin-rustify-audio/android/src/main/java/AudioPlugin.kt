@@ -38,6 +38,18 @@ class QueueItemArg {
     var album: String = ""
     var artworkUri: String? = null
     var durationMs: Long = 0L
+    /** Override por item; `null` herda a origem da fila. */
+    var origin: String? = null
+    var contextId: String? = null
+}
+
+@InvokeArg
+class AddItemsArgs {
+    var items: Array<QueueItemArg> = emptyArray()
+    var origin: String = "manual"
+    var contextId: String? = null
+    /** `next` = logo depois da faixa corrente; `end` = fim da fila. */
+    var mode: String = "end"
 }
 
 @InvokeArg
@@ -134,16 +146,30 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         invoke.resolve()
     }
 
+    /** Meta por item, com fallback na origem da fila. */
+    private fun metaMap(
+        args: Array<QueueItemArg>,
+        origin: String,
+        contextId: String?,
+    ): HashMap<String, QueueMeta.ItemMeta> {
+        val map = HashMap<String, QueueMeta.ItemMeta>(args.size)
+        for (item in args) {
+            map[item.trackId] = QueueMeta.ItemMeta(
+                item.origin ?: origin,
+                if (item.origin != null) item.contextId else item.contextId ?: contextId,
+                item.durationMs,
+            )
+        }
+        return map
+    }
+
     @Command
     fun setQueue(invoke: Invoke) {
         val args = invoke.parseArgs(SetQueueArgs::class.java)
         val items = args.items.map { buildMediaItem(it) }
-        val durations = HashMap<String, Long>(args.items.size)
-        for (item in args.items) {
-            durations[item.trackId] = item.durationMs
-        }
         val origin = args.origin
         val contextId = args.contextId
+        val metas = metaMap(args.items, origin, contextId)
         val playNow = args.playNow
         val startIndex = if (items.isEmpty()) 0 else args.startIndex.coerceIn(0, items.size - 1)
 
@@ -151,7 +177,7 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
             // O QueueMeta e escrito DENTRO do lambda pra manter a ordem com o
             // setMediaItems: o service le o meta ao adotar a faixa nova, e a
             // faixa velha ja foi congelada nos campos dele.
-            QueueMeta.set(origin, contextId, durations)
+            QueueMeta.replaceAll(origin, contextId, metas)
             if (items.isEmpty()) {
                 c.clearMediaItems()
             } else {
@@ -240,6 +266,40 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
     @Command
     fun getQueue(invoke: Invoke) {
         withController(invoke) { c ->
+            invoke.resolve(queueSnapshotToJs(c))
+        }
+    }
+
+    /**
+     * Enfileira sem destruir a fila viva.
+     *
+     * O indice de insercao e resolvido AQUI, contra o `currentMediaItemIndex`
+     * do proprio player, e nunca vem calculado do JS: a fila e nativa e avanca
+     * sozinha, entao qualquer indice que o JS calcule ja pode estar velho
+     * quando a chamada chega — e a faixa entraria no lugar errado.
+     */
+    @Command
+    fun addItems(invoke: Invoke) {
+        val args = invoke.parseArgs(AddItemsArgs::class.java)
+        if (args.items.isEmpty()) {
+            withController(invoke) { c -> invoke.resolve(queueSnapshotToJs(c)) }
+            return
+        }
+        val items = args.items.map { buildMediaItem(it) }
+        val metas = metaMap(args.items, args.origin, args.contextId)
+        val next = args.mode == "next"
+
+        withController(invoke) { c ->
+            QueueMeta.putAll(metas)
+            val count = c.mediaItemCount
+            if (count == 0) {
+                c.setMediaItems(items, 0, 0L)
+                c.prepare()
+            } else if (next) {
+                c.addMediaItems((c.currentMediaItemIndex + 1).coerceIn(0, count), items)
+            } else {
+                c.addMediaItems(items)
+            }
             invoke.resolve(queueSnapshotToJs(c))
         }
     }

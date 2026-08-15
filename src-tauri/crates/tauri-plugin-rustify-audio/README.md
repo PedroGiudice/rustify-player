@@ -44,6 +44,7 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 | `skip_to_index` | `index` | `null` |
 | `get_state` | — | `PlaybackState` |
 | `get_queue` | — | `QueueSnapshot` |
+| `add_items` | `items[]`, `origin`, `contextId?`, `mode` | `QueueSnapshot` |
 | `drain_events` | `afterSeq?` | `{ events: PlayEvent[], lastSeq }` |
 | `ack_events` | `uptoSeq` | `null` |
 
@@ -53,9 +54,19 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 positionMs, durationMs, isPlaying }`.
 
 `QueueSnapshot`: `{ items: QueueEntry[], index }` — `index` `-1` com fila vazia.
-`QueueEntry`: `{ trackId, origin, contextId, durationMs }`. A origem é **por
-item**: hoje o Kotlin devolve o escalar da fila para todos, mas o wire já nasce
-per-item para não mudar quando o enfileirar avulso chegar.
+`QueueEntry`: `{ trackId, origin, contextId, durationMs }`.
+
+**Origem é por ITEM.** `items[i]` aceita `origin`/`contextId` opcionais que
+sobrescrevem os da fila. Enquanto `set_queue` era o único caminho a fila era
+homogênea e um escalar bastava; com `add_items` ela fica mista, e uma faixa
+posta à mão dentro de uma station é escolha explícita do usuário (peso cheio no
+sinal v3), não escuta passiva. Guardar a origem por fila faria o journal mentir
+para o motor, silenciosamente.
+
+`add_items` recebe `mode: "next" | "end"` — **nunca um índice**. A posição
+concreta é resolvida no Kotlin contra o `currentMediaItemIndex` do player: a
+fila é nativa e avança sozinha, então qualquer índice calculado no JS pode
+estar velho quando a chamada chega.
 
 `next`/`previous` devolvem `moved: false` quando não há para onde ir (fim ou
 começo da fila) — sem isso o botão vira um no-op mudo na interface.

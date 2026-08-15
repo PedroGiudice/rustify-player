@@ -15,7 +15,7 @@ import { closeSheet, closeSheetThen, openSheet, sheet } from "../sheet";
 import type { SheetSpec } from "../sheet";
 import { navigate } from "../nav";
 import { albumKey, fmtDuration, shuffled } from "../derive";
-import { playList, playSimilar, playTrackFrom } from "../store";
+import { enqueueEnd, enqueueNext, playList, playSimilar, playTrackFrom } from "../store";
 import type { Track } from "../types";
 
 type IconName = keyof typeof Icon;
@@ -50,6 +50,19 @@ function trackActions(spec: Extract<SheetSpec, { kind: "track" }>): Action[] {
       },
     },
   ];
+  acts.push(
+    {
+      label: "Tocar em seguida",
+      icon: "next",
+      hint: "sem interromper o que toca",
+      run: () => void enqueueNext(t),
+    },
+    {
+      label: "Adicionar ao fim da fila",
+      icon: "queue",
+      run: () => void enqueueEnd(t),
+    },
+  );
   if (ctx && ctx.index < ctx.list.length - 1) {
     acts.push({
       label: "Tocar a partir daqui",

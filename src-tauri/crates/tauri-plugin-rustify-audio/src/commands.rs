@@ -86,6 +86,19 @@ pub(crate) async fn get_queue<R: Runtime>(app: AppHandle<R>) -> crate::Result<Qu
 }
 
 #[tauri::command]
+pub(crate) async fn add_items<R: Runtime>(
+    app: AppHandle<R>,
+    items: Vec<QueueItem>,
+    origin: String,
+    context_id: Option<String>,
+    mode: AddMode,
+) -> crate::Result<QueueSnapshot> {
+    audio(&app)
+        .add_items(AddItemsRequest { items, origin, context_id, mode })
+        .await
+}
+
+#[tauri::command]
 pub(crate) async fn drain_events<R: Runtime>(
     app: AppHandle<R>,
     after_seq: Option<i64>,
