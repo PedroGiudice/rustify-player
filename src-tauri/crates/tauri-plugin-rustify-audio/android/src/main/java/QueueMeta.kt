@@ -32,4 +32,15 @@ object QueueMeta {
     }
 
     fun durationFor(trackId: String): Long = durations[trackId] ?: 0L
+
+    /** Metadados de UM item da fila. */
+    data class ItemMeta(val origin: String, val contextId: String?, val durationMs: Long)
+
+    /**
+     * Meta da faixa para o snapshot da fila. Hoje devolve o escalar da fila
+     * corrente para todos os itens — a fila e homogenea porque `setQueue` e o
+     * unico caminho de montagem. Quando o enfileirar por item chegar, so esta
+     * funcao muda: o wire de `get_queue` ja e per-item.
+     */
+    fun metaFor(trackId: String): ItemMeta = ItemMeta(origin, contextId, durationFor(trackId))
 }

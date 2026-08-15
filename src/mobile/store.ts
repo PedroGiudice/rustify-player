@@ -1,11 +1,14 @@
 /* ============================================================
    store.ts — estado da UI mobile.
 
-   Princípio do v0: a fila e o avanço automático vivem no Kotlin.
-   Este store REFLETE o estado do serviço (eventos do plugin +
-   get_state) e mantém um ESPELHO da fila só para desenhar (o
-   plugin não expõe leitura da fila). Quem manda é sempre o
-   serviço; o espelho nunca decide o que tocar.
+   Princípio: a fila e o avanço automático vivem no Kotlin. Este
+   store REFLETE o estado do serviço (eventos do plugin + get_state
+   + get_queue). Quem manda é sempre o serviço.
+
+   A fila é LIDA do serviço (`get_queue`), não espelhada: o espelho
+   em localStorage que existia aqui mentia sempre que o WebView
+   reiniciava com o serviço tocando — a tela chegava a mostrar
+   "Fila indisponível" com música saindo do alto-falante.
 
    Não há log de escuta aqui: o journal do service é a verdade.
    ============================================================ */
@@ -14,9 +17,15 @@ import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
-import type { Folder, Origin, PlaybackState, StationMeta, Track } from "./types";
-
-const QUEUE_KEY = "kv-mobile-queue";
+import { remainingMs, resolveQueue } from "./queueModel";
+import type {
+  Folder,
+  Origin,
+  PlaybackState,
+  QueueEntry,
+  StationMeta,
+  Track,
+} from "./types";
 
 // ── Biblioteca ────────────────────────────────────────────────
 
@@ -66,11 +75,26 @@ const [pb, setPb] = createStore<PlaybackState>({
   isPlaying: false,
 });
 
-const [queue, setQueue] = createSignal<Track[]>([]);
-const [queueOrigin, setQueueOrigin] = createSignal<Origin>("manual");
+/** Fila do SERVIÇO. Otimista no ato do play, corrigida pelo snapshot. */
+const [queueEntries, setQueueEntries] = createSignal<QueueEntry[]>([]);
 const [resolved, setResolved] = createSignal<Track | null>(null);
 
-export { pb, queue, queueOrigin };
+/** Fila resolvida contra o acervo. `null` = faixa que o manifest não
+ *  conhece — a posição é preservada para os índices baterem com o serviço. */
+export const queue = createMemo(() => resolveQueue({ items: queueEntries(), index: pb.index }, byId()).items);
+
+/** Origem da faixa CORRENTE (o wire é per-item). */
+export const queueOrigin = createMemo<Origin>(() => {
+  const e = queueEntries()[pb.index];
+  return (e?.origin as Origin) ?? "manual";
+});
+
+/** Tempo restante da fila (faixa corrente + próximas). */
+export const queueRemainingMs = createMemo(() =>
+  remainingMs(queueEntries(), pb.index, pb.positionMs),
+);
+
+export { pb, queueEntries };
 
 export const current = createMemo<Track | null>(() => {
   const q = queue();
@@ -78,7 +102,7 @@ export const current = createMemo<Track | null>(() => {
   const at = i >= 0 && i < q.length ? q[i] : null;
   if (at && (!pb.trackId || at.id === pb.trackId)) return at;
   if (pb.trackId) {
-    const inQueue = q.find((t) => t.id === pb.trackId);
+    const inQueue = q.find((t) => t != null && t.id === pb.trackId);
     if (inQueue) return inQueue;
     const inLib = byId().get(pb.trackId);
     if (inLib) return inLib;
@@ -99,33 +123,22 @@ export function showToast(msg: string) {
   toastTimer = setTimeout(() => setToast(null), 1600);
 }
 
-// ── Espelho da fila (persistido) ──────────────────────────────
+// ── Leitura da fila real ──────────────────────────────────────
 
-function persistQueue(list: Track[], origin: Origin) {
+/**
+ * Lê a fila do serviço. Chamada no boot, ao voltar do background e a
+ * cada troca de faixa — os três momentos em que o que a UI acha pode
+ * ter divergido do que o ExoPlayer está tocando.
+ */
+export async function syncQueue() {
   try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify({ ids: list.map((t) => t.id), origin }));
-  } catch {
-    /* sem persistência é degradação aceitável */
-  }
-}
-
-function rehydrateQueue() {
-  try {
-    const raw = localStorage.getItem(QUEUE_KEY);
-    if (!raw) return;
-    const saved = JSON.parse(raw) as { ids?: unknown; origin?: unknown };
-    if (!Array.isArray(saved.ids)) return;
-    const map = byId();
-    const list = saved.ids
-      .filter((id): id is string => typeof id === "string")
-      .map((id) => map.get(id))
-      .filter((t): t is Track => t != null);
-    if (list.length) {
-      setQueue(list);
-      setQueueOrigin((saved.origin as Origin) ?? "manual");
-    }
-  } catch {
-    /* espelho corrompido: o serviço segue sendo a verdade */
+    const snap = await ipc.playerGetQueue();
+    setQueueEntries(snap?.items ?? []);
+    if (typeof snap?.index === "number") setPb("index", snap.index);
+  } catch (e) {
+    // Fila indisponível não zera o que já está na tela: melhor mostrar o
+    // último estado conhecido do que esvaziar a fila por um erro de IPC.
+    console.warn("[mobile] get_queue falhou:", e);
   }
 }
 
@@ -189,10 +202,16 @@ export async function playList(
     return;
   }
   const start = Math.max(0, Math.min(startIndex, list.length - 1));
-  setQueue(list);
-  setQueueOrigin(origin);
-  persistQueue(list, origin);
-  // Otimista: o serviço confirma pelos eventos em seguida.
+  // Otimista: a tela responde no ato. O snapshot do serviço confirma logo
+  // depois — e é ele quem manda se divergirem.
+  setQueueEntries(
+    list.map((t) => ({
+      trackId: t.id,
+      origin,
+      contextId,
+      durationMs: t.duration_ms,
+    })),
+  );
   setPb({ index: start, trackId: list[start].id, positionMs: 0, durationMs: list[start].duration_ms, isPlaying: true });
   try {
     await ipc.playerSetQueue({
@@ -202,10 +221,12 @@ export async function playList(
       contextId,
       playNow: true,
     });
+    await syncQueue();
   } catch (e) {
     console.error("[mobile] set_queue falhou:", e);
     showToast("Falha ao iniciar a reprodução");
     await syncState();
+    await syncQueue();
   }
 }
 
@@ -261,9 +282,13 @@ export async function toggle() {
 
 export async function next() {
   try {
-    await ipc.playerNext();
+    const r = await ipc.playerNext();
+    // Fim da fila: hoje o serviço apenas para. Enquanto o autoplay não
+    // existe (epic B), pelo menos o gesto deixa de ser um no-op mudo.
+    if (r && r.moved === false) showToast("Fim da fila");
   } catch (e) {
     console.warn("[mobile] next falhou:", e);
+    showToast("Falha ao avançar");
   }
 }
 
@@ -368,18 +393,34 @@ export async function bootStore() {
     setLibReady(true);
   }
 
-  rehydrateQueue();
   await syncState();
+  // A fila vem do serviço — inclusive quando o WebView reiniciou sozinho
+  // e o playback nunca parou.
+  await bootCall("syncQueue", syncQueue, 4000).catch((e) =>
+    console.warn("[mobile] carga da fila falhou:", e),
+  );
   void loadIntel();
 
   ipc.onStateChanged(applyState).catch((e) => console.warn("[mobile] listener state_changed:", e));
-  ipc.onTrackChanged(applyState).catch((e) => console.warn("[mobile] listener track_changed:", e));
+  ipc
+    .onTrackChanged((s) => {
+      applyState(s);
+      // A fila pode ter mudado junto com a faixa (enfileirar, autoplay).
+      void syncQueue();
+    })
+    .catch((e) => console.warn("[mobile] listener track_changed:", e));
   ipc.onPosition(applyState).catch((e) => console.warn("[mobile] listener position:", e));
 
   // O WebView do Android é suspenso em background: ao voltar, o estado
   // pode ter andado (a fila avançou sozinha). Re-sincroniza.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) void syncState();
+    if (!document.hidden) {
+      void syncState();
+      void syncQueue();
+    }
   });
-  window.addEventListener("focus", () => void syncState());
+  window.addEventListener("focus", () => {
+    void syncState();
+    void syncQueue();
+  });
 }

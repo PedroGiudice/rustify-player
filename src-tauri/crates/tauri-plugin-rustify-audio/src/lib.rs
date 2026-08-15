@@ -58,6 +58,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::previous,
             commands::skip_to_index,
             commands::get_state,
+            commands::get_queue,
             commands::drain_events,
             commands::ack_events,
             commands::register_listener,

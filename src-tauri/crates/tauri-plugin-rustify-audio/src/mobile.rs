@@ -79,12 +79,12 @@ impl<R: Runtime> RustifyAudio<R> {
         self.call_unit("seekTo", SeekToRequest { position_ms }).await
     }
 
-    pub async fn next(&self) -> crate::Result<()> {
-        self.call_unit("next", EmptyArgs {}).await
+    pub async fn next(&self) -> crate::Result<StepResult> {
+        self.call("next", EmptyArgs {}).await
     }
 
-    pub async fn previous(&self) -> crate::Result<()> {
-        self.call_unit("previous", EmptyArgs {}).await
+    pub async fn previous(&self) -> crate::Result<StepResult> {
+        self.call("previous", EmptyArgs {}).await
     }
 
     pub async fn skip_to_index(&self, index: u32) -> crate::Result<()> {
@@ -94,6 +94,10 @@ impl<R: Runtime> RustifyAudio<R> {
 
     pub async fn get_state(&self) -> crate::Result<PlaybackState> {
         self.call("getState", EmptyArgs {}).await
+    }
+
+    pub async fn get_queue(&self) -> crate::Result<QueueSnapshot> {
+        self.call("getQueue", EmptyArgs {}).await
     }
 
     pub async fn drain_events(&self, after_seq: i64) -> crate::Result<DrainEventsResponse> {

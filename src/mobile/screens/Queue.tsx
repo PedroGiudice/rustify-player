@@ -1,35 +1,80 @@
 /* ============================================================
-   Queue.tsx — porte de S.queue do handoff.
+   Queue.tsx — a fila REAL do serviço.
 
-   A fila REAL vive no Kotlin e o plugin não expõe leitura dela: o
-   que esta tela mostra é o espelho do último set_queue (persistido
-   em localStorage para sobreviver ao WebView dormir), com o índice
-   corrente vindo do serviço. Tocar uma linha chama skip_to_index —
-   quem move a fila continua sendo o serviço.
+   A fila vive no ExoPlayer e é lida por `get_queue` (não há mais
+   espelho em localStorage). Por isso a tela sobrevive ao WebView
+   reiniciar com o serviço tocando — o estado "Fila indisponível"
+   deixou de existir.
 
-   Sem reordenar: não há command para isso (o handle de arrastar do
-   protótipo saiu).
+   Tocar uma linha chama skip_to_index; quem move a fila continua
+   sendo o serviço.
+
+   Sem reordenar: não há command para isso (epic A, fase 3).
    ============================================================ */
 
 import { For, Show } from "solid-js";
 import { TrackRow } from "../components/TrackRow";
 import { Empty, SecHead, ViewHead } from "../components/ui";
-import { current, pb, queue, queueOrigin, skipToIndex } from "../store";
+import {
+  current,
+  pb,
+  queue,
+  queueOrigin,
+  queueRemainingMs,
+  skipToIndex,
+} from "../store";
 import { originLabel } from "../derive";
+import { fmtRemaining, splitQueue } from "../queueModel";
+
+/** Faixa que está na fila do serviço mas não existe no acervo local
+ *  (sync parcial). Ocupa a posição para os índices continuarem certos. */
+function MissingRow(props: { index: number }) {
+  return (
+    <div class="row" style={{ opacity: 0.5 }}>
+      <div class="row__main">
+        <div class="row__title">Faixa fora do acervo</div>
+        <div class="row__sub">posição {props.index + 1} · não está neste aparelho</div>
+      </div>
+    </div>
+  );
+}
 
 export function Queue() {
-  const upcoming = () => queue().slice(Math.max(0, pb.index + 1));
+  const split = () => splitQueue(queue(), pb.index);
+  const total = () => queue().length;
+
+  const sub = () => {
+    if (!total()) return undefined;
+    const up = split().upcoming.length;
+    const rest = fmtRemaining(queueRemainingMs());
+    return `${up} a seguir · ${rest} restantes · origem ${originLabel(queueOrigin())}`;
+  };
+
   return (
     <div class="screen">
-      <ViewHead
-        title="Queue"
-        sub={queue().length ? `${queue().length} na fila · origem ${originLabel(queueOrigin())}` : undefined}
-      />
+      <ViewHead title="Queue" sub={sub()} />
 
       <Show
-        when={queue().length || current()}
+        when={total() || current()}
         fallback={<Empty title="Fila vazia" hint="Toque uma faixa, pasta ou álbum para montar a fila." />}
       >
+        <Show when={split().past.length}>
+          <div class="sec" style={{ padding: 0 }}>
+            <div style={{ padding: "0 20px" }}>
+              <SecHead label="Já tocadas" />
+            </div>
+            <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.62 }}>
+              <For each={split().past}>
+                {(t, i) => (
+                  <Show when={t} fallback={<MissingRow index={i()} />}>
+                    {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(i())} />}
+                  </Show>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
         <Show when={current()}>
           {(t) => (
             <div class="sec">
@@ -43,31 +88,21 @@ export function Queue() {
           )}
         </Show>
 
-        <Show
-          when={upcoming().length}
-          fallback={
-            <Show when={queue().length === 0}>
-              <div class="sec">
-                <Empty
-                  title="Fila indisponível"
-                  hint="O app reiniciou e o serviço seguiu tocando: o conteúdo da fila vive no player nativo e não é legível pela interface."
-                />
-              </div>
-            </Show>
-          }
-        >
+        <Show when={split().upcoming.length}>
           <div class="sec" style={{ padding: 0 }}>
             <div style={{ padding: "0 20px" }}>
               <SecHead label="A seguir" />
             </div>
             <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
-              <For each={upcoming()}>
-                {(t, i) => (
-                  <TrackRow
-                    track={t}
-                    onPlay={() => void skipToIndex(pb.index + 1 + i())}
-                  />
-                )}
+              <For each={split().upcoming}>
+                {(t, i) => {
+                  const at = () => Math.max(0, pb.index) + 1 + i();
+                  return (
+                    <Show when={t} fallback={<MissingRow index={at()} />}>
+                      {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(at())} />}
+                    </Show>
+                  );
+                }}
               </For>
             </div>
           </div>

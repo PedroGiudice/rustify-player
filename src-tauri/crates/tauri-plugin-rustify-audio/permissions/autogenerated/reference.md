@@ -15,6 +15,7 @@ os commands em permissoes separadas.
 - `allow-previous`
 - `allow-skip-to-index`
 - `allow-get-state`
+- `allow-get-queue`
 - `allow-drain-events`
 - `allow-ack-events`
 - `allow-register-listener`
@@ -77,6 +78,32 @@ Enables the drain_events command without any pre-configured scope.
 <td>
 
 Denies the drain_events command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-get-queue`
+
+</td>
+<td>
+
+Enables the get_queue command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-get-queue`
+
+</td>
+<td>
+
+Denies the get_queue command without any pre-configured scope.
 
 </td>
 </tr>

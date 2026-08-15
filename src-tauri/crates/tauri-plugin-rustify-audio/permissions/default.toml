@@ -16,6 +16,7 @@ permissions = [
   "allow-previous",
   "allow-skip-to-index",
   "allow-get-state",
+  "allow-get-queue",
   "allow-drain-events",
   "allow-ack-events",
   "allow-register-listener",

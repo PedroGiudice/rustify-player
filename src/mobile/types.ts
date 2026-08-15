@@ -63,6 +63,27 @@ export interface QueueItem {
   durationMs: number;
 }
 
+/** Item da fila NATIVA, como o serviço a enxerga. `origin`/`contextId`
+ *  são por ITEM: uma faixa enfileirada à mão dentro de uma station
+ *  carrega a própria origem e o journal registra a verdade. */
+export interface QueueEntry {
+  trackId: string;
+  origin: string;
+  contextId: string | null;
+  durationMs: number;
+}
+
+/** Resposta de `get_queue`. `index` -1 = fila vazia/nada tocando. */
+export interface QueueSnapshot {
+  items: QueueEntry[];
+  index: number;
+}
+
+/** Resposta de `next`/`previous`: `moved: false` = a fila acabou. */
+export interface StepResult {
+  moved: boolean;
+}
+
 export interface PlaybackState {
   status: "idle" | "buffering" | "ready" | "ended";
   index: number;

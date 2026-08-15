@@ -11,7 +11,17 @@
    ============================================================ */
 
 import { addPluginListener, convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Folder, LyricLine, Origin, PlaybackState, QueueItem, StationMeta, Track } from "./types";
+import type {
+  Folder,
+  LyricLine,
+  Origin,
+  PlaybackState,
+  QueueItem,
+  QueueSnapshot,
+  StationMeta,
+  StepResult,
+  Track,
+} from "./types";
 
 const PLUGIN = "rustify-audio";
 const cmd = (name: string) => `plugin:${PLUGIN}|${name}`;
@@ -52,11 +62,14 @@ export const playerSetQueue = (args: {
 
 export const playerPlay = () => invoke<void>(cmd("play"));
 export const playerPause = () => invoke<void>(cmd("pause"));
-export const playerNext = () => invoke<void>(cmd("next"));
-export const playerPrevious = () => invoke<void>(cmd("previous"));
+/** `moved: false` = a fila acabou (ou começou) — o gesto não teve efeito. */
+export const playerNext = () => invoke<StepResult>(cmd("next"));
+export const playerPrevious = () => invoke<StepResult>(cmd("previous"));
 export const playerSeekTo = (positionMs: number) => invoke<void>(cmd("seek_to"), { positionMs });
 export const playerSkipToIndex = (index: number) => invoke<void>(cmd("skip_to_index"), { index });
 export const playerGetState = () => invoke<PlaybackState>(cmd("get_state"));
+/** Fila REAL do serviço. A UI não mantém espelho: esta é a verdade. */
+export const playerGetQueue = () => invoke<QueueSnapshot>(cmd("get_queue"));
 
 // ── Eventos (best-effort: perder não perde dado) ───────────────
 

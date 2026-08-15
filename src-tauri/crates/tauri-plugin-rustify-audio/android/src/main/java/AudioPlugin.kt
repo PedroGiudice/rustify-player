@@ -20,6 +20,7 @@ import app.tauri.annotation.Permission
 import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import com.google.common.util.concurrent.ListenableFuture
@@ -84,7 +85,16 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
-    private val pending = ArrayDeque<(MediaController) -> Unit>()
+
+    /**
+     * Operacao esperando a conexao do MediaController. Guarda o [Invoke] junto
+     * da closure: sem isso, toda operacao descartada (falha de conexao ou
+     * Activity destruida) deixaria a promise do JS pendurada PARA SEMPRE — que
+     * e exatamente a race do WebView frio que pendurou o boot em 14/08.
+     */
+    private class PendingOp(val invoke: Invoke?, val op: (MediaController) -> Unit)
+
+    private val pending = ArrayDeque<PendingOp>()
 
     override fun load(webView: WebView) {
         PlaybackBus.sink = this
@@ -137,7 +147,7 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         val playNow = args.playNow
         val startIndex = if (items.isEmpty()) 0 else args.startIndex.coerceIn(0, items.size - 1)
 
-        withController { c ->
+        withController(invoke) { c ->
             // O QueueMeta e escrito DENTRO do lambda pra manter a ordem com o
             // setMediaItems: o service le o meta ao adotar a faixa nova, e a
             // faixa velha ja foi congelada nos campos dele.
@@ -149,61 +159,89 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
                 c.prepare()
                 if (playNow) c.play()
             }
+            invoke.resolve()
         }
-        invoke.resolve()
     }
 
     @Command
     fun play(invoke: Invoke) {
-        withController { it.play() }
-        invoke.resolve()
+        withController(invoke) {
+            it.play()
+            invoke.resolve()
+        }
     }
 
     @Command
     fun pause(invoke: Invoke) {
-        withController { it.pause() }
-        invoke.resolve()
+        withController(invoke) {
+            it.pause()
+            invoke.resolve()
+        }
     }
 
     @Command
     fun seekTo(invoke: Invoke) {
         val args = invoke.parseArgs(SeekToArgs::class.java)
         val position = args.positionMs.coerceAtLeast(0L)
-        withController { it.seekTo(position) }
-        invoke.resolve()
+        withController(invoke) {
+            it.seekTo(position)
+            invoke.resolve()
+        }
     }
 
     @Command
     fun next(invoke: Invoke) {
-        withController { c ->
-            if (c.hasNextMediaItem()) c.seekToNextMediaItem()
+        withController(invoke) { c ->
+            val moved = c.hasNextMediaItem()
+            if (moved) c.seekToNextMediaItem()
+            // `moved=false` diz ao JS que a fila acabou — sem isso o botao e um
+            // no-op mudo (o desktop, no mesmo gesto, cai no autoplay).
+            val payload = JSObject()
+            payload.put("moved", moved)
+            invoke.resolve(payload)
         }
-        invoke.resolve()
     }
 
     @Command
     fun previous(invoke: Invoke) {
         // "previous" e sempre faixa anterior; sem o comportamento de reiniciar a
         // atual quando ja passou de N segundos (o journal veria isso como nada).
-        withController { c ->
-            if (c.hasPreviousMediaItem()) c.seekToPreviousMediaItem() else c.seekTo(0L)
+        withController(invoke) { c ->
+            val moved = c.hasPreviousMediaItem()
+            if (moved) c.seekToPreviousMediaItem() else c.seekTo(0L)
+            val payload = JSObject()
+            payload.put("moved", moved)
+            invoke.resolve(payload)
         }
-        invoke.resolve()
     }
 
     @Command
     fun skipToIndex(invoke: Invoke) {
         val args = invoke.parseArgs(SkipToIndexArgs::class.java)
-        withController { c ->
+        withController(invoke) { c ->
             val count = c.mediaItemCount
             if (count > 0) c.seekTo(args.index.coerceIn(0, count - 1), 0L)
+            invoke.resolve()
         }
-        invoke.resolve()
     }
 
     @Command
     fun getState(invoke: Invoke) {
-        invoke.resolve(snapshotToJs(snapshotOf(controller)))
+        withController(invoke) { c ->
+            invoke.resolve(snapshotToJs(snapshotOf(c)))
+        }
+    }
+
+    /**
+     * Snapshot da fila NATIVA. E a unica leitura da verdade: antes disto a UI
+     * mantinha um espelho em localStorage que mentia sempre que o WebView
+     * reiniciava com o servico tocando.
+     */
+    @Command
+    fun getQueue(invoke: Invoke) {
+        withController(invoke) { c ->
+            invoke.resolve(queueSnapshotToJs(c))
+        }
     }
 
     @Command
@@ -258,25 +296,52 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
                     val connected = future.get()
                     controller = connected
                     while (pending.isNotEmpty()) {
-                        pending.removeFirst().invoke(connected)
+                        run(pending.removeFirst(), connected)
                     }
                 } catch (e: Exception) {
                     Logger.error("rustify-audio: falha conectando ao AudioService", e)
                     controllerFuture = null
-                    pending.clear()
+                    failPending("conexao com o AudioService falhou")
                 }
             },
             ContextCompat.getMainExecutor(activity)
         )
     }
 
-    private fun withController(op: (MediaController) -> Unit) {
+    /**
+     * Executa a operacao. Excecao dentro do lambda tambem rejeita o invoke: um
+     * command que estoura no Media3 nao pode virar promise pendurada no JS.
+     */
+    private fun run(pendingOp: PendingOp, c: MediaController) {
+        try {
+            pendingOp.op(c)
+        } catch (e: Exception) {
+            Logger.error("rustify-audio: operacao falhou", e)
+            pendingOp.invoke?.reject(e.message ?: "operacao de playback falhou")
+        }
+    }
+
+    private fun failPending(reason: String) {
+        while (pending.isNotEmpty()) {
+            pending.removeFirst().invoke?.reject(reason)
+        }
+    }
+
+    /**
+     * Roda [op] com o controller conectado. Passar o [invoke] e obrigatorio para
+     * todo command que responde ao JS — e a closure que resolve, dentro do
+     * lambda, para que a resposta reflita o que de fato aconteceu (antes desta
+     * mudanca os commands resolviam ANTES de tocar o player e mentiam em caso
+     * de falha).
+     */
+    private fun withController(invoke: Invoke?, op: (MediaController) -> Unit) {
+        val pendingOp = PendingOp(invoke, op)
         val connected = controller
         if (connected != null) {
-            op(connected)
+            run(pendingOp, connected)
             return
         }
-        pending.addLast(op)
+        pending.addLast(pendingOp)
         ensureController()
     }
 
@@ -285,7 +350,9 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         controller = null
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
-        pending.clear()
+        // Activity destruida com operacoes na fila (caso comum: app tirado dos
+        // recentes com o servico tocando).
+        failPending("controller liberado")
     }
 
     private fun buildMediaItem(item: QueueItemArg): MediaItem {
@@ -308,6 +375,32 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
             .setUri(item.uri)
             .setMediaMetadata(metadata.build())
             .build()
+    }
+
+    /**
+     * Fila do player -> wire do contrato. `trackId` sai como String SEMPRE (os
+     * ids do acervo sao u64 hash-based e passam de 2^53). A origem vem do
+     * [QueueMeta] por ITEM: hoje ainda e o escalar da fila, mas o wire ja nasce
+     * per-item para nao mudar quando o enfileirar por item chegar.
+     */
+    private fun queueSnapshotToJs(c: MediaController): JSObject {
+        val items = JSArray()
+        val count = c.mediaItemCount
+        for (i in 0 until count) {
+            val item = c.getMediaItemAt(i)
+            val trackId = item.mediaId
+            val meta = QueueMeta.metaFor(trackId)
+            val entry = JSObject()
+            entry.put("trackId", trackId)
+            entry.put("origin", meta.origin)
+            entry.put("contextId", meta.contextId ?: JSONObject.NULL)
+            entry.put("durationMs", meta.durationMs)
+            items.put(entry)
+        }
+        val obj = JSObject()
+        obj.put("items", items)
+        obj.put("index", if (count == 0) -1 else c.currentMediaItemIndex)
+        return obj
     }
 
     private fun snapshotToJs(snapshot: PlaybackSnapshot): JSObject {

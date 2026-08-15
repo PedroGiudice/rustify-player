@@ -58,12 +58,12 @@ pub(crate) async fn seek_to<R: Runtime>(
 }
 
 #[tauri::command]
-pub(crate) async fn next<R: Runtime>(app: AppHandle<R>) -> crate::Result<()> {
+pub(crate) async fn next<R: Runtime>(app: AppHandle<R>) -> crate::Result<StepResult> {
     audio(&app).next().await
 }
 
 #[tauri::command]
-pub(crate) async fn previous<R: Runtime>(app: AppHandle<R>) -> crate::Result<()> {
+pub(crate) async fn previous<R: Runtime>(app: AppHandle<R>) -> crate::Result<StepResult> {
     audio(&app).previous().await
 }
 
@@ -78,6 +78,11 @@ pub(crate) async fn skip_to_index<R: Runtime>(
 #[tauri::command]
 pub(crate) async fn get_state<R: Runtime>(app: AppHandle<R>) -> crate::Result<PlaybackState> {
     audio(&app).get_state().await
+}
+
+#[tauri::command]
+pub(crate) async fn get_queue<R: Runtime>(app: AppHandle<R>) -> crate::Result<QueueSnapshot> {
+    audio(&app).get_queue().await
 }
 
 #[tauri::command]

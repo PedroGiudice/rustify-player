@@ -14,7 +14,7 @@ import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
 import { Empty, LazyList, SecHead, ViewHead } from "../components/ui";
 import { navigate } from "../nav";
-import { albums, artists, folders, libReady, playTrackFrom, tracks } from "../store";
+import { albums, artists, folders, libReady, playTrackFrom, queue, tracks } from "../store";
 import { fmtCount } from "../derive";
 
 type Facet = "folders" | "albums" | "artists" | "tracks";
@@ -121,6 +121,9 @@ export function Library() {
             <button class="rowitem" style={{ "padding-left": 0, "padding-right": 0 }} onClick={() => navigate("/queue")}>
               <Icon.queue class="lead" />
               <div class="rt">Fila</div>
+              <Show when={queue().length}>
+                <div class="rv">{queue().length}</div>
+              </Show>
               <Icon.chev />
             </button>
           </div>

@@ -38,10 +38,12 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 |---|---|---|
 | `initialize` | — | `null` (pede POST_NOTIFICATIONS em API 33+) |
 | `set_queue` | `items[]`, `startIndex?`, `origin`, `contextId?`, `playNow?` | `null` |
-| `play` / `pause` / `next` / `previous` | — | `null` |
+| `play` / `pause` | — | `null` |
+| `next` / `previous` | — | `{ moved: bool }` |
 | `seek_to` | `positionMs` | `null` |
 | `skip_to_index` | `index` | `null` |
 | `get_state` | — | `PlaybackState` |
+| `get_queue` | — | `QueueSnapshot` |
 | `drain_events` | `afterSeq?` | `{ events: PlayEvent[], lastSeq }` |
 | `ack_events` | `uptoSeq` | `null` |
 
@@ -49,6 +51,23 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 
 `PlaybackState`: `{ status: 'idle'|'buffering'|'ready'|'ended', index, trackId,
 positionMs, durationMs, isPlaying }`.
+
+`QueueSnapshot`: `{ items: QueueEntry[], index }` — `index` `-1` com fila vazia.
+`QueueEntry`: `{ trackId, origin, contextId, durationMs }`. A origem é **por
+item**: hoje o Kotlin devolve o escalar da fila para todos, mas o wire já nasce
+per-item para não mudar quando o enfileirar avulso chegar.
+
+`next`/`previous` devolvem `moved: false` quando não há para onde ir (fim ou
+começo da fila) — sem isso o botão vira um no-op mudo na interface.
+
+### Resolução dos commands
+
+Todo command resolve **dentro** do lambda do `MediaController`, depois de a
+operação acontecer de fato. Operações que chegam antes da conexão ficam na fila
+`pending` **com o `Invoke` junto**: se a conexão falhar ou a Activity for
+destruída (app tirado dos recentes com o serviço tocando), elas são
+**rejeitadas** — nunca descartadas. Descartar deixava a promise do JS pendurada
+para sempre, que é a race que pendurou o boot do S24 em 14/08.
 
 `PlayEvent` (chaves **snake_case**, espelhando o payload do desktop):
 `{ seq, uuid, event_type: 'track_ended'|'track_skipped', track_id, origin,

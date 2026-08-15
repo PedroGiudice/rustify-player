@@ -44,11 +44,11 @@ impl<R: Runtime> RustifyAudio<R> {
         Err(Error::UnsupportedPlatform)
     }
 
-    pub async fn next(&self) -> crate::Result<()> {
+    pub async fn next(&self) -> crate::Result<StepResult> {
         Err(Error::UnsupportedPlatform)
     }
 
-    pub async fn previous(&self) -> crate::Result<()> {
+    pub async fn previous(&self) -> crate::Result<StepResult> {
         Err(Error::UnsupportedPlatform)
     }
 
@@ -57,6 +57,10 @@ impl<R: Runtime> RustifyAudio<R> {
     }
 
     pub async fn get_state(&self) -> crate::Result<PlaybackState> {
+        Err(Error::UnsupportedPlatform)
+    }
+
+    pub async fn get_queue(&self) -> crate::Result<QueueSnapshot> {
         Err(Error::UnsupportedPlatform)
     }
 

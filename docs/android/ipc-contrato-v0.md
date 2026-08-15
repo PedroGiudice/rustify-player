@@ -79,12 +79,26 @@ await invoke('plugin:rustify-audio|set_queue', {
   playNow: true,
 })
 
-await invoke('plugin:rustify-audio|play')          // e pause/next/previous
+await invoke('plugin:rustify-audio|play')          // e pause
 await invoke('plugin:rustify-audio|seek_to', { positionMs })
 await invoke('plugin:rustify-audio|skip_to_index', { index })
 const st = await invoke('plugin:rustify-audio|get_state')
 // { status, index, trackId, positionMs, durationMs, isPlaying }
+
+// next/previous devolvem se houve para onde ir — `moved: false` = fim da fila
+const { moved } = await invoke('plugin:rustify-audio|next')
+
+// A fila REAL do serviço. A UI não mantém espelho: esta é a verdade.
+const q = await invoke('plugin:rustify-audio|get_queue')
+// { items: [{ trackId, origin, contextId, durationMs }], index }  (index -1 = vazia)
 ```
+
+`origin`/`contextId` são **por item** no wire de `get_queue` (hoje o Kotlin
+devolve o escalar da fila para todos os itens; o formato já é o definitivo).
+
+Ler a fila é o que sustenta a tela de Queue sobreviver ao WebView reiniciar com
+o serviço tocando. O espelho em `localStorage` (`kv-mobile-queue`) **foi
+removido** — era uma segunda verdade que divergia exatamente nesse caso.
 
 Eventos (best-effort — perder não perde dado, o journal é a verdade):
 
@@ -114,6 +128,13 @@ autoplay/station/playlist — `shuffle` é neutro até decisão em contrário.
 Crate (slskd fica na cmr-auto), autoplay contínuo pós-fila, busca semântica
 por texto (exigiria embedder no aparelho — similar/stations são vetor→vetor,
 offline), likes com sync (toggle local ainda sem trilho), EQ/DSP/volume por
-app (volume = botões físicos), temas YAML, beat sync real do bg (o spectrum
-roda com mockFft — FFT do player exigiria Visualizer no plugin Kotlin).
-Letras ENTRARAM em 14/08 (`lib_get_lyrics` + rail no Now Playing).
+app (volume = botões físicos), temas YAML.
+
+Já entregue depois da v0: letras (14/08, `lib_get_lyrics` + rail no Now
+Playing); beat sync real do bg (14/08, CMR-192 — `SpectrumTap` com FFT do
+próprio ExoPlayer, sem `RECORD_AUDIO`); leitura da fila nativa (15/08,
+`get_queue`).
+
+Inventário completo do que falta em relação ao desktop, com plano por fase:
+`docs/contexto/15082026-diff-mobile-vs-desktop.md` e
+`docs/contexto/15082026-plano-paridade-mobile.md`.
