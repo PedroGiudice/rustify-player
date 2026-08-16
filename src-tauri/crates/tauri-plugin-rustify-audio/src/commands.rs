@@ -92,9 +92,16 @@ pub(crate) async fn add_items<R: Runtime>(
     origin: String,
     context_id: Option<String>,
     mode: AddMode,
+    resume_if_ended: Option<bool>,
 ) -> crate::Result<QueueSnapshot> {
     audio(&app)
-        .add_items(AddItemsRequest { items, origin, context_id, mode })
+        .add_items(AddItemsRequest {
+            items,
+            origin,
+            context_id,
+            mode,
+            resume_if_ended: resume_if_ended.unwrap_or(false),
+        })
         .await
 }
 

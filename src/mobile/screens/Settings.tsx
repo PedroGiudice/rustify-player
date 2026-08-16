@@ -17,7 +17,16 @@ import { For, Show } from "solid-js";
 import { ViewHead } from "../components/ui";
 import { BEAT_MODES, beatMode, setBeatMode } from "../bg/beatSetting";
 import { useRenderer, useShape } from "../bg/spectrum";
-import { albums, artists, folders, rescan, rescanning, tracks } from "../store";
+import {
+  albums,
+  artists,
+  continuityOn,
+  folders,
+  rescan,
+  rescanning,
+  setContinuity,
+  tracks,
+} from "../store";
 import { commonRoot, fmtCount } from "../derive";
 
 export function Settings() {
@@ -59,8 +68,8 @@ export function Settings() {
             <div class="setrow__label">Beat sync</div>
             <div class="setrow__hint">
               Speed empurra a derivada do relógio com a energia do kick; Pulse trava fase por PLL e
-              pulsa a amplitude. No Android o pulso vem de um relógio sintético — não há análise de
-              áudio.
+              pulsa a amplitude. O pulso vem da FFT do próprio player (SpectrumTap), com as mesmas
+              bandas do desktop — o gerador sintético só cobre o intervalo até o primeiro quadro real.
             </div>
           </div>
           <div class="seg">
@@ -71,6 +80,36 @@ export function Settings() {
                 </button>
               )}
             </For>
+          </div>
+        </div>
+      </div>
+
+      <div class="setpanel">
+        <div class="setpanel__head">
+          <div class="setpanel__title">Reprodução</div>
+        </div>
+        <div class="setrow">
+          <div>
+            <div class="setrow__label">Continuar tocando</div>
+            <div class="setrow__hint">
+              Quando a fila está acabando, o aparelho escolhe as próximas sozinho — station usa o
+              pool dela, qualquer outra fila vira rádio semeado pelo que está tocando. Funciona com
+              a tela apagada; desligado, a fila termina e o som para.
+            </div>
+          </div>
+          <div class="seg">
+            <button
+              aria-pressed={continuityOn() ? "true" : "false"}
+              onClick={() => void setContinuity(true)}
+            >
+              on
+            </button>
+            <button
+              aria-pressed={!continuityOn() ? "true" : "false"}
+              onClick={() => void setContinuity(false)}
+            >
+              off
+            </button>
           </div>
         </div>
       </div>

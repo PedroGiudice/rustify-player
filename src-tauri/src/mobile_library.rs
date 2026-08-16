@@ -316,6 +316,44 @@ impl MobileLibrary {
             .collect()
     }
 
+    /// Lote de rádio semeado por uma faixa — o autoplay de qualquer fila que
+    /// não seja station. Diferente de [`similar_tracks`], respeita o que já
+    /// tocou na rodada e passa pelo gosto: vizinhança MERT pura agrupa por
+    /// timbre e o rádio vira "mais do mesmo álbum" em três faixas.
+    pub fn radio_batch(
+        &self,
+        seed_id: &str,
+        exclude: &[String],
+        limit: usize,
+        seed: u64,
+    ) -> Vec<Track> {
+        let Some(vx) = &self.vectors else { return Vec::new() };
+        let Ok(tid) = seed_id.parse::<u64>() else { return Vec::new() };
+        let exclude_set: HashSet<u64> = exclude
+            .iter()
+            .filter_map(|s| s.parse().ok())
+            .chain(std::iter::once(tid))
+            .collect();
+        // Pede folga ao índice: parte da vizinhança não resolve em arquivo
+        // local e parte cai no filtro de gosto.
+        let pool: Vec<u64> = vx
+            .similar(tid, limit * 8, &exclude_set)
+            .into_iter()
+            .map(|(t, _)| t)
+            .collect();
+        let mut ranked: Vec<u64> =
+            mobile_intel::rank_pool(&pool, &self.taste, self.vectors.as_ref())
+                .into_iter()
+                .filter(|t| self.by_id.contains_key(&t.to_string()))
+                .collect();
+        mobile_intel::weighted_pick_prefix(&mut ranked, limit * 3, seed);
+        ranked
+            .into_iter()
+            .take(limit)
+            .filter_map(|t| self.by_id.get(&t.to_string()).map(|&i| self.tracks[i].clone()))
+            .collect()
+    }
+
     pub fn stations_meta(&self) -> Vec<StationMeta> {
         self.stations.iter().map(|s| s.meta.clone()).collect()
     }

@@ -10,6 +10,8 @@
 // todos os targets para os testes de canon_stem rodarem no host.
 pub(crate) mod device_identity;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) mod mobile_continuity;
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) mod mobile_intel;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) mod mobile_library;
@@ -39,6 +41,10 @@ mod imp;
 
 // slsk/ referencia crate::Library (estado Tauri definido no corpo desktop).
 #[cfg(not(target_os = "android"))]
+pub(crate) use imp::Library;
+
+// A thread de continuidade alcança a biblioteca por app.state::<Library>().
+#[cfg(target_os = "android")]
 pub(crate) use imp::Library;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

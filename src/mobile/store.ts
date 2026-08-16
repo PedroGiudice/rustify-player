@@ -199,6 +199,8 @@ export async function playList(
   startIndex: number,
   origin: Origin,
   contextId: string | null = null,
+  /** Como a fila se auto-abastece quando acabar (epic B). */
+  continuity: { mode: "off" | "radio" | "station"; stationId?: string } = { mode: "radio" },
 ) {
   if (!list.length) {
     showToast("Nada para tocar aqui");
@@ -225,6 +227,14 @@ export async function playList(
       playNow: true,
     });
     await syncQueue();
+    // Arma DEPOIS do set_queue: o tender só deve reabastecer a fila nova.
+    await ipc
+      .continuityArm({
+        mode: continuity.mode,
+        stationId: continuity.stationId ?? null,
+        seedTrackId: list[start].id,
+      })
+      .catch((e) => console.warn("[mobile] continuity_arm falhou:", e));
   } catch (e) {
     console.error("[mobile] set_queue falhou:", e);
     showToast("Falha ao iniciar a reprodução");
@@ -248,7 +258,7 @@ export async function playStation(st: StationMeta) {
       showToast("Station sem faixas no acervo");
       return;
     }
-    await playList(batch, 0, "station", st.id);
+    await playList(batch, 0, "station", st.id, { mode: "station", stationId: st.id });
   } catch (e) {
     console.error("[mobile] lib_play_station falhou:", e);
     showToast("Falha ao iniciar a station");
@@ -264,7 +274,9 @@ export async function playSimilar(track: Track) {
       showToast("Sem vetores no aparelho — rode o export");
       return;
     }
-    await playList(similar, 0, "station", `similar:${track.id}`);
+    await playList(similar, 0, "station", `similar:${track.id}`, {
+      mode: "radio",
+    });
     showToast(`Rádio: ${track.title}`);
   } catch (e) {
     console.error("[mobile] lib_similar_tracks falhou:", e);
@@ -301,6 +313,25 @@ async function enqueue(track: Track, mode: "next" | "end") {
 
 export const enqueueNext = (t: Track) => enqueue(t, "next");
 export const enqueueEnd = (t: Track) => enqueue(t, "end");
+
+// ── Continuidade ──────────────────────────────────────────────
+
+const CONTINUITY_KEY = "kv-mobile-continuity";
+const [continuityOn, setContinuityOn] = createSignal(
+  localStorage.getItem(CONTINUITY_KEY) !== "off",
+);
+export { continuityOn };
+
+export async function setContinuity(on: boolean) {
+  setContinuityOn(on);
+  localStorage.setItem(CONTINUITY_KEY, on ? "on" : "off");
+  try {
+    await ipc.continuitySetEnabled(on);
+    showToast(on ? "Continuar tocando ligado" : "A fila vai acabar sozinha");
+  } catch (e) {
+    console.warn("[mobile] continuity_set_enabled falhou:", e);
+  }
+}
 
 // ── Repeat ────────────────────────────────────────────────────
 // Estado de SESSAO do player (ExoPlayer), persistido como preferencia.
@@ -469,7 +500,14 @@ export async function bootStore() {
     console.warn("[mobile] carga da fila falhou:", e),
   );
   void applyRepeat();
+  void ipc.continuitySetEnabled(continuityOn()).catch(() => {});
   void loadIntel();
+
+  // O tender anexou um lote: redesenha a fila se a UI estiver acordada.
+  // Dormindo, o evento se perde e o syncQueue do resume cobre.
+  void import("@tauri-apps/api/event")
+    .then((m) => m.listen("rustify://queue-changed", () => void syncQueue()))
+    .catch((e) => console.warn("[mobile] listener queue-changed:", e));
 
   ipc.onStateChanged(applyState).catch((e) => console.warn("[mobile] listener state_changed:", e));
   ipc

@@ -6,12 +6,15 @@
 // leitura do contrato desktop (src/tauri.ts) para a UI navegar; a fila
 // nativa entra via plugin.
 
+use crate::mobile_continuity::{ContinuityState, Mode};
 use crate::mobile_intel::StationMeta;
 use crate::mobile_library::{Folder, MobileLibrary, Track};
 use std::sync::Mutex;
 use tauri::State;
 
-struct Library(Mutex<MobileLibrary>);
+/// Estado Tauri da biblioteca. `pub(crate)` porque a thread de continuidade
+/// alcança por `app.state()` — o tender decide a próxima faixa sem o JS.
+pub(crate) struct Library(pub(crate) Mutex<MobileLibrary>);
 
 /// Seed de sorteio pros lotes de station — tempo corrente (variedade entre
 /// chamadas; determinismo só nos testes das funções puras).
@@ -110,6 +113,67 @@ fn lib_get_lyrics(lib: State<Library>, track_id: String) -> Vec<crate::mobile_ly
     }
 }
 
+// ── Continuidade (epic B) — "a música não para" ─────────────────────────────
+
+/// Arma a continuidade para a fila que acabou de ser montada.
+///
+/// A UI chama isto DEPOIS do set_queue: o modo diz ao tender como reabastecer
+/// (station usa o pool dela; qualquer outra fila vira rádio semeado). Fila que
+/// o usuário montou à mão e não quer continuar chega com `mode: "off"`.
+#[tauri::command]
+fn continuity_arm(
+    state: State<ContinuityState>,
+    mode: String,
+    station_id: Option<String>,
+    seed_track_id: Option<String>,
+) {
+    let parsed = match mode.as_str() {
+        "station" => station_id
+            .map(|station_id| Mode::Station { station_id })
+            .unwrap_or(Mode::Off),
+        "radio" => seed_track_id
+            .and_then(|id| id.parse::<u64>().ok())
+            .map(|seed_track_id| Mode::Radio { seed_track_id })
+            .unwrap_or(Mode::Off),
+        _ => Mode::Off,
+    };
+    let epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let mut c = state.0.lock().expect("continuity lock");
+    c.context_id = crate::mobile_continuity::context_for(&parsed, epoch);
+    c.mode = parsed;
+    // Rodada nova: o que foi visto na anterior não deve excluir nada aqui.
+    c.seen.clear();
+    c.last_error = None;
+}
+
+#[tauri::command]
+fn continuity_set_enabled(state: State<ContinuityState>, enabled: bool) {
+    state.0.lock().expect("continuity lock").enabled = enabled;
+}
+
+/// Diagnóstico: sem isto o usuário não tem como saber por que a música parou
+/// (fila sem candidatos? tender desligado? erro de IPC?).
+#[tauri::command]
+fn continuity_status(state: State<ContinuityState>) -> serde_json::Value {
+    let c = state.0.lock().expect("continuity lock");
+    let mode = match &c.mode {
+        Mode::Off => "off".to_string(),
+        Mode::Radio { .. } => "radio".to_string(),
+        Mode::Station { .. } => "station".to_string(),
+    };
+    serde_json::json!({
+        "enabled": c.enabled,
+        "mode": mode,
+        "contextId": c.context_id,
+        "seen": c.seen.len(),
+        "lastTopupAt": c.last_topup_at,
+        "lastError": c.last_error,
+    })
+}
+
 /// Recarrega manifest + walk do acervo (após sync ou concessão de permissão).
 #[tauri::command]
 fn lib_rescan(lib: State<Library>) -> usize {
@@ -137,7 +201,9 @@ pub fn run() {
             // ficaria invisível pro get_state inicial — v0 aceita o load
             // síncrono no setup.
             app.manage(Library(Mutex::new(MobileLibrary::load())));
+            app.manage(ContinuityState::default());
             crate::mobile_sync::worker::spawn(app.handle().clone());
+            crate::mobile_continuity::tender::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -152,6 +218,9 @@ pub fn run() {
             lib_taste_positives,
             lib_get_lyrics,
             lib_rescan,
+            continuity_arm,
+            continuity_set_enabled,
+            continuity_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

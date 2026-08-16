@@ -46,6 +46,10 @@ pub struct AddItemsRequest {
     #[serde(default)]
     pub context_id: Option<String>,
     pub mode: AddMode,
+    /// Retoma se a fila ja tinha acabado. E o que faz o autoplay funcionar:
+    /// anexar em `STATE_ENDED` nao volta a tocar sozinho.
+    #[serde(default)]
+    pub resume_if_ended: bool,
 }
 
 /// Substitui a fila inteira do player. `origin`/`context_id` sao carimbados em
@@ -265,6 +269,7 @@ mod tests {
             origin: "manual".into(),
             context_id: None,
             mode: AddMode::Next,
+            resume_if_ended: false,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"mode\":\"next\""), "{json}");

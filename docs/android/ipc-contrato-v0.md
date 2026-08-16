@@ -133,6 +133,40 @@ await addPluginListener('rustify-audio', 'track_changed', s => {...})
 await addPluginListener('rustify-audio', 'position', s => {...})  // 500ms, só tocando
 ```
 
+## Continuidade (epic B) — a música não para
+
+A UI **arma** o modo; quem decide a próxima faixa é uma thread Rust
+(`src-tauri/src/mobile_continuity.rs`), porque o WebView é suspenso com a tela
+apagada e não pode ser o dono da decisão.
+
+```ts
+// depois do set_queue — o tender só reabastece a fila nova
+invoke('continuity_arm', { mode: 'station', stationId, seedTrackId })
+invoke('continuity_arm', { mode: 'radio', seedTrackId })   // qualquer outra fila
+invoke('continuity_arm', { mode: 'off' })                  // não continuar
+
+invoke('continuity_set_enabled', { enabled })              // toggle do Settings
+invoke('continuity_status')                                // diagnóstico
+```
+
+O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
+**secando** (tocando, a ≤2 posições do fim). Pausa não conta: o usuário pausou
+de propósito e reabastecer seria trabalho invisível gastando bateria.
+
+As continuações entram por `add_items(mode: 'end', resumeIfEnded: true)` com
+origin **por item**: `station` para station, `autoplay` para o resto. O
+`resumeIfEnded` existe porque anexar com o player em `STATE_ENDED` não volta a
+tocar sozinho — o item novo ficaria parado depois do fim.
+
+Evento `rustify://queue-changed` avisa a UI para redesenhar a fila. É
+best-effort: com o WebView dormindo ele se perde, e o `syncQueue` do resume
+cobre.
+
+**Limite conhecido:** o plugin é escopado na Activity. App tirado dos recentes
+derruba o `MediaController` e o tender passa a receber erro (não trava — os
+invokes são rejeitados desde a correção do `withController`). Tela apagada com
+a Activity viva, que é o caso dominante, está coberto.
+
 ## Origins (afetam o sinal do motor — usar os nomes EXATOS do desktop)
 
 | Ação do usuário | origin |
@@ -142,14 +176,15 @@ await addPluginListener('rustify-audio', 'position', s => {...})  // 500ms, só 
 | Play num álbum em sequência | `album_seq` |
 | Shuffle burro do acervo | `shuffle` |
 | Play/next de uma station | `station` |
-| Fila continuada pelo motor | `autoplay` (ainda sem uso no mobile) |
+| Fila continuada pelo motor | `autoplay` (tender, epic B) |
+| Re-escuta com repeat-one ligado | `repeat` (carimbado pelo serviço) |
 
 O desconto de origem passiva do behavioral_signals v3 conhece
 autoplay/station/playlist — `shuffle` é neutro até decisão em contrário.
 
 ## O que NÃO existe no mobile (não desenhar em cima)
 
-Crate (slskd fica na cmr-auto), autoplay contínuo pós-fila, busca semântica
+Crate (slskd fica na cmr-auto), busca semântica
 por texto (exigiria embedder no aparelho — similar/stations são vetor→vetor,
 offline), likes com sync (toggle local ainda sem trilho), EQ/DSP/volume por
 app (volume = botões físicos), temas YAML.

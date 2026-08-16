@@ -51,6 +51,12 @@ class AddItemsArgs {
     var contextId: String? = null
     /** `next` = logo depois da faixa corrente; `end` = fim da fila. */
     var mode: String = "end"
+    /**
+     * Retoma quando o player ja tinha chegado ao fim da fila. Sem isto,
+     * anexar em STATE_ENDED nao volta a tocar: o ExoPlayer fica parado no
+     * fim do ultimo item e o "autoplay" so funcionaria com o app aberto.
+     */
+    var resumeIfEnded: Boolean = false
 }
 
 @InvokeArg
@@ -305,13 +311,23 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         withController(invoke) { c ->
             QueueMeta.putAll(metas)
             val count = c.mediaItemCount
+            val wasEnded = c.playbackState == Player.STATE_ENDED
             if (count == 0) {
                 c.setMediaItems(items, 0, 0L)
                 c.prepare()
+                if (args.resumeIfEnded) c.play()
             } else if (next) {
                 c.addMediaItems((c.currentMediaItemIndex + 1).coerceIn(0, count), items)
             } else {
                 c.addMediaItems(items)
+            }
+            // Fila que ja tinha acabado: o item novo entra depois do fim e o
+            // player continua parado ali. Pular ate ele e o que faz a musica
+            // voltar sozinha.
+            if (args.resumeIfEnded && wasEnded && count > 0) {
+                c.seekTo(count, 0L)
+                c.prepare()
+                c.play()
             }
             invoke.resolve(queueSnapshotToJs(c))
         }

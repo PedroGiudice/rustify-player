@@ -83,6 +83,10 @@ tracing = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-rustify-audio = { path = "crates/tauri-plugin-rustify-audio" }
 ureq = { version = "2", default-features = false, features = ["json"] }
+# Só pelo `time::timeout`: o run_mobile_plugin_async do Tauri não tem teto
+# próprio e a thread de continuidade não pode pendurar num IPC que não volta
+# (Activity destruída no meio do ciclo). O runtime já é tokio.
+tokio = { version = "1", default-features = false, features = ["time"] }
 
 # Desktop-only: audio-engine arrasta PipeWire/libspa (Linux puro), souvlaki
 # arrasta zbus/D-Bus, o mcp-bridge é ferramenta de dev desktop, e

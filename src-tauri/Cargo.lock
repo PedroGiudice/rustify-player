@@ -4917,6 +4917,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-rustify-audio",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "ureq",

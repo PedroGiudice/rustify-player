@@ -48,6 +48,29 @@ export const libStationNext = (stationId: string, excludeIds: string[], limit?: 
 export const libTastePositives = () => invoke<Track[]>("lib_taste_positives");
 export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
 
+// ── Continuidade (epic B) — o tender vive no Rust ─────────────
+// A UI só ARMA o modo; quem decide a próxima faixa é a thread nativa, porque
+// o WebView é suspenso com a tela apagada e não pode ser o dono da decisão.
+
+export const continuityArm = (args: {
+  mode: "off" | "radio" | "station";
+  stationId?: string | null;
+  seedTrackId?: string | null;
+}) => invoke<void>("continuity_arm", args as unknown as Record<string, unknown>);
+
+export const continuitySetEnabled = (enabled: boolean) =>
+  invoke<void>("continuity_set_enabled", { enabled });
+
+export const continuityStatus = () =>
+  invoke<{
+    enabled: boolean;
+    mode: string;
+    contextId: string | null;
+    seen: number;
+    lastTopupAt: number;
+    lastError: string | null;
+  }>("continuity_status");
+
 // ── Player (plugin rustify-audio) ─────────────────────────────
 
 /** 1x no boot, antes de qualquer outra chamada (pede POST_NOTIFICATIONS). */
