@@ -13,6 +13,8 @@ const COMMANDS: &[&str] = &[
     "get_state",
     "get_queue",
     "add_items",
+    "truncate_queue",
+    "set_repeat_mode",
     "drain_events",
     "ack_events",
     "register_listener",

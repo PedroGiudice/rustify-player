@@ -99,6 +99,22 @@ pub(crate) async fn add_items<R: Runtime>(
 }
 
 #[tauri::command]
+pub(crate) async fn truncate_queue<R: Runtime>(
+    app: AppHandle<R>,
+    from_index: u32,
+) -> crate::Result<QueueSnapshot> {
+    audio(&app).truncate_queue(from_index).await
+}
+
+#[tauri::command]
+pub(crate) async fn set_repeat_mode<R: Runtime>(
+    app: AppHandle<R>,
+    mode: RepeatMode,
+) -> crate::Result<()> {
+    audio(&app).set_repeat_mode(mode).await
+}
+
+#[tauri::command]
 pub(crate) async fn drain_events<R: Runtime>(
     app: AppHandle<R>,
     after_seq: Option<i64>,

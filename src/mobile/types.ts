@@ -30,8 +30,18 @@ export interface Folder {
   track_count: number;
 }
 
-/** Origins do contrato — nomes EXATOS, o motor de sinal lê isso. */
-export type Origin = "manual" | "playlist" | "album_seq" | "shuffle" | "station";
+/** Origins do contrato — nomes EXATOS, o motor de sinal lê isso.
+ *  `autoplay` e `repeat` entram com a continuidade (epic B): o desktop já os
+ *  emite e a régua corta por eles. `shuffle` continua até a decisão de mapeá-lo
+ *  para `autoplay` ser tomada — mexer nele muda o peso de dados já gravados. */
+export type Origin =
+  | "manual"
+  | "playlist"
+  | "album_seq"
+  | "shuffle"
+  | "station"
+  | "autoplay"
+  | "repeat";
 
 /** Station exportada do desktop (stations.json). pool_size 0 = sem
  *  candidatos no acervo — a UI mostra desabilitada. */
@@ -94,7 +104,11 @@ export interface PlaybackState {
   positionMs: number;
   durationMs: number;
   isPlaying: boolean;
+  /** Itens na fila nativa — é assim que se sabe que ela está secando. */
+  count: number;
 }
+
+export type RepeatMode = "off" | "one" | "all";
 
 /** Álbum derivado no cliente agrupando o acervo por (artista, álbum). */
 export interface DerivedAlbum {

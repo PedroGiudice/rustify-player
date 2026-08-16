@@ -23,6 +23,7 @@ import type {
   Origin,
   PlaybackState,
   QueueEntry,
+  RepeatMode,
   StationMeta,
   Track,
 } from "./types";
@@ -73,6 +74,7 @@ const [pb, setPb] = createStore<PlaybackState>({
   positionMs: 0,
   durationMs: 0,
   isPlaying: false,
+  count: 0,
 });
 
 /** Fila do SERVIÇO. Otimista no ato do play, corrigida pelo snapshot. */
@@ -158,6 +160,7 @@ function applyState(s: Partial<PlaybackState> | null | undefined) {
   if (typeof s.positionMs === "number") patch.positionMs = s.positionMs;
   if (typeof s.durationMs === "number") patch.durationMs = s.durationMs;
   if (typeof s.isPlaying === "boolean") patch.isPlaying = s.isPlaying;
+  if (typeof s.count === "number") patch.count = s.count;
   setPb(patch);
 
   // WebView reiniciou com o serviço tocando: o espelho pode não ter a
@@ -299,6 +302,42 @@ async function enqueue(track: Track, mode: "next" | "end") {
 export const enqueueNext = (t: Track) => enqueue(t, "next");
 export const enqueueEnd = (t: Track) => enqueue(t, "end");
 
+// ── Repeat ────────────────────────────────────────────────────
+// Estado de SESSAO do player (ExoPlayer), persistido como preferencia.
+// `one` faz o service carimbar origin `repeat` nas re-escutas — o sinal v3
+// trata isso como positivo pleno, e ate agora o celular nao emitia nenhum.
+
+const REPEAT_KEY = "kv-mobile-repeat";
+const [repeat, setRepeat] = createSignal<RepeatMode>(
+  (localStorage.getItem(REPEAT_KEY) as RepeatMode | null) ?? "off",
+);
+export { repeat };
+
+const REPEAT_CYCLE: RepeatMode[] = ["off", "all", "one"];
+
+export async function cycleRepeat() {
+  const nextMode = REPEAT_CYCLE[(REPEAT_CYCLE.indexOf(repeat()) + 1) % REPEAT_CYCLE.length];
+  setRepeat(nextMode);
+  localStorage.setItem(REPEAT_KEY, nextMode);
+  try {
+    await ipc.playerSetRepeatMode(nextMode);
+    showToast(
+      nextMode === "off" ? "Repetir desligado" : nextMode === "all" ? "Repetir fila" : "Repetir faixa",
+    );
+  } catch (e) {
+    console.warn("[mobile] set_repeat_mode falhou:", e);
+  }
+}
+
+/** Reaplica a preferência ao serviço (boot e reconexão). */
+export async function applyRepeat() {
+  try {
+    await ipc.playerSetRepeatMode(repeat());
+  } catch (e) {
+    console.warn("[mobile] applyRepeat falhou:", e);
+  }
+}
+
 export async function toggle() {
   try {
     if (pb.isPlaying) await ipc.playerPause();
@@ -429,6 +468,7 @@ export async function bootStore() {
   await bootCall("syncQueue", syncQueue, 4000).catch((e) =>
     console.warn("[mobile] carga da fila falhou:", e),
   );
+  void applyRepeat();
   void loadIntel();
 
   ipc.onStateChanged(applyState).catch((e) => console.warn("[mobile] listener state_changed:", e));

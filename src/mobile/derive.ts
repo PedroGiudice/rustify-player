@@ -141,6 +141,8 @@ export function originLabel(o: Origin): string {
     case "album_seq": return "álbum";
     case "shuffle": return "shuffle";
     case "station": return "station";
+    case "autoplay": return "rádio";
+    case "repeat": return "repetindo";
     default: return "solta";
   }
 }

@@ -18,6 +18,8 @@ permissions = [
   "allow-get-state",
   "allow-get-queue",
   "allow-add-items",
+  "allow-truncate-queue",
+  "allow-set-repeat-mode",
   "allow-drain-events",
   "allow-ack-events",
   "allow-register-listener",

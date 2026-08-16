@@ -101,6 +101,23 @@ export const Icon = {
       <path d="M16 4h5v5M3 20l18-16M21 15v5h-5M15 14l6 6M3 4l6 6" />
     </svg>
   ),
+  repeat: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M17 2l4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="M7 22l-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  ),
+  repeatOne: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M17 2l4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="M7 22l-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      <path d="M11 15v-6l-2 1.5" />
+    </svg>
+  ),
   queue: (p: IcoProps = {}) => (
     <svg {...S} class={cx(p)}>
       <path d="M3 6h13M3 12h13M3 18h9M19 10v10" />

@@ -45,13 +45,24 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 | `get_state` | — | `PlaybackState` |
 | `get_queue` | — | `QueueSnapshot` |
 | `add_items` | `items[]`, `origin`, `contextId?`, `mode` | `QueueSnapshot` |
+| `truncate_queue` | `fromIndex` | `QueueSnapshot` |
+| `set_repeat_mode` | `mode: 'off'\|'one'\|'all'` | `null` |
 | `drain_events` | `afterSeq?` | `{ events: PlayEvent[], lastSeq }` |
 | `ack_events` | `uptoSeq` | `null` |
 
 `items[i]`: `{ trackId, uri, title, artist, album, artworkUri?, durationMs }`.
 
 `PlaybackState`: `{ status: 'idle'|'buffering'|'ready'|'ended', index, trackId,
-positionMs, durationMs, isPlaying }`.
+positionMs, durationMs, isPlaying, count }` — `count` é o tamanho da fila
+nativa: dá para saber que ela está secando sem lê-la inteira a cada ciclo.
+
+`truncate_queue` descarta a cauda ainda não tocada e **nunca corta a faixa
+corrente** (o `fromIndex` é elevado para `currentMediaItemIndex + 1` no Kotlin):
+cortar o item que toca pararia o som, que é o oposto da intenção.
+
+`set_repeat_mode('one')` faz o serviço carimbar `origin: repeat` nas
+re-escutas — o sinal v3 trata isso como positivo pleno, e até agora o celular
+não emitia esse origin em lugar nenhum.
 
 `QueueSnapshot`: `{ items: QueueEntry[], index }` — `index` `-1` com fila vazia.
 `QueueEntry`: `{ trackId, origin, contextId, durationMs }`.

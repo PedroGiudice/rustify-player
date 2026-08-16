@@ -10,8 +10,10 @@
      info" existe via long-press na linha da faixa — mas ainda sem
      codec/bitrate, que não estão no shape do Track;
    - sem coração: não há trilho de like (epic C);
-   - shuffle/repeat saíram dos controles: o plugin não tem command
-     para nenhum dos dois. No lugar, o acesso à fila.
+   - repeat VOLTOU (15/08): off/all/one no cabeçalho, com o serviço
+     carimbando origin `repeat` nas re-escutas de repeat-one;
+   - shuffle segue fora dos controles: o plugin não tem command e a
+     decisão de mapeá-lo para `autoplay` no sinal está em aberto.
    O seek É real: o contrato tem seek_to.
    ============================================================ */
 
@@ -19,7 +21,19 @@ import { For, Show, createEffect, createMemo, createResource, createSignal } fro
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
 import { back, isNpOpen, navigate, navigateFromNp } from "../nav";
-import { current, next, pb, playSimilar, previous, queueOrigin, seek, showToast, toggle } from "../store";
+import {
+  current,
+  cycleRepeat,
+  next,
+  pb,
+  playSimilar,
+  previous,
+  queueOrigin,
+  repeat,
+  seek,
+  showToast,
+  toggle,
+} from "../store";
 import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
 import { useRenderer, useShape } from "../bg/spectrum";
 import { libGetLyrics } from "../ipc";
@@ -172,6 +186,17 @@ export function NowPlaying() {
                 </button>
               )}
             </Show>
+            <button
+              class="iconbtn"
+              aria-label="Repetir"
+              aria-pressed={repeat() !== "off"}
+              style={repeat() !== "off" ? { color: "var(--accent)" } : undefined}
+              onClick={() => void cycleRepeat()}
+            >
+              <Show when={repeat() === "one"} fallback={<Icon.repeat />}>
+                <Icon.repeatOne />
+              </Show>
+            </button>
             <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>
               <Icon.queue />
             </button>

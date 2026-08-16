@@ -105,6 +105,31 @@ pub struct PlaybackState {
     pub position_ms: i64,
     pub duration_ms: i64,
     pub is_playing: bool,
+    /// Itens na fila nativa. E o gatilho do tender de continuidade: da para
+    /// saber que a fila esta secando sem ler a fila inteira a cada ciclo.
+    #[serde(default)]
+    pub count: i32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncateQueueRequest {
+    /// Corta daqui ate o fim. O Kotlin nunca corta abaixo da faixa corrente.
+    pub from_index: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RepeatMode {
+    Off,
+    One,
+    All,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepeatModeRequest {
+    pub mode: RepeatMode,
 }
 
 /// Item da fila NATIVA, do jeito que o servico a enxerga. `origin`/`context_id`

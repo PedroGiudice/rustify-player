@@ -109,6 +109,17 @@ divergência consciente, registrada no plano de paridade.
 
 `add_items` nunca recebe índice: o `mode` é resolvido no Kotlin contra o player.
 
+```ts
+// Descarta a cauda (reação a skip numa station). Nunca corta o que toca.
+await invoke('plugin:rustify-audio|truncate_queue', { fromIndex })
+
+// off | all | one — 'one' faz o serviço carimbar origin 'repeat'
+await invoke('plugin:rustify-audio|set_repeat_mode', { mode: 'one' })
+```
+
+`PlaybackState` ganhou `count` (tamanho da fila nativa) — é o gatilho de
+"a fila está secando" sem precisar lê-la inteira.
+
 Ler a fila é o que sustenta a tela de Queue sobreviver ao WebView reiniciar com
 o serviço tocando. O espelho em `localStorage` (`kv-mobile-queue`) **foi
 removido** — era uma segunda verdade que divergia exatamente nesse caso.

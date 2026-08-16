@@ -9,6 +9,7 @@ import android.webkit.WebView
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -66,6 +67,18 @@ class SetQueueArgs {
 @InvokeArg
 class SeekToArgs {
     var positionMs: Long = 0L
+}
+
+@InvokeArg
+class TruncateQueueArgs {
+    /** Remove daqui ate o fim. Nunca corta a faixa corrente. */
+    var fromIndex: Int = 0
+}
+
+@InvokeArg
+class RepeatModeArgs {
+    /** `off` | `one` | `all` */
+    var mode: String = "off"
 }
 
 @InvokeArg
@@ -304,6 +317,39 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         }
     }
 
+    /**
+     * Descarta a cauda ainda nao tocada. E o que permite a station reagir a
+     * um skip: joga fora o que ficou obsoleto e pede lote novo.
+     *
+     * A faixa CORRENTE nunca e removida — cortar o item que esta tocando
+     * pararia o som, que e o oposto da intencao.
+     */
+    @Command
+    fun truncateQueue(invoke: Invoke) {
+        val args = invoke.parseArgs(TruncateQueueArgs::class.java)
+        withController(invoke) { c ->
+            val count = c.mediaItemCount
+            val floor = (c.currentMediaItemIndex + 1).coerceAtLeast(0)
+            val from = args.fromIndex.coerceAtLeast(floor)
+            if (from < count) c.removeMediaItems(from, count)
+            invoke.resolve(queueSnapshotToJs(c))
+        }
+    }
+
+    @Command
+    fun setRepeatMode(invoke: Invoke) {
+        val args = invoke.parseArgs(RepeatModeArgs::class.java)
+        val mode = when (args.mode) {
+            "one" -> Player.REPEAT_MODE_ONE
+            "all" -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
+        }
+        withController(invoke) { c ->
+            c.repeatMode = mode
+            invoke.resolve()
+        }
+    }
+
     @Command
     fun drainEvents(invoke: Invoke) {
         val args = invoke.parseArgs(DrainEventsArgs::class.java)
@@ -473,6 +519,7 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         obj.put("positionMs", snapshot.positionMs)
         obj.put("durationMs", snapshot.durationMs)
         obj.put("isPlaying", snapshot.isPlaying)
+        obj.put("count", snapshot.count)
         return obj
     }
 }

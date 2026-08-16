@@ -11,7 +11,10 @@ data class PlaybackSnapshot(
     val trackId: String?,
     val positionMs: Long,
     val durationMs: Long,
-    val isPlaying: Boolean
+    val isPlaying: Boolean,
+    /** Itens na fila nativa. E o que permite decidir "esta acabando" sem
+     *  precisar ler a fila inteira a cada ciclo do tender de continuidade. */
+    val count: Int = 0
 )
 
 /**
@@ -38,7 +41,7 @@ object PlaybackBus {
 @UnstableApi
 fun snapshotOf(player: Player?): PlaybackSnapshot {
     if (player == null) {
-        return PlaybackSnapshot("idle", -1, null, 0L, 0L, false)
+        return PlaybackSnapshot("idle", -1, null, 0L, 0L, false, 0)
     }
     val duration = player.duration
     val status = when (player.playbackState) {
@@ -53,6 +56,7 @@ fun snapshotOf(player: Player?): PlaybackSnapshot {
         trackId = player.currentMediaItem?.mediaId?.takeIf { it.isNotEmpty() },
         positionMs = player.currentPosition.coerceAtLeast(0L),
         durationMs = if (duration == C.TIME_UNSET) 0L else duration.coerceAtLeast(0L),
-        isPlaying = player.isPlaying
+        isPlaying = player.isPlaying,
+        count = player.mediaItemCount
     )
 }

@@ -68,6 +68,14 @@ impl<R: Runtime> RustifyAudio<R> {
         Err(Error::UnsupportedPlatform)
     }
 
+    pub async fn truncate_queue(&self, _from_index: u32) -> crate::Result<QueueSnapshot> {
+        Err(Error::UnsupportedPlatform)
+    }
+
+    pub async fn set_repeat_mode(&self, _mode: RepeatMode) -> crate::Result<()> {
+        Err(Error::UnsupportedPlatform)
+    }
+
     pub async fn drain_events(&self, _after_seq: i64) -> crate::Result<DrainEventsResponse> {
         Err(Error::UnsupportedPlatform)
     }

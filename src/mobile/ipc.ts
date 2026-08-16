@@ -18,6 +18,7 @@ import type {
   PlaybackState,
   QueueItem,
   QueueSnapshot,
+  RepeatMode,
   StationMeta,
   StepResult,
   Track,
@@ -70,6 +71,13 @@ export const playerSkipToIndex = (index: number) => invoke<void>(cmd("skip_to_in
 export const playerGetState = () => invoke<PlaybackState>(cmd("get_state"));
 /** Fila REAL do serviço. A UI não mantém espelho: esta é a verdade. */
 export const playerGetQueue = () => invoke<QueueSnapshot>(cmd("get_queue"));
+
+/** Descarta a cauda não tocada. O Kotlin nunca corta a faixa corrente. */
+export const playerTruncateQueue = (fromIndex: number) =>
+  invoke<QueueSnapshot>(cmd("truncate_queue"), { fromIndex });
+
+export const playerSetRepeatMode = (mode: RepeatMode) =>
+  invoke<void>(cmd("set_repeat_mode"), { mode });
 
 /**
  * Enfileira sem destruir a fila viva. O `mode` é resolvido no Kotlin contra o

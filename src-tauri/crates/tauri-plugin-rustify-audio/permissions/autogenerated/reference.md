@@ -17,6 +17,8 @@ os commands em permissoes separadas.
 - `allow-get-state`
 - `allow-get-queue`
 - `allow-add-items`
+- `allow-truncate-queue`
+- `allow-set-repeat-mode`
 - `allow-drain-events`
 - `allow-ack-events`
 - `allow-register-listener`
@@ -398,6 +400,32 @@ Denies the set_queue command without any pre-configured scope.
 <tr>
 <td>
 
+`rustify-audio:allow-set-repeat-mode`
+
+</td>
+<td>
+
+Enables the set_repeat_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-set-repeat-mode`
+
+</td>
+<td>
+
+Denies the set_repeat_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `rustify-audio:allow-skip-to-index`
 
 </td>
@@ -417,6 +445,32 @@ Enables the skip_to_index command without any pre-configured scope.
 <td>
 
 Denies the skip_to_index command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-truncate-queue`
+
+</td>
+<td>
+
+Enables the truncate_queue command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-truncate-queue`
+
+</td>
+<td>
+
+Denies the truncate_queue command without any pre-configured scope.
 
 </td>
 </tr>

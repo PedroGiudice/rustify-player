@@ -60,6 +60,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get_state,
             commands::get_queue,
             commands::add_items,
+            commands::truncate_queue,
+            commands::set_repeat_mode,
             commands::drain_events,
             commands::ack_events,
             commands::register_listener,

@@ -209,7 +209,14 @@ class AudioService : MediaSessionService() {
         // Origem POR ITEM: a faixa enfileirada a mao dentro de uma station e
         // escolha explicita (peso cheio no v3), nao escuta passiva.
         val meta = if (trackId != null) QueueMeta.metaFor(trackId) else null
-        curOrigin = meta?.origin ?: QueueMeta.origin
+        // Repeat-one: a re-escuta e deliberada, e o sinal v3 trata `repeat`
+        // como positivo pleno (mesma semantica do desktop). Sem isto o
+        // celular nunca emitiria esse origin.
+        curOrigin = if (activePlayer.repeatMode == Player.REPEAT_MODE_ONE) {
+            "repeat"
+        } else {
+            meta?.origin ?: QueueMeta.origin
+        }
         curContextId = meta?.contextId ?: QueueMeta.contextId
         curDurationMs = meta?.durationMs ?: 0L
         val duration = activePlayer.duration

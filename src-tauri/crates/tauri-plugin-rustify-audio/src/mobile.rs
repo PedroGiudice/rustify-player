@@ -104,6 +104,15 @@ impl<R: Runtime> RustifyAudio<R> {
         self.call("addItems", request).await
     }
 
+    pub async fn truncate_queue(&self, from_index: u32) -> crate::Result<QueueSnapshot> {
+        self.call("truncateQueue", TruncateQueueRequest { from_index })
+            .await
+    }
+
+    pub async fn set_repeat_mode(&self, mode: RepeatMode) -> crate::Result<()> {
+        self.call_unit("setRepeatMode", RepeatModeRequest { mode }).await
+    }
+
     pub async fn drain_events(&self, after_seq: i64) -> crate::Result<DrainEventsResponse> {
         self.call("drainEvents", DrainEventsRequest { after_seq })
             .await
