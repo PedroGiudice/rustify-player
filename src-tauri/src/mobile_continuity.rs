@@ -38,6 +38,11 @@ pub const SESSION_NEG_CAP: usize = 15;
 /// Depois disto o cursor do tender é considerado morto e o sync deixa de
 /// esperar por ele. Segurar o journal para sempre é pior que perder a reação.
 pub const CURSOR_STALE_MS: i64 = 180_000;
+/// Cursor ainda não posicionado. O journal guarda tudo que o sync não ackou —
+/// inclusive skips de horas atrás. Começar em 0 faria a rodada nova nascer
+/// carregando rejeições do passado (medido no S24: o cap de 15 já saturado
+/// antes do primeiro skip). Rejeição de sessão é da sessão.
+pub const CURSOR_UNSET: i64 = -1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
@@ -80,7 +85,7 @@ impl Default for Continuity {
             seen: Vec::new(),
             last_topup_at: 0,
             last_error: None,
-            journal_cursor: 0,
+            journal_cursor: CURSOR_UNSET,
             cursor_at: 0,
             session_negatives: Vec::new(),
             reaction_pending: false,
@@ -186,7 +191,7 @@ pub fn is_early_skip(end_position_ms: i64, duration_ms: i64) -> bool {
 /// cadência de 60s contra 20s, ~1 em cada 6 rejeições sumiria em silêncio.
 /// Cursor parado há muito tempo = tender morto: o sync solta e segue.
 pub fn ack_ceiling(sync_last_seq: i64, cursor: i64, cursor_at: i64, now_ms: i64) -> i64 {
-    if cursor_at <= 0 || now_ms - cursor_at > CURSOR_STALE_MS {
+    if cursor < 0 || cursor_at <= 0 || now_ms - cursor_at > CURSOR_STALE_MS {
         return sync_last_seq;
     }
     sync_last_seq.min(cursor)
@@ -312,7 +317,15 @@ pub(crate) mod tender {
             .lock()
             .map_err(|_| "lock envenenado")?
             .journal_cursor;
-        let drained = call(app.rustify_audio().drain_events(cursor))?;
+        let drained = call(app.rustify_audio().drain_events(cursor.max(0)))?;
+        // Primeiro ciclo da rodada: só posiciona o cursor. O que está no
+        // journal aconteceu ANTES desta sessão — não é rejeição dela.
+        if cursor == CURSOR_UNSET {
+            let mut c = state.inner.lock().map_err(|_| "lock envenenado")?;
+            c.journal_cursor = drained.last_seq;
+            c.cursor_at = now_ms();
+            return Ok(false);
+        }
         let mut rejeitou = false;
         {
             let mut c = state.inner.lock().map_err(|_| "lock envenenado")?;
@@ -565,6 +578,8 @@ mod tests {
     fn cursor_morto_nao_segura_o_journal_para_sempre() {
         // Sem cursor ainda (continuidade nunca armada) e cursor velho: solta.
         assert_eq!(ack_ceiling(25, 0, 0, 999_999), 25);
+        // Cursor ainda não posicionado nunca deve virar teto (ackaria nada).
+        assert_eq!(ack_ceiling(25, CURSOR_UNSET, 1_000, 1_500), 25);
         assert_eq!(ack_ceiling(25, 10, 1_000, 1_000 + CURSOR_STALE_MS + 1), 25);
         // No limite ainda espera.
         assert_eq!(ack_ceiling(25, 10, 1_000, 1_000 + CURSOR_STALE_MS), 10);

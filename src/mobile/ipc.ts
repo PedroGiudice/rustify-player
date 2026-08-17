@@ -79,6 +79,9 @@ export const continuityStatus = () =>
     mode: string;
     contextId: string | null;
     seen: number;
+    negatives: number;
+    negativeIds: string[];
+    journalCursor: number;
     lastTopupAt: number;
     lastError: string | null;
   }>("continuity_status");

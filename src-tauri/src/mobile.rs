@@ -160,6 +160,10 @@ fn continuity_arm(
     c.seen.clear();
     c.session_negatives.clear();
     c.reaction_pending = false;
+    // O journal ainda tem o que o sync não ackou — inclusive skips de horas
+    // atrás. O tender reposiciona o cursor no primeiro ciclo desta rodada.
+    c.journal_cursor = crate::mobile_continuity::CURSOR_UNSET;
+    c.cursor_at = 0;
     c.last_error = None;
 }
 
@@ -210,6 +214,9 @@ fn continuity_status(state: State<ContinuityState>) -> serde_json::Value {
         "contextId": c.context_id,
         "seen": c.seen.len(),
         "negatives": c.session_negatives.len(),
+        // Ids como STRING (u64 estoura 2^53 em JS) — é o que permite ver, de
+        // fora, QUAL faixa foi recusada, e não só quantas.
+        "negativeIds": c.session_negatives.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
         "journalCursor": c.journal_cursor,
         "lastTopupAt": c.last_topup_at,
         "lastError": c.last_error,
