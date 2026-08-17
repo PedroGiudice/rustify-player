@@ -43,8 +43,12 @@ export const libSimilarTracks = (id: string, k?: number) =>
 export const libListStations = () => invoke<StationMeta[]>("lib_list_stations");
 export const libPlayStation = (id: string, limit?: number) =>
   invoke<Track[]>("lib_play_station", { id, limit });
-export const libStationNext = (stationId: string, excludeIds: string[], limit?: number) =>
-  invoke<Track[]>("lib_station_next", { stationId, excludeIds, limit });
+export const libStationNext = (
+  stationId: string,
+  excludeIds: string[],
+  sessionNegativeIds?: string[],
+  limit?: number,
+) => invoke<Track[]>("lib_station_next", { stationId, excludeIds, sessionNegativeIds, limit });
 export const libTastePositives = () => invoke<Track[]>("lib_taste_positives");
 export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
 
@@ -60,6 +64,14 @@ export const continuityArm = (args: {
 
 export const continuitySetEnabled = (enabled: boolean) =>
   invoke<void>("continuity_set_enabled", { enabled });
+
+/**
+ * Skip feito dentro do app. Existe só por LATÊNCIA: o mesmo skip chegaria pelo
+ * journal no próximo ciclo do tender (até 20s), e nesse intervalo a fila velha
+ * continuaria na tela. O Rust decide se foi cedo o bastante para contar.
+ */
+export const continuityNoteSkip = (trackId: string, positionMs: number, durationMs: number) =>
+  invoke<void>("continuity_note_skip", { trackId, positionMs, durationMs });
 
 export const continuityStatus = () =>
   invoke<{

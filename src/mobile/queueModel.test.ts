@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { remainingMs, resolveQueue, splitQueue } from "./queueModel";
+import { remainingMs, resolveQueue, skipReport, splitQueue } from "./queueModel";
 import type { QueueEntry, QueueSnapshot, Track } from "./types";
 
 function track(id: string, durationMs = 180_000): Track {
@@ -113,5 +113,28 @@ describe("remainingMs", () => {
 
   it("fila vazia é zero", () => {
     expect(remainingMs([], -1, 0)).toBe(0);
+  });
+});
+
+describe("skipReport", () => {
+  const pb = { index: 3, trackId: "42", positionMs: 12_345.6, durationMs: 200_000 };
+
+  it("reporta quando o pulo é para frente", () => {
+    expect(skipReport(pb, 4)).toEqual({ trackId: "42", positionMs: 12_346, durationMs: 200_000 });
+  });
+
+  it("reporta o 'próxima' (sem alvo), que é avanço por definição", () => {
+    expect(skipReport(pb)?.trackId).toBe("42");
+  });
+
+  it("NÃO reporta replay: voltar é repetir, não recusar", () => {
+    expect(skipReport(pb, 2)).toBeNull();
+    expect(skipReport(pb, 0)).toBeNull();
+    // re-tocar a própria faixa corrente também não é rejeição
+    expect(skipReport(pb, 3)).toBeNull();
+  });
+
+  it("sem faixa corrente não há o que reportar", () => {
+    expect(skipReport({ ...pb, trackId: null }, 4)).toBeNull();
   });
 });

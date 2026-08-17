@@ -211,8 +211,19 @@ pub fn parse_stations(json: &[u8]) -> Result<Vec<Station>, String> {
 /// desktop usa). Negatives do gosto são EXCLUÍDOS (não só penalizados) —
 /// no aparelho o pool é pequeno e sugerir skip conhecido é desperdício.
 /// Candidato sem vetor cai pro fim preservando a ordem do pool.
-pub fn rank_pool(pool: &[u64], taste: &Taste, vectors: Option<&VectorIndex>) -> Vec<u64> {
-    let neg_set: HashSet<u64> = taste.negatives.iter().copied().collect();
+///
+/// `session_negatives` é o que foi largado cedo NA SESSÃO CORRENTE: o id
+/// exato sai do pool (reaparecer logo depois de ser pulado é o pior defeito
+/// possível), e a vizinhança dele é penalizada com o mesmo peso do gosto —
+/// pular é sinal fresco e específico, mas não é uma sentença sobre o timbre.
+pub fn rank_pool(
+    pool: &[u64],
+    taste: &Taste,
+    vectors: Option<&VectorIndex>,
+    session_negatives: &[u64],
+) -> Vec<u64> {
+    let mut neg_set: HashSet<u64> = taste.negatives.iter().copied().collect();
+    neg_set.extend(session_negatives.iter().copied());
     let candidates: Vec<u64> = pool.iter().copied().filter(|t| !neg_set.contains(t)).collect();
     let Some(vx) = vectors else { return candidates };
     if taste.positives.is_empty() {
@@ -227,8 +238,10 @@ pub fn rank_pool(pool: &[u64], taste: &Taste, vectors: Option<&VectorIndex>) -> 
                     .filter_map(|&p| vx.cos(tid, p))
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             };
-            let score = best(&taste.positives)
-                .map(|pos| pos - 0.5 * best(&taste.negatives).unwrap_or(0.0));
+            let score = best(&taste.positives).map(|pos| {
+                pos - 0.5 * best(&taste.negatives).unwrap_or(0.0)
+                    - 0.5 * best(session_negatives).unwrap_or(0.0)
+            });
             (i, tid, score)
         })
         .collect();
@@ -358,14 +371,40 @@ mod tests {
         let vx = idx();
         let taste = Taste { positives: vec![1], negatives: vec![3] };
         // pool na ordem "errada": oposto primeiro, vizinho depois, negative junto
-        let ranked = rank_pool(&[4, 3, 2], &taste, Some(&vx));
+        let ranked = rank_pool(&[4, 3, 2], &taste, Some(&vx), &[]);
         assert_eq!(ranked, vec![2, 4]); // 3 excluído; 2 (cos≈1) antes de 4 (cos=-1)
     }
 
     #[test]
     fn rank_pool_sem_vetores_preserva_ordem_sem_negatives() {
         let taste = Taste { positives: vec![1], negatives: vec![9] };
-        assert_eq!(rank_pool(&[9, 5, 6], &taste, None), vec![5, 6]);
+        assert_eq!(rank_pool(&[9, 5, 6], &taste, None, &[]), vec![5, 6]);
+    }
+
+    #[test]
+    fn negativo_de_sessao_rebaixa_a_vizinhanca_sem_exclui_la() {
+        // 10 = gosto. 11 e 12 estão IGUALMENTE perto dele (cos 0.6 os dois),
+        // mas 11 é vizinho do que acabou de ser pulado (13) e 12 não é. Sem a
+        // penalidade, o desempate seria só a ordem do pool.
+        let vx = VectorIndex::parse(&bin(3, &[
+            (10, vec![1.0, 0.0, 0.0]),
+            (11, vec![0.6, 0.8, 0.0]),
+            (12, vec![0.6, 0.0, 0.8]),
+            (13, vec![0.0, 1.0, 0.0]),
+        ]))
+        .unwrap();
+        let taste = Taste { positives: vec![10], negatives: vec![] };
+        assert_eq!(rank_pool(&[11, 12], &taste, Some(&vx), &[]), vec![11, 12]);
+        // pulou 13 → 11 cai atrás de 12, mas continua no pool
+        assert_eq!(rank_pool(&[11, 12], &taste, Some(&vx), &[13]), vec![12, 11]);
+    }
+
+    #[test]
+    fn faixa_pulada_nao_volta_no_lote_seguinte() {
+        let vx = idx();
+        let taste = Taste { positives: vec![1], negatives: vec![] };
+        let ranked = rank_pool(&[2, 3, 4], &taste, Some(&vx), &[2]);
+        assert!(!ranked.contains(&2));
     }
 
     #[test]

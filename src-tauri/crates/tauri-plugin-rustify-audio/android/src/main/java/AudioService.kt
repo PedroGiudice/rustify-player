@@ -45,6 +45,10 @@ class AudioService : MediaSessionService() {
     private var pendingTransition = false
     private var pendingReason = -1
     private var pendingOldPositionMs: Long? = null
+    // Direcao do pulo. Voltar pra faixa anterior (fone, notificacao, gesto) NAO
+    // e rejeicao: sem esta marca a reacao de sessao trataria replay como
+    // "nao gostei" e empurraria o radio pra longe do que o usuario repetiu.
+    private var pendingBackward = false
 
     override fun onCreate() {
         super.onCreate()
@@ -132,6 +136,7 @@ class AudioService : MediaSessionService() {
             if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex) {
                 // posicao final da faixa que esta saindo; onEvents consome
                 pendingOldPositionMs = oldPosition.positionMs.coerceAtLeast(0L)
+                pendingBackward = newPosition.mediaItemIndex < oldPosition.mediaItemIndex
             } else {
                 lastPositionMs = newPosition.positionMs.coerceAtLeast(0L)
             }
@@ -187,16 +192,22 @@ class AudioService : MediaSessionService() {
     private fun handleTransition(activePlayer: Player) {
         val reason = pendingReason
         val captured = pendingOldPositionMs
+        val backward = pendingBackward
         pendingTransition = false
         pendingReason = -1
         pendingOldPositionMs = null
+        pendingBackward = false
 
         if (curTrackId != null) {
             val natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
             val end = captured ?: lastPositionMs
             val endPosition = if (natural && end <= 0L) curDurationMs else end
-            flushCurrent(if (natural) "track_ended" else "track_skipped", endPosition)
+            flushCurrent(
+                if (natural) "track_ended" else "track_skipped",
+                endPosition,
+                backward = !natural && backward
+            )
         }
 
         adoptCurrent(activePlayer)
@@ -228,7 +239,7 @@ class AudioService : MediaSessionService() {
         lastPositionMs = activePlayer.currentPosition.coerceAtLeast(0L)
     }
 
-    private fun flushCurrent(eventType: String, endPositionMs: Long) {
+    private fun flushCurrent(eventType: String, endPositionMs: Long, backward: Boolean = false) {
         val trackId = curTrackId ?: return
         val now = nowSeconds()
         EventJournal.append(
@@ -240,7 +251,8 @@ class AudioService : MediaSessionService() {
             if (curStartedAt > 0L) curStartedAt else now,
             now,
             endPositionMs.coerceAtLeast(0L),
-            curDurationMs.coerceAtLeast(0L)
+            curDurationMs.coerceAtLeast(0L),
+            backward
         )
     }
 

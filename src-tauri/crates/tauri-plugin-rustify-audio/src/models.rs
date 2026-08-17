@@ -184,6 +184,10 @@ pub struct PlayEvent {
     pub timestamp: i64,
     pub end_position_ms: i64,
     pub duration_ms: i64,
+    /// Pulo PARA TRAS (replay). Ausente na esmagadora maioria das linhas — o
+    /// Kotlin so grava quando true, e linhas antigas nao tem o campo.
+    #[serde(default)]
+    pub backward: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -67,21 +67,32 @@ fn lib_play_station(lib: State<Library>, id: String, limit: Option<usize>) -> Ve
     lib.0
         .lock()
         .expect("library lock")
-        .station_batch(&id, &[], limit.unwrap_or(40), shuffle_seed())
+        .station_batch(&id, &[], &[], limit.unwrap_or(40), shuffle_seed())
 }
 
-/// Lote incremental com contexto de rodada (exclui já vistas).
+/// Lote incremental com contexto de rodada (exclui já vistas). Os negativos de
+/// sessão vêm da UI porque este caminho é o do app acordado; o tender usa os
+/// seus próprios, colhidos do journal.
 #[tauri::command]
 fn lib_station_next(
     lib: State<Library>,
     station_id: String,
     exclude_ids: Vec<String>,
+    session_negative_ids: Option<Vec<String>>,
     limit: Option<usize>,
 ) -> Vec<Track> {
-    lib.0
-        .lock()
-        .expect("library lock")
-        .station_batch(&station_id, &exclude_ids, limit.unwrap_or(6), shuffle_seed())
+    let negatives: Vec<u64> = session_negative_ids
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    lib.0.lock().expect("library lock").station_batch(
+        &station_id,
+        &exclude_ids,
+        &negatives,
+        limit.unwrap_or(6),
+        shuffle_seed(),
+    )
 }
 
 /// Rail "Based on your favorites" — positives do snapshot de gosto.
@@ -141,24 +152,53 @@ fn continuity_arm(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    let mut c = state.0.lock().expect("continuity lock");
+    let mut c = state.inner.lock().expect("continuity lock");
     c.context_id = crate::mobile_continuity::context_for(&parsed, epoch);
     c.mode = parsed;
-    // Rodada nova: o que foi visto na anterior não deve excluir nada aqui.
+    // Rodada nova: o que foi visto e o que foi recusado na anterior não devem
+    // pesar aqui — a rejeição é da sessão, não do gosto.
     c.seen.clear();
+    c.session_negatives.clear();
+    c.reaction_pending = false;
     c.last_error = None;
 }
 
 #[tauri::command]
 fn continuity_set_enabled(state: State<ContinuityState>, enabled: bool) {
-    state.0.lock().expect("continuity lock").enabled = enabled;
+    state.inner.lock().expect("continuity lock").enabled = enabled;
+}
+
+/// Skip feito DENTRO do app. O journal já veria este evento no próximo ciclo,
+/// mas isso custaria até 20 segundos de fila velha na tela; aqui a rejeição
+/// entra na hora e o sino acorda o tender. Skip para TRÁS (replay) não passa
+/// por aqui — quem filtra é o store.
+#[tauri::command]
+fn continuity_note_skip(
+    state: State<ContinuityState>,
+    track_id: String,
+    position_ms: i64,
+    duration_ms: i64,
+) {
+    if !crate::mobile_continuity::is_early_skip(position_ms, duration_ms) {
+        return;
+    }
+    let Ok(id) = track_id.parse::<u64>() else { return };
+    {
+        let mut c = state.inner.lock().expect("continuity lock");
+        if !c.enabled || c.mode == Mode::Off {
+            return;
+        }
+        c.note_negative(id);
+        c.reaction_pending = true;
+    }
+    state.wake();
 }
 
 /// Diagnóstico: sem isto o usuário não tem como saber por que a música parou
 /// (fila sem candidatos? tender desligado? erro de IPC?).
 #[tauri::command]
 fn continuity_status(state: State<ContinuityState>) -> serde_json::Value {
-    let c = state.0.lock().expect("continuity lock");
+    let c = state.inner.lock().expect("continuity lock");
     let mode = match &c.mode {
         Mode::Off => "off".to_string(),
         Mode::Radio { .. } => "radio".to_string(),
@@ -169,6 +209,8 @@ fn continuity_status(state: State<ContinuityState>) -> serde_json::Value {
         "mode": mode,
         "contextId": c.context_id,
         "seen": c.seen.len(),
+        "negatives": c.session_negatives.len(),
+        "journalCursor": c.journal_cursor,
         "lastTopupAt": c.last_topup_at,
         "lastError": c.last_error,
     })
@@ -220,6 +262,7 @@ pub fn run() {
             lib_rescan,
             continuity_arm,
             continuity_set_enabled,
+            continuity_note_skip,
             continuity_status,
         ])
         .run(tauri::generate_context!())

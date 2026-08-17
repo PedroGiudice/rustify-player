@@ -17,7 +17,7 @@ import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
-import { remainingMs, resolveQueue } from "./queueModel";
+import { remainingMs, resolveQueue, skipReport } from "./queueModel";
 import type {
   Folder,
   Origin,
@@ -380,11 +380,24 @@ export async function toggle() {
   }
 }
 
+/** Reporta a rejeição ANTES de sair da faixa — depois do skip o pb já mudou. */
+async function reportSkip(target?: number) {
+  const r = skipReport(pb, target);
+  if (!r) return;
+  try {
+    await ipc.continuityNoteSkip(r.trackId, r.positionMs, r.durationMs);
+  } catch (e) {
+    // O journal cobre este skip no próximo ciclo — perder o atalho de
+    // latência não perde o sinal.
+    console.warn("[mobile] note_skip falhou:", e);
+  }
+}
+
 export async function next() {
+  void reportSkip();
   try {
     const r = await ipc.playerNext();
-    // Fim da fila: hoje o serviço apenas para. Enquanto o autoplay não
-    // existe (epic B), pelo menos o gesto deixa de ser um no-op mudo.
+    // Fim da fila com continuidade desligada: o serviço apenas para.
     if (r && r.moved === false) showToast("Fim da fila");
   } catch (e) {
     console.warn("[mobile] next falhou:", e);
@@ -412,6 +425,7 @@ export async function seek(positionMs: number) {
 }
 
 export async function skipToIndex(index: number) {
+  void reportSkip(index);
   setPb("index", index);
   try {
     await ipc.playerSkipToIndex(index);

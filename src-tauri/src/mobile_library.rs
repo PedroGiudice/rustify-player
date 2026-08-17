@@ -324,6 +324,7 @@ impl MobileLibrary {
         &self,
         seed_id: &str,
         exclude: &[String],
+        session_negatives: &[u64],
         limit: usize,
         seed: u64,
     ) -> Vec<Track> {
@@ -342,7 +343,7 @@ impl MobileLibrary {
             .map(|(t, _)| t)
             .collect();
         let mut ranked: Vec<u64> =
-            mobile_intel::rank_pool(&pool, &self.taste, self.vectors.as_ref())
+            mobile_intel::rank_pool(&pool, &self.taste, self.vectors.as_ref(), session_negatives)
                 .into_iter()
                 .filter(|t| self.by_id.contains_key(&t.to_string()))
                 .collect();
@@ -365,6 +366,7 @@ impl MobileLibrary {
         &self,
         station_id: &str,
         exclude: &[String],
+        session_negatives: &[u64],
         limit: usize,
         seed: u64,
     ) -> Vec<Track> {
@@ -373,13 +375,15 @@ impl MobileLibrary {
         };
         let exclude_set: HashSet<u64> =
             exclude.iter().filter_map(|s| s.parse().ok()).collect();
-        let mut ranked: Vec<u64> =
-            mobile_intel::rank_pool(&station.pool, &self.taste, self.vectors.as_ref())
-                .into_iter()
-                .filter(|t| {
-                    !exclude_set.contains(t) && self.by_id.contains_key(&t.to_string())
-                })
-                .collect();
+        let mut ranked: Vec<u64> = mobile_intel::rank_pool(
+            &station.pool,
+            &self.taste,
+            self.vectors.as_ref(),
+            session_negatives,
+        )
+        .into_iter()
+        .filter(|t| !exclude_set.contains(t) && self.by_id.contains_key(&t.to_string()))
+        .collect();
         mobile_intel::weighted_pick_prefix(&mut ranked, limit * 3, seed);
         ranked
             .into_iter()

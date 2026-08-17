@@ -75,7 +75,9 @@ object EventJournal {
         startedAt: Long,
         timestamp: Long,
         endPositionMs: Long,
-        durationMs: Long
+        durationMs: Long,
+        /** Pulo PARA TRAS (replay). Nao e rejeicao — a reacao de sessao ignora. */
+        backward: Boolean = false
     ): Long {
         synchronized(lock) {
             ensureSeq(ctx)
@@ -95,6 +97,9 @@ object EventJournal {
             obj.put("timestamp", timestamp)
             obj.put("end_position_ms", endPositionMs)
             obj.put("duration_ms", durationMs)
+            // So quando true: o payload sincado pro desktop ignora o campo, e
+            // uma linha a mais por evento em TODO evento nao paga o custo.
+            if (backward) obj.put("backward", true)
 
             try {
                 FileOutputStream(file(ctx), true).use { out ->

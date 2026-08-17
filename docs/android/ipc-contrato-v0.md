@@ -147,6 +147,9 @@ invoke('continuity_arm', { mode: 'off' })                  // não continuar
 
 invoke('continuity_set_enabled', { enabled })              // toggle do Settings
 invoke('continuity_status')                                // diagnóstico
+
+// skip feito DENTRO do app — só por latência (ver abaixo)
+invoke('continuity_note_skip', { trackId, positionMs, durationMs })
 ```
 
 O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
@@ -166,6 +169,32 @@ cobre.
 derruba o `MediaController` e o tender passa a receber erro (não trava — os
 invokes são rejeitados desde a correção do `withController`). Tela apagada com
 a Activity viva, que é o caso dominante, está coberto.
+
+### Reação ao skip dentro da sessão
+
+Largar uma faixa antes de 35% dela é rejeição (mesmo limiar do desktop). O
+tender descarta a cauda ainda não tocada, guarda a faixa como negativo **de
+sessão** (some quando a rodada acaba) e pede um lote novo que se afasta dela.
+
+Dois caminhos chegam ao mesmo lugar:
+
+- **App acordado** — `continuity_note_skip` reporta na hora e acorda o tender.
+  Existe só por latência; sem ele a fila velha ficaria até 20s na tela.
+- **App dormindo** (fone, notificação) — o tender lê o journal do plugin por um
+  cursor próprio, a cada ciclo. É o caminho que importa com a tela apagada.
+
+Voltar para a faixa anterior **não** é rejeição. Dentro do app quem filtra é o
+`skipReport` do store; pelo journal, o Kotlin marca a linha com `backward: true`
+(campo só presente quando verdadeiro; o payload sincado o ignora).
+
+O journal tem dois leitores e só o worker de sync apaga: o ack dele nunca passa
+do cursor do tender (`ack_ceiling`), senão uma rejeição em cada seis sumiria em
+silêncio — as cadências são 60s contra 20s. Cursor parado há mais de 3 minutos
+é tratado como tender morto e o sync solta.
+
+Da cauda, o corte respeita duas coisas: a faixa que toca e o que o usuário
+enfileirou à mão. Como o serviço só remove sufixo, o descarte começa depois do
+último item que não é do motor — um "tocar em seguida" sobrevive à reação.
 
 ## Origins (afetam o sinal do motor — usar os nomes EXATOS do desktop)
 

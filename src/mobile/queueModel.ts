@@ -77,3 +77,33 @@ export function fmtRemaining(ms: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
+
+/** O que o motor precisa saber quando o usuário abandona a faixa corrente. */
+export interface SkipReport {
+  trackId: string;
+  positionMs: number;
+  durationMs: number;
+}
+
+/**
+ * Traduz um pulo em sinal — ou em nada.
+ *
+ * `target` ausente = "próxima" (sempre avanço). Voltar para uma faixa anterior
+ * é REPLAY, não rejeição: reportá-lo empurraria o rádio para longe justamente
+ * do que o usuário quis repetir. Sem faixa corrente não há o que reportar.
+ *
+ * O filtro de "cedo" (fração ouvida) fica no Rust, junto do mesmo limiar que
+ * o caminho do journal usa — duas cópias do número divergiriam.
+ */
+export function skipReport(
+  pb: { index: number; trackId: string | null; positionMs: number; durationMs: number },
+  target?: number,
+): SkipReport | null {
+  if (!pb.trackId) return null;
+  if (target !== undefined && target <= pb.index) return null;
+  return {
+    trackId: pb.trackId,
+    positionMs: Math.max(0, Math.round(pb.positionMs)),
+    durationMs: Math.max(0, Math.round(pb.durationMs)),
+  };
+}

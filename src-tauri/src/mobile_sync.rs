@@ -116,6 +116,7 @@ pub(crate) mod worker {
         app_version: &str,
         url: &str,
     ) -> Result<(), String> {
+        use tauri::Manager;
         let audio = app.rustify_audio();
         let drained = tauri::async_runtime::block_on(audio.drain_events(0))
             .map_err(|e| format!("drain: {e}"))?;
@@ -144,16 +145,36 @@ pub(crate) mod worker {
             .into_json()
             .map_err(|e| format!("resp: {e}"))?;
         let accepted = resp["accepted"].as_u64().unwrap_or(0);
+        // O journal tem DOIS leitores e um só apaga. O tender lê os mesmos
+        // eventos para reagir a skip; compactar à frente do cursor dele faria
+        // rejeições sumirem em silêncio. Ver `ack_ceiling`.
+        let upto = {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            let (cursor, cursor_at) = app
+                .try_state::<crate::mobile_continuity::ContinuityState>()
+                .and_then(|s| {
+                    s.inner
+                        .lock()
+                        .ok()
+                        .map(|c| (c.journal_cursor, c.cursor_at))
+                })
+                .unwrap_or((0, 0));
+            crate::mobile_continuity::ack_ceiling(drained.last_seq, cursor, cursor_at, now)
+        };
         tracing::info!(
             sent = batch.len(),
             accepted,
             last_seq = drained.last_seq,
+            ack_upto = upto,
             "mobile-sync: lote entregue"
         );
         // Rejeitados também ackam: re-enviar payload inválido para sempre não
-        // conserta nada e o receptor já logou o motivo.
-        tauri::async_runtime::block_on(audio.ack_events(drained.last_seq))
-            .map_err(|e| format!("ack: {e}"))?;
+        // conserta nada e o receptor já logou o motivo. O que fica para trás do
+        // teto é re-enviado no próximo ciclo — inócuo, o upsert é por uuid.
+        tauri::async_runtime::block_on(audio.ack_events(upto)).map_err(|e| format!("ack: {e}"))?;
         Ok(())
     }
 }
