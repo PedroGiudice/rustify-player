@@ -110,6 +110,14 @@ export interface PlaybackState {
 
 export type RepeatMode = "off" | "one" | "all";
 
+/** De onde saiu o lote de rádio — `vector` é o modo bom, os outros degradam. */
+export type RadioLayer = "vector" | "artistFolder" | "library";
+
+export interface RadioStart {
+  tracks: Track[];
+  layer: RadioLayer;
+}
+
 /** Álbum derivado no cliente agrupando o acervo por (artista, álbum). */
 export interface DerivedAlbum {
   key: string;

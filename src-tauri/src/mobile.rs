@@ -8,7 +8,7 @@
 
 use crate::mobile_continuity::{ContinuityState, Mode};
 use crate::mobile_intel::StationMeta;
-use crate::mobile_library::{Folder, MobileLibrary, Track};
+use crate::mobile_library::{Folder, MobileLibrary, RadioStart, Track};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -53,6 +53,21 @@ fn lib_similar_tracks(lib: State<Library>, id: String, k: Option<usize>) -> Vec<
         .lock()
         .expect("library lock")
         .similar_tracks(&id, k.unwrap_or(20))
+}
+
+/// Primeiro lote do rádio de uma faixa — NUNCA vazio com biblioteca não-vazia.
+/// Faixa recém-chegada (sem linha no vectors.bin) cai pra artista/pasta e, no
+/// limite, pro acervo; `layer` diz à UI em que modo ela está.
+#[tauri::command]
+fn lib_radio_start(lib: State<Library>, id: String, limit: Option<usize>) -> RadioStart {
+    let (tracks, layer) = lib.0.lock().expect("library lock").radio_candidates(
+        &id,
+        &[],
+        &[],
+        limit.unwrap_or(30),
+        shuffle_seed(),
+    );
+    RadioStart { tracks, layer }
 }
 
 #[tauri::command]
@@ -261,6 +276,7 @@ pub fn run() {
             lib_list_tracks,
             lib_get_tracks_by_ids,
             lib_similar_tracks,
+            lib_radio_start,
             lib_list_stations,
             lib_play_station,
             lib_station_next,

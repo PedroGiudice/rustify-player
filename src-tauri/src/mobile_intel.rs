@@ -254,6 +254,34 @@ pub fn rank_pool(
     scored.into_iter().map(|(_, tid, _)| tid).collect()
 }
 
+/// Xorshift* — o mesmo gerador do [`weighted_pick_prefix`], extraído para os
+/// dois sorteios compartilharem a fonte de aleatoriedade determinística.
+fn rand01_from(seed: u64) -> impl FnMut() -> f64 {
+    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    move || -> f64 {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 11) as f64 / (1u64 << 53) as f64
+    }
+}
+
+/// Embaralhamento UNIFORME (Fisher-Yates). É o certo para os fallbacks do
+/// rádio: ali não há ranking a preservar, e o peso geométrico do
+/// [`weighted_pick_prefix`] faria pior que nada — r^i vira 0 por underflow
+/// depois de ~200 posições, então a cauda de um acervo de 1700 faixas nunca
+/// seria sorteada e o "shuffle" tocaria sempre o mesmo começo.
+pub fn shuffle<T>(items: &mut [T], seed: u64) {
+    if items.len() < 2 {
+        return;
+    }
+    let mut rand01 = rand01_from(seed);
+    for i in (1..items.len()).rev() {
+        let j = (rand01() * (i + 1) as f64) as usize;
+        items.swap(i, j.min(i));
+    }
+}
+
 /// Sorteio ponderado geométrico sobre os primeiros `prefix` elementos —
 /// mesma matemática do desktop (desktop.rs weighted_pick_prefix): amostragem
 /// sem reposição com peso r^i (r = 0.7), xorshift* inline. Variedade entre
@@ -264,13 +292,7 @@ pub fn weighted_pick_prefix<T>(items: &mut Vec<T>, prefix: usize, seed: u64) {
     if n < 2 {
         return;
     }
-    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
-    let mut rand01 = move || -> f64 {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
-        (state.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 11) as f64 / (1u64 << 53) as f64
-    };
+    let mut rand01 = rand01_from(seed);
     let mut pool: Vec<(usize, f64)> = (0..n).map(|i| (i, R.powi(i as i32))).collect();
     let mut order: Vec<usize> = Vec::with_capacity(n);
     while pool.len() > 1 {

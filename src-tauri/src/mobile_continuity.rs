@@ -401,19 +401,33 @@ pub(crate) mod tender {
             .ok_or("sem Library")?;
         let batch: Vec<Track> = {
             let l = lib.0.lock().map_err(|_| "library lock")?;
+            // Semeia pela faixa CORRENTE quando ela existe: o rádio acompanha
+            // para onde a sessão andou, em vez de ficar preso na faixa que o
+            // usuário escolheu dez faixas atrás.
+            let seed_id = |fallback: u64| {
+                st.track_id.clone().unwrap_or_else(|| fallback.to_string())
+            };
             match &mode {
                 Mode::Station { station_id } => {
-                    l.station_batch(station_id, &exclude, &negatives, STATION_BATCH, seed)
+                    let lote =
+                        l.station_batch(station_id, &exclude, &negatives, STATION_BATCH, seed);
+                    // Pool da station exaurido não pode virar silêncio: o rádio
+                    // da faixa corrente assume e a música segue.
+                    if lote.is_empty() {
+                        l.radio_candidates(&seed_id(0), &exclude, &negatives, STATION_BATCH, seed).0
+                    } else {
+                        lote
+                    }
                 }
                 Mode::Radio { seed_track_id } => {
-                    // Semeia pela faixa CORRENTE quando ela existe: o rádio
-                    // acompanha para onde a sessão andou, em vez de ficar preso
-                    // na faixa que o usuário escolheu dez faixas atrás.
-                    let seed_id = st
-                        .track_id
-                        .clone()
-                        .unwrap_or_else(|| seed_track_id.to_string());
-                    l.radio_batch(&seed_id, &exclude, &negatives, RADIO_BATCH, seed)
+                    l.radio_candidates(
+                        &seed_id(*seed_track_id),
+                        &exclude,
+                        &negatives,
+                        RADIO_BATCH,
+                        seed,
+                    )
+                    .0
                 }
                 Mode::Off => Vec::new(),
             }

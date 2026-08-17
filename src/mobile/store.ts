@@ -243,8 +243,13 @@ export async function playList(
   }
 }
 
+// Regra de continuidade (decisão do CEO, 2026-08-17): ligada por padrão em
+// qualquer fila, com duas exceções — a playlist, que é coleção curada com
+// começo e fim e deve TERMINAR, e a station, que já tem o modo de continuação
+// dela (o pool próprio, não um rádio semeado).
 export const playTrackFrom = (list: Track[], index: number) => playList(list, index, "manual");
-export const playFolder = (list: Track[], name: string) => playList(list, 0, "playlist", name);
+export const playFolder = (list: Track[], name: string) =>
+  playList(list, 0, "playlist", name, { mode: "off" });
 export const playAlbum = (list: Track[], key: string) => playList(list, 0, "album_seq", key);
 export const shuffleList = (list: Track[]) => playList(shuffled(list), 0, "shuffle");
 export const shuffleAll = () => shuffleList(tracks());
@@ -265,21 +270,36 @@ export async function playStation(st: StationMeta) {
   }
 }
 
-/** Rádio da faixa: vizinhos por similaridade viram a fila.
- *  Requer vectors.bin no aparelho — sem ele, toast e nada muda. */
+/**
+ * Rádio da faixa. Toca SEMPRE que houver acervo: faixa recém-chegada, ainda
+ * sem vetor, cai pra artista/pasta e, no limite, pro acervo inteiro. O toast
+ * diz em que modo está — antes ele acusava "sem vetores, rode o export", o que
+ * culpava a configuração por uma faixa que só era nova.
+ *
+ * `origin: autoplay` (não `station`): quem escolheu foi o motor, e só a
+ * station real deve contar como station na régua. `contextId` segue a mesma
+ * convenção do tender (`radio:<seed>:<epoch>`) para os dois lados agruparem
+ * a mesma rodada.
+ */
 export async function playSimilar(track: Track) {
   try {
-    const similar = await ipc.libSimilarTracks(track.id, 30);
-    if (!similar.length) {
-      showToast("Sem vetores no aparelho — rode o export");
+    const { tracks: lote, layer } = await ipc.libRadioStart(track.id, 30);
+    if (!lote.length) {
+      showToast("Acervo vazio");
       return;
     }
-    await playList(similar, 0, "station", `similar:${track.id}`, {
+    await playList(lote, 0, "autoplay", `radio:${track.id}:${Date.now()}`, {
       mode: "radio",
     });
-    showToast(`Rádio: ${track.title}`);
+    showToast(
+      layer === "vector"
+        ? `Rádio: ${track.title}`
+        : layer === "artistFolder"
+          ? `Rádio por artista — ${track.title} ainda sem análise`
+          : `Rádio do acervo — ${track.title} ainda sem análise`,
+    );
   } catch (e) {
-    console.error("[mobile] lib_similar_tracks falhou:", e);
+    console.error("[mobile] lib_radio_start falhou:", e);
     showToast("Falha ao montar o rádio");
   }
 }

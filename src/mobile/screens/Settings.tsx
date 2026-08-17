@@ -93,8 +93,9 @@ export function Settings() {
             <div class="setrow__label">Continuar tocando</div>
             <div class="setrow__hint">
               Quando a fila está acabando, o aparelho escolhe as próximas sozinho — station usa o
-              pool dela, qualquer outra fila vira rádio semeado pelo que está tocando. Funciona com
-              a tela apagada; desligado, a fila termina e o som para.
+              pool dela, qualquer outra fila vira rádio semeado pelo que está tocando. Playlist é a
+              exceção: coleção curada tem fim e termina. Funciona com a tela apagada; desligado, a
+              fila termina e o som para.
             </div>
           </div>
           <div class="seg">

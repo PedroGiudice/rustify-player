@@ -18,6 +18,7 @@ import type {
   PlaybackState,
   QueueItem,
   QueueSnapshot,
+  RadioStart,
   RepeatMode,
   StationMeta,
   StepResult,
@@ -40,6 +41,15 @@ export const libRescan = () => invoke<number>("lib_rescan");
 
 export const libSimilarTracks = (id: string, k?: number) =>
   invoke<Track[]>("lib_similar_tracks", { id, k });
+
+/**
+ * Primeiro lote do rádio de uma faixa. Ao contrário de `libSimilarTracks`,
+ * NUNCA volta vazio com acervo não-vazio: faixa sem vetor (leva nova que ainda
+ * não passou pelo MERT) cai pra artista/pasta e, no limite, pro acervo. O
+ * `layer` existe para a UI ser honesta sobre o modo degradado.
+ */
+export const libRadioStart = (id: string, limit?: number) =>
+  invoke<RadioStart>("lib_radio_start", { id, limit });
 export const libListStations = () => invoke<StationMeta[]>("lib_list_stations");
 export const libPlayStation = (id: string, limit?: number) =>
   invoke<Track[]>("lib_play_station", { id, limit });

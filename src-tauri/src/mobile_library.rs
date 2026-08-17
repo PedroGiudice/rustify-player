@@ -68,6 +68,25 @@ pub struct Folder {
     pub track_count: usize,
 }
 
+/// De onde saiu o lote de rádio. `Vector` é o modo bom; os outros dois são
+/// degradação honesta — a faixa não tem vetor (leva nova ainda sem MERT) e o
+/// rádio precisa tocar assim mesmo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RadioLayer {
+    Vector,
+    ArtistFolder,
+    Library,
+}
+
+/// Primeiro lote de um rádio + como ele foi obtido.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RadioStart {
+    pub tracks: Vec<Track>,
+    pub layer: RadioLayer,
+}
+
 pub struct MobileLibrary {
     tracks: Vec<Track>,
     by_id: HashMap<String, usize>,
@@ -316,10 +335,104 @@ impl MobileLibrary {
             .collect()
     }
 
+    /// Como o lote de rádio foi obtido. A UI usa isto para ser honesta sobre
+    /// o modo degradado em vez de fingir que a recomendação é a boa.
+    pub fn radio_candidates(
+        &self,
+        seed_id: &str,
+        exclude: &[String],
+        session_negatives: &[u64],
+        limit: usize,
+        seed: u64,
+    ) -> (Vec<Track>, RadioLayer) {
+        let vetor = self.radio_batch(seed_id, exclude, session_negatives, limit, seed);
+        if !vetor.is_empty() {
+            return (vetor, RadioLayer::Vector);
+        }
+        // Faixa sem linha no vectors.bin (leva nova que ainda não passou pelo
+        // MERT) ou vizinhança inteira já excluída. Devolver vazio aqui é o que
+        // fazia a música PARAR e a UI acusar erro de configuração.
+        let vizinhos = self.artist_or_folder_batch(seed_id, exclude, limit, seed);
+        if !vizinhos.is_empty() {
+            return (vizinhos, RadioLayer::ArtistFolder);
+        }
+        (self.library_batch(seed_id, exclude, limit, seed), RadioLayer::Library)
+    }
+
+    /// Camada 2: quem acompanha a faixa no acervo — mesmo artista primeiro,
+    /// depois a pasta (playlist) em que ela vive. Sem vetor nenhum envolvido.
+    fn artist_or_folder_batch(
+        &self,
+        seed_id: &str,
+        exclude: &[String],
+        limit: usize,
+        seed: u64,
+    ) -> Vec<Track> {
+        let Some(&si) = self.by_id.get(seed_id) else { return Vec::new() };
+        let mut blocked: HashSet<&str> = exclude.iter().map(|s| s.as_str()).collect();
+        blocked.insert(seed_id);
+        let artista = self.tracks[si].artist_name.as_deref();
+        let pasta = self
+            .folders
+            .iter()
+            .find(|(_, idx)| idx.contains(&si))
+            .map(|(name, _)| name.as_str());
+
+        let mut do_artista: Vec<usize> = Vec::new();
+        if let Some(a) = artista.filter(|a| !a.trim().is_empty()) {
+            do_artista.extend(self.tracks.iter().enumerate().filter_map(|(i, t)| {
+                (t.artist_name.as_deref() == Some(a) && !blocked.contains(t.id.as_str()))
+                    .then_some(i)
+            }));
+        }
+        let mut da_pasta: Vec<usize> = Vec::new();
+        if let Some(p) = pasta {
+            let ja: HashSet<usize> = do_artista.iter().copied().collect();
+            if let Some((_, idx)) = self.folders.iter().find(|(name, _)| name == p) {
+                da_pasta.extend(idx.iter().copied().filter(|i| {
+                    !ja.contains(i) && !blocked.contains(self.tracks[*i].id.as_str())
+                }));
+            }
+        }
+        // Embaralha DENTRO de cada camada, nunca entre elas: um único shuffle
+        // no pool inteiro jogaria fora a prioridade do artista, que é a razão
+        // de a camada existir.
+        mobile_intel::shuffle(&mut do_artista, seed);
+        mobile_intel::shuffle(&mut da_pasta, seed ^ 0x5DEE_CE66);
+        do_artista
+            .into_iter()
+            .chain(da_pasta)
+            .take(limit)
+            .map(|i| self.tracks[i].clone())
+            .collect()
+    }
+
+    /// Camada 3: o acervo inteiro, embaralhado. Só falha se a biblioteca
+    /// estiver vazia — e aí não havia o que tocar mesmo.
+    fn library_batch(
+        &self,
+        seed_id: &str,
+        exclude: &[String],
+        limit: usize,
+        seed: u64,
+    ) -> Vec<Track> {
+        let mut blocked: HashSet<&str> = exclude.iter().map(|s| s.as_str()).collect();
+        blocked.insert(seed_id);
+        let mut pool: Vec<usize> = self
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| (!blocked.contains(t.id.as_str())).then_some(i))
+            .collect();
+        mobile_intel::shuffle(&mut pool, seed);
+        pool.into_iter().take(limit).map(|i| self.tracks[i].clone()).collect()
+    }
+
     /// Lote de rádio semeado por uma faixa — o autoplay de qualquer fila que
     /// não seja station. Diferente de [`similar_tracks`], respeita o que já
     /// tocou na rodada e passa pelo gosto: vizinhança MERT pura agrupa por
     /// timbre e o rádio vira "mais do mesmo álbum" em três faixas.
+    /// Vazio = a faixa não tem vetor; quem trata é [`radio_candidates`].
     pub fn radio_batch(
         &self,
         seed_id: &str,
@@ -405,6 +518,98 @@ impl MobileLibrary {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn t(id: &str, artist: &str) -> Track {
+        Track {
+            id: id.into(),
+            title: format!("t{id}"),
+            artist_name: Some(artist.into()),
+            album_title: None,
+            album_cover_path: None,
+            album_year: None,
+            duration_ms: 180_000,
+            path: format!("/m/{artist}/{id}.opus"),
+            lrc_path: None,
+            track_number: None,
+            genre_name: None,
+            dominant_color: None,
+        }
+    }
+
+    /// Biblioteca sem NENHUM artefato de inteligência: é exatamente o estado de
+    /// uma faixa recém-chegada do Crate, que ainda não passou pelo MERT.
+    fn lib_sem_vetores() -> MobileLibrary {
+        let tracks = vec![
+            t("1", "A"),
+            t("2", "A"),
+            t("3", "A"),
+            t("4", "B"),
+            t("5", "C"),
+        ];
+        let by_id = tracks
+            .iter()
+            .enumerate()
+            .map(|(i, tr)| (tr.id.clone(), i))
+            .collect();
+        MobileLibrary {
+            tracks,
+            by_id,
+            folders: vec![("Rap".into(), vec![0, 1, 2, 3]), ("Jazz".into(), vec![4])],
+            vectors: None,
+            taste: Taste::default(),
+            stations: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn radio_de_faixa_sem_vetor_toca_o_artista() {
+        let lib = lib_sem_vetores();
+        let (tracks, layer) = lib.radio_candidates("1", &[], &[], 10, 7);
+        assert_eq!(layer, RadioLayer::ArtistFolder);
+        // nunca a própria semente
+        assert!(!tracks.iter().any(|x| x.id == "1"));
+        // as duas do mesmo artista vêm antes da vizinha só-de-pasta
+        let ids: Vec<&str> = tracks.iter().map(|x| x.id.as_str()).collect();
+        assert!(ids.contains(&"2") && ids.contains(&"3"));
+        assert_eq!(
+            ids.iter().position(|i| *i == "4").unwrap(),
+            2,
+            "a faixa que só divide a pasta entra depois do artista"
+        );
+    }
+
+    #[test]
+    fn artista_solitario_cai_pra_pasta_e_depois_pro_acervo() {
+        let lib = lib_sem_vetores();
+        // "5" é o único artista C, e a pasta dele só tem ele: sobra o acervo.
+        let (tracks, layer) = lib.radio_candidates("5", &[], &[], 10, 7);
+        assert_eq!(layer, RadioLayer::Library);
+        assert_eq!(tracks.len(), 4);
+        assert!(!tracks.iter().any(|x| x.id == "5"));
+    }
+
+    #[test]
+    fn radio_nunca_devolve_vazio_com_acervo_nao_vazio() {
+        let lib = lib_sem_vetores();
+        for seed_id in ["1", "2", "3", "4", "5"] {
+            let (tracks, _) = lib.radio_candidates(seed_id, &[], &[], 3, 11);
+            assert!(!tracks.is_empty(), "rádio vazio para {seed_id}");
+        }
+        // id que nem existe no acervo: ainda assim toca (camada 3)
+        let (tracks, layer) = lib.radio_candidates("999", &[], &[], 3, 11);
+        assert_eq!(layer, RadioLayer::Library);
+        assert_eq!(tracks.len(), 3);
+    }
+
+    #[test]
+    fn fallback_respeita_o_exclude_da_rodada() {
+        let lib = lib_sem_vetores();
+        let exclude = vec!["2".to_string(), "3".to_string()];
+        let (tracks, _) = lib.radio_candidates("1", &exclude, &[], 10, 7);
+        assert!(!tracks.iter().any(|x| x.id == "2" || x.id == "3"));
+    }
+
     use super::canon_stem;
 
     #[test]

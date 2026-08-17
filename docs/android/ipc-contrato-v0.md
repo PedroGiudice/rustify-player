@@ -38,6 +38,7 @@ devolvem lista vazia — a UI esconde as seções, nunca quebra.
 
 ```ts
 invoke<Track[]>('lib_similar_tracks', { id, k? })      // vizinhos mert (default 20)
+invoke<RadioStart>('lib_radio_start', { id, limit? })  // rádio da faixa — NUNCA vazio
 invoke<StationMeta[]>('lib_list_stations')
 invoke<Track[]>('lib_play_station', { id, limit? })    // 1º lote (default 40)
 invoke<Track[]>('lib_station_next', {                  // lote incremental
@@ -52,6 +53,15 @@ invoke<LyricLine[]>('lib_get_lyrics', { trackId })     // sidecar .lrc; [] sem l
 `StationMeta`: `{ id, name, icon, tone, desc, kind: 'seed'|'mood', query,
 pool_size }`. `pool_size === 0` = station sem candidatos no acervo — mostrar
 desabilitada ou esconder.
+
+`RadioStart`: `{ tracks, layer: 'vector'|'artistFolder'|'library' }`. Só
+`lib_radio_start` garante lote não-vazio: `lib_similar_tracks` devolve `[]` para
+faixa sem linha no `vectors.bin` (leva nova que ainda não passou pelo MERT), e
+antes disso a UI acusava "sem vetores no aparelho" — culpando a configuração por
+uma faixa que só era nova. As camadas do fallback são artista → pasta → acervo,
+e o `layer` existe para o toast ser honesto sobre o modo degradado. O tender usa
+as mesmas camadas: station com pool exaurido vira rádio da faixa corrente em vez
+de silêncio.
 
 Play de station: `set_queue(..., origin: 'station', contextId: station.id)` —
 o sinal v3 já desconta origem passiva; o evento volta pro desktop via sync.
@@ -151,6 +161,12 @@ invoke('continuity_status')                                // diagnóstico
 // skip feito DENTRO do app — só por latência (ver abaixo)
 invoke('continuity_note_skip', { trackId, positionMs, durationMs })
 ```
+
+Quem arma o quê (decisão do CEO, 2026-08-17): **ligada por padrão em qualquer
+fila**, com duas exceções — a **playlist**, que é coleção curada com começo e
+fim e deve terminar (`mode: 'off'`), e a **station**, que já tem o modo de
+continuação dela (`mode: 'station'`, pool próprio em vez de rádio semeado).
+Faixa avulsa, álbum, shuffle e rádio de faixa continuam.
 
 O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
 **secando** (tocando, a ≤2 posições do fim). Pausa não conta: o usuário pausou
