@@ -206,6 +206,23 @@ pub fn cap_per_artist_soft_seeded(
     kept
 }
 
+/// Metadata-lixo no campo artista (ex.: rips de FTP com a URL do site no
+/// lugar do artista — "www.ftpdjemilio.com" apareceu como recomendação de
+/// autoplay na forense 18/08). Detecta padrão de URL/domínio; artista
+/// ausente NÃO é lixo (só desconhecido).
+pub fn is_junk_artist(artist: Option<&str>) -> bool {
+    let Some(a) = artist else { return false };
+    let a = a.trim().to_ascii_lowercase();
+    if a.starts_with("http://") || a.starts_with("https://") || a.starts_with("www.") {
+        return true;
+    }
+    // Domínio nu: sufixo de TLD comum. Lista curta de propósito — ".am"
+    // e afins pegariam artistas legítimos (will.i.am).
+    [".com", ".net", ".org", ".com.br", ".net.br"]
+        .iter()
+        .any(|tld| a.ends_with(tld))
+}
+
 /// Limita a `cap` tracks por artista, preservando a ordem.
 ///
 /// Chave = artist_name lowercase só-alfanumérico ("J. Cole" e "J Cole"
@@ -616,5 +633,25 @@ mod tests {
         ];
         let out = cap_per_artist(tracks, 2);
         assert_eq!(out.len(), 6, "tracks sem artista nunca são cortadas");
+    }
+
+    #[test]
+    fn junk_artist_detecta_url_e_dominio() {
+        // Caso real do acervo (rips de FTP de funk BR).
+        assert!(is_junk_artist(Some("www.ftpdjemilio.com")));
+        assert!(is_junk_artist(Some("http://baixafunk.net")));
+        assert!(is_junk_artist(Some("HTTPS://SITE.COM.BR")));
+        assert!(is_junk_artist(Some("djemilio.com.br")));
+    }
+
+    #[test]
+    fn junk_artist_nao_pega_artista_normal_nem_ausente() {
+        assert!(!is_junk_artist(Some("Vulfpeck")));
+        assert!(!is_junk_artist(Some("J. Cole")));
+        // Ponto no nome não é domínio.
+        assert!(!is_junk_artist(Some("N.E.R.D")));
+        assert!(!is_junk_artist(Some("will.i.am")));
+        assert!(!is_junk_artist(None));
+        assert!(!is_junk_artist(Some("")));
     }
 }

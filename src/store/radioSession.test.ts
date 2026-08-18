@@ -27,6 +27,7 @@ describe("startRadioSession", () => {
       contextId,
       seenIds: [],
       skippedIds: [],
+      lastAcceptedId: null,
     });
   });
 
@@ -114,6 +115,7 @@ describe("resetRadioSession", () => {
       contextId: null,
       seenIds: [],
       skippedIds: [],
+      lastAcceptedId: null,
     });
   });
 });

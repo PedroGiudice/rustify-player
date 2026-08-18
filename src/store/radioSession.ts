@@ -32,10 +32,18 @@ interface RadioSession {
   contextId: string | null;
   seenIds: string[];
   skippedIds: string[]; // mais recente primeiro, cap SKIPPED_CAP
+  // Última faixa da rodada que TERMINOU (aceitação). É a semente do
+  // re-fetch pós-skip no rádio: semear pela rejeitada fazia o picker
+  // caminhar PRA DENTRO da vizinhança que o usuário estava rejeitando
+  // (forense 18/08: sessões de martelo com 95% de skip).
+  lastAcceptedId: string | null;
 }
 
 function emptySession(): RadioSession {
-  return { stationId: null, contextId: null, seenIds: [], skippedIds: [] };
+  return {
+    stationId: null, contextId: null, seenIds: [], skippedIds: [],
+    lastAcceptedId: null,
+  };
 }
 
 let session: RadioSession = emptySession();
@@ -46,8 +54,26 @@ let session: RadioSession = emptySession();
     caller repassar a playTrack/playerPlay. */
 export function startRadioSession(stationId: string): string {
   const contextId = `station:${stationId}:${Date.now()}`;
-  session = { stationId, contextId, seenIds: [], skippedIds: [] };
+  session = {
+    stationId, contextId, seenIds: [], skippedIds: [], lastAcceptedId: null,
+  };
   return contextId;
+}
+
+/** Garante uma rodada de RÁDIO ABERTO (autoplay) ativa. Idempotente
+    dentro da mesma rodada; sessão de station corrente (ou nenhuma) vira
+    rodada nova — station e rádio nunca compartilham seen/skipped. */
+export function ensureOpenRadioSession(): void {
+  if (session.stationId === null && session.contextId?.startsWith("radio:")) {
+    return;
+  }
+  session = { ...emptySession(), contextId: `radio:${Date.now()}` };
+}
+
+/** Registra aceitação (TrackEnded na rodada de rádio) — vira a semente
+    preferida do próximo re-fetch pós-skip. */
+export function noteAccepted(id: string | null | undefined): void {
+  if (id) session.lastAcceptedId = id;
 }
 
 /** Marca IDs como já vistos nesta rodada (exclude_ids do próximo lote).

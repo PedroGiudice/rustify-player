@@ -469,10 +469,19 @@ fn lib_autoplay_next(
     lib: State<Library>,
     track_id: String,
     exclude_ids: Vec<String>,
+    session_negative_ids: Option<Vec<String>>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let track_id = parse_id(&track_id)?;
     let exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
+    // Skips cedos da rodada de rádio (radioSession do frontend) — paridade
+    // com lib_station_next: penalizam a vizinhança do rejeitado no
+    // recommend, fundidos com os negativos globais de behavioral_signals.
+    let session_negatives: Vec<u64> = session_negative_ids
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect();
     let lim = limit.unwrap_or(5);
     let client = lib.handle.client();
 
@@ -502,7 +511,15 @@ fn lib_autoplay_next(
         // cap por artista descartar sem esvaziar o resultado final.
         const RECOMMEND_FETCH: usize = 60;
         match lib.handle.behavioral_signals() {
-            Ok((history, negatives)) => {
+            Ok((history, global_negatives)) => {
+                // session_negatives UNIAO globais, dedup — mesmo desenho do
+                // combined_negatives de generate_station_batch.
+                let negatives: Vec<u64> = {
+                    let mut set: std::collections::HashSet<u64> =
+                        global_negatives.into_iter().collect();
+                    set.extend(session_negatives.iter().copied());
+                    set.into_iter().collect()
+                };
                 let mut positives: Vec<u64> = vec![track_id];
                 positives.extend(history.into_iter().filter(|id| *id != track_id));
                 let fetch = lim.max(RECOMMEND_FETCH);
@@ -548,6 +565,9 @@ fn lib_autoplay_next(
 
                     // Re-rank da uniao pela vibe do seed + cap de 2 por artista.
                     let mut ranked = rerank_by_seed_vibe_pools(&lib, track_id, pools);
+                    // Metadata-lixo (URL no campo artista) fora ANTES do cap,
+                    // pra não consumir slot de artista legítimo.
+                    ranked.retain(|t| !rerank::is_junk_artist(t.artist_name.as_deref()));
                     ranked = rerank::cap_per_artist(ranked, 2);
 
                     // Variedade entre chamadas sem destruir o re-rank:

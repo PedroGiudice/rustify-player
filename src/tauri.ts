@@ -155,8 +155,16 @@ export const libToggleLike = (trackId: string) => invoke<boolean>("lib_toggle_li
 export const libIsLiked = (trackId: string) => invoke<boolean>("lib_is_liked", { trackId });
 export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
 export const libRecordPlay = (trackId: string) => invoke<void>("lib_record_play", { trackId });
-export const libAutoplayNext = (trackId: string, excludeIds: string[], limit: number) =>
-  invoke<Track[]>("lib_autoplay_next", { trackId, excludeIds, limit });
+/** sessionNegativeIds = skips cedos da rodada de rádio (radioSession) —
+    penalizam candidatos parecidos com o rejeitado, paridade com
+    libStationNext. */
+export const libAutoplayNext = (
+  trackId: string,
+  excludeIds: string[],
+  sessionNegativeIds: string[],
+  limit: number,
+) =>
+  invoke<Track[]>("lib_autoplay_next", { trackId, excludeIds, sessionNegativeIds, limit });
 export const libListHistory = (limit?: number) => invoke<Track[]>("lib_list_history", { limit: limit ?? 50 });
 export const libSnapshot = () => invoke<any>("lib_snapshot");
 export const libListGenres = () => invoke<any[]>("lib_list_genres");

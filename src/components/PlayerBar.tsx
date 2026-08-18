@@ -18,7 +18,7 @@ import {
   rememberRecent, recentlyPlayed,
 } from "../store/player";
 import type { QueueScope, QueueSource } from "../store/player";
-import { registerSeen, registerSkipIfEarly, currentSession } from "../store/radioSession";
+import { registerSeen, registerSkipIfEarly, currentSession, ensureOpenRadioSession, noteAccepted } from "../store/radioSession";
 import { dsp } from "../store/dsp";
 import { tweaks, updateTweak } from "../store/tweaks";
 import {
@@ -123,6 +123,14 @@ export function PlayerBar() {
         // record_play roda no playTrack (início) — registrar aqui de novo
         // dobrava o play_count de toda escuta completa.
         if (ended?.id) rememberRecent(ended.id);
+        // Aceitação da rodada de rádio: escuta completa vira a semente
+        // preferida do re-fetch pós-skip (nunca semear pela rejeitada).
+        // ensure ANTES do note — anotar na sessão vazia perderia a
+        // aceitação quando o ensure do próximo skip criasse a rodada.
+        if (player.queueSource?.kind === "radio" && ended?.id) {
+          ensureOpenRadioSession();
+          noteAccepted(ended.id);
+        }
         // Repeat one: re-toca a mesma track sem avançar a fila. Origin
         // "repeat" — loop deliberado é sinal positivo pleno pro
         // behavioral_signals (não é passivo nem album_seq).
@@ -170,9 +178,9 @@ export function PlayerBar() {
         const next = advanceQueue();
         if (next) {
           await playTrack(next, contOrigin("queue"), contContextId());
-          reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
-        } else if (player.currentTrack?.id) {
-          await doAutoplay(player.currentTrack.id);
+          reactToQueueSkip(skippedTrack, posAtSkip, durAtSkip);
+        } else {
+          await skipIntoAutoplay(skippedTrack, posAtSkip, durAtSkip);
         }
       } else if (cmd === "previous") {
         const prev = retreatQueue();
@@ -262,48 +270,6 @@ export function PlayerBar() {
     }
   }
 
-  async function doAutoplay(seedId: string) {
-    try {
-      // Lookahead 1: cada nova track usa a anterior como seed e o
-      // behavioral mais recente. Sem isso, uma chamada com limit>1
-      // pré-computa uma queue que envelhece — a 5ª track ainda
-      // reflete a vibe da 1ª, sem influência do que aconteceu no meio.
-      const tracks = await libAutoplayNext(seedId, recentlyPlayed(), 1);
-      if (!tracks.length) return;
-      // Append new tracks to queue and advance index by 1 (same as vanilla).
-      // A partir daqui quem abastece a fila é o autoplay — proveniência
-      // "radio", pra contOrigin logar as continuações como "autoplay".
-      const newQueue = [...player.queue, ...tracks];
-      const newIndex = player.queueIndex + 1;
-      setQueue(newQueue, newIndex, "open", { kind: "radio" });
-      const next = newQueue[newIndex];
-      if (next) await playTrack(next, "autoplay");
-    } catch (e) {
-      console.error("[autoplay] failed:", e);
-    }
-  }
-
-  // Radio top-up: while shuffle is on and the queue is running dry, append
-  // fresh recommendations seeded by the current track so playback continues
-  // gaplessly. Distinct from doAutoplay, which only fires when the queue
-  // hits zero and forces a track switch.
-  async function prefetchRadio(seedId: string) {
-    try {
-      // Lookahead 1 — mesma razão de doAutoplay. Disparado quando o
-      // player chega às 2 últimas posições da queue (ver TrackEnded
-      // handler). Garante 1 track sempre à frente, recalculada com
-      // base no que toca agora.
-      const tracks = await libAutoplayNext(seedId, recentlyPlayed(), 1);
-      if (!tracks.length) return;
-      // Re-passa a proveniência radio — o setQueue com defaults zerava o
-      // source e o chip virava "solta" no primeiro top-up (e o contOrigin
-      // perdia o mapeamento radio→autoplay).
-      setQueue([...player.queue, ...tracks], player.queueIndex, "open", { kind: "radio" });
-    } catch (e) {
-      console.error("[shuffle] radio prefetch failed:", e);
-    }
-  }
-
   // Adaptive shuffle baseado no queueScope:
   // - "curated" (playlist, station): embaralha a propria queue mantendo
   //   o contexto. O usuario montou ou abriu essa lista de proposito.
@@ -332,8 +298,10 @@ export function PlayerBar() {
     const seed = player.currentTrack?.id;
     if (!seed) return;
     try {
-      const recs = await libAutoplayNext(seed, recentlyPlayed(), 1);
+      const { exclude, negatives } = radioFetchArgs();
+      const recs = await libAutoplayNext(seed, exclude, negatives, 1);
       if (!recs.length) return;
+      registerSeen(recs.map((t) => t.id));
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open", { kind: "radio" });
     } catch (e) {
@@ -557,11 +525,11 @@ export function PlayerBar() {
               const t = advanceQueue();
               if (t) {
                 playTrack(t, contOrigin("queue"), contContextId());
-                reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
-              } else if (skippedTrack?.id) {
+                reactToQueueSkip(skippedTrack, posAtSkip, durAtSkip);
+              } else {
                 // Fim da fila: mesmo gesto que o MPRIS next — segue em
                 // autoplay em vez de morrer num botão que parece quebrado.
-                void doAutoplay(skippedTrack.id);
+                void skipIntoAutoplay(skippedTrack, posAtSkip, durAtSkip);
               }
             }}
           >
@@ -705,7 +673,8 @@ export function queueSourceLabel(kind: string | undefined): string {
     fora dela — repassado a playTrack/playerPlay pra gravar context_id no
     play_event (Fase 2 do session-awareness: skip-rate por posição). */
 function contContextId(): string | undefined {
-  return player.queueSource?.kind === "station"
+  const kind = player.queueSource?.kind;
+  return kind === "station" || kind === "radio"
     ? currentSession().contextId ?? undefined
     : undefined;
 }
@@ -731,11 +700,88 @@ async function topUpStation() {
   }
 }
 
+/** Exclusão + negativos do fetch de rádio: seen da rodada (hard filter,
+    mata a repetição que o FIFO-30 deixava recircular em sessão longa) e
+    skips cedos da rodada (penalizam a vizinhança do rejeitado no
+    recommend — paridade com libStationNext). */
+function radioFetchArgs(): { exclude: string[]; negatives: string[] } {
+  ensureOpenRadioSession();
+  const session = currentSession();
+  return {
+    exclude: [...new Set([...recentlyPlayed(), ...session.seenIds])],
+    negatives: [...session.skippedIds],
+  };
+}
+
+async function doAutoplay(seedId: string) {
+  try {
+    // Lookahead 1: cada nova track usa a anterior como seed e o
+    // behavioral mais recente. Sem isso, uma chamada com limit>1
+    // pré-computa uma queue que envelhece — a 5ª track ainda
+    // reflete a vibe da 1ª, sem influência do que aconteceu no meio.
+    const { exclude, negatives } = radioFetchArgs();
+    const tracks = await libAutoplayNext(seedId, exclude, negatives, 1);
+    if (!tracks.length) return;
+    registerSeen(tracks.map((t) => t.id));
+    // Append new tracks to queue and advance index by 1 (same as vanilla).
+    // A partir daqui quem abastece a fila é o autoplay — proveniência
+    // "radio", pra contOrigin logar as continuações como "autoplay".
+    const newQueue = [...player.queue, ...tracks];
+    const newIndex = player.queueIndex + 1;
+    setQueue(newQueue, newIndex, "open", { kind: "radio" });
+    const next = newQueue[newIndex];
+    if (next) await playTrack(next, "autoplay", contContextId());
+  } catch (e) {
+    console.error("[autoplay] failed:", e);
+  }
+}
+
+// Radio top-up: while shuffle is on and the queue is running dry, append
+// fresh recommendations seeded by the current track so playback continues
+// gaplessly. Distinct from doAutoplay, which only fires when the queue
+// hits zero and forces a track switch.
+async function prefetchRadio(seedId: string) {
+  try {
+    // Lookahead 1 — mesma razão de doAutoplay. Disparado quando o
+    // player chega às 2 últimas posições da queue (ver TrackEnded
+    // handler). Garante 1 track sempre à frente, recalculada com
+    // base no que toca agora.
+    const { exclude, negatives } = radioFetchArgs();
+    const tracks = await libAutoplayNext(seedId, exclude, negatives, 1);
+    if (!tracks.length) return;
+    registerSeen(tracks.map((t) => t.id));
+    // Re-passa a proveniência radio — o setQueue com defaults zerava o
+    // source e o chip virava "solta" no primeiro top-up (e o contOrigin
+    // perdia o mapeamento radio→autoplay).
+    setQueue([...player.queue, ...tracks], player.queueIndex, "open", { kind: "radio" });
+  } catch (e) {
+    console.error("[shuffle] radio prefetch failed:", e);
+  }
+}
+
+/** Skip no FIM da fila (pb-next/MPRIS sem próxima track): ainda é
+    rejeição — na rodada de rádio registra o skip cedo e semeia o
+    autoplay pela última faixa ACEITA, não pela rejeitada. */
+async function skipIntoAutoplay(
+  skippedTrack: import("../tauri").Track | null,
+  posAtSkip: number,
+  durAtSkip: number,
+) {
+  if (!skippedTrack?.id) return;
+  if (player.queueSource?.kind === "radio") {
+    ensureOpenRadioSession();
+    registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
+    await doAutoplay(currentSession().lastAcceptedId ?? skippedTrack.id);
+  } else {
+    await doAutoplay(skippedTrack.id);
+  }
+}
+
 /** Fase 3 do session-awareness: reação a skip manual (botão next, MPRIS
-    next, clique em "Up next" na queue) ENQUANTO a fila ativa é uma
-    station — registra rejeição de sessão se o skip foi cedo, trunca a
-    cauda ainda não tocada da fila e dispara o topup imediatamente (não
-    espera chegar perto do fim).
+    next, clique em "Up next" na queue) enquanto a fila ativa é uma
+    station OU rádio — registra rejeição de sessão se o skip foi cedo,
+    trunca a cauda ainda não tocada da fila e dispara o re-fetch
+    imediatamente (não espera chegar perto do fim).
 
     Trunca só o que vem DEPOIS do índice NOVO (pós-avanço/pulo, já
     refletido em player.queueIndex quando isto é chamado): o preload
@@ -744,17 +790,32 @@ async function topUpStation() {
     índice. Cortar estritamente depois do novo índice nunca remove o que
     já foi pré-carregado no engine, então o truncamento pode ser síncrono
     ao clique (não precisa adiar pro próximo TrackStarted). */
-function reactToStationSkip(
+function reactToQueueSkip(
   skippedTrack: import("../tauri").Track | null,
   posAtSkip: number,
   durAtSkip: number,
 ) {
-  if (player.queueSource?.kind !== "station") return;
-  if (skippedTrack?.id) {
-    registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
+  const kind = player.queueSource?.kind;
+  if (kind === "station") {
+    if (skippedTrack?.id) {
+      registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
+    }
+    setPlayer("queue", (q) => q.slice(0, player.queueIndex + 1));
+    void topUpStation();
+  } else if (kind === "radio") {
+    // Paridade da Fase 3 pro rádio (forense 18/08): registra a rejeição,
+    // trunca a cauda pré-computada com a vibe da rejeitada e re-fetcha JÁ,
+    // semeado pela última faixa ACEITA — semear pela skipada fazia o
+    // picker caminhar pra dentro da vizinhança rejeitada (sessões de
+    // martelo com 95% de skip).
+    ensureOpenRadioSession();
+    if (skippedTrack?.id) {
+      registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
+    }
+    setPlayer("queue", (q) => q.slice(0, player.queueIndex + 1));
+    const seed = currentSession().lastAcceptedId ?? player.currentTrack?.id;
+    if (seed) void prefetchRadio(seed);
   }
-  setPlayer("queue", (q) => q.slice(0, player.queueIndex + 1));
-  void topUpStation();
 }
 
 /** Toca uma track da lista "Up next" (QueueDrawer/Queue.tsx). Distinto de
@@ -770,7 +831,7 @@ export async function playQueueUpcoming(track: import("../tauri").Track) {
   const durAtSkip = player.durationSecs;
   if (idx > player.queueIndex && jumpToQueueIndex(idx)) {
     await playTrack(track, contOrigin("queue"), contContextId());
-    reactToStationSkip(skippedTrack, posAtSkip, durAtSkip);
+    reactToQueueSkip(skippedTrack, posAtSkip, durAtSkip);
   } else {
     await playTrack(track, contOrigin("queue"), contContextId());
   }

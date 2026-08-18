@@ -187,14 +187,16 @@ export function setQueue(
   source: QueueSource | null = null,
 ) {
   rememberCurrent();
-  // Troca de contexto de fila pra algo que NAO e station encerra a rodada
-  // de sessao (Fase 2/3 do session-awareness) — sem isto, seenIds/
+  // Troca de contexto de fila pra algo que NAO e station/radio encerra a
+  // rodada de sessao (Fase 2/3 do session-awareness) — sem isto, seenIds/
   // skippedIds de uma station vazariam pra recomendacao de outra, ou
   // sobreviveriam depois do usuario ter saido pra uma playlist/album.
   // kind === "station" preserva a rodada corrente: tanto o handleResume
   // (que ja chamou startRadioSession antes) quanto o topup (que reusa o
-  // mesmo source) passam por aqui sem clobber.
-  if (source?.kind !== "station") {
+  // mesmo source) passam por aqui sem clobber. kind === "radio" idem —
+  // cada topup do radio passa por aqui; a troca station<->radio e coberta
+  // pelo ensureOpenRadioSession (rodadas nunca se misturam).
+  if (source?.kind !== "station" && source?.kind !== "radio") {
     resetRadioSession();
   }
   setPlayer({
