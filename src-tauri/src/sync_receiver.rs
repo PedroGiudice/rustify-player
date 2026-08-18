@@ -19,17 +19,28 @@ use std::net::{TcpListener, TcpStream};
 const SYNC_PORT: u16 = 19878;
 const MAX_BODY: usize = 4 * 1024 * 1024;
 
-pub(crate) fn start(client: QdrantClient) {
+/// Fase de observação do auth (CMR-194): `false` = verifica e LOGA, mas
+/// aceita tudo. O flip pra `true` (fail-closed, 401) é a fase 3 — só depois
+/// de ≥1 dia de `sync auth ok` nos lotes reais do S24.
+const REQUIRE_BEARER: bool = false;
+
+/// `token` é o Bearer esperado (`<data_dir>/sync-token` na cmr-auto, o mesmo
+/// arquivo que o export_manifest.py leva ao aparelho). `None` = sem auth
+/// configurado, comporta como sempre.
+pub(crate) fn start(client: QdrantClient, token: Option<String>) {
     let Some(ip) = tailscale_ip() else {
         tracing::info!("sync receiver: sem IP tailscale — não sobe");
         return;
     };
-    start_on(&format!("{ip}:{SYNC_PORT}"), client);
+    if token.is_none() {
+        tracing::info!("sync auth: sem token configurado — aceitando sem verificação");
+    }
+    start_on(&format!("{ip}:{SYNC_PORT}"), client, token);
 }
 
 /// Sobe o listener num addr explícito. Retorna a porta real (testes usam
 /// `:0`); `None` se o bind falhar.
-fn start_on(addr: &str, client: QdrantClient) -> Option<u16> {
+fn start_on(addr: &str, client: QdrantClient, token: Option<String>) -> Option<u16> {
     let listener = match TcpListener::bind(addr) {
         Ok(l) => l,
         Err(e) => {
@@ -45,10 +56,11 @@ fn start_on(addr: &str, client: QdrantClient) -> Option<u16> {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { continue };
                 let client = client.clone();
+                let token = token.clone();
                 std::thread::Builder::new()
                     .name("sync-conn".into())
                     .spawn(move || {
-                        if let Err(e) = handle(&mut stream, &client) {
+                        if let Err(e) = handle(&mut stream, &client, token.as_deref()) {
                             tracing::debug!(?e, "sync receiver: conn error");
                         }
                     })
@@ -73,7 +85,11 @@ fn tailscale_ip() -> Option<String> {
     (!ip.is_empty()).then_some(ip)
 }
 
-fn handle(stream: &mut TcpStream, client: &QdrantClient) -> std::io::Result<()> {
+fn handle(
+    stream: &mut TcpStream,
+    client: &QdrantClient,
+    token: Option<&str>,
+) -> std::io::Result<()> {
     let mut buf = Vec::with_capacity(8192);
     let mut chunk = [0u8; 8192];
     let header_end = loop {
@@ -102,11 +118,32 @@ fn handle(stream: &mut TcpStream, client: &QdrantClient) -> std::io::Result<()> 
     match (method.as_str(), path.as_str()) {
         ("GET", "/sync/health") => respond(stream, 200, r#"{"ok":true}"#),
         ("POST", "/sync/events") => {
-            let content_length = lines
-                .filter_map(|l| l.split_once(':'))
-                .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
-                .and_then(|(_, v)| v.trim().parse::<usize>().ok())
-                .unwrap_or(0);
+            let (mut content_length, mut authorization) = (0usize, None::<String>);
+            for (k, v) in lines.filter_map(|l| l.split_once(':')) {
+                if k.eq_ignore_ascii_case("content-length") {
+                    content_length = v.trim().parse().unwrap_or(0);
+                } else if k.eq_ignore_ascii_case("authorization") {
+                    authorization = Some(v.trim().to_string());
+                }
+            }
+            // Auth (CMR-194): token configurado → header deve conferir.
+            // Antes do body de propósito: quando REQUIRE_BEARER virar true,
+            // o 401 sai sem processar nada.
+            let auth_ok = match token {
+                None => true,
+                Some(t) => authorization.as_deref() == Some(format!("Bearer {t}").as_str()),
+            };
+            if !auth_ok {
+                if REQUIRE_BEARER {
+                    return respond(stream, 401, r#"{"error":"unauthorized"}"#);
+                }
+                tracing::warn!(
+                    header_presente = authorization.is_some(),
+                    "sync auth FALHOU — aceitando (observação; REQUIRE_BEARER=false)"
+                );
+            } else if token.is_some() {
+                tracing::info!("sync auth ok");
+            }
             if content_length == 0 || content_length > MAX_BODY {
                 return respond(stream, 400, r#"{"error":"bad content-length"}"#);
             }
@@ -155,6 +192,7 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) -> std::io::Result<(
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
+        401 => "Unauthorized",
         404 => "Not Found",
         431 => "Request Header Fields Too Large",
         _ => "Error",
@@ -194,7 +232,7 @@ mod tests {
     fn post_de_lote_conta_aceitos_e_rejeitados() {
         let qdrant_port = fake_qdrant();
         let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
-        let port = start_on("127.0.0.1:0", client).expect("receiver sobe");
+        let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
 
         let valido = serde_json::json!({
             "uuid": "11111111-2222-3333-4444-555555555555",
@@ -227,5 +265,57 @@ mod tests {
             .unwrap()
             .status();
         assert_eq!(health, 200);
+    }
+
+    fn lote_minimo() -> String {
+        serde_json::json!({ "events": [{
+            "uuid": "11111111-2222-3333-4444-555555555555",
+            "payload": {
+                "event_type": "track_ended", "track_id": 1u64,
+                "origin": "manual", "started_at": 1, "timestamp": 2,
+                "end_position_ms": 100, "duration_ms": 100, "listen_pct": 1.0,
+                "signal_schema": 3, "device_id": "s24", "app_version": "0.1.0"
+            }
+        }]})
+        .to_string()
+    }
+
+    #[test]
+    fn auth_com_header_certo_aceita() {
+        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant()));
+        let port =
+            start_on("127.0.0.1:0", client, Some("tok-secreto".into())).expect("receiver sobe");
+        let status = ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
+            .set("Authorization", "Bearer tok-secreto")
+            .send_string(&lote_minimo())
+            .unwrap()
+            .status();
+        assert_eq!(status, 200);
+    }
+
+    /// Fase de observação (REQUIRE_BEARER=false): header errado LOGA mas
+    /// aceita. A fase 3 (fail-closed) inverte este teste pra 401.
+    #[test]
+    fn auth_header_errado_em_observacao_aceita() {
+        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant()));
+        let port =
+            start_on("127.0.0.1:0", client, Some("tok-secreto".into())).expect("receiver sobe");
+        let status = ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
+            .set("Authorization", "Bearer errado")
+            .send_string(&lote_minimo())
+            .unwrap()
+            .status();
+        assert_eq!(status, if REQUIRE_BEARER { 401 } else { 200 });
+    }
+
+    #[test]
+    fn sem_token_configurado_aceita_sem_header() {
+        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant()));
+        let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
+        let status = ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
+            .send_string(&lote_minimo())
+            .unwrap()
+            .status();
+        assert_eq!(status, 200);
     }
 }

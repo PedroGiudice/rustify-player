@@ -2756,7 +2756,13 @@ pub fn run() {
             maybe_seed_default_station(&library);
             // Receptor do sync de play_events de outros dispositivos (S24).
             // Escuta no IP tailscale; sem tailnet simplesmente não sobe.
-            sync_receiver::start(library.handle.client().clone());
+            // Token Bearer (CMR-194): mesmo arquivo que o export_manifest.py
+            // leva ao aparelho; ausente = aceita sem verificação (como sempre).
+            let sync_token = std::fs::read_to_string(data_dir.join("sync-token"))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            sync_receiver::start(library.handle.client().clone(), sync_token);
             _app.manage(library);
 
             // Crate — busca e download Soulseek in-app (spec docs/superpowers/
