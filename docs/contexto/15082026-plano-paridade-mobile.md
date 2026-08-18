@@ -77,6 +77,18 @@ o feedback não tem efeito.
 Depende da Onda 1: like precisa da sheet (F4) e da notificação; o histórico precisa do
 snapshot de fila (A1) para não duplicar evento.
 
+**Adendo (decisão do CEO, 2026-08-18): temas YAML no Android entram na Onda 2** (~7h).
+O parser (`yaml_key_to_css_prop`/`yaml_to_css_vars`) e o checker WCAG
+(`ensure_bg_ink_contrast`) saem de `desktop.rs` para módulo cross-target
+(`serde_yaml` é Rust puro, compila pra Android sem nada); os YAML chegam por
+`<MUSIC_ROOT>/.rustify/themes/` no mesmo export do manifest; e uma camada de
+tradução (~30 mapeamentos) verte o vocabulário do desktop (`--bg-ink`,
+`--primary`, `--surface-*`) para os tokens do mobile (`--s-*`, `--accent`,
+`--t1..t4`), com fallback para token que o tema não define. **O esquema escuro
+atual É o default e não muda** — tema é opt-in por cima dele; o item 3 das
+decisões (tema claro dedicado) morre como item separado: um tema claro vira só
+mais um YAML que o checker valida.
+
 ### Onda 3 — "os dados chegam sozinhos" (D + J, ~90h)
 
 OTA dos artefatos de inteligência (6MB, não os 13GB de áudio), export automatizado por
@@ -114,22 +126,18 @@ que já faz `ssh cmr-auto` no passo de deploy. Uma linha no script.
 401. Por isso a virada acontece **dentro da fase 8 do epic D** (que já edita o
 `mobile_sync.rs`), não antes — corrigindo a sequência que a crítica pegou.
 
-### 2. Autoplay ligado por padrão em qualquer fila — **precisa de você**
+### 2. Autoplay ligado por padrão em qualquer fila — **DECIDIDO (CEO, 2026-08-17)**
 
-O desktop, quando um álbum acaba, emenda em outra coisa. Levar isso ao celular é paridade e
-resolve o gap mais visível. Mas "o álbum acabou e começou outra coisa" surpreende — e no
-celular, no bolso, surpreende mais.
+Ligado por padrão em qualquer fila, com duas exceções: **playlist** (coleção curada
+com começo e fim — termina) e **station** (já tem o modo de continuação dela, o pool
+próprio). Implementado e validado no S24 pelo caminho real do store em 2026-08-18:
+playlist=off, álbum=radio, shuffle=radio, station=station.
 
-Minha recomendação: **ligado, com toggle no Settings**. Mas o default é decisão sua.
+### 3. Tema claro dedicado — **DECIDIDO (CEO, 2026-08-18): não**
 
-### 3. Tema claro de verdade (~7h) ou dark-only assumido — **precisa de você**
-
-O app é o único do seu aparelho que não segue o tema do sistema. Fazer certo custa uma
-segunda paleta curada de ~41 tokens com teste automático de contraste.
-
-Minha recomendação: **fazer**, porque o CSS mobile tem só 3 literais escuros fora dos tokens
-(a crítica mediu) — é menos trabalho do que parece. Mas se você nunca usa o telefone em modo
-claro, é 7h que rendem mais em outro lugar.
+O esquema escuro atual é o esquema do app. A porta que fica aberta é a dos temas
+YAML na Onda 2 (ver adendo lá): com o checker WCAG validando cada par, um tema
+claro futuro vira só mais um YAML — sem as ~7h de paleta curada dedicada.
 
 ### 4. APK assinado de release — **minha posição: sim, logo após J5**
 
