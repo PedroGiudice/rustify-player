@@ -2616,7 +2616,8 @@ pub fn run() {
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .level_for("audio_engine", log::LevelFilter::Debug)
-                .level_for("rustify_player", log::LevelFilter::Debug)
+                // Target real = nome da LIB (ver mobile.rs — mesmo bug lá).
+                .level_for("rustify_player_lib", log::LevelFilter::Debug)
                 .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
                 .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview))
                 .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }))

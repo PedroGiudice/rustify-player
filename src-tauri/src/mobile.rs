@@ -260,7 +260,10 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
-                .level_for("rustify_player", log::LevelFilter::Debug)
+                // O target real dos módulos é o nome da LIB ("rustify_player_lib"),
+                // não o do bin — com o nome errado, todo debug! (inclusive as
+                // falhas de ciclo do worker de sync) era descartado em silêncio.
+                .level_for("rustify_player_lib", log::LevelFilter::Debug)
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())
