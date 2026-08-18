@@ -43,6 +43,10 @@ pub const CURSOR_STALE_MS: i64 = 180_000;
 /// carregando rejeições do passado (medido no S24: o cap de 15 já saturado
 /// antes do primeiro skip). Rejeição de sessão é da sessão.
 pub const CURSOR_UNSET: i64 = -1;
+/// Teto do anel de tocadas recentes (espelha o desktop).
+pub const RECENTS_CAP: usize = 300;
+/// Por quanto tempo uma faixa tocada fica fora do rádio.
+pub const RECENTS_TTL_S: i64 = 7 * 86_400;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
@@ -117,17 +121,109 @@ impl Continuity {
     }
 }
 
+/// Anel de tocadas recentes — memória CROSS-sessão do rádio ("não repete o
+/// que tocou nos últimos dias"). Diferente do `seen` (rodada) e dos
+/// `session_negatives` (rejeição): aqui entra tudo que tocou, de qualquer
+/// origem, e expira sozinho pelo TTL. Persistido em `<data_dir>/recents.json`
+/// (`{"ids":[{"id":"<u64 como string>","at":<epoch_s>}]}`).
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct RecentsRing {
+    ids: Vec<RecentEntry>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct RecentEntry {
+    /// String no disco pelo mesmo motivo de sempre: u64 > 2^53 corrompe se
+    /// algum dia um consumidor JS ler este arquivo.
+    pub id: String,
+    pub at: i64,
+}
+
+impl RecentsRing {
+    /// Registra um play. Repetir move pro fim (o relógio da faixa renova);
+    /// a poda roda na escrita — cap e TTL nunca ficam para depois.
+    pub fn push(&mut self, id: u64, now_s: i64) {
+        let s = id.to_string();
+        self.ids.retain(|e| e.id != s);
+        self.ids.push(RecentEntry { id: s, at: now_s });
+        self.prune(now_s);
+    }
+
+    pub fn prune(&mut self, now_s: i64) {
+        self.ids.retain(|e| now_s.saturating_sub(e.at) <= RECENTS_TTL_S);
+        if self.ids.len() > RECENTS_CAP {
+            let excess = self.ids.len() - RECENTS_CAP;
+            self.ids.drain(0..excess);
+        }
+    }
+
+    pub fn ids(&self) -> Vec<String> {
+        self.ids.iter().map(|e| e.id.clone()).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.ids.len()
+    }
+
+    pub fn from_json(bytes: &[u8]) -> Self {
+        serde_json::from_slice(bytes).unwrap_or_default()
+    }
+
+    pub fn to_json(&self) -> Vec<u8> {
+        serde_json::to_vec(self).unwrap_or_default()
+    }
+}
+
 /// Estado compartilhado + o sino que acorda o tender. Sem o sino, um skip
 /// feito dentro do app esperaria o ciclo inteiro (20s) para virar reação — o
 /// usuário veria a fila velha e concluiria que não fez nada.
 #[derive(Debug, Default)]
 pub struct ContinuityState {
     pub inner: Mutex<Continuity>,
+    /// Tocadas recentes (cross-sessão). Mutex próprio: quem escreve aqui é o
+    /// worker de sync e o tender; o `inner` não precisa esperar por eles.
+    pub recents: Mutex<RecentsRing>,
+    recents_path: Mutex<Option<std::path::PathBuf>>,
     wake_flag: Mutex<bool>,
     wake_cv: Condvar,
 }
 
 impl ContinuityState {
+    /// Carrega o anel do disco e memoriza o caminho pras escritas futuras.
+    pub fn load_recents(&self, path: std::path::PathBuf) {
+        let ring = std::fs::read(&path).map(|b| RecentsRing::from_json(&b)).unwrap_or_default();
+        if let Ok(mut r) = self.recents.lock() {
+            *r = ring;
+        }
+        if let Ok(mut p) = self.recents_path.lock() {
+            *p = Some(path);
+        }
+    }
+
+    /// Registra plays e persiste. Write-through: é ~1 escrita por faixa
+    /// tocada, e perder o anel num kill do app é perder o "não repete".
+    pub fn remember_recents(&self, ids: impl IntoIterator<Item = (u64, i64)>) {
+        let Ok(mut r) = self.recents.lock() else { return };
+        let mut mudou = false;
+        for (id, at) in ids {
+            r.push(id, at);
+            mudou = true;
+        }
+        if !mudou {
+            return;
+        }
+        let path = self.recents_path.lock().ok().and_then(|p| p.clone());
+        if let Some(p) = path {
+            if let Err(e) = std::fs::write(&p, r.to_json()) {
+                tracing::warn!(%e, "recents: falha ao persistir");
+            }
+        }
+    }
+
+    pub fn recent_ids(&self) -> Vec<String> {
+        self.recents.lock().map(|r| r.ids()).unwrap_or_default()
+    }
+
     pub fn wake(&self) {
         if let Ok(mut f) = self.wake_flag.lock() {
             *f = true;
@@ -318,6 +414,11 @@ pub(crate) mod tender {
             .map_err(|_| "lock envenenado")?
             .journal_cursor;
         let drained = call(app.rustify_audio().drain_events(cursor.max(0)))?;
+        // Tudo que aparece no journal TOCOU — alimenta o anel de recentes
+        // mesmo no primeiro ciclo (recente é recente, de qualquer sessão).
+        state.remember_recents(drained.events.iter().filter_map(|ev| {
+            ev.track_id.parse::<u64>().ok().map(|id| (id, ev.timestamp))
+        }));
         // Primeiro ciclo da rodada: só posiciona o cursor. O que está no
         // journal aconteceu ANTES desta sessão — não é rejeição dela.
         if cursor == CURSOR_UNSET {
@@ -386,10 +487,12 @@ pub(crate) mod tender {
             return Ok(());
         }
 
-        // Exclui o que já passou na rodada E o que está na fila agora: sem
-        // isto a mesma faixa volta a cada lote e o rádio parece quebrado.
+        // Exclui o que já passou na rodada, o que está na fila agora E o que
+        // tocou nos últimos dias (anel de recentes): sem isto a mesma faixa
+        // volta a cada lote e o rádio de amanhã repete o de hoje.
         let mut exclude: Vec<String> = seen.iter().map(|id| id.to_string()).collect();
         exclude.extend(queue.items.iter().map(|e| e.track_id.clone()));
+        exclude.extend(state.recent_ids());
         let negatives = {
             let c = state.inner.lock().map_err(|_| "lock envenenado")?;
             c.session_negatives.clone()
@@ -620,6 +723,42 @@ mod tests {
         // Se o manual é o último, não sobra sugestão para descartar.
         let q2 = ["autoplay", "autoplay", "manual"];
         assert_eq!(truncate_from(&q2, 0, "autoplay"), None);
+    }
+
+    #[test]
+    fn recents_expira_por_ttl_e_respeita_o_cap() {
+        let mut r = RecentsRing::default();
+        let now = 1_000_000_000_i64;
+        r.push(1, now - RECENTS_TTL_S - 1); // velho de mais de 7 dias
+        r.push(2, now - 60);
+        r.prune(now);
+        assert_eq!(r.ids(), vec!["2"]);
+        // cap: a 301a expulsa a mais antiga
+        let mut r = RecentsRing::default();
+        for id in 0..(RECENTS_CAP as u64 + 1) {
+            r.push(id, now);
+        }
+        assert_eq!(r.len(), RECENTS_CAP);
+        assert!(!r.ids().contains(&"0".to_string()));
+    }
+
+    #[test]
+    fn recents_repetido_renova_o_relogio_sem_duplicar() {
+        let mut r = RecentsRing::default();
+        r.push(7, 100);
+        r.push(8, 200);
+        r.push(7, 300);
+        assert_eq!(r.ids(), vec!["8", "7"]);
+    }
+
+    #[test]
+    fn recents_sobrevive_ao_round_trip_de_json() {
+        let mut r = RecentsRing::default();
+        r.push(18_400_000_000_000_000_001, 500); // > 2^53: só sobrevive como string
+        let volta = RecentsRing::from_json(&r.to_json());
+        assert_eq!(volta.ids(), vec!["18400000000000000001"]);
+        // lixo no disco não derruba o boot
+        assert_eq!(RecentsRing::from_json(b"nao e json").len(), 0);
     }
 
     #[test]

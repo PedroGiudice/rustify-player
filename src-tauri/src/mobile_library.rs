@@ -325,10 +325,14 @@ impl MobileLibrary {
 
     /// Vizinhos por cosine no espaço mert. Só devolve tracks RESOLVIDAS
     /// (com arquivo local) — pede 3× k ao índice pra compensar unresolved.
+    /// Negatives do gosto ficam de fora: sugerir skip conhecido é desperdício
+    /// (o rail é pequeno). Recentes NÃO são excluídas — isto é um rail de
+    /// navegação ("o que parece com isto"), não um rádio.
     pub fn similar_tracks(&self, id: &str, k: usize) -> Vec<Track> {
         let Some(vx) = &self.vectors else { return Vec::new() };
         let Ok(tid) = id.parse::<u64>() else { return Vec::new() };
-        vx.similar(tid, k * 3, &HashSet::new())
+        let negatives: HashSet<u64> = self.taste.negatives.iter().copied().collect();
+        vx.similar(tid, k * 3, &negatives)
             .into_iter()
             .filter_map(|(t, _)| self.by_id.get(&t.to_string()).map(|&i| self.tracks[i].clone()))
             .take(k)
@@ -356,7 +360,14 @@ impl MobileLibrary {
         if !vizinhos.is_empty() {
             return (vizinhos, RadioLayer::ArtistFolder);
         }
-        (self.library_batch(seed_id, exclude, limit, seed), RadioLayer::Library)
+        let acervo = self.library_batch(seed_id, exclude, limit, seed);
+        if !acervo.is_empty() || self.tracks.is_empty() {
+            return (acervo, RadioLayer::Library);
+        }
+        // Último recurso: o exclude (recentes + sessão) engoliu o acervo
+        // inteiro — acervo pequeno, sessão longa. Repetir o que tocou há
+        // pouco é melhor que silêncio, que é a única alternativa aqui.
+        (self.library_batch(seed_id, &[], limit, seed), RadioLayer::Library)
     }
 
     /// Camada 2: quem acompanha a faixa no acervo — mesmo artista primeiro,
@@ -429,9 +440,8 @@ impl MobileLibrary {
     }
 
     /// Lote de rádio semeado por uma faixa — o autoplay de qualquer fila que
-    /// não seja station. Diferente de [`similar_tracks`], respeita o que já
-    /// tocou na rodada e passa pelo gosto: vizinhança MERT pura agrupa por
-    /// timbre e o rádio vira "mais do mesmo álbum" em três faixas.
+    /// não seja station. Pool DUPLO (vizinhança da semente ∪ vizinhança do
+    /// gosto), cap de 2 por artista no topo, sorteio ponderado no prefixo.
     /// Vazio = a faixa não tem vetor; quem trata é [`radio_candidates`].
     pub fn radio_batch(
         &self,
@@ -443,29 +453,36 @@ impl MobileLibrary {
     ) -> Vec<Track> {
         let Some(vx) = &self.vectors else { return Vec::new() };
         let Ok(tid) = seed_id.parse::<u64>() else { return Vec::new() };
-        let exclude_set: HashSet<u64> = exclude
-            .iter()
-            .filter_map(|s| s.parse().ok())
-            .chain(std::iter::once(tid))
-            .collect();
-        // Pede folga ao índice: parte da vizinhança não resolve em arquivo
-        // local e parte cai no filtro de gosto.
-        let pool: Vec<u64> = vx
-            .similar(tid, limit * 8, &exclude_set)
-            .into_iter()
-            .map(|(t, _)| t)
-            .collect();
-        let mut ranked: Vec<u64> =
-            mobile_intel::rank_pool(&pool, &self.taste, self.vectors.as_ref(), session_negatives)
-                .into_iter()
-                .filter(|t| self.by_id.contains_key(&t.to_string()))
-                .collect();
-        mobile_intel::weighted_pick_prefix(&mut ranked, limit * 3, seed);
-        ranked
+        let exclude_set: HashSet<u64> =
+            exclude.iter().filter_map(|s| s.parse().ok()).collect();
+        let ranked: Vec<u64> = mobile_intel::autoplay_pool(
+            tid,
+            &self.taste,
+            vx,
+            &exclude_set,
+            mobile_intel::POOL_FETCH,
+            session_negatives,
+        )
+        .into_iter()
+        .filter(|t| self.by_id.contains_key(&t.to_string()))
+        .collect();
+        let mut capped = mobile_intel::cap_per_artist(
+            ranked,
+            |id| self.artist_of(id),
+            mobile_intel::MAX_PER_ARTIST,
+        );
+        mobile_intel::weighted_pick_prefix(&mut capped, limit * 3, seed);
+        capped
             .into_iter()
             .take(limit)
             .filter_map(|t| self.by_id.get(&t.to_string()).map(|&i| self.tracks[i].clone()))
             .collect()
+    }
+
+    fn artist_of(&self, id: u64) -> Option<String> {
+        self.by_id
+            .get(&id.to_string())
+            .and_then(|&i| self.tracks[i].artist_name.clone())
     }
 
     pub fn stations_meta(&self) -> Vec<StationMeta> {

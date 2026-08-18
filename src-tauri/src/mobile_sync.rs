@@ -127,6 +127,16 @@ pub(crate) mod worker {
             return Ok(());
         }
 
+        // O worker vê TODO evento a cada 60s, com ou sem continuidade armada —
+        // é o alimentador natural do anel de recentes ("não repete o que tocou
+        // nos últimos dias"), cobrindo também a escuta manual e de playlist.
+        // Antes do POST de propósito: rede fora não pode custar a memória.
+        if let Some(cs) = app.try_state::<crate::mobile_continuity::ContinuityState>() {
+            cs.remember_recents(events.iter().filter_map(|ev| {
+                ev.track_id.parse::<u64>().ok().map(|id| (id, ev.timestamp))
+            }));
+        }
+
         let mut batch = Vec::with_capacity(events.len());
         for ev in &events {
             match build_synced_payload(ev, device_id, app_version) {

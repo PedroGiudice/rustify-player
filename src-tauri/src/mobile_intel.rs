@@ -113,7 +113,7 @@ struct TasteFile {
     negatives: Vec<TasteEntry>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Taste {
     pub positives: Vec<u64>,
     pub negatives: Vec<u64>,
@@ -252,6 +252,72 @@ pub fn rank_pool(
         (None, None) => a.0.cmp(&b.0),
     });
     scored.into_iter().map(|(_, tid, _)| tid).collect()
+}
+
+/// Máximo de faixas do mesmo artista no TOPO de um lote de rádio (espelha o
+/// desktop). O excedente não é descartado — desce pro fim da lista.
+pub const MAX_PER_ARTIST: usize = 2;
+/// Quantos candidatos o pool duplo busca antes dos cortes.
+pub const POOL_FETCH: usize = 60;
+
+/// Reordena preservando o rank: os primeiros `max` de cada artista ficam onde
+/// estão, o excedente desce pro fim (nunca é descartado — num acervo pequeno,
+/// jogar candidato fora é secar o rádio à toa). `None` de artista não conta
+/// pro teto: metadado ausente não pode punir a faixa.
+pub fn cap_per_artist<F>(ranked: Vec<u64>, artist_of: F, max: usize) -> Vec<u64>
+where
+    F: Fn(u64) -> Option<String>,
+{
+    let mut count: HashMap<String, usize> = HashMap::new();
+    let mut head = Vec::with_capacity(ranked.len());
+    let mut tail = Vec::new();
+    for id in ranked {
+        match artist_of(id) {
+            Some(artist) => {
+                let c = count.entry(artist).or_insert(0);
+                if *c < max {
+                    *c += 1;
+                    head.push(id);
+                } else {
+                    tail.push(id);
+                }
+            }
+            None => head.push(id),
+        }
+    }
+    head.extend(tail);
+    head
+}
+
+/// Pool duplo do rádio: a vizinhança da SEMENTE unida à vizinhança do GOSTO
+/// (os primeiros positives do snapshot, que já vem ordenado por peso). Só a
+/// semente produz "mais do mesmo timbre"; só o gosto ignora onde a sessão
+/// está. O rank final trata a semente como positivo honorário — afinidade com
+/// ela e com o gosto entram na mesma régua — e o [`rank_pool`] já exclui os
+/// negatives do gosto e aplica os da sessão.
+pub fn autoplay_pool(
+    seed: u64,
+    taste: &Taste,
+    vectors: &VectorIndex,
+    exclude: &HashSet<u64>,
+    fetch: usize,
+    session_negatives: &[u64],
+) -> Vec<u64> {
+    const TASTE_SEEDS: usize = 6;
+    let mut ex = exclude.clone();
+    ex.insert(seed);
+    let mut pool: Vec<u64> = vectors.similar(seed, fetch, &ex).into_iter().map(|(t, _)| t).collect();
+    let mut seen: HashSet<u64> = pool.iter().copied().collect();
+    for &p in taste.positives.iter().take(TASTE_SEEDS) {
+        for (t, _) in vectors.similar(p, fetch / TASTE_SEEDS, &ex) {
+            if seen.insert(t) {
+                pool.push(t);
+            }
+        }
+    }
+    let mut com_seed = taste.clone();
+    com_seed.positives.insert(0, seed);
+    rank_pool(&pool, &com_seed, Some(vectors), session_negatives)
 }
 
 /// Xorshift* — o mesmo gerador do [`weighted_pick_prefix`], extraído para os
@@ -419,6 +485,46 @@ mod tests {
         assert_eq!(rank_pool(&[11, 12], &taste, Some(&vx), &[]), vec![11, 12]);
         // pulou 13 → 11 cai atrás de 12, mas continua no pool
         assert_eq!(rank_pool(&[11, 12], &taste, Some(&vx), &[13]), vec![12, 11]);
+    }
+
+    #[test]
+    fn cap_por_artista_empurra_o_excedente_sem_perder_ninguem() {
+        // 6 faixas do mesmo artista + 1 de outro no fim do rank
+        let artista = |id: u64| Some(if id < 7 { "A".to_string() } else { "B".to_string() });
+        let capped = cap_per_artist(vec![1, 2, 3, 4, 5, 6, 7], artista, 2);
+        assert_eq!(capped.len(), 7, "ninguém é descartado");
+        // topo: 2 do artista A, depois o B (subiu por causa do cap)
+        assert_eq!(&capped[..3], &[1, 2, 7]);
+        // o excedente desce na ordem original
+        assert_eq!(&capped[3..], &[3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn cap_ignora_faixa_sem_artista() {
+        let capped = cap_per_artist(vec![1, 2, 3], |_| None, 1);
+        assert_eq!(capped, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn autoplay_pool_une_semente_e_gosto_sem_negatives_nem_semente() {
+        let vx = idx(); // 1↔2 próximos, 3 ortogonal, 4 oposto de 1
+        let taste = Taste { positives: vec![3], negatives: vec![4] };
+        let pool = autoplay_pool(1, &taste, &vx, &HashSet::new(), 10, &[]);
+        // vizinhança da semente (2) E do gosto (3 é positivo, mas positivo
+        // não entra como candidato de si mesmo — a vizinhança dele sim)
+        assert!(pool.contains(&2), "vizinho da semente entra");
+        assert!(!pool.contains(&1), "a própria semente nunca");
+        assert!(!pool.contains(&4), "negative do gosto é excluído");
+    }
+
+    #[test]
+    fn autoplay_pool_deduplica_mantendo_um_so() {
+        let vx = idx();
+        // 2 é vizinho da semente 1 E do positive 1 (mesmo id) — não duplica
+        let taste = Taste { positives: vec![1], negatives: vec![] };
+        let pool = autoplay_pool(1, &taste, &vx, &HashSet::new(), 10, &[]);
+        let ocorrencias = pool.iter().filter(|&&t| t == 2).count();
+        assert_eq!(ocorrencias, 1);
     }
 
     #[test]

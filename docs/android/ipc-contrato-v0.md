@@ -63,6 +63,18 @@ e o `layer` existe para o toast ser honesto sobre o modo degradado. O tender usa
 as mesmas camadas: station com pool exaurido vira rádio da faixa corrente em vez
 de silêncio.
 
+**Qualidade do lote (B4):** a camada `vector` usa pool DUPLO — vizinhança da
+semente ∪ vizinhança do gosto, com a semente entrando no rank como positivo
+honorário — em vez da vizinhança pura, que agrupava por timbre e virava "mais
+do mesmo álbum" em três faixas. No topo vale o cap de **2 por artista** (o
+excedente desce pro fim, nunca é descartado) e ficam de fora as **tocadas dos
+últimos 7 dias** (anel `recents.json` no data dir, cap 300, alimentado pelo
+journal — worker de sync e tender; só o que TOCOU entra, lote entregue que
+nunca tocou não conta). Se o exclude engolir o acervo inteiro, o último
+recurso repete mesmo assim — repetir é melhor que silêncio. O rail
+`lib_similar_tracks` continua vizinhança pura (é navegação, não rádio), mas
+agora sem os negatives do gosto.
+
 Play de station: `set_queue(..., origin: 'station', contextId: station.id)` —
 o sinal v3 já desconta origem passiva; o evento volta pro desktop via sync.
 

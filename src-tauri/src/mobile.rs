@@ -57,12 +57,20 @@ fn lib_similar_tracks(lib: State<Library>, id: String, k: Option<usize>) -> Vec<
 
 /// Primeiro lote do rádio de uma faixa — NUNCA vazio com biblioteca não-vazia.
 /// Faixa recém-chegada (sem linha no vectors.bin) cai pra artista/pasta e, no
-/// limite, pro acervo; `layer` diz à UI em que modo ela está.
+/// limite, pro acervo; `layer` diz à UI em que modo ela está. O que tocou nos
+/// últimos dias fica de fora (anel de recentes); se o acervo inteiro estiver
+/// "recente", o último recurso da camada 3 repete mesmo assim.
 #[tauri::command]
-fn lib_radio_start(lib: State<Library>, id: String, limit: Option<usize>) -> RadioStart {
+fn lib_radio_start(
+    lib: State<Library>,
+    cont: State<ContinuityState>,
+    id: String,
+    limit: Option<usize>,
+) -> RadioStart {
+    let recents = cont.recent_ids();
     let (tracks, layer) = lib.0.lock().expect("library lock").radio_candidates(
         &id,
-        &[],
+        &recents,
         &[],
         limit.unwrap_or(30),
         shuffle_seed(),
@@ -266,6 +274,10 @@ pub fn run() {
             // síncrono no setup.
             app.manage(Library(Mutex::new(MobileLibrary::load())));
             app.manage(ContinuityState::default());
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                app.state::<ContinuityState>().load_recents(dir.join("recents.json"));
+            }
             crate::mobile_sync::worker::spawn(app.handle().clone());
             crate::mobile_continuity::tender::spawn(app.handle().clone());
             Ok(())
