@@ -565,4 +565,19 @@ export async function bootStore() {
     void syncState();
     void syncQueue();
   });
+
+  // Hook de smoke via CDP: os testes no aparelho precisam exercitar o CAMINHO
+  // REAL do store (a decisão de continuidade vive em playFolder/playAlbum/
+  // playStation), não re-invocar os commands na mão. Sem isso cada smoke
+  // valida só o backend e a regra do store fica no escuro.
+  (window as unknown as Record<string, unknown>).__mobileStore = {
+    playList,
+    playFolder,
+    playAlbum,
+    playStation,
+    playSimilar,
+    shuffleList,
+    next,
+    skipToIndex,
+  };
 }
