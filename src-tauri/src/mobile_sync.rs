@@ -64,6 +64,41 @@ pub(crate) fn build_synced_payload(
     Some(payload)
 }
 
+/// Resolve o token Bearer do sync (CMR-194). Precedência:
+/// 1. `<data_dir>/sync.json` campo `"token"` (override manual, privado);
+/// 2. cópia privada `<data_dir>/sync-token`;
+/// 3. `<sdcard_rustify>/sync-token` (chega pelo trilho do phone-sync) — e ao
+///    ler daqui, copia pro data dir privado: o sdcard é legível por qualquer
+///    app com storage, a cópia privada passa a valer no próximo boot.
+/// Conteúdo com trim (o arquivo costuma vir com \n). Sem token → `None` e o
+/// header não vai — o receptor de hoje aceita, nada quebra.
+pub(crate) fn resolve_token(
+    data_dir: &std::path::Path,
+    sdcard_rustify: &std::path::Path,
+) -> Option<String> {
+    if let Some(t) = std::fs::read(data_dir.join("sync.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["token"].as_str().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
+    {
+        return Some(t);
+    }
+    if let Ok(s) = std::fs::read_to_string(data_dir.join("sync-token")) {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    let s = std::fs::read_to_string(sdcard_rustify.join("sync-token")).ok()?;
+    let t = s.trim().to_string();
+    if t.is_empty() {
+        return None;
+    }
+    let _ = std::fs::write(data_dir.join("sync-token"), &t);
+    Some(t)
+}
+
 #[cfg(target_os = "android")]
 pub(crate) mod worker {
     use super::*;
@@ -99,10 +134,16 @@ pub(crate) mod worker {
                 let device_id = crate::device_identity::load_or_create(&data_dir);
                 let app_version = app.package_info().version.to_string();
                 let url = endpoint(&data_dir);
-                tracing::info!(%device_id, %url, "mobile-sync: worker ativo");
+                let token = super::resolve_token(
+                    &data_dir,
+                    &std::path::Path::new(crate::mobile_library::MUSIC_ROOT).join(".rustify"),
+                );
+                tracing::info!(%device_id, %url, com_token = token.is_some(),
+                    "mobile-sync: worker ativo");
                 loop {
                     std::thread::sleep(INTERVAL);
-                    if let Err(e) = sync_once(&app, &device_id, &app_version, &url) {
+                    if let Err(e) = sync_once(&app, &device_id, &app_version, &url, token.as_deref())
+                    {
                         tracing::debug!(e, "mobile-sync: ciclo falhou (re-tenta)");
                     }
                 }
@@ -115,6 +156,7 @@ pub(crate) mod worker {
         device_id: &str,
         app_version: &str,
         url: &str,
+        token: Option<&str>,
     ) -> Result<(), String> {
         use tauri::Manager;
         let audio = app.rustify_audio();
@@ -148,8 +190,11 @@ pub(crate) mod worker {
             }
         }
 
-        let resp: serde_json::Value = ureq::post(url)
-            .timeout(Duration::from_secs(15))
+        let mut req = ureq::post(url).timeout(Duration::from_secs(15));
+        if let Some(t) = token {
+            req = req.set("Authorization", &format!("Bearer {t}"));
+        }
+        let resp: serde_json::Value = req
             .send_json(json!({ "events": batch }))
             .map_err(|e| format!("post: {e}"))?
             .into_json()
@@ -230,6 +275,57 @@ mod tests {
             }),
         );
         assert_eq!(mobile, desktop);
+    }
+
+    #[test]
+    fn token_sync_json_vence_privado_e_sdcard() {
+        let data = tempfile::tempdir().unwrap();
+        let sdcard = tempfile::tempdir().unwrap();
+        std::fs::write(data.path().join("sync.json"), r#"{"token":" da-config "}"#).unwrap();
+        std::fs::write(data.path().join("sync-token"), "privado").unwrap();
+        std::fs::write(sdcard.path().join("sync-token"), "do-sdcard").unwrap();
+        assert_eq!(
+            resolve_token(data.path(), sdcard.path()),
+            Some("da-config".to_string())
+        );
+    }
+
+    #[test]
+    fn token_privado_vence_sdcard() {
+        let data = tempfile::tempdir().unwrap();
+        let sdcard = tempfile::tempdir().unwrap();
+        std::fs::write(data.path().join("sync-token"), "privado\n").unwrap();
+        std::fs::write(sdcard.path().join("sync-token"), "do-sdcard").unwrap();
+        assert_eq!(
+            resolve_token(data.path(), sdcard.path()),
+            Some("privado".to_string())
+        );
+    }
+
+    #[test]
+    fn token_do_sdcard_copia_pro_data_dir() {
+        let data = tempfile::tempdir().unwrap();
+        let sdcard = tempfile::tempdir().unwrap();
+        std::fs::write(sdcard.path().join("sync-token"), "abc123\n").unwrap();
+        assert_eq!(
+            resolve_token(data.path(), sdcard.path()),
+            Some("abc123".to_string())
+        );
+        // Mitigação do sdcard legível: a partir daqui a cópia privada vale.
+        assert_eq!(
+            std::fs::read_to_string(data.path().join("sync-token")).unwrap(),
+            "abc123"
+        );
+    }
+
+    #[test]
+    fn sem_token_em_lugar_nenhum_vira_none() {
+        let data = tempfile::tempdir().unwrap();
+        let sdcard = tempfile::tempdir().unwrap();
+        assert_eq!(resolve_token(data.path(), sdcard.path()), None);
+        // Arquivo vazio/whitespace também não vale como token.
+        std::fs::write(sdcard.path().join("sync-token"), "\n").unwrap();
+        assert_eq!(resolve_token(data.path(), sdcard.path()), None);
     }
 
     #[test]

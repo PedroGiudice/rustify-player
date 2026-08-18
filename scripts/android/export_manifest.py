@@ -48,6 +48,9 @@ CMR_AUTO = "cmr-auto@100.102.249.9"
 STATIONS_DIR = "/home/cmr-auto/.local/share/rustify-player/stations"
 COVER_CACHE = "/home/cmr-auto/.cache/rustify-player"
 STAGING = "/home/cmr-auto/.cache/phone-sync/Music"
+# data_dir REAL do desktop (desktop.rs) — não confundir com o dir de logs
+# do plugin (~/.local/share/dev.cmr.rustifyplayer/).
+SYNC_TOKEN = "/home/cmr-auto/.local/share/rustify-player/sync-token"
 FIELDS = [
     "path", "title", "artist", "album_title", "duration_ms",
     "track_number", "disc_number", "genre", "album_year", "cover_path",
@@ -488,12 +491,26 @@ print(f"covers: {{done}} convertidas, {{skipped}} já existiam, "
 
 def deploy_artifacts(out_dir: str) -> None:
     subprocess.run(["ssh", CMR_AUTO, f"mkdir -p {STAGING}/.rustify"], check=True, timeout=30)
-    for name in ("manifest.json", "vectors.bin", "taste.json", "stations.json"):
+    # Token Bearer do sync (CMR-194): garante um na cmr-auto (fonte da verdade,
+    # mesmo arquivo que o receptor desktop lê) e leva a cópia no trilho — 5º
+    # artefato que o phone_push_retry.sh empurra pro aparelho.
+    subprocess.run(
+        ["ssh", CMR_AUTO,
+         f"test -f {SYNC_TOKEN} || (umask 077 && mkdir -p $(dirname {SYNC_TOKEN}) "
+         f"&& openssl rand -hex 32 > {SYNC_TOKEN})"],
+        check=True, timeout=30,
+    )
+    subprocess.run(
+        ["scp", "-q", f"{CMR_AUTO}:{SYNC_TOKEN}", f"{out_dir}/sync-token"],
+        check=True, timeout=30,
+    )
+    for name in ("manifest.json", "vectors.bin", "taste.json", "stations.json",
+                 "sync-token"):
         subprocess.run(
             ["scp", "-q", f"{out_dir}/{name}", f"{CMR_AUTO}:{STAGING}/.rustify/{name}"],
             check=True, timeout=120,
         )
-    print(f"deploy: 4 artefatos → {CMR_AUTO}:{STAGING}/.rustify/")
+    print(f"deploy: 5 artefatos → {CMR_AUTO}:{STAGING}/.rustify/")
 
 
 def main() -> int:
