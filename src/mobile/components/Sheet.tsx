@@ -68,7 +68,8 @@ function trackActions(spec: Extract<SheetSpec, { kind: "track" }>): Action[] {
       label: "Tocar a partir daqui",
       icon: "shuffle",
       hint: `${ctx.list.length - ctx.index} faixas, embaralhadas`,
-      run: () => void playList([t, ...shuffled(ctx.list.slice(ctx.index + 1))], 0, "shuffle"),
+      // A cauda embaralhada e arranjo da maquina: origin `autoplay` (vocabulario v3).
+      run: () => void playList([t, ...shuffled(ctx.list.slice(ctx.index + 1))], 0, "autoplay"),
     });
   }
   acts.push({

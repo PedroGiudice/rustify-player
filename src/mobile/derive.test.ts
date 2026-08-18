@@ -123,7 +123,6 @@ describe("origins", () => {
   it("rotula cada origin do contrato", () => {
     expect(originLabel("playlist")).toBe("playlist");
     expect(originLabel("album_seq")).toBe("álbum");
-    expect(originLabel("shuffle")).toBe("shuffle");
     // Origins da continuidade (epic B): sem rótulo próprio o badge do Now
     // Playing mostraria o valor cru do contrato de sinal.
     expect(originLabel("autoplay")).toBe("rádio");
@@ -135,7 +134,7 @@ describe("origins", () => {
     expect(originSrc("playlist")).toBe("playlist");
     expect(originSrc("album_seq")).toBe("album");
     expect(originSrc("manual")).toBeUndefined();
-    expect(originSrc("shuffle")).toBeUndefined();
+    expect(originSrc("station")).toBeUndefined();
   });
 });
 

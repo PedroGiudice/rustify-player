@@ -14,7 +14,10 @@ data class PlaybackSnapshot(
     val isPlaying: Boolean,
     /** Itens na fila nativa. E o que permite decidir "esta acabando" sem
      *  precisar ler a fila inteira a cada ciclo do tender de continuidade. */
-    val count: Int = 0
+    val count: Int = 0,
+    /** off | one | all — com repeat ligado a fila nunca "seca": o tender NAO
+     *  pode injetar autoplay por cima de um loop deliberado do usuario. */
+    val repeatMode: String = "off"
 )
 
 /**
@@ -41,7 +44,7 @@ object PlaybackBus {
 @UnstableApi
 fun snapshotOf(player: Player?): PlaybackSnapshot {
     if (player == null) {
-        return PlaybackSnapshot("idle", -1, null, 0L, 0L, false, 0)
+        return PlaybackSnapshot("idle", -1, null, 0L, 0L, false, 0, "off")
     }
     val duration = player.duration
     val status = when (player.playbackState) {
@@ -57,6 +60,11 @@ fun snapshotOf(player: Player?): PlaybackSnapshot {
         positionMs = player.currentPosition.coerceAtLeast(0L),
         durationMs = if (duration == C.TIME_UNSET) 0L else duration.coerceAtLeast(0L),
         isPlaying = player.isPlaying,
-        count = player.mediaItemCount
+        count = player.mediaItemCount,
+        repeatMode = when (player.repeatMode) {
+            Player.REPEAT_MODE_ONE -> "one"
+            Player.REPEAT_MODE_ALL -> "all"
+            else -> "off"
+        }
     )
 }

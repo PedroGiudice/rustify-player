@@ -251,7 +251,11 @@ export const playTrackFrom = (list: Track[], index: number) => playList(list, in
 export const playFolder = (list: Track[], name: string) =>
   playList(list, 0, "playlist", name, { mode: "off" });
 export const playAlbum = (list: Track[], key: string) => playList(list, 0, "album_seq", key);
-export const shuffleList = (list: Track[]) => playList(shuffled(list), 0, "shuffle");
+// `autoplay`, não "shuffle": a sequência foi escolhida pela máquina, e é assim
+// que o sinal v3 a conhece (desconto de origem passiva). "shuffle" estava fora
+// do vocabulário do motor e entrava com peso CHEIO no saldo — decisão do CEO
+// no plano de paridade: mapear aqui, sem mexer em dado já gravado.
+export const shuffleList = (list: Track[]) => playList(shuffled(list), 0, "autoplay");
 export const shuffleAll = () => shuffleList(tracks());
 
 /** Toca uma station: lote do pool precomputado + re-rank local.

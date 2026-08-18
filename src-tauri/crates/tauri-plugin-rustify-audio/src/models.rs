@@ -113,6 +113,14 @@ pub struct PlaybackState {
     /// saber que a fila esta secando sem ler a fila inteira a cada ciclo.
     #[serde(default)]
     pub count: i32,
+    /// `off` | `one` | `all`. Com repeat ligado a fila nunca "seca" — o tender
+    /// nao pode injetar autoplay por cima de um loop deliberado do usuario.
+    #[serde(default = "default_repeat_mode")]
+    pub repeat_mode: String,
+}
+
+fn default_repeat_mode() -> String {
+    "off".into()
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

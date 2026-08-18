@@ -231,13 +231,20 @@ enfileirou à mão. Como o serviço só remove sufixo, o descarte começa depois
 | Tocou uma faixa escolhida | `manual` |
 | Play numa playlist/pasta | `playlist` |
 | Play num álbum em sequência | `album_seq` |
-| Shuffle burro do acervo | `shuffle` |
+| Shuffle burro do acervo | `autoplay` (sequência escolhida pela máquina) |
 | Play/next de uma station | `station` |
 | Fila continuada pelo motor | `autoplay` (tender, epic B) |
 | Re-escuta com repeat-one ligado | `repeat` (carimbado pelo serviço) |
 
 O desconto de origem passiva do behavioral_signals v3 conhece
-autoplay/station/playlist — `shuffle` é neutro até decisão em contrário.
+autoplay/station/playlist. **`shuffle` não existe mais como origin** (B5): o
+valor estava fora do vocabulário do motor e entrava com peso CHEIO no saldo —
+decisão do CEO no plano: mapear no mobile para `autoplay`, sem mexer em dado já
+gravado. O tipo `Origin` do frontend não aceita mais o literal.
+
+O tender também respeita o repeat: com `one` ou `all` ligado a fila nunca seca
+(o loop é deliberado) e o top-up fica quieto — `repeatMode` chegou ao
+`PlaybackState` do plugin para isso.
 
 ## O que NÃO existe no mobile (não desenhar em cima)
 

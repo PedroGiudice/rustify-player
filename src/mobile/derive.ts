@@ -139,7 +139,6 @@ export function originLabel(o: Origin): string {
   switch (o) {
     case "playlist": return "playlist";
     case "album_seq": return "álbum";
-    case "shuffle": return "shuffle";
     case "station": return "station";
     case "autoplay": return "rádio";
     case "repeat": return "repetindo";

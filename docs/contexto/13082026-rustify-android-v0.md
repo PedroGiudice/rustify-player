@@ -68,6 +68,14 @@ no v0 (autoplay ausente ou shuffle burro). Racional que destravou: régua
 sofre de amostra pequena (n=45, skip 100%); Rustify no bolso MULTIPLICA dados
 de escuta que validam o motor, em vez de esperar por ele. Motor local = v1.
 
+> **Superado pela Onda 1 do plano de paridade (08/2026, B1-B5):** o motor
+> local existe (tender de continuidade em Rust, rádio com pool duplo, reação
+> a skip) e o vocabulário de origins do aparelho fechou com o do sinal v3 —
+> `repeat` sai do serviço a cada volta de repeat-one, `shuffle` foi
+> aposentado (mapeia pra `autoplay`) e context_id segue
+> `radio:<seed>:<ts>` / `station:<id>:<ts>`. Fonte da verdade atual:
+> `docs/android/ipc-contrato-v0.md` e o plano de paridade de 15/08.
+
 Frentes separadas: **claude.design porta a UI mobile** (CEO toca esse loop);
 **sessão limpa constrói o app** (plugin, storage, sync).
 

@@ -251,8 +251,19 @@ impl ContinuityState {
 /// volta se alguém anexar e retomar), ou está **secando** (tocando e a menos de
 /// `slack` posições do fim). Fila parada por pausa não conta: o usuário pausou
 /// de propósito e reabastecer seria trabalho invisível gastando bateria.
-pub fn needs_topup(status: &str, is_playing: bool, index: i32, count: i32, slack: i32) -> bool {
-    if count <= 0 {
+///
+/// Com repeat ligado (`one` ou `all`) a resposta é sempre não: a fila nunca
+/// seca num loop, e injetar autoplay por cima de um loop deliberado do usuário
+/// seria o tender desfazendo uma escolha explícita.
+pub fn needs_topup(
+    status: &str,
+    is_playing: bool,
+    index: i32,
+    count: i32,
+    slack: i32,
+    repeat_mode: &str,
+) -> bool {
+    if count <= 0 || repeat_mode != "off" {
         return false;
     }
     if status == "ended" {
@@ -483,7 +494,7 @@ pub(crate) mod tender {
         }
 
         let count = queue.items.len() as i32;
-        if !needs_topup(&st.status, st.is_playing, queue.index, count, SLACK) {
+        if !needs_topup(&st.status, st.is_playing, queue.index, count, SLACK, &st.repeat_mode) {
             return Ok(());
         }
 
@@ -581,35 +592,45 @@ mod tests {
     fn fila_acabada_sempre_pede_lote() {
         // Mesmo pausado: `ended` significa que o player parou no fim e só
         // volta se alguém anexar. É o caso que faz a música morrer no bolso.
-        assert!(needs_topup("ended", false, 9, 10, SLACK));
-        assert!(needs_topup("ended", true, 9, 10, SLACK));
+        assert!(needs_topup("ended", false, 9, 10, SLACK, "off"));
+        assert!(needs_topup("ended", true, 9, 10, SLACK, "off"));
     }
 
     #[test]
     fn tocando_perto_do_fim_pede_lote() {
         // 10 itens, tocando o 9º (índice 8): resta 1 → dentro do slack de 2.
-        assert!(needs_topup("ready", true, 8, 10, SLACK));
-        assert!(needs_topup("ready", true, 9, 10, SLACK));
+        assert!(needs_topup("ready", true, 8, 10, SLACK, "off"));
+        assert!(needs_topup("ready", true, 9, 10, SLACK, "off"));
     }
 
     #[test]
     fn tocando_com_folga_nao_pede() {
-        assert!(!needs_topup("ready", true, 3, 10, SLACK));
-        assert!(!needs_topup("ready", true, 7, 10, SLACK));
+        assert!(!needs_topup("ready", true, 3, 10, SLACK, "off"));
+        assert!(!needs_topup("ready", true, 7, 10, SLACK, "off"));
     }
 
     #[test]
     fn pausado_no_meio_nao_pede() {
         // Pausa é decisão do usuário; reabastecer seria trabalho invisível
         // gastando bateria com o aparelho no bolso.
-        assert!(!needs_topup("ready", false, 8, 10, SLACK));
+        assert!(!needs_topup("ready", false, 8, 10, SLACK, "off"));
     }
 
     #[test]
     fn fila_vazia_nunca_pede() {
         // Sem fila não há seed nem contexto — quem começa é o usuário.
-        assert!(!needs_topup("ended", true, -1, 0, SLACK));
-        assert!(!needs_topup("ready", true, -1, 0, SLACK));
+        assert!(!needs_topup("ended", true, -1, 0, SLACK, "off"));
+        assert!(!needs_topup("ready", true, -1, 0, SLACK, "off"));
+    }
+
+    #[test]
+    fn repeat_ligado_nunca_pede_lote() {
+        // repeat-all: o fim da fila volta pra primeira — nada seca.
+        assert!(!needs_topup("ready", true, 9, 10, SLACK, "all"));
+        // repeat-one: loop deliberado; injetar autoplay o desfaria.
+        assert!(!needs_topup("ready", true, 9, 10, SLACK, "one"));
+        // ate "ended" com repeat (transiente) fica quieto.
+        assert!(!needs_topup("ended", true, 9, 10, SLACK, "all"));
     }
 
     #[test]

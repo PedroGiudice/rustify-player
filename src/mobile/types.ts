@@ -34,11 +34,13 @@ export interface Folder {
  *  `autoplay` e `repeat` entram com a continuidade (epic B): o desktop já os
  *  emite e a régua corta por eles. `shuffle` continua até a decisão de mapeá-lo
  *  para `autoplay` ser tomada — mexer nele muda o peso de dados já gravados. */
+/** Vocabulário EXATO do sinal v3 do desktop. "shuffle" não existe aqui de
+ *  propósito: estava fora do vocabulário do motor e entrava com peso cheio no
+ *  saldo — sequência escolhida pela máquina loga `autoplay`. */
 export type Origin =
   | "manual"
   | "playlist"
   | "album_seq"
-  | "shuffle"
   | "station"
   | "autoplay"
   | "repeat";

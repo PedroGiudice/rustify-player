@@ -536,6 +536,7 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         obj.put("durationMs", snapshot.durationMs)
         obj.put("isPlaying", snapshot.isPlaying)
         obj.put("count", snapshot.count)
+        obj.put("repeatMode", snapshot.repeatMode)
         return obj
     }
 }
