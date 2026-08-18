@@ -410,8 +410,19 @@ decisoes). O que importa pro dia-a-dia:
   doc, nao codigo. Decisao pendente do CEO: batch periodico agendado vs
   chamada LLM no ingest (custo recorrente + latencia por faixa).
 - Deferidos rastreados: CMR-177 (double-load gapless), CMR-178
-  (anotacao automatica + GC orfaos), CMR-179 (aversion list, station
-  Mood, restore de queueSource).
+  (anotacao automatica + GC orfaos), CMR-179 (restam station Mood e
+  restore de queueSource).
+- **Consciencia de sessao no RADIO (v0.2.75, 2026-08-18)**: a parte de
+  aversao do CMR-179 foi confirmada como causa-raiz do skip 68% da regua
+  (forense: 3 sessoes de martelo 88-96% dominavam o agregado; o picker
+  semeava o proximo pick pela faixa RECEM-REJEITADA e re-servia skipadas
+  alem do FIFO-30 — mesma faixa 12x). Fix = paridade com a station:
+  `radioSession` generalizado (rodada `radio:<ts>`, `lastAcceptedId`),
+  skip cedo (<35%) trunca a cauda e re-fetcha semeado pela ultima ACEITA,
+  seen da rodada e hard-filter, `lib_autoplay_next` ganha
+  `session_negative_ids` (uniao com negativos globais) e filtro
+  `is_junk_artist` (URL no campo artista). NAO regredir: semear re-fetch
+  pos-skip pela faixa skipada e o anti-pattern que causou o colapso.
 
 ## Crate — busca + download Soulseek in-app (v0.2.62)
 
