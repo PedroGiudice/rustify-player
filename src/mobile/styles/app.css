@@ -484,11 +484,14 @@
   margin-top: 7px;
   font-variant-numeric: tabular-nums;
 }
+/* 5 botões (shuffle | prev | play | next | repeat, CMR-218): 4×44 + 60 =
+   236px de ícone. Com o gap fixo de 26px do handoff a fileira dava 340px e
+   estourava os 316px úteis do S24 (360 - 2×22 de padding); 5vw = 18px lá. */
 .np .ctrls {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 26px;
+  gap: clamp(12px, 5vw, 26px);
   margin-top: 12px;
 }
 .np .ctrls .iconbtn {

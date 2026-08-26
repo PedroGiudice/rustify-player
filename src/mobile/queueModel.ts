@@ -78,6 +78,16 @@ export function fmtRemaining(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+/**
+ * Há o que embaralhar? Só com faixa corrente e pelo menos 2 a seguir — com 0
+ * ou 1 a permutação é identidade e o botão viraria um no-op mudo (CMR-218).
+ * Espelha o guard do Kotlin (`count - from >= 2`); aqui serve para desabilitar
+ * o botão antes de gastar um IPC.
+ */
+export function canShuffleUpcoming(entries: QueueEntry[], index: number): boolean {
+  return index >= 0 && entries.length - index - 1 >= 2;
+}
+
 /** O que o motor precisa saber quando o usuário abandona a faixa corrente. */
 export interface SkipReport {
   trackId: string;

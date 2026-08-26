@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-shuffle-upcoming"
+description = "Enables the shuffle_upcoming command without any pre-configured scope."
+commands.allow = ["shuffle_upcoming"]
+
+[[permission]]
+identifier = "deny-shuffle-upcoming"
+description = "Denies the shuffle_upcoming command without any pre-configured scope."
+commands.deny = ["shuffle_upcoming"]

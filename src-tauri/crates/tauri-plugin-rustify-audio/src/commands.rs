@@ -113,6 +113,13 @@ pub(crate) async fn truncate_queue<R: Runtime>(
     audio(&app).truncate_queue(from_index).await
 }
 
+/// Re-embaralha so a cauda ainda nao tocada (CMR-218). Sem args: o Kotlin
+/// resolve o corte contra o `currentMediaItemIndex` do proprio player.
+#[tauri::command]
+pub(crate) async fn shuffle_upcoming<R: Runtime>(app: AppHandle<R>) -> crate::Result<QueueSnapshot> {
+    audio(&app).shuffle_upcoming().await
+}
+
 #[tauri::command]
 pub(crate) async fn set_repeat_mode<R: Runtime>(
     app: AppHandle<R>,

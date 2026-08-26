@@ -9,11 +9,16 @@
    - artista e álbum são navegáveis (15/08) e a sheet de "track
      info" existe via long-press na linha da faixa — mas ainda sem
      codec/bitrate, que não estão no shape do Track;
-   - sem coração: não há trilho de like (epic C);
-   - repeat VOLTOU (15/08): off/all/one no cabeçalho, com o serviço
-     carimbando origin `repeat` nas re-escutas de repeat-one;
-   - shuffle segue fora dos controles: o plugin não tem command e a
-     decisão de mapeá-lo para `autoplay` no sinal está em aberto.
+   - sem coração: não há trilho de like (epic C) — o slot do
+     cabeçalho antes do rádio fica reservado pra ele (CMR-220);
+   - repeat (15/08) off/all/one, com o serviço carimbando origin
+     `repeat` nas re-escutas de repeat-one — desceu do cabeçalho pra
+     fileira de controles (26/08);
+   - shuffle ENTROU (26/08, CMR-218) como ação one-shot "Embaralhar o
+     restante": `shuffle_upcoming` permuta só a cauda no Kotlin, sem
+     estado nem restauração da ordem, e a UI aplica o snapshot que
+     volta. Não é origin — a fila mantém a origem por item. A fileira
+     é shuffle | prev | play | next | repeat.
    O seek É real: o contrato tem seek_to.
    ============================================================ */
 
@@ -28,13 +33,16 @@ import {
   pb,
   playSimilar,
   previous,
+  queueEntries,
   queueOrigin,
   repeat,
   seek,
   showToast,
+  shuffleUpcoming,
   toggle,
 } from "../store";
 import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
+import { canShuffleUpcoming } from "../queueModel";
 import { useRenderer, useShape } from "../bg/spectrum";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
@@ -186,17 +194,6 @@ export function NowPlaying() {
                 </button>
               )}
             </Show>
-            <button
-              class="iconbtn"
-              aria-label="Repetir"
-              aria-pressed={repeat() !== "off"}
-              style={repeat() !== "off" ? { color: "var(--accent)" } : undefined}
-              onClick={() => void cycleRepeat()}
-            >
-              <Show when={repeat() === "one"} fallback={<Icon.repeat />}>
-                <Icon.repeatOne />
-              </Show>
-            </button>
             <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>
               <Icon.queue />
             </button>
@@ -285,6 +282,14 @@ export function NowPlaying() {
               </div>
 
               <div class="ctrls">
+                <button
+                  class="iconbtn"
+                  aria-label="Embaralhar o restante"
+                  disabled={!canShuffleUpcoming(queueEntries(), pb.index)}
+                  onClick={() => void shuffleUpcoming()}
+                >
+                  <Icon.shuffle />
+                </button>
                 <button class="iconbtn" aria-label="Anterior" onClick={() => void previous()}>
                   <Icon.prev />
                 </button>
@@ -295,6 +300,17 @@ export function NowPlaying() {
                 </button>
                 <button class="iconbtn" aria-label="Próxima" onClick={() => void next()}>
                   <Icon.next />
+                </button>
+                <button
+                  class="iconbtn"
+                  aria-label="Repetir"
+                  aria-pressed={repeat() !== "off"}
+                  style={repeat() !== "off" ? { color: "var(--accent)" } : undefined}
+                  onClick={() => void cycleRepeat()}
+                >
+                  <Show when={repeat() === "one"} fallback={<Icon.repeat />}>
+                    <Icon.repeatOne />
+                  </Show>
                 </button>
               </div>
             </>

@@ -132,6 +132,13 @@ export const playerGetQueue = () => invoke<QueueSnapshot>(cmd("get_queue"));
 export const playerTruncateQueue = (fromIndex: number) =>
   invoke<QueueSnapshot>(cmd("truncate_queue"), { fromIndex });
 
+/**
+ * "Embaralhar o restante" (CMR-218): o Kotlin permuta SÓ a cauda depois da
+ * corrente, de uma vez (`replaceMediaItems`), e devolve o snapshot novo. Sem
+ * args — o corte é resolvido contra o índice do próprio player.
+ */
+export const playerShuffleUpcoming = () => invoke<QueueSnapshot>(cmd("shuffle_upcoming"));
+
 export const playerSetRepeatMode = (mode: RepeatMode) =>
   invoke<void>(cmd("set_repeat_mode"), { mode });
 

@@ -46,6 +46,7 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 | `get_queue` | — | `QueueSnapshot` |
 | `add_items` | `items[]`, `origin`, `contextId?`, `mode` | `QueueSnapshot` |
 | `truncate_queue` | `fromIndex` | `QueueSnapshot` |
+| `shuffle_upcoming` | — | `QueueSnapshot` |
 | `set_repeat_mode` | `mode: 'off'\|'one'\|'all'` | `null` |
 | `drain_events` | `afterSeq?` | `{ events: PlayEvent[], lastSeq }` |
 | `ack_events` | `uptoSeq` | `null` |
@@ -61,6 +62,14 @@ nativa: dá para saber que ela está secando sem lê-la inteira a cada ciclo.
 `truncate_queue` descarta a cauda ainda não tocada e **nunca corta a faixa
 corrente** (o `fromIndex` é elevado para `currentMediaItemIndex + 1` no Kotlin):
 cortar o item que toca pararia o som, que é o oposto da intenção.
+
+`shuffle_upcoming` re-embaralha **só a cauda ainda não tocada** (CMR-218) e
+devolve o snapshot novo. Ação one-shot e repetível — não há estado de "shuffle
+ligado" nem restauração da ordem. Nunca toca a faixa corrente nem o já tocado;
+a cauda é trocada de uma vez por `replaceMediaItems` (atômico frente ao tender
+e ao auto-advance). O `QueueMeta` é chaveado por `trackId`, então a origem e o
+`contextId` de cada item são preservados na reordenação. Com menos de 2 itens
+a seguir é no-op (o snapshot volta igual).
 
 `set_repeat_mode('one')` faz o serviço carimbar `origin: repeat` nas
 re-escutas — o sinal v3 trata isso como positivo pleno, e até agora o celular

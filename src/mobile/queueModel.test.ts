@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { remainingMs, resolveQueue, skipReport, splitQueue } from "./queueModel";
+import { canShuffleUpcoming, remainingMs, resolveQueue, skipReport, splitQueue } from "./queueModel";
 import type { QueueEntry, QueueSnapshot, Track } from "./types";
 
 function track(id: string, durationMs = 180_000): Track {
@@ -113,6 +113,27 @@ describe("remainingMs", () => {
 
   it("fila vazia é zero", () => {
     expect(remainingMs([], -1, 0)).toBe(0);
+  });
+});
+
+describe("canShuffleUpcoming (CMR-218)", () => {
+  const fila = ["a", "b", "c", "d"].map((id) => entry(id));
+
+  it("precisa de pelo menos 2 faixas DEPOIS da corrente", () => {
+    expect(canShuffleUpcoming(fila, 0)).toBe(true); // 3 a seguir
+    expect(canShuffleUpcoming(fila, 1)).toBe(true); // 2 a seguir
+    expect(canShuffleUpcoming(fila, 2)).toBe(false); // 1 a seguir: nada a permutar
+    expect(canShuffleUpcoming(fila, 3)).toBe(false); // última
+  });
+
+  it("sem faixa corrente (index -1) não há 'restante'", () => {
+    expect(canShuffleUpcoming(fila, -1)).toBe(false);
+  });
+
+  it("fila vazia ou índice além do fim", () => {
+    expect(canShuffleUpcoming([], -1)).toBe(false);
+    expect(canShuffleUpcoming([], 0)).toBe(false);
+    expect(canShuffleUpcoming(fila, 9)).toBe(false);
   });
 });
 

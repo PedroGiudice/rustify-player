@@ -109,6 +109,10 @@ impl<R: Runtime> RustifyAudio<R> {
             .await
     }
 
+    pub async fn shuffle_upcoming(&self) -> crate::Result<QueueSnapshot> {
+        self.call("shuffleUpcoming", EmptyArgs {}).await
+    }
+
     pub async fn set_repeat_mode(&self, mode: RepeatMode) -> crate::Result<()> {
         self.call_unit("setRepeatMode", RepeatModeRequest { mode }).await
     }

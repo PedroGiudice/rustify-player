@@ -18,6 +18,7 @@ os commands em permissoes separadas.
 - `allow-get-queue`
 - `allow-add-items`
 - `allow-truncate-queue`
+- `allow-shuffle-upcoming`
 - `allow-set-repeat-mode`
 - `allow-drain-events`
 - `allow-ack-events`
@@ -421,6 +422,32 @@ Enables the set_repeat_mode command without any pre-configured scope.
 <td>
 
 Denies the set_repeat_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-shuffle-upcoming`
+
+</td>
+<td>
+
+Enables the shuffle_upcoming command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-shuffle-upcoming`
+
+</td>
+<td>
+
+Denies the shuffle_upcoming command without any pre-configured scope.
 
 </td>
 </tr>

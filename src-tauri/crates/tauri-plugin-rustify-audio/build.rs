@@ -14,6 +14,7 @@ const COMMANDS: &[&str] = &[
     "get_queue",
     "add_items",
     "truncate_queue",
+    "shuffle_upcoming",
     "set_repeat_mode",
     "drain_events",
     "ack_events",

@@ -16,6 +16,7 @@ import type { Track } from "./types";
 vi.mock("./ipc", () => ({
   playerSetQueue: vi.fn(async () => undefined),
   playerGetQueue: vi.fn(async () => ({ items: [], index: 0 })),
+  playerShuffleUpcoming: vi.fn(async () => ({ items: [], index: 0 })),
   continuityArm: vi.fn(async () => undefined),
   libRecentPlays: vi.fn(async () => []),
   toQueueItem: (t: Track) => ({ trackId: t.id, path: t.path }),
@@ -25,13 +26,17 @@ vi.mock("./ipc", () => ({
 import * as ipc from "./ipc";
 import {
   loadRecents,
+  pb,
   playFolder,
   playFolderFrom,
   playFromHere,
   playTrackFrom,
+  queueEntries,
   recents,
   shuffleFolder,
   shuffleList,
+  shuffleUpcoming,
+  toast,
 } from "./store";
 
 const track = (id: number): Track =>
@@ -140,6 +145,57 @@ describe('playFromHere ("Tocar a partir daqui" da sheet — resíduo do CMR-211)
     expect(ids[0]).toBe("3");
     expect(ids.slice(1).sort()).toEqual(["4", "5"]);
     expect(armed().seedTrackId).toBe("3");
+  });
+});
+
+describe('shuffleUpcoming ("Embaralhar o restante" — CMR-218)', () => {
+  const snap = (ids: string[], index: number) => ({
+    items: ids.map((id) => ({ trackId: id, origin: "manual", contextId: null, durationMs: 1000 })),
+    index,
+  });
+
+  it("aplica o snapshot DEVOLVIDO pelo serviço — nunca reordena otimista", async () => {
+    // fila real: 1..5 tocando a 1 (4 a seguir)
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      snap(["1", "2", "3", "4", "5"], 0),
+    );
+    await playTrackFrom(FOLDER, 0);
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4", "5"]);
+
+    (ipc.playerShuffleUpcoming as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      snap(["1", "4", "2", "5", "3"], 0),
+    );
+    await shuffleUpcoming();
+    expect(ipc.playerShuffleUpcoming).toHaveBeenCalledTimes(1);
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "4", "2", "5", "3"]);
+    expect(pb.index).toBe(0);
+    expect(toast()).toBe("Restante embaralhado");
+  });
+
+  it("guard: com menos de 2 faixas a seguir NÃO chama o IPC", async () => {
+    // tocando a penúltima: só 1 a seguir
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(snap(["1", "2"], 0));
+    await playTrackFrom(FOLDER.slice(0, 2), 0);
+    await shuffleUpcoming();
+    expect(ipc.playerShuffleUpcoming).not.toHaveBeenCalled();
+    expect(toast()).toBe("Nada a embaralhar");
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2"]);
+  });
+
+  it("falha do IPC re-lê a fila do serviço em vez de inventar ordem", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      snap(["1", "2", "3", "4"], 0),
+    );
+    await playTrackFrom(FOLDER.slice(0, 4), 0);
+    (ipc.playerShuffleUpcoming as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("x"));
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      snap(["1", "2", "3", "4"], 1),
+    );
+    await shuffleUpcoming();
+    // o syncQueue do catch é a única fonte da nova ordem/índice
+    expect(ipc.playerGetQueue).toHaveBeenCalledTimes(2);
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4"]);
+    expect(pb.index).toBe(1);
   });
 });
 

@@ -19,6 +19,7 @@ permissions = [
   "allow-get-queue",
   "allow-add-items",
   "allow-truncate-queue",
+  "allow-shuffle-upcoming",
   "allow-set-repeat-mode",
   "allow-drain-events",
   "allow-ack-events",

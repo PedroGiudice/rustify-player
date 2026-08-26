@@ -17,7 +17,7 @@ import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
-import { remainingMs, resolveQueue, skipReport } from "./queueModel";
+import { canShuffleUpcoming, remainingMs, resolveQueue, skipReport } from "./queueModel";
 import type {
   Folder,
   Origin,
@@ -394,6 +394,30 @@ async function enqueue(track: Track, mode: "next" | "end") {
 export const enqueueNext = (t: Track) => enqueue(t, "next");
 export const enqueueEnd = (t: Track) => enqueue(t, "end");
 
+/**
+ * "Embaralhar o restante" (CMR-218): ação one-shot sobre a cauda ainda não
+ * tocada — repetível, sem estado de "shuffle ligado" nem restauração da
+ * ordem. A permutação acontece no Kotlin (`replaceMediaItems`, atômico frente
+ * ao tender e ao auto-advance); a UI NUNCA reordena otimista — aplica só o
+ * snapshot devolvido, senão a tela mostraria uma ordem que o serviço não tem.
+ * Não é origin: a fila mantém a origem por item.
+ */
+export async function shuffleUpcoming() {
+  if (!canShuffleUpcoming(queueEntries(), pb.index)) {
+    showToast("Nada a embaralhar");
+    return;
+  }
+  try {
+    const snap = await ipc.playerShuffleUpcoming();
+    setQueueEntries(snap?.items ?? []);
+    if (typeof snap?.index === "number") setPb("index", snap.index);
+    showToast("Restante embaralhado");
+  } catch (e) {
+    console.warn("[mobile] shuffle_upcoming falhou:", e);
+    await syncQueue();
+  }
+}
+
 // ── Continuidade ──────────────────────────────────────────────
 
 const CONTINUITY_KEY = "kv-mobile-continuity";
@@ -653,6 +677,7 @@ export async function bootStore() {
     shuffleList,
     shuffleFolder,
     playFromHere,
+    shuffleUpcoming,
     next,
     skipToIndex,
     loadRecents,

@@ -172,7 +172,20 @@ await invoke('plugin:rustify-audio|truncate_queue', { fromIndex })
 
 // off | all | one — 'one' faz o serviço carimbar origin 'repeat'
 await invoke('plugin:rustify-audio|set_repeat_mode', { mode: 'one' })
+
+// "Embaralhar o restante" (CMR-218): permuta SÓ a cauda depois da corrente e
+// devolve o snapshot novo. Sem args — o corte é o índice do próprio player.
+const q2 = await invoke('plugin:rustify-audio|shuffle_upcoming')
 ```
+
+`shuffle_upcoming` é ação **one-shot e repetível** — não há estado de "shuffle
+ligado" nem restauração da ordem. Nunca toca a faixa corrente nem o já tocado;
+a troca da cauda é atômica no Kotlin (`replaceMediaItems`), então o tender e o
+auto-advance não veem fila pela metade. A origem e o `contextId` de cada item
+são preservados (meta chaveada por `trackId`) — **não é origin** e não muda o
+sinal. Com menos de 2 faixas a seguir é no-op (a UI desabilita o botão via
+`canShuffleUpcoming`). A UI **aplica só o snapshot devolvido**, nunca reordena
+otimista: uma ordem inventada no JS divergiria da fila nativa.
 
 `PlaybackState` ganhou `count` (tamanho da fila nativa) — é o gatilho de
 "a fila está secando" sem precisar lê-la inteira.
@@ -329,7 +342,8 @@ Já entregue depois da v0: letras (14/08, `lib_get_lyrics` + rail no Now
 Playing); beat sync real do bg (14/08, CMR-192 — `SpectrumTap` com FFT do
 próprio ExoPlayer, sem `RECORD_AUDIO`); leitura da fila nativa (15/08,
 `get_queue`); auto-update (26/08, spec 2026-08-24 — updater_check/updater_install +
-Settings > Atualização).
+Settings > Atualização); shuffle do restante da fila (26/08, CMR-218 —
+`shuffle_upcoming` + botão nos controles do Now Playing).
 
 Inventário completo do que falta em relação ao desktop, com plano por fase:
 `docs/contexto/15082026-diff-mobile-vs-desktop.md` e

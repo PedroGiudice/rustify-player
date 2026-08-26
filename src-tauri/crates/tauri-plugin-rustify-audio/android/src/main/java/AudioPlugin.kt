@@ -387,6 +387,30 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         }
     }
 
+    /**
+     * Re-embaralha SO o que ainda vai tocar (CMR-218). Acao one-shot e
+     * repetivel: nao ha estado de "shuffle ligado" nem restauracao da ordem.
+     *
+     * Nunca toca a faixa corrente nem o ja tocado — a cauda e trocada de uma
+     * vez por `replaceMediaItems`, atomico frente ao tender e ao auto-advance
+     * (truncar + re-adicionar pelo JS seriam dois IPCs com janela entre eles).
+     * O [QueueMeta] e chaveado por trackId: reordenar nao mexe na origem nem
+     * no contextId de item nenhum.
+     */
+    @Command
+    fun shuffleUpcoming(invoke: Invoke) {
+        withController(invoke) { c ->
+            val count = c.mediaItemCount
+            val from = (c.currentMediaItemIndex + 1).coerceAtLeast(0)
+            if (count - from >= 2) {
+                val all = (0 until count).map { c.getMediaItemAt(it) }
+                val tail = shuffledTail(all, from - 1, java.util.Random()).subList(from, count)
+                c.replaceMediaItems(from, count, tail)
+            }
+            invoke.resolve(queueSnapshotToJs(c))
+        }
+    }
+
     @Command
     fun setRepeatMode(invoke: Invoke) {
         val args = invoke.parseArgs(RepeatModeArgs::class.java)
