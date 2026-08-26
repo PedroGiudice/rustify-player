@@ -49,6 +49,8 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 | `set_repeat_mode` | `mode: 'off'\|'one'\|'all'` | `null` |
 | `drain_events` | `afterSeq?` | `{ events: PlayEvent[], lastSeq }` |
 | `ack_events` | `uptoSeq` | `null` |
+| `updater_check` | `manifestUrl?` | `{ installed, latest, available, apkUrl, sha256, size, canInstall }` |
+| `updater_install` | `url`, `sha256?`, `size?` | `{ status: 'started'\|'needs_permission'\|'busy' }` |
 
 `items[i]`: `{ trackId, uri, title, artist, album, artworkUri?, durationMs }`.
 
@@ -108,6 +110,12 @@ await addPluginListener('rustify-audio', 'position', (s) => {})   // tick de 500
 ```
 
 Perder esses eventos não perde dado: quem sabe o que foi escutado é o journal.
+
+- `updater_progress` — `{ phase, bytes?, total?, message? }`, `phase` ∈
+  `downloading | verifying | installing | confirming | done | failed`. Emitido
+  pela thread do download e pelo `UpdateInstallReceiver` (status do
+  PackageInstaller). Exige `REQUEST_INSTALL_PACKAGES` (manifest do plugin) e o
+  toggle "instalar apps desconhecidos" concedido pelo usuário.
 
 ## Journal
 

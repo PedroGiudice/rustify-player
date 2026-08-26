@@ -523,19 +523,27 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
 ### Build, install e debug
 
 ```bash
-# Build na VM (NUNCA na cmr-auto) — debug e instalavel; release-unsigned NAO
-# NAO ha beforeBuildCommand no tauri.conf.json: o bun run build e MANUAL e
-# OBRIGATORIO antes (o frontend e embutido no .so via generate_context —
-# sem ele o APK sai com o dist velho e a UI "nao muda"; mordeu 13/08).
-bun run build
-cd src-tauri && cargo tauri android build --debug
-# APK: src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
-scp <apk> cmr-auto@100.102.249.9:/tmp/ && ssh cmr-auto@100.102.249.9 'adb install -r /tmp/app-universal-debug.apk'
+# Release Android (VM): bun run build + APK debug arm64 SEM debuginfo
+# (~50 MB; o universal com DWARF tinha 520 MB) + android-latest.json,
+# publicados no release `dev`. Bump em tauri.conf.json ANTES.
+./scripts/release_android.sh            # ou --dry-run (sem upload)
+# Primeira instalacao (ou troca de keystore) continua via adb:
+scp src-tauri/target/android-release/rustify-player_<V>.apk cmr-auto@100.102.249.9:/tmp/ && \
+  ssh cmr-auto@100.102.249.9 'adb install -r /tmp/rustify-player_<V>.apk'
 # Permissao de acervo (uma vez por install limpo):
 ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EXTERNAL_STORAGE allow'
 ```
 
-- Distribuicao v0 = APK debug-signed via adb (sem loja, sem updater).
+- **Auto-update (v0.2.76, spec `docs/superpowers/specs/2026-08-24-android-auto-update-design.md`)**:
+  o app consulta `android-latest.json` do release `dev` (check no boot com
+  throttle de 6h + botão em Settings > Atualização), baixa o APK pelo Kotlin
+  (TLS da plataforma — o ureq do Android é sem TLS), confere sha256 e commita
+  uma `PackageInstaller.Session`; o sistema pede confirmação (sideload nunca é
+  silencioso). Exige o toggle "instalar apps desconhecidos" uma vez. O
+  `versionCode` deriva da semver (0.2.74 → 2074): só sobe com bump.
+  **Assinatura = debug keystore da VM** (`~/.android/debug.keystore`, backup
+  em `cmr-auto:~/backups/rustify-debug.keystore`): trocar o keystore quebra o
+  update por cima e obriga reinstalar via adb.
 - Log Rust NAO roteia pro logcat — ler via
   `adb shell run-as dev.cmr.rustifyplayer tail logs/rustify-player.log`.
 - Smoke test CDP (WebView): `localabstract:webview_devtools_remote_<pid>`,

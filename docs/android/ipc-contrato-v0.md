@@ -224,6 +224,25 @@ Da cauda, o corte respeita duas coisas: a faixa que toca e o que o usuário
 enfileirou à mão. Como o serviço só remove sufixo, o descarte começa depois do
 último item que não é do motor — um "tocar em seguida" sobrevive à reação.
 
+## Atualização (plugin rustify-audio — desde v0.2.76)
+
+```ts
+const v = await invoke('app_version')                     // "0.2.76" (offline)
+const c = await invoke('plugin:rustify-audio|updater_check', { manifestUrl: null })
+// { installed, latest, available, apkUrl, sha256, size, canInstall }
+// rejeita sem rede / manifest inválido — no boot é silencioso, no botão vira toast
+const r = await invoke('plugin:rustify-audio|updater_install',
+  { url: c.apkUrl, sha256: c.sha256, size: c.size })
+// { status: 'started' | 'needs_permission' | 'busy' }
+// needs_permission: o Kotlin já abriu a tela do sistema; re-tocar depois.
+// progresso: addPluginListener('rustify-audio', 'updater_progress', ev)
+// ev = { phase: 'downloading'|'verifying'|'installing'|'confirming'|'done'|'failed',
+//        bytes?, total?, message? }
+```
+
+A decisão `available` é do Kotlin (semver contra o `versionName` instalado).
+"done" raramente chega: a instalação reinicia o processo.
+
 ## Origins (afetam o sinal do motor — usar os nomes EXATOS do desktop)
 
 | Ação do usuário | origin |
@@ -256,7 +275,8 @@ app (volume = botões físicos), temas YAML.
 Já entregue depois da v0: letras (14/08, `lib_get_lyrics` + rail no Now
 Playing); beat sync real do bg (14/08, CMR-192 — `SpectrumTap` com FFT do
 próprio ExoPlayer, sem `RECORD_AUDIO`); leitura da fila nativa (15/08,
-`get_queue`).
+`get_queue`); auto-update (26/08, spec 2026-08-24 — updater_check/updater_install +
+Settings > Atualização).
 
 Inventário completo do que falta em relação ao desktop, com plano por fase:
 `docs/contexto/15082026-diff-mobile-vs-desktop.md` e
