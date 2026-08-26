@@ -514,32 +514,29 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   sync de acervo, `lib_rescan`.
 - Capas mobile (CMR-212, paridade com o desktop): `manifest.cover` =
   `covers/<sha1>.jpg` (relativo a `.rustify/`), UMA capa por álbum-key
-  (`album_title|artist`, arte embutida primeiro — o mesmo `cover_path`
-  do Qdrant), convertida do cache webp da cmr-auto pelo `--deploy` do
-  export em `<STAGING>/.rustify/covers/`. Precedência em `resolve_cover`
-  (`mobile_library.rs`): export (se o arquivo existir) > cover.jpg/
-  folder.jpg da pasta > null — manifest/export antigos caem na pasta;
-  o cover.jpg por pasta continua sendo gerado como fallback. **Gotcha do
-  scope**: `assetProtocol.scope` em forma de ARRAY exige o ponto LITERAL
-  no padrão (tauri 2.11, `src/scope/fs.rs`): `Music/**` NÃO cobre
-  `Music/.rustify/covers/**`, que está listado à parte em
-  `tauri.android.conf.json` (mesmo precedente do desktop,
-  `**/.cache/rustify-player/**`). Ordem de operação: release
-  (`./scripts/release_android.sh`) → `python3 scripts/android/
-  export_manifest.py --deploy` (túnel 16333; `--skip-covers` pula os
-  dois trilhos de capa) → `ssh cmr-auto@100.102.249.9
-  '~/phone_push_retry.sh'` → `lib_rescan` no app. O job de capas na
-  cmr-auto (`covers_job_source`) é idempotente e atômico: escreve em
-  `.tmp` + rename, "pronto" = jpg com > 0 bytes (abort no meio não
-  deixa capa truncada carimbada como pronta — re-rodar refaz só o que
-  faltou), a fase do cover.jpg por pasta copia o `covers/<sha1>.jpg`
-  recém-convertido em vez de rodar ffmpeg de novo, rc != 0 do job
-  aborta o export, `.tmp` órfãos de aborts anteriores são varridos no
-  início e o stderr do ffmpeg sobe com o nome da origem (o retry do
-  ffmpeg na fase do cover.jpg quando `covers/<sha1>.jpg` não ficou
-  pronto é deliberado — falha transitória). Testado com ffmpeg de
-  mentira em `scripts/android/test_export_manifest.py`, que é gate DE
-  FATO: `release_android.sh` o roda antes do build e aborta se falhar.
+  (o mesmo `cover_path` do Qdrant; 1660 tracks → 565 arquivos),
+  convertida do cache webp da cmr-auto pelo `--deploy` do export.
+  Precedência em `resolve_cover` (`mobile_library.rs`): export (se o
+  arquivo existir) > cover.jpg/folder.jpg da pasta > null — manifest ou
+  APK antigos caem na pasta. **Gotcha do scope**: `assetProtocol.scope`
+  em forma de ARRAY exige o ponto LITERAL no padrão (tauri 2.11):
+  `Music/**` NÃO cobre `Music/.rustify/covers/**`, listado à parte em
+  `tauri.android.conf.json`. Ordem de operação: release →
+  `export_manifest.py --deploy` (túnel 16333) → `phone_push_retry.sh`
+  na cmr-auto → `lib_rescan`. O job remoto de capas é idempotente e
+  atômico (tmp+rename, "pronto" = jpg > 0 bytes); detalhes na docstring
+  do script. `test_export_manifest.py` é gate real: `release_android.sh`
+  o roda antes do build.
+- Origem por item na fila (26/08, paridade com o `contOrigin` do
+  desktop): a faixa ESCOLHIDA leva `manual`; a cauda que auto-avança
+  leva `playlist` (linha de playlist, `playFolderFrom`) ou `album_seq`
+  (lista/álbum/artista/busca/shelves, `playTrackFrom` — `album_seq` fica
+  FORA dos sinais por design). Playlist = continuidade OFF em TODOS os
+  caminhos (Play, Shuffle, linha, "Tocar agora", "Tocar a partir daqui").
+  Badge: `manual` + contextId = "playlist". `shuffle_upcoming` (CMR-218)
+  reordena só a cauda via `replaceMediaItems` — meta por item intacta.
+  "Recently played" (CMR-215) = anel `recents.json` com `played_at`
+  (conta se >= 20s ou >= 25%; legado sem o campo fica fora da shelf).
 - Proveniencia: `device.json` no **dataDir raiz** do app Android
   (`/data/data/dev.cmr.rustifyplayer/device.json` — NAO em `files/`),
   device_id do S24 = `s24`, imutavel. APK carimba `app_version` proprio.
