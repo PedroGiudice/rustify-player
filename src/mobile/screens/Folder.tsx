@@ -13,7 +13,7 @@ import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
 import { Empty, LazyList, TopBar } from "../components/ui";
 import { libListFolderTracks } from "../ipc";
-import { playFolder, playTrackFrom, shuffleList } from "../store";
+import { playFolder, playTrackFrom, shuffleFolder } from "../store";
 import { fmtTotal } from "../derive";
 
 export function Folder(props: { param: string | null }) {
@@ -42,7 +42,7 @@ export function Folder(props: { param: string | null }) {
             <Icon.play />
             Play
           </button>
-          <button class="btn" onClick={() => void shuffleList(list())}>
+          <button class="btn" onClick={() => void shuffleFolder(list(), name())}>
             <Icon.shuffle />
             Shuffle
           </button>

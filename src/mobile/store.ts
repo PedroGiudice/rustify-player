@@ -190,6 +190,9 @@ export async function syncState() {
 
 // ── Ações ─────────────────────────────────────────────────────
 
+/** Como a fila se auto-abastece quando acabar (epic B). */
+type Continuity = { mode: "off" | "radio" | "station"; stationId?: string };
+
 /**
  * Único caminho para começar a tocar. `origin` vai cru para o
  * contrato — os nomes são os que o motor de sinal entende.
@@ -199,8 +202,7 @@ export async function playList(
   startIndex: number,
   origin: Origin,
   contextId: string | null = null,
-  /** Como a fila se auto-abastece quando acabar (epic B). */
-  continuity: { mode: "off" | "radio" | "station"; stationId?: string } = { mode: "radio" },
+  continuity: Continuity = { mode: "radio" },
 ) {
   if (!list.length) {
     showToast("Nada para tocar aqui");
@@ -255,8 +257,17 @@ export const playAlbum = (list: Track[], key: string) => playList(list, 0, "albu
 // que o sinal v3 a conhece (desconto de origem passiva). "shuffle" estava fora
 // do vocabulário do motor e entrava com peso CHEIO no saldo — decisão do CEO
 // no plano de paridade: mapear aqui, sem mexer em dado já gravado.
-export const shuffleList = (list: Track[]) => playList(shuffled(list), 0, "autoplay");
+export const shuffleList = (
+  list: Track[],
+  contextId: string | null = null,
+  continuity: Continuity = { mode: "radio" },
+) => playList(shuffled(list), 0, "autoplay", contextId, continuity);
 export const shuffleAll = () => shuffleList(tracks());
+/** Shuffle da playlist herda a exceção do Play: a pasta como contexto e
+ *  continuidade OFF. Com o default (`radio`) o tender anexava lotes do acervo
+ *  inteiro a 2 posições do fim e a sessão virava "shuffle geral" (CMR-211). */
+export const shuffleFolder = (list: Track[], name: string) =>
+  shuffleList(list, name, { mode: "off" });
 
 /** Toca uma station: lote do pool precomputado + re-rank local.
  *  origin `station` — o sinal v3 desconta origem passiva. */
