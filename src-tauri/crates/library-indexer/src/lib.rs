@@ -30,7 +30,7 @@ pub mod rerank;
 
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
-pub use qdrant_client::{build_play_event_payload, MoodFilters, Provenance, QdrantClient, ACTIVITY_VOCAB, MOOD_VOCAB, SIGNAL_SCHEMA};
+pub use qdrant_client::{build_play_event_payload, MoodFilters, Provenance, QdrantClient, SyncedOutcome, ACTIVITY_VOCAB, MOOD_VOCAB, SIGNAL_SCHEMA};
 pub use cover::{CoverSource, dominant_color, dominant_palette};
 pub use dedup::{OwnedIndex, OwnedVerdict};
 pub use error::IndexerError;

@@ -253,6 +253,22 @@ pub struct Provenance {
     pub app_version: String,
 }
 
+/// Desfecho de um evento vindo pelo trilho de sync (CMR-220). Separa o que
+/// é ACKÁVEL pelo dispositivo de origem — aplicado, no-op por LWW, ou
+/// rejeitado por validação (re-enviar não conserta) — do erro de transporte
+/// com o Qdrant, que vai em `Err` e NUNCA pode ser ackado: o receiver
+/// responde 503 e o lote volta inteiro no próximo tick (upsert idempotente
+/// por uuid, like por LWW — replay é seguro).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SyncedOutcome {
+    Applied,
+    /// No-op por last-write-wins: o evento é mais velho que o like vigente.
+    /// `current` é o clock vigente (`like_updated_at`, fallback `liked_at`).
+    Skipped { current: i64 },
+    /// Payload inválido — motivo legível pro log.
+    Rejected(String),
+}
+
 /// Synchronous HTTP client for the Qdrant REST API.
 ///
 /// Cheap to clone — the inner `ureq::Agent` shares connection pools via `Arc`.
@@ -1301,15 +1317,16 @@ impl QdrantClient {
     /// ponto, nunca duplica. A proveniência NÃO é re-estampada — o carimbo
     /// do dispositivo de origem É o dado; estampar aqui destruiria o
     /// breakdown by_device da régua.
+    ///
+    /// Payload inválido → `Ok(Rejected)` (ackável); falha de HTTP/transporte
+    /// com o Qdrant → `Err` (o receiver aborta o lote com 503).
     pub fn insert_synced_event(
         &self,
         point_id: &str,
         payload: &Value,
-    ) -> Result<(), IndexerError> {
+    ) -> Result<SyncedOutcome, IndexerError> {
         if let Some(reason) = synced_event_error(payload) {
-            return Err(IndexerError::Embedding(format!(
-                "synced event rejeitado: {reason}"
-            )));
+            return Ok(SyncedOutcome::Rejected(reason.to_string()));
         }
         let body = json!({
             "points": [{
@@ -1325,7 +1342,7 @@ impl QdrantClient {
             ))
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant insert synced event: {e}")))?;
-        Ok(())
+        Ok(SyncedOutcome::Applied)
     }
 
     /// Like/unlike sincado de OUTRO dispositivo → `track_enrichments`, com
@@ -1333,30 +1350,34 @@ impl QdrantClient {
     /// vira ponto em `play_events`. Mesma validação de proveniência do
     /// [`Self::insert_synced_event`] — o `device_id` do evento é o
     /// `liked_device` gravado. Patch `None` (evento mais velho que o like
-    /// vigente) = Ok sem escrita.
-    pub fn apply_synced_like(&self, payload: &Value) -> Result<(), IndexerError> {
-        let rejeitado = |reason: &str| {
-            IndexerError::Embedding(format!("synced like rejeitado: {reason}"))
-        };
+    /// vigente) = `Skipped` sem escrita. Payload inválido → `Rejected`
+    /// (ackável); falha de HTTP/transporte com o Qdrant → `Err`.
+    pub fn apply_synced_like(&self, payload: &Value) -> Result<SyncedOutcome, IndexerError> {
+        let rejeitado = |reason: &str| Ok(SyncedOutcome::Rejected(reason.to_string()));
         if let Some(reason) = synced_event_error(payload) {
-            return Err(rejeitado(reason));
+            return rejeitado(reason);
         }
         // Campos abaixo já validados por synced_event_error.
         let event_type = payload["event_type"].as_str().unwrap_or_default();
         if !matches!(event_type, "like" | "unlike") {
-            return Err(rejeitado("event_type não é like/unlike"));
+            return rejeitado("event_type não é like/unlike");
         }
         // LWW sem timestamp não ordena — rejeita em vez de inventar 0
-        // (liked_at=0 contaria como like pro is_liked).
-        let Some(ts) = payload.get("timestamp").and_then(Value::as_i64) else {
-            return Err(rejeitado("sem timestamp"));
+        // (liked_at=0 contaria como like pro is_liked). 0 e negativo idem:
+        // like em ts=0 perderia pra QUALQUER unlike.
+        let ts = match payload.get("timestamp").and_then(Value::as_i64) {
+            Some(ts) if ts > 0 => ts,
+            _ => return rejeitado("timestamp ausente ou <= 0"),
         };
         let track_id = payload["track_id"].as_u64().unwrap_or_default();
         let device_id = payload["device_id"].as_str().unwrap_or_default();
         let existing = self.get_enrichment(track_id)?;
         match synced_like_patch(&existing, event_type, ts, device_id) {
-            Some(patch) => self.set_enrichment(track_id, patch),
-            None => Ok(()),
+            Some(patch) => {
+                self.set_enrichment(track_id, patch)?;
+                Ok(SyncedOutcome::Applied)
+            }
+            None => Ok(SyncedOutcome::Skipped { current: like_clock(&existing) }),
         }
     }
 
@@ -1588,7 +1609,11 @@ impl QdrantClient {
                 let data: Value = resp
                     .into_json()
                     .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
-                Ok(data["result"]["payload"].clone())
+                // Payload ausente/`result` null vale como {} — record_play,
+                // toggle_like e set_enrichment fazem `as_object_mut()` no
+                // que volta daqui; com Null o merge perdia o patch inteiro.
+                let payload = data["result"]["payload"].clone();
+                Ok(if payload.is_object() { payload } else { json!({}) })
             }
             Err(ureq::Error::Status(404, _)) => Ok(json!({})),
             Err(e) => Err(IndexerError::Embedding(format!("qdrant get enrichment: {e}"))),
@@ -1844,12 +1869,7 @@ pub(crate) fn synced_like_patch(
         "unlike" => false,
         _ => return None,
     };
-    let vigente = existing
-        .get("like_updated_at")
-        .and_then(Value::as_i64)
-        .or_else(|| existing.get("liked_at").and_then(Value::as_i64))
-        .unwrap_or(0);
-    if ts < vigente {
+    if ts < like_clock(existing) {
         return None;
     }
     Some(if liked {
@@ -1857,6 +1877,16 @@ pub(crate) fn synced_like_patch(
     } else {
         json!({ "liked_at": null, "liked_device": null, "like_updated_at": ts })
     })
+}
+
+/// Clock vigente do like num enrichment: `like_updated_at`, fallback
+/// `liked_at` (likes legados nasceram sem o campo), 0 sem nada.
+fn like_clock(existing: &Value) -> i64 {
+    existing
+        .get("like_updated_at")
+        .and_then(Value::as_i64)
+        .or_else(|| existing.get("liked_at").and_then(Value::as_i64))
+        .unwrap_or(0)
 }
 
 /// Estampa a proveniência num payload de evento: `signal_schema` sempre;
@@ -2237,7 +2267,8 @@ mod tests {
 
     #[test]
     fn synced_like_patch_existing_null_vira_vazio() {
-        // get_enrichment pode devolver Null (payload ausente) — vale como {}
+        // get_enrichment normaliza payload não-objeto pra {} (CMR-220), mas a
+        // função pura segue defensiva: Null vale como {}
         let patch = synced_like_patch(&Value::Null, "like", 7, "s24").unwrap();
         assert_eq!(patch["liked_at"], json!(7));
         assert_eq!(patch["liked_device"], json!("s24"));
@@ -2245,37 +2276,169 @@ mod tests {
         assert_eq!(synced_like_patch(&Value::Null, "track_ended", 7, "s24"), None);
     }
 
+    /// Motivo da rejeição, ou panic se o outcome não for `Rejected`.
+    fn rejected_reason(outcome: Result<SyncedOutcome, IndexerError>) -> String {
+        match outcome {
+            Ok(SyncedOutcome::Rejected(reason)) => reason,
+            other => panic!("esperava Rejected, veio {other:?}"),
+        }
+    }
+
     #[test]
     fn apply_synced_like_exige_proveniencia() {
         // A validação roda ANTES de qualquer request — porta fechada basta.
+        // Rejeição é Ok(Rejected): o dispositivo ACKA (re-enviar não conserta).
         let client = QdrantClient::new("http://127.0.0.1:1");
         let sem_device = json!({
             "event_type": "like", "track_id": 1u64, "timestamp": 10, "signal_schema": 3
         });
-        let err = client.apply_synced_like(&sem_device).unwrap_err();
-        assert!(err.to_string().contains("device_id"), "{err}");
+        let reason = rejected_reason(client.apply_synced_like(&sem_device));
+        assert!(reason.contains("device_id"), "{reason}");
 
         let tipo_vazio = json!({
             "event_type": "", "track_id": 1u64, "timestamp": 10,
             "signal_schema": 3, "device_id": "s24"
         });
-        assert!(client.apply_synced_like(&tipo_vazio).is_err());
-
-        // LWW sem timestamp não tem como ordenar — rejeita em vez de
-        // inventar 0 (liked_at=0 conta como like pro is_liked).
-        let sem_ts = json!({
-            "event_type": "like", "track_id": 1u64, "signal_schema": 3, "device_id": "s24"
-        });
-        let err = client.apply_synced_like(&sem_ts).unwrap_err();
-        assert!(err.to_string().contains("timestamp"), "{err}");
+        rejected_reason(client.apply_synced_like(&tipo_vazio));
 
         // play event roteado errado não pode virar Ok silencioso
         let nao_like = json!({
             "event_type": "track_ended", "track_id": 1u64, "timestamp": 10,
             "signal_schema": 3, "device_id": "s24"
         });
-        let err = client.apply_synced_like(&nao_like).unwrap_err();
-        assert!(err.to_string().contains("event_type"), "{err}");
+        let reason = rejected_reason(client.apply_synced_like(&nao_like));
+        assert!(reason.contains("event_type"), "{reason}");
+    }
+
+    #[test]
+    fn apply_synced_like_rejeita_timestamp_ausente_ou_nao_positivo() {
+        // LWW sem timestamp não tem como ordenar — rejeita em vez de inventar
+        // 0 (liked_at=0 conta como like pro is_liked). 0 e negativo idem: um
+        // like em ts=0 perderia pra QUALQUER unlike e liked_at=0 é ambíguo.
+        let client = QdrantClient::new("http://127.0.0.1:1");
+        let base = json!({
+            "event_type": "like", "track_id": 1u64, "signal_schema": 3, "device_id": "s24"
+        });
+        let mut ts_zero = base.clone();
+        ts_zero["timestamp"] = json!(0);
+        let mut ts_negativo = base.clone();
+        ts_negativo["timestamp"] = json!(-5);
+        let mut ts_string = base.clone();
+        ts_string["timestamp"] = json!("10");
+        for payload in [base, ts_zero, ts_negativo, ts_string] {
+            assert_eq!(
+                rejected_reason(client.apply_synced_like(&payload)),
+                "timestamp ausente ou <= 0",
+                "{payload}"
+            );
+        }
+    }
+
+    /// Qdrant fake mínimo (std): responde `body` com 200 a qualquer request
+    /// e devolve a porta. Só o suficiente pra exercitar o parse do
+    /// get_enrichment e a distinção validação × transporte.
+    fn fake_qdrant(body: &'static str) -> u16 {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 8192];
+                let header_end = loop {
+                    let Ok(n) = s.read(&mut chunk) else { break None };
+                    if n == 0 {
+                        break None;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                    if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break Some(pos + 4);
+                    }
+                };
+                let Some(header_end) = header_end else { continue };
+                let content_length: usize = String::from_utf8_lossy(&buf[..header_end])
+                    .lines()
+                    .filter_map(|l| l.split_once(':'))
+                    .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+                    .and_then(|(_, v)| v.trim().parse().ok())
+                    .unwrap_or(0);
+                while buf.len() < header_end + content_length {
+                    let Ok(n) = s.read(&mut chunk) else { break };
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                }
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        port
+    }
+
+    fn like_valido(ts: i64) -> Value {
+        json!({
+            "event_type": "like", "track_id": 12755931536157556u64, "timestamp": ts,
+            "signal_schema": 3, "device_id": "s24", "app_version": "0.2.77"
+        })
+    }
+
+    #[test]
+    fn get_enrichment_payload_nao_objeto_vira_vazio() {
+        // `result` null / payload ausente → {}. record_play, toggle_like e
+        // set_enrichment fazem `as_object_mut()` no que volta daqui: com Null
+        // o merge do set_enrichment perdia o patch inteiro e gravava null.
+        let port = fake_qdrant(r#"{"result":null}"#);
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        assert_eq!(client.get_enrichment(1).unwrap(), json!({}));
+
+        let port = fake_qdrant(r#"{"result":{"payload":{"play_count":3}}}"#);
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        assert_eq!(client.get_enrichment(1).unwrap(), json!({"play_count": 3}));
+    }
+
+    #[test]
+    fn apply_synced_like_mais_velho_que_o_vigente_e_skipped_com_o_clock() {
+        // like vigente em 200; evento sincado em 100 → no-op por LWW, mas
+        // ACKÁVEL (Ok), com o clock vigente pro log do receiver.
+        let port = fake_qdrant(
+            r#"{"result":{"payload":{"liked_at":200,"liked_device":"cmr-auto","like_updated_at":200}}}"#,
+        );
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        assert_eq!(
+            client.apply_synced_like(&like_valido(100)).unwrap(),
+            SyncedOutcome::Skipped { current: 200 }
+        );
+        // mais novo que o vigente → aplica (GET + PUT no mesmo fake)
+        assert_eq!(
+            client.apply_synced_like(&like_valido(300)).unwrap(),
+            SyncedOutcome::Applied
+        );
+    }
+
+    #[test]
+    fn transporte_falho_e_err_e_nao_rejected() {
+        // Porta fechada = Qdrant fora do ar. Payload VÁLIDO → Err (o receiver
+        // responde 503 e o S24 NÃO acka); nunca Rejected, que seria ackado e
+        // perderia o like/play pra sempre.
+        let client = QdrantClient::new("http://127.0.0.1:1");
+        assert!(client.apply_synced_like(&like_valido(10)).is_err());
+
+        let mut play = like_valido(10);
+        play["event_type"] = json!("track_ended");
+        assert!(client
+            .insert_synced_event("11111111-2222-3333-4444-555555555555", &play)
+            .is_err());
+        // ...enquanto payload inválido segue Rejected mesmo com Qdrant fora
+        let sem_device = json!({ "event_type": "track_ended", "track_id": 1u64, "signal_schema": 3 });
+        let reason = rejected_reason(
+            client.insert_synced_event("11111111-2222-3333-4444-555555555555", &sem_device),
+        );
+        assert!(reason.contains("device_id"), "{reason}");
     }
 
     #[test]
