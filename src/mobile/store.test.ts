@@ -285,17 +285,48 @@ describe('shuffleUpcoming ("Embaralhar o restante" — CMR-218)', () => {
     expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2"]);
   });
 
-  it("falha do IPC re-lê a fila do serviço em vez de inventar ordem", async () => {
+  it("com o IPC em voo a fila NÃO muda; o snapshot devolvido é a única fonte da ordem nova", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      snap(["1", "2", "3", "4", "5"], 0),
+    );
+    await playTrackFrom(FOLDER, 0);
+    let resolve!: (v: { items: unknown[]; index: number }) => void;
+    (ipc.playerShuffleUpcoming as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((r) => (resolve = r)),
+    );
+    const inflight = shuffleUpcoming();
+    await new Promise((r) => setTimeout(r, 0));
+    // Nada de reordenação otimista: uma ordem inventada no JS divergiria da
+    // fila nativa até o snapshot chegar.
+    expect(ipc.playerShuffleUpcoming).toHaveBeenCalledTimes(1);
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(toast()).not.toBe("Restante embaralhado");
+    resolve(snap(["1", "5", "3", "2", "4"], 0));
+    await inflight;
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "5", "3", "2", "4"]);
+    expect(toast()).toBe("Restante embaralhado");
+  });
+
+  it("falha do IPC: a ordem original nunca mudou, avisa e re-lê a fila do serviço", async () => {
     (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       snap(["1", "2", "3", "4"], 0),
     );
     await playTrackFrom(FOLDER.slice(0, 4), 0);
-    (ipc.playerShuffleUpcoming as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("x"));
+    let reject!: (e: Error) => void;
+    (ipc.playerShuffleUpcoming as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((_, rej) => (reject = rej)),
+    );
     (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       snap(["1", "2", "3", "4"], 1),
     );
-    await shuffleUpcoming();
-    // o syncQueue do catch é a única fonte da nova ordem/índice
+    const inflight = shuffleUpcoming();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4"]);
+    reject(new Error("x"));
+    await inflight;
+    // Sem toast o botão parecia um no-op mudo; e o syncQueue do catch é a
+    // única fonte da nova ordem/índice.
+    expect(toast()).toBe("Falha ao embaralhar");
     expect(ipc.playerGetQueue).toHaveBeenCalledTimes(2);
     expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4"]);
     expect(pb.index).toBe(1);

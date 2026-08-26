@@ -485,18 +485,22 @@
   font-variant-numeric: tabular-nums;
 }
 /* 5 botões (shuffle | prev | play | next | repeat, CMR-218): 4×44 + 60 =
-   236px de ícone. Com o gap fixo de 26px do handoff a fileira dava 340px e
-   estourava os 316px úteis do S24 (360 - 2×22 de padding); 5vw = 18px lá. */
+   236px de ícone + 4 gaps. Com o gap fixo de 26px do handoff a fileira dava
+   340px e estourava os 316px úteis do S24 (360 - 2×22 de padding); 5vw = 18px
+   lá (236 + 72 = 308). Piso de 8px pra viewport estreita (236 + 32 = 268 cabe
+   em 320px de largura); os botões não encolhem — flex sem `flex-shrink: 0`
+   espremia os 44px de toque antes de o gap ceder. */
 .np .ctrls {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(12px, 5vw, 26px);
+  gap: clamp(8px, 5vw, 26px);
   margin-top: 12px;
 }
 .np .ctrls .iconbtn {
   width: 44px;
   height: 44px;
+  flex-shrink: 0;
   color: var(--t2);
 }
 .np .ctrls .iconbtn svg {
@@ -506,6 +510,7 @@
 .np .fab {
   width: 60px;
   height: 60px;
+  flex-shrink: 0;
   border-radius: var(--r-pill);
   background: var(--t1);
   color: var(--s-lowest);

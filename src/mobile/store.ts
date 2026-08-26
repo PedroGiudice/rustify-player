@@ -471,6 +471,9 @@ export async function shuffleUpcoming() {
     showToast("Restante embaralhado");
   } catch (e) {
     console.warn("[mobile] shuffle_upcoming falhou:", e);
+    // Sem aviso o botão era um no-op mudo; a fila volta a ser o que o
+    // serviço diz (a UI nunca reordenou, então não há o que desfazer).
+    showToast("Falha ao embaralhar");
     await syncQueue();
   }
 }
