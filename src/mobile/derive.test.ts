@@ -138,6 +138,24 @@ describe("origins", () => {
     expect(originSrc("manual")).toBeUndefined();
     expect(originSrc("station")).toBeUndefined();
   });
+
+  it("head `manual` COM contexto é a linha tocada de uma playlist: badge diz playlist", () => {
+    // A linha tocada numa playlist vai como `manual` + pasta no item (CMR-211);
+    // só a cauda auto-avançada é `playlist`. Sem olhar o contexto o badge
+    // mostrava "solta" na faixa escolhida e só virava "playlist" no avanço.
+    expect(originLabel("manual", "Rap BR")).toBe("playlist");
+    expect(originSrc("manual", "Rap BR")).toBe("playlist");
+  });
+
+  it("head `manual` SEM contexto (álbum/lista/busca/enfileirada) continua solta", () => {
+    expect(originLabel("manual", null)).toBe("solta");
+    expect(originLabel("manual", undefined)).toBe("solta");
+    expect(originSrc("manual", null)).toBeUndefined();
+    // O contexto só reinterpreta `manual`: os outros origins mantêm o rótulo.
+    expect(originLabel("autoplay", "radio:1:2")).toBe("rádio");
+    expect(originLabel("station", "st-1")).toBe("station");
+    expect(originSrc("station", "st-1")).toBeUndefined();
+  });
 });
 
 describe("utilitários", () => {

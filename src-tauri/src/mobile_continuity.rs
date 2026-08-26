@@ -350,11 +350,13 @@ impl ContinuityState {
 
 /// Grava `bytes` em `<path>.tmp`, faz fsync e troca por rename — no mesmo
 /// diretório o rename(2) é atômico, então o leitor vê o arquivo antigo ou o
-/// novo, nunca um meio-escrito. O `sync_all` antes do rename é o que fecha a
-/// promessa (mesma receita do compact do EventJournal, `fd.sync()`): sem ele
-/// um kill/queda de energia logo após o rename pode deixar o nome novo
-/// apontando pra blocos ainda não persistidos — arquivo vazio/truncado que o
-/// boot leria como anel vazio.
+/// novo, nunca um meio-escrito. O `sync_all` antes do rename garante a
+/// durabilidade do CONTEÚDO (sem ele um kill/queda de energia logo após o
+/// rename pode deixar o nome novo apontando pra blocos ainda não persistidos
+/// — arquivo vazio/truncado que o boot leria como anel vazio). Não garante a
+/// durabilidade do RENAME em si (não há fsync do diretório): após queda o
+/// boot pode ver o anel anterior, nunca um truncado. Mesma receita do compact
+/// do EventJournal (`fd.sync()` + rename).
 fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let tmp = path.with_extension("json.tmp");

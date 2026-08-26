@@ -76,7 +76,9 @@ let recentsDirty = false;
  *  reaproveitam a promise em voo — cada uma drenaria o journal de novo à toa.
  *  Mas a chamada que chega no meio não se perde: marca dirty e o finally
  *  dispara UMA re-execução (é um bit, não um contador — N chamadas no voo
- *  viram uma ida só). */
+ *  viram uma ida só). Nuance: `await loadRecents()` feito durante um voo
+ *  liquida quando a ida EM VOO termina, não a re-execução — quem precisar do
+ *  estado pós-re-execução observa o signal `recents`, não a promise. */
 export function loadRecents(): Promise<void> {
   if (recentsInflight) {
     recentsDirty = true;
@@ -134,6 +136,13 @@ export const queueOrigin = createMemo<Origin>(() => {
   const e = queueEntries()[pb.index];
   return (e?.origin as Origin) ?? "manual";
 });
+
+/** Contexto da faixa CORRENTE (pasta da playlist, id da station, rodada do
+ *  rádio). É o que deixa o badge reconhecer a linha tocada de uma playlist:
+ *  o head vai `manual` + pasta, e só `manual` sem contexto é "solta". */
+export const queueContextId = createMemo<string | null>(
+  () => queueEntries()[pb.index]?.contextId ?? null,
+);
 
 /** Tempo restante da fila (faixa corrente + próximas). */
 export const queueRemainingMs = createMemo(() =>
@@ -272,8 +281,10 @@ export async function playList(
   setPb({ index: start, trackId: list[start].id, positionMs: 0, durationMs: list[start].duration_ms, isPlaying: true });
   const items = ipc.toQueueItems(list);
   // O metaMap do Kotlin NÃO herda o contextId da fila num item com origin
-  // próprio: o contexto vai explícito no item, senão a faixa escolhida
-  // logaria sem a pasta.
+  // próprio. O service faz fallback pro escalar da fila na adoção
+  // (AudioService.adoptCurrent), então o journal sairia certo mesmo assim —
+  // mas `get_queue` e o `itemMeta` do like leem o item cru; o override
+  // explícito mantém os dois coerentes com o que toca.
   if (headOrigin != null) items[start] = { ...items[start], origin: headOrigin, contextId };
   try {
     await ipc.playerSetQueue({
@@ -304,7 +315,18 @@ export async function playList(
 // qualquer fila, com duas exceções — a playlist, que é coleção curada com
 // começo e fim e deve TERMINAR, e a station, que já tem o modo de continuação
 // dela (o pool próprio, não um rádio semeado).
-export const playTrackFrom = (list: Track[], index: number) => playList(list, index, "manual");
+
+/** Linha tocada FORA de playlist (álbum, artista, acervo, busca, shelves da
+ *  Home e "Tocar agora" da sheet sem pasta): a fila é a lista a partir do
+ *  índice, sem contexto, continuidade radio. Origem POR ITEM: só a faixa
+ *  escolhida é `manual`; a cauda que o Kotlin auto-avança é `album_seq` — o
+ *  default do desktop pro avanço natural de álbum/lista solta (contOrigin em
+ *  PlayerBar.tsx), que fica FORA dos sinais por design (não polui a régua do
+ *  autoplay nem leva o desconto de playlist). A lista inteira como `manual`
+ *  (comportamento anterior) dava peso cheio a faixas que ninguém escolheu
+ *  (CMR-211, o mesmo bug da playlist, nos outros cinco caminhos). */
+export const playTrackFrom = (list: Track[], index: number) =>
+  playList(list, index, "album_seq", null, { mode: "radio" }, "manual");
 export const playFolder = (list: Track[], name: string) =>
   playList(list, 0, "playlist", name, { mode: "off" });
 /** Linha tocada (e "Tocar agora" da sheet) DENTRO de uma playlist: a fila é

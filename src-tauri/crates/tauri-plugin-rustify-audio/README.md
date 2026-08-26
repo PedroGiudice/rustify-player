@@ -89,9 +89,14 @@ homogênea e um escalar bastava; com `add_items` ela fica mista, e uma faixa
 posta à mão dentro de uma station é escolha explícita do usuário (peso cheio no
 sinal v3), não escuta passiva. Guardar a origem por fila faria o journal mentir
 para o motor, silenciosamente. Item com `origin` próprio **não herda o
-`contextId` da fila** (`metaMap`): quem sobrescreve a origem manda o contexto
-junto — é assim que a linha tocada numa playlist vai (`manual` + pasta no item,
-`playlist` na fila para a cauda que o serviço auto-avança).
+`contextId` da fila** no `metaMap`; o service faz fallback pro escalar da fila
+na adoção (`AudioService.adoptCurrent`, `meta?.contextId ?: QueueMeta.contextId`),
+então o journal sairia certo mesmo assim — mas `get_queue` e o `itemMeta` do
+like leem o item cru, e o override explícito é o que mantém os dois coerentes.
+Quem sobrescreve a origem manda o contexto junto: é assim que a linha tocada
+vai (`manual` + pasta no item e `playlist` na fila numa playlist; `manual` +
+`null` no item e `album_seq` na fila fora dela — a cauda que o serviço
+auto-avança).
 
 `add_items` recebe `mode: "next" | "end"` — **nunca um índice**. A posição
 concreta é resolvida no Kotlin contra o `currentMediaItemIndex` do player: a

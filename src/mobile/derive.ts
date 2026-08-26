@@ -134,22 +134,31 @@ export function searchTracks(tracks: Track[], query: string, limit = 120): Track
 
 /* Badge de origem do handoff (rádio/playlist/solta). O v0 não tem
    rádio nem station, então os rótulos seguem os origins reais do
-   contrato — o badge diz de onde a fila veio, não inventa modo. */
-export function originLabel(o: Origin): string {
+   contrato — o badge diz de onde a fila veio, não inventa modo.
+
+   `manual` COM contextId é a linha tocada de uma playlist (head `manual`
+   + pasta no item, cauda `playlist` — CMR-211); só ela tem esse par, porque
+   álbum/lista/busca e a faixa enfileirada passam contexto nulo. Sem olhar o
+   contexto o badge dizia "solta" na faixa escolhida e só virava "playlist"
+   no auto-avanço. Lista/busca/artista mostram "álbum" no avanço: a cauda é
+   `album_seq`, o mesmo default do desktop. */
+export function originLabel(o: Origin, contextId?: string | null): string {
   switch (o) {
     case "playlist": return "playlist";
     case "album_seq": return "álbum";
     case "station": return "station";
     case "autoplay": return "rádio";
     case "repeat": return "repetindo";
+    case "manual": return contextId != null ? "playlist" : "solta";
     default: return "solta";
   }
 }
 
 /** data-src do .srcbadge: só playlist e álbum têm cor própria. */
-export function originSrc(o: Origin): string | undefined {
+export function originSrc(o: Origin, contextId?: string | null): string | undefined {
   if (o === "playlist") return "playlist";
   if (o === "album_seq") return "album";
+  if (o === "manual" && contextId != null) return "playlist";
   return undefined;
 }
 

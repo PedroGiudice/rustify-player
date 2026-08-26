@@ -19,6 +19,7 @@ import {
   current,
   pb,
   queue,
+  queueContextId,
   queueOrigin,
   queueRemainingMs,
   skipToIndex,
@@ -47,7 +48,7 @@ export function Queue() {
     if (!total()) return undefined;
     const up = split().upcoming.length;
     const rest = fmtRemaining(queueRemainingMs());
-    return `${up} a seguir · ${rest} restantes · origem ${originLabel(queueOrigin())}`;
+    return `${up} a seguir · ${rest} restantes · origem ${originLabel(queueOrigin(), queueContextId())}`;
   };
 
   return (

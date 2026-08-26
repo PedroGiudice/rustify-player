@@ -42,7 +42,10 @@ export function effectiveLiked(track: Track, override: LikeOverride | undefined)
  *  O resto o manifest já absorveu (ou a faixa sumiu) e `effectiveLiked` nunca
  *  mais o leria; sem poda o `kv-mobile-likes` só cresce. Biblioteca vazia não
  *  poda: sem manifest não há contra o que comparar (permissão de storage
- *  negada, por exemplo) e o gesto ainda não sincronizado se perderia da tela. */
+ *  negada, por exemplo) e o gesto ainda não sincronizado se perderia da tela.
+ *  `tracks` é a lista TOCÁVEL (só o que resolveu no aparelho): arquivo
+ *  temporariamente ausente no rescan apaga o override daquela faixa — nuance
+ *  aceita, o gesto já está no journal e chega ao desktop pelo sync. */
 export function pruneOverrides(overrides: LikeOverrides, tracks: Track[]): LikeOverrides {
   if (!tracks.length) return overrides;
   const byId = new Map(tracks.map((t) => [t.id, t]));

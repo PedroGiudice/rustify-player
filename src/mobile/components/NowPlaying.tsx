@@ -37,6 +37,7 @@ import {
   pb,
   playSimilar,
   previous,
+  queueContextId,
   queueEntries,
   queueOrigin,
   repeat,
@@ -235,8 +236,8 @@ export function NowPlaying() {
               <Cover path={t().album_cover_path} seed={t().id} cls="cover" icon="disc" />
               <div class="title">{t().title}</div>
               <div class="artist">
-                <span class="srcbadge" attr:data-src={originSrc(queueOrigin())}>
-                  {originLabel(queueOrigin())}
+                <span class="srcbadge" attr:data-src={originSrc(queueOrigin(), queueContextId())}>
+                  {originLabel(queueOrigin(), queueContextId())}
                 </span>
                 {/* Artista e álbum navegáveis: ouvir algo bom e ir direto ao
                     álbum é o gesto de exploração mais barato que existe. */}

@@ -14,7 +14,7 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
 import { activeTab, navigate, openNowPlaying } from "../nav";
-import { current, next, pb, previous, queueOrigin, toggle } from "../store";
+import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from "../store";
 import { originLabel, originSrc } from "../derive";
 
 const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
@@ -86,8 +86,8 @@ export function Dock() {
             <div class="info" style={{ flex: 1, "min-width": 0 }}>
               <div class="tt">{t().title}</div>
               <div class="ts">
-                <span class="srcbadge" attr:data-src={originSrc(queueOrigin())}>
-                  {originLabel(queueOrigin())}
+                <span class="srcbadge" attr:data-src={originSrc(queueOrigin(), queueContextId())}>
+                  {originLabel(queueOrigin(), queueContextId())}
                 </span>
                 <span>{t().artist_name ?? "—"}</span>
               </div>

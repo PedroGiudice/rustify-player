@@ -38,6 +38,7 @@ import {
   playFolderFrom,
   playFromHere,
   playTrackFrom,
+  queueContextId,
   queueEntries,
   queueOrigin,
   recents,
@@ -118,8 +119,8 @@ describe('playFolderFrom (linha tocada e "Tocar agora" da sheet numa playlist �
       "playlist",
     ]);
     // O metaMap do Kotlin NÃO herda o contextId da fila num item com origin
-    // próprio — a pasta vai explícita no item, senão a linha tocada logaria
-    // sem contexto.
+    // próprio (o service faz fallback só na adoção): a pasta vai explícita no
+    // item pra get_queue e o itemMeta do like ficarem coerentes.
     expect(items[2]).toMatchObject({ origin: "manual", contextId: "Rap BR" });
     expect(items.map((i) => i.contextId ?? q.contextId)).toEqual(Array(5).fill("Rap BR"));
   });
@@ -146,11 +147,70 @@ describe('playFolderFrom (linha tocada e "Tocar agora" da sheet numa playlist �
   });
 });
 
-describe("playTrackFrom (linha tocada fora de playlist: álbum/artista/acervo/shelf)", () => {
-  it("mantém o default: origin manual, sem contexto e continuidade radio", async () => {
+describe("playTrackFrom (linha tocada fora de playlist: álbum/artista/acervo/busca/shelf — CMR-211)", () => {
+  it("head `manual`, cauda `album_seq` (o default do desktop pro avanço natural), sem contexto, continuidade radio", async () => {
+    // Antes a lista inteira a partir do índice ia como `manual`: a cauda que o
+    // Kotlin auto-avança entrava no journal com peso cheio no sinal v3. No
+    // desktop o avanço natural de álbum/lista solta cai no default `album_seq`,
+    // que fica FORA dos sinais por design — paridade.
     await playTrackFrom(FOLDER, 2);
-    expect(queued()).toMatchObject({ origin: "manual", contextId: null, startIndex: 2 });
-    expect(armed()).toMatchObject({ mode: "radio", stationId: null });
+    const q = queued();
+    expect(q).toMatchObject({ origin: "album_seq", contextId: null, startIndex: 2 });
+    expect(armed()).toMatchObject({ mode: "radio", stationId: null, seedTrackId: "3" });
+    const items = q.items as { trackId: string; origin?: string; contextId?: string | null }[];
+    // Só o item tocado carrega override; o resto herda o escalar da fila.
+    expect(items[2]).toMatchObject({ origin: "manual", contextId: null });
+    expect(items.filter((_, i) => i !== 2).every((i) => !("origin" in i))).toBe(true);
+    expect(items.map((i) => i.origin ?? q.origin)).toEqual([
+      "album_seq",
+      "album_seq",
+      "manual",
+      "album_seq",
+      "album_seq",
+    ]);
+  });
+
+  it("o snapshot otimista já carrega a origem por item e o contexto nulo", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("x"));
+    await playTrackFrom(FOLDER, 2);
+    expect(queueEntries().map((e) => e.origin)).toEqual([
+      "album_seq",
+      "album_seq",
+      "manual",
+      "album_seq",
+      "album_seq",
+    ]);
+    expect(queueEntries().every((e) => e.contextId === null)).toBe(true);
+    expect(queueOrigin()).toBe("manual");
+    expect(queueContextId()).toBeNull();
+  });
+});
+
+describe("queueContextId (contexto do item corrente — alimenta o badge)", () => {
+  it("linha tocada numa playlist: head manual COM a pasta como contexto", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("x"));
+    await playFolderFrom(FOLDER, 2, "Rap BR");
+    expect(queueOrigin()).toBe("manual");
+    expect(queueContextId()).toBe("Rap BR");
+  });
+
+  it("segue o snapshot do serviço quando ele chega", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [
+        { trackId: "1", origin: "manual", contextId: "Rap BR", durationMs: 1000 },
+        { trackId: "2", origin: "playlist", contextId: "Rap BR", durationMs: 2000 },
+      ],
+      index: 1,
+    });
+    await playFolderFrom(FOLDER.slice(0, 2), 0, "Rap BR");
+    expect(queueOrigin()).toBe("playlist");
+    expect(queueContextId()).toBe("Rap BR");
+  });
+
+  it("fila vazia: contexto nulo", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ items: [], index: -1 });
+    await playTrackFrom(FOLDER, 0);
+    expect(queueContextId()).toBeNull();
   });
 });
 

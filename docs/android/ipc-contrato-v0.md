@@ -38,7 +38,10 @@ epoch em segundos, `null` sem; descurtida no desktop chega como `liked_at: null`
 store — manifest x override local `kv-mobile-likes`, o mais novo vence — nunca
 `liked_at` cru. O override é podado ao carregar a biblioteca (boot/rescan,
 `pruneOverrides` em `likes.ts`): sai o que o manifest já absorveu (`at <=`
-carimbo) e o de faixa que sumiu do acervo; biblioteca vazia não poda).
+carimbo) e o de faixa que sumiu do acervo; biblioteca vazia não poda. A poda
+compara contra a lista TOCÁVEL (`lib_list_tracks`, só o que resolveu no
+aparelho): arquivo temporariamente ausente no rescan apaga o override daquela
+faixa — nuance aceita, o gesto já está no journal e chega ao desktop pelo sync).
 
 `album_cover_path` (CMR-212): path absoluto já resolvido no Rust
 (`resolve_cover`, `mobile_library.rs`), por precedência:
@@ -69,7 +72,10 @@ própria e o teto vale sobre o `JoinHandle` — o future do IPC nunca é dropado
 faixa que acabou de fechar: o service appenda no journal antes de emitir o
 evento. O fim da fila NÃO emite `track_changed` — só `state_changed` com
 `status: 'ended'`; o store recarrega a shelf também aí, e chamadas concorrentes
-(foco + troca + fim) reaproveitam a promise em voo.
+(foco + troca + fim) reaproveitam a promise em voo — a que chega no meio marca
+dirty e o fim do voo dispara UMA re-execução. Nuance: `await loadRecents()`
+feito durante um voo liquida com a ida EM VOO, não com a re-execução; quem
+precisa do estado final observa o signal `recents`.
 
 `Folder`: `{ name, track_count }`.
 
@@ -126,7 +132,11 @@ escuta que **contou como play** (≥ 20s ou ≥ 25%; `started_at` da linha, ou
 `timestamp` se não houver). É sticky — um skip cedo posterior renova `at` mas
 não apaga o play — e é o que a shelf "Recently played" lê (`lib_recent_plays`,
 cursor de leitura só em memória). Entradas gravadas antes do campo seguem
-válidas pro rádio e ficam fora da shelf. `ids()`/TTL/cap não mudaram.
+válidas pro rádio e ficam fora da shelf. `ids()`/TTL/cap não mudaram. O anel
+é gravado por `write_atomic` (`.tmp` + fsync + rename): isso garante a
+durabilidade do CONTEÚDO (fsync do arquivo), não do rename (sem fsync do
+diretório) — após uma queda o boot pode ver o anel anterior, nunca um
+truncado. Mesma receita do `compact` do `EventJournal`.
 
 Play de station: `set_queue(..., origin: 'station', contextId: station.id)` —
 o sinal v3 já desconta origem passiva; o evento volta pro desktop via sync.
@@ -292,19 +302,48 @@ armam `off` com a pasta como `contextId` (CMR-211):
 | "Tocar a partir daqui" da sheet | `playFromHere` (`context.playlist`) | `autoplay` |
 
 As telas passam `playlist` só quando a lista É uma playlist (`TrackContext`,
-em `types.ts`); álbum, artista, acervo e a shelf de recentes ficam no default
-(`radio`, sem contexto). Com o default o tender anexava lotes do acervo inteiro
-a 2 posições do fim e a sessão virava "shuffle geral".
+em `types.ts`); álbum, artista, acervo, busca e as shelves da Home ficam no
+default (`radio`, sem contexto). Com o default o tender anexava lotes do acervo
+inteiro a 2 posições do fim e a sessão virava "shuffle geral".
 
-Na linha tocada a origem é **por item**: `set_queue` vai com `origin:
-'playlist'` na fila e `{ origin: 'manual', contextId: <pasta> }` só no item
-`startIndex` (`playList(..., headOrigin)`). Só a faixa que o usuário escolheu
-tem peso cheio no sinal v3; o que o Kotlin auto-avança depois dela é escuta
-passiva (`playlist`, desconto 0.6) — paridade com o desktop (head `manual` +
-continuações `playlist`). A fila inteira como `manual` (comportamento anterior)
-dava peso cheio a faixas que ninguém escolheu. Gotcha do `metaMap` do Kotlin:
-item com `origin` próprio **não herda o `contextId` da fila** — o contexto vai
-explícito no item.
+Fora de playlist a origem segue a mesma regra por item (CMR-211, os outros
+cinco caminhos que ainda carimbavam a lista inteira como `manual`):
+
+| Caminho | Função do store | origin |
+|---|---|---|
+| Linha tocada em álbum/artista/acervo/busca/shelf (fila = lista a partir dela) | `playTrackFrom` | `manual` SÓ na faixa tocada (item); a cauda é `album_seq` |
+| "Tocar agora" da sheet de uma linha sem pasta | `playTrackFrom` | idem: `manual` no item, `album_seq` na cauda |
+| "Tocar agora" da sheet sem lista | `playList([t], 0, 'manual')` | `manual` |
+| Play do álbum | `playAlbum` | `album_seq` (contexto = chave do álbum) |
+| Shuffle / "Tocar a partir daqui" | `shuffleList` / `playFromHere` | `autoplay` |
+
+`album_seq` é o default do desktop pro avanço natural de álbum e lista solta
+(`contOrigin` em `src/components/PlayerBar.tsx`: station→`station`,
+radio→`autoplay`, playlist→`playlist`, o resto→`album_seq`) e fica **fora dos
+sinais por design** — não polui a régua do autoplay nem leva o desconto de
+playlist. Efeito no badge: a cauda de lista/busca/artista aparece como "álbum"
+no avanço (o mesmo rótulo do desktop).
+
+Na linha tocada a origem é **por item**: `set_queue` vai com o origin da cauda
+na fila (`playlist` ou `album_seq`) e `{ origin: 'manual', contextId }` só no
+item `startIndex` (`playList(..., headOrigin)`; contexto = pasta na playlist,
+`null` fora). Só a faixa que o usuário escolheu tem peso cheio no sinal v3; o
+que o Kotlin auto-avança depois dela é escuta passiva (`playlist`, desconto
+0.6) ou fica fora dos sinais (`album_seq`) — paridade com o desktop (head
+`manual` + continuações pelo `contOrigin`). A fila inteira como `manual`
+(comportamento anterior) dava peso cheio a faixas que ninguém escolheu. Gotcha
+do `metaMap` do Kotlin: item com `origin` próprio **não herda o `contextId` da
+fila**; o service faz fallback pro escalar da fila na adoção
+(`AudioService.adoptCurrent`), então o journal sairia certo mesmo assim, mas
+`get_queue` e o `itemMeta` do like leem o item cru — o override explícito
+mantém os dois coerentes com o que toca.
+
+Badge de origem (`originLabel`/`originSrc` em `derive.ts`, alimentados por
+`queueOrigin` + `queueContextId` do store): `manual` COM contexto é a linha
+tocada de uma playlist e mostra "playlist" — só o head da playlist tem esse
+par (álbum/lista/busca e a faixa enfileirada passam contexto nulo); `manual`
+sem contexto é "solta". Antes o badge dizia "solta" na faixa escolhida e só
+virava "playlist" no auto-avanço.
 
 O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
 **secando** (tocando, a ≤2 posições do fim). Pausa não conta: o usuário pausou
@@ -373,9 +412,10 @@ A decisão `available` é do Kotlin (semver contra o `versionName` instalado).
 
 | Ação do usuário | origin |
 |---|---|
-| Tocou uma faixa escolhida | `manual` |
+| Tocou uma faixa escolhida (sheet sem lista, enfileirar) | `manual` |
 | Play numa playlist/pasta | `playlist` |
 | Linha tocada numa playlist | `manual` na faixa tocada (por item); a cauda auto-avançada é `playlist` |
+| Linha tocada em álbum/artista/acervo/busca/shelf | `manual` na faixa tocada (por item); a cauda auto-avançada é `album_seq` (fora dos sinais — default do desktop) |
 | Play num álbum em sequência | `album_seq` |
 | Shuffle burro do acervo | `autoplay` (sequência escolhida pela máquina) |
 | "Tocar a partir daqui" (faixa segurada + cauda embaralhada) | `autoplay` |
