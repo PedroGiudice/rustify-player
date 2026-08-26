@@ -173,9 +173,18 @@ pub(crate) mod worker {
         // é o alimentador natural do anel de recentes ("não repete o que tocou
         // nos últimos dias"), cobrindo também a escuta manual e de playlist.
         // Antes do POST de propósito: rede fora não pode custar a memória.
+        // O helper é o mesmo do tender e do `lib_recent_plays`: uma leitura
+        // só do que é escuta e do que contou como play (CMR-215).
         if let Some(cs) = app.try_state::<crate::mobile_continuity::ContinuityState>() {
             cs.remember_recents(events.iter().filter_map(|ev| {
-                ev.track_id.parse::<u64>().ok().map(|id| (id, ev.timestamp))
+                crate::mobile_continuity::recents_feed_item(
+                    &ev.event_type,
+                    &ev.track_id,
+                    ev.started_at,
+                    ev.timestamp,
+                    ev.end_position_ms as i64,
+                    ev.duration_ms as i64,
+                )
             }));
         }
 

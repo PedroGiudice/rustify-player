@@ -62,6 +62,12 @@ export const libStationNext = (
   limit?: number,
 ) => invoke<Track[]>("lib_station_next", { stationId, excludeIds, sessionNegativeIds, limit });
 export const libTastePositives = () => invoke<Track[]>("lib_taste_positives");
+/**
+ * Shelf "Recently played" (CMR-215): faixas DISTINTAS que CONTARAM como play
+ * (>= 20s ou >= 25% da faixa), mais recente primeiro. O Rust drena o journal
+ * antes de ler o anel — chamar depois de uma troca de faixa já vê a que fechou.
+ */
+export const libRecentPlays = (limit?: number) => invoke<Track[]>("lib_recent_plays", { limit });
 export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });
 
 // ── Continuidade (epic B) — o tender vive no Rust ─────────────

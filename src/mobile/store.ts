@@ -53,8 +53,19 @@ const byId = createMemo(() => {
 
 const [stations, setStations] = createSignal<StationMeta[]>([]);
 const [favorites, setFavorites] = createSignal<Track[]>([]);
+/** Shelf "Recently played" (CMR-215) — o que CONTOU como play, do anel de
+ *  recentes do Rust. Recarregada a cada troca de faixa e ao voltar à tela. */
+const [recents, setRecents] = createSignal<Track[]>([]);
 
-export { stations, favorites };
+export { stations, favorites, recents };
+
+export async function loadRecents() {
+  try {
+    setRecents((await ipc.libRecentPlays(8)) ?? []);
+  } catch (e) {
+    console.warn("[mobile] lib_recent_plays falhou:", e);
+  }
+}
 
 async function loadIntel() {
   try {
@@ -64,6 +75,7 @@ async function loadIntel() {
   } catch (e) {
     console.warn("[mobile] carga de stations/favorites falhou:", e);
   }
+  await loadRecents();
 }
 
 // ── Playback (espelho do serviço) ─────────────────────────────
@@ -578,6 +590,9 @@ export async function bootStore() {
       applyState(s);
       // A fila pode ter mudado junto com a faixa (enfileirar, autoplay).
       void syncQueue();
+      // A faixa que acabou de fechar já está no journal (o service appenda
+      // antes de emitir): a shelf de recentes sobe na hora.
+      void loadRecents();
     })
     .catch((e) => console.warn("[mobile] listener track_changed:", e));
   ipc.onPosition(applyState).catch((e) => console.warn("[mobile] listener position:", e));
@@ -588,11 +603,13 @@ export async function bootStore() {
     if (!document.hidden) {
       void syncState();
       void syncQueue();
+      void loadRecents();
     }
   });
   window.addEventListener("focus", () => {
     void syncState();
     void syncQueue();
+    void loadRecents();
   });
 
   // Hook de smoke via CDP: os testes no aparelho precisam exercitar o CAMINHO
@@ -611,5 +628,6 @@ export async function bootStore() {
     playFromHere,
     next,
     skipToIndex,
+    loadRecents,
   };
 }

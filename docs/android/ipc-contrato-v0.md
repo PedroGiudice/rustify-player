@@ -21,12 +21,23 @@ invoke<Folder[]>('lib_list_folders')            // playlists = pastas 1º nível
 invoke<Track[]>('lib_list_folder_tracks', { name })
 invoke<Track[]>('lib_list_tracks')              // acervo inteiro (1746)
 invoke<Track[]>('lib_get_tracks_by_ids', { ids: string[] })
+invoke<Track[]>('lib_recent_plays', { limit? })   // "Recently played" (default 8)
 invoke<number>('lib_rescan')                    // após novo sync de acervo
 ```
 
 `Track` (subset do desktop — mesmo shape de `src/tauri.ts`):
 `{ id, title, artist_name, album_title, album_cover_path, album_year,
-duration_ms, path, lrc_path, track_number, genre_name }`.
+duration_ms, path, lrc_path, track_number, genre_name, dominant_color }`
+(`dominant_color` = hex `#rrggbb` da capa, enrichment do desktop, `null` sem).
+
+`lib_recent_plays` (CMR-215): faixas DISTINTAS que **contaram como play**
+(`counts_as_play`: fim da escuta ≥ 20s OU ≥ 25% da faixa), da mais recente pra
+mais antiga, resolvidas contra o acervo (o que o manifest não conhece é
+omitido). É `async`: antes de ler o anel, drena o journal do plugin a partir de
+um cursor próprio (em memória — reinstalar zera o `seq` do journal), best-effort
+com teto de 3s e SEM ack (quem compacta é o sync). Chamar logo depois de
+`track_changed` já vê a faixa que acabou de fechar: o service appenda no
+journal antes de emitir o evento.
 
 `Folder`: `{ name, track_count }`.
 
@@ -69,11 +80,21 @@ honorário — em vez da vizinhança pura, que agrupava por timbre e virava "mai
 do mesmo álbum" em três faixas. No topo vale o cap de **2 por artista** (o
 excedente desce pro fim, nunca é descartado) e ficam de fora as **tocadas dos
 últimos 7 dias** (anel `recents.json` no data dir, cap 300, alimentado pelo
-journal — worker de sync e tender; só o que TOCOU entra, lote entregue que
-nunca tocou não conta). Se o exclude engolir o acervo inteiro, o último
+journal — worker de sync, tender e `lib_recent_plays`, todos pelo mesmo
+`recents_feed_item`; só o que TOCOU entra — linhas `track_ended`/`track_skipped`;
+like/unlike, quando entrarem no journal, NÃO viram "tocada" — e lote entregue
+que nunca tocou não conta). Se o exclude engolir o acervo inteiro, o último
 recurso repete mesmo assim — repetir é melhor que silêncio. O rail
 `lib_similar_tracks` continua vizinhança pura (é navegação, não rádio), mas
 agora sem os negatives do gosto.
+
+Desde o CMR-215 cada entrada do anel carrega, além de `at` (fim da última
+escuta, relógio do TTL do rádio), um `played_at` opcional: início da última
+escuta que **contou como play** (≥ 20s ou ≥ 25%; `started_at` da linha, ou
+`timestamp` se não houver). É sticky — um skip cedo posterior renova `at` mas
+não apaga o play — e é o que a shelf "Recently played" lê (`lib_recent_plays`,
+cursor de leitura só em memória). Entradas gravadas antes do campo seguem
+válidas pro rádio e ficam fora da shelf. `ids()`/TTL/cap não mudaram.
 
 Play de station: `set_queue(..., origin: 'station', contextId: station.id)` —
 o sinal v3 já desconta origem passiva; o evento volta pro desktop via sync.

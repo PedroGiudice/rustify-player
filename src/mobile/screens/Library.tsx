@@ -5,8 +5,9 @@
    playlists, lib_list_folders), Álbuns e Artistas (derivados do
    acervo em memória) e Faixas (lib_list_tracks). "Genres" saiu
    por não ter tela de destino; "Collections" saiu inteira — a
-   Fila virou aba própria no tabbar (CMR-213) e Stations e
-   History não existem no v0.
+   Fila virou aba própria no tabbar (CMR-213), Stations tem tela
+   própria (/stations, quick start da Home) e History virou a
+   shelf "Recently played" da Home (CMR-215).
    ============================================================ */
 
 import { For, Show, createSignal } from "solid-js";

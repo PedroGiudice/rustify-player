@@ -5,13 +5,16 @@
    Crate): Station entrou com o trilho CMR-190 (stations.json
    exportada do desktop); Crate segue fora (slskd na cmr-auto).
    "Based on your favorites" é o taste snapshot do mesmo trilho.
-   "Recently played" e "Genres" seguem fora: sem command de
-   histórico no aparelho.
+   "Recently played" (CMR-215) é a shelf entre os quick starts e
+   os favoritos: 8 faixas DISTINTAS que contaram como play, do
+   anel de recentes do Rust (`lib_recent_plays`). "Genres" segue
+   fora (sem tela de destino).
    ============================================================ */
 
 import { For, Show } from "solid-js";
 import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
+import { TrackRow } from "../components/TrackRow";
 import { Empty, SecHead, ViewHead } from "../components/ui";
 import { navigate } from "../nav";
 import {
@@ -20,6 +23,7 @@ import {
   folders,
   libReady,
   playTrackFrom,
+  recents,
   shuffleAll,
   stations,
   tracks,
@@ -67,6 +71,23 @@ export function Home() {
             </button>
           </Show>
         </div>
+
+        <Show when={recents().length}>
+          <div class="sec">
+            <SecHead label="Recently played" />
+            <div class="card" style={{ padding: "2px 12px" }}>
+              <For each={recents()}>
+                {(t, i) => (
+                  <TrackRow
+                    track={t}
+                    context={{ list: recents(), index: i() }}
+                    onPlay={() => void playTrackFrom(recents(), i())}
+                  />
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
 
         <Show when={favorites().length}>
           <div class="sec">

@@ -124,6 +124,64 @@ fn lib_taste_positives(lib: State<Library>) -> Vec<Track> {
     lib.0.lock().expect("library lock").taste_positive_tracks()
 }
 
+/// Shelf "Recently played" da Home (CMR-215): faixas DISTINTAS que CONTARAM
+/// como play (`counts_as_play`: 20s ou 25% da faixa), da mais recente pra
+/// mais antiga, resolvidas contra o acervo (o que o manifest não conhece é
+/// omitido; a ordem é preservada).
+///
+/// Antes de ler o anel, drena o journal a partir de um cursor próprio, em
+/// memória (`ContinuityState::recents_seq`) — best-effort com teto de 3s: o
+/// tender e o worker de sync também alimentam o anel, então falhar aqui só
+/// atrasa a shelf, não a perde. SEM ack: quem compacta o journal é o sync.
+/// O Mutex da biblioteca só é travado DEPOIS do await — o guard nunca
+/// atravessa um `.await`.
+#[tauri::command]
+async fn lib_recent_plays(
+    app: tauri::AppHandle,
+    lib: State<'_, Library>,
+    cont: State<'_, ContinuityState>,
+    limit: Option<usize>,
+) -> Result<Vec<Track>, String> {
+    use tauri_plugin_rustify_audio::RustifyAudioExt;
+    let cursor = cont.recents_cursor();
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        app.rustify_audio().drain_events(cursor),
+    )
+    .await
+    {
+        Ok(Ok(drained)) => {
+            cont.remember_recents(drained.events.iter().filter_map(|ev| {
+                crate::mobile_continuity::recents_feed_item(
+                    &ev.event_type,
+                    &ev.track_id,
+                    ev.started_at,
+                    ev.timestamp,
+                    ev.end_position_ms,
+                    ev.duration_ms,
+                )
+            }));
+            // `last_seq` é o maior seq já gravado; o max com o lote é só
+            // cinto de segurança contra um drain que devolva mais que declara.
+            let visto = drained.events.iter().map(|e| e.seq).max().unwrap_or(cursor);
+            cont.advance_recents_cursor(drained.last_seq.max(visto));
+        }
+        Ok(Err(e)) => {
+            tracing::debug!(%e, "lib_recent_plays: drain falhou, shelf segue com o anel");
+        }
+        Err(_) => {
+            tracing::debug!("lib_recent_plays: drain com timeout, shelf segue com o anel");
+        }
+    }
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let ids = cont.recent_play_ids(now_s, limit.unwrap_or(8));
+    let l = lib.0.lock().map_err(|_| "library lock".to_string())?;
+    Ok(l.by_ids(&ids))
+}
+
 /// Letra da faixa a partir do sidecar `.lrc` do acervo (1328 no S24 em
 /// 14/08). Mesmo nome e wire do desktop (`LyricLine { t, line, header }`);
 /// sem sidecar → lista vazia e a UI esconde o toggle.
@@ -303,6 +361,7 @@ pub fn run() {
             lib_play_station,
             lib_station_next,
             lib_taste_positives,
+            lib_recent_plays,
             lib_get_lyrics,
             lib_rescan,
             continuity_arm,
