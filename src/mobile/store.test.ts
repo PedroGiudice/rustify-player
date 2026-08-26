@@ -2,9 +2,11 @@
    store.test.ts — contratos de continuidade das ações de play.
 
    O que se prova aqui é a REGRA (decisão do CEO, 2026-08-17): a
-   playlist é coleção curada e TERMINA. Play e Shuffle da mesma
-   pasta armam a continuidade do mesmo jeito (`off`) e carregam o
-   mesmo contexto — o shuffle armando `radio` foi o bug CMR-211
+   playlist é coleção curada e TERMINA. Tudo que refaz a fila a
+   partir dela — Play, Shuffle, linha tocada, "Tocar agora" e
+   "Tocar a partir daqui" da sheet — arma a continuidade do mesmo
+   jeito (`off`) e carrega o mesmo contexto. O shuffle e a linha
+   tocada armando `radio` sem contexto foram o bug CMR-211
    ("shuffle da playlist vira shuffle geral").
    ============================================================ */
 
@@ -20,7 +22,14 @@ vi.mock("./ipc", () => ({
 }));
 
 import * as ipc from "./ipc";
-import { playFolder, playFromHere, shuffleFolder, shuffleList } from "./store";
+import {
+  playFolder,
+  playFolderFrom,
+  playFromHere,
+  playTrackFrom,
+  shuffleFolder,
+  shuffleList,
+} from "./store";
 
 const track = (id: number): Track =>
   ({ id: String(id), title: `t${id}`, path: `/m/${id}.flac`, duration_ms: 1000 * id }) as Track;
@@ -63,6 +72,34 @@ describe("shuffleFolder (Shuffle da playlist — CMR-211)", () => {
   it("a semente da continuidade é a primeira faixa embaralhada", async () => {
     await shuffleFolder(FOLDER, "Rap BR");
     expect(armed().seedTrackId).toBe(queued().items[0].trackId);
+  });
+});
+
+describe('playFolderFrom (linha tocada e "Tocar agora" da sheet numa playlist — CMR-211)', () => {
+  it("herda a exceção do Play: contexto = pasta e continuidade OFF", async () => {
+    await playFolderFrom(FOLDER, 2, "Rap BR");
+    expect(queued()).toMatchObject({ contextId: "Rap BR", startIndex: 2 });
+    expect(armed()).toMatchObject({ mode: "off", stationId: null });
+  });
+
+  it("origin é `manual` (a faixa foi escolhida à mão; nada de origin novo)", async () => {
+    await playFolderFrom(FOLDER, 2, "Rap BR");
+    expect(queued().origin).toBe("manual");
+  });
+
+  it("a fila é a pasta INTEIRA, na ordem, começando no índice tocado", async () => {
+    await playFolderFrom(FOLDER, 2, "Rap BR");
+    const ids = queued().items.map((i: { trackId: string }) => i.trackId);
+    expect(ids).toEqual(["1", "2", "3", "4", "5"]);
+    expect(armed().seedTrackId).toBe("3");
+  });
+});
+
+describe("playTrackFrom (linha tocada fora de playlist: álbum/artista/acervo/shelf)", () => {
+  it("mantém o default: origin manual, sem contexto e continuidade radio", async () => {
+    await playTrackFrom(FOLDER, 2);
+    expect(queued()).toMatchObject({ origin: "manual", contextId: null, startIndex: 2 });
+    expect(armed()).toMatchObject({ mode: "radio", stationId: null });
   });
 });
 

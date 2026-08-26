@@ -202,11 +202,21 @@ continuação dela (`mode: 'station'`, pool próprio em vez de rádio semeado).
 Faixa avulsa, álbum, shuffle e rádio de faixa continuam.
 
 A exceção da playlist vale para TUDO que refaz a fila a partir dela, não só
-para o botão Play: o Shuffle da pasta (`shuffleFolder`) e o "tocar a partir
-daqui" da sheet de uma linha da pasta (`playFromHere`, `context.playlist`)
-armam `off` com a pasta como `contextId` (CMR-211). Com o default `radio` o
-tender anexava lotes do acervo inteiro a 2 posições do fim e a sessão virava
-"shuffle geral".
+para o botão Play. Os cinco caminhos, todos no store (`src/mobile/store.ts`),
+armam `off` com a pasta como `contextId` (CMR-211):
+
+| Caminho | Função do store | origin |
+|---|---|---|
+| Play | `playFolder` | `playlist` |
+| Shuffle | `shuffleFolder` | `autoplay` |
+| Linha tocada (fila = pasta inteira a partir dela) | `playFolderFrom` | `manual` |
+| "Tocar agora" da sheet de uma linha da pasta | `playFolderFrom` | `manual` |
+| "Tocar a partir daqui" da sheet | `playFromHere` (`context.playlist`) | `autoplay` |
+
+As telas passam `playlist` só quando a lista É uma playlist (`TrackContext`,
+em `types.ts`); álbum, artista, acervo e a shelf de recentes ficam no default
+(`radio`, sem contexto). Com o default o tender anexava lotes do acervo inteiro
+a 2 posições do fim e a sessão virava "shuffle geral".
 
 O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
 **secando** (tocando, a ≤2 posições do fim). Pausa não conta: o usuário pausou

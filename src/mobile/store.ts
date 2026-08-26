@@ -18,7 +18,6 @@ import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
 import { remainingMs, resolveQueue, skipReport } from "./queueModel";
-import type { TrackContext } from "./sheet";
 import type {
   Folder,
   Origin,
@@ -27,6 +26,7 @@ import type {
   RepeatMode,
   StationMeta,
   Track,
+  TrackContext,
 } from "./types";
 
 // ── Biblioteca ────────────────────────────────────────────────
@@ -265,6 +265,14 @@ export async function playList(
 export const playTrackFrom = (list: Track[], index: number) => playList(list, index, "manual");
 export const playFolder = (list: Track[], name: string) =>
   playList(list, 0, "playlist", name, { mode: "off" });
+/** Linha tocada (e "Tocar agora" da sheet) DENTRO de uma playlist: a fila é
+ *  a pasta inteira a partir daquele índice e herda a exceção do Play — pasta
+ *  como contexto, continuidade OFF. Origin `manual` (a faixa foi escolhida à
+ *  mão). Com o default do playTrackFrom (radio, sem contexto) a playlist não
+ *  terminava: o tender anexava lotes do acervo a 2 posições do fim (CMR-211,
+ *  o último caminho que faltava). */
+export const playFolderFrom = (list: Track[], index: number, name: string) =>
+  playList(list, index, "manual", name, { mode: "off" });
 export const playAlbum = (list: Track[], key: string) => playList(list, 0, "album_seq", key);
 // `autoplay`, não "shuffle": a sequência foi escolhida pela máquina, e é assim
 // que o sinal v3 a conhece (desconto de origem passiva). "shuffle" estava fora
@@ -290,7 +298,7 @@ export const playFromHere = (ctx: TrackContext) => {
   const head = ctx.list[ctx.index];
   if (!head) return playList([], 0, "autoplay");
   const list = [head, ...shuffled(ctx.list.slice(ctx.index + 1))];
-  return ctx.playlist
+  return ctx.playlist != null
     ? playList(list, 0, "autoplay", ctx.playlist, { mode: "off" })
     : playList(list, 0, "autoplay");
 };
@@ -613,13 +621,14 @@ export async function bootStore() {
   });
 
   // Hook de smoke via CDP: os testes no aparelho precisam exercitar o CAMINHO
-  // REAL do store (a decisão de continuidade vive em playFolder/playAlbum/
-  // playStation/shuffleFolder/playFromHere), não re-invocar os commands na
-  // mão. Sem isso cada smoke valida só o backend e a regra do store fica no
+  // REAL do store (a decisão de continuidade vive em playFolder/playFolderFrom/
+  // playAlbum/playStation/shuffleFolder/playFromHere), não re-invocar os
+  // commands na mão. Sem isso cada smoke valida só o backend e a regra do store fica no
   // escuro.
   (window as unknown as Record<string, unknown>).__mobileStore = {
     playList,
     playFolder,
+    playFolderFrom,
     playAlbum,
     playStation,
     playSimilar,

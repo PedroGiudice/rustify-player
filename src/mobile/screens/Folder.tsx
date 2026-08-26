@@ -7,10 +7,12 @@
    origin `manual`, com a pasta inteira virando fila a partir daquele
    índice (o auto-advance é do Kotlin).
 
-   Playlist é coleção curada e TERMINA (CEO, 17/08): Play, Shuffle e o
-   "tocar a partir daqui" da sheet armam continuidade OFF com a pasta
-   como contexto — daí o `playlist: name()` no contexto da linha. As
-   outras telas não passam `playlist` e ficam no default (radio).
+   Playlist é coleção curada e TERMINA (CEO, 17/08): TODOS os caminhos
+   que refazem a fila a partir dela — Play, Shuffle, linha tocada
+   (`playFolderFrom`) e, pela sheet da linha, "Tocar agora" e "Tocar a
+   partir daqui" — armam continuidade OFF com a pasta como contexto;
+   daí o `playlist: name()` no contexto da linha. As outras telas não
+   passam `playlist` e ficam no default (radio).
    ============================================================ */
 
 import { Show, createResource } from "solid-js";
@@ -19,7 +21,7 @@ import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
 import { Empty, LazyList, TopBar } from "../components/ui";
 import { libListFolderTracks } from "../ipc";
-import { playFolder, playTrackFrom, shuffleFolder } from "../store";
+import { playFolder, playFolderFrom, shuffleFolder } from "../store";
 import { fmtTotal } from "../derive";
 
 export function Folder(props: { param: string | null }) {
@@ -59,7 +61,7 @@ export function Folder(props: { param: string | null }) {
               <TrackRow
                 track={t}
                 context={{ list: list(), index: i(), playlist: name() }}
-                onPlay={() => void playTrackFrom(list(), i())}
+                onPlay={() => void playFolderFrom(list(), i(), name())}
               />
             )}
           </LazyList>

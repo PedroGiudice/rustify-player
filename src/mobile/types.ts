@@ -30,6 +30,17 @@ export interface Folder {
   track_count: number;
 }
 
+/** Lista em que uma faixa vive (linha de uma tela, sheet aberta dela).
+ *  `playlist` = nome da pasta de 1º nível quando a lista É uma playlist: tudo
+ *  que refaz a fila a partir dela (linha tocada, "Tocar agora", "Tocar a
+ *  partir daqui") herda o contexto e a continuidade OFF do Play da pasta.
+ *  Álbum/artista/acervo/shelf não preenchem — mantêm o default (radio). */
+export interface TrackContext {
+  list: Track[];
+  index: number;
+  playlist?: string;
+}
+
 /** Origins do contrato — vocabulário EXATO do sinal v3 do desktop; o motor
  *  lê isso. "shuffle" não existe aqui de propósito: estava fora do vocabulário
  *  do motor e entrava com peso CHEIO no saldo — sequência escolhida pela

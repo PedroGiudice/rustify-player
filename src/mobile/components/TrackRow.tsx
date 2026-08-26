@@ -10,11 +10,10 @@
 import { Show, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { openTrackSheet } from "./Sheet";
-import type { TrackContext } from "../sheet";
 import { createLongPress } from "../lib/longPress";
 import { fmtDuration } from "../derive";
 import { pb } from "../store";
-import type { Track } from "../types";
+import type { Track, TrackContext } from "../types";
 
 export function TrackRow(props: {
   track: Track;

@@ -12,11 +12,19 @@
 import { For, Show, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { closeSheet, closeSheetThen, openSheet, sheet } from "../sheet";
-import type { SheetSpec, TrackContext } from "../sheet";
+import type { SheetSpec } from "../sheet";
 import { navigate } from "../nav";
 import { albumKey, fmtDuration } from "../derive";
-import { enqueueEnd, enqueueNext, playFromHere, playList, playSimilar, playTrackFrom } from "../store";
-import type { Track } from "../types";
+import {
+  enqueueEnd,
+  enqueueNext,
+  playFolderFrom,
+  playFromHere,
+  playList,
+  playSimilar,
+  playTrackFrom,
+} from "../store";
+import type { Track, TrackContext } from "../types";
 
 type IconName = keyof typeof Icon;
 
@@ -44,9 +52,12 @@ function trackActions(spec: Extract<SheetSpec, { kind: "track" }>): Action[] {
     {
       label: "Tocar agora",
       icon: "play",
+      // Mesma decisão da linha tocada: dentro de uma playlist a fila É a
+      // playlist (contexto = pasta, continuidade OFF); fora, o default.
       run: () => {
-        if (ctx) void playTrackFrom(ctx.list, ctx.index);
-        else void playList([t], 0, "manual");
+        if (!ctx) void playList([t], 0, "manual");
+        else if (ctx.playlist != null) void playFolderFrom(ctx.list, ctx.index, ctx.playlist);
+        else void playTrackFrom(ctx.list, ctx.index);
       },
     },
   ];

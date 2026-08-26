@@ -16,17 +16,7 @@
    ============================================================ */
 
 import { createSignal } from "solid-js";
-import type { Track } from "./types";
-
-/** Lista em que a faixa segurada vive. `playlist` = nome da pasta de 1º
- *  nível quando a lista É uma playlist: as ações que refazem a fila a partir
- *  dela (tocar a partir daqui) herdam o contexto e a continuidade OFF do Play
- *  da pasta. Álbum/artista/acervo não preenchem — mantêm o default (radio). */
-export interface TrackContext {
-  list: Track[];
-  index: number;
-  playlist?: string;
-}
+import type { Track, TrackContext } from "./types";
 
 export type SheetSpec =
   | { kind: "track"; track: Track; context?: TrackContext }
