@@ -19,10 +19,14 @@ E o job remoto de capas (CMR-212, revisão do ce61a30):
     (tmp + rename, pronto = > 0 bytes, cópia na fase b).
   - o job EXECUTADO num staging temporário com um ffmpeg de mentira: jpg
     truncado é refeito, falha não deixa dst nem .tmp, a fase (b) copia o que
-    a fase (a) converteu, e a 2ª rodada só re-tenta o que falhou.
+    a fase (a) converteu, a 2ª rodada só re-tenta o que falhou, .tmp órfãos
+    de aborts anteriores são varridos e o stderr do ffmpeg sobe com o nome
+    da origem (antes a falha era só um contador).
   - report_covers_job ecoa stdout, roteia stderr e aborta com rc != 0.
 
 Rodar: python3 scripts/android/test_export_manifest.py
+É gate DE FATO do release Android: scripts/release_android.sh roda este
+arquivo antes do build e aborta se falhar.
 """
 import contextlib
 import io
@@ -192,14 +196,19 @@ def test_covers_job_source_compila_e_carrega_os_marcadores():
 
 
 # ffmpeg de mentira: copia o `-i SRC` pro último argumento (o destino).
-# Origem com conteúdo FAIL escreve lixo parcial e falha — simula o abort no
-# meio da conversão. Cada chamada registra "SRC -> DST" em $FAKE_FFMPEG_LOG.
+# Origem com conteúdo FAIL escreve lixo parcial, reclama no stderr (como o
+# ffmpeg real) e falha — simula o abort no meio da conversão. Cada chamada
+# registra "SRC -> DST" em $FAKE_FFMPEG_LOG.
 FAKE_FFMPEG = """#!/bin/sh
 src=""; prev=""
 for a in "$@"; do [ "$prev" = "-i" ] && src="$a"; prev="$a"; done
 for a in "$@"; do dst="$a"; done
 echo "$src -> $dst" >> "$FAKE_FFMPEG_LOG"
-if [ "$(cat "$src")" = "FAIL" ]; then printf 'partial' > "$dst"; exit 1; fi
+if [ "$(cat "$src")" = "FAIL" ]; then
+  printf 'partial' > "$dst"
+  echo "fake ffmpeg: Invalid data found when processing input" >&2
+  exit 1
+fi
 cp "$src" "$dst"
 """
 
@@ -238,9 +247,15 @@ def test_covers_job_idempotente_e_atomico():
         covers_dir = staging / ".rustify" / "covers"
         covers_dir.mkdir(parents=True)
         (covers_dir / f"{sha_b}.jpg").write_bytes(b"")     # truncada por abort anterior
+        # .tmp órfãos de um abort anterior (ffmpeg morto no meio): não estão
+        # no mapa, então só a varredura do job os remove.
+        (covers_dir / f"{sha_a}.jpg.tmp").write_bytes(b"lixo")
+        (covers_dir / "orfao.jpg.tmp").write_bytes(b"lixo")
         (staging / "P1").mkdir()
+        (staging / "P1" / "cover.jpg.tmp").write_bytes(b"lixo")   # pasta ainda sem capa
         (staging / "P2").mkdir()
         (staging / "P2" / "cover.jpg").write_bytes(b"old")  # já pronta
+        (staging / "P2" / "cover.jpg.tmp").write_bytes(b"lixo")   # órfão ao lado da pronta
         (staging / "P4").mkdir()
         # P3 não existe no staging
         mapping = {
@@ -266,8 +281,15 @@ def test_covers_job_idempotente_e_atomico():
         check("(b) P4 sem jpg em covers/: cai no ffmpeg, falha limpa",
               sorted(p.name for p in (staging / "P4").iterdir()), [])
         check("ffmpeg: A, B, C na fase (a) + C de novo na (b) = 4 chamadas", len(calls), 4)
-        check("nenhum .tmp sobrou no staging",
+        check("nenhum .tmp sobrou no staging (inclusive os órfãos de antes)",
               [str(p.relative_to(staging)) for p in staging.rglob("*.tmp")], [])
+        check("órfão em covers/ removido mesmo fora do mapa",
+              (covers_dir / "orfao.jpg.tmp").exists(), False)
+        check("órfão ao lado de cover.jpg pronta removido sem tocar na capa",
+              ((staging / "P2" / "cover.jpg.tmp").exists(),
+               (staging / "P2" / "cover.jpg").read_bytes()), (False, b"old"))
+        check("stderr do ffmpeg chega ao stderr do job, com o nome da origem (fase a + fase b)",
+              proc.stderr.count(f"ffmpeg {sha_c}.webp: fake ffmpeg: Invalid data"), 2)
         check("contadores da fase (a)",
               "covers/: 2 convertidas, 0 já existiam, 1 sem origem, 1 falhas (4 distintas)"
               in proc.stdout, True)

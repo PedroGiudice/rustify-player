@@ -54,6 +54,16 @@ if [[ "$PUBLISH_ONLY" == "1" ]]; then
     echo "[android] --publish-only: manifest ($MVER/$MSHA) nao bate com o APK ($VERSION/$SHA)"; exit 1
   fi
 else
+# Gate DE FATO do export de capas/manifest (CMR-212): o release e seguido do
+# `export_manifest.py --deploy`, e um job de capas quebrado so apareceria na
+# cmr-auto. Falha aqui aborta antes de gastar o build.
+echo "[android] gate: scripts/android/test_export_manifest.py"
+if ! GATE_OUT="$(python3 scripts/android/test_export_manifest.py 2>&1)"; then
+  printf '%s\n' "$GATE_OUT"
+  echo "[android] gate FALHOU: test_export_manifest.py — release abortado"; exit 1
+fi
+echo "[android] gate ok: $(printf '%s\n' "$GATE_OUT" | tail -n 1)"
+
 echo "[android] frontend (obrigatorio: o dist e embutido no .so)"
 bun run build
 

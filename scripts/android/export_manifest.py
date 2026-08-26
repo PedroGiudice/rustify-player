@@ -523,7 +523,13 @@ def covers_job_source(staging: str = STAGING, cache: str = COVER_CACHE) -> str:
       - toda escrita vai pra `<dst>.tmp` + rename: o destino nunca aparece
         pela metade; erro apaga o .tmp;
       - fase (b) COPIA o `covers/<sha1>.jpg` que a fase (a) acabou de
-        converter em vez de rodar o ffmpeg de novo sobre o mesmo webp.
+        converter em vez de rodar o ffmpeg de novo sobre o mesmo webp;
+      - `.tmp` órfãos de um abort anterior (ffmpeg morto no meio, ssh caído)
+        são varridos: em `covers/` no início do job, e o `cover.jpg.tmp` de
+        cada pasta antes de decidir se ela está pronta;
+      - falha do ffmpeg/cópia vai pro stderr do job com o nome da origem
+        (`ffmpeg <src>: <stderr>`) — flui pelo `proc.stderr` que o
+        `report_covers_job` ecoa; antes era só um contador de falhas.
     `-f image2 -c:v mjpeg` porque o ffmpeg não adivinha o formato de `.tmp`
     (bytes idênticos aos do destino `.jpg` — validado no 6.1.1)."""
     return f"""
@@ -547,6 +553,8 @@ def convert(src, dst):
                        capture_output=True)
     if r.returncode != 0 or not ready(tmp):
         tmp.unlink(missing_ok=True)
+        err = r.stderr.decode(errors="replace").strip() or f"rc={{r.returncode}}, saída vazia"
+        print(f"ffmpeg {{src.name}}: {{err}}", file=sys.stderr)
         return False
     tmp.replace(dst)
     return True
@@ -557,13 +565,17 @@ def copy(src, dst):
         shutil.copyfile(src, tmp)
         tmp.replace(dst)
         return True
-    except OSError:
+    except OSError as e:
         tmp.unlink(missing_ok=True)
+        print(f"copy {{src.name}} -> {{dst}}: {{e}}", file=sys.stderr)
         return False
 
 # (a) capas distintas por álbum-key → .rustify/covers/<sha1>.jpg
 covers_dir = staging / ".rustify" / "covers"
 covers_dir.mkdir(parents=True, exist_ok=True)
+# .tmp órfãos de um abort anterior nunca viram capa e só acumulam.
+for orphan in covers_dir.glob("*.tmp"):
+    orphan.unlink(missing_ok=True)
 done = skipped = missing = failed = 0
 for name, cover in mapping["distinct"].items():
     dst = covers_dir / name
@@ -581,7 +593,11 @@ for name, cover in mapping["distinct"].items():
 print(f"covers/: {{done}} convertidas, {{skipped}} já existiam, "
       f"{{missing}} sem origem, {{failed}} falhas ({{len(mapping['distinct'])}} distintas)")
 
-# (b) cover.jpg por pasta (fallback dos tracks sem cover_path e de manifest/APK antigos)
+# (b) cover.jpg por pasta (fallback dos tracks sem cover_path e de manifest/APK antigos).
+# Copia o covers/<sha1>.jpg que a fase (a) converteu; se ele NÃO ficou pronto
+# (falha na fase a), o retry do ffmpeg aqui é DELIBERADO — a falha pode ter
+# sido transitória (I/O, ffmpeg morto) e a pasta não deve ficar sem capa por
+# causa dela. Custa 1 ffmpeg a mais só no caso de falha.
 done = copied = skipped = missing = failed = 0
 for rel_dir, cover in mapping["dirs"].items():
     dst_dir = staging / rel_dir
@@ -589,6 +605,7 @@ for rel_dir, cover in mapping["dirs"].items():
         missing += 1
         continue
     dst = dst_dir / "cover.jpg"
+    tmp_of(dst).unlink(missing_ok=True)   # órfão de abort anterior
     if ready(dst):
         skipped += 1
         continue

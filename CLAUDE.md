@@ -533,9 +533,13 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   `.tmp` + rename, "pronto" = jpg com > 0 bytes (abort no meio não
   deixa capa truncada carimbada como pronta — re-rodar refaz só o que
   faltou), a fase do cover.jpg por pasta copia o `covers/<sha1>.jpg`
-  recém-convertido em vez de rodar ffmpeg de novo, e rc != 0 do job
-  aborta o export. Testado com ffmpeg de mentira em
-  `scripts/android/test_export_manifest.py` (gate do script).
+  recém-convertido em vez de rodar ffmpeg de novo, rc != 0 do job
+  aborta o export, `.tmp` órfãos de aborts anteriores são varridos no
+  início e o stderr do ffmpeg sobe com o nome da origem (o retry do
+  ffmpeg na fase do cover.jpg quando `covers/<sha1>.jpg` não ficou
+  pronto é deliberado — falha transitória). Testado com ffmpeg de
+  mentira em `scripts/android/test_export_manifest.py`, que é gate DE
+  FATO: `release_android.sh` o roda antes do build e aborta se falhar.
 - Proveniencia: `device.json` no **dataDir raiz** do app Android
   (`/data/data/dev.cmr.rustifyplayer/device.json` — NAO em `files/`),
   device_id do S24 = `s24`, imutavel. APK carimba `app_version` proprio.
@@ -561,10 +565,12 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   override local `kv-mobile-likes` (`src/mobile/likes.ts`, o mais novo
   vence) — **reexportar o manifest apos release** pra fechar o ciclo.
   NAO e origin: a fila nao muda; anel de recentes/tender ignoram.
-  Resposta do receiver (`SyncedOutcome`): transporte com o Qdrant falhou
+  Resposta do receiver (`SyncedOutcome`): 5xx/transporte com o Qdrant
   → 503 e o S24 NÃO acka (re-envia o lote inteiro no próximo tick; upsert
   por uuid e LWW tornam o replay seguro); rejeitado por validação
-  (proveniência, `timestamp` ausente ou <= 0) → 200 e ack; no-op por LWW
+  (proveniência, `timestamp` ausente ou <= 0) OU por 4xx do Qdrant
+  (`SyncedFail::from_ureq`: determinístico, `qdrant <code>: <corpo>` no
+  log — 503 ali viraria head-of-line do lote) → 200 e ack; no-op por LWW
   conta como aceito. Nunca voltar a responder 200 em erro de transporte:
   o like/play sumia pra sempre.
   ORDEM DE RELEASE: o .deb do desktop entra ANTES do APK, senao o

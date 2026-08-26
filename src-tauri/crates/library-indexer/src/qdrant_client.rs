@@ -265,8 +265,55 @@ pub enum SyncedOutcome {
     /// No-op por last-write-wins: o evento é mais velho que o like vigente.
     /// `current` é o clock vigente (`like_updated_at`, fallback `liked_at`).
     Skipped { current: i64 },
-    /// Payload inválido — motivo legível pro log.
+    /// Payload inválido — motivo legível pro log. Inclui o 4xx do próprio
+    /// Qdrant (`qdrant <code>: <corpo>`): rejeição determinística do evento.
     Rejected(String),
+}
+
+/// Falha de uma request do trilho de sync já CLASSIFICADA (CMR-220): 4xx do
+/// Qdrant é rejeição determinística do evento (payload que ele não aceita —
+/// re-enviar não conserta, então é ackável); 5xx e transporte são
+/// transitórios e vão em `Err` → o receiver responde 503 e o lote volta
+/// inteiro. Antes TODO status virava `Err`: um 400 num único evento fazia o
+/// S24 re-enviar o lote pra sempre (head-of-line).
+enum SyncedFail {
+    Rejected(String),
+    Transport(IndexerError),
+}
+
+impl SyncedFail {
+    /// Corpo truncado: o erro do Qdrant cabe em uma linha de log; um HTML de
+    /// proxy no meio não pode inflar o motivo.
+    const BODY_MAX: usize = 300;
+
+    fn from_ureq(what: &str, e: ureq::Error) -> Self {
+        match e {
+            ureq::Error::Status(code, resp) => {
+                let body: String = resp
+                    .into_string()
+                    .unwrap_or_default()
+                    .trim()
+                    .chars()
+                    .take(Self::BODY_MAX)
+                    .collect();
+                if (400..500).contains(&code) {
+                    SyncedFail::Rejected(format!("qdrant {code}: {body}"))
+                } else {
+                    SyncedFail::Transport(IndexerError::Embedding(format!(
+                        "qdrant {what}: status {code}: {body}"
+                    )))
+                }
+            }
+            e => SyncedFail::Transport(IndexerError::Embedding(format!("qdrant {what}: {e}"))),
+        }
+    }
+
+    fn into_outcome(self) -> Result<SyncedOutcome, IndexerError> {
+        match self {
+            SyncedFail::Rejected(reason) => Ok(SyncedOutcome::Rejected(reason)),
+            SyncedFail::Transport(e) => Err(e),
+        }
+    }
 }
 
 /// Synchronous HTTP client for the Qdrant REST API.
@@ -1318,8 +1365,8 @@ impl QdrantClient {
     /// do dispositivo de origem É o dado; estampar aqui destruiria o
     /// breakdown by_device da régua.
     ///
-    /// Payload inválido → `Ok(Rejected)` (ackável); falha de HTTP/transporte
-    /// com o Qdrant → `Err` (o receiver aborta o lote com 503).
+    /// Payload inválido ou 4xx do Qdrant → `Ok(Rejected)` (ackável); 5xx ou
+    /// transporte com o Qdrant → `Err` (o receiver aborta o lote com 503).
     pub fn insert_synced_event(
         &self,
         point_id: &str,
@@ -1335,14 +1382,17 @@ impl QdrantClient {
                 "payload": payload
             }]
         });
-        self.agent
+        match self
+            .agent
             .put(&format!(
                 "{}/collections/{PLAY_EVENTS_COLLECTION}/points",
                 self.base_url
             ))
             .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!("qdrant insert synced event: {e}")))?;
-        Ok(SyncedOutcome::Applied)
+        {
+            Ok(_) => Ok(SyncedOutcome::Applied),
+            Err(e) => SyncedFail::from_ureq("insert synced event", e).into_outcome(),
+        }
     }
 
     /// Like/unlike sincado de OUTRO dispositivo → `track_enrichments`, com
@@ -1350,8 +1400,9 @@ impl QdrantClient {
     /// vira ponto em `play_events`. Mesma validação de proveniência do
     /// [`Self::insert_synced_event`] — o `device_id` do evento é o
     /// `liked_device` gravado. Patch `None` (evento mais velho que o like
-    /// vigente) = `Skipped` sem escrita. Payload inválido → `Rejected`
-    /// (ackável); falha de HTTP/transporte com o Qdrant → `Err`.
+    /// vigente) = `Skipped` sem escrita. Payload inválido ou 4xx do Qdrant
+    /// (fora o 404 do GET, que é "ponto sem nada") → `Rejected` (ackável);
+    /// 5xx ou transporte com o Qdrant → `Err`.
     pub fn apply_synced_like(&self, payload: &Value) -> Result<SyncedOutcome, IndexerError> {
         let rejeitado = |reason: &str| Ok(SyncedOutcome::Rejected(reason.to_string()));
         if let Some(reason) = synced_event_error(payload) {
@@ -1371,12 +1422,15 @@ impl QdrantClient {
         };
         let track_id = payload["track_id"].as_u64().unwrap_or_default();
         let device_id = payload["device_id"].as_str().unwrap_or_default();
-        let existing = self.get_enrichment(track_id)?;
+        let existing = match self.fetch_enrichment(track_id) {
+            Ok(v) => v,
+            Err(e) => return SyncedFail::from_ureq("get enrichment", e).into_outcome(),
+        };
         match synced_like_patch(&existing, event_type, ts, device_id) {
-            Some(patch) => {
-                self.set_enrichment(track_id, patch)?;
-                Ok(SyncedOutcome::Applied)
-            }
+            Some(patch) => match self.put_enrichment(track_id, existing, patch) {
+                Ok(()) => Ok(SyncedOutcome::Applied),
+                Err(e) => SyncedFail::from_ureq("set enrichment", e).into_outcome(),
+            },
             None => Ok(SyncedOutcome::Skipped { current: like_clock(&existing) }),
         }
     }
@@ -1599,25 +1653,33 @@ impl QdrantClient {
         Ok(())
     }
 
-    pub fn get_enrichment(&self, track_id: u64) -> Result<Value, IndexerError> {
+    /// GET cru do enrichment, erro do ureq intacto pra quem chama classificar
+    /// (o trilho de sync separa 4xx de 5xx/transporte; o desktop converte
+    /// tudo em `Err`). 404 = ponto sem nada = `{}`.
+    fn fetch_enrichment(&self, track_id: u64) -> Result<Value, ureq::Error> {
         let url = format!(
             "{}/collections/{ENRICHMENTS_COLLECTION}/points/{track_id}",
             self.base_url
         );
         match self.agent.get(&url).call() {
             Ok(resp) => {
-                let data: Value = resp
-                    .into_json()
-                    .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
-                // Payload ausente/`result` null vale como {} — record_play,
-                // toggle_like e set_enrichment fazem `as_object_mut()` no
-                // que volta daqui; com Null o merge perdia o patch inteiro.
+                let data: Value = resp.into_json()?;
+                // Payload ausente/`result` null vale como {}: o contrato é
+                // "sempre objeto". Só o set_enrichment faz `as_object_mut()`
+                // no que volta daqui (com Null o merge perdia o patch inteiro
+                // e gravava null); record_play/toggle_like indexam por chave
+                // (`existing["play_count"]`), que é Null-safe.
                 let payload = data["result"]["payload"].clone();
                 Ok(if payload.is_object() { payload } else { json!({}) })
             }
             Err(ureq::Error::Status(404, _)) => Ok(json!({})),
-            Err(e) => Err(IndexerError::Embedding(format!("qdrant get enrichment: {e}"))),
+            Err(e) => Err(e),
         }
+    }
+
+    pub fn get_enrichment(&self, track_id: u64) -> Result<Value, IndexerError> {
+        self.fetch_enrichment(track_id)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant get enrichment: {e}")))
     }
 
     /// Batch-retrieve enrichment payloads for a set of track IDs in a single
@@ -1648,10 +1710,11 @@ impl QdrantClient {
         Ok(parse_id_payload_map(&resp))
     }
 
-    pub fn set_enrichment(&self, track_id: u64, payload: Value) -> Result<(), IndexerError> {
-        let existing = self.get_enrichment(track_id)?;
+    /// Merge de `patch` sobre `existing` e PUT do ponto inteiro (`wait`).
+    /// Erro do ureq intacto — ver [`Self::fetch_enrichment`].
+    fn put_enrichment(&self, track_id: u64, existing: Value, patch: Value) -> Result<(), ureq::Error> {
         let mut merged = existing;
-        if let (Some(base), Some(patch)) = (merged.as_object_mut(), payload.as_object()) {
+        if let (Some(base), Some(patch)) = (merged.as_object_mut(), patch.as_object()) {
             for (k, v) in patch {
                 base.insert(k.clone(), v.clone());
             }
@@ -1668,8 +1731,13 @@ impl QdrantClient {
             .put(&format!("{}/collections/{ENRICHMENTS_COLLECTION}/points", self.base_url))
             .query("wait", "true")
             .send_json(&body)
-            .map_err(|e| IndexerError::Embedding(format!("qdrant set enrichment: {e}")))?;
-        Ok(())
+            .map(|_| ())
+    }
+
+    pub fn set_enrichment(&self, track_id: u64, payload: Value) -> Result<(), IndexerError> {
+        let existing = self.get_enrichment(track_id)?;
+        self.put_enrichment(track_id, existing, payload)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant set enrichment: {e}")))
     }
 
     pub fn scroll_enrichments(
@@ -2338,6 +2406,12 @@ mod tests {
     /// e devolve a porta. Só o suficiente pra exercitar o parse do
     /// get_enrichment e a distinção validação × transporte.
     fn fake_qdrant(body: &'static str) -> u16 {
+        fake_qdrant_with((200, body), (200, "{}"))
+    }
+
+    /// Fake com status/corpo separados pro GET e pro PUT — é o que exercita
+    /// a classificação 4xx (determinístico, ackável) × 5xx (transitório).
+    fn fake_qdrant_with(get: (u16, &'static str), put: (u16, &'static str)) -> u16 {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -2370,9 +2444,17 @@ mod tests {
                     }
                     buf.extend_from_slice(&chunk[..n]);
                 }
+                let (status, body) = if buf.starts_with(b"PUT ") { put } else { get };
+                let reason = match status {
+                    200 => "OK",
+                    400 => "Bad Request",
+                    404 => "Not Found",
+                    500 => "Internal Server Error",
+                    _ => "Error",
+                };
                 let _ = write!(
                     s,
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
             }
@@ -2389,9 +2471,10 @@ mod tests {
 
     #[test]
     fn get_enrichment_payload_nao_objeto_vira_vazio() {
-        // `result` null / payload ausente → {}. record_play, toggle_like e
-        // set_enrichment fazem `as_object_mut()` no que volta daqui: com Null
-        // o merge do set_enrichment perdia o patch inteiro e gravava null.
+        // `result` null / payload ausente → {}. Só o set_enrichment faz
+        // `as_object_mut()` no que volta daqui (com Null o merge perdia o
+        // patch inteiro e gravava null); record_play/toggle_like indexam por
+        // chave, que é Null-safe — mas o contrato é um só: sempre objeto.
         let port = fake_qdrant(r#"{"result":null}"#);
         let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
         assert_eq!(client.get_enrichment(1).unwrap(), json!({}));
@@ -2439,6 +2522,58 @@ mod tests {
             client.insert_synced_event("11111111-2222-3333-4444-555555555555", &sem_device),
         );
         assert!(reason.contains("device_id"), "{reason}");
+    }
+
+    #[test]
+    fn qdrant_4xx_no_put_e_rejected_ackavel_e_5xx_e_err() {
+        // 4xx do Qdrant é rejeição DETERMINÍSTICA do evento (payload que ele
+        // não aceita): re-enviar não conserta, então é ackável. Antes TODO
+        // status virava Err → 503 → o S24 re-enviava o lote inteiro pra
+        // sempre e o evento ruim travava a fila (head-of-line).
+        let enrichment_vazio = r#"{"result":{"payload":{}}}"#;
+        let put_400 = r#"{"status":{"error":"Wrong input: id inválido"},"time":0.0}"#;
+        let port = fake_qdrant_with((200, enrichment_vazio), (400, put_400));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        let mut play = like_valido(10);
+        play["event_type"] = json!("track_ended");
+        let uuid = "11111111-2222-3333-4444-555555555555";
+        let reason = rejected_reason(client.insert_synced_event(uuid, &play));
+        assert!(reason.starts_with("qdrant 400: "), "{reason}");
+        assert!(reason.contains("Wrong input"), "motivo carrega o corpo: {reason}");
+        // like: o GET passa ({}), o PUT do enrichment leva 400 → Rejected
+        let reason = rejected_reason(client.apply_synced_like(&like_valido(10)));
+        assert!(reason.starts_with("qdrant 400: "), "{reason}");
+
+        // 5xx é transitório → Err (o receiver responde 503 e o S24 não acka),
+        // com status e corpo no Display pro log do receiver.
+        let port = fake_qdrant_with(
+            (200, enrichment_vazio),
+            (500, r#"{"status":{"error":"boom interno"}}"#),
+        );
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        let err = client.insert_synced_event(uuid, &play).unwrap_err().to_string();
+        assert!(err.contains("500") && err.contains("boom interno"), "{err}");
+        let err = client.apply_synced_like(&like_valido(10)).unwrap_err().to_string();
+        assert!(err.contains("500") && err.contains("boom interno"), "{err}");
+    }
+
+    #[test]
+    fn get_de_enrichment_no_sync_404_e_vazio_e_outro_4xx_e_rejected() {
+        // 404 do GET segue sendo "ponto sem nada" ({}) → o like aplica
+        // (GET + PUT). Outro 4xx no GET é determinístico → Rejected. O
+        // get_enrichment do desktop (fora do trilho de sync) continua Err.
+        let port = fake_qdrant_with((404, r#"{"status":{"error":"Not found"}}"#), (200, "{}"));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        assert_eq!(
+            client.apply_synced_like(&like_valido(10)).unwrap(),
+            SyncedOutcome::Applied
+        );
+
+        let port = fake_qdrant_with((400, r#"{"status":{"error":"bad id"}}"#), (200, "{}"));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        let reason = rejected_reason(client.apply_synced_like(&like_valido(10)));
+        assert!(reason.starts_with("qdrant 400: ") && reason.contains("bad id"), "{reason}");
+        assert!(client.get_enrichment(1).is_err());
     }
 
     #[test]

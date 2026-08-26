@@ -13,9 +13,10 @@
 //! play_event: vão pra `track_enrichments` com last-write-wins por
 //! `like_updated_at` ([`QdrantClient::apply_synced_like`], CMR-220).
 //! Resposta: `200 {"accepted":N,"rejected":M}` — o S24 acka TUDO que vem
-//! com 200, inclusive o rejeitado por validação (re-enviar não conserta);
-//! no-op por LWW conta como aceito. Falha de HTTP/transporte com o Qdrant
-//! → `503 {"error":...}` e o lote aborta sem contagem: o worker NÃO acka e
+//! com 200, inclusive o rejeitado por validação ou por 4xx determinístico
+//! do Qdrant (re-enviar não conserta; 503 ali viraria head-of-line);
+//! no-op por LWW conta como aceito. 5xx/transporte com o Qdrant → `503
+//! {"error":...}` e o lote aborta sem contagem: o worker NÃO acka e
 //! re-envia inteiro no próximo tick (upsert idempotente por uuid, like por
 //! LWW — replay é seguro). GET /sync/health → 200.
 
@@ -198,13 +199,16 @@ fn handle(
                         tracing::warn!(%reason, uuid, "sync receiver: evento rejeitado");
                         rejected += 1;
                     }
-                    // Transporte com o Qdrant falhou: NADA pode ser ackado —
+                    // 5xx/transporte com o Qdrant: NADA pode ser ackado —
                     // 200 aqui faria o S24 ackar e o like/play sumir pra
                     // sempre. Aborta o lote; o re-envio inteiro é seguro
-                    // (upsert por uuid, like por LWW).
+                    // (upsert por uuid, like por LWW). 4xx NÃO cai aqui: é
+                    // `Rejected` (determinístico, ackável — senão vira
+                    // head-of-line). O Display de `e` traz status e corpo
+                    // do Qdrant (`SyncedFail::from_ureq`).
                     Err(e) => {
                         tracing::warn!(
-                            ?e,
+                            erro = %e,
                             uuid,
                             accepted,
                             rejected,
@@ -248,15 +252,22 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     /// Comportamento do Qdrant fake: o que o GET de enrichment devolve e o
-    /// status do PUT (500 = Qdrant quebrando no meio do lote).
+    /// status do PUT (500 = Qdrant quebrando; 400 = rejeição determinística).
+    /// `put_fail_nth` (1-based) aplica `put_status` SÓ àquele PUT — os
+    /// outros levam 200 — pra simular a falha no meio do lote e o replay.
     struct FakeQdrant {
         enrichment: &'static str,
         put_status: u16,
+        put_fail_nth: Option<usize>,
     }
 
     impl Default for FakeQdrant {
         fn default() -> Self {
-            Self { enrichment: r#"{"result":{"payload":{}}}"#, put_status: 200 }
+            Self {
+                enrichment: r#"{"result":{"payload":{}}}"#,
+                put_status: 200,
+                put_fail_nth: None,
+            }
         }
     }
 
@@ -275,6 +286,7 @@ mod tests {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&requests);
         std::thread::spawn(move || {
+            let mut puts = 0usize;
             for stream in listener.incoming() {
                 let Ok(mut s) = stream else { continue };
                 let Some(req) = read_request(&mut s) else { continue };
@@ -282,12 +294,19 @@ mod tests {
                     if req.starts_with("GET /collections/track_enrichments/points/") {
                         (200, cfg.enrichment)
                     } else if req.starts_with("PUT ") {
-                        (cfg.put_status, "{}")
+                        puts += 1;
+                        let falha = cfg.put_fail_nth.map_or(true, |n| n == puts);
+                        (if falha { cfg.put_status } else { 200 }, "{}")
                     } else {
                         (200, "{}")
                     };
                 log.lock().unwrap().push(req);
-                let reason = if status == 200 { "OK" } else { "Internal Server Error" };
+                let reason = match status {
+                    200 => "OK",
+                    400 => "Bad Request",
+                    500 => "Internal Server Error",
+                    _ => "Error",
+                };
                 let _ = write!(
                     s,
                     "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -552,11 +571,10 @@ mod tests {
         }
     }
 
-    /// Qdrant responde 500 no PUT do 1º evento: o lote aborta ALI (o 2º nem
-    /// é tentado) e a resposta é 503 sem contagem. Replay do lote inteiro é
-    /// seguro — upsert por uuid.
+    /// Qdrant responde 500 em TODO PUT: o lote aborta no 1º evento (o 2º nem
+    /// é tentado) e a resposta é 503 sem contagem.
     #[test]
-    fn erro_http_do_qdrant_no_meio_do_lote_aborta_com_503() {
+    fn erro_5xx_do_qdrant_no_primeiro_put_aborta_com_503() {
         let (qdrant_port, requests) =
             fake_qdrant_with(FakeQdrant { put_status: 500, ..Default::default() });
         let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
@@ -572,6 +590,73 @@ mod tests {
         assert!(resp.get("accepted").is_none(), "{resp}");
         let reqs = requests.lock().unwrap();
         assert_eq!(reqs.iter().filter(|r| r.starts_with("PUT ")).count(), 1, "{reqs:?}");
+    }
+
+    /// Falha NO MEIO do lote: o 1º PUT sai (uuid certo), o 2º leva 500 → 503
+    /// sem contagem, mesmo com progresso parcial. O S24 não acka e re-envia
+    /// o lote INTEIRO; o replay gera PUTs com os MESMOS ids — upsert por uuid
+    /// é o que torna o re-envio do que já entrou inofensivo.
+    #[test]
+    fn erro_5xx_no_meio_do_lote_aborta_e_o_replay_repete_os_mesmos_ids() {
+        let (qdrant_port, requests) = fake_qdrant_with(FakeQdrant {
+            put_status: 500,
+            put_fail_nth: Some(2),
+            ..Default::default()
+        });
+        let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
+        let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
+        let (u1, u2) = (
+            "11111111-2222-3333-4444-555555555555",
+            "22222222-2222-3333-4444-555555555555",
+        );
+        let body = serde_json::json!({ "events": [play_event(u1, 1), play_event(u2, 2)] })
+            .to_string();
+
+        let (status, resp) = post_lote_raw(port, &body);
+        assert_eq!(status, 503, "{resp}");
+        assert!(resp.get("accepted").is_none(), "{resp}");
+        {
+            let reqs = requests.lock().unwrap();
+            let puts: Vec<&String> = reqs.iter().filter(|r| r.starts_with("PUT ")).collect();
+            assert_eq!(puts.len(), 2, "{reqs:?}");
+            assert!(puts[0].contains(&format!("\"id\":\"{u1}\"")), "{}", puts[0]);
+            assert!(puts[1].contains(&format!("\"id\":\"{u2}\"")), "{}", puts[1]);
+        }
+
+        // Replay do MESMO lote com o Qdrant de volta: 200 com os dois
+        // aceitos, e os PUTs carregam os mesmos ids da 1ª tentativa.
+        let (status, resp) = post_lote_raw(port, &body);
+        assert_eq!(status, 200, "{resp}");
+        assert_eq!(resp["accepted"], 2);
+        assert_eq!(resp["rejected"], 0);
+        let reqs = requests.lock().unwrap();
+        let puts: Vec<&String> = reqs.iter().filter(|r| r.starts_with("PUT ")).collect();
+        assert_eq!(puts.len(), 4, "{reqs:?}");
+        assert!(puts[2].contains(&format!("\"id\":\"{u1}\"")), "{}", puts[2]);
+        assert!(puts[3].contains(&format!("\"id\":\"{u2}\"")), "{}", puts[3]);
+    }
+
+    /// 4xx do Qdrant é rejeição DETERMINÍSTICA (payload que ele não aceita):
+    /// conta em `rejected`, o lote segue e a resposta é 200 — ackável, senão
+    /// o evento ruim virava head-of-line e o S24 re-enviava pra sempre.
+    #[test]
+    fn qdrant_4xx_deterministico_vira_rejected_e_o_lote_e_ackavel() {
+        let (qdrant_port, requests) =
+            fake_qdrant_with(FakeQdrant { put_status: 400, ..Default::default() });
+        let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
+        let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
+        let body = serde_json::json!({ "events": [
+            play_event("11111111-2222-3333-4444-555555555555", 1),
+            play_event("22222222-2222-3333-4444-555555555555", 2),
+        ]})
+        .to_string();
+
+        let resp = post_lote(port, &body);
+        assert_eq!(resp["accepted"], 0);
+        assert_eq!(resp["rejected"], 2);
+        // Não aborta: os dois PUTs foram tentados.
+        let reqs = requests.lock().unwrap();
+        assert_eq!(reqs.iter().filter(|r| r.starts_with("PUT ")).count(), 2, "{reqs:?}");
     }
 
     /// timestamp 0 não ordena no LWW (e liked_at=0 é ambíguo): rejeitado por

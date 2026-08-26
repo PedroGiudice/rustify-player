@@ -243,10 +243,12 @@ A UI é otimista (override local, ver `Track` acima) e reverte se o IPC falhar.
 Resposta do receiver ao `POST /sync/events` (vale para play e like): `200
 {accepted, rejected}` quando o lote foi processado — o worker **acka tudo**,
 inclusive o rejeitado por validação (proveniência incompleta, `timestamp`
-ausente ou `<= 0`; re-enviar não conserta), e o no-op por LWW conta como
-aceito. Falha de transporte com o Qdrant → `503 {error}` sem contagem: o
-worker **não acka** e re-envia o lote inteiro no próximo tick (upsert por uuid
-e LWW tornam o replay seguro).
+ausente ou `<= 0`, ou 4xx determinístico do próprio Qdrant; re-enviar não
+conserta — um 503 nesse caso viraria head-of-line do lote), e o no-op por LWW
+conta como aceito. 5xx/transporte com o Qdrant → `503 {error}` sem contagem:
+o worker **não acka** e re-envia o lote inteiro no próximo tick (upsert por
+uuid e LWW tornam o replay seguro — inclusive o que já tinha entrado antes da
+falha no meio do lote).
 
 `PlaybackState` ganhou `count` (tamanho da fila nativa) — é o gatilho de
 "a fila está secando" sem precisar lê-la inteira.
