@@ -1,4 +1,4 @@
-# Régua do autoplay — medição 2026-08-25
+# Régua do autoplay — medição 2026-08-26
 
 **Veredito: META NÃO batida: skip 56% > 55% (n=776) — revisar tunables do sinal v3 (HALF_LIFE_DAYS, PASSIVE_WEIGHT, thresholds em qdrant_client.rs).**
 
