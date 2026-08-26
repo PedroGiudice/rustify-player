@@ -182,7 +182,8 @@ pub struct StepResult {
 pub struct PlayEvent {
     pub seq: i64,
     pub uuid: String,
-    /// `track_ended` | `track_skipped`
+    /// `track_ended` | `track_skipped` | `like` | `unlike` — like/unlike
+    /// (CMR-220) usam a mesma linha; o desktop roteia pelo `event_type`.
     pub event_type: String,
     pub track_id: String,
     pub origin: String,
@@ -204,6 +205,22 @@ pub struct DrainEventsResponse {
     pub events: Vec<PlayEvent>,
     /// Maior `seq` ja gravado (mesmo que nenhum evento tenha sido devolvido).
     pub last_seq: i64,
+}
+
+/// Pedido de `set_like` (CMR-220). O Kotlin grava `like`/`unlike` no journal
+/// com a mesma forma da linha de play_event; o desktop faz o LWW.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetLikeRequest {
+    pub track_id: String,
+    pub liked: bool,
+}
+
+/// Resposta de `set_like`: o `seq` da linha gravada no journal.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LikeResult {
+    pub seq: i64,
 }
 
 /// Pedido de `updater_check`. `manifest_url` só existe para teste; `None`
@@ -415,5 +432,35 @@ mod tests {
     fn updater_install_result_le_status() {
         let r: UpdaterInstallResult = serde_json::from_str(r#"{"status":"needs_permission"}"#).unwrap();
         assert_eq!(r.status, "needs_permission");
+    }
+
+    /// A linha de like sai do `EventJournal.lineOf` do Kotlin com as MESMAS 10
+    /// chaves da linha de play_event (CMR-220). Se o parser rejeitasse, a
+    /// linha travaria o lote inteiro do sync sem ack.
+    #[test]
+    fn play_event_le_linha_de_like_do_kotlin() {
+        let wire = r#"{"seq":7,"uuid":"u-1","event_type":"like",
+            "track_id":"18446744073709551615","origin":"manual","context_id":null,
+            "started_at":100,"timestamp":100,"end_position_ms":42000,"duration_ms":200000}"#;
+        let ev: PlayEvent = serde_json::from_str(wire).unwrap();
+        assert_eq!(ev.event_type, "like");
+        assert_eq!(ev.track_id, "18446744073709551615");
+        assert_eq!(ev.context_id, None);
+        assert_eq!(ev.end_position_ms, 42_000);
+        // sem `backward` na linha → false (o Kotlin só grava quando true)
+        assert!(!ev.backward);
+    }
+
+    /// O Kotlin lê `trackId`/`liked` (camelCase) em `SetLikeArgs`.
+    #[test]
+    fn set_like_request_serializa_em_camel_case() {
+        let req = SetLikeRequest { track_id: "7".into(), liked: true };
+        assert_eq!(serde_json::to_string(&req).unwrap(), r#"{"trackId":"7","liked":true}"#);
+    }
+
+    #[test]
+    fn like_result_le_seq() {
+        let r: LikeResult = serde_json::from_str(r#"{"seq":42}"#).unwrap();
+        assert_eq!(r.seq, 42);
     }
 }

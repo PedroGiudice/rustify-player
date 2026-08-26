@@ -524,6 +524,17 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   contra o builder desktop. E2E validado 13/08 (regua mostra
   `s24` no breakdown por device). ureq no Android e SEM TLS —
   WireGuard da tailnet e o canal (rustls/ring exigiria clang do NDK).
+- Like no mobile (CMR-220): coracao no cabecalho do Now Playing ->
+  `set_like` (plugin, SEM withController) -> linha `like`/`unlike` no
+  MESMO journal, com a MESMA forma da linha de play_event
+  (`EventJournal.lineOf`, pura e testada; linha invalida travaria o lote
+  do sync sem ack) -> sync (payload pelo mesmo builder, proveniencia
+  estampada pelo worker) -> receiver desktop roteia por `event_type` pra
+  `track_enrichments` com LWW por `like_updated_at`. Estado no aparelho
+  semeado pelo manifest (`liked_at`/`like_updated_at`, `fetch_like_state`
+  no export) + override local `kv-mobile-likes` (`src/mobile/likes.ts`,
+  o mais novo vence) — **reexportar o manifest apos release** pra fechar
+  o ciclo. NAO e origin: a fila nao muda; anel de recentes/tender ignoram.
 
 ### Build, install e debug
 

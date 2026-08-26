@@ -2,7 +2,7 @@
 """Exporta os artefatos da biblioteca pro Rustify Android — um trilho, quatro
 artefatos (CMR-190/CMR-191):
 
-  manifest.json   track_id ↔ rel_path + metadata (como sempre)
+  manifest.json   track_id ↔ rel_path + metadata + estado do like (CMR-220)
   vectors.bin     vetores mert 768d f32 L2-normalizados por track_id
   taste.json      snapshot de gosto (réplica de derive_behavioral_signals)
   stations.json   stations do desktop + pool precomputado por station
@@ -124,14 +124,49 @@ def to_int(v, default=0):
 # manifest.json
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_manifest(points: list[dict]) -> dict:
+def fetch_like_state(base_url: str) -> dict[str, tuple[int | None, int | None]]:
+    """Estado do like por track_id (string) a partir de track_enrichments:
+    `(liked_at, like_updated_at)`. Scroll PAGINADO (o recent_likes acima cabe
+    em uma página porque só quer o top-10; aqui é o acervo inteiro). Entram
+    pontos com like OU com carimbo — a descurtida (liked_at null +
+    like_updated_at) precisa viajar para o LWW do aparelho não ressuscitar um
+    like antigo. Ids que não são u64 (fora do acervo) ficam de fora."""
+    state: dict[str, tuple[int | None, int | None]] = {}
+    offset = None
+    while True:
+        body = {
+            "limit": 500,
+            "with_payload": {"include": ["liked_at", "like_updated_at"]},
+            "with_vector": False,
+        }
+        if offset is not None:
+            body["offset"] = offset
+        result = qpost(base_url, f"/collections/{ENRICHMENTS}/points/scroll", body)
+        for p in result["points"]:
+            tid = p.get("id")
+            if not isinstance(tid, int):
+                continue
+            pl = p.get("payload") or {}
+            liked_at = to_int(pl.get("liked_at")) or None
+            updated_at = to_int(pl.get("like_updated_at")) or None
+            if liked_at is None and updated_at is None:
+                continue
+            state[str(tid)] = (liked_at, updated_at)
+        offset = result.get("next_page_offset")
+        if offset is None:
+            return state
+
+
+def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
     tracks, skipped = [], 0
+    like_state = like_state or {}
     for p in points:
         pl = p["payload"]
         path = pl.get("path") or ""
         if not path.startswith(MUSIC_ROOT):
             skipped += 1
             continue
+        liked_at, like_updated_at = like_state.get(str(p["id"]), (None, None))
         tracks.append({
             # point id do Qdrant É o track_id (u64) — string, ver docstring.
             "track_id": str(p["id"]),
@@ -147,6 +182,10 @@ def build_manifest(points: list[dict]) -> dict:
             "album_year": to_int(pl.get("album_year")) or None,
             # hex "#rrggbb" do cover.rs (ink/accent adaptativos no aparelho)
             "dominant_color": pl.get("dominant_color") or None,
+            # Estado do like (CMR-220): verdade do desktop na hora do export;
+            # o aparelho aplica LWW contra o override local por like_updated_at.
+            "liked_at": liked_at,
+            "like_updated_at": like_updated_at,
         })
     tracks.sort(key=lambda t: t["rel_path"])
     if skipped:
@@ -528,7 +567,10 @@ def main() -> int:
     points = scroll_all(args.qdrant, with_vector=["mert"])
     print(f"scroll: {len(points)} pontos")
 
-    manifest = build_manifest(points)
+    like_state = fetch_like_state(args.qdrant)
+    print(f"likes: {sum(1 for l, _ in like_state.values() if l)} curtidas, "
+          f"{len(like_state)} pontos com estado")
+    manifest = build_manifest(points, like_state)
     with open(f"{args.out_dir}/manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
     print(f"manifest.json: {manifest['track_count']} tracks")

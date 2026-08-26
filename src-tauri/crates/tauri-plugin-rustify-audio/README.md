@@ -50,6 +50,7 @@ permissões `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
 | `set_repeat_mode` | `mode: 'off'\|'one'\|'all'` | `null` |
 | `drain_events` | `afterSeq?` | `{ events: PlayEvent[], lastSeq }` |
 | `ack_events` | `uptoSeq` | `null` |
+| `set_like` | `trackId`, `liked` | `{ seq }` (linha `like`/`unlike` gravada no journal) |
 | `updater_check` | `manifestUrl?` | `{ installed, latest, available, apkUrl, sha256, size, canInstall }` |
 | `updater_install` | `url`, `sha256?`, `size?` | `{ status: 'started'\|'needs_permission'\|'busy' }` |
 
@@ -103,8 +104,18 @@ destruída (app tirado dos recentes com o serviço tocando), elas são
 para sempre, que é a race que pendurou o boot do S24 em 14/08.
 
 `PlayEvent` (chaves **snake_case**, espelhando o payload do desktop):
-`{ seq, uuid, event_type: 'track_ended'|'track_skipped', track_id, origin,
-context_id, started_at, timestamp, end_position_ms, duration_ms }`.
+`{ seq, uuid, event_type: 'track_ended'|'track_skipped'|'like'|'unlike', track_id,
+origin, context_id, started_at, timestamp, end_position_ms, duration_ms }`.
+
+`set_like(trackId, liked)` (CMR-220) grava `like`/`unlike` **na mesma linha,
+com a mesma forma** — os parsers exigem todos os campos e uma linha inválida
+travaria o lote inteiro do sync sem ack. `started_at`/`timestamp` = agora;
+`end_position_ms`/`duration_ms` = posição/duração da faixa se ela é a corrente
+(controller já conectado), senão `0`/duração do `QueueMeta`; `origin`/`context_id`
+vêm **só do próprio item** na fila (faixa fora da fila vai como `manual` sem
+contexto — herdar o escalar da fila carimbaria a rodada de outra sessão). Não
+usa `withController`: não se sobe o service só para registrar um like. O desktop
+faz o last-write-wins por `like_updated_at` em `track_enrichments`.
 
 **`trackId` / `track_id` são String em toda a cadeia.** Os ids do acervo são u64
 hash-based; passar por `Number` em JS corrompe qualquer valor acima de 2^53.
@@ -139,9 +150,11 @@ Perder esses eventos não perde dado: quem sabe o que foi escutado é o journal.
 
 ## Journal
 
-Uma linha por transição de faixa, escrita **pelo service** (nunca pelo JS), com
-`fsync`. `seq` é monotônico e persistido; `drain_events(afterSeq)` lê a partir de
-um ponto e `ack_events(uptoSeq)` grava a marca d'água e compacta o arquivo.
+Uma linha por evento, escrita **pelo service** (transições de faixa) e, para
+`like`/`unlike`, **pelo plugin** (`set_like`) — nunca pelo JS — com `fsync`.
+Toda linha nasce de `EventJournal.lineOf` (função pura, testada), com os mesmos
+10 campos. `seq` é monotônico e persistido; `drain_events(afterSeq)` lê a partir
+de um ponto e `ack_events(uptoSeq)` grava a marca d'água e compacta o arquivo.
 O `uuid` nasce no Kotlin — é a chave de idempotência do sync (união de conjuntos)
 e vira o point id no Qdrant.
 
@@ -151,6 +164,8 @@ Semântica idêntica ao `flush_play_event` do desktop:
   `STATE_ENDED` no fim da fila.
 - `track_skipped` — troca por seek/next/previous/skipToIndex/nova fila, e
   teardown do service com faixa no ar.
+- `like` / `unlike` — gesto do usuário (CMR-220); o anel de recentes e o tender
+  ignoram (não é escuta), o desktop roteia para `track_enrichments`.
 
 ## Dependências Android
 

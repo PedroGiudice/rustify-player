@@ -88,6 +88,10 @@ impl<R: Runtime> RustifyAudio<R> {
         Err(Error::UnsupportedPlatform)
     }
 
+    pub async fn set_like(&self, _request: SetLikeRequest) -> crate::Result<LikeResult> {
+        Err(Error::UnsupportedPlatform)
+    }
+
     pub async fn register_listener(
         &self,
         _event: String,

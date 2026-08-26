@@ -127,6 +127,10 @@ impl<R: Runtime> RustifyAudio<R> {
             .await
     }
 
+    pub async fn set_like(&self, request: SetLikeRequest) -> crate::Result<LikeResult> {
+        self.call("setLike", request).await
+    }
+
     pub async fn register_listener(
         &self,
         event: String,

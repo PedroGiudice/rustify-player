@@ -9,6 +9,7 @@ import android.webkit.WebView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -102,6 +103,12 @@ class DrainEventsArgs {
 @InvokeArg
 class AckEventsArgs {
     var uptoSeq: Long = 0L
+}
+
+@InvokeArg
+class SetLikeArgs {
+    lateinit var trackId: String
+    var liked: Boolean = true
 }
 
 @InvokeArg
@@ -440,6 +447,51 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         val args = invoke.parseArgs(AckEventsArgs::class.java)
         EventJournal.ack(activity, args.uptoSeq)
         invoke.resolve()
+    }
+
+    /**
+     * Like/unlike de uma faixa (CMR-220): grava no journal, com a MESMA forma
+     * da linha de play_event, e o sync leva ao desktop (que faz o LWW em
+     * track_enrichments). SEM [withController] de proposito: nao se sobe o
+     * service so para registrar um like — o controller e lido se ja estiver
+     * conectado, apenas para posicao/duracao quando a faixa e a corrente.
+     *
+     * origin/contextId vem SO do proprio item no [QueueMeta]; faixa fora da
+     * fila vai como `manual` sem contexto — herdar o escalar da fila carimbaria
+     * o like com a rodada de outra sessao.
+     */
+    @Command
+    fun setLike(invoke: Invoke) {
+        val args = invoke.parseArgs(SetLikeArgs::class.java)
+        val trackId = args.trackId
+        val c = controller
+        val isCurrent = c != null && c.currentMediaItem?.mediaId == trackId
+        val pos = if (isCurrent) c!!.currentPosition.coerceAtLeast(0L) else 0L
+        val dur = if (isCurrent && c!!.duration != C.TIME_UNSET) {
+            c.duration.coerceAtLeast(0L)
+        } else {
+            QueueMeta.durationFor(trackId)
+        }
+        val meta = QueueMeta.itemMeta(trackId)
+        val now = System.currentTimeMillis() / 1000L
+        val seq = EventJournal.append(
+            activity,
+            if (args.liked) "like" else "unlike",
+            trackId,
+            meta?.origin ?: "manual",
+            meta?.contextId,
+            now,
+            now,
+            pos,
+            dur
+        )
+        if (seq < 0L) {
+            invoke.reject("falha gravando o like no journal")
+            return
+        }
+        val payload = JSObject()
+        payload.put("seq", seq)
+        invoke.resolve(payload)
     }
 
     // ------------------------------------------------------------ atualização

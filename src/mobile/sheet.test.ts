@@ -16,6 +16,8 @@ const track: Track = {
   track_number: null,
   genre_name: null,
   dominant_color: null,
+  liked_at: null,
+  like_updated_at: null,
 };
 
 /** jsdom dispara popstate de forma assíncrona; espera o evento chegar. */

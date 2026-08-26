@@ -27,8 +27,14 @@ invoke<number>('lib_rescan')                    // após novo sync de acervo
 
 `Track` (subset do desktop — mesmo shape de `src/tauri.ts`):
 `{ id, title, artist_name, album_title, album_cover_path, album_year,
-duration_ms, path, lrc_path, track_number, genre_name, dominant_color }`
-(`dominant_color` = hex `#rrggbb` da capa, enrichment do desktop, `null` sem).
+duration_ms, path, lrc_path, track_number, genre_name, dominant_color,
+liked_at, like_updated_at }`
+(`dominant_color` = hex `#rrggbb` da capa, enrichment do desktop, `null` sem;
+`liked_at`/`like_updated_at` = estado do like semeado pelo manifest, CMR-220 —
+epoch em segundos, `null` sem; descurtida no desktop chega como `liked_at: null`
++ `like_updated_at` preenchido. A UI lê o estado EFETIVO por `isLiked()` do
+store — manifest x override local `kv-mobile-likes`, o mais novo vence — nunca
+`liked_at` cru).
 
 `lib_recent_plays` (CMR-215): faixas DISTINTAS que **contaram como play**
 (`counts_as_play`: fim da escuta ≥ 20s OU ≥ 25% da faixa), da mais recente pra
@@ -187,6 +193,23 @@ sinal. Com menos de 2 faixas a seguir é no-op (a UI desabilita o botão via
 `canShuffleUpcoming`). A UI **aplica só o snapshot devolvido**, nunca reordena
 otimista: uma ordem inventada no JS divergiria da fila nativa.
 
+```ts
+// Like/unlike da faixa (CMR-220). Devolve o seq da linha gravada no journal.
+const { seq } = await invoke('plugin:rustify-audio|set_like', { trackId, liked: true })
+```
+
+`set_like` grava `like`/`unlike` **no mesmo journal e com a mesma forma** da
+linha de play_event (10 campos, `EventJournal.lineOf`): os parsers exigem todos
+os campos e uma linha inválida travaria o lote inteiro do sync sem ack.
+`started_at`/`timestamp` = agora; `end_position_ms`/`duration_ms` = posição e
+duração se a faixa é a corrente, senão `0`/duração do `QueueMeta`;
+`origin`/`context_id` vêm **só do próprio item** na fila (fora da fila:
+`manual`, sem contexto). Não sobe o service (sem `withController`) e **não é
+origin** — a fila não muda; anel de recentes e tender ignoram a linha. O sync
+leva o payload pelo mesmo builder (proveniência estampada pelo worker) e o
+**desktop faz o last-write-wins** por `like_updated_at` em `track_enrichments`.
+A UI é otimista (override local, ver `Track` acima) e reverte se o IPC falhar.
+
 `PlaybackState` ganhou `count` (tamanho da fila nativa) — é o gatilho de
 "a fila está secando" sem precisar lê-la inteira.
 
@@ -335,15 +358,16 @@ O tender também respeita o repeat: com `one` ou `all` ligado a fila nunca seca
 
 Crate (slskd fica na cmr-auto), busca semântica
 por texto (exigiria embedder no aparelho — similar/stations são vetor→vetor,
-offline), likes com sync (toggle local ainda sem trilho), EQ/DSP/volume por
-app (volume = botões físicos), temas YAML.
+offline), EQ/DSP/volume por app (volume = botões físicos), temas YAML.
 
 Já entregue depois da v0: letras (14/08, `lib_get_lyrics` + rail no Now
 Playing); beat sync real do bg (14/08, CMR-192 — `SpectrumTap` com FFT do
 próprio ExoPlayer, sem `RECORD_AUDIO`); leitura da fila nativa (15/08,
 `get_queue`); auto-update (26/08, spec 2026-08-24 — updater_check/updater_install +
 Settings > Atualização); shuffle do restante da fila (26/08, CMR-218 —
-`shuffle_upcoming` + botão nos controles do Now Playing).
+`shuffle_upcoming` + botão nos controles do Now Playing); like com sync (26/08,
+CMR-220 — `set_like` + coração no cabeçalho do Now Playing; estado semeado pelo
+manifest, reexportar após release).
 
 Inventário completo do que falta em relação ao desktop, com plano por fase:
 `docs/contexto/15082026-diff-mobile-vs-desktop.md` e

@@ -9,8 +9,11 @@
    - artista e álbum são navegáveis (15/08) e a sheet de "track
      info" existe via long-press na linha da faixa — mas ainda sem
      codec/bitrate, que não estão no shape do Track;
-   - sem coração: não há trilho de like (epic C) — o slot do
-     cabeçalho antes do rádio fica reservado pra ele (CMR-220);
+   - coração ENTROU (26/08, CMR-220) no slot do cabeçalho antes do
+     rádio, no padrão visual do antigo repeat (aria-pressed + accent
+     quando curtida): `toggleLike` → `set_like` grava `like`/`unlike`
+     no journal e o sync leva ao desktop; o estado vem do manifest
+     com override local (LWW em `isLiked`);
    - repeat (15/08) off/all/one, com o serviço carimbando origin
      `repeat` nas re-escutas de repeat-one — desceu do cabeçalho pra
      fileira de controles (26/08);
@@ -29,6 +32,7 @@ import { back, isNpOpen, navigate, navigateFromNp } from "../nav";
 import {
   current,
   cycleRepeat,
+  isLiked,
   next,
   pb,
   playSimilar,
@@ -40,6 +44,7 @@ import {
   showToast,
   shuffleUpcoming,
   toggle,
+  toggleLike,
 } from "../store";
 import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
 import { canShuffleUpcoming } from "../queueModel";
@@ -185,13 +190,26 @@ export function NowPlaying() {
             </Show>
             <Show when={current()}>
               {(t) => (
-                <button
-                  class="iconbtn"
-                  aria-label="Rádio da faixa"
-                  onClick={() => void playSimilar(t())}
-                >
-                  <Icon.radio />
-                </button>
+                <>
+                  <button
+                    class="iconbtn"
+                    aria-label="Curtir"
+                    aria-pressed={isLiked(t())}
+                    style={isLiked(t()) ? { color: "var(--accent)" } : undefined}
+                    onClick={() => void toggleLike(t())}
+                  >
+                    <Show when={isLiked(t())} fallback={<Icon.heart />}>
+                      <Icon.heartFilled />
+                    </Show>
+                  </button>
+                  <button
+                    class="iconbtn"
+                    aria-label="Rádio da faixa"
+                    onClick={() => void playSimilar(t())}
+                  >
+                    <Icon.radio />
+                  </button>
+                </>
               )}
             </Show>
             <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>

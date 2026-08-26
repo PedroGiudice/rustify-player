@@ -451,6 +451,18 @@
           "markdownDescription": "Denies the seek_to command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_like command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-like",
+          "markdownDescription": "Enables the set_like command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_like command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-like",
+          "markdownDescription": "Denies the set_like command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_queue command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-queue",
@@ -535,10 +547,10 @@
           "markdownDescription": "Denies the updater_install command without any pre-configured scope."
         },
         {
-          "description": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-add-items`\n- `allow-truncate-queue`\n- `allow-shuffle-upcoming`\n- `allow-set-repeat-mode`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-updater-check`\n- `allow-updater-install`",
+          "description": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-add-items`\n- `allow-truncate-queue`\n- `allow-shuffle-upcoming`\n- `allow-set-repeat-mode`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-set-like`\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-updater-check`\n- `allow-updater-install`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-add-items`\n- `allow-truncate-queue`\n- `allow-shuffle-upcoming`\n- `allow-set-repeat-mode`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-updater-check`\n- `allow-updater-install`"
+          "markdownDescription": "Libera toda a superficie do plugin de playback. E um plugin interno do app\n(nenhum conteudo remoto tem acesso ao webview), entao nao ha ganho em fatiar\nos commands em permissoes separadas.\n\n#### This default permission set includes:\n\n- `allow-initialize`\n- `allow-set-queue`\n- `allow-play`\n- `allow-pause`\n- `allow-seek-to`\n- `allow-next`\n- `allow-previous`\n- `allow-skip-to-index`\n- `allow-get-state`\n- `allow-get-queue`\n- `allow-add-items`\n- `allow-truncate-queue`\n- `allow-shuffle-upcoming`\n- `allow-set-repeat-mode`\n- `allow-drain-events`\n- `allow-ack-events`\n- `allow-set-like`\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-updater-check`\n- `allow-updater-install`"
         }
       ]
     }

@@ -65,6 +65,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_repeat_mode,
             commands::drain_events,
             commands::ack_events,
+            commands::set_like,
             commands::register_listener,
             commands::remove_listener,
             commands::updater_check,

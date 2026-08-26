@@ -16,6 +16,8 @@ function track(id: string, durationMs = 180_000): Track {
     track_number: null,
     genre_name: null,
     dominant_color: null,
+    liked_at: null,
+    like_updated_at: null,
   };
 }
 

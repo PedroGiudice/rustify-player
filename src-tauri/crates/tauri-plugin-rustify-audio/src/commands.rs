@@ -144,6 +144,17 @@ pub(crate) async fn ack_events<R: Runtime>(
     audio(&app).ack_events(upto_seq).await
 }
 
+/// Like/unlike de uma faixa (CMR-220): o Kotlin grava a linha no journal
+/// (mesma forma do play_event) e devolve o `seq`; o sync leva ao desktop.
+#[tauri::command]
+pub(crate) async fn set_like<R: Runtime>(
+    app: AppHandle<R>,
+    track_id: String,
+    liked: bool,
+) -> crate::Result<LikeResult> {
+    audio(&app).set_like(SetLikeRequest { track_id, liked }).await
+}
+
 // `addPluginListener` / `PluginListener.unregister` do @tauri-apps/api batem
 // nestes dois commands; eles apenas repassam o Channel pro `trigger()` Kotlin.
 

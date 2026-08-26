@@ -11,12 +11,15 @@ import java.util.UUID
 /**
  * Journal append-only de eventos de escuta — a razao de ser do plugin.
  *
- * Quem grava e o service, sempre: com a tela apagada o WebView esta suspenso e
- * qualquer caminho que passe pelo JS perde evento. O JS so consome, por [drain]
- * (a partir de um `seq`) e [ack] (marca d'agua + compactacao).
+ * Quem grava as transicoes de faixa e o service, sempre: com a tela apagada o
+ * WebView esta suspenso e qualquer caminho que passe pelo JS perde evento. O
+ * like/unlike (CMR-220) e gravado pelo plugin (`setLike`), no mesmo arquivo e
+ * com a MESMA forma de linha — e um gesto do usuario com o app na frente. O JS
+ * so consome, por [drain] (a partir de um `seq`) e [ack] (marca d'agua +
+ * compactacao).
  *
- * O arquivo e `filesDir/play_events.jsonl`, uma linha JSON por transicao de
- * faixa, com fsync por escrita.
+ * O arquivo e `filesDir/play_events.jsonl`, uma linha JSON por evento, com
+ * fsync por escrita.
  */
 object EventJournal {
     private const val TAG = "RustifyAudioJournal"
@@ -65,6 +68,44 @@ object EventJournal {
         seq = max
     }
 
+    /**
+     * A linha do journal, pura (sem IO). E a UNICA forma de linha que os
+     * parsers aceitam (PlayEvent no Rust do plugin, JournalEvent no sync):
+     * play_event e like/unlike passam por aqui, com os mesmos 10 campos.
+     */
+    fun lineOf(
+        seq: Long,
+        uuid: String,
+        eventType: String,
+        trackId: String,
+        origin: String,
+        contextId: String?,
+        startedAt: Long,
+        timestamp: Long,
+        endPositionMs: Long,
+        durationMs: Long,
+        backward: Boolean
+    ): JSONObject {
+        val obj = JSONObject()
+        obj.put("seq", seq)
+        obj.put("uuid", uuid)
+        obj.put("event_type", eventType)
+        // track_id e SEMPRE string: id u64 do acervo estoura 2^53 em JS.
+        obj.put("track_id", trackId)
+        obj.put("origin", origin)
+        // JSONObject.NULL, nunca null: `put(key, null)` remove a chave e o
+        // parser do Rust exige o campo.
+        obj.put("context_id", contextId ?: JSONObject.NULL)
+        obj.put("started_at", startedAt)
+        obj.put("timestamp", timestamp)
+        obj.put("end_position_ms", endPositionMs)
+        obj.put("duration_ms", durationMs)
+        // So quando true: o payload sincado pro desktop ignora o campo, e
+        // uma linha a mais por evento em TODO evento nao paga o custo.
+        if (backward) obj.put("backward", true)
+        return obj
+    }
+
     /** Appenda um evento e devolve o `seq` gravado (-1 em falha de IO). */
     fun append(
         ctx: Context,
@@ -83,23 +124,12 @@ object EventJournal {
             ensureSeq(ctx)
             val next = seq + 1L
 
-            val obj = JSONObject()
-            obj.put("seq", next)
             // UUID nasce aqui: e a chave de idempotencia do sync (uniao de
             // conjuntos por uuid) e vira o point id no Qdrant.
-            obj.put("uuid", UUID.randomUUID().toString())
-            obj.put("event_type", eventType)
-            // track_id e SEMPRE string: id u64 do acervo estoura 2^53 em JS.
-            obj.put("track_id", trackId)
-            obj.put("origin", origin)
-            obj.put("context_id", contextId ?: JSONObject.NULL)
-            obj.put("started_at", startedAt)
-            obj.put("timestamp", timestamp)
-            obj.put("end_position_ms", endPositionMs)
-            obj.put("duration_ms", durationMs)
-            // So quando true: o payload sincado pro desktop ignora o campo, e
-            // uma linha a mais por evento em TODO evento nao paga o custo.
-            if (backward) obj.put("backward", true)
+            val obj = lineOf(
+                next, UUID.randomUUID().toString(), eventType, trackId, origin,
+                contextId, startedAt, timestamp, endPositionMs, durationMs, backward
+            )
 
             try {
                 FileOutputStream(file(ctx), true).use { out ->

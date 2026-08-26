@@ -22,6 +22,7 @@ os commands em permissoes separadas.
 - `allow-set-repeat-mode`
 - `allow-drain-events`
 - `allow-ack-events`
+- `allow-set-like`
 - `allow-register-listener`
 - `allow-remove-listener`
 - `allow-updater-check`
@@ -370,6 +371,32 @@ Enables the seek_to command without any pre-configured scope.
 <td>
 
 Denies the seek_to command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-set-like`
+
+</td>
+<td>
+
+Enables the set_like command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-set-like`
+
+</td>
+<td>
+
+Denies the set_like command without any pre-configured scope.
 
 </td>
 </tr>

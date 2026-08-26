@@ -29,6 +29,8 @@ function track(p: Partial<Track> & { id: string }): Track {
     track_number: null,
     genre_name: null,
     dominant_color: null,
+    liked_at: null,
+    like_updated_at: null,
     ...p,
   };
 }

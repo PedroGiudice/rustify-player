@@ -17,6 +17,7 @@ import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
+import { effectiveLiked, loadOverrides, saveOverrides, type LikeOverrides } from "./likes";
 import { canShuffleUpcoming, remainingMs, resolveQueue, skipReport } from "./queueModel";
 import type {
   Folder,
@@ -437,6 +438,41 @@ export async function setContinuity(on: boolean) {
   }
 }
 
+// ── Like (CMR-220) ────────────────────────────────────────────
+// O manifest semeia `liked_at`/`like_updated_at`; o gesto vira override
+// otimista (kv-mobile-likes) e uma linha `like`/`unlike` no journal, que o
+// sync leva ao desktop. Efetivo = o mais NOVO dos dois (`effectiveLiked`).
+// Carregado no import: o store é módulo e o boot (bootStore) roda depois —
+// ler aqui evita o coração piscar "não curtida" até o boot terminar.
+
+const [likeOverrides, setLikeOverrides] = createSignal<LikeOverrides>(loadOverrides());
+
+/** Estado efetivo do like de uma faixa (manifest x override, LWW). */
+export const isLiked = (t: Track) => effectiveLiked(t, likeOverrides()[t.id]);
+
+export async function toggleLike(t: Track) {
+  const liked = !isLiked(t);
+  const before = likeOverrides()[t.id];
+  const at = Math.floor(Date.now() / 1000);
+  // Otimista: o coração responde no ato; o journal é a verdade do gesto e o
+  // desktop faz o LWW — falha do IPC desfaz o que a UI supôs.
+  const next = { ...likeOverrides(), [t.id]: { liked, at } };
+  setLikeOverrides(next);
+  saveOverrides(next);
+  try {
+    await ipc.playerSetLike(t.id, liked);
+    showToast(liked ? "Curtida" : "Curtida removida");
+  } catch (e) {
+    console.warn("[mobile] set_like falhou:", e);
+    const reverted = { ...likeOverrides() };
+    if (before) reverted[t.id] = before;
+    else delete reverted[t.id];
+    setLikeOverrides(reverted);
+    saveOverrides(reverted);
+    showToast("Falha ao registrar a curtida");
+  }
+}
+
 // ── Repeat ────────────────────────────────────────────────────
 // Estado de SESSAO do player (ExoPlayer), persistido como preferencia.
 // `one` faz o service carimbar origin `repeat` nas re-escutas — o sinal v3
@@ -678,6 +714,8 @@ export async function bootStore() {
     shuffleFolder,
     playFromHere,
     shuffleUpcoming,
+    toggleLike,
+    isLiked,
     next,
     skipToIndex,
     loadRecents,

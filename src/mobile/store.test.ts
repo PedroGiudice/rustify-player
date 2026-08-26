@@ -17,6 +17,7 @@ vi.mock("./ipc", () => ({
   playerSetQueue: vi.fn(async () => undefined),
   playerGetQueue: vi.fn(async () => ({ items: [], index: 0 })),
   playerShuffleUpcoming: vi.fn(async () => ({ items: [], index: 0 })),
+  playerSetLike: vi.fn(async () => ({ seq: 1 })),
   continuityArm: vi.fn(async () => undefined),
   libRecentPlays: vi.fn(async () => []),
   toQueueItem: (t: Track) => ({ trackId: t.id, path: t.path }),
@@ -25,6 +26,7 @@ vi.mock("./ipc", () => ({
 
 import * as ipc from "./ipc";
 import {
+  isLiked,
   loadRecents,
   pb,
   playFolder,
@@ -37,6 +39,7 @@ import {
   shuffleList,
   shuffleUpcoming,
   toast,
+  toggleLike,
 } from "./store";
 
 const track = (id: number): Track =>
@@ -196,6 +199,46 @@ describe('shuffleUpcoming ("Embaralhar o restante" — CMR-218)', () => {
     expect(ipc.playerGetQueue).toHaveBeenCalledTimes(2);
     expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4"]);
     expect(pb.index).toBe(1);
+  });
+});
+
+describe("toggleLike (coração do Now Playing — CMR-220)", () => {
+  const liked = (id: number, at: number | null): Track =>
+    ({ ...track(id), liked_at: at, like_updated_at: at }) as Track;
+
+  beforeEach(() => localStorage.removeItem("kv-mobile-likes"));
+
+  it("faixa não curtida: chama set_like com liked=true, marca otimista e avisa", async () => {
+    const t = liked(1, null);
+    expect(isLiked(t)).toBe(false);
+    await toggleLike(t);
+    expect(ipc.playerSetLike).toHaveBeenCalledWith("1", true);
+    expect(isLiked(t)).toBe(true);
+    expect(toast()).toBe("Curtida");
+  });
+
+  it("faixa curtida no manifest: chama set_like com liked=false (invertido)", async () => {
+    const t = liked(2, 100);
+    expect(isLiked(t)).toBe(true);
+    await toggleLike(t);
+    expect(ipc.playerSetLike).toHaveBeenCalledWith("2", false);
+    expect(isLiked(t)).toBe(false);
+    expect(toast()).toBe("Curtida removida");
+  });
+
+  it("falha do IPC reverte o estado otimista e avisa", async () => {
+    const t = liked(3, null);
+    (ipc.playerSetLike as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("sem plugin"));
+    await toggleLike(t);
+    expect(isLiked(t)).toBe(false);
+    expect(toast()).toBe("Falha ao registrar a curtida");
+  });
+
+  it("o override sobrevive em localStorage (kv-mobile-likes)", async () => {
+    await toggleLike(liked(4, null));
+    const saved = JSON.parse(localStorage.getItem("kv-mobile-likes") ?? "{}");
+    expect(saved["4"]).toMatchObject({ liked: true });
+    expect(typeof saved["4"].at).toBe("number");
   });
 });
 

@@ -23,6 +23,13 @@ export interface Track {
   genre_name: string | null;
   /** Hex "#rrggbb" da capa (enrichment do desktop) — ink/accent adaptativos. */
   dominant_color: string | null;
+  /** Like semeado pelo manifest (CMR-220), epoch em segundos. `null` = não
+   *  curtida. `like_updated_at` é o carimbo do LWW: uma descurtida no desktop
+   *  chega como `liked_at: null` + `like_updated_at` preenchido. O estado
+   *  EFETIVO é `isLiked()` do store (manifest x override local, o mais novo
+   *  vence) — nunca ler `liked_at` direto na UI. */
+  liked_at: number | null;
+  like_updated_at: number | null;
 }
 
 export interface Folder {

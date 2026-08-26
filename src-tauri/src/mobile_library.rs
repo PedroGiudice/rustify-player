@@ -42,6 +42,13 @@ struct ManifestTrack {
     album_year: Option<i64>,
     #[serde(default)]
     dominant_color: Option<String>,
+    /// Estado do like exportado do desktop (CMR-220). Ausentes em manifest
+    /// antigo; `like_updated_at` sem `liked_at` = descurtida (o LWW local
+    /// precisa do carimbo para não ressuscitar um like velho).
+    #[serde(default)]
+    liked_at: Option<i64>,
+    #[serde(default)]
+    like_updated_at: Option<i64>,
 }
 
 /// Espelha a interface `Track` de src/tauri.ts (subset que o mobile provê).
@@ -60,6 +67,10 @@ pub struct Track {
     pub genre_name: Option<String>,
     /// Hex "#rrggbb" da capa (enrichment do desktop) — ink/accent adaptativos.
     pub dominant_color: Option<String>,
+    /// Like semeado pelo manifest (CMR-220); a UI aplica LWW com o override
+    /// local por `like_updated_at`.
+    pub liked_at: Option<i64>,
+    pub like_updated_at: Option<i64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -283,6 +294,8 @@ impl MobileLibrary {
                 track_number: (mt.track_number > 0).then_some(mt.track_number),
                 genre_name: (!mt.genre.is_empty()).then_some(mt.genre),
                 dominant_color: mt.dominant_color,
+                liked_at: mt.liked_at,
+                like_updated_at: mt.like_updated_at,
             });
         }
         if unresolved > 0 {
@@ -551,6 +564,8 @@ mod tests {
             track_number: None,
             genre_name: None,
             dominant_color: None,
+            liked_at: None,
+            like_updated_at: None,
         }
     }
 
@@ -628,6 +643,44 @@ mod tests {
     }
 
     use super::canon_stem;
+
+    /// Estado do like semeado pelo manifest (CMR-220). Manifest antigo (sem os
+    /// campos) e `null` explícito (descurtida exportada) precisam carregar —
+    /// a biblioteca inteira viraria vazia se o parser rejeitasse.
+    #[test]
+    fn manifest_track_aceita_campos_novos_e_ausentes() {
+        let base = r#""rel_path":"a/b.opus","title":"t","artist":"","album":"",
+            "duration_ms":1,"track_number":0,"disc_number":1,"genre":"""#;
+        let com: ManifestTrack = serde_json::from_str(&format!(
+            r#"{{"track_id":"1",{base},"liked_at":1700000000,"like_updated_at":1700000100}}"#
+        ))
+        .unwrap();
+        assert_eq!(com.liked_at, Some(1_700_000_000));
+        assert_eq!(com.like_updated_at, Some(1_700_000_100));
+
+        let sem: ManifestTrack =
+            serde_json::from_str(&format!(r#"{{"track_id":"2",{base}}}"#)).unwrap();
+        assert_eq!(sem.liked_at, None);
+        assert_eq!(sem.like_updated_at, None);
+
+        let descurtida: ManifestTrack = serde_json::from_str(&format!(
+            r#"{{"track_id":"3",{base},"liked_at":null,"like_updated_at":1700000200}}"#
+        ))
+        .unwrap();
+        assert_eq!(descurtida.liked_at, None);
+        assert_eq!(descurtida.like_updated_at, Some(1_700_000_200));
+    }
+
+    /// O wire pro JS carrega os dois campos com os nomes do `Track` do
+    /// types.ts (snake_case, sem rename).
+    #[test]
+    fn track_serializa_liked_at_e_like_updated_at() {
+        let mut tr = t("1", "A");
+        tr.liked_at = Some(5);
+        let v = serde_json::to_value(&tr).unwrap();
+        assert_eq!(v["liked_at"], 5);
+        assert!(v["like_updated_at"].is_null());
+    }
 
     #[test]
     fn canon_remove_proibidos_e_colapsa() {

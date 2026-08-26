@@ -8,8 +8,9 @@
    ícones vinham do objeto ICONS. O sprite foi ignorado.
 
    Só os ícones que o v0 realmente usa foram portados; os das telas
-   cortadas (station/radio/sparkle/trash/heart/repeat/drag/...)
-   ficaram de fora de propósito.
+   cortadas (station/trash/drag/...) ficaram de fora de propósito.
+   `heart`/`heartFilled` (CMR-220) usam o path do handoff; o asset
+   custom do CEO troca o SVG depois.
    ============================================================ */
 
 interface IcoProps {
@@ -158,6 +159,19 @@ export const Icon = {
   sparkle: (p: IcoProps = {}) => (
     <svg {...S} class={cx(p)}>
       <path d="M12 3.5 13.6 9 19 10.5 13.6 12 12 17.5 10.4 12 5 10.5 10.4 9zM18.5 15.5l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7z" />
+    </svg>
+  ),
+  heart: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M12 20S4 15.4 4 10.4A4.4 4.4 0 0 1 12 8a4.4 4.4 0 0 1 8 2.4C20 15.4 12 20 12 20z" />
+    </svg>
+  ),
+  heartFilled: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path
+        d="M12 20S4 15.4 4 10.4A4.4 4.4 0 0 1 12 8a4.4 4.4 0 0 1 8 2.4C20 15.4 12 20 12 20z"
+        fill="currentColor"
+      />
     </svg>
   ),
 };

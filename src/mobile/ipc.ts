@@ -143,6 +143,14 @@ export const playerSetRepeatMode = (mode: RepeatMode) =>
   invoke<void>(cmd("set_repeat_mode"), { mode });
 
 /**
+ * Like/unlike (CMR-220): o Kotlin grava `like`/`unlike` no journal com a
+ * MESMA forma da linha de play_event e devolve o `seq`; o sync leva ao desktop,
+ * que faz o LWW em track_enrichments. Não é origin — a fila não muda.
+ */
+export const playerSetLike = (trackId: string, liked: boolean) =>
+  invoke<{ seq: number }>(cmd("set_like"), { trackId, liked });
+
+/**
  * Enfileira sem destruir a fila viva. O `mode` é resolvido no Kotlin contra o
  * índice do próprio player — a UI NUNCA calcula posição de fila, porque a fila
  * é nativa e avança sozinha (o índice do JS já pode estar velho na chegada).

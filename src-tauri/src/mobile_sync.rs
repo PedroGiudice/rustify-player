@@ -286,6 +286,46 @@ mod tests {
         assert_eq!(mobile, desktop);
     }
 
+    /// Like/unlike (CMR-220) entram no journal com a MESMA linha do play_event
+    /// e saem pelo MESMO builder: o payload sincado de um `like` é byte a byte
+    /// o que o desktop montaria — `event_type` é o único discriminador que o
+    /// receiver usa para rotear a `track_enrichments`. Sem mudança no builder.
+    #[test]
+    fn payload_de_like_identico_ao_builder_desktop() {
+        let ev = JournalEvent {
+            uuid: "like-1".into(),
+            event_type: "like".into(),
+            track_id: "12755931536157556".into(),
+            origin: "manual".into(),
+            context_id: None,
+            started_at: 1_786_600_000,
+            timestamp: 1_786_600_000,
+            end_position_ms: 42_000,
+            duration_ms: 200_000,
+        };
+        let mobile = build_synced_payload(&ev, "s24", "0.2.77").unwrap();
+        let desktop = library_indexer::build_play_event_payload(
+            "like",
+            12755931536157556,
+            "manual",
+            1_786_600_000,
+            1_786_600_000,
+            42_000,
+            200_000,
+            None,
+            Some(&library_indexer::Provenance {
+                device_id: "s24".into(),
+                app_version: "0.2.77".into(),
+            }),
+        );
+        assert_eq!(mobile, desktop);
+        assert_eq!(mobile["event_type"], "like");
+        assert_eq!(mobile["device_id"], "s24");
+        assert_eq!(mobile["signal_schema"], SIGNAL_SCHEMA);
+        // sem context_id na linha → sem a chave no payload (igual ao desktop)
+        assert!(mobile.get("context_id").is_none());
+    }
+
     #[test]
     fn token_sync_json_vence_privado_e_sdcard() {
         let data = tempfile::tempdir().unwrap();

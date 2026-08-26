@@ -53,4 +53,11 @@ object QueueMeta {
     /** Meta do item; sem registro proprio, herda o da fila. */
     fun metaFor(trackId: String): ItemMeta =
         items[trackId] ?: ItemMeta(origin, contextId, 0L)
+
+    /**
+     * Meta SO do proprio item, sem herdar o escalar da fila. E o que o like
+     * usa: uma faixa fora da fila corrente nao pode ser carimbada com a
+     * origem/rodada de outra sessao.
+     */
+    fun itemMeta(trackId: String): ItemMeta? = items[trackId]
 }

@@ -18,6 +18,7 @@ const COMMANDS: &[&str] = &[
     "set_repeat_mode",
     "drain_events",
     "ack_events",
+    "set_like",
     "register_listener",
     "remove_listener",
     "updater_check",

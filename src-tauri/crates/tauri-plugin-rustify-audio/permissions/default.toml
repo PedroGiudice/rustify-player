@@ -23,6 +23,7 @@ permissions = [
   "allow-set-repeat-mode",
   "allow-drain-events",
   "allow-ack-events",
+  "allow-set-like",
   "allow-register-listener",
   "allow-remove-listener",
   "allow-updater-check",
