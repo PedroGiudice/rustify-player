@@ -554,6 +554,12 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   override local `kv-mobile-likes` (`src/mobile/likes.ts`, o mais novo
   vence) — **reexportar o manifest apos release** pra fechar o ciclo.
   NAO e origin: a fila nao muda; anel de recentes/tender ignoram.
+  Resposta do receiver (`SyncedOutcome`): transporte com o Qdrant falhou
+  → 503 e o S24 NÃO acka (re-envia o lote inteiro no próximo tick; upsert
+  por uuid e LWW tornam o replay seguro); rejeitado por validação
+  (proveniência, `timestamp` ausente ou <= 0) → 200 e ack; no-op por LWW
+  conta como aceito. Nunca voltar a responder 200 em erro de transporte:
+  o like/play sumia pra sempre.
   ORDEM DE RELEASE: o .deb do desktop entra ANTES do APK, senao o
   receiver antigo grava like como play_event.
 

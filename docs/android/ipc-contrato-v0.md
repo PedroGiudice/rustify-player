@@ -228,6 +228,14 @@ leva o payload pelo mesmo builder (proveniência estampada pelo worker) e o
 **desktop faz o last-write-wins** por `like_updated_at` em `track_enrichments`.
 A UI é otimista (override local, ver `Track` acima) e reverte se o IPC falhar.
 
+Resposta do receiver ao `POST /sync/events` (vale para play e like): `200
+{accepted, rejected}` quando o lote foi processado — o worker **acka tudo**,
+inclusive o rejeitado por validação (proveniência incompleta, `timestamp`
+ausente ou `<= 0`; re-enviar não conserta), e o no-op por LWW conta como
+aceito. Falha de transporte com o Qdrant → `503 {error}` sem contagem: o
+worker **não acka** e re-envia o lote inteiro no próximo tick (upsert por uuid
+e LWW tornam o replay seguro).
+
 `PlaybackState` ganhou `count` (tamanho da fila nativa) — é o gatilho de
 "a fila está secando" sem precisar lê-la inteira.
 
