@@ -129,3 +129,15 @@ re-derivação local dos sinais. `track_enrichments`: last-write-wins por
 campo com timestamp. Transporte a decidir quando houver segundo dispositivo
 (candidatos: endpoint no app, rsync sobre Tailscale, ou API na VM). O motor
 NUNCA fica refém de rede: cada dispositivo deriva sinais do log local.
+
+> **Nota (2026-08-26, CMR-220):** o last-write-wins de `track_enrichments`
+> está implementado para like/unlike. `toggle_like` (desktop) e
+> `apply_synced_like` (like/unlike do S24 chegando pelo sync receiver) gravam
+> `like_updated_at` (unix s, mesmo relógio do journal Kotlin). Evento com
+> `timestamp` MENOR que o vigente (`like_updated_at`, fallback `liked_at` pros
+> likes legados sem o campo) é no-op; igual aplica (replay idempotente,
+> double-tap no mesmo segundo na ordem do seq). `liked_device` gravado = o
+> `device_id` do evento (nunca re-estampado). Like NUNCA vira ponto em
+> `play_events`: `sync_receiver.rs` roteia por `event_type`. Ordem de
+> release: o .deb do desktop entra ANTES do APK que emite like — o receiver
+> antigo gravaria like como play_event.

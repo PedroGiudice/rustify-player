@@ -519,6 +519,12 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   contra o builder desktop. E2E validado 13/08 (regua mostra
   `s24` no breakdown por device). ureq no Android e SEM TLS —
   WireGuard da tailnet e o canal (rustls/ring exigiria clang do NDK).
+- Like/unlike do S24 (CMR-220): o sync receiver roteia `event_type`
+  like/unlike para `track_enrichments` (`apply_synced_like`, LWW por
+  `like_updated_at`, fallback `liked_at` no legado; `toggle_like` grava o
+  mesmo campo) — like NUNCA vira play_event. ORDEM DE RELEASE: o .deb do
+  desktop entra ANTES do APK, senão o receiver antigo grava like como
+  play_event.
 
 ### Build, install e debug
 
