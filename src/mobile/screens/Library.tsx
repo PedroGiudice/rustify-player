@@ -4,17 +4,18 @@
    As facetas são as que os dados do v0 sustentam: Pastas (=
    playlists, lib_list_folders), Álbuns e Artistas (derivados do
    acervo em memória) e Faixas (lib_list_tracks). "Genres" saiu
-   por não ter tela de destino; de "Collections" sobrou a Fila —
-   Stations e History não existem no v0.
+   por não ter tela de destino; "Collections" saiu inteira — a
+   Fila virou aba própria no tabbar (CMR-213) e Stations e
+   History não existem no v0.
    ============================================================ */
 
 import { For, Show, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LazyList, SecHead, ViewHead } from "../components/ui";
+import { Empty, LazyList, ViewHead } from "../components/ui";
 import { navigate } from "../nav";
-import { albums, artists, folders, libReady, playTrackFrom, queue, tracks } from "../store";
+import { albums, artists, folders, libReady, playTrackFrom, tracks } from "../store";
 import { fmtCount } from "../derive";
 
 type Facet = "folders" | "albums" | "artists" | "tracks";
@@ -121,19 +122,6 @@ export function Library() {
           </Show>
         </Show>
 
-        <div class="sec" style={{ "margin-top": "22px" }}>
-          <SecHead label="Coleções" />
-          <div class="rowlist">
-            <button class="rowitem" style={{ "padding-left": 0, "padding-right": 0 }} onClick={() => navigate("/queue")}>
-              <Icon.queue class="lead" />
-              <div class="rt">Fila</div>
-              <Show when={queue().length}>
-                <div class="rv">{queue().length}</div>
-              </Show>
-              <Icon.chev />
-            </button>
-          </div>
-        </div>
         <div style={{ height: "14px" }} />
       </Show>
     </div>

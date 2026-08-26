@@ -15,7 +15,7 @@ export interface Route {
   param: string | null;
 }
 
-export const TABS = ["/home", "/search", "/library", "/settings"] as const;
+export const TABS = ["/home", "/search", "/library", "/queue"] as const;
 const DEFAULT_ROUTE = "/home";
 const NP_ROUTE = "/np";
 
@@ -71,14 +71,20 @@ export function back() {
   window.history.back();
 }
 
-/** Aba ativa no tabbar — sub-rotas contam para a aba de origem. */
-export function activeTab(): string {
-  const p = baseRoute().path;
-  if (p === "/folder" || p === "/album" || p === "/artist" || p === "/queue") {
-    return "/library";
-  }
-  if (p === "/stations") return "/home";
+/**
+ * Aba que acende para uma rota — sub-rotas contam para a aba de origem.
+ * Settings e Stations abrem pelo header da Home, então acendem Home; a
+ * Queue é aba própria desde o CMR-213 (Settings saiu do tabbar).
+ */
+export function tabForPath(p: string): string {
+  if (p === "/folder" || p === "/album" || p === "/artist") return "/library";
+  if (p === "/stations" || p === "/settings") return "/home";
   return (TABS as readonly string[]).includes(p) ? p : DEFAULT_ROUTE;
+}
+
+/** Aba ativa no tabbar. */
+export function activeTab(): string {
+  return tabForPath(baseRoute().path);
 }
 
 /** Garante uma rota válida no boot (hash vazio → /home). */

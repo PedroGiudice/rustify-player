@@ -34,14 +34,9 @@ export function Home() {
         title="Home"
         sub={libReady() ? sub() : "carregando acervo…"}
         right={
-          <div style={{ display: "flex", gap: "2px" }}>
-            <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>
-              <Icon.queue />
-            </button>
-            <button class="iconbtn" aria-label="Ajustes" onClick={() => navigate("/settings")}>
-              <Icon.settings />
-            </button>
-          </div>
+          <button class="iconbtn" aria-label="Ajustes" onClick={() => navigate("/settings")}>
+            <Icon.settings />
+          </button>
         }
       />
 

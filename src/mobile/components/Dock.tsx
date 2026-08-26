@@ -6,7 +6,8 @@
    prev/next, arrastar pra cima ou tocar = abre o Now Playing.
 
    O tabbar tem 4 abas (o protótipo tinha 5): Crate saiu junto com
-   a tela, que não existe no v0.
+   a tela, que não existe no v0. Settings saiu do tabbar (já vive
+   no header da Home) e a Queue entrou no lugar (CMR-213).
    ============================================================ */
 
 import { For, Show, createSignal, onCleanup } from "solid-js";
@@ -20,7 +21,7 @@ const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/home", label: "Home", icon: Icon.home },
   { path: "/search", label: "Search", icon: Icon.search },
   { path: "/library", label: "Library", icon: Icon.library },
-  { path: "/settings", label: "Settings", icon: Icon.settings },
+  { path: "/queue", label: "Queue", icon: Icon.queue },
 ];
 
 function Vu() {
