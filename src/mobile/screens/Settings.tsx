@@ -8,9 +8,11 @@
 
    Saíram, por não existir command nenhum por trás: tema
    claro/escuro e YAML, full-screen player, resume on launch,
-   volume, normalização de loudness, embeddings/qdrant, check for
-   updates e a tela Signal/EQ. Renderizar esses controles seria
-   desenhar botão morto.
+   volume, normalização de loudness, embeddings/qdrant e a tela
+   Signal/EQ. Renderizar esses controles seria desenhar botão morto.
+
+   Entrou (26/08): Atualização — check no release dev + download +
+   PackageInstaller (spec 2026-08-24).
    ============================================================ */
 
 import { For, Show } from "solid-js";
@@ -28,6 +30,7 @@ import {
   tracks,
 } from "../store";
 import { commonRoot, fmtCount } from "../derive";
+import { appVersion, checkForUpdate, fmtBytes, installUpdate, upd, updBusy } from "../updater";
 
 export function Settings() {
   const root = () => commonRoot(tracks().map((t) => t.path)) ?? "—";
@@ -37,6 +40,55 @@ export function Settings() {
     ["ÁLBUNS", String(albums().length), "distintos"],
     ["ARTISTAS", String(artists().length), "distintos"],
   ];
+
+  const updLabel = () => {
+    const s = upd();
+    switch (s.phase) {
+      case "checking":
+        return "Consultando o release…";
+      case "available":
+      case "needs_permission":
+        return `Versão ${s.check?.latest} disponível`;
+      case "downloading":
+        return `Baixando ${fmtBytes(s.bytes)}${s.total ? ` de ${fmtBytes(s.total)}` : ""}`;
+      case "verifying":
+        return "Verificando o pacote…";
+      case "installing":
+        return "Preparando a instalação…";
+      case "confirming":
+        return "Confirme a instalação na tela do sistema";
+      case "done":
+        return "Instalada — o app vai reabrir";
+      case "failed":
+        return "A atualização falhou";
+      case "uptodate":
+        return "Você está na versão mais recente";
+      default:
+        return "Buscar atualização";
+    }
+  };
+  const updHint = () => {
+    const s = upd();
+    if (s.phase === "failed") return s.error ?? "erro desconhecido";
+    if (s.phase === "needs_permission")
+      return "O Android exige liberar 'instalar apps desconhecidos' para o Rustify uma vez. Volte e toque de novo.";
+    if (s.phase === "available" && s.check)
+      return `${fmtBytes(s.check.size)} · do release dev no GitHub · a instalação pede confirmação do sistema.`;
+    return "Consulta o release dev no GitHub. O check automático roda no máximo a cada 6h.";
+  };
+  const updButton = () => {
+    const p = upd().phase;
+    if (p === "available" || p === "needs_permission") return "Baixar e instalar";
+    if (p === "failed") return "Tentar de novo";
+    if (p === "downloading" || p === "verifying" || p === "installing" || p === "confirming") return "…";
+    return "Buscar";
+  };
+  const updAction = () => {
+    const p = upd().phase;
+    if (p === "available" || p === "needs_permission") return installUpdate();
+    if (p === "failed" && upd().check?.available) return installUpdate();
+    return checkForUpdate(true);
+  };
 
   return (
     <div class="screen">
@@ -155,6 +207,38 @@ export function Settings() {
             )}
           </For>
         </div>
+      </div>
+
+      <div class="setpanel">
+        <div class="setpanel__head">
+          <div class="setpanel__title">Atualização</div>
+          <span class="setpanel__sub">
+            <Show when={appVersion()} fallback="versão —">
+              v{appVersion()}
+            </Show>
+          </span>
+        </div>
+        <div class="setrow setrow--inline">
+          <div>
+            <div class="setrow__label">{updLabel()}</div>
+            <div class="setrow__hint">{updHint()}</div>
+          </div>
+          <button
+            class="selbtn selbtn--accent"
+            style={{ width: "auto" }}
+            disabled={updBusy()}
+            onClick={() => void updAction()}
+          >
+            {updButton()}
+          </button>
+        </div>
+        <Show when={upd().phase === "downloading" && upd().total > 0}>
+          <div class="setrow">
+            <div class="updbar">
+              <i style={{ width: `${Math.min(100, (100 * upd().bytes) / upd().total)}%` }} />
+            </div>
+          </div>
+        </Show>
       </div>
 
       <div class="setpanel">

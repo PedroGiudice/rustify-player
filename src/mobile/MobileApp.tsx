@@ -48,6 +48,7 @@ import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
 import { mockFft, mountSpectrum, pushFft } from "./bg/spectrum";
 import { onFft } from "./ipc";
+import { bootUpdater } from "./updater";
 
 /* Chamada como expressão no JSX (`{screen()}`), NÃO como <screen />:
    corpo de componente Solid roda uma vez e a leitura de baseRoute()
@@ -175,6 +176,8 @@ export function mountMobile() {
   // Depois do primeiro paint: initialize do plugin, biblioteca,
   // get_state e os listeners.
   void bootStore();
+  // Versão instalada + check de atualização com throttle (spec 2026-08-24).
+  bootUpdater();
 }
 
 export default MobileApp;

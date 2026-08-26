@@ -137,3 +137,31 @@ export interface DerivedArtist {
   album_count: number;
   cover: string | null;
 }
+
+/** Resposta de `updater_check` (decisão `available` é do Kotlin). */
+export interface UpdateCheck {
+  installed: string;
+  latest: string;
+  available: boolean;
+  apkUrl: string | null;
+  sha256: string | null;
+  size: number;
+  /** false = falta o toggle "instalar apps desconhecidos" para o app. */
+  canInstall: boolean;
+}
+
+export type UpdaterPhase =
+  | "downloading"
+  | "verifying"
+  | "installing"
+  | "confirming"
+  | "done"
+  | "failed";
+
+/** Evento `updater_progress` do plugin. */
+export interface UpdaterProgress {
+  phase: UpdaterPhase;
+  bytes?: number;
+  total?: number;
+  message?: string;
+}

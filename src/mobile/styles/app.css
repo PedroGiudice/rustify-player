@@ -653,6 +653,21 @@
 .selbtn:disabled {
   opacity: 0.5;
 }
+/* Barra de progresso do updater (Settings > Atualização). */
+.updbar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--div-subtle);
+  position: relative;
+  overflow: hidden;
+}
+.updbar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  width: 0;
+  transition: width 200ms linear;
+}
 .statgrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -23,6 +23,8 @@ import type {
   StationMeta,
   StepResult,
   Track,
+  UpdateCheck,
+  UpdaterProgress,
 } from "./types";
 
 const PLUGIN = "rustify-audio";
@@ -156,6 +158,23 @@ export const onPosition = (cb: (s: PlaybackState) => void) => on("position", cb)
 /** Bandas reais do SpectrumTap (CMR-192), ~25Hz enquanto toca. */
 export const onFft = (cb: (f: { low: number; mid: number; high: number }) => void) =>
   addPluginListener(PLUGIN, "fft", cb as (payload: unknown) => void).then(
+    (h) => () => h.unregister(),
+  );
+
+// ── Atualização (spec 2026-08-24-android-auto-update) ─────────
+// HTTP e instalação vivem no Kotlin (TLS da plataforma). A UI só pede o
+// check, dispara o install e escuta o progresso.
+
+export const appVersion = () => invoke<string>("app_version");
+export const updaterCheck = (manifestUrl?: string) =>
+  invoke<UpdateCheck>(cmd("updater_check"), { manifestUrl: manifestUrl ?? null });
+export const updaterInstall = (args: { url: string; sha256: string | null; size: number }) =>
+  invoke<{ status: "started" | "needs_permission" | "busy" }>(
+    cmd("updater_install"),
+    args as unknown as Record<string, unknown>,
+  );
+export const onUpdaterProgress = (cb: (p: UpdaterProgress) => void) =>
+  addPluginListener(PLUGIN, "updater_progress", cb as (payload: unknown) => void).then(
     (h) => () => h.unregister(),
   );
 
