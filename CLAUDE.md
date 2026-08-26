@@ -528,7 +528,14 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   (`./scripts/release_android.sh`) → `python3 scripts/android/
   export_manifest.py --deploy` (túnel 16333; `--skip-covers` pula os
   dois trilhos de capa) → `ssh cmr-auto@100.102.249.9
-  '~/phone_push_retry.sh'` → `lib_rescan` no app.
+  '~/phone_push_retry.sh'` → `lib_rescan` no app. O job de capas na
+  cmr-auto (`covers_job_source`) é idempotente e atômico: escreve em
+  `.tmp` + rename, "pronto" = jpg com > 0 bytes (abort no meio não
+  deixa capa truncada carimbada como pronta — re-rodar refaz só o que
+  faltou), a fase do cover.jpg por pasta copia o `covers/<sha1>.jpg`
+  recém-convertido em vez de rodar ffmpeg de novo, e rc != 0 do job
+  aborta o export. Testado com ffmpeg de mentira em
+  `scripts/android/test_export_manifest.py` (gate do script).
 - Proveniencia: `device.json` no **dataDir raiz** do app Android
   (`/data/data/dev.cmr.rustifyplayer/device.json` — NAO em `files/`),
   device_id do S24 = `s24`, imutavel. APK carimba `app_version` proprio.

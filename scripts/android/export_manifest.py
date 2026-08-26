@@ -10,7 +10,9 @@ artefatos (CMR-190/CMR-191/CMR-194/CMR-212):
   covers/         uma capa por ÁLBUM-KEY do desktop (`<sha1>.jpg`, paridade
                   com o cache do desktop), direto no STAGING da cmr-auto;
                   cover.jpg por pasta continua como fallback (tracks sem
-                  cover_path, manifest/APK antigos)
+                  cover_path, manifest/APK antigos). Job idempotente e
+                  atômico (tmp + rename; pronto = jpg > 0 bytes; re-rodar
+                  só refaz o que faltou); rc != 0 do job aborta o export.
 
 O track_id no desktop é hash do PATH ABSOLUTO da cmr-auto (types.rs
 path_to_id) — o celular não consegue derivá-lo dos arquivos transcodados.
@@ -511,27 +513,53 @@ def cover_jobs(points: list[dict]) -> tuple[dict[str, str], dict[str, str]]:
     return dir_cover, distinct
 
 
-def deploy_covers(points: list[dict]) -> None:
-    """Converte (webp→jpg via ffmpeg, mesmo 600px do cache — sem resize) direto
-    no staging do phone-sync, na cmr-auto: as capas distintas em
-    `.rustify/covers/<sha1>.jpg` e o cover.jpg de cada pasta. Idempotente:
-    pula destino já existente (contadores separados por trilho)."""
-    dir_cover, distinct = cover_jobs(points)
-    job = json.dumps({"dirs": dir_cover, "distinct": distinct})
-    script = f"""
-import json, subprocess, sys
+def covers_job_source(staging: str = STAGING, cache: str = COVER_CACHE) -> str:
+    """Fonte do job de capas que roda NA cmr-auto (`python3 covers-job.py <
+    mapa.json`, mapa = cover_jobs). Vive numa função pura pra ser compilada e
+    EXECUTADA nos testes (staging/cache num tmp, ffmpeg de mentira). Garantias:
+      - pronto = destino é arquivo com > 0 bytes. Um jpg truncado por abort
+        (timeout do ssh, SIGHUP, Ctrl-C) não conta e é refeito na próxima
+        rodada — `exists()` o carimbava como pronto para sempre;
+      - toda escrita vai pra `<dst>.tmp` + rename: o destino nunca aparece
+        pela metade; erro apaga o .tmp;
+      - fase (b) COPIA o `covers/<sha1>.jpg` que a fase (a) acabou de
+        converter em vez de rodar o ffmpeg de novo sobre o mesmo webp.
+    `-f image2 -c:v mjpeg` porque o ffmpeg não adivinha o formato de `.tmp`
+    (bytes idênticos aos do destino `.jpg` — validado no 6.1.1)."""
+    return f"""
+import json, shutil, subprocess, sys
 from pathlib import Path
 mapping = json.load(sys.stdin)
-staging = Path({STAGING!r})
-cache = Path({COVER_CACHE!r})
+staging = Path({staging!r})
+cache = Path({cache!r})
+
+def ready(dst):
+    return dst.is_file() and dst.stat().st_size > 0
+
+def tmp_of(dst):
+    return dst.with_suffix(dst.suffix + ".tmp")
 
 def convert(src, dst):
-    r = subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error",
-                        "-i", str(src), "-q:v", "3", str(dst)],
+    tmp = tmp_of(dst)
+    r = subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", str(src),
+                        "-f", "image2", "-frames:v", "1", "-update", "1",
+                        "-c:v", "mjpeg", "-q:v", "3", str(tmp)],
                        capture_output=True)
-    if r.returncode != 0:
-        dst.unlink(missing_ok=True)
-    return r.returncode == 0
+    if r.returncode != 0 or not ready(tmp):
+        tmp.unlink(missing_ok=True)
+        return False
+    tmp.replace(dst)
+    return True
+
+def copy(src, dst):
+    tmp = tmp_of(dst)
+    try:
+        shutil.copyfile(src, tmp)
+        tmp.replace(dst)
+        return True
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        return False
 
 # (a) capas distintas por álbum-key → .rustify/covers/<sha1>.jpg
 covers_dir = staging / ".rustify" / "covers"
@@ -539,11 +567,11 @@ covers_dir.mkdir(parents=True, exist_ok=True)
 done = skipped = missing = failed = 0
 for name, cover in mapping["distinct"].items():
     dst = covers_dir / name
-    if dst.exists():
+    if ready(dst):
         skipped += 1
         continue
     src = cache / cover
-    if not src.exists():
+    if not src.is_file():
         missing += 1
         continue
     if convert(src, dst):
@@ -554,30 +582,60 @@ print(f"covers/: {{done}} convertidas, {{skipped}} já existiam, "
       f"{{missing}} sem origem, {{failed}} falhas ({{len(mapping['distinct'])}} distintas)")
 
 # (b) cover.jpg por pasta (fallback dos tracks sem cover_path e de manifest/APK antigos)
-done = skipped = missing = failed = 0
+done = copied = skipped = missing = failed = 0
 for rel_dir, cover in mapping["dirs"].items():
     dst_dir = staging / rel_dir
     if not dst_dir.is_dir():
         missing += 1
         continue
     dst = dst_dir / "cover.jpg"
-    if dst.exists():
+    if ready(dst):
         skipped += 1
         continue
+    converted = covers_dir / (Path(cover).stem + ".jpg")
+    if ready(converted):
+        if copy(converted, dst):
+            copied += 1
+        else:
+            failed += 1
+        continue
     src = cache / cover
-    if not src.exists():
+    if not src.is_file():
         missing += 1
         continue
     if convert(src, dst):
         done += 1
     else:
         failed += 1
-print(f"cover.jpg por pasta: {{done}} convertidas, {{skipped}} já existiam, "
-      f"{{missing}} sem origem/pasta, {{failed}} falhas")
+print(f"cover.jpg por pasta: {{done}} convertidas, {{copied}} copiadas de covers/, "
+      f"{{skipped}} já existiam, {{missing}} sem origem/pasta, {{failed}} falhas")
 """
+
+
+def report_covers_job(returncode: int, stdout: str, stderr: str) -> None:
+    """Resultado do job remoto: stdout sempre (os contadores), stderr no
+    stderr local quando houver, e rc != 0 aborta o export. Antes o rc era
+    ignorado e o stderr só aparecia com stdout vazio — um traceback do job
+    depois da fase (a) terminava o export como 'ok'."""
+    if stdout.strip():
+        print(stdout.strip())
+    if stderr.strip():
+        print(stderr.strip(), file=sys.stderr)
+    if returncode != 0:
+        raise SystemExit(f"covers-job falhou rc={returncode}")
+
+
+def deploy_covers(points: list[dict]) -> None:
+    """Converte (webp→jpg via ffmpeg, mesmo 600px do cache — sem resize) direto
+    no staging do phone-sync, na cmr-auto: as capas distintas em
+    `.rustify/covers/<sha1>.jpg` e o cover.jpg de cada pasta. Idempotente e
+    atômico (garantias em covers_job_source; contadores separados por trilho);
+    rc != 0 do job aborta o export."""
+    dir_cover, distinct = cover_jobs(points)
+    job = json.dumps({"dirs": dir_cover, "distinct": distinct})
     # ssh com script + dados: script e JSON vão como arquivos temp no destino.
     subprocess.run(["ssh", CMR_AUTO, "cat > /tmp/covers-job.py"],
-                   input=script, text=True, check=True, timeout=30)
+                   input=covers_job_source(), text=True, check=True, timeout=30)
     subprocess.run(["ssh", CMR_AUTO, "cat > /tmp/covers-map.json"],
                    input=job, text=True, check=True, timeout=60)
     # Teto: ~565 distintas + ~600 pastas a ~0.3s/ffmpeg num run frio.
@@ -585,10 +643,10 @@ print(f"cover.jpg por pasta: {{done}} convertidas, {{skipped}} já existiam, "
         ["ssh", CMR_AUTO, "python3 /tmp/covers-job.py < /tmp/covers-map.json"],
         capture_output=True, text=True, timeout=900,
     )
-    print(proc.stdout.strip() or proc.stderr.strip())
+    report_covers_job(proc.returncode, proc.stdout, proc.stderr)
 
 
-def deploy_artifacts(out_dir: str) -> None:
+def deploy_artifacts(out_dir: str, skip_covers: bool = False) -> None:
     subprocess.run(["ssh", CMR_AUTO, f"mkdir -p {STAGING}/.rustify"], check=True, timeout=30)
     # Token Bearer do sync (CMR-194): garante um na cmr-auto (fonte da verdade,
     # mesmo arquivo que o receptor desktop lê) e leva a cópia no trilho — 5º
@@ -610,8 +668,9 @@ def deploy_artifacts(out_dir: str) -> None:
             ["scp", "-q", f"{out_dir}/{name}", f"{CMR_AUTO}:{STAGING}/.rustify/{name}"],
             check=True, timeout=120,
         )
-    print(f"deploy: 5 artefatos → {CMR_AUTO}:{STAGING}/.rustify/ "
-          f"(6º = covers/, convertido a seguir)")
+    tail = ("(covers/ pulado: --skip-covers)" if skip_covers
+            else "(6º = covers/, convertido a seguir)")
+    print(f"deploy: 5 artefatos → {CMR_AUTO}:{STAGING}/.rustify/ {tail}")
 
 
 def main() -> int:
@@ -621,7 +680,8 @@ def main() -> int:
     ap.add_argument("--deploy", action="store_true",
                     help="scp artefatos pro staging do phone-sync + capas via ssh")
     ap.add_argument("--skip-covers", action="store_true",
-                    help="não converte capas (covers/ por álbum-key nem cover.jpg por pasta)")
+                    help="(só com --deploy) não converte capas "
+                         "(covers/ por álbum-key nem cover.jpg por pasta)")
     args = ap.parse_args()
 
     import os
@@ -652,7 +712,7 @@ def main() -> int:
     print(f"stations.json: {len(stations['stations'])} stations")
 
     if args.deploy:
-        deploy_artifacts(args.out_dir)
+        deploy_artifacts(args.out_dir, skip_covers=args.skip_covers)
         if args.skip_covers:
             print("covers: puladas (--skip-covers) — nem covers/ nem cover.jpg por pasta")
         else:
