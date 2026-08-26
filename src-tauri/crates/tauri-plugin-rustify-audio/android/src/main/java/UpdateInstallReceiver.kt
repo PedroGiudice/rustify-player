@@ -25,17 +25,31 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                     return
                 }
                 confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                try {
-                    context.startActivity(confirm)
-                    UpdaterBus.emit("confirming")
-                } catch (e: Exception) {
-                    Logger.error("RustifyUpdater: não abriu a confirmação", e)
-                    UpdaterBus.emit("failed") { it.put("message", e.message ?: "não abriu a confirmação") }
+                // App invisível: o launch seria descartado em silêncio (BAL
+                // negado no Android 14+). Guarda e deixa o onResume disparar.
+                if (UpdaterBus.sink?.isResumed() != true) {
+                    PendingConfirm.intent = confirm
+                    UpdaterBus.emit("confirm_pending")
+                    return
                 }
+                launchConfirm(context, confirm)
             }
             PackageInstaller.STATUS_SUCCESS -> UpdaterBus.emit("done")
             else -> UpdaterBus.emit("failed") {
                 it.put("message", message ?: "instalação recusada (status $status)")
+            }
+        }
+    }
+
+    companion object {
+        /** Só chamar com a Activity visível (receiver em RESUMED ou onResume). */
+        fun launchConfirm(context: Context, confirm: Intent) {
+            try {
+                context.startActivity(confirm)
+                UpdaterBus.emit("confirming")
+            } catch (e: Exception) {
+                Logger.error("RustifyUpdater: não abriu a confirmação", e)
+                UpdaterBus.emit("failed") { it.put("message", e.message ?: "não abriu a confirmação") }
             }
         }
     }

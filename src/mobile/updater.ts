@@ -22,6 +22,7 @@ export type UpdPhase =
   | "downloading"
   | "verifying"
   | "installing"
+  | "confirm_pending"
   | "confirming"
   | "done"
   | "failed";
@@ -52,7 +53,14 @@ export { upd, appVersion };
 export function reduceProgress(s: UpdState, ev: UpdaterProgress): UpdState {
   switch (ev.phase) {
     case "downloading":
-      return { ...s, phase: "downloading", bytes: ev.bytes ?? s.bytes, total: ev.total ?? s.total, error: null };
+      // total -1 = Content-Length desconhecido; nunca mostrar "-0,0 MB".
+      return {
+        ...s,
+        phase: "downloading",
+        bytes: ev.bytes ?? s.bytes,
+        total: Math.max(0, ev.total ?? s.total),
+        error: null,
+      };
     case "failed":
       return { ...s, phase: "failed", error: ev.message ?? "falha desconhecida" };
     default:
@@ -73,8 +81,19 @@ export function fmtBytes(n: number): string {
   return `${mb.toLocaleString("pt-BR", { minimumFractionDigits: mb ? 1 : 0, maximumFractionDigits: 1 })} MB`;
 }
 
-export const updBusy = () =>
-  ["checking", "downloading", "verifying", "installing", "confirming"].includes(upd().phase);
+/**
+ * Ocupado = o Kotlin ainda está trabalhando. `confirming`/`confirm_pending`
+ * NÃO contam: o diálogo do sistema pode ter sumido (ligação, Home) sem
+ * nenhum status voltar, e aí o único caminho é o usuário re-tentar.
+ */
+export const updBusy = () => ["checking", "downloading", "verifying", "installing"].includes(upd().phase);
+
+/** Puro: fase após um check que FALHOU. O último resultado válido prevalece —
+ *  falha de rede não pode promover "atualizado" a "disponível". */
+export function phaseAfterCheckFailure(check: UpdateCheck | null): UpdPhase {
+  if (!check) return "idle";
+  return check.available ? "available" : "uptodate";
+}
 
 export async function loadAppVersion() {
   try {
@@ -101,7 +120,7 @@ export async function checkForUpdate(manual: boolean): Promise<void> {
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     console.warn("[mobile] updater_check falhou:", msg);
-    setUpd((s) => ({ ...s, phase: s.check ? "available" : "idle", error: manual ? msg : null }));
+    setUpd((s) => ({ ...s, phase: phaseAfterCheckFailure(s.check), error: manual ? msg : null }));
     if (manual) showToast("Não deu para consultar o release");
   }
 }
@@ -129,7 +148,12 @@ export async function installUpdate(): Promise<void> {
 export function bootUpdater(): void {
   void loadAppVersion();
   ipc
-    .onUpdaterProgress((ev) => setUpd((s) => reduceProgress(s, ev)))
+    .onUpdaterProgress((ev) => {
+      setUpd((s) => reduceProgress(s, ev));
+      // O usuário pode estar em qualquer tela: falha e conclusão são notícia.
+      if (ev.phase === "failed") showToast(`Atualização falhou: ${(ev.message ?? "erro").slice(0, 70)}`);
+      else if (ev.phase === "done") showToast("Atualização instalada");
+    })
     .catch((e) => console.warn("[mobile] listener updater_progress:", e));
   if (bootCheckDue(localStorage.getItem(CHECK_KEY), Date.now())) {
     // Depois do boot pesado (biblioteca, fila): nada disso é urgente.

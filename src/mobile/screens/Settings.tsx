@@ -55,6 +55,8 @@ export function Settings() {
         return "Verificando o pacote…";
       case "installing":
         return "Preparando a instalação…";
+      case "confirm_pending":
+        return "Instalação pronta — aguardando o app voltar";
       case "confirming":
         return "Confirme a instalação na tela do sistema";
       case "done":
@@ -70,6 +72,8 @@ export function Settings() {
   const updHint = () => {
     const s = upd();
     if (s.phase === "failed") return s.error ?? "erro desconhecido";
+    if (s.phase === "confirming" || s.phase === "confirm_pending")
+      return "Se o diálogo do sistema sumiu (ligação, Home), toque em Tentar de novo — o download é refeito.";
     if (s.phase === "needs_permission")
       return "O Android exige liberar 'instalar apps desconhecidos' para o Rustify uma vez. Volte e toque de novo.";
     if (s.phase === "available" && s.check)
@@ -79,14 +83,15 @@ export function Settings() {
   const updButton = () => {
     const p = upd().phase;
     if (p === "available" || p === "needs_permission") return "Baixar e instalar";
-    if (p === "failed") return "Tentar de novo";
-    if (p === "downloading" || p === "verifying" || p === "installing" || p === "confirming") return "…";
+    if (p === "failed" || p === "confirming" || p === "confirm_pending") return "Tentar de novo";
+    if (p === "downloading" || p === "verifying" || p === "installing") return "…";
     return "Buscar";
   };
   const updAction = () => {
     const p = upd().phase;
     if (p === "available" || p === "needs_permission") return installUpdate();
-    if (p === "failed" && upd().check?.available) return installUpdate();
+    if ((p === "failed" || p === "confirming" || p === "confirm_pending") && upd().check?.available)
+      return installUpdate();
     return checkForUpdate(true);
   };
 

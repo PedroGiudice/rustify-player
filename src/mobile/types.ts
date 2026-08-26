@@ -154,6 +154,8 @@ export type UpdaterPhase =
   | "downloading"
   | "verifying"
   | "installing"
+  /** App estava invisível ao chegar a confirmação; o plugin dispara no resume. */
+  | "confirm_pending"
   | "confirming"
   | "done"
   | "failed";

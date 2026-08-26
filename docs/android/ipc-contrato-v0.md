@@ -236,7 +236,7 @@ const r = await invoke('plugin:rustify-audio|updater_install',
 // { status: 'started' | 'needs_permission' | 'busy' }
 // needs_permission: o Kotlin já abriu a tela do sistema; re-tocar depois.
 // progresso: addPluginListener('rustify-audio', 'updater_progress', ev)
-// ev = { phase: 'downloading'|'verifying'|'installing'|'confirming'|'done'|'failed',
+// ev = { phase: 'downloading'|'verifying'|'installing'|'confirm_pending'|'confirming'|'done'|'failed',
 //        bytes?, total?, message? }
 ```
 

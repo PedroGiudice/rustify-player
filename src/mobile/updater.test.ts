@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bootCheckDue, fmtBytes, reduceProgress, type UpdState } from "./updater";
+import { bootCheckDue, fmtBytes, phaseAfterCheckFailure, reduceProgress, type UpdState } from "./updater";
 
 const base: UpdState = {
   phase: "available",
@@ -33,10 +33,27 @@ describe("reduceProgress", () => {
     expect(s.check).toEqual(base.check);
   });
 
-  it("verifying/installing/confirming/done trocam só a fase", () => {
-    for (const phase of ["verifying", "installing", "confirming", "done"] as const) {
+  it("verifying/installing/confirm_pending/confirming/done trocam só a fase", () => {
+    for (const phase of ["verifying", "installing", "confirm_pending", "confirming", "done"] as const) {
       expect(reduceProgress(base, { phase }).phase).toBe(phase);
     }
+  });
+
+  it("total desconhecido (-1) vira 0 — nunca '-0,0 MB' na tela", () => {
+    const s = reduceProgress(base, { phase: "downloading", bytes: 10, total: -1 });
+    expect(s.total).toBe(0);
+  });
+});
+
+describe("phaseAfterCheckFailure", () => {
+  it("sem check anterior volta a idle", () => {
+    expect(phaseAfterCheckFailure(null)).toBe("idle");
+  });
+  it("check anterior 'atualizado' NÃO vira 'disponível' por falha de rede", () => {
+    expect(phaseAfterCheckFailure({ ...base.check!, available: false })).toBe("uptodate");
+  });
+  it("check anterior 'disponível' continua oferecendo o download", () => {
+    expect(phaseAfterCheckFailure(base.check)).toBe("available");
   });
 });
 

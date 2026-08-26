@@ -80,6 +80,10 @@ data class UpdateManifest(
 object UpdaterBus {
     interface Sink {
         fun onUpdaterEvent(payload: JSObject)
+
+        /** Activity em RESUMED agora? Consultado pelo receiver NA HORA do
+         *  broadcast — só nesse estado o launch da confirmação passa. */
+        fun isResumed(): Boolean
     }
 
     @Volatile
@@ -91,6 +95,20 @@ object UpdaterBus {
         fill(o)
         sink?.onUpdaterEvent(o)
     }
+}
+
+/**
+ * Confirmação diferida. No Android 14+ o `STATUS_PENDING_USER_ACTION` chega
+ * com background-activity-launch NEGADO (PackageInstallerSession.
+ * sendOnUserActionRequired: setPendingIntentBackgroundActivityLaunchAllowed
+ * (false)); um `startActivity` do receiver com o app invisível (tela apagada
+ * ou outro app na frente durante o download) é descartado EM SILÊNCIO — sem
+ * exceção, só "Background activity launch blocked!" no logcat. O intent fica
+ * aqui e o plugin o dispara no `onResume`, quando o launch é foreground.
+ */
+object PendingConfirm {
+    @Volatile
+    var intent: Intent? = null
 }
 
 /**
@@ -264,6 +282,15 @@ object Updater {
         params.setSize(apk.length())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             params.setInstallReason(PackageManager.INSTALL_REASON_USER)
+        }
+        // Sessão anterior abandonada (usuário saiu da confirmação): o sistema
+        // não a fecha sozinho; sem isto cada retry deixa uma sessão órfã.
+        for (old in installer.mySessions) {
+            try {
+                installer.abandonSession(old.sessionId)
+            } catch (e: Exception) {
+                // já fechada/abandonada
+            }
         }
         val sessionId = installer.createSession(params)
         installer.openSession(sessionId).use { session ->

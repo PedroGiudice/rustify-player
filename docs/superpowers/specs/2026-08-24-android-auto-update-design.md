@@ -84,9 +84,19 @@ lado Rust):
   Sem FileProvider: a Session API recebe o stream direto.
 
 Manifest: `<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>`.
-Se `canRequestPackageInstalls()` for false, o command devolve
-`needs_permission` e o frontend dispara o intent
-`ACTION_MANAGE_UNKNOWN_APP_SOURCES` (toggle único por install).
+Se `canRequestPackageInstalls()` for false, o próprio Kotlin abre a tela
+`ACTION_MANAGE_UNKNOWN_APP_SOURCES` (já filtrada para o app; toggle único por
+install) e devolve `needs_permission` — o frontend só avisa e o usuário
+re-toca depois de conceder.
+
+**Confirmação diferida (achado da revisão, 26/08):** no Android 14+ o
+`STATUS_PENDING_USER_ACTION` chega ao receiver com background-activity-launch
+negado; se o app estiver invisível (tela apagada ou outro app na frente
+quando o download termina), o `startActivity` da confirmação é descartado em
+silêncio. O receiver consulta o lifecycle real da Activity: visível → dispara;
+invisível → guarda o intent (`PendingConfirm`) e emite `confirm_pending`; o
+`onResume` do plugin dispara ao voltar. Sessões antigas do PackageInstaller
+são abandonadas a cada novo install (retry não acumula órfãs).
 
 ### 3. Frontend mobile (Settings + boot)
 
@@ -107,9 +117,12 @@ Se `canRequestPackageInstalls()` for false, o command devolve
 
 ## Testes
 
-- Comparação semver e parse do manifest: lógica isolada no Kotlin; a
-  validação automatizada real é limitada (não há harness de teste Kotlin
-  no plugin) — o contrato é exercitado por E2E manual.
+- Comparação semver e parse do manifest: `object` puro no Kotlin com JUnit4
+  (`android/src/test/java/UpdaterTest.kt`; roda com
+  `./gradlew :tauri-plugin-rustify-audio:testDebugUnitTest` em
+  `src-tauri/gen/android`). Wire Rust em `models.rs`; estado da UI em
+  `src/mobile/updater.test.ts` (vitest). O fluxo de instalação em si só é
+  exercitado por E2E manual.
 - `release_android.sh`: modo `--dry-run` (gera JSON e imprime, não sobe).
 - E2E manual (roteiro): instalar versão N no S24, publicar N+1 pela VM,
   abrir o app → banner → download → confirmação → app reabre em N+1 e o

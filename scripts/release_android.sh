@@ -3,8 +3,9 @@
 # o manifest `android-latest.json` que o app consulta para se auto-atualizar
 # (spec docs/superpowers/specs/2026-08-24-android-auto-update-design.md).
 #
-#   ./scripts/release_android.sh            # build + upload
-#   ./scripts/release_android.sh --dry-run  # build + manifest, sem upload
+#   ./scripts/release_android.sh                # build + upload
+#   ./scripts/release_android.sh --dry-run      # build + manifest, sem upload
+#   ./scripts/release_android.sh --publish-only # sobe o que o --dry-run gerou
 #
 # NAO bumpa versao: bump manual em src-tauri/tauri.conf.json ANTES (o APK
 # carimba versionName/versionCode a partir dela; sem bump o aparelho nao ve
@@ -22,7 +23,13 @@ cd "$(dirname "$0")/.."
 REPO="PedroGiudice/rustify-player"
 TAG="dev"
 DRY=0
-[[ "${1:-}" == "--dry-run" ]] && DRY=1
+PUBLISH_ONLY=0
+case "${1:-}" in
+  --dry-run) DRY=1 ;;
+  --publish-only) PUBLISH_ONLY=1 ;;
+  "") ;;
+  *) echo "uso: $0 [--dry-run|--publish-only]"; exit 2 ;;
+esac
 
 for t in gh jq sha256sum bun cargo python3; do
   command -v "$t" >/dev/null 2>&1 || { echo "[android] falta $t"; exit 2; }
@@ -34,6 +41,19 @@ OUT="src-tauri/target/android-release"
 APK_OUT_DIR="src-tauri/gen/android/app/build/outputs/apk"
 mkdir -p "$OUT"
 
+if [[ "$PUBLISH_ONLY" == "1" ]]; then
+  # Reaproveita o artefato validado pelo --dry-run: mesma versao, sha conferido
+  # contra o manifest gerado junto. Evita compilar duas vezes por release.
+  test -f "$OUT/$APK_NAME" -a -f "$OUT/android-latest.json" \
+    || { echo "[android] --publish-only: falta $OUT/$APK_NAME ou o manifest (rode --dry-run antes)"; exit 1; }
+  SHA="$(sha256sum "$OUT/$APK_NAME" | cut -d' ' -f1)"
+  SIZE="$(stat -c %s "$OUT/$APK_NAME")"
+  MSHA="$(jq -r .sha256 "$OUT/android-latest.json")"
+  MVER="$(jq -r .version "$OUT/android-latest.json")"
+  if [[ "$MSHA" != "$SHA" || "$MVER" != "$VERSION" ]]; then
+    echo "[android] --publish-only: manifest ($MVER/$MSHA) nao bate com o APK ($VERSION/$SHA)"; exit 1
+  fi
+else
 echo "[android] frontend (obrigatorio: o dist e embutido no .so)"
 bun run build
 
@@ -64,6 +84,8 @@ jq -n \
   --arg s "$SHA" \
   --argjson z "$SIZE" \
   '{version: $v, apk_url: $u, sha256: $s, size: $z}' > "$OUT/android-latest.json"
+
+fi
 
 echo "[android] $APK_NAME  $((SIZE / 1048576)) MB  sha256=$SHA"
 cat "$OUT/android-latest.json"

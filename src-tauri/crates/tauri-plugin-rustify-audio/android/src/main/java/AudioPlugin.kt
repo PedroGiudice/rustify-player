@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Build
 import android.webkit.WebView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -159,6 +161,22 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
             UpdaterBus.sink = null
         }
         releaseController()
+    }
+
+    /**
+     * Lido do lifecycle REAL da Activity, não de um flag em onResume/onPause:
+     * o plugin é registrado depois do primeiro resume (a partir da thread
+     * Rust), então um flag ficaria false no cold start e diferiria a
+     * confirmação mesmo com o app na frente.
+     */
+    override fun isResumed(): Boolean =
+        (activity as? LifecycleOwner)?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
+
+    /** Confirmação que chegou com o app invisível: dispara agora, visível. */
+    override fun onResume() {
+        val confirm = PendingConfirm.intent ?: return
+        PendingConfirm.intent = null
+        UpdateInstallReceiver.launchConfirm(activity, confirm)
     }
 
     // -------------------------------------------------------------- commands

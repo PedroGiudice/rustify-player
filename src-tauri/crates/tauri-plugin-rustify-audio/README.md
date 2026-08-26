@@ -112,7 +112,9 @@ await addPluginListener('rustify-audio', 'position', (s) => {})   // tick de 500
 Perder esses eventos não perde dado: quem sabe o que foi escutado é o journal.
 
 - `updater_progress` — `{ phase, bytes?, total?, message? }`, `phase` ∈
-  `downloading | verifying | installing | confirming | done | failed`. Emitido
+  `downloading | verifying | installing | confirm_pending | confirming | done | failed`
+  (`confirm_pending` = a confirmação chegou com o app invisível; o plugin a
+  dispara no `onResume`). Emitido
   pela thread do download e pelo `UpdateInstallReceiver` (status do
   PackageInstaller). Exige `REQUEST_INSTALL_PACKAGES` (manifest do plugin) e o
   toggle "instalar apps desconhecidos" concedido pelo usuário.
