@@ -158,35 +158,47 @@ pub struct RecentEntry {
 }
 
 impl RecentsRing {
-    /// Registra uma escuta. Repetir renova o relógio do rádio (`at`) e move
-    /// pro fim; a poda roda na escrita — cap e TTL nunca ficam para depois.
+    /// Registra uma escuta. Uma escuta mais NOVA renova o relógio do rádio
+    /// (`at`) e move a entrada pro fim — o anel é ordenado por `at` e o cap
+    /// expulsa pela frente; evento mais velho que o relógio (o sync re-drena
+    /// do zero) nem move nem regride. A poda roda na escrita — cap e TTL
+    /// nunca ficam para depois.
     ///
     /// `played_at` é STICKY: um skip cedo posterior (`None`) renova `at` mas
-    /// não apaga o play que contou antes. Devolve `true` se algo mudou — dois
-    /// feeders leem o mesmo journal e o segundo não deve reescrever o arquivo
-    /// à toa.
+    /// não apaga o play que contou antes. Devolve `true` se algo mudou no
+    /// anel — inclusive quando só a poda removeu alguém: dois feeders leem o
+    /// mesmo journal e o segundo não deve reescrever o arquivo à toa, mas uma
+    /// entrada expirada precisa sumir do disco.
     pub fn push(&mut self, id: u64, now_s: i64, played_at: Option<i64>) -> bool {
         let s = id.to_string();
-        let mut entry = match self.ids.iter().position(|e| e.id == s) {
-            Some(i) => self.ids.remove(i),
+        let antes = self.ids.len();
+        let mut mudou = match self.ids.iter().position(|e| e.id == s) {
             None => {
                 self.ids.push(RecentEntry { id: s, at: now_s, played_at });
-                self.prune(now_s);
-                return true;
+                true
+            }
+            Some(i) => {
+                let e = &mut self.ids[i];
+                // Feeders podem se sobrepor fora de ordem: o play mais
+                // recente sempre vence.
+                let played = match (e.played_at, played_at) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (a, b) => a.or(b),
+                };
+                let mudou_play = played != e.played_at;
+                e.played_at = played;
+                if now_s > e.at {
+                    e.at = now_s;
+                    let entry = self.ids.remove(i);
+                    self.ids.push(entry);
+                    true
+                } else {
+                    mudou_play
+                }
             }
         };
-        // Feeders podem se sobrepor fora de ordem (o sync re-drena do zero):
-        // o relógio nunca anda para trás e o play mais recente sempre vence.
-        let at = entry.at.max(now_s);
-        let played = match (entry.played_at, played_at) {
-            (Some(a), Some(b)) => Some(a.max(b)),
-            (a, b) => a.or(b),
-        };
-        let mudou = at != entry.at || played != entry.played_at;
-        entry.at = at;
-        entry.played_at = played;
-        self.ids.push(entry);
         self.prune(now_s);
+        mudou |= self.ids.len() != antes;
         mudou
     }
 
@@ -240,9 +252,10 @@ pub struct ContinuityState {
     pub recents: Mutex<RecentsRing>,
     recents_path: Mutex<Option<std::path::PathBuf>>,
     /// Até onde o `lib_recent_plays` já leu o journal. Só em MEMÓRIA, de
-    /// propósito: reinstalar o app zera o `seq` do journal (o contador vive
-    /// no SharedPreferences do plugin) e um cursor persistido pularia tudo.
-    /// Entre compactações o `seq` é monotônico, então avançar pelo `last_seq`
+    /// propósito: o `seq` é monotônico por INSTALAÇÃO (o contador vive nas
+    /// prefs do plugin) — a compactação do journal não o reseta; só
+    /// reinstalar/limpar dados, que também reinicia este processo. Um cursor
+    /// persistido sobreviveria a isso e pularia tudo; avançar pelo `last_seq`
     /// do drain é seguro.
     recents_seq: AtomicI64,
     wake_flag: Mutex<bool>,
@@ -264,7 +277,9 @@ impl ContinuityState {
     /// Registra escutas e persiste. Write-through: é ~1 escrita por faixa
     /// tocada, e perder o anel num kill do app é perder o "não repete". Só
     /// toca o disco se o anel mudou — os feeders leem o mesmo journal e o
-    /// segundo a chegar não tem nada de novo.
+    /// segundo a chegar não tem nada de novo. A escrita é atômica
+    /// (`.tmp` + rename, como o compact do EventJournal): um kill no meio
+    /// não deixa o arquivo meio-escrito, que o boot leria como anel vazio.
     pub fn remember_recents(&self, items: impl IntoIterator<Item = (u64, i64, Option<i64>)>) {
         let Ok(mut r) = self.recents.lock() else { return };
         let mut mudou = false;
@@ -276,7 +291,7 @@ impl ContinuityState {
         }
         let path = self.recents_path.lock().ok().and_then(|p| p.clone());
         if let Some(p) = path {
-            if let Err(e) = std::fs::write(&p, r.to_json()) {
+            if let Err(e) = write_atomic(&p, &r.to_json()) {
                 tracing::warn!(%e, "recents: falha ao persistir");
             }
         }
@@ -324,6 +339,17 @@ impl ContinuityState {
         }
         *f = false;
     }
+}
+
+/// Grava `bytes` em `<path>.tmp` e troca por rename — no mesmo diretório o
+/// rename(2) é atômico, então o leitor vê o arquivo antigo ou o novo, nunca
+/// um meio-escrito.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 /// A fila precisa de mais faixas?
@@ -486,12 +512,29 @@ pub(crate) mod tender {
             .unwrap_or(0)
     }
 
-    /// `block_on` com teto — o `run_mobile_plugin_async` não tem timeout
-    /// próprio e o runtime do Tauri é tokio.
-    fn call<T>(fut: impl std::future::Future<Output = tauri_plugin_rustify_audio::Result<T>>) -> Result<T, String> {
+    /// IPC do plugin com teto, SEM nunca dropar o future: o
+    /// `run_mobile_plugin_async` do Tauri resolve a resposta com
+    /// `send().unwrap()` num oneshot dentro do callback JNI (`extern "C"`) —
+    /// se o receiver já morreu porque o future foi dropado sob timeout, o
+    /// unwrap panica e o processo aborta. O future roda numa task própria
+    /// do runtime (tokio) e o teto vale sobre o `JoinHandle`: dropá-lo não
+    /// cancela a task, e a resposta tardia é descartada em silêncio.
+    ///
+    /// `op` recebe um clone do handle porque a task exige `'static`.
+    fn call<R, T, Fut>(
+        audio: &tauri_plugin_rustify_audio::RustifyAudio<R>,
+        op: impl FnOnce(tauri_plugin_rustify_audio::RustifyAudio<R>) -> Fut,
+    ) -> Result<T, String>
+    where
+        R: tauri::Runtime,
+        T: Send + 'static,
+        Fut: std::future::Future<Output = tauri_plugin_rustify_audio::Result<T>> + Send + 'static,
+    {
+        let task = tauri::async_runtime::spawn(op(audio.clone()));
         tauri::async_runtime::block_on(async {
-            match tokio::time::timeout(IPC_TIMEOUT, fut).await {
-                Ok(r) => r.map_err(|e| e.to_string()),
+            match tokio::time::timeout(IPC_TIMEOUT, task).await {
+                Ok(Ok(r)) => r.map_err(|e| e.to_string()),
+                Ok(Err(e)) => Err(format!("task do IPC do player: {e}")),
                 Err(_) => Err("timeout no IPC do player".into()),
             }
         })
@@ -545,7 +588,8 @@ pub(crate) mod tender {
             .lock()
             .map_err(|_| "lock envenenado")?
             .journal_cursor;
-        let drained = call(app.rustify_audio().drain_events(cursor.max(0)))?;
+        let after = cursor.max(0);
+        let drained = call(app.rustify_audio(), move |a| async move { a.drain_events(after).await })?;
         // Toda escuta do journal alimenta o anel de recentes, mesmo no
         // primeiro ciclo (recente é recente, de qualquer sessão). O helper
         // decide o que é escuta e o que contou como play (CMR-215).
@@ -603,7 +647,7 @@ pub(crate) mod tender {
         };
 
         let audio = app.rustify_audio();
-        let st = call(audio.get_state())?;
+        let st = call(audio, |a| async move { a.get_state().await })?;
         let origin = origin_for(&mode);
 
         // Skips do journal (fone/notificação) + o que o app reportou na hora.
@@ -613,11 +657,11 @@ pub(crate) mod tender {
             rejeitou |= std::mem::take(&mut c.reaction_pending);
         }
 
-        let mut queue = call(audio.get_queue())?;
+        let mut queue = call(audio, |a| async move { a.get_queue().await })?;
         if rejeitou {
             let origins: Vec<&str> = queue.items.iter().map(|e| e.origin.as_str()).collect();
             if let Some(from) = truncate_from(&origins, queue.index, origin) {
-                queue = call(audio.truncate_queue(from))?;
+                queue = call(audio, move |a| async move { a.truncate_queue(from).await })?;
                 tracing::info!(from, "continuity: cauda descartada após rejeição");
             }
         }
@@ -685,7 +729,7 @@ pub(crate) mod tender {
             .map(|t| to_queue_item(t, origin, context_id.as_deref()))
             .collect();
 
-        call(audio.add_items(tauri_plugin_rustify_audio::AddItemsRequest {
+        let req = tauri_plugin_rustify_audio::AddItemsRequest {
             items,
             origin: origin.to_string(),
             context_id: context_id.clone(),
@@ -693,7 +737,8 @@ pub(crate) mod tender {
             // A fila pode ter chegado ao fim antes deste ciclo: anexar sem
             // retomar deixaria o item novo parado depois do fim.
             resume_if_ended: true,
-        }))?;
+        };
+        call(audio, move |a| async move { a.add_items(req).await })?;
 
         {
             let mut c = state.inner.lock().map_err(|_| "lock envenenado")?;
@@ -1013,6 +1058,48 @@ mod tests {
         assert!(r.push(2, 200, None));
         assert!(r.push(2, 200, Some(180)));
         assert!(!r.push(2, 200, Some(180)));
+    }
+
+    #[test]
+    fn push_devolve_true_quando_prune_removeu() {
+        // Anel carregado do disco (from_json não poda) com uma entrada já
+        // expirada. O feeder repete um evento que NÃO muda a entrada viva —
+        // mas a poda tirou a expirada, e o arquivo precisa refletir isso.
+        let now = 1_000_000_000_i64;
+        let velho = now - RECENTS_TTL_S - 1;
+        let json = format!(
+            r#"{{"ids":[{{"id":"1","at":{velho}}},{{"id":"2","at":{now},"played_at":{now}}}]}}"#
+        );
+        let mut r = RecentsRing::from_json(json.as_bytes());
+        assert_eq!(r.len(), 2);
+        assert!(r.push(2, now, Some(now)));
+        assert_eq!(r.ids(), vec!["2"]);
+        // Sem nada a podar e sem mudança na entrada: agora é false.
+        assert!(!r.push(2, now, Some(now)));
+    }
+
+    #[test]
+    fn entrada_sem_mudanca_nao_e_movida() {
+        // O anel é ordenado por `at` (o cap expulsa pela frente): só uma
+        // escuta mais NOVA move a entrada pro fim. Re-drain de evento velho
+        // (sync re-lê do zero) e play que só completa o `played_at` ficam
+        // onde estão.
+        let mut r = RecentsRing::default();
+        r.push(1, 100, None);
+        r.push(2, 200, None);
+        assert!(!r.push(1, 100, None));
+        assert_eq!(r.ids(), vec!["1", "2"]);
+        // `at` igual, played_at novo: muda (true) mas em lugar.
+        assert!(r.push(1, 100, Some(90)));
+        assert_eq!(r.ids(), vec!["1", "2"]);
+        assert_eq!(r.ids[0].played_at, Some(90));
+        // Evento mais velho que o relógio da entrada: nem move nem regride.
+        assert!(!r.push(2, 150, None));
+        assert_eq!(r.ids(), vec!["1", "2"]);
+        assert_eq!(r.ids[1].at, 200);
+        // Escuta mais nova: aí sim vai pro fim.
+        assert!(r.push(1, 300, None));
+        assert_eq!(r.ids(), vec!["2", "1"]);
     }
 
     #[test]

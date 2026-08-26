@@ -498,7 +498,12 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   (Kotlin: Media3/ExoPlayer + MediaSessionService, fila NATIVA com
   auto-advance sem JS, EventJournal JSONL com fsync). README do crate =
   contrato. Regra dura: command novo no plugin DEVE ser `async fn` com
-  `AppHandle<R>` (State sincrono deadlocka a main thread).
+  `AppHandle<R>` (State sincrono deadlocka a main thread). Segunda regra
+  dura: NUNCA dropar o future de um IPC do plugin sob timeout (o tauri
+  faz `send().unwrap()` num oneshot dentro de callback JNI `extern "C"`
+  — sem receiver, panic = abort). Teto de tempo = `tauri::async_runtime::
+  spawn` do future + `tokio::time::timeout` no JoinHandle (padrao do
+  `lib_recent_plays` e do `call` do tender em mobile_continuity.rs).
   Media3 fixo em 1.10.1 (1.11 arrasta kotlin-stdlib 2.2, quebra com o
   KGP 1.9.25 do projeto gerado).
 - Biblioteca mobile: manifest exportado do Qdrant da cmr-auto

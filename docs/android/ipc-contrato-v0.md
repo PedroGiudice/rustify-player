@@ -32,12 +32,18 @@ duration_ms, path, lrc_path, track_number, genre_name, dominant_color }`
 
 `lib_recent_plays` (CMR-215): faixas DISTINTAS que **contaram como play**
 (`counts_as_play`: fim da escuta ≥ 20s OU ≥ 25% da faixa), da mais recente pra
-mais antiga, resolvidas contra o acervo (o que o manifest não conhece é
-omitido). É `async`: antes de ler o anel, drena o journal do plugin a partir de
-um cursor próprio (em memória — reinstalar zera o `seq` do journal), best-effort
-com teto de 3s e SEM ack (quem compacta é o sync). Chamar logo depois de
-`track_changed` já vê a faixa que acabou de fechar: o service appenda no
-journal antes de emitir o evento.
+mais antiga, resolvidas contra o acervo. O anel é lido inteiro, resolvido e só
+então cortado em `limit`: o que o manifest não conhece é omitido **sem encolher
+a shelf**. É `async`: antes de ler o anel, drena o journal do plugin a partir de
+um cursor próprio (só em memória — o `seq` é monotônico por instalação e a
+compactação não o reseta; reinstalar/limpar dados zera os dois), best-effort
+com teto de 3s e SEM ack (quem compacta é o sync). O drain roda numa task
+própria e o teto vale sobre o `JoinHandle` — o future do IPC nunca é dropado
+(ver a regra dura em "Player"). Chamar logo depois de `track_changed` já vê a
+faixa que acabou de fechar: o service appenda no journal antes de emitir o
+evento. O fim da fila NÃO emite `track_changed` — só `state_changed` com
+`status: 'ended'`; o store recarrega a shelf também aí, e chamadas concorrentes
+(foco + troca + fim) reaproveitam a promise em voo.
 
 `Folder`: `{ name, track_count }`.
 
@@ -102,6 +108,14 @@ o sinal v3 já desconta origem passiva; o evento volta pro desktop via sync.
 ## Player (plugin rustify-audio)
 
 `invoke('plugin:rustify-audio|<cmd>', args)` — args camelCase.
+
+**Regra dura (lado Rust):** quem chama a API Rust do plugin (`app.rustify_audio()
+.<cmd>()`) com teto de tempo NUNCA pode dropar o future sob timeout. O Tauri
+resolve o IPC móvel com `send().unwrap()` num oneshot dentro do callback JNI
+(`extern "C"`): sem receiver, o unwrap panica e o processo aborta. Padrão:
+`tauri::async_runtime::spawn(async move { ... })` e o `tokio::time::timeout`
+sobre o `JoinHandle` — dropar o handle não cancela a task; a resposta tardia é
+descartada (`lib_recent_plays` e o `call` do tender).
 
 ```ts
 await invoke('plugin:rustify-audio|initialize')   // 1x no boot (pede notificação)

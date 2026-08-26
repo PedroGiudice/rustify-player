@@ -100,6 +100,15 @@ context_id, started_at, timestamp, end_position_ms, duration_ms }`.
 **`trackId` / `track_id` são String em toda a cadeia.** Os ids do acervo são u64
 hash-based; passar por `Number` em JS corrompe qualquer valor acima de 2^53.
 
+**Consumidores Rust (`app.rustify_audio().<cmd>()`) nunca dropam o future sob
+timeout.** O `run_mobile_plugin_async` do Tauri resolve a resposta com
+`send().unwrap()` num oneshot dentro do callback JNI (`extern "C"`): se o
+receiver já morreu, o unwrap panica e o processo aborta. Teto de tempo =
+`tauri::async_runtime::spawn(async move { ... })` + `tokio::time::timeout`
+sobre o `JoinHandle` (dropar o handle não cancela a task; a resposta tardia é
+descartada). Commands novos: `async fn` com `AppHandle<R>` — `State` síncrono
+deadlocka a main thread.
+
 ## Eventos (best-effort)
 
 ```ts

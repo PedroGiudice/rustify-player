@@ -126,15 +126,22 @@ fn lib_taste_positives(lib: State<Library>) -> Vec<Track> {
 
 /// Shelf "Recently played" da Home (CMR-215): faixas DISTINTAS que CONTARAM
 /// como play (`counts_as_play`: 20s ou 25% da faixa), da mais recente pra
-/// mais antiga, resolvidas contra o acervo (o que o manifest não conhece é
-/// omitido; a ordem é preservada).
+/// mais antiga, resolvidas contra o acervo. O anel é lido INTEIRO (≤ 300
+/// ids), resolvido, e só então cortado em `limit`: o que o manifest não
+/// conhece é omitido sem encolher a shelf — cortar antes de resolver fazia
+/// uma faixa fora do acervo entre as 8 mais recentes virar shelf de 7.
 ///
 /// Antes de ler o anel, drena o journal a partir de um cursor próprio, em
 /// memória (`ContinuityState::recents_seq`) — best-effort com teto de 3s: o
 /// tender e o worker de sync também alimentam o anel, então falhar aqui só
 /// atrasa a shelf, não a perde. SEM ack: quem compacta o journal é o sync.
-/// O Mutex da biblioteca só é travado DEPOIS do await — o guard nunca
-/// atravessa um `.await`.
+///
+/// O drain roda numa task própria e o teto vale sobre o `JoinHandle` — o
+/// future do IPC NUNCA é dropado sob timeout: o Tauri resolve a resposta
+/// com `send().unwrap()` num oneshot dentro do callback JNI (`extern "C"`),
+/// e sem receiver o unwrap panica e aborta o processo. Dropar o handle não
+/// cancela a task; a resposta tardia é descartada. O Mutex da biblioteca só
+/// é travado DEPOIS do await — o guard nunca atravessa um `.await`.
 #[tauri::command]
 async fn lib_recent_plays(
     app: tauri::AppHandle,
@@ -144,13 +151,12 @@ async fn lib_recent_plays(
 ) -> Result<Vec<Track>, String> {
     use tauri_plugin_rustify_audio::RustifyAudioExt;
     let cursor = cont.recents_cursor();
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        app.rustify_audio().drain_events(cursor),
-    )
-    .await
-    {
-        Ok(Ok(drained)) => {
+    let handle = app.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        handle.rustify_audio().drain_events(cursor).await
+    });
+    match tokio::time::timeout(std::time::Duration::from_secs(3), task).await {
+        Ok(Ok(Ok(drained))) => {
             cont.remember_recents(drained.events.iter().filter_map(|ev| {
                 crate::mobile_continuity::recents_feed_item(
                     &ev.event_type,
@@ -166,8 +172,11 @@ async fn lib_recent_plays(
             let visto = drained.events.iter().map(|e| e.seq).max().unwrap_or(cursor);
             cont.advance_recents_cursor(drained.last_seq.max(visto));
         }
-        Ok(Err(e)) => {
+        Ok(Ok(Err(e))) => {
             tracing::debug!(%e, "lib_recent_plays: drain falhou, shelf segue com o anel");
+        }
+        Ok(Err(e)) => {
+            tracing::debug!(%e, "lib_recent_plays: task do drain morreu, shelf segue com o anel");
         }
         Err(_) => {
             tracing::debug!("lib_recent_plays: drain com timeout, shelf segue com o anel");
@@ -177,9 +186,13 @@ async fn lib_recent_plays(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let ids = cont.recent_play_ids(now_s, limit.unwrap_or(8));
-    let l = lib.0.lock().map_err(|_| "library lock".to_string())?;
-    Ok(l.by_ids(&ids))
+    let ids = cont.recent_play_ids(now_s, crate::mobile_continuity::RECENTS_CAP);
+    let mut tracks = {
+        let l = lib.0.lock().map_err(|_| "library lock".to_string())?;
+        l.by_ids(&ids)
+    };
+    tracks.truncate(limit.unwrap_or(8));
+    Ok(tracks)
 }
 
 /// Letra da faixa a partir do sidecar `.lrc` do acervo (1328 no S24 em

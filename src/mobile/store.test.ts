@@ -17,16 +17,19 @@ vi.mock("./ipc", () => ({
   playerSetQueue: vi.fn(async () => undefined),
   playerGetQueue: vi.fn(async () => ({ items: [], index: 0 })),
   continuityArm: vi.fn(async () => undefined),
+  libRecentPlays: vi.fn(async () => []),
   toQueueItem: (t: Track) => ({ trackId: t.id, path: t.path }),
   toQueueItems: (l: Track[]) => l.map((t) => ({ trackId: t.id, path: t.path })),
 }));
 
 import * as ipc from "./ipc";
 import {
+  loadRecents,
   playFolder,
   playFolderFrom,
   playFromHere,
   playTrackFrom,
+  recents,
   shuffleFolder,
   shuffleList,
 } from "./store";
@@ -137,5 +140,35 @@ describe('playFromHere ("Tocar a partir daqui" da sheet — resíduo do CMR-211)
     expect(ids[0]).toBe("3");
     expect(ids.slice(1).sort()).toEqual(["4", "5"]);
     expect(armed().seedTrackId).toBe("3");
+  });
+});
+
+describe('loadRecents (shelf "Recently played" — CMR-215)', () => {
+  it("coalesce chamadas concorrentes: uma única ida ao lib_recent_plays", async () => {
+    // foco + track_changed + fim de fila chegam juntos; cada um drenaria o
+    // journal de novo à toa.
+    let resolve!: (v: Track[]) => void;
+    (ipc.libRecentPlays as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<Track[]>((r) => (resolve = r)),
+    );
+    const a = loadRecents();
+    const b = loadRecents();
+    expect(b).toBe(a);
+    expect(ipc.libRecentPlays).toHaveBeenCalledTimes(1);
+    resolve([track(1), track(2)]);
+    await a;
+    expect(recents().map((t) => t.id)).toEqual(["1", "2"]);
+    // Liquidada: a próxima chamada vai ao backend de novo.
+    await loadRecents();
+    expect(ipc.libRecentPlays).toHaveBeenCalledTimes(2);
+  });
+
+  it("falha do IPC não derruba a shelf nem prende a próxima chamada", async () => {
+    (ipc.libRecentPlays as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      throw new Error("sem plugin");
+    });
+    await loadRecents();
+    await loadRecents();
+    expect(ipc.libRecentPlays).toHaveBeenCalledTimes(2);
   });
 });

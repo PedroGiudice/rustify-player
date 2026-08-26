@@ -54,17 +54,28 @@ const byId = createMemo(() => {
 const [stations, setStations] = createSignal<StationMeta[]>([]);
 const [favorites, setFavorites] = createSignal<Track[]>([]);
 /** Shelf "Recently played" (CMR-215) — o que CONTOU como play, do anel de
- *  recentes do Rust. Recarregada a cada troca de faixa e ao voltar à tela. */
+ *  recentes do Rust. Recarregada a cada troca de faixa, no fim da fila e ao
+ *  voltar à tela. */
 const [recents, setRecents] = createSignal<Track[]>([]);
 
 export { stations, favorites, recents };
 
-export async function loadRecents() {
-  try {
-    setRecents((await ipc.libRecentPlays(8)) ?? []);
-  } catch (e) {
-    console.warn("[mobile] lib_recent_plays falhou:", e);
-  }
+let recentsInflight: Promise<void> | null = null;
+
+/** Chamadas concorrentes (foco + track_changed + fim de fila chegam juntos)
+ *  reaproveitam a promise em voo — cada uma drenaria o journal de novo à toa. */
+export function loadRecents(): Promise<void> {
+  if (recentsInflight) return recentsInflight;
+  recentsInflight = (async () => {
+    try {
+      setRecents((await ipc.libRecentPlays(8)) ?? []);
+    } catch (e) {
+      console.warn("[mobile] lib_recent_plays falhou:", e);
+    } finally {
+      recentsInflight = null;
+    }
+  })();
+  return recentsInflight;
 }
 
 async function loadIntel() {
@@ -592,7 +603,14 @@ export async function bootStore() {
     .then((m) => m.listen("rustify://queue-changed", () => void syncQueue()))
     .catch((e) => console.warn("[mobile] listener queue-changed:", e));
 
-  ipc.onStateChanged(applyState).catch((e) => console.warn("[mobile] listener state_changed:", e));
+  ipc
+    .onStateChanged((s) => {
+      applyState(s);
+      // Fim da fila não emite track_changed: a última faixa fecha no
+      // journal (o service appenda antes de emitir) e só `ended` avisa.
+      if (s.status === "ended") void loadRecents();
+    })
+    .catch((e) => console.warn("[mobile] listener state_changed:", e));
   ipc
     .onTrackChanged((s) => {
       applyState(s);
