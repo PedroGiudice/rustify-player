@@ -1328,6 +1328,38 @@ impl QdrantClient {
         Ok(())
     }
 
+    /// Like/unlike sincado de OUTRO dispositivo → `track_enrichments`, com
+    /// last-write-wins por `like_updated_at` ([`synced_like_patch`]). NUNCA
+    /// vira ponto em `play_events`. Mesma validação de proveniência do
+    /// [`Self::insert_synced_event`] — o `device_id` do evento é o
+    /// `liked_device` gravado. Patch `None` (evento mais velho que o like
+    /// vigente) = Ok sem escrita.
+    pub fn apply_synced_like(&self, payload: &Value) -> Result<(), IndexerError> {
+        let rejeitado = |reason: &str| {
+            IndexerError::Embedding(format!("synced like rejeitado: {reason}"))
+        };
+        if let Some(reason) = synced_event_error(payload) {
+            return Err(rejeitado(reason));
+        }
+        // Campos abaixo já validados por synced_event_error.
+        let event_type = payload["event_type"].as_str().unwrap_or_default();
+        if !matches!(event_type, "like" | "unlike") {
+            return Err(rejeitado("event_type não é like/unlike"));
+        }
+        // LWW sem timestamp não ordena — rejeita em vez de inventar 0
+        // (liked_at=0 contaria como like pro is_liked).
+        let Some(ts) = payload.get("timestamp").and_then(Value::as_i64) else {
+            return Err(rejeitado("sem timestamp"));
+        };
+        let track_id = payload["track_id"].as_u64().unwrap_or_default();
+        let device_id = payload["device_id"].as_str().unwrap_or_default();
+        let existing = self.get_enrichment(track_id)?;
+        match synced_like_patch(&existing, event_type, ts, device_id) {
+            Some(patch) => self.set_enrichment(track_id, patch),
+            None => Ok(()),
+        }
+    }
+
     /// Scroll the `play_events` collection with a filter, ordered by `started_at` descending.
     ///
     /// Returns the payload of each matching point (up to `limit`).
@@ -1794,6 +1826,39 @@ pub(crate) fn synced_event_error(payload: &Value) -> Option<&'static str> {
     None
 }
 
+/// Patch PURO de um like/unlike sincado sobre o enrichment vigente —
+/// last-write-wins por `like_updated_at` (fallback `liked_at` pros likes
+/// legados que nasceram sem o campo). LWW ESTRITO: só `ts` MENOR que o
+/// vigente é no-op; igual APLICA — double-tap like→unlike no mesmo segundo
+/// chega na ordem do seq, e replay do mesmo evento reescreve o mesmo valor
+/// (idempotente). `existing` não-objeto (Null etc.) vale como `{}`. Unlike
+/// zera com null (mesma convenção do `toggle_like`). Outro event_type → None.
+pub(crate) fn synced_like_patch(
+    existing: &Value,
+    event_type: &str,
+    ts: i64,
+    device_id: &str,
+) -> Option<Value> {
+    let liked = match event_type {
+        "like" => true,
+        "unlike" => false,
+        _ => return None,
+    };
+    let vigente = existing
+        .get("like_updated_at")
+        .and_then(Value::as_i64)
+        .or_else(|| existing.get("liked_at").and_then(Value::as_i64))
+        .unwrap_or(0);
+    if ts < vigente {
+        return None;
+    }
+    Some(if liked {
+        json!({ "liked_at": ts, "liked_device": device_id, "like_updated_at": ts })
+    } else {
+        json!({ "liked_at": null, "liked_device": null, "like_updated_at": ts })
+    })
+}
+
 /// Estampa a proveniência num payload de evento: `signal_schema` sempre;
 /// `device_id`/`app_version` quando o client tem [`Provenance`] anexada.
 fn stamp_provenance(payload: &mut Value, provenance: Option<&Provenance>) {
@@ -2109,6 +2174,108 @@ mod tests {
             synced_event_error(&tid_string),
             Some("track_id ausente ou não-u64")
         );
+    }
+
+    #[test]
+    fn synced_like_patch_like_em_vazio_grava_liked_at_device_e_updated_at() {
+        let patch = synced_like_patch(&json!({}), "like", 1_700_000_000, "s24").unwrap();
+        assert_eq!(
+            patch,
+            json!({
+                "liked_at": 1_700_000_000,
+                "liked_device": "s24",
+                "like_updated_at": 1_700_000_000
+            })
+        );
+    }
+
+    #[test]
+    fn synced_like_patch_unlike_mais_velho_que_like_vigente_e_noop() {
+        let existing = json!({
+            "liked_at": 200, "liked_device": "cmr-auto", "like_updated_at": 200
+        });
+        assert_eq!(synced_like_patch(&existing, "unlike", 199, "s24"), None);
+    }
+
+    #[test]
+    fn synced_like_patch_unlike_mais_novo_zera_liked_at() {
+        let existing = json!({
+            "liked_at": 200, "liked_device": "cmr-auto", "like_updated_at": 200,
+            "play_count": 3
+        });
+        let patch = synced_like_patch(&existing, "unlike", 201, "s24").unwrap();
+        // mesma convenção de null do toggle_like; o patch NÃO toca em play_count
+        assert_eq!(
+            patch,
+            json!({"liked_at": null, "liked_device": null, "like_updated_at": 201})
+        );
+    }
+
+    #[test]
+    fn synced_like_patch_replay_do_mesmo_evento_reaplica_mesmo_valor() {
+        let existing = json!({
+            "liked_at": 200, "liked_device": "s24", "like_updated_at": 200
+        });
+        // ts == last aplica: replay do mesmo evento reescreve o mesmo valor
+        let patch = synced_like_patch(&existing, "like", 200, "s24").unwrap();
+        assert_eq!(patch, existing);
+        // double-tap like→unlike no mesmo segundo chega na ordem do seq
+        let patch = synced_like_patch(&existing, "unlike", 200, "s24").unwrap();
+        assert_eq!(patch["liked_at"], json!(null));
+        assert_eq!(patch["like_updated_at"], json!(200));
+    }
+
+    #[test]
+    fn synced_like_patch_legado_sem_updated_at_usa_liked_at() {
+        // likes legados só têm liked_at (vários sem liked_device)
+        let existing = json!({"liked_at": 500});
+        assert_eq!(synced_like_patch(&existing, "unlike", 499, "s24"), None);
+        let patch = synced_like_patch(&existing, "unlike", 500, "s24").unwrap();
+        assert_eq!(patch["liked_at"], json!(null));
+        assert_eq!(patch["like_updated_at"], json!(500));
+    }
+
+    #[test]
+    fn synced_like_patch_existing_null_vira_vazio() {
+        // get_enrichment pode devolver Null (payload ausente) — vale como {}
+        let patch = synced_like_patch(&Value::Null, "like", 7, "s24").unwrap();
+        assert_eq!(patch["liked_at"], json!(7));
+        assert_eq!(patch["liked_device"], json!("s24"));
+        // outro event_type nunca vira patch
+        assert_eq!(synced_like_patch(&Value::Null, "track_ended", 7, "s24"), None);
+    }
+
+    #[test]
+    fn apply_synced_like_exige_proveniencia() {
+        // A validação roda ANTES de qualquer request — porta fechada basta.
+        let client = QdrantClient::new("http://127.0.0.1:1");
+        let sem_device = json!({
+            "event_type": "like", "track_id": 1u64, "timestamp": 10, "signal_schema": 3
+        });
+        let err = client.apply_synced_like(&sem_device).unwrap_err();
+        assert!(err.to_string().contains("device_id"), "{err}");
+
+        let tipo_vazio = json!({
+            "event_type": "", "track_id": 1u64, "timestamp": 10,
+            "signal_schema": 3, "device_id": "s24"
+        });
+        assert!(client.apply_synced_like(&tipo_vazio).is_err());
+
+        // LWW sem timestamp não tem como ordenar — rejeita em vez de
+        // inventar 0 (liked_at=0 conta como like pro is_liked).
+        let sem_ts = json!({
+            "event_type": "like", "track_id": 1u64, "signal_schema": 3, "device_id": "s24"
+        });
+        let err = client.apply_synced_like(&sem_ts).unwrap_err();
+        assert!(err.to_string().contains("timestamp"), "{err}");
+
+        // play event roteado errado não pode virar Ok silencioso
+        let nao_like = json!({
+            "event_type": "track_ended", "track_id": 1u64, "timestamp": 10,
+            "signal_schema": 3, "device_id": "s24"
+        });
+        let err = client.apply_synced_like(&nao_like).unwrap_err();
+        assert!(err.to_string().contains("event_type"), "{err}");
     }
 
     #[test]

@@ -530,17 +530,26 @@ pub fn list_history(client: &QdrantClient, limit: usize) -> Result<Vec<Track>, I
 pub fn toggle_like(client: &QdrantClient, track_id: u64) -> Result<bool, IndexerError> {
     let existing = client.get_enrichment(track_id)?;
     let currently_liked = existing["liked_at"].as_i64().is_some();
+    // like_updated_at nos DOIS ramos: é o relógio do last-write-wins contra
+    // like/unlike sincados de outro dispositivo (apply_synced_like, CMR-220).
+    let now = unix_now();
 
     if currently_liked {
-        client.set_enrichment(track_id, json!({"liked_at": null, "liked_device": null}))?;
+        client.set_enrichment(
+            track_id,
+            json!({"liked_at": null, "liked_device": null, "like_updated_at": now}),
+        )?;
         Ok(false)
     } else {
-        let now = unix_now();
         // liked_device = quem deu o like VIGENTE (enrichment é mutável, não é
         // log) — proveniência pro sync multi-dispositivo, não histórico.
         client.set_enrichment(
             track_id,
-            json!({"liked_at": now, "liked_device": client.device_id()}),
+            json!({
+                "liked_at": now,
+                "liked_device": client.device_id(),
+                "like_updated_at": now
+            }),
         )?;
         Ok(true)
     }

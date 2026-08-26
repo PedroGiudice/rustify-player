@@ -9,8 +9,10 @@
 //! Contrato: POST /sync/events com
 //! `{"events":[{"uuid":"...","payload":{...canônico...}}]}` → upsert
 //! idempotente por uuid ([`QdrantClient::insert_synced_event`] valida a
-//! proveniência e NÃO re-estampa). Resposta: `{"accepted":N,"rejected":M}`.
-//! GET /sync/health → 200.
+//! proveniência e NÃO re-estampa). Eventos `like`/`unlike` NÃO viram
+//! play_event: vão pra `track_enrichments` com last-write-wins por
+//! `like_updated_at` ([`QdrantClient::apply_synced_like`], CMR-220).
+//! Resposta: `{"accepted":N,"rejected":M}`. GET /sync/health → 200.
 
 use library_indexer::QdrantClient;
 use std::io::{Read, Write};
@@ -169,7 +171,13 @@ fn handle(
                     rejected += 1;
                     continue;
                 };
-                match client.insert_synced_event(uuid, payload) {
+                // like/unlike NUNCA entram em play_events: vão pro enrichment
+                // com LWW por like_updated_at (CMR-220).
+                let result = match payload["event_type"].as_str() {
+                    Some("like") | Some("unlike") => client.apply_synced_like(payload),
+                    _ => client.insert_synced_event(uuid, payload),
+                };
+                match result {
                     Ok(()) => accepted += 1,
                     Err(e) => {
                         tracing::warn!(?e, uuid, "sync receiver: evento rejeitado");
@@ -207,30 +215,72 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) -> std::io::Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
-    /// Qdrant fake: responde 200 `{}` a qualquer request. O que importa é o
-    /// contrato HTTP do receptor (parse, validação, contagem) — a validação
-    /// de payload em si já é testada em synced_event_error.
-    fn fake_qdrant() -> u16 {
+    /// Qdrant fake: REGISTRA cada request (request-line + headers + body) e
+    /// responde 200 com algo plausível — `{"result":{"payload":{}}}` pro GET
+    /// de enrichment (ponto sem nada), `{}` pro resto. O que importa é o
+    /// contrato HTTP do receptor (parse, validação, contagem, roteamento) —
+    /// a validação de payload em si é testada no library-indexer.
+    fn fake_qdrant() -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&requests);
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut s) = stream else { continue };
-                let mut buf = [0u8; 65536];
-                let _ = std::io::Read::read(&mut s, &mut buf);
+                let Some(req) = read_request(&mut s) else { continue };
+                let body = if req.starts_with("GET /collections/track_enrichments/points/") {
+                    r#"{"result":{"payload":{}}}"#
+                } else {
+                    "{}"
+                };
+                log.lock().unwrap().push(req);
                 let _ = write!(
                     s,
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
                 );
             }
         });
-        port
+        (port, requests)
+    }
+
+    /// Lê headers + body (Content-Length) de uma request e devolve o texto
+    /// cru — o body pode chegar num segmento separado dos headers.
+    fn read_request(s: &mut TcpStream) -> Option<String> {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        let header_end = loop {
+            let n = s.read(&mut chunk).ok()?;
+            if n == 0 {
+                return None;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                break pos + 4;
+            }
+        };
+        let content_length: usize = String::from_utf8_lossy(&buf[..header_end])
+            .lines()
+            .filter_map(|l| l.split_once(':'))
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, v)| v.trim().parse().ok())
+            .unwrap_or(0);
+        while buf.len() < header_end + content_length {
+            let n = s.read(&mut chunk).ok()?;
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+        }
+        Some(String::from_utf8_lossy(&buf).to_string())
     }
 
     #[test]
     fn post_de_lote_conta_aceitos_e_rejeitados() {
-        let qdrant_port = fake_qdrant();
+        let (qdrant_port, _) = fake_qdrant();
         let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
         let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
 
@@ -282,7 +332,7 @@ mod tests {
 
     #[test]
     fn auth_com_header_certo_aceita() {
-        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant()));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant().0));
         let port =
             start_on("127.0.0.1:0", client, Some("tok-secreto".into())).expect("receiver sobe");
         let status = ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
@@ -297,7 +347,7 @@ mod tests {
     /// aceita. A fase 3 (fail-closed) inverte este teste pra 401.
     #[test]
     fn auth_header_errado_em_observacao_aceita() {
-        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant()));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant().0));
         let port =
             start_on("127.0.0.1:0", client, Some("tok-secreto".into())).expect("receiver sobe");
         let status = ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
@@ -310,12 +360,81 @@ mod tests {
 
     #[test]
     fn sem_token_configurado_aceita_sem_header() {
-        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant()));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{}", fake_qdrant().0));
         let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
         let status = ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
             .send_string(&lote_minimo())
             .unwrap()
             .status();
         assert_eq!(status, 200);
+    }
+
+    fn post_lote(port: u16, body: &str) -> serde_json::Value {
+        ureq::post(&format!("http://127.0.0.1:{port}/sync/events"))
+            .send_string(body)
+            .unwrap()
+            .into_json()
+            .unwrap()
+    }
+
+    #[test]
+    fn post_de_like_roteia_pra_track_enrichments() {
+        let (qdrant_port, requests) = fake_qdrant();
+        let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
+        let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
+        let body = serde_json::json!({ "events": [{
+            "uuid": "aaaaaaaa-2222-3333-4444-555555555555",
+            "payload": {
+                "event_type": "like", "track_id": 12755931536157556u64,
+                "origin": "manual", "started_at": 0, "timestamp": 1_700_000_000,
+                "end_position_ms": 0, "duration_ms": 0, "listen_pct": 0.0,
+                "signal_schema": 3, "device_id": "s24", "app_version": "0.2.77"
+            }
+        }]})
+        .to_string();
+
+        let resp = post_lote(port, &body);
+        assert_eq!(resp["accepted"], 1);
+        assert_eq!(resp["rejected"], 0);
+
+        // A resposta só sai depois do lote inteiro, então o log está completo.
+        let reqs = requests.lock().unwrap();
+        assert!(
+            reqs.iter().any(|r| r.contains("/collections/track_enrichments/points")),
+            "{reqs:?}"
+        );
+        assert!(
+            !reqs.iter().any(|r| r.contains("/collections/play_events/points")),
+            "like NUNCA entra em play_events: {reqs:?}"
+        );
+        let put = reqs
+            .iter()
+            .find(|r| r.starts_with("PUT /collections/track_enrichments/points"))
+            .expect("PUT em track_enrichments");
+        assert!(put.contains("\"liked_at\":1700000000"), "{put}");
+        assert!(put.contains("\"liked_device\":\"s24\""), "{put}");
+        assert!(put.contains("\"like_updated_at\":1700000000"), "{put}");
+    }
+
+    #[test]
+    fn post_de_unlike_sem_device_id_e_rejeitado() {
+        let (qdrant_port, requests) = fake_qdrant();
+        let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
+        let port = start_on("127.0.0.1:0", client, None).expect("receiver sobe");
+        let body = serde_json::json!({ "events": [{
+            "uuid": "bbbbbbbb-2222-3333-4444-555555555555",
+            "payload": {
+                "event_type": "unlike", "track_id": 1u64, "timestamp": 5, "signal_schema": 3
+            }
+        }]})
+        .to_string();
+
+        let resp = post_lote(port, &body);
+        assert_eq!(resp["accepted"], 0);
+        assert_eq!(resp["rejected"], 1);
+        // Validação de proveniência roda ANTES de qualquer request: nenhum
+        // PUT em track_enrichments (nem GET — o Qdrant nem é tocado).
+        let reqs = requests.lock().unwrap();
+        assert!(reqs.is_empty(), "{reqs:?}");
     }
 }

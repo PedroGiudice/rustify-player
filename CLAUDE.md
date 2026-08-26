@@ -547,11 +547,15 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   (`EventJournal.lineOf`, pura e testada; linha invalida travaria o lote
   do sync sem ack) -> sync (payload pelo mesmo builder, proveniencia
   estampada pelo worker) -> receiver desktop roteia por `event_type` pra
-  `track_enrichments` com LWW por `like_updated_at`. Estado no aparelho
-  semeado pelo manifest (`liked_at`/`like_updated_at`, `fetch_like_state`
-  no export) + override local `kv-mobile-likes` (`src/mobile/likes.ts`,
-  o mais novo vence) — **reexportar o manifest apos release** pra fechar
-  o ciclo. NAO e origin: a fila nao muda; anel de recentes/tender ignoram.
+  `track_enrichments` (`apply_synced_like`, LWW por `like_updated_at`,
+  fallback `liked_at` no legado; `toggle_like` do desktop grava o mesmo
+  campo) — like NUNCA vira play_event. Estado no aparelho semeado pelo
+  manifest (`liked_at`/`like_updated_at`, `fetch_like_state` no export) +
+  override local `kv-mobile-likes` (`src/mobile/likes.ts`, o mais novo
+  vence) — **reexportar o manifest apos release** pra fechar o ciclo.
+  NAO e origin: a fila nao muda; anel de recentes/tender ignoram.
+  ORDEM DE RELEASE: o .deb do desktop entra ANTES do APK, senao o
+  receiver antigo grava like como play_event.
 
 ### Build, install e debug
 
