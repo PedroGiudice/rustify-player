@@ -202,9 +202,10 @@ fn walk_music(root: &Path) -> (HashMap<String, PathBuf>, HashMap<String, PathBuf
     (audio, lrc, covers)
 }
 
-/// Nomes de arquivo presentes em `<root>/.rustify/covers/` — UM `read_dir`,
-/// sem stat por entrada (`file_type` vem do dirent). Vazio quando o dir não
-/// existe (export anterior ao CMR-212).
+/// Nomes de arquivo presentes em `<root>/.rustify/covers/` — uma passada de
+/// `read_dir`; `file_type` sai do dirent quando o FS informa `d_type`, senão
+/// o std faz `lstat` — barato de qualquer jeito. Vazio quando o dir não existe
+/// (export anterior ao CMR-212).
 fn list_exported_covers(root: &Path) -> HashSet<String> {
     let Ok(entries) = std::fs::read_dir(root.join(COVERS_REL)) else {
         return HashSet::new();

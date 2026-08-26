@@ -20,6 +20,11 @@ vi.mock("./ipc", () => ({
   playerSetLike: vi.fn(async () => ({ seq: 1 })),
   continuityArm: vi.fn(async () => undefined),
   libRecentPlays: vi.fn(async () => []),
+  libRescan: vi.fn(async () => 0),
+  libListTracks: vi.fn(async () => []),
+  libListFolders: vi.fn(async () => []),
+  libListStations: vi.fn(async () => []),
+  libTastePositives: vi.fn(async () => []),
   toQueueItem: (t: Track) => ({ trackId: t.id, path: t.path }),
   toQueueItems: (l: Track[]) => l.map((t) => ({ trackId: t.id, path: t.path })),
 }));
@@ -36,6 +41,7 @@ import {
   queueEntries,
   queueOrigin,
   recents,
+  rescan,
   shuffleFolder,
   shuffleList,
   shuffleUpcoming,
@@ -274,24 +280,89 @@ describe("toggleLike (coração do Now Playing — CMR-220)", () => {
     expect(saved["4"]).toMatchObject({ liked: true });
     expect(typeof saved["4"].at).toBe("number");
   });
+
+  it("dois toques rápidos: a falha do 1º NÃO apaga o override do 2º (reverte só se ainda é o dele)", async () => {
+    const t = liked(5, null);
+    let rejectFirst!: (e: Error) => void;
+    (ipc.playerSetLike as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((_, rej) => (rejectFirst = rej)),
+    );
+    const first = toggleLike(t); // liked=true, IPC pendurado
+    expect(isLiked(t)).toBe(true);
+    await toggleLike(t); // liked=false, IPC ok — este é o override vivo
+    expect(isLiked(t)).toBe(false);
+    rejectFirst(new Error("tarde"));
+    await first;
+    // Reverter o 1º restauraria "sem override" e apagaria o gesto que o
+    // journal já tem: coração e LWW mentiriam.
+    expect(isLiked(t)).toBe(false);
+    const saved = JSON.parse(localStorage.getItem("kv-mobile-likes") ?? "{}");
+    expect(saved["5"]).toMatchObject({ liked: false });
+  });
+});
+
+describe("poda dos overrides de like ao carregar a biblioteca (manifest novo)", () => {
+  const liked = (id: number, at: number | null): Track =>
+    ({ ...track(id), liked_at: at, like_updated_at: at }) as Track;
+
+  beforeEach(() => localStorage.removeItem("kv-mobile-likes"));
+
+  it("rescan descarta o override que o manifest já absorveu e o de faixa que sumiu", async () => {
+    const a = liked(6, null);
+    const b = liked(7, null);
+    await toggleLike(a);
+    await toggleLike(b);
+    const now = Math.floor(Date.now() / 1000);
+    const aNoManifest = { ...a, liked_at: now + 5, like_updated_at: now + 5 };
+    // Manifest re-exportado: `6` já traz o like (carimbo >= gesto); `7` sumiu.
+    (ipc.libListTracks as ReturnType<typeof vi.fn>).mockResolvedValueOnce([aNoManifest]);
+    await rescan();
+    expect(JSON.parse(localStorage.getItem("kv-mobile-likes") ?? "{}")).toEqual({});
+    expect(isLiked(aNoManifest)).toBe(true);
+  });
+
+  it("override mais novo que o manifest sobrevive ao rescan", async () => {
+    const a = liked(8, null);
+    await toggleLike(a);
+    (ipc.libListTracks as ReturnType<typeof vi.fn>).mockResolvedValueOnce([a]);
+    await rescan();
+    const saved = JSON.parse(localStorage.getItem("kv-mobile-likes") ?? "{}");
+    expect(saved["8"]).toMatchObject({ liked: true });
+    expect(isLiked(a)).toBe(true);
+  });
 });
 
 describe('loadRecents (shelf "Recently played" — CMR-215)', () => {
-  it("coalesce chamadas concorrentes: uma única ida ao lib_recent_plays", async () => {
-    // foco + track_changed + fim de fila chegam juntos; cada um drenaria o
-    // journal de novo à toa.
+  it("chamada durante o voo coalesce com dirty: exatamente 2 idas ao lib_recent_plays", async () => {
+    // foco + track_changed + fim de fila chegam juntos: cada um drenaria o
+    // journal de novo à toa, MAS a chamada que chega no meio do voo pode ter
+    // sido disparada por um evento que a ida em curso não viu (a faixa fechou
+    // depois do drain). Ela não se perde: marca dirty e o finally dispara UMA
+    // re-execução — não importa quantas chegaram no meio.
     let resolve!: (v: Track[]) => void;
     (ipc.libRecentPlays as ReturnType<typeof vi.fn>).mockImplementationOnce(
       () => new Promise<Track[]>((r) => (resolve = r)),
     );
+    (ipc.libRecentPlays as ReturnType<typeof vi.fn>).mockResolvedValueOnce([track(3)]);
     const a = loadRecents();
     const b = loadRecents();
+    const c = loadRecents();
     expect(b).toBe(a);
+    expect(c).toBe(a);
     expect(ipc.libRecentPlays).toHaveBeenCalledTimes(1);
     resolve([track(1), track(2)]);
     await a;
-    expect(recents().map((t) => t.id)).toEqual(["1", "2"]);
-    // Liquidada: a próxima chamada vai ao backend de novo.
+    // A re-execução (segunda ida) é quem manda no estado final.
+    await vi.waitFor(() => expect(recents().map((t) => t.id)).toEqual(["3"]));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ipc.libRecentPlays).toHaveBeenCalledTimes(2);
+  });
+
+  it("sem chamada durante o voo não há re-execução; liquidada, a próxima vai ao backend", async () => {
+    await loadRecents();
+    expect(ipc.libRecentPlays).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ipc.libRecentPlays).toHaveBeenCalledTimes(1);
     await loadRecents();
     expect(ipc.libRecentPlays).toHaveBeenCalledTimes(2);
   });

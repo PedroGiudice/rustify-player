@@ -8,7 +8,7 @@
    ============================================================ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { effectiveLiked, loadOverrides, saveOverrides } from "./likes";
+import { effectiveLiked, loadOverrides, pruneOverrides, saveOverrides } from "./likes";
 import type { Track } from "./types";
 
 const KEY = "kv-mobile-likes";
@@ -58,6 +58,45 @@ describe("effectiveLiked", () => {
     const t = track({ liked_at: 300, like_updated_at: null });
     expect(effectiveLiked(t, { liked: false, at: 200 })).toBe(true);
     expect(effectiveLiked(t, { liked: false, at: 301 })).toBe(false);
+  });
+});
+
+describe("pruneOverrides (poda ao carregar a biblioteca)", () => {
+  it("mantém o override mais novo que o carimbo do manifest", () => {
+    const tracks = [track({ id: "1", liked_at: null, like_updated_at: 100 }), track({ id: "2" })];
+    const o = { "1": { liked: true, at: 101 }, "2": { liked: true, at: 1 } };
+    expect(pruneOverrides(o, tracks)).toEqual(o);
+  });
+
+  it("descarta override com at <= like_updated_at (ou liked_at): o manifest já absorveu o gesto", () => {
+    const tracks = [
+      track({ id: "1", liked_at: 100, like_updated_at: 100 }),
+      track({ id: "2", liked_at: 300, like_updated_at: null }),
+      track({ id: "3", liked_at: null, like_updated_at: 500 }),
+    ];
+    const o = {
+      "1": { liked: true, at: 100 },
+      "2": { liked: false, at: 299 },
+      "3": { liked: true, at: 400 },
+    };
+    expect(pruneOverrides(o, tracks)).toEqual({});
+  });
+
+  it("descarta override de faixa que sumiu do manifest", () => {
+    const o = { "1": { liked: true, at: 50 }, "9": { liked: true, at: 50 } };
+    expect(pruneOverrides(o, [track({ id: "1" })])).toEqual({ "1": { liked: true, at: 50 } });
+  });
+
+  it("biblioteca vazia não poda: sem manifest não há contra o que comparar", () => {
+    const o = { "1": { liked: true, at: 50 } };
+    expect(pruneOverrides(o, [])).toEqual(o);
+  });
+
+  it("não muta a entrada", () => {
+    const o = { "1": { liked: true, at: 50 }, "9": { liked: true, at: 50 } };
+    const copia = structuredClone(o);
+    pruneOverrides(o, [track({ id: "1", liked_at: 60, like_updated_at: 60 })]);
+    expect(o).toEqual(copia);
   });
 });
 

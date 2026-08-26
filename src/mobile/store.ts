@@ -17,7 +17,13 @@ import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
-import { effectiveLiked, loadOverrides, saveOverrides, type LikeOverrides } from "./likes";
+import {
+  effectiveLiked,
+  loadOverrides,
+  pruneOverrides,
+  saveOverrides,
+  type LikeOverrides,
+} from "./likes";
 import { canShuffleUpcoming, remainingMs, resolveQueue, skipReport } from "./queueModel";
 import type {
   Folder,
@@ -62,11 +68,20 @@ const [recents, setRecents] = createSignal<Track[]>([]);
 export { stations, favorites, recents };
 
 let recentsInflight: Promise<void> | null = null;
+/** Alguém chamou durante o voo: a ida em curso pode ter drenado o journal
+ *  ANTES do evento que motivou a chamada nova (a faixa fechou depois). */
+let recentsDirty = false;
 
 /** Chamadas concorrentes (foco + track_changed + fim de fila chegam juntos)
- *  reaproveitam a promise em voo — cada uma drenaria o journal de novo à toa. */
+ *  reaproveitam a promise em voo — cada uma drenaria o journal de novo à toa.
+ *  Mas a chamada que chega no meio não se perde: marca dirty e o finally
+ *  dispara UMA re-execução (é um bit, não um contador — N chamadas no voo
+ *  viram uma ida só). */
 export function loadRecents(): Promise<void> {
-  if (recentsInflight) return recentsInflight;
+  if (recentsInflight) {
+    recentsDirty = true;
+    return recentsInflight;
+  }
   recentsInflight = (async () => {
     try {
       setRecents((await ipc.libRecentPlays(8)) ?? []);
@@ -74,6 +89,10 @@ export function loadRecents(): Promise<void> {
       console.warn("[mobile] lib_recent_plays falhou:", e);
     } finally {
       recentsInflight = null;
+      if (recentsDirty) {
+        recentsDirty = false;
+        void loadRecents();
+      }
     }
   })();
   return recentsInflight;
@@ -471,7 +490,8 @@ export async function toggleLike(t: Track) {
   const at = Math.floor(Date.now() / 1000);
   // Otimista: o coração responde no ato; o journal é a verdade do gesto e o
   // desktop faz o LWW — falha do IPC desfaz o que a UI supôs.
-  const next = { ...likeOverrides(), [t.id]: { liked, at } };
+  const mine = { liked, at };
+  const next = { ...likeOverrides(), [t.id]: mine };
   setLikeOverrides(next);
   saveOverrides(next);
   try {
@@ -479,13 +499,29 @@ export async function toggleLike(t: Track) {
     showToast(liked ? "Curtida" : "Curtida removida");
   } catch (e) {
     console.warn("[mobile] set_like falhou:", e);
+    showToast("Falha ao registrar a curtida");
+    // Reverte SÓ se o override vivo ainda é o desta chamada: dois toques
+    // rápidos com o 1º falhando tarde não podem apagar o gesto do 2º (que o
+    // journal já tem) — coração e LWW mentiriam.
+    if (likeOverrides()[t.id] !== mine) return;
     const reverted = { ...likeOverrides() };
     if (before) reverted[t.id] = before;
     else delete reverted[t.id];
     setLikeOverrides(reverted);
     saveOverrides(reverted);
-    showToast("Falha ao registrar a curtida");
   }
+}
+
+/** Manifest novo chegou (boot/rescan): override que ele já absorveu (carimbo
+ *  >= gesto) ou de faixa que sumiu do acervo é lixo — sem poda, o
+ *  kv-mobile-likes só cresce. Poda só remove: contagem de chaves basta pra
+ *  saber se mudou. */
+function pruneLikeOverrides() {
+  const before = likeOverrides();
+  const after = pruneOverrides(before, tracks());
+  if (Object.keys(after).length === Object.keys(before).length) return;
+  setLikeOverrides(after);
+  saveOverrides(after);
 }
 
 // ── Repeat ────────────────────────────────────────────────────
@@ -615,6 +651,7 @@ async function loadLibrary() {
   const [t, f] = await Promise.all([ipc.libListTracks(), ipc.libListFolders()]);
   setTracks(t ?? []);
   setFolders(f ?? []);
+  pruneLikeOverrides();
 }
 
 // Invoke disparado no boot frio pode se perder antes de a bridge nativa do

@@ -403,15 +403,24 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
      * (truncar + re-adicionar pelo JS seriam dois IPCs com janela entre eles).
      * O [QueueMeta] e chaveado por trackId: reordenar nao mexe na origem nem
      * no contextId de item nenhum.
+     *
+     * Limitacao conhecida: o tender (Rust) decide o corte de `truncate_queue`
+     * a partir de um `get_queue` anterior — dois IPCs. Um shuffle que cai
+     * ENTRE os dois reordena a cauda e o corte posicional pode deslocar (uma
+     * faixa a mais ou a menos descartada). Janela de milissegundos, sem risco
+     * pra faixa corrente (o truncate nunca a corta); aceita.
      */
     @Command
     fun shuffleUpcoming(invoke: Invoke) {
         withController(invoke) { c ->
             val count = c.mediaItemCount
-            val from = (c.currentMediaItemIndex + 1).coerceAtLeast(0)
+            // currentMediaItemIndex nunca e negativo (fila vazia = 0), entao
+            // `from` >= 1 sem coerce; fila vazia cai no guard abaixo.
+            val current = c.currentMediaItemIndex
+            val from = current + 1
             if (count - from >= 2) {
                 val all = (0 until count).map { c.getMediaItemAt(it) }
-                val tail = shuffledTail(all, from - 1, java.util.Random()).subList(from, count)
+                val tail = shuffledTail(all, current, java.util.Random()).subList(from, count)
                 c.replaceMediaItems(from, count, tail)
             }
             invoke.resolve(queueSnapshotToJs(c))

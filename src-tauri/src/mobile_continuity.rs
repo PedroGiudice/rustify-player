@@ -158,11 +158,18 @@ pub struct RecentEntry {
 }
 
 impl RecentsRing {
-    /// Registra uma escuta. Uma escuta mais NOVA renova o relógio do rádio
-    /// (`at`) e move a entrada pro fim — o anel é ordenado por `at` e o cap
-    /// expulsa pela frente; evento mais velho que o relógio (o sync re-drena
-    /// do zero) nem move nem regride. A poda roda na escrita — cap e TTL
-    /// nunca ficam para depois.
+    /// Registra uma escuta. Numa entrada JÁ existente, uma escuta mais NOVA
+    /// renova o relógio do rádio (`at`) e move a entrada pro fim — o anel é
+    /// ordenado por `at` e o cap expulsa pela frente; evento mais velho que o
+    /// relógio (o sync re-drena do zero) nem move nem regride. A poda roda
+    /// na escrita — cap e TTL nunca ficam para depois.
+    ///
+    /// Entrada NOVA vai sempre pro fim com `at = now_s`, mesmo que `now_s`
+    /// seja menor que o `at` do último (re-drain de evento velho de faixa
+    /// ainda fora do anel): a invariante de ordem vale para as atualizações,
+    /// não para a inserção — nesse caso raro o cap pode expulsar uma entrada
+    /// que não é a mais antiga. Comportamento pré-existente, aceito: o custo é
+    /// um "não repete" a menos, e o TTL na leitura continua correto.
     ///
     /// `played_at` é STICKY: um skip cedo posterior (`None`) renova `at` mas
     /// não apaga o play que contou antes. Devolve `true` se algo mudou no
@@ -341,15 +348,26 @@ impl ContinuityState {
     }
 }
 
-/// Grava `bytes` em `<path>.tmp` e troca por rename — no mesmo diretório o
-/// rename(2) é atômico, então o leitor vê o arquivo antigo ou o novo, nunca
-/// um meio-escrito.
+/// Grava `bytes` em `<path>.tmp`, faz fsync e troca por rename — no mesmo
+/// diretório o rename(2) é atômico, então o leitor vê o arquivo antigo ou o
+/// novo, nunca um meio-escrito. O `sync_all` antes do rename é o que fecha a
+/// promessa (mesma receita do compact do EventJournal, `fd.sync()`): sem ele
+/// um kill/queda de energia logo após o rename pode deixar o nome novo
+/// apontando pra blocos ainda não persistidos — arquivo vazio/truncado que o
+/// boot leria como anel vazio.
 fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
+    let res = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if res.is_err() {
         let _ = std::fs::remove_file(&tmp);
-    })
+    }
+    res
 }
 
 /// A fila precisa de mais faixas?
@@ -1042,6 +1060,20 @@ mod tests {
         assert_eq!(volta.ids[0].played_at, Some(450));
         assert_eq!(volta.ids[1].played_at, None);
         assert_eq!(volta.recent_play_ids(600, 8), vec!["18400000000000000001"]);
+    }
+
+    #[test]
+    fn write_atomic_grava_o_conteudo_e_nao_deixa_tmp() {
+        // O fsync em si não é observável num teste de unidade; o que se prova
+        // é o contrato visível: o arquivo final tem os bytes, o `.json.tmp`
+        // não sobra, e a segunda escrita substitui a primeira inteira.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("recents.json");
+        write_atomic(&p, br#"{"ids":[]}"#).unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), br#"{"ids":[]}"#);
+        write_atomic(&p, b"{}").unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"{}");
+        assert!(!p.with_extension("json.tmp").exists());
     }
 
     #[test]

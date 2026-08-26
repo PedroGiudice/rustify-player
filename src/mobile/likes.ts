@@ -26,13 +26,32 @@ export type LikeOverrides = Record<string, LikeOverride>;
 
 const KEY = "kv-mobile-likes";
 
-/** Estado efetivo: override se for mais novo que o carimbo do manifest;
- *  senão, `liked_at` preenchido. Manifest sem `like_updated_at` compara
+/** Carimbo do manifest para o LWW. Manifest sem `like_updated_at` compara
  *  contra o próprio `liked_at` (manifest antigo ou like sem carimbo). */
+const manifestStamp = (track: Track) => track.like_updated_at ?? track.liked_at ?? 0;
+
+/** Estado efetivo: override se for mais novo que o carimbo do manifest;
+ *  senão, `liked_at` preenchido. */
 export function effectiveLiked(track: Track, override: LikeOverride | undefined): boolean {
-  const manifestAt = track.like_updated_at ?? track.liked_at ?? 0;
-  if (override && override.at > manifestAt) return override.liked;
+  if (override && override.at > manifestStamp(track)) return override.liked;
   return track.liked_at != null;
+}
+
+/** Poda ao carregar a biblioteca (boot/rescan): fica só o override que ainda
+ *  DECIDE algo — mais novo que o carimbo do manifest e de faixa que existe.
+ *  O resto o manifest já absorveu (ou a faixa sumiu) e `effectiveLiked` nunca
+ *  mais o leria; sem poda o `kv-mobile-likes` só cresce. Biblioteca vazia não
+ *  poda: sem manifest não há contra o que comparar (permissão de storage
+ *  negada, por exemplo) e o gesto ainda não sincronizado se perderia da tela. */
+export function pruneOverrides(overrides: LikeOverrides, tracks: Track[]): LikeOverrides {
+  if (!tracks.length) return overrides;
+  const byId = new Map(tracks.map((t) => [t.id, t]));
+  const out: LikeOverrides = {};
+  for (const [id, o] of Object.entries(overrides)) {
+    const t = byId.get(id);
+    if (t && o.at > manifestStamp(t)) out[id] = o;
+  }
+  return out;
 }
 
 function isOverride(v: unknown): v is LikeOverride {

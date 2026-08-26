@@ -70,7 +70,11 @@ ligado" nem restauração da ordem. Nunca toca a faixa corrente nem o já tocado
 a cauda é trocada de uma vez por `replaceMediaItems` (atômico frente ao tender
 e ao auto-advance). O `QueueMeta` é chaveado por `trackId`, então a origem e o
 `contextId` de cada item são preservados na reordenação. Com menos de 2 itens
-a seguir é no-op (o snapshot volta igual).
+a seguir é no-op (o snapshot volta igual). Limitação conhecida: o tender decide
+o corte do `truncate_queue` a partir de um `get_queue` anterior (dois IPCs); um
+shuffle que cai entre os dois reordena a cauda e o corte posicional pode
+deslocar uma faixa. Janela de milissegundos, a corrente nunca é cortada —
+aceita.
 
 `set_repeat_mode('one')` faz o serviço carimbar `origin: repeat` nas
 re-escutas — o sinal v3 trata isso como positivo pleno, e até agora o celular

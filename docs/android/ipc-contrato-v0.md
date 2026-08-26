@@ -36,7 +36,9 @@ liked_at, like_updated_at }`
 epoch em segundos, `null` sem; descurtida no desktop chega como `liked_at: null`
 + `like_updated_at` preenchido. A UI lê o estado EFETIVO por `isLiked()` do
 store — manifest x override local `kv-mobile-likes`, o mais novo vence — nunca
-`liked_at` cru).
+`liked_at` cru. O override é podado ao carregar a biblioteca (boot/rescan,
+`pruneOverrides` em `likes.ts`): sai o que o manifest já absorveu (`at <=`
+carimbo) e o de faixa que sumiu do acervo; biblioteca vazia não poda).
 
 `album_cover_path` (CMR-212): path absoluto já resolvido no Rust
 (`resolve_cover`, `mobile_library.rs`), por precedência:
