@@ -46,6 +46,10 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     testImplementation("junit:junit:4.13.2")
+    // O android.jar dos testes JVM e um stub ("Method ... not mocked"); o
+    // org.json real na frente do classpath deixa UpdateManifest.parse rodar
+    // fora do aparelho. So afeta testDebugUnitTest, nunca o APK.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     implementation(project(":tauri-android"))

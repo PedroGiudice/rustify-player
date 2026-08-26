@@ -102,6 +102,19 @@ class AckEventsArgs {
     var uptoSeq: Long = 0L
 }
 
+@InvokeArg
+class UpdaterCheckArgs {
+    /** Override para teste; `null` usa [UPDATE_MANIFEST_URL]. */
+    var manifestUrl: String? = null
+}
+
+@InvokeArg
+class UpdaterInstallArgs {
+    lateinit var url: String
+    var sha256: String? = null
+    var size: Long = 0L
+}
+
 @UnstableApi
 @TauriPlugin(
     permissions = [
@@ -112,7 +125,7 @@ class AckEventsArgs {
     ]
 )
 class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBus.Sink,
-    SpectrumBus.Sink {
+    SpectrumBus.Sink, UpdaterBus.Sink {
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -130,6 +143,7 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
     override fun load(webView: WebView) {
         PlaybackBus.sink = this
         SpectrumBus.sink = this
+        UpdaterBus.sink = this
     }
 
     override fun onDestroy() {
@@ -140,6 +154,9 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         }
         if (SpectrumBus.sink === this) {
             SpectrumBus.sink = null
+        }
+        if (UpdaterBus.sink === this) {
+            UpdaterBus.sink = null
         }
         releaseController()
     }
@@ -383,6 +400,59 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         invoke.resolve()
     }
 
+    // ------------------------------------------------------------ atualização
+
+    private fun userAgent(): String =
+        "rustify-player-android/${Updater.installedVersion(activity.applicationContext)}"
+
+    /** Consulta o manifest do release (thread própria; resolve na main). */
+    @Command
+    fun updaterCheck(invoke: Invoke) {
+        val args = invoke.parseArgs(UpdaterCheckArgs::class.java)
+        val url = args.manifestUrl?.takeIf { it.isNotBlank() } ?: UPDATE_MANIFEST_URL
+        val ctx = activity.applicationContext
+        val ua = userAgent()
+        Thread({
+            try {
+                val m = Updater.fetchManifest(url, ua)
+                val installed = Updater.installedVersion(ctx)
+                val payload = JSObject()
+                payload.put("installed", installed)
+                payload.put("latest", m.version)
+                payload.put("available", Semver.compare(m.version, installed) > 0)
+                payload.put("apkUrl", m.apkUrl)
+                payload.put("sha256", m.sha256 ?: JSONObject.NULL)
+                payload.put("size", m.size)
+                payload.put("canInstall", Updater.canInstall(ctx))
+                activity.runOnUiThread { invoke.resolve(payload) }
+            } catch (e: Exception) {
+                Logger.error("rustify-audio: updater_check falhou", e)
+                activity.runOnUiThread { invoke.reject(e.message ?: "falha ao consultar atualização") }
+            }
+        }, "rustify-updater-check").start()
+    }
+
+    /**
+     * Baixa e instala. Resolve NA HORA com `started`/`busy`/`needs_permission`;
+     * o progresso vai pelo evento [EVENT_UPDATER_PROGRESS] — a promise do JS
+     * não sobrevive a um reload do WebView, o evento é reassinável.
+     */
+    @Command
+    fun updaterInstall(invoke: Invoke) {
+        val args = invoke.parseArgs(UpdaterInstallArgs::class.java)
+        val ctx = activity.applicationContext
+        val payload = JSObject()
+        if (!Updater.canInstall(ctx)) {
+            Updater.openInstallPermissionSettings(activity)
+            payload.put("status", "needs_permission")
+            invoke.resolve(payload)
+            return
+        }
+        val started = Updater.startDownloadAndInstall(ctx, args.url, args.sha256, args.size, userAgent())
+        payload.put("status", if (started) "started" else "busy")
+        invoke.resolve(payload)
+    }
+
     // ---------------------------------------------------------------- eventos
 
     override fun onPlaybackEvent(event: String, snapshot: PlaybackSnapshot) {
@@ -398,6 +468,12 @@ class AudioPlugin(private val activity: Activity) : Plugin(activity), PlaybackBu
         payload.put("mid", mid)
         payload.put("high", high)
         trigger(EVENT_FFT, payload)
+    }
+
+    /** Progresso do updater (thread do download / receiver) -> evento. */
+    override fun onUpdaterEvent(payload: JSObject) {
+        if (!hasListener(EVENT_UPDATER_PROGRESS)) return
+        trigger(EVENT_UPDATER_PROGRESS, payload)
     }
 
     // --------------------------------------------------------------- interno
