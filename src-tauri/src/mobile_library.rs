@@ -9,6 +9,12 @@
 // MediaProvider rejeita (: * ? " < > |) por `_`, então a canonicalização
 // remove [:*?"<>|_-] dos DOIS lados e colapsa espaços (validado 1746/1746
 // contra o staging em 2026-08-13).
+//
+// Capas (CMR-212): paridade com o desktop, que indexa UMA capa por álbum-key
+// (album_title|artist, preferindo a arte embutida). O export deixa essas capas
+// em `<MUSIC_ROOT>/.rustify/covers/<sha1>.jpg` e o manifest aponta o nome em
+// `cover`; o cover.jpg/folder.jpg da pasta é fallback (tracks sem cover_path no
+// desktop, manifest/export antigos). Ver `resolve_cover`.
 
 use crate::mobile_intel::{self, Station, StationMeta, Taste, VectorIndex};
 use serde::{Deserialize, Serialize};
@@ -20,6 +26,10 @@ const MANIFEST_REL: &str = ".rustify/manifest.json";
 const VECTORS_REL: &str = ".rustify/vectors.bin";
 const TASTE_REL: &str = ".rustify/taste.json";
 const STATIONS_REL: &str = ".rustify/stations.json";
+/// Capas por álbum-key exportadas do desktop (`<sha1>.jpg`, CMR-212). Dir
+/// oculto: o asset protocol precisa do padrão literal com o ponto no
+/// tauri.android.conf.json (`/storage/emulated/0/Music/.rustify/covers/**`).
+const COVERS_REL: &str = ".rustify/covers";
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -49,6 +59,10 @@ struct ManifestTrack {
     liked_at: Option<i64>,
     #[serde(default)]
     like_updated_at: Option<i64>,
+    /// Capa por álbum-key (CMR-212): `covers/<sha1>.jpg`, relativo a
+    /// `.rustify/`. Ausente em manifest antigo; só o basename é usado.
+    #[serde(default)]
+    cover: Option<String>,
 }
 
 /// Espelha a interface `Track` de src/tauri.ts (subset que o mobile provê).
@@ -147,7 +161,9 @@ fn canon_stem(rel_path: &str) -> String {
 }
 
 /// Varre o acervo e indexa arquivos de áudio por stem canônico.
-/// `.lrc` sidecars e capas ficam em mapas próprios (por stem / por pasta).
+/// `.lrc` sidecars e capas de PASTA (cover.jpg/jpeg/png, folder.jpg) ficam em
+/// mapas próprios (por stem / por pasta). Dirs com ponto são pulados — as
+/// capas por álbum-key de `.rustify/covers/` vêm de [`list_exported_covers`].
 fn walk_music(root: &Path) -> (HashMap<String, PathBuf>, HashMap<String, PathBuf>, HashMap<PathBuf, PathBuf>) {
     const AUDIO_EXTS: [&str; 7] = ["opus", "ogg", "mp3", "m4a", "aac", "flac", "wav"];
     const COVER_NAMES: [&str; 4] = ["cover.jpg", "cover.jpeg", "cover.png", "folder.jpg"];
@@ -184,6 +200,39 @@ fn walk_music(root: &Path) -> (HashMap<String, PathBuf>, HashMap<String, PathBuf
         }
     }
     (audio, lrc, covers)
+}
+
+/// Nomes de arquivo presentes em `<root>/.rustify/covers/` — UM `read_dir`,
+/// sem stat por entrada (`file_type` vem do dirent). Vazio quando o dir não
+/// existe (export anterior ao CMR-212).
+fn list_exported_covers(root: &Path) -> HashSet<String> {
+    let Ok(entries) = std::fs::read_dir(root.join(COVERS_REL)) else {
+        return HashSet::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect()
+}
+
+/// Capa de uma faixa (pura): o export por álbum-key do manifest, SE o arquivo
+/// existir em `covers_dir` (`exported`), senão a capa da pasta, senão nada.
+/// Só o basename de `manifest_cover` conta — `..`/subdir no manifest nunca
+/// saem de `covers_dir`, e o path devolvido sempre aponta pra arquivo que o
+/// `read_dir` viu (nunca um `file://` quebrado pro Kotlin/asset protocol).
+fn resolve_cover(
+    manifest_cover: Option<&str>,
+    exported: &HashSet<String>,
+    dir_cover: Option<&Path>,
+    covers_dir: &Path,
+) -> Option<PathBuf> {
+    manifest_cover
+        .and_then(|c| Path::new(c).file_name())
+        .and_then(|n| n.to_str())
+        .filter(|name| exported.contains(*name))
+        .map(|name| covers_dir.join(name))
+        .or_else(|| dir_cover.map(Path::to_path_buf))
 }
 
 /// Carrega os artefatos de inteligência de `.rustify/` — cada um tolera
@@ -251,9 +300,12 @@ impl MobileLibrary {
         };
 
         let (audio, lrc, covers) = walk_music(root);
+        let exported_covers = list_exported_covers(root);
+        let covers_dir = root.join(COVERS_REL);
         tracing::info!(
             manifest = manifest.tracks.len(),
             audio_files = audio.len(),
+            exported_covers = exported_covers.len(),
             "mobile library: resolvendo manifest contra o acervo local"
         );
 
@@ -274,10 +326,13 @@ impl MobileLibrary {
                 .next()
                 .unwrap_or("(raiz)")
                 .to_string();
-            let cover = file
-                .parent()
-                .and_then(|d| covers.get(d))
-                .map(|p| p.to_string_lossy().to_string());
+            let cover = resolve_cover(
+                mt.cover.as_deref(),
+                &exported_covers,
+                file.parent().and_then(|d| covers.get(d)).map(PathBuf::as_path),
+                &covers_dir,
+            )
+            .map(|p| p.to_string_lossy().to_string());
             let idx = tracks.len();
             by_id.insert(mt.track_id.clone(), idx);
             folder_map.entry(folder).or_default().push(idx);
@@ -705,5 +760,88 @@ mod tests {
     fn canon_preserva_stem_sem_extensao_longa() {
         // sufixo após '.' com mais de 5 chars não é extensão
         assert_eq!(canon_stem("a/b/Mr. Bojangles"), "a/b/mr. bojangles");
+    }
+
+    // ── Capas por álbum-key (CMR-212) ────────────────────────────────────────
+
+    const COVERS_DIR: &str = "/m/.rustify/covers";
+    const PASTA: &str = "/m/Rap/A/cover.jpg";
+
+    fn exported(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn resolve_cover_prefere_export_do_manifest() {
+        let got = resolve_cover(
+            Some("covers/abc.jpg"),
+            &exported(&["abc.jpg"]),
+            Some(Path::new(PASTA)),
+            Path::new(COVERS_DIR),
+        );
+        assert_eq!(got, Some(PathBuf::from("/m/.rustify/covers/abc.jpg")));
+    }
+
+    /// Manifest novo mas export antigo (sem `.rustify/covers/`): o arquivo
+    /// citado não existe no aparelho — cai pra cover.jpg da pasta, e sem
+    /// pasta fica sem capa (nunca um path pra arquivo inexistente).
+    #[test]
+    fn resolve_cover_cai_pra_pasta_quando_export_ausente() {
+        let nada = exported(&[]);
+        let got = resolve_cover(
+            Some("covers/abc.jpg"),
+            &nada,
+            Some(Path::new(PASTA)),
+            Path::new(COVERS_DIR),
+        );
+        assert_eq!(got, Some(PathBuf::from(PASTA)));
+        assert_eq!(
+            resolve_cover(Some("covers/abc.jpg"), &nada, None, Path::new(COVERS_DIR)),
+            None
+        );
+    }
+
+    /// Manifest antigo (sem o campo) com export novo: a pasta continua valendo.
+    #[test]
+    fn resolve_cover_manifest_antigo_sem_campo_usa_pasta() {
+        let exp = exported(&["abc.jpg"]);
+        assert_eq!(
+            resolve_cover(None, &exp, Some(Path::new(PASTA)), Path::new(COVERS_DIR)),
+            Some(PathBuf::from(PASTA))
+        );
+        assert_eq!(resolve_cover(None, &exp, None, Path::new(COVERS_DIR)), None);
+    }
+
+    /// Só o basename do `manifest.cover` conta: `..`/subdir no manifest nunca
+    /// saem de `covers_dir`, e `..` puro não é nome de arquivo.
+    #[test]
+    fn resolve_cover_so_usa_basename() {
+        let exp = exported(&["abc.jpg"]);
+        assert_eq!(
+            resolve_cover(Some("../../abc.jpg"), &exp, None, Path::new(COVERS_DIR)),
+            Some(PathBuf::from("/m/.rustify/covers/abc.jpg"))
+        );
+        assert_eq!(
+            resolve_cover(Some("covers/.."), &exp, Some(Path::new(PASTA)), Path::new(COVERS_DIR)),
+            Some(PathBuf::from(PASTA))
+        );
+        assert_eq!(resolve_cover(Some(""), &exp, None, Path::new(COVERS_DIR)), None);
+    }
+
+    #[test]
+    fn manifest_track_sem_cover_desserializa_com_none() {
+        let base = r#""rel_path":"a/b.opus","title":"t","artist":"","album":"",
+            "duration_ms":1,"track_number":0,"disc_number":1,"genre":"""#;
+        let sem: ManifestTrack =
+            serde_json::from_str(&format!(r#"{{"track_id":"1",{base}}}"#)).unwrap();
+        assert_eq!(sem.cover, None);
+        let nulo: ManifestTrack =
+            serde_json::from_str(&format!(r#"{{"track_id":"2",{base},"cover":null}}"#)).unwrap();
+        assert_eq!(nulo.cover, None);
+        let com: ManifestTrack = serde_json::from_str(&format!(
+            r#"{{"track_id":"3",{base},"cover":"covers/abc.jpg"}}"#
+        ))
+        .unwrap();
+        assert_eq!(com.cover.as_deref(), Some("covers/abc.jpg"));
     }
 }

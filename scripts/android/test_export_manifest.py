@@ -8,6 +8,12 @@ test_discover_tracks.py. Cobre o estado do like no manifest (CMR-220):
     sem like_state).
   - fetch_like_state pagina o scroll de track_enrichments e mapeia por
     track_id string (qpost substituído por um fake em memória).
+E as capas por álbum-key (CMR-212):
+  - cover_rel troca `covers/<sha1>.webp` (cache do desktop) por
+    `covers/<sha1>.jpg` (relativo a `.rustify/` no aparelho).
+  - build_manifest emite `cover` por track (mesmo cover_path → mesmo cover).
+  - cover_jobs separa a primeira capa por pasta (cover.jpg de fallback) do
+    conjunto de capas DISTINTAS (uma conversão por álbum-key).
 
 Rodar: python3 scripts/android/test_export_manifest.py
 """
@@ -99,8 +105,63 @@ def test_fetch_like_state_pagina_e_mapeia():
     check("chaves são string", all(isinstance(k, str) for k in state), True)
 
 
+def point_cover(tid, rel, cover):
+    p = point(tid, rel)
+    if cover is not None:
+        p["payload"]["cover_path"] = cover
+    return p
+
+
+def test_cover_rel_troca_webp_por_jpg():
+    print("cover_rel:")
+    sha = "a" * 40
+    check("webp do cache vira jpg relativo a .rustify/",
+          E.cover_rel(f"covers/{sha}.webp"), f"covers/{sha}.jpg")
+    check("vazio → None", E.cover_rel(""), None)
+    check("None → None", E.cover_rel(None), None)
+
+
+def test_build_manifest_emite_cover_por_track():
+    print("build_manifest (cover):")
+    sha_x, sha_y = "x" * 40, "y" * 40
+    points = [
+        point_cover(1, "A/a.flac", f"covers/{sha_x}.webp"),
+        point_cover(2, "A/b.flac", f"covers/{sha_x}.webp"),   # mesmo álbum-key
+        point_cover(3, "B/c.flac", f"covers/{sha_y}.webp"),
+        point_cover(4, "B/d.flac", None),                     # sem capa no desktop
+    ]
+    m = E.build_manifest(points, {"1": (1_700_000_000, 1_700_000_100)})
+    by_id = {t["track_id"]: t for t in m["tracks"]}
+    check("cover relativo a .rustify/", by_id["1"]["cover"], f"covers/{sha_x}.jpg")
+    check("mesmo cover_path → mesmo cover", by_id["1"]["cover"], by_id["2"]["cover"])
+    check("álbum-key distinto → cover distinto", by_id["3"]["cover"], f"covers/{sha_y}.jpg")
+    check("sem cover_path → null", by_id["4"]["cover"], None)
+    check("os campos do CMR-220 continuam",
+          (by_id["1"]["liked_at"], by_id["1"]["like_updated_at"], by_id["4"]["liked_at"]),
+          (1_700_000_000, 1_700_000_100, None))
+
+
+def test_cover_jobs_deduplica_capas_e_mantem_primeira_por_pasta():
+    print("cover_jobs:")
+    sha_x, sha_y = "x" * 40, "y" * 40
+    points = [
+        point_cover(1, "A/a.flac", f"covers/{sha_x}.webp"),
+        point_cover(2, "A/b.flac", f"covers/{sha_y}.webp"),   # 2ª capa na mesma pasta
+        point_cover(3, "B/c.flac", f"covers/{sha_x}.webp"),   # capa repetida, outra pasta
+        point_cover(4, "C/d.flac", None),                     # sem capa: fora dos dois mapas
+        {"id": 5, "payload": {"path": "/outro/root/e.flac", "cover_path": f"covers/{sha_y}.webp"}},
+    ]
+    dir_cover, distinct = E.cover_jobs(points)
+    check("pasta fica com a PRIMEIRA capa (setdefault)",
+          dir_cover, {"A": f"covers/{sha_x}.webp", "B": f"covers/{sha_x}.webp"})
+    check("capas distintas deduplicadas, jpg → webp do cache",
+          distinct, {f"{sha_x}.jpg": f"covers/{sha_x}.webp", f"{sha_y}.jpg": f"covers/{sha_y}.webp"})
+
+
 def main():
-    for t in (test_build_manifest_like_state, test_fetch_like_state_pagina_e_mapeia):
+    for t in (test_build_manifest_like_state, test_fetch_like_state_pagina_e_mapeia,
+              test_cover_rel_troca_webp_por_jpg, test_build_manifest_emite_cover_por_track,
+              test_cover_jobs_deduplica_capas_e_mantem_primeira_por_pasta):
         t()
     print()
     if check.failed:

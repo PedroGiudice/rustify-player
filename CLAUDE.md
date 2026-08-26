@@ -512,6 +512,23 @@ SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
   resolucao por stem canonico em `mobile_library.rs` (1746/1746 no S24).
   Manifest vive em `/sdcard/Music/.rustify/manifest.json`; apos novo
   sync de acervo, `lib_rescan`.
+- Capas mobile (CMR-212, paridade com o desktop): `manifest.cover` =
+  `covers/<sha1>.jpg` (relativo a `.rustify/`), UMA capa por álbum-key
+  (`album_title|artist`, arte embutida primeiro — o mesmo `cover_path`
+  do Qdrant), convertida do cache webp da cmr-auto pelo `--deploy` do
+  export em `<STAGING>/.rustify/covers/`. Precedência em `resolve_cover`
+  (`mobile_library.rs`): export (se o arquivo existir) > cover.jpg/
+  folder.jpg da pasta > null — manifest/export antigos caem na pasta;
+  o cover.jpg por pasta continua sendo gerado como fallback. **Gotcha do
+  scope**: `assetProtocol.scope` em forma de ARRAY exige o ponto LITERAL
+  no padrão (tauri 2.11, `src/scope/fs.rs`): `Music/**` NÃO cobre
+  `Music/.rustify/covers/**`, que está listado à parte em
+  `tauri.android.conf.json` (mesmo precedente do desktop,
+  `**/.cache/rustify-player/**`). Ordem de operação: release
+  (`./scripts/release_android.sh`) → `python3 scripts/android/
+  export_manifest.py --deploy` (túnel 16333; `--skip-covers` pula os
+  dois trilhos de capa) → `ssh cmr-auto@100.102.249.9
+  '~/phone_push_retry.sh'` → `lib_rescan` no app.
 - Proveniencia: `device.json` no **dataDir raiz** do app Android
   (`/data/data/dev.cmr.rustifyplayer/device.json` — NAO em `files/`),
   device_id do S24 = `s24`, imutavel. APK carimba `app_version` proprio.

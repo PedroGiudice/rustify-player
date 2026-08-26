@@ -12,7 +12,9 @@ que a integração da UI (HTML/CSS do claude.design → SolidJS) deve seguir.
 - Registro de escuta é automático (journal no service + sync worker) — a UI
   não loga nada.
 - Capas/arquivos locais: `convertFileSrc(path)` (asset protocol cobre
-  `/storage/emulated/0/Music/**`).
+  `/storage/emulated/0/Music/**` e, por padrão literal à parte,
+  `/storage/emulated/0/Music/.rustify/covers/**` — no tauri 2.11 o glob em
+  array NÃO casa componente com ponto inicial; ver CLAUDE.md, seção Android).
 
 ## Biblioteca (commands do app)
 
@@ -35,6 +37,22 @@ epoch em segundos, `null` sem; descurtida no desktop chega como `liked_at: null`
 + `like_updated_at` preenchido. A UI lê o estado EFETIVO por `isLiked()` do
 store — manifest x override local `kv-mobile-likes`, o mais novo vence — nunca
 `liked_at` cru).
+
+`album_cover_path` (CMR-212): path absoluto já resolvido no Rust
+(`resolve_cover`, `mobile_library.rs`), por precedência:
+
+1. `manifest.cover` — `covers/<sha1>.jpg`, relativo a `.rustify/`; UM arquivo
+   por álbum-key do desktop (`album_title|artist`, arte embutida primeiro —
+   o mesmo `cover_path` do Qdrant, convertido do cache webp pelo `--deploy` do
+   `export_manifest.py` em `/storage/emulated/0/Music/.rustify/covers/`).
+   Só vale **se o arquivo existir** lá; só o basename do campo é usado.
+2. `cover.jpg`/`cover.jpeg`/`cover.png`/`folder.jpg` da pasta da faixa
+   (fallback dos tracks sem `cover_path` no desktop e de manifest/export
+   antigos — manifest sem `cover` e export sem `covers/` caem aqui).
+3. `null`.
+
+A UI não muda: `convertFileSrc(album_cover_path)` como sempre; o Kotlin
+recebe `'file://' + album_cover_path` em `artworkUri`.
 
 `lib_recent_plays` (CMR-215): faixas DISTINTAS que **contaram como play**
 (`counts_as_play`: fim da escuta ≥ 20s OU ≥ 25% da faixa), da mais recente pra

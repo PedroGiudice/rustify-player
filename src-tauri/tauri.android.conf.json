@@ -4,7 +4,10 @@
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": ["/storage/emulated/0/Music/**"]
+        "scope": [
+          "/storage/emulated/0/Music/**",
+          "/storage/emulated/0/Music/.rustify/covers/**"
+        ]
       }
     }
   },

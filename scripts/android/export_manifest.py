@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Exporta os artefatos da biblioteca pro Rustify Android — um trilho, quatro
-artefatos (CMR-190/CMR-191):
+"""Exporta os artefatos da biblioteca pro Rustify Android — um trilho, seis
+artefatos (CMR-190/CMR-191/CMR-194/CMR-212):
 
-  manifest.json   track_id ↔ rel_path + metadata + estado do like (CMR-220)
+  manifest.json   track_id ↔ rel_path + metadata + like (CMR-220) + cover
   vectors.bin     vetores mert 768d f32 L2-normalizados por track_id
   taste.json      snapshot de gosto (réplica de derive_behavioral_signals)
   stations.json   stations do desktop + pool precomputado por station
-  covers          cover.jpg por pasta de álbum, direto no STAGING da cmr-auto
+  sync-token      Bearer do sync de eventos (CMR-194)
+  covers/         uma capa por ÁLBUM-KEY do desktop (`<sha1>.jpg`, paridade
+                  com o cache do desktop), direto no STAGING da cmr-auto;
+                  cover.jpg por pasta continua como fallback (tracks sem
+                  cover_path, manifest/APK antigos)
 
 O track_id no desktop é hash do PATH ABSOLUTO da cmr-auto (types.rs
 path_to_id) — o celular não consegue derivá-lo dos arquivos transcodados.
@@ -157,6 +161,16 @@ def fetch_like_state(base_url: str) -> dict[str, tuple[int | None, int | None]]:
             return state
 
 
+def cover_rel(cover_path: str | None) -> str | None:
+    """`covers/<sha1>.webp` (cache do desktop, cover.rs) → `covers/<sha1>.jpg`,
+    relativo a `.rustify/` no aparelho — o nome que deploy_covers produz.
+    None sem cover_path."""
+    if not cover_path:
+        return None
+    stem = cover_path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return f"covers/{stem}.jpg"
+
+
 def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
     tracks, skipped = [], 0
     like_state = like_state or {}
@@ -186,6 +200,9 @@ def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
             # o aparelho aplica LWW contra o override local por like_updated_at.
             "liked_at": liked_at,
             "like_updated_at": like_updated_at,
+            # Capa por álbum-key (CMR-212): o aparelho usa se o arquivo existir
+            # em .rustify/covers/, senão cai pro cover.jpg da pasta.
+            "cover": cover_rel(pl.get("cover_path")),
         })
     tracks.sort(key=lambda t: t["rel_path"])
     if skipped:
@@ -469,14 +486,20 @@ def build_stations(base_url: str, negatives: list[int]) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# covers — cover.jpg por pasta de álbum, convertido do cache webp NO STAGING
+# covers — (a) uma capa por álbum-key em .rustify/covers/<sha1>.jpg (CMR-212)
+#          (b) cover.jpg por pasta de álbum (fallback)
+# ambas convertidas do cache webp do desktop direto NO STAGING da cmr-auto
 # ─────────────────────────────────────────────────────────────────────────────
 
-def deploy_covers(points: list[dict]) -> None:
-    """Mapeia pasta de álbum → cover do cache do desktop e converte
-    (webp→jpg via ffmpeg) direto no staging do phone-sync, na cmr-auto.
-    Idempotente: pula cover.jpg já existente."""
-    dir_cover = {}
+def cover_jobs(points: list[dict]) -> tuple[dict[str, str], dict[str, str]]:
+    """Dois mapas a partir do `cover_path` do Qdrant (pura, testada):
+    `dir_cover`  pasta relativa → cover do cache da PRIMEIRA track vista
+                 (setdefault) — o cover.jpg de fallback da pasta;
+    `distinct`   `<sha1>.jpg` → cover do cache — uma conversão por álbum-key,
+                 o que o desktop mostra (pasta com 2+ álbuns deixa de perder
+                 capa)."""
+    dir_cover: dict[str, str] = {}
+    distinct: dict[str, str] = {}
     for p in points:
         pl = p["payload"]
         path, cover = pl.get("path") or "", pl.get("cover_path")
@@ -484,15 +507,55 @@ def deploy_covers(points: list[dict]) -> None:
             continue
         rel_dir = path[len(MUSIC_ROOT):].rsplit("/", 1)[0]
         dir_cover.setdefault(rel_dir, cover)
-    job = json.dumps(dir_cover)
+        distinct.setdefault(cover_rel(cover).rsplit("/", 1)[-1], cover)
+    return dir_cover, distinct
+
+
+def deploy_covers(points: list[dict]) -> None:
+    """Converte (webp→jpg via ffmpeg, mesmo 600px do cache — sem resize) direto
+    no staging do phone-sync, na cmr-auto: as capas distintas em
+    `.rustify/covers/<sha1>.jpg` e o cover.jpg de cada pasta. Idempotente:
+    pula destino já existente (contadores separados por trilho)."""
+    dir_cover, distinct = cover_jobs(points)
+    job = json.dumps({"dirs": dir_cover, "distinct": distinct})
     script = f"""
 import json, subprocess, sys
 from pathlib import Path
 mapping = json.load(sys.stdin)
 staging = Path({STAGING!r})
 cache = Path({COVER_CACHE!r})
+
+def convert(src, dst):
+    r = subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error",
+                        "-i", str(src), "-q:v", "3", str(dst)],
+                       capture_output=True)
+    if r.returncode != 0:
+        dst.unlink(missing_ok=True)
+    return r.returncode == 0
+
+# (a) capas distintas por álbum-key → .rustify/covers/<sha1>.jpg
+covers_dir = staging / ".rustify" / "covers"
+covers_dir.mkdir(parents=True, exist_ok=True)
 done = skipped = missing = failed = 0
-for rel_dir, cover in mapping.items():
+for name, cover in mapping["distinct"].items():
+    dst = covers_dir / name
+    if dst.exists():
+        skipped += 1
+        continue
+    src = cache / cover
+    if not src.exists():
+        missing += 1
+        continue
+    if convert(src, dst):
+        done += 1
+    else:
+        failed += 1
+print(f"covers/: {{done}} convertidas, {{skipped}} já existiam, "
+      f"{{missing}} sem origem, {{failed}} falhas ({{len(mapping['distinct'])}} distintas)")
+
+# (b) cover.jpg por pasta (fallback dos tracks sem cover_path e de manifest/APK antigos)
+done = skipped = missing = failed = 0
+for rel_dir, cover in mapping["dirs"].items():
     dst_dir = staging / rel_dir
     if not dst_dir.is_dir():
         missing += 1
@@ -505,15 +568,11 @@ for rel_dir, cover in mapping.items():
     if not src.exists():
         missing += 1
         continue
-    r = subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error",
-                        "-i", str(src), "-q:v", "3", str(dst)],
-                       capture_output=True)
-    if r.returncode == 0:
+    if convert(src, dst):
         done += 1
     else:
         failed += 1
-        dst.unlink(missing_ok=True)
-print(f"covers: {{done}} convertidas, {{skipped}} já existiam, "
+print(f"cover.jpg por pasta: {{done}} convertidas, {{skipped}} já existiam, "
       f"{{missing}} sem origem/pasta, {{failed}} falhas")
 """
     # ssh com script + dados: script e JSON vão como arquivos temp no destino.
@@ -521,9 +580,10 @@ print(f"covers: {{done}} convertidas, {{skipped}} já existiam, "
                    input=script, text=True, check=True, timeout=30)
     subprocess.run(["ssh", CMR_AUTO, "cat > /tmp/covers-map.json"],
                    input=job, text=True, check=True, timeout=60)
+    # Teto: ~565 distintas + ~600 pastas a ~0.3s/ffmpeg num run frio.
     proc = subprocess.run(
         ["ssh", CMR_AUTO, "python3 /tmp/covers-job.py < /tmp/covers-map.json"],
-        capture_output=True, text=True, timeout=600,
+        capture_output=True, text=True, timeout=900,
     )
     print(proc.stdout.strip() or proc.stderr.strip())
 
@@ -532,7 +592,8 @@ def deploy_artifacts(out_dir: str) -> None:
     subprocess.run(["ssh", CMR_AUTO, f"mkdir -p {STAGING}/.rustify"], check=True, timeout=30)
     # Token Bearer do sync (CMR-194): garante um na cmr-auto (fonte da verdade,
     # mesmo arquivo que o receptor desktop lê) e leva a cópia no trilho — 5º
-    # artefato que o phone_push_retry.sh empurra pro aparelho.
+    # artefato que o phone_push_retry.sh empurra pro aparelho (o 6º, covers/,
+    # nasce na própria cmr-auto em deploy_covers).
     subprocess.run(
         ["ssh", CMR_AUTO,
          f"test -f {SYNC_TOKEN} || (umask 077 && mkdir -p $(dirname {SYNC_TOKEN}) "
@@ -549,7 +610,8 @@ def deploy_artifacts(out_dir: str) -> None:
             ["scp", "-q", f"{out_dir}/{name}", f"{CMR_AUTO}:{STAGING}/.rustify/{name}"],
             check=True, timeout=120,
         )
-    print(f"deploy: 5 artefatos → {CMR_AUTO}:{STAGING}/.rustify/")
+    print(f"deploy: 5 artefatos → {CMR_AUTO}:{STAGING}/.rustify/ "
+          f"(6º = covers/, convertido a seguir)")
 
 
 def main() -> int:
@@ -558,7 +620,8 @@ def main() -> int:
     ap.add_argument("--out-dir", default="/tmp/rustify-export")
     ap.add_argument("--deploy", action="store_true",
                     help="scp artefatos pro staging do phone-sync + capas via ssh")
-    ap.add_argument("--skip-covers", action="store_true")
+    ap.add_argument("--skip-covers", action="store_true",
+                    help="não converte capas (covers/ por álbum-key nem cover.jpg por pasta)")
     args = ap.parse_args()
 
     import os
@@ -590,7 +653,9 @@ def main() -> int:
 
     if args.deploy:
         deploy_artifacts(args.out_dir)
-        if not args.skip_covers:
+        if args.skip_covers:
+            print("covers: puladas (--skip-covers) — nem covers/ nem cover.jpg por pasta")
+        else:
             deploy_covers(points)
     return 0
 
