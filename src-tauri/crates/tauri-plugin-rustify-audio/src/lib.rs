@@ -66,6 +66,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::ack_events,
             commands::register_listener,
             commands::remove_listener,
+            commands::updater_check,
+            commands::updater_install,
         ])
         .setup(|app, api| {
             let audio = init_platform(app, api)?;

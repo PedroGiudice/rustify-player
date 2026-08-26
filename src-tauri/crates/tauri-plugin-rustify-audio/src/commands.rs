@@ -157,3 +157,33 @@ pub(crate) async fn remove_listener<R: Runtime>(
 ) -> crate::Result<()> {
     audio(&app).remove_listener(event, channel_id).await
 }
+
+// ── Atualização (spec 2026-08-24-android-auto-update) ────────────────────
+// HTTP e PackageInstaller vivem no Kotlin: o ureq do Android é sem TLS e o
+// GitHub é HTTPS-only.
+
+#[tauri::command]
+pub(crate) async fn updater_check<R: Runtime>(
+    app: AppHandle<R>,
+    manifest_url: Option<String>,
+) -> crate::Result<UpdateCheck> {
+    audio(&app)
+        .updater_check(UpdaterCheckRequest { manifest_url })
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn updater_install<R: Runtime>(
+    app: AppHandle<R>,
+    url: String,
+    sha256: Option<String>,
+    size: Option<i64>,
+) -> crate::Result<UpdaterInstallResult> {
+    audio(&app)
+        .updater_install(UpdaterInstallRequest {
+            url,
+            sha256,
+            size: size.unwrap_or(0),
+        })
+        .await
+}

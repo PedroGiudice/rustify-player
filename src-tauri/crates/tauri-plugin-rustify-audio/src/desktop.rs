@@ -95,4 +95,15 @@ impl<R: Runtime> RustifyAudio<R> {
     pub async fn remove_listener(&self, _event: String, _channel_id: u32) -> crate::Result<()> {
         Err(Error::UnsupportedPlatform)
     }
+
+    pub async fn updater_check(&self, _request: UpdaterCheckRequest) -> crate::Result<UpdateCheck> {
+        Err(Error::UnsupportedPlatform)
+    }
+
+    pub async fn updater_install(
+        &self,
+        _request: UpdaterInstallRequest,
+    ) -> crate::Result<UpdaterInstallResult> {
+        Err(Error::UnsupportedPlatform)
+    }
 }

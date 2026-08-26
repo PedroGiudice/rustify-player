@@ -206,6 +206,55 @@ pub struct DrainEventsResponse {
     pub last_seq: i64,
 }
 
+/// Pedido de `updater_check`. `manifest_url` só existe para teste; `None`
+/// usa a URL fixa do release `dev` (definida no Kotlin).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterCheckRequest {
+    #[serde(default)]
+    pub manifest_url: Option<String>,
+}
+
+/// Resposta de `updater_check`. A decisão `available` é do Kotlin (comparação
+/// semver contra o `versionName` instalado) — fonte única.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheck {
+    pub installed: String,
+    pub latest: String,
+    pub available: bool,
+    #[serde(default)]
+    pub apk_url: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub size: i64,
+    /// `canRequestPackageInstalls()` — false até o usuário liberar "instalar
+    /// apps desconhecidos" para o app (toggle único por install).
+    pub can_install: bool,
+}
+
+/// Pedido de `updater_install`. `sha256`/`size` vêm do manifest; ausentes,
+/// o Kotlin pula a verificação correspondente.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterInstallRequest {
+    pub url: String,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub size: i64,
+}
+
+/// `started` (download em andamento; progresso pelo evento `updater_progress`),
+/// `needs_permission` (abriu a tela do sistema; o JS re-tenta depois) ou
+/// `busy` (já havia um download rodando).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterInstallResult {
+    pub status: String,
+}
+
 /// Payload vazio. O lado Kotlin recebe `{}` — nunca `null`, que quebraria um
 /// eventual `invoke.getArgs()`.
 #[cfg(target_os = "android")]
@@ -322,5 +371,49 @@ mod tests {
         assert!(json.contains("\"trackId\":\"42\""), "{json}");
         assert!(json.contains("\"durationMs\":1000"), "{json}");
         assert!(json.contains("\"contextId\":null"), "{json}");
+    }
+
+    /// Wire do Kotlin para `updater_check`. `sha256` pode vir `null` (manifest
+    /// antigo) e `size` ausente — o parser não pode quebrar por isso.
+    #[test]
+    fn update_check_le_o_wire_do_kotlin() {
+        let wire = r#"{"installed":"0.2.75","latest":"0.2.76","available":true,
+            "apkUrl":"https://github.com/PedroGiudice/rustify-player/releases/download/dev/rustify-player_0.2.76.apk",
+            "sha256":null,"canInstall":false}"#;
+        let c: UpdateCheck = serde_json::from_str(wire).unwrap();
+        assert_eq!(c.installed, "0.2.75");
+        assert_eq!(c.latest, "0.2.76");
+        assert!(c.available);
+        assert_eq!(c.sha256, None);
+        assert_eq!(c.size, 0);
+        assert!(!c.can_install);
+        assert!(c.apk_url.as_deref().unwrap().ends_with("rustify-player_0.2.76.apk"));
+    }
+
+    /// O request de install sai em camelCase — o Kotlin lê `sha256`/`size`
+    /// com default, mas `url` é obrigatória.
+    #[test]
+    fn updater_install_request_serializa_em_camel_case() {
+        let req = UpdaterInstallRequest {
+            url: "https://x/y.apk".into(),
+            sha256: Some("ab".into()),
+            size: 10,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"url\":\"https://x/y.apk\""), "{json}");
+        assert!(json.contains("\"sha256\":\"ab\""), "{json}");
+        assert!(json.contains("\"size\":10"), "{json}");
+    }
+
+    #[test]
+    fn updater_check_request_omite_url_nula_como_null() {
+        let req = UpdaterCheckRequest { manifest_url: None };
+        assert_eq!(serde_json::to_string(&req).unwrap(), r#"{"manifestUrl":null}"#);
+    }
+
+    #[test]
+    fn updater_install_result_le_status() {
+        let r: UpdaterInstallResult = serde_json::from_str(r#"{"status":"needs_permission"}"#).unwrap();
+        assert_eq!(r.status, "needs_permission");
     }
 }

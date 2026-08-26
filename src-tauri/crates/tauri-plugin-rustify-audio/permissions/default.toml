@@ -24,4 +24,6 @@ permissions = [
   "allow-ack-events",
   "allow-register-listener",
   "allow-remove-listener",
+  "allow-updater-check",
+  "allow-updater-install",
 ]

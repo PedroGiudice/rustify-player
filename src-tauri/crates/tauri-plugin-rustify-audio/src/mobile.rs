@@ -136,4 +136,15 @@ impl<R: Runtime> RustifyAudio<R> {
         self.call_unit("removeListener", RemoveListenerArgs { event, channel_id })
             .await
     }
+
+    pub async fn updater_check(&self, request: UpdaterCheckRequest) -> crate::Result<UpdateCheck> {
+        self.call("updaterCheck", request).await
+    }
+
+    pub async fn updater_install(
+        &self,
+        request: UpdaterInstallRequest,
+    ) -> crate::Result<UpdaterInstallResult> {
+        self.call("updaterInstall", request).await
+    }
 }

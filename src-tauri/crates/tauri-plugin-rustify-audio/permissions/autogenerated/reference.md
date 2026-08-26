@@ -23,6 +23,8 @@ os commands em permissoes separadas.
 - `allow-ack-events`
 - `allow-register-listener`
 - `allow-remove-listener`
+- `allow-updater-check`
+- `allow-updater-install`
 
 ## Permission Table
 
@@ -471,6 +473,58 @@ Enables the truncate_queue command without any pre-configured scope.
 <td>
 
 Denies the truncate_queue command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-updater-check`
+
+</td>
+<td>
+
+Enables the updater_check command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-updater-check`
+
+</td>
+<td>
+
+Denies the updater_check command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:allow-updater-install`
+
+</td>
+<td>
+
+Enables the updater_install command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`rustify-audio:deny-updater-install`
+
+</td>
+<td>
+
+Denies the updater_install command without any pre-configured scope.
 
 </td>
 </tr>

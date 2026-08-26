@@ -255,6 +255,13 @@ fn lib_rescan(lib: State<Library>) -> usize {
     count
 }
 
+/// Versão instalada (tauri.conf.json embutida no APK). Serve à Settings
+/// offline; a comparação com o release é do plugin (`updater_check`).
+#[tauri::command]
+fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(
@@ -302,6 +309,7 @@ pub fn run() {
             continuity_set_enabled,
             continuity_note_skip,
             continuity_status,
+            app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

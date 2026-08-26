@@ -19,6 +19,8 @@ const COMMANDS: &[&str] = &[
     "ack_events",
     "register_listener",
     "remove_listener",
+    "updater_check",
+    "updater_install",
 ];
 
 fn main() {
