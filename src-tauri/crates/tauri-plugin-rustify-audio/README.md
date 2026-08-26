@@ -23,7 +23,7 @@ tauri::Builder::default()
     .plugin(tauri_plugin_rustify_audio::init())
 ```
 
-Capability: `"rustify-audio:default"` (libera os 13 commands). Permissões
+Capability: `"rustify-audio:default"` (libera todos os commands do plugin). Permissões
 individuais: `rustify-audio:allow-set-queue`, `allow-play`, `allow-drain-events`, …
 
 O `android/src/main/AndroidManifest.xml` do plugin já declara o `<service>` e as

@@ -75,5 +75,14 @@ fi
 
 gh release view "$TAG" -R "$REPO" >/dev/null 2>&1 || { echo "[android] release $TAG nao existe (rode release.sh primeiro)"; exit 1; }
 echo "[android] upload -> $REPO@$TAG"
-gh release upload "$TAG" "$OUT/$APK_NAME" "$OUT/android-latest.json" -R "$REPO" --clobber
+# APK primeiro, manifest por ultimo: --clobber APAGA o asset antes de subir
+# (gh 2.87: "if the upload fails, the original assets will be lost"). Se o
+# APK falhar no meio, o android-latest.json antigo continua apontando para o
+# APK antigo, que segue no release (nome versionado, nunca sobrescrito).
+gh release upload "$TAG" "$OUT/$APK_NAME" -R "$REPO" --clobber
+ASSET_SIZE="$(gh release view "$TAG" -R "$REPO" --json assets -q ".assets[] | select(.name == \"$APK_NAME\") | .size")"
+if [[ "$ASSET_SIZE" != "$SIZE" ]]; then
+  echo "[android] asset $APK_NAME publicado com tamanho '$ASSET_SIZE' != $SIZE (upload truncado?)"; exit 1
+fi
+gh release upload "$TAG" "$OUT/android-latest.json" -R "$REPO" --clobber
 echo "[android] publicado. O aparelho ve a versao no proximo check (Settings > Atualizacao)."
