@@ -30,13 +30,12 @@ export interface Folder {
   track_count: number;
 }
 
-/** Origins do contrato — nomes EXATOS, o motor de sinal lê isso.
- *  `autoplay` e `repeat` entram com a continuidade (epic B): o desktop já os
- *  emite e a régua corta por eles. `shuffle` continua até a decisão de mapeá-lo
- *  para `autoplay` ser tomada — mexer nele muda o peso de dados já gravados. */
-/** Vocabulário EXATO do sinal v3 do desktop. "shuffle" não existe aqui de
- *  propósito: estava fora do vocabulário do motor e entrava com peso cheio no
- *  saldo — sequência escolhida pela máquina loga `autoplay`. */
+/** Origins do contrato — vocabulário EXATO do sinal v3 do desktop; o motor
+ *  lê isso. "shuffle" não existe aqui de propósito: estava fora do vocabulário
+ *  do motor e entrava com peso CHEIO no saldo — sequência escolhida pela
+ *  máquina (shuffle, "tocar a partir daqui", tender) loga `autoplay`, que tem
+ *  o desconto de origem passiva. Decisão do CEO no plano de paridade: mapear
+ *  aqui, sem mexer em dado já gravado. */
 export type Origin =
   | "manual"
   | "playlist"

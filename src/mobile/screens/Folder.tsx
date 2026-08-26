@@ -2,9 +2,15 @@
    Folder.tsx — porte de S.playlist do handoff.
 
    Pasta de 1º nível = playlist (é o que lib_list_folders devolve).
-   Play → origin `playlist`; Shuffle → origin `shuffle`; tocar uma
-   linha → origin `manual`, com a pasta inteira virando fila a
-   partir daquele índice (o auto-advance é do Kotlin).
+   Play → origin `playlist`; Shuffle → origin `autoplay` (cauda
+   escolhida pela máquina; `shuffle` não é origin); tocar uma linha →
+   origin `manual`, com a pasta inteira virando fila a partir daquele
+   índice (o auto-advance é do Kotlin).
+
+   Playlist é coleção curada e TERMINA (CEO, 17/08): Play, Shuffle e o
+   "tocar a partir daqui" da sheet armam continuidade OFF com a pasta
+   como contexto — daí o `playlist: name()` no contexto da linha. As
+   outras telas não passam `playlist` e ficam no default (radio).
    ============================================================ */
 
 import { Show, createResource } from "solid-js";
@@ -52,7 +58,7 @@ export function Folder(props: { param: string | null }) {
             {(t, i) => (
               <TrackRow
                 track={t}
-                context={{ list: list(), index: i() }}
+                context={{ list: list(), index: i(), playlist: name() }}
                 onPlay={() => void playTrackFrom(list(), i())}
               />
             )}

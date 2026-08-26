@@ -6,7 +6,8 @@
    sequência não tem origin no contrato (`manual` é faixa
    escolhida, `playlist` é pasta, `album_seq` é álbum) e inventar
    um nome contamina o motor de sinal. Sobrou o Shuffle (origin
-   `shuffle`), os álbuns e as faixas — que tocam como `manual`.
+   `autoplay` — `shuffle` não é origin, ver shuffleList no store), os
+   álbuns e as faixas — que tocam como `manual`.
    ============================================================ */
 
 import { For, Show, createMemo } from "solid-js";

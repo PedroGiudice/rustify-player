@@ -10,6 +10,7 @@
 import { Show, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { openTrackSheet } from "./Sheet";
+import type { TrackContext } from "../sheet";
 import { createLongPress } from "../lib/longPress";
 import { fmtDuration } from "../derive";
 import { pb } from "../store";
@@ -23,8 +24,9 @@ export function TrackRow(props: {
   /** Segunda linha alternativa (default: artista · álbum). */
   sub?: string;
   right?: string;
-  /** Lista em que esta faixa vive — habilita "tocar a partir daqui". */
-  context?: { list: Track[]; index: number };
+  /** Lista em que esta faixa vive — habilita "tocar a partir daqui".
+   *  `playlist` (nome da pasta) só quando a lista É uma playlist. */
+  context?: TrackContext;
   /** Desliga o long-press (linha da faixa que já está tocando). */
   noSheet?: boolean;
 }) {

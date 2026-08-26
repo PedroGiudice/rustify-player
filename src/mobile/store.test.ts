@@ -20,7 +20,7 @@ vi.mock("./ipc", () => ({
 }));
 
 import * as ipc from "./ipc";
-import { playFolder, shuffleFolder, shuffleList } from "./store";
+import { playFolder, playFromHere, shuffleFolder, shuffleList } from "./store";
 
 const track = (id: number): Track =>
   ({ id: String(id), title: `t${id}`, path: `/m/${id}.flac`, duration_ms: 1000 * id }) as Track;
@@ -71,5 +71,34 @@ describe("shuffleList (álbum/artista/acervo)", () => {
     await shuffleList(FOLDER);
     expect(queued()).toMatchObject({ origin: "autoplay", contextId: null });
     expect(armed()).toMatchObject({ mode: "radio", stationId: null });
+  });
+});
+
+describe('playFromHere ("Tocar a partir daqui" da sheet — resíduo do CMR-211)', () => {
+  it("dentro de uma playlist herda a exceção do Play: contexto = pasta e continuidade OFF", async () => {
+    await playFromHere({ list: FOLDER, index: 2, playlist: "Rap BR" });
+    expect(queued()).toMatchObject({ contextId: "Rap BR", startIndex: 0 });
+    expect(armed()).toMatchObject({ mode: "off", stationId: null });
+  });
+
+  it("fora de playlist (álbum/artista/acervo) mantém o default: sem contexto e radio", async () => {
+    await playFromHere({ list: FOLDER, index: 2 });
+    expect(queued()).toMatchObject({ contextId: null, startIndex: 0 });
+    expect(armed()).toMatchObject({ mode: "radio", stationId: null });
+  });
+
+  it("origin é `autoplay` nos dois casos (cauda escolhida pela máquina; nada de origin novo)", async () => {
+    await playFromHere({ list: FOLDER, index: 2, playlist: "Rap BR" });
+    expect(queued().origin).toBe("autoplay");
+    await playFromHere({ list: FOLDER, index: 2 });
+    expect(queued().origin).toBe("autoplay");
+  });
+
+  it("a faixa segurada abre a fila e a cauda é uma permutação do que vinha DEPOIS dela", async () => {
+    await playFromHere({ list: FOLDER, index: 2, playlist: "Rap BR" });
+    const ids = queued().items.map((i: { trackId: string }) => i.trackId);
+    expect(ids[0]).toBe("3");
+    expect(ids.slice(1).sort()).toEqual(["4", "5"]);
+    expect(armed().seedTrackId).toBe("3");
   });
 });

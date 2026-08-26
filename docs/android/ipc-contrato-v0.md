@@ -180,6 +180,13 @@ fim e deve terminar (`mode: 'off'`), e a **station**, que já tem o modo de
 continuação dela (`mode: 'station'`, pool próprio em vez de rádio semeado).
 Faixa avulsa, álbum, shuffle e rádio de faixa continuam.
 
+A exceção da playlist vale para TUDO que refaz a fila a partir dela, não só
+para o botão Play: o Shuffle da pasta (`shuffleFolder`) e o "tocar a partir
+daqui" da sheet de uma linha da pasta (`playFromHere`, `context.playlist`)
+armam `off` com a pasta como `contextId` (CMR-211). Com o default `radio` o
+tender anexava lotes do acervo inteiro a 2 posições do fim e a sessão virava
+"shuffle geral".
+
 O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
 **secando** (tocando, a ≤2 posições do fim). Pausa não conta: o usuário pausou
 de propósito e reabastecer seria trabalho invisível gastando bateria.
@@ -251,6 +258,7 @@ A decisão `available` é do Kotlin (semver contra o `versionName` instalado).
 | Play numa playlist/pasta | `playlist` |
 | Play num álbum em sequência | `album_seq` |
 | Shuffle burro do acervo | `autoplay` (sequência escolhida pela máquina) |
+| "Tocar a partir daqui" (faixa segurada + cauda embaralhada) | `autoplay` |
 | Play/next de uma station | `station` |
 | Fila continuada pelo motor | `autoplay` (tender, epic B) |
 | Re-escuta com repeat-one ligado | `repeat` (carimbado pelo serviço) |

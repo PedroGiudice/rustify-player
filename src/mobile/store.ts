@@ -18,6 +18,7 @@ import { createStore } from "solid-js/store";
 import * as ipc from "./ipc";
 import { deriveAlbums, deriveArtists, shuffled } from "./derive";
 import { remainingMs, resolveQueue, skipReport } from "./queueModel";
+import type { TrackContext } from "./sheet";
 import type {
   Folder,
   Origin,
@@ -268,6 +269,19 @@ export const shuffleAll = () => shuffleList(tracks());
  *  inteiro a 2 posições do fim e a sessão virava "shuffle geral" (CMR-211). */
 export const shuffleFolder = (list: Track[], name: string) =>
   shuffleList(list, name, { mode: "off" });
+/** "Tocar a partir daqui" da sheet: a faixa segurada abre a fila e o que
+ *  vinha depois dela entra embaralhado — cauda escolhida pela máquina, origin
+ *  `autoplay`. Dentro de uma playlist herda a exceção do Play (pasta como
+ *  contexto, continuidade OFF): sem isso a sessão virava "shuffle geral" pelo
+ *  mesmo mecanismo do shuffleFolder (CMR-211, outro caminho). */
+export const playFromHere = (ctx: TrackContext) => {
+  const head = ctx.list[ctx.index];
+  if (!head) return playList([], 0, "autoplay");
+  const list = [head, ...shuffled(ctx.list.slice(ctx.index + 1))];
+  return ctx.playlist
+    ? playList(list, 0, "autoplay", ctx.playlist, { mode: "off" })
+    : playList(list, 0, "autoplay");
+};
 
 /** Toca uma station: lote do pool precomputado + re-rank local.
  *  origin `station` — o sinal v3 desconta origem passiva. */
@@ -583,8 +597,9 @@ export async function bootStore() {
 
   // Hook de smoke via CDP: os testes no aparelho precisam exercitar o CAMINHO
   // REAL do store (a decisão de continuidade vive em playFolder/playAlbum/
-  // playStation), não re-invocar os commands na mão. Sem isso cada smoke
-  // valida só o backend e a regra do store fica no escuro.
+  // playStation/shuffleFolder/playFromHere), não re-invocar os commands na
+  // mão. Sem isso cada smoke valida só o backend e a regra do store fica no
+  // escuro.
   (window as unknown as Record<string, unknown>).__mobileStore = {
     playList,
     playFolder,
@@ -592,6 +607,8 @@ export async function bootStore() {
     playStation,
     playSimilar,
     shuffleList,
+    shuffleFolder,
+    playFromHere,
     next,
     skipToIndex,
   };

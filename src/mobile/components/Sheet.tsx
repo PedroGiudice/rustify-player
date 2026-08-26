@@ -12,10 +12,10 @@
 import { For, Show, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { closeSheet, closeSheetThen, openSheet, sheet } from "../sheet";
-import type { SheetSpec } from "../sheet";
+import type { SheetSpec, TrackContext } from "../sheet";
 import { navigate } from "../nav";
-import { albumKey, fmtDuration, shuffled } from "../derive";
-import { enqueueEnd, enqueueNext, playList, playSimilar, playTrackFrom } from "../store";
+import { albumKey, fmtDuration } from "../derive";
+import { enqueueEnd, enqueueNext, playFromHere, playList, playSimilar, playTrackFrom } from "../store";
 import type { Track } from "../types";
 
 type IconName = keyof typeof Icon;
@@ -68,8 +68,10 @@ function trackActions(spec: Extract<SheetSpec, { kind: "track" }>): Action[] {
       label: "Tocar a partir daqui",
       icon: "shuffle",
       hint: `${ctx.list.length - ctx.index} faixas, embaralhadas`,
-      // A cauda embaralhada e arranjo da maquina: origin `autoplay` (vocabulario v3).
-      run: () => void playList([t, ...shuffled(ctx.list.slice(ctx.index + 1))], 0, "autoplay"),
+      // A regra (origin `autoplay`; dentro de playlist, contexto = pasta e
+      // continuidade OFF) vive no store, ao lado de shuffleFolder — e é
+      // testada lá (CMR-211).
+      run: () => void playFromHere(ctx),
     });
   }
   acts.push({
@@ -221,6 +223,6 @@ export function Sheet() {
 }
 
 /** Ponto de entrada das telas: abre a sheet de uma faixa com o contexto. */
-export function openTrackSheet(track: Track, context?: { list: Track[]; index: number }) {
+export function openTrackSheet(track: Track, context?: TrackContext) {
   openSheet({ kind: "track", track, context });
 }
