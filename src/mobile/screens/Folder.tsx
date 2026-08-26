@@ -4,8 +4,9 @@
    Pasta de 1º nível = playlist (é o que lib_list_folders devolve).
    Play → origin `playlist`; Shuffle → origin `autoplay` (cauda
    escolhida pela máquina; `shuffle` não é origin); tocar uma linha →
-   origin `manual`, com a pasta inteira virando fila a partir daquele
-   índice (o auto-advance é do Kotlin).
+   a pasta inteira vira fila a partir daquele índice, com origin
+   `manual` SÓ na faixa tocada e `playlist` na cauda que o Kotlin
+   auto-avança (origem por item — a cauda é escuta passiva).
 
    Playlist é coleção curada e TERMINA (CEO, 17/08): TODOS os caminhos
    que refazem a fila a partir dela — Play, Shuffle, linha tocada

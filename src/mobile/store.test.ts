@@ -34,6 +34,7 @@ import {
   playFromHere,
   playTrackFrom,
   queueEntries,
+  queueOrigin,
   recents,
   shuffleFolder,
   shuffleList,
@@ -93,9 +94,42 @@ describe('playFolderFrom (linha tocada e "Tocar agora" da sheet numa playlist �
     expect(armed()).toMatchObject({ mode: "off", stationId: null });
   });
 
-  it("origin é `manual` (a faixa foi escolhida à mão; nada de origin novo)", async () => {
+  it("só a faixa escolhida é `manual`; a cauda que o Kotlin auto-avança é `playlist` (por item)", async () => {
+    // Antes a fila inteira ia como `manual`: as faixas que o serviço avançava
+    // sozinho depois da linha tocada entravam no journal com peso cheio no
+    // sinal v3, quando são escuta passiva (desconto 0.6 do `playlist`).
+    // Paridade com o desktop: head manual + continuações playlist.
     await playFolderFrom(FOLDER, 2, "Rap BR");
-    expect(queued().origin).toBe("manual");
+    const q = queued();
+    expect(q.origin).toBe("playlist");
+    expect(q.contextId).toBe("Rap BR");
+    const items = q.items as { trackId: string; origin?: string; contextId?: string | null }[];
+    expect(items.map((i) => i.origin ?? q.origin)).toEqual([
+      "playlist",
+      "playlist",
+      "manual",
+      "playlist",
+      "playlist",
+    ]);
+    // O metaMap do Kotlin NÃO herda o contextId da fila num item com origin
+    // próprio — a pasta vai explícita no item, senão a linha tocada logaria
+    // sem contexto.
+    expect(items[2]).toMatchObject({ origin: "manual", contextId: "Rap BR" });
+    expect(items.map((i) => i.contextId ?? q.contextId)).toEqual(Array(5).fill("Rap BR"));
+  });
+
+  it("o snapshot otimista já carrega a origem por item (fila do serviço indisponível mantém)", async () => {
+    (ipc.playerGetQueue as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("x"));
+    await playFolderFrom(FOLDER, 2, "Rap BR");
+    expect(queueEntries().map((e) => e.origin)).toEqual([
+      "playlist",
+      "playlist",
+      "manual",
+      "playlist",
+      "playlist",
+    ]);
+    expect(queueEntries().every((e) => e.contextId === "Rap BR")).toBe(true);
+    expect(queueOrigin()).toBe("manual");
   });
 
   it("a fila é a pasta INTEIRA, na ordem, começando no índice tocado", async () => {

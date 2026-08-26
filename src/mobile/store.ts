@@ -221,6 +221,10 @@ type Continuity = { mode: "off" | "radio" | "station"; stationId?: string };
 /**
  * Único caminho para começar a tocar. `origin` vai cru para o
  * contrato — os nomes são os que o motor de sinal entende.
+ *
+ * `headOrigin`: origem SÓ da faixa em `startIndex` (o wire é por item). É o
+ * que separa "a faixa que o usuário escolheu" da cauda que o Kotlin
+ * auto-avança — a linha tocada numa playlist é `manual`, o resto `playlist`.
  */
 export async function playList(
   list: Track[],
@@ -228,26 +232,33 @@ export async function playList(
   origin: Origin,
   contextId: string | null = null,
   continuity: Continuity = { mode: "radio" },
+  headOrigin: Origin | null = null,
 ) {
   if (!list.length) {
     showToast("Nada para tocar aqui");
     return;
   }
   const start = Math.max(0, Math.min(startIndex, list.length - 1));
+  const originAt = (i: number) => (headOrigin != null && i === start ? headOrigin : origin);
   // Otimista: a tela responde no ato. O snapshot do serviço confirma logo
   // depois — e é ele quem manda se divergirem.
   setQueueEntries(
-    list.map((t) => ({
+    list.map((t, i) => ({
       trackId: t.id,
-      origin,
+      origin: originAt(i),
       contextId,
       durationMs: t.duration_ms,
     })),
   );
   setPb({ index: start, trackId: list[start].id, positionMs: 0, durationMs: list[start].duration_ms, isPlaying: true });
+  const items = ipc.toQueueItems(list);
+  // O metaMap do Kotlin NÃO herda o contextId da fila num item com origin
+  // próprio: o contexto vai explícito no item, senão a faixa escolhida
+  // logaria sem a pasta.
+  if (headOrigin != null) items[start] = { ...items[start], origin: headOrigin, contextId };
   try {
     await ipc.playerSetQueue({
-      items: ipc.toQueueItems(list),
+      items,
       startIndex: start,
       origin,
       contextId,
@@ -279,12 +290,16 @@ export const playFolder = (list: Track[], name: string) =>
   playList(list, 0, "playlist", name, { mode: "off" });
 /** Linha tocada (e "Tocar agora" da sheet) DENTRO de uma playlist: a fila é
  *  a pasta inteira a partir daquele índice e herda a exceção do Play — pasta
- *  como contexto, continuidade OFF. Origin `manual` (a faixa foi escolhida à
- *  mão). Com o default do playTrackFrom (radio, sem contexto) a playlist não
- *  terminava: o tender anexava lotes do acervo a 2 posições do fim (CMR-211,
- *  o último caminho que faltava). */
+ *  como contexto, continuidade OFF. Com o default do playTrackFrom (radio, sem
+ *  contexto) a playlist não terminava: o tender anexava lotes do acervo a 2
+ *  posições do fim (CMR-211, o último caminho que faltava).
+ *
+ *  Origem POR ITEM: só a faixa escolhida é `manual`; a cauda que o Kotlin
+ *  auto-avança é `playlist` (escuta passiva, desconto 0.6 no sinal v3) — é o
+ *  mesmo que o desktop faz (head manual + continuações playlist). A fila
+ *  inteira como `manual` dava peso cheio a faixas que ninguém escolheu. */
 export const playFolderFrom = (list: Track[], index: number, name: string) =>
-  playList(list, index, "manual", name, { mode: "off" });
+  playList(list, index, "playlist", name, { mode: "off" }, "manual");
 export const playAlbum = (list: Track[], key: string) => playList(list, 0, "album_seq", key);
 // `autoplay`, não "shuffle": a sequência foi escolhida pela máquina, e é assim
 // que o sinal v3 a conhece (desconto de origem passiva). "shuffle" estava fora

@@ -277,14 +277,24 @@ armam `off` com a pasta como `contextId` (CMR-211):
 |---|---|---|
 | Play | `playFolder` | `playlist` |
 | Shuffle | `shuffleFolder` | `autoplay` |
-| Linha tocada (fila = pasta inteira a partir dela) | `playFolderFrom` | `manual` |
-| "Tocar agora" da sheet de uma linha da pasta | `playFolderFrom` | `manual` |
+| Linha tocada (fila = pasta inteira a partir dela) | `playFolderFrom` | `manual` SÓ na faixa tocada (item); a cauda é `playlist` |
+| "Tocar agora" da sheet de uma linha da pasta | `playFolderFrom` | idem: `manual` no item, `playlist` na cauda |
 | "Tocar a partir daqui" da sheet | `playFromHere` (`context.playlist`) | `autoplay` |
 
 As telas passam `playlist` só quando a lista É uma playlist (`TrackContext`,
 em `types.ts`); álbum, artista, acervo e a shelf de recentes ficam no default
 (`radio`, sem contexto). Com o default o tender anexava lotes do acervo inteiro
 a 2 posições do fim e a sessão virava "shuffle geral".
+
+Na linha tocada a origem é **por item**: `set_queue` vai com `origin:
+'playlist'` na fila e `{ origin: 'manual', contextId: <pasta> }` só no item
+`startIndex` (`playList(..., headOrigin)`). Só a faixa que o usuário escolheu
+tem peso cheio no sinal v3; o que o Kotlin auto-avança depois dela é escuta
+passiva (`playlist`, desconto 0.6) — paridade com o desktop (head `manual` +
+continuações `playlist`). A fila inteira como `manual` (comportamento anterior)
+dava peso cheio a faixas que ninguém escolheu. Gotcha do `metaMap` do Kotlin:
+item com `origin` próprio **não herda o `contextId` da fila** — o contexto vai
+explícito no item.
 
 O tender roda a cada 20s e só age quando a fila **acabou** (`ended`) ou está
 **secando** (tocando, a ≤2 posições do fim). Pausa não conta: o usuário pausou
@@ -355,6 +365,7 @@ A decisão `available` é do Kotlin (semver contra o `versionName` instalado).
 |---|---|
 | Tocou uma faixa escolhida | `manual` |
 | Play numa playlist/pasta | `playlist` |
+| Linha tocada numa playlist | `manual` na faixa tocada (por item); a cauda auto-avançada é `playlist` |
 | Play num álbum em sequência | `album_seq` |
 | Shuffle burro do acervo | `autoplay` (sequência escolhida pela máquina) |
 | "Tocar a partir daqui" (faixa segurada + cauda embaralhada) | `autoplay` |
