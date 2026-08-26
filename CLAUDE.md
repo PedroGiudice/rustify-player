@@ -544,6 +544,12 @@ ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EX
   **Assinatura = debug keystore da VM** (`~/.android/debug.keystore`, backup
   em `cmr-auto:~/backups/rustify-debug.keystore`): trocar o keystore quebra o
   update por cima e obriga reinstalar via adb.
+- Testes JVM do plugin Kotlin (JUnit4, `android/src/test/java/`):
+  `cd src-tauri/gen/android && ./gradlew :tauri-plugin-rustify-audio:testDebugUnitTest`
+  (precisa dos arquivos autogerados do Tauri — existem apos o 1o android build).
+  Gotcha: se o daemon do Gradle falhar com `Failed to exec spawn helper`
+  (Test Executor nao inicia), e o daemon em estado ruim, nao o codigo:
+  `./gradlew --stop` e rodar de novo.
 - Log Rust NAO roteia pro logcat — ler via
   `adb shell run-as dev.cmr.rustifyplayer tail logs/rustify-player.log`.
 - Smoke test CDP (WebView): `localabstract:webview_devtools_remote_<pid>`,
