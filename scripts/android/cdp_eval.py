@@ -22,7 +22,7 @@ def main():
     url = None
     for _ in range(30):
         try:
-            for p in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list")):
+            for p in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list", timeout=5)):
                 if p.get("type") == "page" and p.get("webSocketDebuggerUrl"):
                     url = p["webSocketDebuggerUrl"]; break
         except Exception:

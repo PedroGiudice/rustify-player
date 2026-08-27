@@ -32,7 +32,7 @@ def setup_forward():
 def ws_url():
     for _ in range(20):
         try:
-            for p in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list")):
+            for p in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list", timeout=5)):
                 if p.get("type") == "page" and p.get("webSocketDebuggerUrl"):
                     return p["webSocketDebuggerUrl"]
         except Exception:
@@ -135,7 +135,7 @@ def main():
         time.sleep(23)
         c.eval("window.__mobileStore.next()")
         time.sleep(2.5)
-        rec = c.eval("window.__mobileStore.loadRecents().then(() => [...document.querySelectorAll('.home .sec')].map(s => s.querySelector('.sechead, h2, h3')?.textContent))")
+        rec = c.eval("window.__mobileStore.loadRecents().then(() => [...document.querySelectorAll('.sec')].map(s => ({sec: s.querySelector('.sec-head .eyebrow')?.textContent?.trim(), cards: s.querySelectorAll('.card').length})))")
         rec2 = c.eval(f"{INV}('lib_recent_plays', {{limit: 8}}).then(l => l.map(t => t.title))")
         out["recents"] = {"secoes": rec, "lib_recent_plays": rec2}
         ok("CMR-215 recents", isinstance(rec2, list) and len(rec2) >= 1)

@@ -1,16 +1,17 @@
-# Régua do autoplay — medição 2026-08-26
+# Régua do autoplay — medição 2026-08-27
 
-**Veredito: META NÃO batida: skip 56% > 55% (n=776) — revisar tunables do sinal v3 (HALF_LIFE_DAYS, PASSIVE_WEIGHT, thresholds em qdrant_client.rs).**
+**Veredito: META NÃO batida: skip 60% > 55% (n=869) — revisar tunables do sinal v3 (HALF_LIFE_DAYS, PASSIVE_WEIGHT, thresholds em qdrant_client.rs).**
 
-Eventos pós-sinal-v3 (signal_schema>=3; legado por data): 1264. Meta: skip do autoplay <= 55% (CMR-123). Streak de aceitação: média 0.76, max 169 (445 ciclos).
+Eventos pós-sinal-v3 (signal_schema>=3; legado por data): 1513. Meta: skip do autoplay <= 55% (CMR-123). Streak de aceitação: média 0.65, max 169 (536 ciclos).
 
-Skip por origin (pós-v3): autoplay 56% (n=776), station 85% (n=162), queue 75% (n=4), playlist 87% (n=243), manual 43% (n=67), album_seq 100% (n=1), repeat 33% (n=3)
+Skip por origin (pós-v3): autoplay 60% (n=869), station 84% (n=210), queue 75% (n=4), playlist 86% (n=309), manual 47% (n=75), album_seq 49% (n=35), repeat 33% (n=3)
 
-Por dispositivo: (legado) skip 99% (n=255), cmrlinuxmachine skip 67% (n=805), s24 skip 15% (n=204)
+Por dispositivo: (legado) skip 99% (n=255), cmrlinuxmachine skip 67% (n=833), s24 skip 50% (n=425)
 
 Autoplay por semana:
 - 2026-W33: n=638, skip 68%
-- 2026-W34: n=138, skip 4%
+- 2026-W34: n=164, skip 18%
+- 2026-W35: n=67, skip 91%
 
 Cobertura do motor (faixa sem vetor não é recomendável; sem vibe entra neutra no re-rank):
 - MERT (áudio): 1756/1756 (100%)

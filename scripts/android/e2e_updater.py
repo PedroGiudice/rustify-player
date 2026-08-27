@@ -47,7 +47,7 @@ def forward():
 def ws_url():
     for _ in range(30):
         try:
-            for pg in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list")):
+            for pg in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list", timeout=5)):
                 if pg.get("type") == "page" and pg.get("webSocketDebuggerUrl"):
                     return pg["webSocketDebuggerUrl"]
         except Exception:

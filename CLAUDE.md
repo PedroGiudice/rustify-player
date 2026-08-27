@@ -616,6 +616,18 @@ ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EX
   falham so no app enquanto a shell do adb resolve; `svc power stayon usb`
   mantem a tela acesa, mas na lock screen. `run-as <pkg> ping` NAO e
   oraculo de rede (nao herda o grupo `inet`).
+  **Segundo bloqueio, distinto do keyguard (27/08)**: app em BACKGROUND sem
+  playback (ex. WhatsApp por cima) e congelado pelo App Freezer (Android
+  14+) — o socket `webview_devtools_remote_<pid>` aceita a conexao no
+  kernel mas nenhuma thread responde; `cdp_eval`/`smoke` penduram (o
+  `urlopen` tem `timeout=5` desde 27/08 pra falhar rapido). Checar
+  `dumpsys activity activities | grep topResumedActivity` e
+  `curl --max-time 5 :9333/json/version` ANTES de rodar script; se preciso,
+  `adb shell monkey -p dev.cmr.rustifyplayer -c android.intent.category.LAUNCHER 1`.
+  Com playback o MediaSessionService e foreground e nao congela.
+  **`pkill -f "[c]dp_eval"` via SSH**: em chamada SSH SEPARADA — se a mesma
+  linha remota invoca `cdp_eval.py` adiante, o pkill mata a propria shell
+  (exit 255; aconteceu tres vezes em 26-27/08).
 - `.cargo/config.toml` alinha o .so a 16KB (`max-page-size=16384`,
   Android 15+). Nao remover.
 - UI mobile Solid em `src/mobile/` (dynamic import; desktop intocado),
