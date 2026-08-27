@@ -482,9 +482,19 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
 
 ## Android (v0 — tocar + registrar, 2026-08-13)
 
-O mesmo repo produz o app Android (S24). Escopo v0: reproduzir o acervo
-local e gerar `play_events` com proveniencia — SEM motor de inteligencia,
-SEM Qdrant, SEM Crate no aparelho. Contexto e decisoes:
+O mesmo repo produz o app Android (S24). O v0 (13/08) era "tocar +
+registrar" sem motor; SUPERADO pela Onda 1 do plano de paridade (15/08):
+o aparelho TEM motor local em Rust (`mobile_intel.rs` — vetores MERT 768d
+em `vectors.bin`, cosine brute-force, `taste.json` = snapshot de
+positives/negatives do `derive_behavioral_signals` do desktop,
+`stations.json` precomputadas, negativos de sessao, anel de recentes 7d,
+cap 2/artista, sorteio ponderado) e o tender de continuidade
+(`mobile_continuity.rs`, thread Rust). SEM Qdrant e SEM Crate no aparelho.
+O que falta vs desktop (Onda 2 "o motor aprende com o celular"): o gosto e
+um SNAPSHOT — o celular nao recalcula sinais dos proprios eventos; so
+aprende via sync -> desktop -> `export_manifest.py` -> push, pipeline
+manual; sem re-rank de vibe (energy/valence nao exportados). Ver
+`docs/contexto/15082026-plano-paridade-mobile.md`. Contexto e decisoes:
 `docs/contexto/13082026-rustify-android-v0.md`; contrato IPC pra UI:
 `docs/android/ipc-contrato-v0.md`.
 
