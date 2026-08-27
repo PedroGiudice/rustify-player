@@ -606,8 +606,16 @@ ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EX
 - Log Rust NAO roteia pro logcat — ler via
   `adb shell run-as dev.cmr.rustifyplayer tail logs/rustify-player.log`.
 - Smoke test CDP (WebView): `localabstract:webview_devtools_remote_<pid>`,
-  `suppress_origin=True`, tela ligada via `svc power stayon usb`.
-  Referencia: scratchpad da sessao 13/08 (`smoke_audio.py`).
+  `suppress_origin=True`. Scripts em `scripts/android/` (rodam NA cmr-auto
+  via `~/.local/bin/uv run --with websocket-client`): `cdp_eval.py "<js>"`
+  (avalia JS no WebView), `smoke_mobile.py` (tabbar, playlist=off, origem
+  por item, shuffle do restante, like no journal, capas, recents) e
+  `e2e_updater.py` (ciclo completo do auto-update). **O aparelho precisa
+  estar DESBLOQUEADO**: com keyguard o app fica `procState=TPSL` e o
+  `netpolicy` corta a rede do UID (`blocked=APP_BACKGROUND`) — DNS/TCP
+  falham so no app enquanto a shell do adb resolve; `svc power stayon usb`
+  mantem a tela acesa, mas na lock screen. `run-as <pkg> ping` NAO e
+  oraculo de rede (nao herda o grupo `inet`).
 - `.cargo/config.toml` alinha o .so a 16KB (`max-page-size=16384`,
   Android 15+). Nao remover.
 - UI mobile Solid em `src/mobile/` (dynamic import; desktop intocado),
