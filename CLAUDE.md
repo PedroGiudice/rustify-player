@@ -519,9 +519,31 @@ manual; sem re-rank de vibe (energy/valence nao exportados). Ver
 - Biblioteca mobile: manifest exportado do Qdrant da cmr-auto
   (`scripts/android/export_manifest.py`, tunel 16333) com o track_id
   CANONICO do desktop (hash do path de la — o celular nao o deriva);
-  resolucao por stem canonico em `mobile_library.rs` (1746/1746 no S24).
+  resolucao por stem canonico em `mobile_library.rs` (1757/1757 no S24).
   Manifest vive em `/sdcard/Music/.rustify/manifest.json`; apos novo
   sync de acervo, `lib_rescan`.
+- Acervo mobile: `scripts/android/phone_sync_encode.py` (FLAC -> Opus 192k
+  no staging `~/.cache/phone-sync/Music` da cmr-auto) + `phone_push_retry.sh`
+  (adb push --sync). O script e versionado AQUI; a copia da cmr-auto e
+  deploy (`scp`). Dois modos de falha ja pagos, ambos com teste em
+  `test_phone_sync_encode.py` (10/09):
+  - **ffmpeg falha em silencio.** FLAC com lixo entre os metadados e o
+    primeiro frame (PADDING com tamanho errado) faz o ffmpeg abortar a
+    leitura e **sair com codigo 0**, escrevendo um .opus de 202 bytes; a
+    capa re-embutida inflava pra ~471 KB e passava no teste de `size > 0`.
+    A faixa ia pro celular com titulo e capa certos e nada pra tocar — e
+    so no celular, porque o GStreamer do desktop resincroniza e toca. Dai
+    validar por DURACAO (`playable`), com dois limiares: 0.98 dispara o
+    resgate via GStreamer, 0.5 aceita o resultado (o resgate perde 5-6% do
+    inicio; exigir 0.98 na aceitacao reprova recuperacao boa e some com a
+    faixa). NAO unificar os dois.
+  - **`:` no nome derruba a leva inteira.** O storage do Android recusa
+    `" * : < > ? \ |` ("Operation not permitted"), o adb perde a conexao e
+    o retry inteiro morre no mesmo arquivo. `safe_rel()` sanitiza pra `_`;
+    e seguro porque `canon_stem` normaliza `_` e `:` igual — o teste
+    replica a funcao do Rust pra travar o contrato.
+  `purge_orphans()` faz o GC que nunca existiu (571 arquivos de origem
+  deletada/renomeada em 10/09), sem tocar em `.rustify/`.
 - Capas mobile (CMR-212, paridade com o desktop): `manifest.cover` =
   `covers/<sha1>.jpg` (relativo a `.rustify/`), UMA capa por álbum-key
   (o mesmo `cover_path` do Qdrant; 1660 tracks → 565 arquivos),
