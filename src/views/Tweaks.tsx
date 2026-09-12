@@ -25,6 +25,13 @@ import {
   clearDirty,
   type TweaksState,
 } from "../store/tweaks";
+import {
+  glStatus,
+  resetGlStatus,
+  SCENE_HINTS,
+  SCENE_KEYS,
+  SCENE_LABELS,
+} from "../gl/meta";
 
 // ── Subcomponentes locais ────────────────────────────────────
 
@@ -121,6 +128,71 @@ function NumberSlider(props: {
         onInput={(e) => updateTweak(props.key, parseFloat(e.currentTarget.value))}
       />
     </div>
+  );
+}
+
+/** Motor do background. Separado do <Segmented> genérico porque ligar
+    o WebGL precisa limpar uma falha anterior — senão o App, que cai pro
+    2D quando glStatus.ok === false, nunca deixaria tentar de novo. */
+function EngineRow() {
+  const options: Array<[TweaksState["bgEngine"], string]> = [["2d", "2D"], ["webgl", "WebGL"]];
+  return (
+    <div class="tweaks__row">
+      <span class="tweaks__label">Motor</span>
+      <div class="segmented">
+        <For each={options}>
+          {([val, text]) => (
+            <button
+              class="segmented__btn"
+              classList={{ "is-active": tweaks().bgEngine === val }}
+              onClick={() => {
+                if (val === "webgl") resetGlStatus();
+                updateTweak("bgEngine", val);
+              }}
+            >
+              {text}
+            </button>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+/** Seleção da cena + o que o motor está entregando de fato (driver e
+    fps medidos no app). O fps é o gate da feature: se a cena escolhida
+    não sustenta ~30 na máquina, está na cara aqui. */
+function GlSection() {
+  return (
+    <>
+      <div class="tweaks__row">
+        <span class="tweaks__label">Cena</span>
+        <div class="segmented">
+          <For each={SCENE_KEYS}>
+            {(k) => (
+              <button
+                class="segmented__btn"
+                classList={{ "is-active": tweaks().bgScene === k }}
+                onClick={() => updateTweak("bgScene", k)}
+              >
+                {SCENE_LABELS[k]}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class="tweaks__hint">{SCENE_HINTS[tweaks().bgScene]}</div>
+      <Show when={glStatus().ok === true}>
+        <div class="tweaks__hint">
+          {glStatus().renderer} · {glStatus().fps} fps
+        </div>
+      </Show>
+      <Show when={glStatus().ok === false}>
+        <div class="tweaks__hint">
+          WebGL indisponível ({glStatus().error}) — o fundo 2D assumiu.
+        </div>
+      </Show>
+    </>
   );
 }
 
@@ -245,6 +317,17 @@ export function Tweaks() {
             key="eqSpectrumOverlay"
             options={[[true, "On"], [false, "Off"]]}
           />
+
+          <div class="tweaks__divider"><span>Fundo</span></div>
+          <EngineRow />
+          <Show when={tweaks().bgEngine === "webgl"}>
+            <GlSection />
+          </Show>
+          <Show when={tweaks().bgEngine === "2d"}>
+            <div class="tweaks__hint">
+              Shape e renderer do fundo 2D seguem no Now Playing ([ ] e , .)
+            </div>
+          </Show>
 
           <div class="tweaks__divider"><span>Bg reactivity</span></div>
           <NumberSlider

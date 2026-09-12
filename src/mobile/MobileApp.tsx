@@ -11,7 +11,7 @@
    real desenha as duas.
    ============================================================ */
 
-import { Show, createEffect, onCleanup, onMount } from "solid-js";
+import { Show, Suspense, createEffect, lazy, onCleanup, onMount } from "solid-js";
 import { render } from "solid-js/web";
 
 // Fontes do handoff, self-hosted (o @import do Google Fonts é
@@ -47,8 +47,14 @@ import { bootStore, current, pb, toast } from "./store";
 import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
 import { mockFft, mountSpectrum, pushFft } from "./bg/spectrum";
+import { bgEngine } from "./bg/engine";
+import { glStatus } from "../gl/meta";
 import { onFft } from "./ipc";
 import { bootUpdater } from "./updater";
+
+// three.js só é baixado do disco se o motor WebGL estiver ligado —
+// o APK carrega o chunk sob demanda, o boot do fundo 2D não muda.
+const GlBg = lazy(async () => ({ default: (await import("./bg/GlBg")).GlBg }));
 
 /* Chamada como expressão no JSX (`{screen()}`), NÃO como <screen />:
    corpo de componente Solid roda uma vez e a leitura de baseRoute()
@@ -78,10 +84,23 @@ function screen() {
   }
 }
 
-function SpectrumBg() {
+/** Canvas 2D de sempre — o motor default. */
+function Spectrum2d() {
   let canvas: HTMLCanvasElement | undefined;
   onMount(() => {
     if (!canvas) return;
+    const stopRaf = mountSpectrum(canvas);
+    onCleanup(stopRaf);
+  });
+  return <canvas class="app-bg__canvas" ref={canvas} />;
+}
+
+/** Fundo persistente: o feed de FFT é do SHELL (vive enquanto o app
+    vive, independente de quem desenha); só o motor troca por baixo.
+    Se o WebGL não montar, o 2D reassume sozinho e o Settings mostra o
+    motivo. */
+function Bg() {
+  onMount(() => {
     // Mock até o primeiro frame REAL do SpectrumTap (CMR-192) chegar —
     // aí o gerador sintético desliga e o bg passa a ouvir a música.
     let stopMock: (() => void) | null = mockFft(() => pb.isPlaying);
@@ -97,17 +116,19 @@ function SpectrumBg() {
         stopFftListener = un;
       })
       .catch((e) => console.warn("[mobile] listener fft:", e));
-    const stopRaf = mountSpectrum(canvas);
     onCleanup(() => {
       stopMock?.();
       stopFftListener?.();
-      stopRaf();
     });
   });
   return (
     <div class="app-bg" attr:data-mode={isNpOpen() ? "focused" : "ambient"} aria-hidden="true">
       <div class="app-bg__curtain" />
-      <canvas class="app-bg__canvas" ref={canvas} />
+      <Show when={bgEngine() === "webgl" && glStatus().ok !== false} fallback={<Spectrum2d />}>
+        <Suspense fallback={<Spectrum2d />}>
+          <GlBg />
+        </Suspense>
+      </Show>
     </div>
   );
 }
@@ -127,7 +148,7 @@ export function MobileApp() {
 
   return (
     <div class="device">
-      <SpectrumBg />
+      <Bg />
       <div class="shell">
         <div class="view" ref={viewEl}>{screen()}</div>
         <Dock />

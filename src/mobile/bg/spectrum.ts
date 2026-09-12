@@ -90,6 +90,21 @@ export function pushFft(low: number, mid: number, high: number) {
   lastFftAt = performance.now();
 }
 
+/** Último quadro de FFT + quando chegou. É o feed COMPARTILHADO pelos
+    dois motores de fundo (2D e WebGL) — quem monta é que muda, o sinal
+    e o gerador de fallback são os mesmos. */
+export function readFft(): { low: number; mid: number; high: number; at: number } {
+  return { low: lastLow, mid: lastMid, high: lastHigh, at: lastFftAt };
+}
+
+/** Bombeia o gerador sintético, quando ativo. O mock vive num setInterval
+    de 120ms mas só produz quando alguém chama isto por frame (o rAF do
+    motor ativo) — sem isso o fundo congelaria antes do primeiro quadro
+    real do SpectrumTap. */
+export function pumpMockFft(): void {
+  if (fftTick) fftTick();
+}
+
 export function mockFft(isPlaying: () => boolean): () => void {
   const BPM = 92, beat = 60 / BPM;
   let t = 0, last = performance.now();

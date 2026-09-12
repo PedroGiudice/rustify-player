@@ -718,3 +718,11 @@ ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EX
   Android 15+). Nao remover.
 - UI mobile Solid em `src/mobile/` (dynamic import; desktop intocado),
   montada por deteccao de user agent no `main.tsx`.
+- **Fundo: mesmos dois motores do desktop (v0.2.79)**. `src/gl/*` e
+  COMPARTILHADO (cenas, sinal, paleta); o que muda por lado e so a
+  origem do sinal e os tokens de cor (`MOBILE_VARS`: `--s-base` /
+  `--bg-ink-rgb` / `--accent` / `--accent-dim`). Preferencia em
+  `src/mobile/bg/engine.ts` (localStorage, padrao do `beatSetting`),
+  UI em Settings > Appearance. O feed de FFT (SpectrumTap + mock)
+  vive no SHELL (`MobileApp.tsx`), NAO no motor — trocar de motor nao
+  pode derrubar o listener. three entra por `lazy()` tambem aqui.

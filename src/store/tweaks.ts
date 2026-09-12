@@ -8,6 +8,7 @@
 import { createSignal, createEffect } from "solid-js";
 import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
 import { ensureInkContrast } from "../lib/color";
+import { isSceneKey, type SceneKey } from "../gl/meta";
 
 const { invoke } = window.__TAURI__.core;
 
@@ -97,6 +98,17 @@ export interface TweaksState {
       ~40s, sempre começando/voltando pela dominante. O ciclo vive em
       lib/adaptiveInk.ts (JS puro, sem CSS var); accent da UI não cicla. */
   bgInkCycle: boolean;
+  // ── Motor do background ─────────────────────────────────────
+  /** Quem desenha o fundo animado:
+      - "2d": SpectrumCanvas (Canvas 2D, 18 shapes x 5 renderers). DEFAULT.
+      - "webgl": as quatro cenas de gl/scenes.ts na GPU.
+      Os dois nunca rodam juntos — App.tsx monta um OU outro. Se o
+      contexto WebGL falhar, o app volta pro 2D sozinho e o motivo
+      aparece aqui no painel (glStatus). */
+  bgEngine: "2d" | "webgl";
+  /** Cena ativa quando bgEngine === "webgl". */
+  bgScene: SceneKey;
+
   /** Accent adaptativo: --primary e família (container, on-primary,
       blue-fg/bg/ring — chips, halos, botões) seguem o hue da capa da
       faixa tocando, com contraste garantido na derivação. Desligado ou
@@ -128,6 +140,8 @@ export const DEFAULTS: TweaksState = {
   adaptiveInk: true,
   bgInkCycle: true,
   adaptiveAccent: true,
+  bgEngine: "2d",
+  bgScene: "dust",
 };
 
 // ── Dirty tracking ────────────────────────────────────────────
@@ -255,6 +269,11 @@ export function applyTweaks(s: TweaksState = state()) {
 
   // EQ spectrum overlay: data attr e debug-only. EqCanvas le tweaks().eqSpectrumOverlay direto.
   html.dataset.eqSpectrum = s.eqSpectrumOverlay ? "on" : "off";
+
+  // Motor do bg: quem MONTA o canvas é o App (lê o store direto); o data
+  // attr existe pro CSS poder tratar os dois fundos de forma diferente
+  // (o WebGL pinta superfície opaca, o 2D é transparente sobre o tema).
+  html.dataset.bgEngine = s.bgEngine;
 
   // Bg reactivity: 3 ganhos por banda + smoothing. SpectrumCanvas
   // lê essas vars no frame loop (~3x/s) sem listener, igual o
@@ -481,6 +500,12 @@ export function loadTweaks() {
         next.bgBeatMode = saved.bgBeatSync ? "speed" : "off";
       }
     }
+    // Saneamento do motor do bg: estado salvo por outra versão (ou
+    // localStorage editado à mão) não pode montar uma cena inexistente —
+    // seria um canvas preto sem mensagem nenhuma.
+    if (!isSceneKey(next.bgScene)) next.bgScene = DEFAULTS.bgScene;
+    if (next.bgEngine !== "2d" && next.bgEngine !== "webgl") next.bgEngine = DEFAULTS.bgEngine;
+
     // Migracao: sidebar "collapsed"/"expanded" -> "icons"/"labels"
     if (saved.sidebar === "collapsed") next.sidebar = "icons";
     if (saved.sidebar === "expanded") next.sidebar = "labels";

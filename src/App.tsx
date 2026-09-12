@@ -16,7 +16,7 @@
    vivem nos componentes responsaveis.
    ============================================================ */
 
-import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { createMemo, createSignal, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { Titlebar } from "./components/Titlebar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
@@ -29,7 +29,16 @@ import { Tweaks } from "./views/Tweaks";
 // Painel Tweaks (Solid). loadTweaks aplica state salvo antes do render
 // pra evitar flash; o componente <Tweaks/> renderiza via Portal e
 // reage ao evento "toggle-tweaks" disparado pela sidebar.
-import { loadTweaks } from "./store/tweaks";
+import { loadTweaks, tweaks } from "./store/tweaks";
+import { glStatus } from "./gl/meta";
+
+// three.js só entra no processo se o usuário ligar o motor WebGL no
+// Tweaks — dynamic import mantém o boot do fundo 2D do tamanho que
+// sempre foi. O chunk fica no disco (app local), então a primeira
+// troca não depende de rede.
+const GlBackground = lazy(async () => ({
+  default: (await import("./components/GlBackground")).GlBackground,
+}));
 
 export default function App() {
   // Aplica preferencias de fonte/zoom o quanto antes — evita flash de fonte padrao.
@@ -81,9 +90,18 @@ export default function App() {
 
   return (
     <div class="app" id="rustify-app" data-cinema="false">
-      {/* Background global — UMA instância pro app inteiro. */}
+      {/* Background global — UMA instância pro app inteiro. O motor
+          vem do Tweaks; se o WebGL falhar em montar, glStatus.ok vira
+          false e o 2D reassume sem o usuário ficar no escuro. */}
       <div class="app-bg" data-mode={bgMode()} aria-hidden="true">
-        <SpectrumCanvas />
+        <Show
+          when={tweaks().bgEngine === "webgl" && glStatus().ok !== false}
+          fallback={<SpectrumCanvas />}
+        >
+          <Suspense fallback={<SpectrumCanvas />}>
+            <GlBackground />
+          </Suspense>
+        </Show>
       </div>
 
       <Titlebar />

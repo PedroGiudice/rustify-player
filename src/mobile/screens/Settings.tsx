@@ -19,6 +19,8 @@ import { For, Show } from "solid-js";
 import { ViewHead } from "../components/ui";
 import { BEAT_MODES, beatMode, setBeatMode } from "../bg/beatSetting";
 import { useRenderer, useShape } from "../bg/spectrum";
+import { bgEngine, bgScene, setBgEngine, setBgScene } from "../bg/engine";
+import { glStatus, resetGlStatus, SCENE_HINTS, SCENE_KEYS, SCENE_LABELS } from "../../gl/meta";
 import {
   albums,
   artists,
@@ -104,22 +106,87 @@ export function Settings() {
           <div class="setpanel__title">Appearance</div>
           <span class="setpanel__sub">o fundo persistente do app</span>
         </div>
-        <div class="setrow setrow--inline">
+        <div class="setrow">
           <div>
-            <div class="setrow__label">Background render + shape</div>
+            <div class="setrow__label">Motor do fundo</div>
             <div class="setrow__hint">
-              {useRenderer.count} renderers × {useShape.count} shapes sobre o mesmo campo escalar.
+              2D é o campo escalar de sempre (CPU). WebGL são quatro cenas na GPU, as mesmas do
+              desktop, reagindo às mesmas bandas.
             </div>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button class="selbtn" style={{ width: "auto" }} onClick={() => useRenderer.next()}>
-              {useRenderer.name()}
+          <div class="seg">
+            <button
+              aria-pressed={bgEngine() === "2d" ? "true" : "false"}
+              onClick={() => setBgEngine("2d")}
+            >
+              2D
             </button>
-            <button class="selbtn" style={{ width: "auto" }} onClick={() => useShape.next()}>
-              {useShape.name()}
+            <button
+              aria-pressed={bgEngine() === "webgl" ? "true" : "false"}
+              onClick={() => {
+                resetGlStatus();
+                setBgEngine("webgl");
+              }}
+            >
+              WebGL
             </button>
           </div>
         </div>
+
+        <Show when={bgEngine() === "webgl"}>
+          <div class="setrow">
+            <div>
+              <div class="setrow__label">Cena</div>
+              <div class="setrow__hint">{SCENE_HINTS[bgScene()]}</div>
+            </div>
+            <div class="seg">
+              <For each={SCENE_KEYS}>
+                {(k) => (
+                  <button
+                    aria-pressed={bgScene() === k ? "true" : "false"}
+                    onClick={() => setBgScene(k)}
+                  >
+                    {SCENE_LABELS[k]}
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+          <Show when={glStatus().ok !== null}>
+            <div class="setrow">
+              <div>
+                <div class="setrow__label">GPU</div>
+                <div class="setrow__hint">
+                  <Show
+                    when={glStatus().ok === true}
+                    fallback={`WebGL indisponível (${glStatus().error}) — o fundo 2D assumiu.`}
+                  >
+                    {glStatus().renderer} · {glStatus().fps} fps
+                  </Show>
+                </div>
+              </div>
+            </div>
+          </Show>
+        </Show>
+
+        <Show when={bgEngine() === "2d"}>
+          <div class="setrow setrow--inline">
+            <div>
+              <div class="setrow__label">Background render + shape</div>
+              <div class="setrow__hint">
+                {useRenderer.count} renderers × {useShape.count} shapes sobre o mesmo campo escalar.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button class="selbtn" style={{ width: "auto" }} onClick={() => useRenderer.next()}>
+                {useRenderer.name()}
+              </button>
+              <button class="selbtn" style={{ width: "auto" }} onClick={() => useShape.next()}>
+                {useShape.name()}
+              </button>
+            </div>
+          </div>
+        </Show>
         <div class="setrow">
           <div>
             <div class="setrow__label">Beat sync</div>
