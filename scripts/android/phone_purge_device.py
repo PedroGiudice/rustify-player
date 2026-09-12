@@ -3,12 +3,19 @@
 
 `adb push --sync` so copia: nunca apaga no destino. Entao musica deletada ou
 pasta renomeada no acervo deixa a copia antiga no aparelho pra sempre. Em
-10/09/2026 eram 571 arquivos acumulados desde que o sync existe — o
-`purge_orphans` do phone_sync_encode.py limpou o STAGING, mas as copias no
-S24 seguem lá ocupando espaco.
+11/09/2026 eram 24 arquivos (~130 MB), a maioria duplicata da mudanca de
+sanitizacao de nome — nao os "571" que um bug de comparacao apontou primeiro.
 
 Orfao nao aparece no app (a biblioteca vem do manifest, e arquivo sem entrada
-correspondente e ignorado) — e peso morto, nao faixa fantasma.
+correspondente e ignorado) — e peso morto, nao faixa fantasma. Por isso o
+dry-run e o default: o ganho e espaco em disco, e o risco de errar a
+comparacao e apagar musica boa.
+
+A comparacao aqui e CASE-INSENSITIVE (`ignorar_caixa=True`): o storage do
+Android nao distingue caixa, e pasta renomeada so na capitalizacao
+(`Dj GBR` -> `DJ GBR`) aparece no `find` com o nome fisico antigo. Comparar
+case-sensitive marcava musica legitima como orfa, apagava, e o push seguinte
+recriava — loop.
 
 Roda na cmr-auto (onde estao o acervo e o adb). Por padrao SO LISTA:
 
@@ -106,7 +113,13 @@ def tamanhos(rels: list[str]) -> dict[str, int]:
     return out
 
 
-def remove(rels: list[str]):
+def remove(rels: list[str]) -> int:
+    """Remove uma passada e devolve quantos o `rm` confirmou ter apagado.
+
+    `rm -v` em vez de `rm -f`: silenciar o erro foi o que produziu um
+    relatorio falso em 11/09 ("ainda orfaos: 0" com 7 arquivos no aparelho).
+    Quem chama confere pela re-listagem e repete — a fonte da verdade e o
+    estado do aparelho, nunca o exit code do lote."""
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
                                      encoding="utf-8") as fh:
         for rel in rels:
@@ -116,12 +129,14 @@ def remove(rels: list[str]):
         # Lista por arquivo evita montar uma linha de shell por nome — os
         # titulos tem aspas, parenteses, &, acento e chaves.
         adb("push", local, DEVICE_TMP)
-        adb("shell", f'while IFS= read -r f; do rm -f "$f"; done < {DEVICE_TMP}')
+        saida = adb("shell",
+                    f'while IFS= read -r f; do rm -v "$f"; done < {DEVICE_TMP}')
         adb("shell", f"rm -f {DEVICE_TMP}")
         # -empty/-delete podem nao existir no toybox; falha aqui e inofensiva.
         subprocess.run(["adb", "shell",
                         f"find {DEVICE_ROOT} -type d -empty -delete"],
                        capture_output=True, timeout=300)
+        return sum(1 for l in saida.splitlines() if l.startswith("rm "))
     finally:
         Path(local).unlink(missing_ok=True)
 
@@ -143,7 +158,9 @@ def main():
         sys.exit("gather() devolveu vazio — acervo nao montado? abortando")
 
     no_device = lista_device()
-    orfaos = sorted(set(no_device) - esperados)
+    # Mesma regra do staging (preserva `.rustify/` e a capa por pasta que o
+    # export deploya) — importada, nao reescrita.
+    orfaos = m.orfaos_entre(no_device, esperados, ignorar_caixa=True)
     print(f"no aparelho: {len(no_device)} | esperados: {len(esperados)} | "
           f"orfaos: {len(orfaos)}", flush=True)
 
@@ -171,11 +188,24 @@ def main():
         print("\n(dry-run — nada foi apagado; use --apply)", flush=True)
         return 0
 
-    remove(orfaos)
-    restantes = sorted(set(lista_device()) - esperados)
-    print(f"removidos: {len(orfaos) - len(restantes)} | ainda orfaos: "
-          f"{len(restantes)}", flush=True)
-    return 0 if not restantes else 1
+    # Passadas com re-listagem entre elas: a primeira versao confiava num
+    # unico `find` pos-remocao e reportou 0 tendo 7 no aparelho.
+    restantes = orfaos
+    for passada in range(1, 4):
+        confirmados = remove(restantes)
+        antes = len(restantes)
+        restantes = m.orfaos_entre(lista_device(), esperados, ignorar_caixa=True)
+        print(f"passada {passada}: rm confirmou {confirmados}/{antes}; "
+              f"o aparelho ainda mostra {len(restantes)}", flush=True)
+        if not restantes:
+            break
+    if restantes:
+        print(f"NAO REMOVIDOS ({len(restantes)}) — conferir na mao:", flush=True)
+        for rel in restantes[:20]:
+            print(f"  {rel}", flush=True)
+        return 1
+    print("aparelho sem orfaos", flush=True)
+    return 0
 
 
 if __name__ == "__main__":

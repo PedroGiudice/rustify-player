@@ -61,6 +61,39 @@ check("nome com acento, chaves, aspas e & sobrevive",
 # A guarda existe pra o caso de a comparacao dar errado: melhor abortar do que
 # apagar o acervo do aparelho.
 check("guarda de catastrofe e conservadora", 0 < m.MAX_FRACAO_ORFAOS <= 0.5)
+
+# A regra de "quem e orfao" tem que ser a MESMA do staging — importada de
+# phone_sync_encode, nao reescrita aqui. Foi a duplicacao que fez o bug das
+# capas nascer duas vezes (staging em 10/09, aparelho em 11/09).
+pse = m.carrega_sync_module()
+check("usa a regra importada, nao uma copia", hasattr(pse, "orfaos_entre"))
+esperados = {"Rock/Album/01 - Faixa.opus"}
+presentes = [
+    "Rock/Album/01 - Faixa.opus",
+    "Rock/Album/cover.jpg",            # do export, pasta viva -> preservar
+    "Rock/AlbumMorto/cover.jpg",       # pasta sem destino -> remover
+    "Rock/Album/sobra.opus",           # sobra de rename -> remover
+]
+orfaos = pse.orfaos_entre(presentes, esperados)
+check("capa do export preservada no aparelho", "Rock/Album/cover.jpg" not in orfaos)
+check("capa de album morto sai", "Rock/AlbumMorto/cover.jpg" in orfaos)
+check("sobra de rename sai", "Rock/Album/sobra.opus" in orfaos)
+check("faixa esperada nunca sai", "Rock/Album/01 - Faixa.opus" not in orfaos)
+
+# O storage do Android e case-insensitive. Pasta renomeada so na caixa no
+# acervo (`Dj GBR` -> `DJ GBR`, `Meant to Be` -> `Meant To Be`) aparece no
+# `find` com o nome fisico ANTIGO. Sem ignorar_caixa, essa musica legitima
+# era marcada como orfa, apagada, e o push seguinte a recriava — loop que
+# rodou de verdade em 11/09.
+esperados_caixa = {"Funk/DJ GBR/2020 - Pump It/01 - Pump It.opus"}
+no_device_caixa = ["Funk/Dj GBR/2020 - Pump It/01 - Pump It.opus"]
+check("caixa diferente NAO e orfao no aparelho",
+      pse.orfaos_entre(no_device_caixa, esperados_caixa, ignorar_caixa=True) == [])
+check("no staging (ext4) a caixa continua distinguindo",
+      pse.orfaos_entre(no_device_caixa, esperados_caixa) == no_device_caixa)
+check("capa por pasta tambem tolera caixa no aparelho",
+      pse.orfaos_entre(["Funk/Dj GBR/2020 - Pump It/cover.jpg"],
+                       esperados_caixa, ignorar_caixa=True) == [])
 check("dry-run e o padrao (sem --apply nada e apagado)",
       "--apply" in pathlib.Path(m.__file__).read_text())
 

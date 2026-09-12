@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from mutagen.flac import FLAC
 from mutagen.oggopus import OggOpus
@@ -100,34 +100,51 @@ def purge_illegal() -> list[str]:
     return removidos
 
 
-def purge_orphans(expected: set) -> list[str]:
-    """Destino cuja origem sumiu ou mudou de nome. O gather so olha a origem,
-    entao esse arquivo ficaria no staging pra sempre e iria pro celular como
-    duplicata (as duas versoes colapsam no mesmo stem canonico e uma vence).
+def orfaos_entre(presentes, esperados: set, ignorar_caixa: bool = False) -> list[str]:
+    """REGRA UNICA de quem e orfao, em paths relativos — vale pro staging e
+    pro aparelho (`phone_purge_device.py` usa esta mesma funcao; a regra
+    duplicada foi o que fez o mesmo bug nascer duas vezes).
+
+    `ignorar_caixa` espelha o storage do aparelho, que e CASE-INSENSITIVE.
+    Quando uma pasta do acervo e renomeada so na caixa (`Dj GBR` -> `DJ GBR`,
+    `Meant to Be` -> `Meant To Be`), o push escreve DENTRO da pasta antiga e o
+    `find` devolve o nome fisico, com a caixa velha. Comparar case-sensitive
+    ali marcava musica legitima como orfa; o purge apagava e o push seguinte
+    recriava, em loop (11/09). No staging (ext4, case-sensitive) a distincao e
+    real e o default se mantem.
 
     Dois grupos de artefato NAO sao do encode e ficam de fora:
     - `.rustify/` (manifest, vetores, taste, stations, covers/) — do
       export_manifest.py.
     - `cover.jpg`/`folder.jpg` nas pastas de album: o `--deploy` do export
       escreve ~556 deles como fallback do `resolve_cover`, e o gather so
-      espera os que existem no acervo (39). Tratar como orfao apagava a
-      capa que o export acabou de pôr — e o proximo export a recriava, num
-      ciclo que nao terminava. Sao preservados enquanto a pasta ainda tiver
-      algum arquivo esperado; de album que saiu do acervo, saem tambem."""
-    dirs_vivos = {d.parent for d in expected}
-    removidos = []
-    for p in DST.rglob("*"):
-        if not p.is_file():
+      espera os que existem no acervo (39). Tratar como orfao apagava a capa
+      que o export acabou de pôr — e o proximo export a recriava, num ciclo
+      que nao terminava. Sao preservados enquanto a pasta ainda tiver algum
+      arquivo esperado; de album que saiu do acervo, saem tambem."""
+    chave = (lambda s: s.casefold()) if ignorar_caixa else (lambda s: s)
+    esp = {chave(e) for e in esperados}
+    dirs_vivos = {chave(str(PurePosixPath(e).parent)) for e in esperados}
+    out = []
+    for rel in presentes:
+        if chave(rel) in esp:
             continue
-        rel = p.relative_to(DST)
-        if any(part.startswith(".") for part in rel.parts[:-1]):
+        p = PurePosixPath(rel)
+        if any(part.startswith(".") for part in p.parts[:-1]):
             continue
-        if p in expected:
+        if p.name.lower() in COVER_NAMES and chave(str(p.parent)) in dirs_vivos:
             continue
-        if p.name.lower() in COVER_NAMES and p.parent in dirs_vivos:
-            continue
-        removidos.append(str(rel))
-        p.unlink()
+        out.append(rel)
+    return sorted(out)
+
+
+def purge_orphans(expected: set) -> list[str]:
+    """Aplica `orfaos_entre` ao staging."""
+    esperados = {str(d.relative_to(DST)) for d in expected}
+    presentes = (str(p.relative_to(DST)) for p in DST.rglob("*") if p.is_file())
+    removidos = orfaos_entre(presentes, esperados)
+    for rel in removidos:
+        (DST / rel).unlink()
     prune_empty_dirs()
     return removidos
 

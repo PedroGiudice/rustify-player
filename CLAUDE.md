@@ -164,6 +164,36 @@ persistidos em localStorage), seletores empilhados no NowPlaying e teclas
 design_handoff_persistent_background/` (HTML = fonte da verdade dos
 numeros).
 
+**Motor WebGL do bg (4 cenas, v0.2.78)**: o fundo tem DOIS motores e o
+Tweaks (secao "Fundo", `bgEngine`) escolhe qual monta — nunca os dois
+juntos, entao segue existindo UM rAF e UM contexto GL. `2d` = o
+SpectrumCanvas de sempre (18 shapes x 5 renderers, intocado); `webgl` =
+as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
+`bgScene`), porte fiel do lab aprovado em 12/09.
+
+- `src/gl/meta.ts` NAO importa three (nomes das cenas + `glStatus`); e o
+  que store e Tweaks consomem. O componente pesado
+  (`components/GlBackground.tsx`) entra por `lazy()` no App — three fica
+  num chunk proprio de ~543 KB e quem roda 2D nao paga nada no boot.
+  Nao importar `gl/scenes.ts` a partir do store/painel: arrastaria a lib
+  inteira pro bundle de boot.
+- Sinal em `src/gl/signal.ts` (puro, testado): mesma cadeia do 2D (gains
+  por banda, smoothing, bgSpeed no relogio virtual, beat-sync speed x
+  pulse), com UMA diferenca deliberada — as cenas consomem as TRES
+  bandas separadas, nao a soma ponderada. No modo pulse NAO roda o PLL;
+  `beat` e o envelope de kick expandido nos dois modos.
+- Paleta em `src/gl/palette.ts` (puro, testado): canvas/ink/ink2/soft
+  saem de `--bg-canvas` / `--bg-ink-rgb` / `--primary` / `--fg-5`, entao
+  tema, capa (adaptiveInk/Accent) e knob mandam no WebGL igual mandam no
+  2D. Morph de cor por lerp local (`rgbLerp`) — a proibicao de animar
+  custom property no `:root` continua valendo.
+- Falha de contexto WebGL nao deixa tela preta: `glStatus.ok === false` e
+  o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
+  motor chama `resetGlStatus()`.
+- DPR fixo em 1 e o fps medido no app aparece no Tweaks — e o gate da
+  feature na cmr-auto (UHD 620 @ 1366x768), nao enfeite. Nebula e a cena
+  mais barata; Poeira/Orbitas sao as mais caras.
+
 So escalar pra YAML / Tauri command novo quando o knob precisar
 de preset salvavel, share entre instalacoes, ou hot-reload por
 processo externo. Caso contrario o Tweaks resolve.
@@ -553,7 +583,21 @@ manual; sem re-rank de vibe (energy/valence nao exportados). Ver
   "o que era?" depois.
   Para os orfaos que ja estao NO APARELHO (o push nunca apaga no destino):
   `scripts/android/phone_purge_device.py` — lista por padrao, remove com
-  `--apply`, aborta se mais de 30% do aparelho aparecer como orfao.
+  `--apply`, aborta se mais de 30% do aparelho aparecer como orfao. Duas
+  armadilhas pagas em 11/09, as duas produzindo "orfao" que NAO era:
+  - **O storage do Android e case-insensitive.** Pasta renomeada so na caixa
+    no acervo (`Dj GBR` -> `DJ GBR`, `Meant to Be` -> `Meant To Be`) faz o
+    push escrever DENTRO da pasta antiga, e o `find` devolver o nome fisico
+    com a caixa velha. Comparacao case-sensitive marcava musica legitima como
+    orfa; o purge apagava, o push recriava, e isso se repetia pra sempre. Dai
+    `orfaos_entre(..., ignorar_caixa=True)` no aparelho (no staging, ext4, a
+    caixa continua distinguindo).
+  - **`rm -f` num lote engole o erro e produz relatorio falso** ("ainda
+    orfaos: 0" com 7 arquivos no aparelho). Usar `rm -v`, contar as
+    confirmacoes e reverificar por re-listagem: a fonte da verdade e o estado
+    do aparelho, nunca o exit code do lote.
+  Resto conhecido: `~8` arquivos voltam em todo push (as pastas de caixa
+  divergente), ~18 MB — inofensivo, resolveria alinhando a caixa no acervo.
 - Capas mobile (CMR-212, paridade com o desktop): `manifest.cover` =
   `covers/<sha1>.jpg` (relativo a `.rustify/`), UMA capa por álbum-key
   (o mesmo `cover_path` do Qdrant; 1660 tracks → 565 arquivos),
