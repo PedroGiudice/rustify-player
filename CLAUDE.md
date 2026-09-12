@@ -191,8 +191,12 @@ as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
   o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
   motor chama `resetGlStatus()`.
 - DPR fixo em 1 e o fps medido no app aparece no Tweaks — e o gate da
-  feature na cmr-auto (UHD 620 @ 1366x768), nao enfeite. Nebula e a cena
-  mais barata; Poeira/Orbitas sao as mais caras.
+  feature na cmr-auto (UHD 620 @ 1366x768), nao enfeite. O custo por
+  cena AINDA NAO FOI MEDIDO no app real: Poeira/Orbitas gastam em
+  geometria (6000 pontos / 40 linhas), Relevo em vertices (120x88) e
+  Nebula inteira em fillrate (fbm com domain warping por pixel) — em
+  GPU integrada a mais barata nao e obvia. Medir pelo fps do painel
+  antes de afirmar qualquer coisa.
 
 So escalar pra YAML / Tauri command novo quando o knob precisar
 de preset salvavel, share entre instalacoes, ou hot-reload por

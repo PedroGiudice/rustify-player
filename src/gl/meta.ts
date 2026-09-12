@@ -27,7 +27,7 @@ export const SCENE_HINTS: Record<SceneKey, string> = {
   dust: "Partículas com profundidade: graves inflam e acendem, médios aceleram a deriva",
   relief: "Malha em perspectiva com névoa: o terreno respira com os graves",
   orbits: "Túnel de anéis: graves dilatam, agudos acendem",
-  nebula: "Fluido de ruído num shader só, sem geometria — a mais barata das quatro",
+  nebula: "Fluido de ruído num shader só, sem geometria — custo todo em fillrate",
 };
 
 export function isSceneKey(v: unknown): v is SceneKey {
