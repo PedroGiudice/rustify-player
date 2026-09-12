@@ -88,9 +88,42 @@ check("nome limpo passa intacto",
 check("separador de diretorio sobrevive",
       len(m.safe_rel(pathlib.PurePath(ORIGINAL)).parts) == 4)
 
+# purge_orphans nao pode comer a capa que o export deploya. Bug real de
+# 11/09: 558 cover.jpg (fallback do resolve_cover, escritos pelo --deploy)
+# foram classificados como orfaos porque o gather so espera os 39 que
+# existem no acervo — e o export seguinte os recriava, em ciclo.
+import tempfile  # noqa: E402
+
+with tempfile.TemporaryDirectory() as td:
+    raiz = pathlib.Path(td)
+    m.DST = raiz
+    vivo = raiz / "Rock/Album"
+    morto = raiz / "Rock/AlbumQueSaiuDoAcervo"
+    for d in (vivo, morto):
+        d.mkdir(parents=True)
+        (d / "01 - Faixa.opus").write_text("x")
+        (d / "cover.jpg").write_text("x")
+    (raiz / ".rustify").mkdir()
+    (raiz / ".rustify/manifest.json").write_text("x")
+    (raiz / "Rock/Album/sobra-de-rename.opus").write_text("x")
+
+    esperados = {vivo / "01 - Faixa.opus"}
+    removidos = m.purge_orphans(esperados)
+
+    check("capa do album vivo e preservada", (vivo / "cover.jpg").exists())
+    check("manifest do export intocado", (raiz / ".rustify/manifest.json").exists())
+    check("sobra de rename e removida",
+          not (raiz / "Rock/Album/sobra-de-rename.opus").exists())
+    check("faixa de album fora do acervo e removida",
+          not (morto / "01 - Faixa.opus").exists())
+    check("capa de album fora do acervo tambem sai",
+          not (morto / "cover.jpg").exists())
+    check("relatorio lista o que saiu", len(removidos) == 3)
+
 if FALHAS:
     print("FALHOU:")
     for f in FALHAS:
         print("  -", f)
     sys.exit(1)
-print("ok — duration_ok (limiares) e safe_rel (contrato com canon_stem)")
+print("ok — duration_ok (limiares), safe_rel (contrato com canon_stem) "
+      "e purge_orphans (preserva artefato do export)")

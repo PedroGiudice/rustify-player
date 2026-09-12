@@ -542,8 +542,18 @@ manual; sem re-rank de vibe (energy/valence nao exportados). Ver
     o retry inteiro morre no mesmo arquivo. `safe_rel()` sanitiza pra `_`;
     e seguro porque `canon_stem` normaliza `_` e `:` igual — o teste
     replica a funcao do Rust pra travar o contrato.
-  `purge_orphans()` faz o GC que nunca existiu (571 arquivos de origem
-  deletada/renomeada em 10/09), sem tocar em `.rustify/`.
+  `purge_orphans()` faz o GC que nunca existiu, mas **so o encode e dono do
+  staging**: `.rustify/` (manifest/vetores/taste/stations/covers) E os
+  `cover.jpg`/`folder.jpg` por pasta sao do `--deploy` do export. Confundir
+  os ~556 cover.jpg com orfao (o gather so espera os 39 que existem no
+  acervo) apagava a capa que o export acabou de pôr, e o export seguinte a
+  recriava — ciclo sem fim, diagnosticado em 11/09. Orfao REAL e sobra de
+  rename/delete no acervo (~15). Toda remocao lista os nomes
+  (`report_purge` + `phone-sync.DONE`): contagem sem lista nao responde
+  "o que era?" depois.
+  Para os orfaos que ja estao NO APARELHO (o push nunca apaga no destino):
+  `scripts/android/phone_purge_device.py` — lista por padrao, remove com
+  `--apply`, aborta se mais de 30% do aparelho aparecer como orfao.
 - Capas mobile (CMR-212, paridade com o desktop): `manifest.cover` =
   `covers/<sha1>.jpg` (relativo a `.rustify/`), UMA capa por álbum-key
   (o mesmo `cover_path` do Qdrant; 1660 tracks → 565 arquivos),

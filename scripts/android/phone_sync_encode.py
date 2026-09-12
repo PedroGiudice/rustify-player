@@ -54,6 +54,10 @@ RECOVERED_MIN_RATIO = 0.5
 # (mobile_library.rs) normaliza `_` e `:` os dois pra espaco.
 ILLEGAL_CHARS = '"*:<>?\\|'
 SAFE_CHAR = "_"
+# Nomes que o app trata como capa de pasta (COVER_NAMES em mobile_library.rs).
+# O `--deploy` do export os escreve fora de `.rustify/`; o purge nao pode
+# confundi-los com orfao.
+COVER_NAMES = {"cover.jpg", "cover.jpeg", "cover.png", "folder.jpg"}
 
 _cover_ok: dict[str, bool] = {}
 
@@ -84,35 +88,62 @@ def gather():
     return jobs
 
 
-def purge_illegal() -> int:
+def purge_illegal() -> list[str]:
     """Remove destino gerado antes da sanitizacao. O nome novo nasce no
     gather; o velho precisa sair ou o push volta a travar nele."""
-    n = 0
+    removidos = []
     for p in DST.rglob("*"):
         if p.is_file() and any(c in ILLEGAL_CHARS for c in str(p.relative_to(DST))):
+            removidos.append(str(p.relative_to(DST)))
             p.unlink()
-            n += 1
     prune_empty_dirs()
-    return n
+    return removidos
 
 
-def purge_orphans(expected: set) -> int:
+def purge_orphans(expected: set) -> list[str]:
     """Destino cuja origem sumiu ou mudou de nome. O gather so olha a origem,
     entao esse arquivo ficaria no staging pra sempre e iria pro celular como
     duplicata (as duas versoes colapsam no mesmo stem canonico e uma vence).
-    `.rustify/` NAO entra: e do export_manifest.py — capas, manifest, vetores."""
-    n = 0
+
+    Dois grupos de artefato NAO sao do encode e ficam de fora:
+    - `.rustify/` (manifest, vetores, taste, stations, covers/) — do
+      export_manifest.py.
+    - `cover.jpg`/`folder.jpg` nas pastas de album: o `--deploy` do export
+      escreve ~556 deles como fallback do `resolve_cover`, e o gather so
+      espera os que existem no acervo (39). Tratar como orfao apagava a
+      capa que o export acabou de pôr — e o proximo export a recriava, num
+      ciclo que nao terminava. Sao preservados enquanto a pasta ainda tiver
+      algum arquivo esperado; de album que saiu do acervo, saem tambem."""
+    dirs_vivos = {d.parent for d in expected}
+    removidos = []
     for p in DST.rglob("*"):
         if not p.is_file():
             continue
         rel = p.relative_to(DST)
         if any(part.startswith(".") for part in rel.parts[:-1]):
             continue
-        if p not in expected:
-            p.unlink()
-            n += 1
+        if p in expected:
+            continue
+        if p.name.lower() in COVER_NAMES and p.parent in dirs_vivos:
+            continue
+        removidos.append(str(rel))
+        p.unlink()
     prune_empty_dirs()
-    return n
+    return removidos
+
+
+def report_purge(rotulo: str, removidos: list[str], amostra: int = 20):
+    """Operacao destrutiva tem que dizer O QUE apagou, nao so quantos. Em
+    10/09 sairam 571 arquivos com contagem e sem lista — a pergunta "o que
+    eram?" ficou sem resposta possivel. Lista completa vai pro .DONE."""
+    if not removidos:
+        return
+    print(f"removidos do staging ({rotulo}): {len(removidos)}", flush=True)
+    for r in sorted(removidos)[:amostra]:
+        print(f"  - {r}", flush=True)
+    if len(removidos) > amostra:
+        print(f"  ... +{len(removidos) - amostra} (lista completa em "
+              f"phone-sync.DONE)", flush=True)
 
 
 def prune_empty_dirs():
@@ -270,14 +301,10 @@ def run(job):
 
 def main():
     purged = purge_illegal()
-    if purged:
-        print(f"removidos do staging (nome recusado pelo Android): {purged}",
-              flush=True)
+    report_purge("nome recusado pelo Android", purged)
     jobs = gather()
     orphans = purge_orphans({d for _, _, d in jobs})
-    if orphans:
-        print(f"removidos do staging (origem sumiu/renomeada): {orphans}",
-              flush=True)
+    report_purge("origem sumiu/renomeada", orphans)
     print(f"jobs: {len(jobs)}", flush=True)
     errors, notes, done = [], [], 0
     with ThreadPoolExecutor(WORKERS) as ex:
@@ -289,7 +316,8 @@ def main():
                 print(f"{tag} {msg}", flush=True)
             if done % LOG_EVERY == 0:
                 print(f"{done}/{len(jobs)}", flush=True)
-    summary = {"total": len(jobs), "errors": errors, "recovered": notes}
+    summary = {"total": len(jobs), "errors": errors, "recovered": notes,
+               "purged_illegal": purged, "purged_orphans": orphans}
     (Path.home() / "phone-sync.DONE").write_text(json.dumps(summary, ensure_ascii=False))
     print(f"DONE total={len(jobs)} errors={len(errors)} recuperadas={len(notes)}",
           flush=True)
