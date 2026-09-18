@@ -1,21 +1,24 @@
-# Régua do autoplay — medição 2026-08-27
+# Régua do autoplay — medição 2026-09-17
 
-**Veredito: META NÃO batida: skip 60% > 55% (n=869) — revisar tunables do sinal v3 (HALF_LIFE_DAYS, PASSIVE_WEIGHT, thresholds em qdrant_client.rs).**
+**Veredito: META NÃO batida: skip 71% > 55% (n=1332) — revisar tunables do sinal v3 (HALF_LIFE_DAYS, PASSIVE_WEIGHT, thresholds em qdrant_client.rs).**
 
-Eventos pós-sinal-v3 (signal_schema>=3; legado por data): 1513. Meta: skip do autoplay <= 55% (CMR-123). Streak de aceitação: média 0.65, max 169 (536 ciclos).
+Eventos pós-sinal-v3 (signal_schema>=3; legado por data): 2667. Meta: skip do autoplay <= 55% (CMR-123). Streak de aceitação: média 0.39, max 169 (973 ciclos).
 
-Skip por origin (pós-v3): autoplay 60% (n=869), station 84% (n=210), queue 75% (n=4), playlist 86% (n=309), manual 47% (n=75), album_seq 49% (n=35), repeat 33% (n=3)
+Skip por origin (pós-v3): autoplay 71% (n=1332), station 82% (n=255), queue 83% (n=6), playlist 86% (n=882), manual 48% (n=97), album_seq 70% (n=80), repeat 33% (n=3)
 
-Por dispositivo: (legado) skip 99% (n=255), cmrlinuxmachine skip 67% (n=833), s24 skip 50% (n=425)
+Por dispositivo: (legado) skip 99% (n=255), cmrlinuxmachine skip 76% (n=1447), s24 skip 72% (n=965)
 
 Autoplay por semana:
 - 2026-W33: n=638, skip 68%
 - 2026-W34: n=164, skip 18%
-- 2026-W35: n=67, skip 91%
+- 2026-W35: n=292, skip 96%
+- 2026-W36: n=110, skip 84%
+- 2026-W37: n=63, skip 90%
+- 2026-W38: n=65, skip 89%
 
 Cobertura do motor (faixa sem vetor não é recomendável; sem vibe entra neutra no re-rank):
-- MERT (áudio): 1756/1756 (100%)
-- Letra: 1420/1420 das alcançáveis (100%); 336 sem letra em lugar nenhum (instrumental/miss).
-- Vibe: 1746/1756 (99%) — faltam 10 (anotação ainda é batch manual, CMR-178)
+- MERT (áudio): 1757/1757 (100%)
+- Letra: 1420/1421 das alcançáveis (100%) — faltam 1; 336 sem letra em lugar nenhum (instrumental/miss).
+- Vibe: 1746/1757 (99%) — faltam 11 (anotação ainda é batch manual, CMR-178)
 
 Histórico completo: docs/metrics/regua-autoplay.jsonl. Medir à mão: `python3 scripts/metrics/autoplay_regua.py`.
