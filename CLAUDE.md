@@ -182,11 +182,14 @@ as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
   pulse), com UMA diferenca deliberada — as cenas consomem as TRES
   bandas separadas, nao a soma ponderada. No modo pulse NAO roda o PLL;
   `beat` e o envelope de kick expandido nos dois modos.
-- Paleta em `src/gl/palette.ts` (puro, testado): canvas/ink/ink2/soft
-  saem de `--bg-canvas` / `--bg-ink-rgb` / `--primary` / `--fg-5`, entao
-  tema, capa (adaptiveInk/Accent) e knob mandam no WebGL igual mandam no
-  2D. Morph de cor por lerp local (`rgbLerp`) — a proibicao de animar
-  custom property no `:root` continua valendo.
+- Paleta em `src/gl/palette.ts` (puro, testado): ink/ink2/soft saem de
+  `--bg-ink-rgb` / `--primary` / `--fg-5`, entao tema, capa
+  (adaptiveInk/Accent) e knob mandam no WebGL igual mandam no 2D. O
+  canvas NAO vem do tema: e preto puro fixo (`GL_CANVAS`, decisao do CEO
+  20/09, paridade com o 2D — a Nebula mistura o canvas no shader inteiro
+  e o cinza do tema virava veu na cena). Morph de cor por lerp local
+  (`rgbLerp`) — a proibicao de animar custom property no `:root`
+  continua valendo.
 - Falha de contexto WebGL nao deixa tela preta: `glStatus.ok === false` e
   o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
   motor chama `resetGlStatus()`.

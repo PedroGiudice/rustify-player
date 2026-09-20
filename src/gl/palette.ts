@@ -1,12 +1,16 @@
 /* ============================================================
    gl/palette.ts — as quatro cores que as cenas WebGL consomem.
 
-   Nenhuma cor é inventada aqui: tudo vem das CSS vars que o
-   app já resolve, então tema, capa (adaptiveInk/adaptiveAccent)
-   e knob do usuário continuam mandando no fundo WebGL exatamente
-   como mandam no Canvas 2D.
+   As tintas vêm das CSS vars que o app já resolve, então tema,
+   capa (adaptiveInk/adaptiveAccent) e knob do usuário continuam
+   mandando no fundo WebGL exatamente como mandam no Canvas 2D.
+   A ÚNICA cor fixa é o canvas: preto puro, em paridade com o 2D
+   (que é transparente sobre o fundo escuro do app). Decisão do
+   CEO em 20/09: o canvas do tema NÃO entra no WebGL — a Nébula
+   mistura o canvas no shader inteiro e um cinza de tema virava
+   véu sobre a cena toda.
 
-     canvas ← --bg-canvas          (superfície do tema; clear color)
+     canvas ← preto (0,0,0)        (clear color + base da Nébula)
      ink    ← --bg-ink-rgb         (precedência usuário > capa > tema,
                                     já com o piso WCAG do store)
      ink2   ← --primary            (accent; segue a capa quando
@@ -30,9 +34,11 @@ export interface GlPalette {
   soft: Rgb;
 }
 
+/** Base fixa das cenas: preto puro, igual ao que o 2D mostra. */
+export const GL_CANVAS: Readonly<Rgb> = { r: 0, g: 0, b: 0 };
+
 /** Fallbacks quando o tema ainda não aplicou (primeiros frames do boot). */
-const FALLBACK: GlPalette = {
-  canvas: { r: 17, g: 17, b: 16 },
+const FALLBACK: Omit<GlPalette, "canvas"> = {
   ink: { r: 198, g: 99, b: 61 },
   ink2: { r: 216, g: 122, b: 82 },
   soft: { r: 133, g: 130, b: 123 },
@@ -92,21 +98,18 @@ export type VarReader = (name: string) => string;
     parsear vence). Desktop e mobile têm design systems diferentes; as
     cenas são as mesmas. */
 export interface PaletteVars {
-  canvas: readonly string[];
   ink: readonly string[];
   ink2: readonly string[];
   soft: readonly string[];
 }
 
 export const DESKTOP_VARS: PaletteVars = {
-  canvas: ["--bg-canvas"],
   ink: ["--bg-ink-rgb", "--bg-ink"],
   ink2: ["--primary"],
   soft: ["--fg-5"],
 };
 
 export const MOBILE_VARS: PaletteVars = {
-  canvas: ["--s-base"],
   ink: ["--bg-ink-rgb"],
   ink2: ["--accent"],
   soft: ["--accent-dim"],
@@ -121,7 +124,7 @@ function first(read: VarReader, names: readonly string[]): Rgb | null {
 }
 
 export function readGlPalette(read: VarReader, vars: PaletteVars = DESKTOP_VARS): GlPalette {
-  const canvas = first(read, vars.canvas) ?? FALLBACK.canvas;
+  const canvas = { ...GL_CANVAS };
   const ink = first(read, vars.ink) ?? FALLBACK.ink;
   // Sem accent utilizável, ink2 é o próprio ink clareado — dois tons da
   // mesma tinta, nunca a mesma cor duplicada (as cenas usam o par pra

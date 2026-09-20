@@ -6,7 +6,7 @@
 
      sinal  ← bg/spectrum.ts (SpectrumTap real, com o gerador
               sintético cobrindo até o primeiro quadro)
-     paleta ← MOBILE_VARS (--s-base / --bg-ink-rgb / --accent /
+     paleta ← MOBILE_VARS (--bg-ink-rgb / --accent /
               --accent-dim), então a capa continua mandando na
               cor pelo mesmo applyAdaptiveColor de sempre
      beat   ← --bg-beat-mode / --bg-beat-depth do beatSetting

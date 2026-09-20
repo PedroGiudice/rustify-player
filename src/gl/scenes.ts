@@ -15,8 +15,8 @@
 
    Orçamento: DPR fixo em 1 (a cmr-auto é UHD 620 a 1366x768; o
    lab rodou assim e é o mesmo alvo). Antialias desligado, alpha
-   desligado — as cenas pintam o canvas do tema como clear color
-   e desenham por cima.
+   desligado — as cenas limpam em preto puro (gl/palette.ts,
+   GL_CANVAS; paridade com o fundo do 2D) e desenham por cima.
    ============================================================ */
 
 import {
