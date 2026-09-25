@@ -67,6 +67,7 @@ vi.mock("../components/SpectrumCanvas", () => ({
 import * as playerMod from "../store/player";
 import * as tweaksMod from "../store/tweaks";
 import { resetGlStatus, setGlStatus } from "../gl/meta";
+import { glassSurface, lyricsInk, LYRICS_DESIGN_INK } from "../lib/lyricsInk";
 import NowPlaying from "./NowPlaying";
 
 const setPlayer = (playerMod as any).__setPlayer as (...args: any[]) => void;
@@ -274,6 +275,41 @@ describe("NowPlaying — card de letras acompanha o tamanho do .np (np-9)", () =
     }
     expect(card().style.left).toBe(`${900 - 380}px`);
     rect.mockRestore();
+  });
+});
+
+describe("NowPlaying — contraste do card de letras (np-2, ds-18)", () => {
+  afterEach(() => {
+    document.documentElement.style.removeProperty("--bg-canvas");
+    setTweaks({ lyricsVisible: true, bgEngine: "2d" });
+    resetGlStatus();
+  });
+
+  async function cardFg1(): Promise<string> {
+    h.libGetLyrics.mockResolvedValue([{ t: 1, line: "linha" }]);
+    setPlayer({ currentTrack: track("A") });
+    const { container } = render(() => <NowPlaying />);
+    let v = "";
+    await waitFor(() => {
+      const card = container.querySelector(".np__lyrics-card") as HTMLElement | null;
+      v = card?.style.getPropertyValue("--fg-1") ?? "";
+      expect(v).not.toBe("");
+    });
+    return v;
+  }
+
+  it("fundo 2D sobre tema claro: texto derivado do vidro, não a escala clara fixa", async () => {
+    document.documentElement.style.setProperty("--bg-canvas", "#fafafa");
+    const expected = lyricsInk(glassSurface({ backdrop: { r: 250, g: 250, b: 250 }, alpha: 0.193, brightness: 0.82 }));
+    expect(await cardFg1()).toBe(expected["--fg-1"]);
+    expect(expected["--fg-1"]).not.toBe(LYRICS_DESIGN_INK["--fg-1"]);
+  });
+
+  it("fundo WebGL (preto fixo): o vidro é escuro mesmo com tema claro", async () => {
+    document.documentElement.style.setProperty("--bg-canvas", "#fafafa");
+    setTweaks({ lyricsVisible: true, bgEngine: "webgl" });
+    setGlStatus({ ok: true, renderer: "x", error: "", fps: 60 });
+    expect(await cardFg1()).toBe(LYRICS_DESIGN_INK["--fg-1"]);
   });
 });
 

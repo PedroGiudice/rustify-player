@@ -8,7 +8,7 @@
    fundo 2D; com o WebGL a cena se escolhe no Tweaks (botão de ajustes).
    ============================================================ */
 
-import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import { player } from "../store/player";
 import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
@@ -17,6 +17,9 @@ import { useRenderer, useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
 import { tweaks, setTweaksOpen } from "../store/tweaks";
 import { glStatus } from "../gl/meta";
+import { GL_CANVAS } from "../gl/palette";
+import { cssColorToRgb } from "../lib/color";
+import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
 import { navigate } from "../router";
 import { openTrackMenu } from "../store/contextMenu";
 
@@ -25,8 +28,9 @@ export default function NowPlaying() {
   const renderer = useRenderer();
   // Shape/renderer só existem no fundo 2D. Com as cenas WebGL montadas
   // (mesma condição do App.tsx), os seletores e os atalhos [ ] , . mudariam
-  // índices que ninguém lê — a cena WebGL se escolhe no Tweaks.
-  const glActive = () => tweaks().bgEngine === "webgl" && glStatus().ok !== false;
+  // índices que ninguém lê — a cena WebGL se escolhe no Tweaks. Memo: o
+  // glStatus muda 1x/s (fps) e só o booleano interessa aqui.
+  const glActive = createMemo(() => tweaks().bgEngine === "webgl" && glStatus().ok !== false);
 
   // Botão de ajustes do fundo: abre o Tweaks já na seção "Fundo" (motor e
   // cena), marcada com data-tweaks-section em Tweaks.tsx. O painel fica em
@@ -123,6 +127,43 @@ export default function NowPlaying() {
   function saveBox(b: Box) {
     try { localStorage.setItem(LS_KEY, JSON.stringify(b)); } catch {}
   }
+
+  // ── Contraste do card: a escala de texto segue a luminância REAL do
+  // vidro (lib/lyricsInk.ts). Atrás do card está o canvas do tema no
+  // fundo 2D e o preto fixo no WebGL; alpha/brightness vêm do slider
+  // Lyrics glass (ou do tema, ou dos fallbacks do CSS). Mede no quadro
+  // seguinte a qualquer mudança, depois que o store/tema escreveram as vars.
+  const [ink, setInk] = createSignal<Partial<Record<LyricsInkVar, string>>>({});
+  function measureInk() {
+    const html = document.documentElement;
+    const cs = getComputedStyle(html);
+    const backdrop = glActive() ? GL_CANVAS : cssColorToRgb(cs.getPropertyValue("--bg-canvas"));
+    if (!backdrop) { setInk({}); return; }
+    const alpha = parseFloat(cs.getPropertyValue("--lyrics-bg-alpha"));
+    const brightness = parseFloat(cs.getPropertyValue("--lyrics-bg-brightness"));
+    setInk(lyricsInk(glassSurface({
+      backdrop,
+      alpha: Number.isFinite(alpha) ? alpha : 0.193,
+      brightness: html.dataset.lyricsSolid === "on" ? null : Number.isFinite(brightness) ? brightness : 0.82,
+    })));
+  }
+  let inkRaf = 0;
+  const scheduleInk = () => {
+    cancelAnimationFrame(inkRaf);
+    inkRaf = requestAnimationFrame(measureInk);
+  };
+  createEffect(() => {
+    tweaks();
+    glActive();
+    scheduleInk();
+  });
+  onMount(() => {
+    window.addEventListener("rustify:theme-applied", scheduleInk);
+    onCleanup(() => {
+      cancelAnimationFrame(inkRaf);
+      window.removeEventListener("rustify:theme-applied", scheduleInk);
+    });
+  });
 
   const [box, setBox] = createSignal<Box>({ x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H });
   // Sinal de drag/resize ativo: durante interacao, o card vira solid + sem
@@ -397,6 +438,7 @@ export default function NowPlaying() {
                 // Glass blur escala com tamanho: caixa maior, blur maior.
                 // Range: 10px (min, ~280+220) -> 32px (cap em ~1200+).
                 "--lyrics-blur": `${Math.min(32, Math.max(10, (box().w + box().h) * 0.025))}px`,
+                ...ink(),
               }}
             >
               <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste pra mover">
