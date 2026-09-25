@@ -12,6 +12,7 @@ import { TrackRowList } from "./TrackRowList";
 import { player, setQueue } from "../store/player";
 import { playTrack, playQueueUpcoming } from "./PlayerBar";
 import { fmtDur } from "../lib/format";
+import { isTypingContext } from "../lib/keyboard";
 
 export const QUEUE_EVENT = "rustify:open-queue";
 
@@ -31,10 +32,11 @@ export function QueueDrawer() {
   onMount(() => {
     const onOpenEvt = () => setOpen((v) => !v);
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
+      if (isTypingContext(e)) return;
       if (e.key === "Escape" && open()) { e.preventDefault(); setOpen(false); }
-      else if (e.key.toLowerCase() === "q") { e.preventDefault(); setOpen((v) => !v); }
+      else if (
+        e.key.toLowerCase() === "q" && !e.ctrlKey && !e.metaKey && !e.altKey
+      ) { e.preventDefault(); setOpen((v) => !v); }
     };
     window.addEventListener(QUEUE_EVENT, onOpenEvt);
     window.addEventListener("keydown", onKey);
