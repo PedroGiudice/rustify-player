@@ -118,7 +118,13 @@
   --shadow-card:     0 1px 4px rgba(0,0,0,0.04);
   --shadow-hover:    0 8px 24px rgba(0,0,0,0.06);
   --shadow-compact:  0 6px 18px rgba(0,0,0,0.05);
-  --ring-focus:      0 0 0 2px rgba(163,163,163,0.15);
+  /* Foco com contraste real: o anel antigo (rgba(163,163,163,.15)) dava
+     1,13:1 no claro e 1,24:1 no really-dark, invisível. --blue-ring segue
+     tema e accent adaptativo; #3b82f6 sobre o paper dá 3,7:1 (WCAG 1.4.11
+     pede 3:1). --ring-focus = versão box-shadow (inputs), --focus-outline
+     = versão outline (foco de teclado, :focus-visible). */
+  --ring-focus:      0 0 0 2px var(--blue-ring);
+  --focus-outline:   2px solid var(--blue-ring);
   --shadow-knob:     0 1px 2px rgba(0,0,0,0.18);
 
   /* Glass panels (tematizavel: glass.tint/alpha/blur no YAML) */
@@ -132,6 +138,9 @@
 
   /* Motion */
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Tematizável (motion.fast no YAML -> --dur-fast, desktop.rs). Era
+     consumido sem nunca ser definido: transition com duração inválida. */
+  --dur-fast: 0.12s;
   --dur-base: 0.15s;
   --dur-med:  0.18s;
 
@@ -161,6 +170,15 @@ input { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Foco de teclado: um anel só, com o accent do tema, no lugar do anel
+   padrão do WebKitGTK (sem relação com o tema e ausente em parte dos
+   botões). :where() deixa a especificidade em zero, então quem já zera
+   o outline de propósito (inputs com anel próprio) continua valendo. */
+:where(:focus-visible) {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
 
 iconify-icon { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 
@@ -263,6 +281,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: transform var(--dur-base), filter var(--dur-base);
 }
 .tl-dot:hover { filter: brightness(1.05); }
+/* O outline:none acima tirava o foco de teclado dos botões da janela. */
+.tl-dot:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 .tl-dot:active { transform: scale(0.92); }
 
 /* Elementos que NAO devem iniciar drag */
@@ -525,7 +545,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .hero-tile--has-cover .hero-tile__eyebrow { color: rgba(255,255,255,0.78); }
 .hero-tile--has-cover .hero-tile__title  { color: #ffffff; }
 .hero-tile--has-cover .hero-tile__sub    { color: rgba(255,255,255,0.74); }
-.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: var(--fg-1); }
+/* Fundo branco literal (o tile com capa assume overlay escuro): o icone
+   precisa de tinta escura literal. var(--fg-1) e quase branco nos temas
+   escuros e sumia no botao. */
+.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: #111111; }
 .hero-tile--has-cover .hero-tile__eyebrow .dot { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); }
 .hero-tile__eyebrow {
   font-size: 10.5px; font-weight: 700;
@@ -582,6 +605,12 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row__tech  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
 .row__when  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
 .row__time  { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
+/* Linha informativa, sem acao (aba Genres da Library): coluna unica.
+   Com o grid de 5 colunas do .row, o unico filho caia na coluna de
+   40px e o nome truncava; pointer e hover prometiam um clique que
+   nao existe. */
+.row--static { grid-template-columns: 1fr; cursor: default; }
+.row--static:hover { background: transparent; }
 
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 16px; }
 .card { cursor: pointer; }
@@ -604,6 +633,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: opacity var(--dur-base), transform var(--dur-base);
 }
 .card:hover .card__play { opacity: 1; transform: none; }
+/* Só no hover, o Tab parava num botão invisível (ds-1). Sem
+   .card:focus-within: no WebKitGTK o clique de mouse também foca o
+   <button>, e o play ficava grudado no card depois de tocar o álbum. */
+.card__play:focus-visible { opacity: 1; transform: none; }
 .card__play iconify-icon { width: 12px; height: 12px; }
 
 /* ────────────────────────────────────────────────────────────
@@ -690,21 +723,26 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   margin: 0 0 8px;
   text-wrap: balance;
 }
+/* Artista/álbum são <button> quando há faixa (link pra entidade) e <p>
+   no placeholder "—", que não promete clique. */
 .np__artist {
+  display: block; text-align: left;
   font-size: 18px; font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--fg-2);
-  cursor: pointer;
   width: fit-content;
   margin: 0 0 2px;
 }
-.np__artist:hover { color: var(--fg-1); text-decoration: underline; text-decoration-color: var(--fg-7); text-underline-offset: 4px; }
+button.np__artist:hover,
+button.np__artist:focus-visible { color: var(--fg-1); text-decoration: underline; text-decoration-color: var(--fg-7); text-underline-offset: 4px; }
 .np__album {
+  display: block; text-align: left;
   font-family: var(--font-mono); font-size: 12px;
-  color: var(--fg-5); cursor: pointer;
+  color: var(--fg-5);
   width: fit-content; margin: 0 0 22px;
 }
-.np__album:hover { color: var(--fg-2); }
+button.np__album:hover,
+button.np__album:focus-visible { color: var(--fg-2); }
 
 .np__specs {
   display: flex; align-items: center; flex-wrap: wrap;
@@ -772,7 +810,9 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   box-shadow:
     0 12px 48px -16px rgba(0, 0, 0, 0.45),
     0 2px 8px -2px rgba(0, 0, 0, 0.28);
-  /* Texto legivel em fundo escuro — vars escopadas no card */
+  /* Escala de desenho do texto (vidro escuro). É só o fallback: o
+     NowPlaying reescreve --fg-* inline a partir da luminância real do
+     vidro (lib/lyricsInk.ts) — sobre canvas claro o texto vira escuro. */
   --fg-1: #f5f3ee;
   --fg-2: #e0dcd2;
   --fg-4: #b6b1a5;
@@ -847,6 +887,15 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .np__lyric.is-near   { color: var(--fg-4); }
 .np__lyric.is-active { color: var(--fg-1); font-weight: 600; }
+/* Letra sem sincronismo: não há linha ativa nem próxima — o texto todo é
+   leitura corrida, na cor de texto secundário e não na mais apagada. */
+.np__lyrics-viewport.is-unsynced .np__lyric { color: var(--fg-2); }
+/* Cabeçalho de seção ([Chorus]): rótulo, não verso (paridade com o mobile). */
+.np__lyrics-rail .np__lyric.is-header {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-5);
+}
 
 /* Now Playing corner controls */
 .np__corner {
@@ -949,8 +998,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   overflow: hidden;
   display: grid;
   /* 5 colunas: idx | title (flex) | album | genre | length.
-     Tinha 6 antes (sobrava 70px) — com display:contents nas rows,
-     o slot vago empurrava todas as rows uma coluna pra direita. */
+     Tinha 6 antes (sobrava 70px) — com as rows em display:contents
+     (ate 25/09), o slot vago empurrava todas uma coluna pra direita. */
   grid-template-columns: 36px 1fr 180px 120px 70px;
   font-size: 13px;
 }
@@ -959,7 +1008,13 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .tracks--with-cover {
   grid-template-columns: 36px 44px 1fr 180px 110px 70px;
 }
-.tracks > div {
+/* Celulas: os cabecalhos sao filhos diretos de .tracks, mas as celulas
+   das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row.
+   So `.tracks > div` nunca alcancava as linhas (sem padding, separador
+   nem o flex que alinha # e Length). O :not tira a propria linha: ela
+   tem caixa e ganharia padding e borda por cima das celulas. */
+.tracks > div:not(.tracks__row),
+.tracks > .tracks__row > div {
   padding: 9px 14px;
   border-bottom: 1px solid var(--line-3);
   display: flex; align-items: center;
@@ -967,16 +1022,38 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   /* Evita texto "vazando" pra fora da celula em titles/albums longos */
   overflow: hidden;
 }
+/* Titulo (b + small empilhados) e celulas de texto ficam block: flex
+   poria b/small lado a lado e o texto viraria item anonimo, sem
+   ellipsis. align-content centra o bloco na altura da linha. */
+.tracks > .tracks__row > .tracks__title,
+.tracks > .tracks__row > .tracks__cell { display: block; align-content: center; }
 .tracks__head {
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
   color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line-2) !important;
 }
-.tracks__row { cursor: pointer; transition: background var(--dur-base); }
-.tracks__row--current > div { background: var(--blue-bg); }
-.tracks__row--current .tracks__title b { color: var(--blue-fg); }
+/* A linha e item do grid .tracks com subgrid: ocupa todas as colunas e
+   as celulas caem nas trilhas dos cabecalhos. Era display:contents, e no
+   WebKitGTK elemento sem caixa nao recebe foco: o Tab pulava as faixas
+   e o anel nunca aparecia. */
+.tracks__row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  cursor: pointer;
+}
+/* Fundo (hover, foco, atual) nas celulas, que ja carregam o separador. */
+.tracks__row > div { transition: background var(--dur-base); }
 .tracks__row:hover > div { background: var(--bg-soft); }
+/* Foco de teclado (ds-1): o anel global (--focus-outline) na propria
+   linha, por dentro — .tracks corta o que passa da borda. */
+.tracks__row:focus-visible { outline-offset: -2px; }
+.tracks__row:focus-visible > div { background: var(--bg-soft); }
+/* Depois do hover e com a mesma especificidade: o hover nao apaga o
+   destaque da faixa atual. */
+.tracks__row.tracks__row--current > div { background: var(--blue-bg); }
+.tracks__row--current .tracks__title b { color: var(--blue-fg); }
 .tracks__idx { color: var(--fg-6); font-family: var(--font-mono); font-size: 11px; justify-content: center; }
 .tracks__cover { padding: 6px 0 6px 10px !important; }
 .tracks__cover img {
@@ -1032,7 +1109,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-src {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 10px;   /* era 8.5px: no limite da legibilidade com DPR 1 */
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1042,7 +1119,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   padding: 0.5px 4px;
   margin-right: 7px;
   vertical-align: 1.5px;
-  line-height: 1.5;
+  line-height: 1.25;  /* 10px x 1.25 mantém a altura do chip de 8.5px x 1.5 */
 }
 .pb-src[data-kind="station"],
 .pb-src[data-kind="radio"] {
@@ -1058,7 +1135,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   transition: color var(--dur-base), background var(--dur-base);
 }
 .pb-icon-btn:hover, .pb-btn:hover { color: var(--fg-1); background: var(--bg-soft); }
-.pb-icon-btn[aria-pressed="true"], .pb-btn[aria-pressed="true"] { color: var(--fg-1); }
+/* Ligado precisa ser diferente de hover: com os dois em --fg-1, clicar
+   em shuffle/repeat/letra com o cursor em cima não mudava nada na tela.
+   --blue-fg segue o tema e o accent adaptativo (mesmo token do chip de
+   station). */
+.pb-icon-btn[aria-pressed="true"], .pb-btn[aria-pressed="true"] { color: var(--blue-fg); }
 .pb-like[aria-pressed="true"] { color: var(--rose-fg); }
 .pb-icon-btn iconify-icon, .pb-btn iconify-icon { width: 14px; height: 14px; }
 
@@ -1093,7 +1174,17 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   height: 100%; background: var(--fg-3); border-radius: inherit;
   transition: background var(--dur-base);
 }
-.progress:hover .progress__fill { background: var(--fg-1); }
+/* Área de clique de 16px sem mexer no trilho de 3px: o pseudo-elemento
+   pertence ao .progress, então o ponteiro sobre ele cai no mesmo
+   onPointerDown (e no mesmo :hover). Sem fundo, não aparece. */
+.progress::before {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 16px;
+  transform: translateY(-50%);
+}
+.progress:hover .progress__fill,
+.progress:focus-visible .progress__fill { background: var(--fg-1); }
 .progress__thumb {
   position: absolute; top: 50%;
   width: 10px; height: 10px;
@@ -1101,7 +1192,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   transform: translate(-50%, -50%);
   opacity: 0; transition: opacity var(--dur-base);
 }
-.progress:hover .progress__thumb { opacity: 1; }
+.progress:hover .progress__thumb,
+.progress:focus-visible .progress__thumb { opacity: 1; }
 
 .pb-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .pb-tech {
@@ -1171,6 +1263,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .palette__list { overflow-y: auto; padding: 6px 6px 12px; }
 .palette__section { padding: 10px 14px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
+.palette__error { padding: 10px 14px 4px; font-family: var(--font-mono); font-size: 11px; color: var(--rose-fg); }
+/* A região viva fica montada vazia. Some só o padding: display:none a
+   tiraria da árvore de acessibilidade e a falha voltaria a ser inserção
+   de região inteira, que o leitor de tela não anuncia. */
+.palette__error:empty { padding: 0; }
 .palette__item {
   display: grid;
   grid-template-columns: 28px 1fr auto;
@@ -1208,8 +1305,12 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* ────────────────────────────────────────────────────────────
    QUEUE DRAWER
    ──────────────────────────────────────────────────────────── */
+/* Véu e gaveta ficam ENTRE a titlebar e a PlayerBar: cobrindo a barra,
+   pausar ou pular com a fila aberta custava dois cliques (o primeiro só
+   fechava a fila), e os botões da janela e a área de arraste sumiam. */
 .queue-scrim {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h); left: 0;
   background: rgba(23,23,23,0.16);
   z-index: 90; opacity: 0; pointer-events: none;
   transition: opacity 200ms var(--ease-out);
@@ -1217,7 +1318,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .queue-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
 
 .queue-drawer {
-  position: fixed; top: 0; right: 0; bottom: var(--playerbar-h);
+  position: fixed; top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h);
   width: 380px;
   background: var(--bg-paper);
   border-left: 1px solid var(--line-2);
@@ -1380,6 +1481,9 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   border-radius: 999px;
   outline: 0;
 }
+/* O outline: 0 acima vence o anel global de especificidade zero; sem
+   isto o slider de volume do Settings não mostrava foco nenhum. */
+.slider:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 12px; height: 12px;
@@ -1497,14 +1601,49 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   margin: -2px 0 2px;
 }
 
-/* ── data-density="compact": reduz padding/gap em toda a UI ───── */
-html[data-density="compact"] .nav-item { padding: 5px 10px; }
-html[data-density="compact"] .view { padding: 16px 20px; }
-html[data-density="compact"] .track-table__td,
-html[data-density="compact"] .track-table__th { padding: 4px 8px; }
-html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
-html[data-density="compact"] .playerbar { height: 60px; }
+/* ── data-density="compact": reduz padding/gap em toda a UI ─────
+   So REDUZ espaco que existe no modo normal, nas classes que as telas
+   usam. O .view nao tem padding (o respiro mora em .view__head,
+   .view__body e nos containers de cada tela): dar padding a ele
+   somava margem e descolava os cabecalhos full-bleed. O prefixo
+   html[...] vence qualquer regra base de uma classe, entao a posicao
+   deste bloco no arquivo nao importa. A altura da playerbar vem so do
+   token (o grid do .app le --playerbar-h). Travado em
+   src/styles/layout-modes.test.ts, contra este arquivo. */
 html[data-density="compact"] { --playerbar-h: 60px; }
+html[data-density="compact"] .nav-item { padding: 5px 10px; }
+/* Cabecalho, abas e corpo das views */
+html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
+html[data-density="compact"] .tabs { padding: 0 24px; }
+html[data-density="compact"] .tab { padding: 8px 12px; }
+html[data-density="compact"] .tab.active::after { left: 12px; right: 12px; }
+/* .crate-body desenha o proprio espacamento (padding/gap 0) com gutters
+   de 40px: o cabecalho do Crate mantem o gutter lateral pra alinhar. */
+html[data-density="compact"] .view__body:not(.crate-body) { padding: 16px 24px 32px; gap: 20px; }
+html[data-density="compact"] .view:has(> .crate-body) > .view__head { padding-left: 40px; padding-right: 40px; }
+html[data-density="compact"] .section__head { margin-bottom: 8px; }
+html[data-density="compact"] .toolbar { margin-bottom: 12px; }
+/* Tabela de faixas (Tracks, Album, Playlist): cabecalhos e celulas das
+   linhas (netas de .tracks, dentro do .tracks__row; a linha fica sem padding) */
+html[data-density="compact"] .tracks > div:not(.tracks__row),
+html[data-density="compact"] .tracks > .tracks__row > div { padding: 5px 10px; }
+/* Linhas de lista (Home, History) */
+html[data-density="compact"] .row { padding: 6px 12px; contain-intrinsic-size: auto 53px; }
+html[data-density="compact"] .row.is-current { padding-left: 10px; }
+/* Grades de cards */
+html[data-density="compact"] .card-grid,
+html[data-density="compact"] .pl-grid { gap: 14px 12px; }
+html[data-density="compact"] .card__cover,
+html[data-density="compact"] .pl-card__cover { margin-bottom: 8px; }
+/* Containers proprios: Playlists/Stations, Signal, Settings */
+html[data-density="compact"] .coll { padding: 16px 24px 32px; gap: 20px; }
+html[data-density="compact"] .sig { padding: 14px 24px 40px; gap: 12px; }
+html[data-density="compact"] .set { padding: 16px 24px 32px; gap: 14px; }
+html[data-density="compact"] .set-panel__head { padding: 10px 16px; }
+html[data-density="compact"] .set-row { padding: 8px 16px; }
+html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
+/* Painel Tweaks */
+html[data-density="compact"] .tweaks__body { padding: 10px 12px 12px; gap: 8px; }
 
 /* ── data-sidebar="icons": sidebar colapsada, so icones ─────────
    Por padrao (sem o atributo) a sidebar exibe icone + texto.
@@ -1518,10 +1657,33 @@ html[data-sidebar="icons"] .nav-item__kbd { display: none; }
 /* Esconde o texto do nav-item (span sem classe que envolve o label).
    O Icon vira <iconify-icon>, nao span — entao filtro generico nao
    afeta o icone. Sem isso o label do nav sobra ao lado do icone
-   numa sidebar de 56px e quebra o layout. */
-html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd) { display: none; }
+   numa sidebar de 56px e quebra o layout.
+   Escondido SO visualmente (fora do fluxo, recortado): display:none
+   tirava o texto da arvore de acessibilidade e o link ficava sem nome
+   (leitor de tela anunciava link sem nome). O tooltip vem do title que
+   o Sidebar.tsx poe neste modo. O contador do Crate fica de fora do
+   filtro: some-lo escondia os downloads ativos. */
+html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge) {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
 html[data-sidebar="icons"] .nav-item {
   justify-content: center; padding: 8px; gap: 0;
+  position: relative;
+}
+/* Contador de downloads do Crate: continua visivel, no canto do item
+   (em 56px nao cabe ao lado do icone), sem empurrar o icone centralizado. */
+html[data-sidebar="icons"] .nav-item__badge {
+  position: absolute; top: 0; right: 0;
+  margin: 0;
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
 }
 html[data-sidebar="icons"] .np-mini { display: none; }
 
@@ -1532,17 +1694,21 @@ html[data-type="mono"] { --font-sans: var(--font-mono); }
    Slider "Glow" no Tweaks (0..1, default 0.15) controla a intensidade
    do feedback visual em controles ativos. Antes so afetava .app
    (container viewport-filling, halo caia fora da tela — sem efeito
-   pratico). Agora cabea em todos os "ativos" reais do app.           */
+   pratico). Agora cabea em todos os "ativos" reais do app.
+   (O default visível e 0: sem tema com effects.glow nem knob mexido,
+   o halo tem alpha 0. O 0.15 e o default do knob no Tweaks.)         */
 html { --glow: 0; }
 .app { box-shadow: 0 0 calc(var(--glow, 0) * 60px) calc(var(--glow, 0) * 20px) rgba(0,0,0,calc(var(--glow, 0) * 0.15)); }
 
 /* Halo + transition unificada para estados ativos. `:where()` mantem
    specificity baixa pra nao colidir com hovers/focus existentes.
-   Halo azul (var(--blue-fg) ≈ #2563eb) proporcional ao --glow. */
+   Halo derivado de --blue-ring por color-mix, proporcional ao --glow
+   (spec themes-boost 2026-07-05): era rgba(37,99,235) fixo e brilhava
+   azul mesmo com tema cobre/verde ou com o accent da capa. */
 :where(
   .pb-icon-btn[aria-pressed="true"],
+  .pb-btn[aria-pressed="true"],
   .pb-like[aria-pressed="true"],
-  .toggle[aria-pressed="true"],
   .tog[aria-pressed="true"],
   .tog--blue[aria-pressed="true"],
   .nav-item.active,
@@ -1552,15 +1718,14 @@ html { --glow: 0; }
   .sig-pre[aria-pressed="true"],
   .sig-chain__node[data-on="true"],
   .sig-stat[data-on="true"],
-  .plug-card[data-on="true"],
   .pl-action-btn.is-on,
   .pl-card__pin.is-pinned,
   .fader[data-active="true"],
   .sm-toggle[data-on="true"]
 ) {
   box-shadow:
-    0 0 0 calc(1px + var(--glow, 0.15) * 2px) rgba(37, 99, 235, calc(var(--glow, 0.15) * 0.55)),
-    0 0 calc(var(--glow, 0.15) * 22px) calc(var(--glow, 0.15) * 4px) rgba(37, 99, 235, calc(var(--glow, 0.15) * 0.30));
+    0 0 0 calc(1px + var(--glow, 0.15) * 2px) color-mix(in srgb, var(--blue-ring) calc(var(--glow, 0.15) * 55%), transparent),
+    0 0 calc(var(--glow, 0.15) * 22px) calc(var(--glow, 0.15) * 4px) color-mix(in srgb, var(--blue-ring) calc(var(--glow, 0.15) * 30%), transparent);
   transition:
     box-shadow 0.18s var(--ease-out, ease-out),
     background-color 0.15s var(--ease-out, ease-out),
@@ -1572,7 +1737,6 @@ html { --glow: 0; }
 .pb-icon-btn:active,
 .pb-like:active,
 .tog:active,
-.toggle:active,
 .segmented button:active,
 .sm-toggle:active {
   transform: scale(0.96);
@@ -1797,6 +1961,19 @@ html { --glow: 0; }
 }
 .sig-panel__meta b { color: var(--fg-2); font-weight: 600; }
 .sig-panel__body { padding: 18px; }
+/* Estágio que não processa (desligado ou em bypass): o painel diz isso e o
+   corpo esmaece. Os controles seguem editáveis. */
+.sig-panel__state {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--amber-fg);
+  padding: 2px 7px;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-ring);
+  border-radius: var(--radius-xs);
+}
+.sig-panel[data-live="false"] .sig-panel__body { opacity: 0.55; }
 
 /* === EQ === */
 .eq-canvas-wrap {
@@ -1809,26 +1986,38 @@ html { --glow: 0; }
   margin-bottom: 4px;
 }
 .eq-canvas-wrap canvas { width: 100%; height: 100%; display: block; }
+/* Rótulos nos valores reais da curva: ±R em 5%/95% e ±R/2 em 27,5%/72,5%
+   da altura (EqCanvas: dbToY usa 90% da meia-altura). */
 .eq-yaxis {
   position: absolute;
-  left: 8px; top: 6px; bottom: 6px;
-  display: flex; flex-direction: column;
-  justify-content: space-between;
+  left: 8px; top: 0; bottom: 0;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-6);
   pointer-events: none;
   letter-spacing: -0.01em;
 }
-.eq-yaxis span { line-height: 1; }
+.eq-yaxis span { position: absolute; left: 0; line-height: 1; transform: translateY(-50%); }
+.eq-yaxis span:nth-child(1) { top: 5%; }
+.eq-yaxis span:nth-child(2) { top: 27.5%; }
+.eq-yaxis span:nth-child(3) { top: 50%; }
+.eq-yaxis span:nth-child(4) { top: 72.5%; }
+.eq-yaxis span:nth-child(5) { top: 95%; }
+/* Rótulos posicionados em escala log pelo EqCanvas (left inline). */
 .eq-xaxis {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 4px 0;
+  position: relative;
+  height: 16px;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-6);
   letter-spacing: -0.01em;
+}
+.eq-xaxis span {
+  position: absolute;
+  top: 4px;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 /* Faders row — 16 bands */
@@ -1905,6 +2094,27 @@ html { --glow: 0; }
   font-variant-numeric: tabular-nums;
 }
 .fader[data-active="true"] .fader__val { color: var(--fg-1); font-weight: 600; }
+/* Edição do ganho (duplo clique no valor): cabe na coluna do fader. */
+.fader__input {
+  width: 100%;
+  max-width: 48px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--fg-1);
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  padding: 1px 2px;
+  -moz-appearance: textfield;
+}
+.fader__input::-webkit-outer-spin-button,
+.fader__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fader__input:focus { outline: 0; border-color: var(--fg-7); box-shadow: var(--ring-focus); }
+/* Sliders operáveis por teclado (estsig-3): o anel vem do
+   :where(:focus-visible) global — nenhum dos dois zera o outline. */
 
 /* Band detail editor (below faders) */
 .band-detail {
@@ -2244,130 +2454,8 @@ html { --glow: 0; }
 .tog[aria-pressed="true"]::after { transform: translateX(12px); }
 .tog--blue[aria-pressed="true"] { background: var(--blue-fg); }
 
-/* === Available plugins rack === */
-.plug-rack {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
-}
-.plug-card {
-  background: var(--bg-paper);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  cursor: pointer;
-  transition: border-color var(--dur-base), background var(--dur-base);
-  position: relative;
-}
-.plug-card:hover { border-color: var(--fg-8); }
-.plug-card[data-on="true"] {
-  background: var(--bg-soft);
-  border-color: var(--fg-8);
-}
-.plug-card__head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-.plug-card__icon {
-  width: 28px; height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-tint);
-  border: 1px solid var(--line-2);
-  display: grid; place-items: center;
-  color: var(--fg-3);
-  flex: none;
-}
-.plug-card__icon iconify-icon { width: 15px; height: 15px; }
-.plug-card[data-on="true"] .plug-card__icon {
-  background: var(--blue-bg);
-  border-color: var(--blue-ring);
-  color: var(--blue-fg);
-}
-.plug-card__title-wrap { flex: 1; min-width: 0; line-height: 1.3; }
-.plug-card__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg-1);
-  margin: 0;
-}
-.plug-card__sub {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--fg-5);
-  letter-spacing: -0.01em;
-}
-.plug-card__desc {
-  font-size: 11.5px;
-  color: var(--fg-4);
-  line-height: 1.4;
-  margin: 0;
-  text-wrap: pretty;
-}
-.plug-card__footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 6px;
-  border-top: 1px solid var(--line-3);
-}
-.plug-card__stat {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--fg-5);
-  letter-spacing: -0.01em;
-  flex: 1;
-  font-variant-numeric: tabular-nums;
-}
-.plug-card__stat b { color: var(--fg-1); font-weight: 600; }
-.plug-card[data-on="false"] .plug-card__stat { color: var(--fg-6); }
-.plug-card__add {
-  position: absolute;
-  top: 12px; right: 12px;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: var(--bg-tint);
-  border: 1px solid var(--line-2);
-  color: var(--fg-5);
-  display: grid; place-items: center;
-  opacity: 0;
-  transition: opacity var(--dur-base);
-}
-.plug-card:hover .plug-card__add { opacity: 1; }
-.plug-card__add iconify-icon { width: 11px; height: 11px; }
-.plug-card[data-on="true"] .plug-card__add {
-  background: var(--blue-bg);
-  border-color: var(--blue-ring);
-  color: var(--blue-fg);
-  opacity: 1;
-}
-
-/* Section subhead (mini) for the rack */
-.sig-subhead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 4px;
-  margin-bottom: 6px;
-}
-.sig-subhead__title {
-  font-size: 11px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--fg-5);
-}
-.sig-subhead__hint {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--fg-6);
-  letter-spacing: -0.01em;
-}
-
 /* ════════════════════════════════════════════════════════════
-   PLAYLISTS — collection cards + smart-tbl + create-new tile
+   PLAYLISTS — collection cards (pastas do acervo)
    ════════════════════════════════════════════════════════════ */
 .coll {
   padding: 28px 40px 56px;
@@ -2402,6 +2490,8 @@ html { --glow: 0; }
   letter-spacing: -0.005em;
 }
 .coll-search input::placeholder { color: var(--fg-6); }
+/* O input zera o outline; o anel vai no contêiner (ds-1). */
+.coll-search:focus-within { border-color: var(--fg-7); box-shadow: var(--ring-focus); }
 .coll-search iconify-icon { width: 13px; height: 13px; }
 
 .pl-grid {
@@ -2453,19 +2543,23 @@ html { --glow: 0; }
   margin: 0 0 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* O nome é o botão de abrir (irmão do de fixar, nenhum controle aninhado
+   em outro). O ::after estende a área de clique ao card inteiro e carrega o
+   anel de foco no contorno do card — mesmo padrão do .st-card__play. */
+.pl-card__open { display: block; width: 100%; text-align: start; }
+.pl-card__open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-2xl);
+}
+.pl-card__open:focus-visible { outline: 0; }
+.pl-card__open:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
 .pl-card__sub {
   font-size: 12px; color: var(--fg-5);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pl-card__meta {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--fg-6);
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+/* No nível do card (fora da capa) e acima do ::after do .pl-card__open. */
 .pl-card__pin {
   position: absolute;
   top: 10px; left: 10px;
@@ -2488,6 +2582,8 @@ html { --glow: 0; }
   opacity: 1;
   transform: scale(1);
 }
+/* Acompanha a capa, que sobe 2px no hover do card. */
+.pl-card:hover .pl-card__pin { transform: translateY(-2px); }
 .pl-card__pin.is-pinned {
   color: var(--fg-1);
   background: var(--fg-1);
@@ -2497,62 +2593,9 @@ html { --glow: 0; }
 .pl-card__pin:hover { color: var(--fg-1); border-color: var(--fg-3); }
 .pl-card__pin.is-pinned:hover { background: var(--fg-2); border-color: var(--fg-2); }
 .pl-card__pin iconify-icon { width: 12px; height: 12px; }
-.pl-card--new .pl-card__cover {
-  display: grid; place-items: center;
-  background: var(--bg-soft);
-  border-style: dashed;
-  border-color: var(--fg-8);
-  color: var(--fg-5);
-}
-.pl-card--new .pl-card__cover iconify-icon { width: 28px; height: 28px; color: var(--fg-4); }
-.pl-card--new .pl-card__title { color: var(--fg-3); }
-
-/* Smart playlists table — table semantica (display:contents+grid era fragil em WebKitGTK) */
-.smart-tbl {
-  width: 100%;
-  background: var(--bg-paper);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.smart-tbl th,
-.smart-tbl td {
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--line-3);
-  vertical-align: middle;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.smart-tbl tbody tr:last-child td { border-bottom: none; }
-.smart-tbl col.smart-tbl__col-icon    { width: 32px; }
-.smart-tbl col.smart-tbl__col-name    { width: auto; }
-.smart-tbl col.smart-tbl__col-rule    { width: 35%; }
-.smart-tbl col.smart-tbl__col-updated { width: 140px; }
-.smart-tbl col.smart-tbl__col-num     { width: 80px; }
-.smart-tbl__head {
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
-  color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--line-2) !important;
-}
-.smart-tbl__head--num { text-align: right; }
-.smart-tbl__row { cursor: pointer; }
-.smart-tbl__row:hover td { background: var(--bg-soft); transition: background var(--dur-base); }
-.smart-tbl__icon { width: 32px; color: var(--fg-5); }
-.smart-tbl__icon iconify-icon { width: 14px; height: 14px; vertical-align: middle; }
-.smart-tbl__name { font-weight: 600; color: var(--fg-1); }
-.smart-tbl__rule { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-5); letter-spacing: -0.01em; }
-.smart-tbl__updated { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
-.smart-tbl__count { font-family: var(--font-mono); font-size: 11px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
-.smart-tbl__time { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ════════════════════════════════════════════════════════════
-   STATIONS — feature card + seed grid + live badge
+   STATIONS — feature card + seed grid
    ════════════════════════════════════════════════════════════ */
 .st-feature {
   background: var(--bg-paper);
@@ -2580,6 +2623,9 @@ html { --glow: 0; }
 @keyframes stPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-feature__eyebrow .dot { animation: none; }
 }
 .st-feature__title {
   font-size: 28px;
@@ -2733,6 +2779,18 @@ html { --glow: 0; }
   letter-spacing: -0.005em;
   color: var(--fg-1);
 }
+/* O nome é o botão de tocar (irmão do de apagar, nenhum controle aninhado
+   em outro). O ::after estende a área de clique ao card inteiro e carrega o
+   anel de foco no contorno do card; inset -1px cobre a borda. */
+.st-card__play { text-align: start; }
+.st-card__play::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-xl);
+}
+.st-card__play:focus-visible { outline: 0; }
+.st-card__play:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
 .st-card__seed-line {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -2761,19 +2819,10 @@ html { --glow: 0; }
 .st-card__stats > span + span::before {
   content: '·'; margin: 0 7px; color: var(--fg-7);
 }
-.st-card__live {
-  position: absolute;
-  top: 14px; right: 14px;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--green-fg);
-  display: inline-flex; align-items: center; gap: 5px;
-}
 .st-card__delete {
   position: absolute;
+  /* Acima do ::after do .st-card__play, que cobre o card inteiro. */
+  z-index: 1;
   bottom: 10px; right: 12px;
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 6px;
@@ -2789,7 +2838,9 @@ html { --glow: 0; }
   transition: opacity var(--dur-base), color var(--dur-base),
     border-color var(--dur-base), background var(--dur-base);
 }
-.st-card:hover .st-card__delete { opacity: 1; }
+.st-card:hover .st-card__delete,
+.st-card:focus-within .st-card__delete,
+.st-card__delete:focus-visible { opacity: 1; }
 .st-card__delete:hover { color: var(--rose-fg); }
 .st-card__delete iconify-icon { width: 13px; height: 13px; }
 .st-card__delete.is-armed {
@@ -2798,12 +2849,6 @@ html { --glow: 0; }
   border-color: var(--rose-ring);
   background: var(--rose-bg);
   font-weight: 700;
-}
-.st-card__live .dot {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--green-ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2978,8 +3023,35 @@ html { --glow: 0; }
 }
 .set-about-item__value.is-mono-strong { font-weight: 600; }
 
+/* Badge de status (calculadora WCAG do Settings). Portado do
+   components.css órfão, que nunca entrou no bundle, para os tokens
+   vivos: os triplets semânticos, que o bridge dos temas preenche a
+   partir de signal.ok/warn/error. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--fg-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+}
+.status-pill--ok   { color: var(--green-fg); border-color: var(--green-ring); }
+.status-pill--warn { color: var(--amber-fg); border-color: var(--amber-ring); }
+.status-pill--err  { color: var(--rose-fg);  border-color: var(--rose-ring); }
+
 /* ========================================================================
  * RESOURCES PANEL — btop-inspired overlay
+ * O painel veio do design system antigo (tokens.css, fora do build):
+ * --space-*, --text-label-xs e --fw-medium nunca existiram aqui e zeravam
+ * padding e gap em qualquer tema; --surface, --divider, --on-surface* e
+ * --surface-container-* só existem quando o tema declara as chaves
+ * legadas (surfaces.*, dividers.*, text.*). Espaçamentos viram valores
+ * fixos e as cores ganham fallback nos tokens do Extractor Lab.
  * ====================================================================== */
 
 .resources {
@@ -2988,10 +3060,10 @@ html { --glow: 0; }
   right: 20px;
   width: 560px;
   max-height: calc(100% - 150px);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: color-mix(in srgb, var(--surface, var(--bg-paper)) 94%, transparent);
   backdrop-filter: blur(28px) saturate(130%);
   -webkit-backdrop-filter: blur(28px) saturate(130%);
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--divider));
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--divider, var(--line-2)));
   box-shadow:
     0 0 0 1px rgba(0,0,0,0.4),
     0 30px 80px rgba(0,0,0,0.55),
@@ -3006,89 +3078,89 @@ html { --glow: 0; }
 .resources__header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-label-xs);
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 10px;
   color: var(--primary);
-  border-bottom: 1px dashed color-mix(in srgb, var(--primary) 30%, var(--divider));
+  border-bottom: 1px dashed color-mix(in srgb, var(--primary) 30%, var(--divider, var(--line-2)));
   background: color-mix(in srgb, var(--primary) 6%, transparent);
   letter-spacing: 0.05em;
 }
 .resources__bracket { opacity: 0.7; }
-.resources__title { color: var(--on-surface); font-weight: var(--fw-medium); letter-spacing: 0.04em; flex: 1; }
+.resources__title { color: var(--on-surface, var(--fg-1)); font-weight: 500; letter-spacing: 0.04em; flex: 1; }
 .resources__close {
   width: 22px;
   height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--on-surface-mute);
+  color: var(--on-surface-mute, var(--fg-5));
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
   transition: color var(--dur-fast), background var(--dur-fast);
 }
-.resources__close:hover { color: var(--on-surface); background: var(--surface-container-high); }
+.resources__close:hover { color: var(--on-surface, var(--fg-1)); background: var(--surface-container-high, var(--bg-tint)); }
 
 .resources__body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-5);
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 20px;
   font-size: 11px;
-  color: var(--on-surface-variant);
+  color: var(--on-surface-variant, var(--fg-4));
   line-height: 1.5;
 }
 .resources__body::-webkit-scrollbar { width: 6px; }
-.resources__body::-webkit-scrollbar-thumb { background: var(--divider); }
+.resources__body::-webkit-scrollbar-thumb { background: var(--divider, var(--line-2)); }
 
 .resources__footer {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-label-xs);
-  color: var(--on-surface-mute);
-  border-top: 1px dashed var(--divider);
-  background: var(--surface-container-low);
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 10px;
+  color: var(--on-surface-mute, var(--fg-5));
+  border-top: 1px dashed var(--divider, var(--line-2));
+  background: var(--surface-container-low, var(--bg-soft));
   letter-spacing: 0.03em;
 }
-.resources__footer b { color: var(--on-surface); font-weight: var(--fw-medium); }
+.resources__footer b { color: var(--on-surface, var(--fg-1)); font-weight: 500; }
 .resources__footer .sep { opacity: 0.4; }
 
 /* Resource sections */
-.res-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.res-section { display: flex; flex-direction: column; gap: 8px; }
 .res-section__title {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: var(--space-3);
-  color: var(--on-surface);
-  font-size: var(--text-label-xs);
+  gap: 12px;
+  color: var(--on-surface, var(--fg-1));
+  font-size: 10px;
   letter-spacing: 0.05em;
 }
-.res-section__title > span:first-child { color: color-mix(in srgb, var(--primary) 85%, var(--on-surface)); }
+.res-section__title > span:first-child { color: color-mix(in srgb, var(--primary) 85%, var(--on-surface, var(--fg-1))); }
 .res-section__spark { color: var(--primary); opacity: 0.8; width: 120px; height: 24px; }
 .res-spark { display: block; width: 100%; height: 100%; }
-.res-section__value { color: var(--on-surface); font-variant-numeric: tabular-nums; font-weight: var(--fw-medium); }
+.res-section__value { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; font-weight: 500; }
 
 /* CPU cores */
-.res-cores { display: grid; grid-template-columns: 1fr 1fr; gap: 2px var(--space-5); margin-top: 2px; }
+.res-cores { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px; margin-top: 2px; }
 .res-core {
   display: grid;
   grid-template-columns: 24px 1fr 48px;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
   font-size: 11px;
 }
-.res-core__id { color: var(--on-surface-mute); }
+.res-core__id { color: var(--on-surface-mute, var(--fg-5)); }
 .res-core__bar {
   position: relative;
   display: block;
   height: 10px;
-  background: var(--surface-container-high);
+  background: var(--surface-container-high, var(--bg-tint));
   overflow: hidden;
 }
 .res-core__bar::before {
@@ -3100,13 +3172,13 @@ html { --glow: 0; }
   background: linear-gradient(90deg, var(--primary), var(--primary-container));
   transition: width 0.4s ease;
 }
-.res-core__pct { color: var(--on-surface); font-variant-numeric: tabular-nums; text-align: right; }
+.res-core__pct { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; text-align: right; }
 
 /* MEM bar */
 .res-mem-bar {
   position: relative;
   height: 14px;
-  background: var(--surface-container-high);
+  background: var(--surface-container-high, var(--bg-tint));
   overflow: hidden;
 }
 .res-mem-bar__used {
@@ -3121,16 +3193,16 @@ html { --glow: 0; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
   font-size: 10px;
-  color: var(--on-surface-mute);
+  color: var(--on-surface-mute, var(--fg-5));
   letter-spacing: 0.04em;
 }
 .res-legend .dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; vertical-align: middle; }
 .res-legend .dot--used { background: var(--primary); }
-.res-legend .dot--free { background: var(--surface-container-high); border: 1px solid var(--divider); }
+.res-legend .dot--free { background: var(--surface-container-high, var(--bg-tint)); border: 1px solid var(--divider, var(--line-2)); }
 .res-legend__sep { opacity: 0.4; }
-.res-legend b { color: var(--on-surface); font-weight: var(--fw-medium); }
+.res-legend b { color: var(--on-surface, var(--fg-1)); font-weight: 500; }
 
 
 /* ============================================================
@@ -3265,8 +3337,8 @@ html { --glow: 0; }
 
 /* ── Menu de contexto de faixa (right-click) ──────────────────
    Renderizado por TrackContextMenu.tsx (Portal em document.body).
-   Posição via inline left/top; visual aqui. Mora AQUI (e nao em
-   components.css, que e orfao/nao-importado) pra entrar no bundle. */
+   Posição via inline left/top; visual aqui. Mora AQUI porque este e o
+   unico CSS do desktop (o components.css orfao foi removido). */
 .track-ctx-menu {
   position: fixed;
   z-index: 300;
@@ -3542,6 +3614,11 @@ html { --glow: 0; }
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5); margin: 0; white-space: nowrap;
 }
+/* Busca em voo: título + barra fina da janela de 25 s lado a lado. */
+.crate-list-head__lead {
+  display: flex; align-items: center; gap: 12px;
+  flex: 1; min-width: 0;
+}
 .crate-keys {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-6); white-space: nowrap;
@@ -3552,6 +3629,11 @@ html { --glow: 0; }
   border-top: 1px solid var(--line-2);
   border-bottom: 1px solid var(--line-2);
 }
+/* A lista de resultados é focável (o teclado do Crate é escopado a ela):
+   o anel de foco vai no corpo da lista, com o token do app, e não no
+   contorno padrão do WebKit em volta da caixa com o padding lateral. */
+.crate-list:focus { outline: none; }
+.crate-list:focus-visible > .crate-list-inner { box-shadow: var(--ring-focus); }
 .crate-row-wrap { position: relative; }
 .crate-row-wrap + .crate-row-wrap { border-top: 1px solid var(--line-2); }
 .crate-row-wrap:hover { background: var(--bg-soft); }
@@ -3643,6 +3725,12 @@ html { --glow: 0; }
 }
 .crate-btn:hover { border-color: var(--fg-8); background: var(--bg-soft); color: var(--fg-1); }
 .crate-btn iconify-icon { width: 12px; height: 12px; }
+/* 'Usar' com download já em voo (crate-16): sem hover, sem cursor de ação. */
+.crate-btn:disabled,
+.crate-btn:disabled:hover {
+  cursor: default; opacity: 0.45;
+  border-color: var(--line-2); background: var(--bg-paper); color: var(--fg-2);
+}
 .crate-btn--primary {
   background: var(--fg-1); border-color: var(--fg-1); color: var(--bg-canvas);
 }

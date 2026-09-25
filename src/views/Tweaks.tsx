@@ -12,8 +12,9 @@
    - Painel monta uma vez via <Portal>; visibilidade via classList
    ============================================================ */
 
-import { For, Show, createResource, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
+import { pushEscLayer } from "../lib/escLayers";
 import {
   tweaks,
   tweaksOpen,
@@ -207,9 +208,18 @@ export function Tweaks() {
     onCleanup(() => window.removeEventListener("toggle-tweaks", onToggle));
   });
 
+  // Esc fecha o painel aberto quando ele é a camada de cima (lib/escLayers).
+  // Captura no window com stopPropagation roubava o Esc da ⌘K, da fila, do
+  // menu de contexto e do input do Fader, que ficam por cima do painel.
+  createEffect(() => {
+    if (!tweaksOpen()) return;
+    onCleanup(pushEscLayer(() => setTweaksOpen(false)));
+  });
+
   return (
     <Portal mount={document.body}>
       <aside
+        id="tweaks-panel"
         class="tweaks"
         classList={{ "is-visible": tweaksOpen() }}
         aria-label="Tweaks"
@@ -318,7 +328,9 @@ export function Tweaks() {
             options={[[true, "On"], [false, "Off"]]}
           />
 
-          <div class="tweaks__divider"><span>Fundo</span></div>
+          {/* data-tweaks-section: o botão de ajustes do Now Playing abre o
+              painel rolado até aqui. */}
+          <div class="tweaks__divider" data-tweaks-section="fundo"><span>Fundo</span></div>
           <EngineRow />
           <Show when={tweaks().bgEngine === "webgl"}>
             <GlSection />
@@ -377,7 +389,7 @@ export function Tweaks() {
           />
           <div class="tweaks__hint">Speed: kick acelera o movimento · Pulse: pulso de amplitude no tempo</div>
           {/* Slider contínuo (2026-07-19): o pipeline sempre foi contínuo
-              (--bg-beat-depth); os 3 presets eram só amarra da UI. Ajuste
+              (bgBeatDepth); os 3 presets eram só amarra da UI. Ajuste
               fino sem esperar release. 0.55 segue o default calibrado. */}
           <NumberSlider
             label="Beat depth"

@@ -10,6 +10,7 @@
 import { Show, createSignal, createEffect, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { trackMenu, closeTrackMenu } from "../store/contextMenu";
+import { pushEscLayer } from "../lib/escLayers";
 import { libToggleLike, libIsLiked } from "../tauri";
 import {
   setQueue, enqueueNext, enqueueEnd, shuffleQueue, player, setLiked,
@@ -51,18 +52,16 @@ export function TrackContextMenu() {
     const onDown = (ev: PointerEvent) => {
       if (menuEl && !menuEl.contains(ev.target as Node)) closeTrackMenu();
     };
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") closeTrackMenu();
-    };
+    // Esc pela pilha única (lib/escLayers): o menu é a camada de cima, fecha
+    // antes da fila e do Tweaks, e o App não sai do cinema no mesmo toque.
+    onCleanup(pushEscLayer(closeTrackMenu));
     // rAF: impede que o mesmo gesto que abriu o menu o feche imediatamente.
     const raf = requestAnimationFrame(() => {
       document.addEventListener("pointerdown", onDown, { capture: true });
-      document.addEventListener("keydown", onKey);
     });
     onCleanup(() => {
       cancelAnimationFrame(raf);
       document.removeEventListener("pointerdown", onDown, { capture: true });
-      document.removeEventListener("keydown", onKey);
     });
   });
 

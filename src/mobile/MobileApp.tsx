@@ -42,13 +42,13 @@ import { Artist } from "./screens/Artist";
 import { Queue } from "./screens/Queue";
 import { Settings } from "./screens/Settings";
 import { Stations } from "./screens/Stations";
-import { baseRoute, bootRoute, isNpOpen } from "./nav";
-import { bootStore, current, pb, toast } from "./store";
+import { baseRoute, bootRoute, isNpOpen, rememberScroll, restoreScroll, savedScroll } from "./nav";
+import { bootStore, current, pb } from "./store";
+import { Toast } from "./components/ui";
 import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
 import { mockFft, mountSpectrum, pushFft } from "./bg/spectrum";
-import { bgEngine } from "./bg/engine";
-import { glStatus } from "../gl/meta";
+import { is2dActive } from "./bg/engine";
 import { onFft } from "./ipc";
 import { bootUpdater } from "./updater";
 
@@ -124,7 +124,7 @@ function Bg() {
   return (
     <div class="app-bg" attr:data-mode={isNpOpen() ? "focused" : "ambient"} aria-hidden="true">
       <div class="app-bg__curtain" />
-      <Show when={bgEngine() === "webgl" && glStatus().ok !== false} fallback={<Spectrum2d />}>
+      <Show when={!is2dActive()} fallback={<Spectrum2d />}>
         <Suspense fallback={<Spectrum2d />}>
           <GlBg />
         </Suspense>
@@ -135,10 +135,20 @@ function Bg() {
 
 export function MobileApp() {
   let viewEl: HTMLDivElement | undefined;
-  // Trocou de tela: volta ao topo (o protótipo zerava o scrollTop).
+  let cancelRestore: (() => void) | undefined;
+  const stopRestore = () => {
+    cancelRestore?.();
+    cancelRestore = undefined;
+  };
+  // Trocou de tela: entrada NOVA do histórico abre no topo (como no
+  // protótipo); VOLTAR devolve a rolagem que a entrada tinha (mobile-3).
   createEffect(() => {
     baseRoute();
-    if (viewEl) viewEl.scrollTop = 0;
+    stopRestore();
+    if (!viewEl) return;
+    const y = savedScroll();
+    if (y == null) viewEl.scrollTop = 0;
+    else cancelRestore = restoreScroll(viewEl, y);
   });
 
   // Ink do bg + accents seguem a dominante da capa da faixa corrente.
@@ -149,19 +159,28 @@ export function MobileApp() {
   return (
     <div class="device">
       <Bg />
-      <div class="shell">
-        <div class="view" ref={viewEl}>{screen()}</div>
+      {/* Com o NP aberto por cima, a tela e o dock atrás saem do foco e da
+          árvore de acessibilidade (o TalkBack percorria o que estava
+          escondido). O inverso — NP fechado — é tratado no próprio NP. */}
+      <div
+        class="shell"
+        inert={isNpOpen()}
+        aria-hidden={isNpOpen() ? "true" : undefined}
+      >
+        <div
+          class="view"
+          ref={viewEl}
+          onScroll={() => viewEl && rememberScroll(viewEl.scrollTop)}
+          onPointerDown={stopRestore}
+          onWheel={stopRestore}
+        >
+          {screen()}
+        </div>
         <Dock />
       </div>
       <NowPlaying />
       <Sheet />
-      <Show when={toast()}>
-        {(msg) => (
-          <div class="toast" attr:data-on="">
-            {msg()}
-          </div>
-        )}
-      </Show>
+      <Toast />
     </div>
   );
 }

@@ -83,7 +83,7 @@ export const PLL_LOCK_TAU = 2.5;
 
 // ── Pulso → amplitude ───────────────────────────────────────
 /** Profundidade default do pulso (Tweaks: Off/Subtle/Default/Pulse
-    → 0 / 0.3 / 0.55 / 0.85 via --bg-beat-depth). */
+    → 0 / 0.3 / 0.55 / 0.85 via bgBeatDepth). */
 export const BEAT_DEPTH_DEFAULT = 0.55;
 /** Lift sutil de ink density no pulso (0 = desliga). */
 export const INK_PULSE = 0.5;

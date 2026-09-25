@@ -31,6 +31,8 @@ import { Tweaks } from "./views/Tweaks";
 // reage ao evento "toggle-tweaks" disparado pela sidebar.
 import { loadTweaks, tweaks } from "./store/tweaks";
 import { glStatus } from "./gl/meta";
+import { isTypingContext } from "./lib/keyboard";
+import { hasEscLayer } from "./lib/escLayers";
 
 // three.js só entra no processo se o usuário ligar o motor WebGL no
 // Tweaks — dynamic import mantém o boot do fundo 2D do tamanho que
@@ -57,17 +59,22 @@ export default function App() {
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
+      if (isTypingContext(e)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "n") { e.preventDefault(); navigate("/now-playing"); }
       else if (k === "h") { e.preventDefault(); navigate("/home"); }
       else if (k === "l") { e.preventDefault(); navigate("/library"); }
       else if (e.key === "Escape") {
+        // Esc de overlay (fila, menu, Tweaks, ⌘K, seletor do Crate) ou de
+        // controle focado não sai do cinema no mesmo toque: consumido ou
+        // com camada aberta na pilha (lib/escLayers), qualquer que seja a
+        // ordem em que os listeners do window rodam.
+        if (e.defaultPrevented || hasEscLayer()) return;
+        // Sai pelo mesmo evento do botão: o listener abaixo grava o estado
+        // e o NowPlaying, que espelha o cinema pelo evento, acompanha.
         if (cinema()) {
-          setCinema(false);
-          document.getElementById("rustify-app")?.setAttribute("data-cinema", "false");
+          window.dispatchEvent(new CustomEvent<boolean>("rustify:cinema", { detail: false }));
         }
       }
     };
@@ -78,7 +85,13 @@ export default function App() {
     const onCinemaToggle = (e: Event) => {
       const next = (e as CustomEvent<boolean>).detail;
       setCinema(next);
-      document.getElementById("rustify-app")?.setAttribute("data-cinema", next ? "true" : "false");
+      const app = document.getElementById("rustify-app");
+      app?.setAttribute("data-cinema", next ? "true" : "false");
+      // No cinema o CSS some com a chrome só por opacity: sem inert o Tab
+      // parava nos sliders de seek e volume invisíveis e as setas mudavam
+      // faixa e volume sem retorno visual.
+      app?.querySelectorAll(":scope > .titlebar, :scope > .sidebar, :scope > .playerbar")
+        .forEach((el) => el.toggleAttribute("inert", next));
     };
     window.addEventListener("rustify:cinema", onCinemaToggle);
 

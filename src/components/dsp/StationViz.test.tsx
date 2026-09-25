@@ -73,6 +73,41 @@ describe("StationViz", () => {
     expect(container.querySelector("canvas")).toBeTruthy();
   });
 
+  it("não mede nem realoca o canvas a cada frame (estsig-10)", () => {
+    let lastCb: FrameRequestCallback | null = null;
+    (globalThis as any).requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => {
+      lastCb = cb;
+      rafIds += 1;
+      return rafIds;
+    });
+    const widthSet = vi.spyOn(HTMLCanvasElement.prototype, "width", "set");
+    const rectSpy = vi.spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect");
+    render(() => <StationViz />);
+    const setsAfterMount = widthSet.mock.calls.length;
+    const rectsAfterMount = rectSpy.mock.calls.length;
+    ctxRecorder.clearRect.mockClear();
+    lastCb!(16);
+    lastCb!(32);
+    lastCb!(48);
+    expect(ctxRecorder.clearRect).toHaveBeenCalledTimes(3); // desenhou os 3 frames
+    expect(widthSet.mock.calls.length).toBe(setsAfterMount);
+    expect(rectSpy.mock.calls.length).toBe(rectsAfterMount);
+  });
+
+  it("com prefers-reduced-motion desenha um quadro e não agenda loop (estsig-10)", () => {
+    (globalThis as any).matchMedia = vi.fn((q: string) => ({
+      matches: q.includes("prefers-reduced-motion"),
+      media: q, addEventListener() {}, removeEventListener() {},
+    }));
+    try {
+      render(() => <StationViz />);
+      expect(ctxRecorder.clearRect).toHaveBeenCalled();
+      expect((globalThis as any).requestAnimationFrame).not.toHaveBeenCalled();
+    } finally {
+      delete (globalThis as any).matchMedia;
+    }
+  });
+
   it("re-deriva seeds/generated quando props mudam pos-mount", () => {
     // Captura o callback do RAF pra rodar frames manualmente.
     let lastCb: FrameRequestCallback | null = null;

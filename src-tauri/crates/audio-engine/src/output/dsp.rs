@@ -148,6 +148,21 @@ fn safe_db_to_linear(db: f32) -> f32 {
     10.0f32.powf(db.clamp(-60.0, 24.0) / 20.0)
 }
 
+/// Properties written by [`DspFilterBin::set_eq_band`]: frequency, linear
+/// gain and Q of one band. Never the filter type (`ft-N`), which only
+/// [`DspFilterBin::set_eq_filter_type`] may change. Returns `None` for an
+/// out-of-range band.
+fn eq_band_props(band: u8, freq: f32, gain_db: f32, q: f32) -> Option<[(String, f32); 3]> {
+    if band >= 16 {
+        return None;
+    }
+    Some([
+        (format!("f-{band}"), freq),
+        (format!("g-{band}"), safe_db_to_linear(gain_db)),
+        (format!("q-{band}"), q),
+    ])
+}
+
 /// Wraps the DSP filter bin and provides typed access to plugin properties.
 pub(crate) struct DspFilterBin {
     pub bin: gst::Bin,
@@ -257,9 +272,8 @@ impl DspFilterBin {
         // avoids unwanted gain pumping when the user hasn't configured it.
         limiter.set_property("enabled", false);
 
-        // All EQ bands: Bell filter type, flat gain (0 dB = 1.0 linear).
-        // Filter types are set once here and never changed during playback
-        // to avoid LV2 buffer reinitialization artifacts.
+        // All EQ bands start as Bell with flat gain (0 dB = 1.0 linear).
+        // After this, only `set_eq_filter_type` changes a band's type.
         for i in 0..16u8 {
             eq.set_property_from_str(&format!("ft-{i}"), "Bell");
             eq.set_property(&format!("g-{i}"), 1.0f32);
@@ -326,18 +340,17 @@ impl DspFilterBin {
 
     /// Set a single EQ band. `gain` is in dB (converted to linear for the plugin).
     ///
-    /// Also ensures filter type is Bell (via set_property_from_str, safe for
-    /// GLib enums). Setting Bell→Bell is a no-op for the plugin.
+    /// Only the numeric properties (freq, gain, Q) are written. The filter
+    /// type belongs exclusively to [`Self::set_eq_filter_type`]: forcing
+    /// `ft-N` here reverted any Hi-shelf/Hi-pass/... to Bell on every fader
+    /// move while the UI kept showing the chosen type (CMR-268).
     pub fn set_eq_band(&self, band: u8, freq: f32, gain_db: f32, q: f32) {
-        if band >= 16 {
+        let Some(props) = eq_band_props(band, freq, gain_db, q) else {
             return;
+        };
+        for (name, value) in props {
+            self.eq.set_property(&name, value);
         }
-        let gain_linear = safe_db_to_linear(gain_db);
-        self.eq
-            .set_property_from_str(&format!("ft-{band}"), "Bell");
-        self.eq.set_property(&format!("f-{band}"), freq);
-        self.eq.set_property(&format!("g-{band}"), gain_linear);
-        self.eq.set_property(&format!("q-{band}"), q);
     }
 
     /// Set EQ filter type for a band.
@@ -638,5 +651,34 @@ impl DspFilterBin {
     #[allow(dead_code)]
     pub fn is_bypassed(&self) -> bool {
         self.bypassed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // CMR-268 (motor-v1): mexer no fader, na frequencia ou no Q passa por
+    // set_eq_band. Se ela tocar em `ft-N`, o filtro volta a Bell no backend
+    // enquanto a UI segue mostrando o tipo escolhido (Hi-shelf, Hi-pass...).
+    #[test]
+    fn set_eq_band_nao_escreve_o_tipo_do_filtro() {
+        let props = eq_band_props(3, 1000.0, 6.0, 0.7).expect("banda valida");
+        let nomes: Vec<&str> = props.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(nomes, ["f-3", "g-3", "q-3"]);
+        assert!(nomes.iter().all(|n| !n.starts_with("ft-")));
+    }
+
+    #[test]
+    fn set_eq_band_converte_ganho_para_linear() {
+        let props = eq_band_props(0, 63.0, 6.0, 2.21).expect("banda valida");
+        assert_eq!(props[0].1, 63.0);
+        assert!((props[1].1 - 1.995_262).abs() < 1e-5, "6 dB = x1.995");
+        assert_eq!(props[2].1, 2.21);
+    }
+
+    #[test]
+    fn set_eq_band_ignora_banda_fora_do_range() {
+        assert!(eq_band_props(16, 1000.0, 0.0, 1.0).is_none());
     }
 }

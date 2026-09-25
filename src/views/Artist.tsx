@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { createResource, For, Show } from "solid-js";
-import { libGetAlbums, libGetTracksByAlbum, coverUrl, type Album, type Track } from "../tauri";
+import { libGetAlbumsByArtist, libGetTracksByAlbum, coverUrl, type Album } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate, route } from "../router";
@@ -16,7 +16,9 @@ export default function ArtistView() {
 
   const [albums] = createResource(name, async (n): Promise<Album[]> => {
     if (!n) return [];
-    try { return (await libGetAlbums({ limit: 500 })).filter((a) => a.artist_name === n); }
+    // Filtro no backend (mesma igualdade exata do filtro antigo no cliente),
+    // sem corte: baixar 500 alfabeticos e filtrar perdia os albuns do fim.
+    try { return await libGetAlbumsByArtist(n, null); }
     catch { return []; }
   });
 
@@ -55,7 +57,7 @@ export default function ArtistView() {
                     size="md"
                     class="card__cover"
                   >
-                    <button class="card__play" type="button" onClick={(e) => { e.stopPropagation(); playAlbum(a); }}>
+                    <button class="card__play" type="button" aria-label={`Tocar ${a.title}`} onClick={(e) => { e.stopPropagation(); playAlbum(a); }}>
                       <Icon name={ICONS.play} size={12} />
                     </button>
                   </CoverArt>

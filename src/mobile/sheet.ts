@@ -20,7 +20,9 @@ import type { Track, TrackContext } from "./types";
 
 export type SheetSpec =
   | { kind: "track"; track: Track; context?: TrackContext }
-  | { kind: "info"; track: Track };
+  | { kind: "info"; track: Track }
+  /** "Mais opções" do Now Playing: as ações que não cabem no cabeçalho. */
+  | { kind: "np"; track: Track };
 
 const [sheet, setSheet] = createSignal<SheetSpec | null>(null);
 export { sheet };

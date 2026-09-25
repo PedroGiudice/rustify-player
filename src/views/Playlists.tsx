@@ -4,21 +4,27 @@
    Fonte de dados:
    - "All playlists" = lib_list_folders() — folders do disco com
      mosaico 2x2 das primeiras 4 covers distintas.
-   - "Smart playlists" = mock visual (feature nao existe no backend
-     ainda — sem lib_create_smart_playlist ou similar).
+   - Sem smart playlists, "New playlist" nem reorder das fixadas: eram
+     mock e controles sem acao (auditoria 25/09, lib-9). Voltam quando
+     existirem de verdade (triagem D1/D6/item 2.5).
    - "Pinned" = lista persistida em localStorage via store/pins.ts.
      Toggle via icon no canto sup. dir. do card.
 
-   Click no card -> navega pra /playlist/<name> (Playlist.tsx).
+   Click no card -> navega pra /playlist/<name> (Playlist.tsx). Abrir é
+   um <button> próprio (o nome), irmão do de fixar: o card como
+   role=button deixava o fixar aninhado, e Enter no fixar subia até o
+   card, navegava e o preventDefault engolia o fixar. O ::after do botão
+   cobre o card inteiro (extractor-lab.css), mesmo padrão do card de
+   station.
    Pin toggle -> store/pins, sem navegar.
 
    Fallback do mosaico: se o folder tem < 4 covers distintas, slots
    vazios viram placeholder colorido (tones do extractor-lab).
    ============================================================ */
 
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js";
 import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
-import { isPinned, togglePin, pins } from "../store/pins";
+import { togglePin, pins } from "../store/pins";
 import { navigate } from "../router";
 
 function openPlaylist(folder: FolderPlaylist) {
@@ -54,18 +60,8 @@ function CoverMosaic(props: { folder: FolderPlaylist }) {
     }
     return out;
   });
-  const pinned = createMemo(() => pins().includes(props.folder.name));
   return (
     <>
-      <button
-        class="pl-card__pin"
-        classList={{ "is-pinned": pinned() }}
-        title={pinned() ? "Unpin" : "Pin"}
-        onClick={(e) => { e.stopPropagation(); togglePin(props.folder.name); }}
-      >
-        {/* @ts-ignore */}
-        <iconify-icon icon="lucide:pin" noobserver />
-      </button>
       <For each={cells()}>
         {(c) => (
           <Show
@@ -87,20 +83,35 @@ function CoverMosaic(props: { folder: FolderPlaylist }) {
   );
 }
 
-// ── Smart playlists — mock ate backend expor smart playlists ─────
-interface SmartPlaylist {
-  icon: string;
-  name: string;
-  rule: string;
-  updated: string;
-  tracks: number;
-  length: string;
+// ── Card ────────────────────────────────────────────────────────
+// O fixar fica no nível do card (fora da capa): a capa ganha transform no
+// hover, o que a tornaria um contexto de empilhamento e deixaria o fixar
+// por baixo do ::after do botão de abrir.
+function PlaylistCard(props: { folder: FolderPlaylist; children?: JSX.Element }) {
+  const pinned = createMemo(() => pins().includes(props.folder.name));
+  return (
+    <div class="pl-card">
+      <div class="pl-card__cover">
+        <CoverMosaic folder={props.folder} />
+      </div>
+      <button type="button" class="pl-card__title pl-card__open" onClick={() => openPlaylist(props.folder)}>
+        {props.folder.name}
+      </button>
+      {/* Depois do abrir na ordem de Tab (nome primeiro); a posição é absoluta. */}
+      <button
+        type="button"
+        class="pl-card__pin"
+        classList={{ "is-pinned": pinned() }}
+        title={pinned() ? "Unpin" : "Pin"}
+        onClick={() => togglePin(props.folder.name)}
+      >
+        {/* @ts-ignore */}
+        <iconify-icon icon="lucide:pin" noobserver />
+      </button>
+      {props.children}
+    </div>
+  );
 }
-const SMART_PLAYLISTS: SmartPlaylist[] = [
-  { icon: "lucide:sparkles",      name: "Recently added", rule: "added >= 14 days · sort by date_added desc", updated: "preview", tracks: 0, length: "—" },
-  { icon: "lucide:flame",         name: "Heavy rotation", rule: "play_count >= 6 in last 30d",                updated: "preview", tracks: 0, length: "—" },
-  { icon: "lucide:flask-conical", name: "Never played",   rule: "play_count == 0 · added < 60d",              updated: "preview", tracks: 0, length: "—" },
-];
 
 // ── Helpers ─────────────────────────────────────────────────────
 function fmtTracks(n: number): string {
@@ -126,8 +137,9 @@ export default function Playlists() {
 
   // Pinned: lista persistida em localStorage (store/pins.ts). Reativo a pins().
   // Ordem segue a ordem em pins() — primeiro pinado = primeiro card.
+  // Parte das pastas ja filtradas: o filtro vale pras fixadas tambem.
   const pinned = createMemo(() => {
-    const list = folders() ?? [];
+    const list = visibleFolders();
     const pinSet = pins();
     return pinSet
       .map((n) => list.find((f) => f.name === n))
@@ -135,7 +147,7 @@ export default function Playlists() {
   });
   const rest = createMemo(() => {
     const list = visibleFolders();
-    const pinnedNames = new Set(pinned().map((p) => p.name));
+    const pinnedNames = new Set(pins());
     const filtered = list.filter((f) => !pinnedNames.has(f.name));
     const dir = sortDir();
     if (dir === "none") return filtered;
@@ -145,18 +157,16 @@ export default function Playlists() {
 
   const totalPlaylists = () => (folders() ?? []).length;
   const totalTracks    = () => (folders() ?? []).reduce((sum, f) => sum + f.track_count, 0);
-  const totalSmart     = () => SMART_PLAYLISTS.length;
 
   return (
     <article class="view">
       <header class="view__head">
         <div>
           <h1>Playlists</h1>
-          <p class="view__head-hint">Coleções pessoais — manuais e smart playlists.</p>
+          <p class="view__head-hint">Coleções pessoais — uma pasta do acervo por playlist.</p>
         </div>
         <div class="view__stats">
           <span><b>{totalPlaylists()}</b> playlists</span>
-          <span><b>{totalSmart()}</b> smart</span>
           <span><b>{totalTracks()}</b> tracks total</span>
         </div>
       </header>
@@ -174,18 +184,6 @@ export default function Playlists() {
               onInput={(e) => setFilter(e.currentTarget.value)}
             />
           </div>
-          <div class="sig-preset-actions">
-            <button class="sig-pbtn" type="button" title="Backend pendente">
-              {/* @ts-ignore */}
-              <iconify-icon icon="lucide:plus" noobserver />
-              New playlist
-            </button>
-            <button class="sig-pbtn" type="button" title="Backend pendente">
-              {/* @ts-ignore */}
-              <iconify-icon icon="lucide:sparkles" noobserver />
-              New smart playlist
-            </button>
-          </div>
         </div>
 
         {/* ── Pinned ───────────────────────────────────── */}
@@ -193,94 +191,37 @@ export default function Playlists() {
           <section>
             <div class="section__head">
               <h2 class="section__title">Pinned</h2>
-              <a class="section__action">Reorder ⇅</a>
             </div>
             <div class="pl-grid">
               <For each={pinned()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => openPlaylist(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
-                    <div class="pl-card__cover">
-                      <CoverMosaic folder={p} />
-                    </div>
-                    <div class="pl-card__title">{p.name}</div>
-                    <div class="pl-card__sub">Folder · {p.track_count} tracks</div>
-                    <div class="pl-card__meta">
-                      <span>{fmtTracks(p.track_count)}</span>
-                    </div>
-                  </div>
+                  <PlaylistCard folder={p}>
+                    <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
+                  </PlaylistCard>
                 )}
               </For>
             </div>
           </section>
         </Show>
 
-        {/* ── Smart playlists (mock visual ate backend expor) ─── */}
-        <section>
-          <div class="section__head">
-            <h2 class="section__title">Smart playlists · rule-based <span style={{ "font-size": "10px", color: "var(--fg-6)", "margin-left": "8px", "font-family": "var(--font-mono)" }}>preview</span></h2>
-            <a class="section__action">View all rules →</a>
-          </div>
-          <table class="smart-tbl">
-            <thead>
-              <tr>
-                <th class="smart-tbl__head" aria-label="icon"></th>
-                <th class="smart-tbl__head">Name</th>
-                <th class="smart-tbl__head">Rule</th>
-                <th class="smart-tbl__head">Updated</th>
-                <th class="smart-tbl__head smart-tbl__head--num">Tracks</th>
-                <th class="smart-tbl__head smart-tbl__head--num">Length</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={SMART_PLAYLISTS}>
-                {(s) => (
-                  <tr class="smart-tbl__row">
-                    <td class="smart-tbl__icon">
-                      {/* @ts-ignore */}
-                      <iconify-icon icon={s.icon} noobserver />
-                    </td>
-                    <td class="smart-tbl__name">{s.name}</td>
-                    <td class="smart-tbl__rule">{s.rule}</td>
-                    <td class="smart-tbl__updated">{s.updated}</td>
-                    <td class="smart-tbl__count">{s.tracks}</td>
-                    <td class="smart-tbl__time">{s.length}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </section>
-
         {/* ── All playlists ────────────────────────────── */}
         <section>
           <div class="section__head">
             <h2 class="section__title">All playlists · {rest().length}</h2>
-            <a class="section__action" style={{ cursor: "pointer" }} onClick={cycleSortDir}>
+            <button type="button" class="section__action" onClick={cycleSortDir}>
               {sortDir() === "none" ? "Sort by name" : sortDir() === "asc" ? "Sort: A→Z ↑" : "Sort: Z→A ↓"}
-            </a>
+            </button>
           </div>
           <Show
             when={folders.loading || folders()}
             fallback={<p style={{ color: "var(--fg-5)", "font-size": "13px" }}>Sem playlists.</p>}
           >
             <div class="pl-grid">
-              <div class="pl-card pl-card--new">
-                <div class="pl-card__cover">
-                  {/* @ts-ignore */}
-                  <iconify-icon icon="lucide:plus" noobserver />
-                </div>
-                <div class="pl-card__title">New playlist</div>
-                <div class="pl-card__sub">empty · drag tracks here</div>
-              </div>
               <For each={rest()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => openPlaylist(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
-                    <div class="pl-card__cover">
-                      <CoverMosaic folder={p} />
-                    </div>
-                    <div class="pl-card__title">{p.name}</div>
+                  <PlaylistCard folder={p}>
                     <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
-                  </div>
+                  </PlaylistCard>
                 )}
               </For>
             </div>

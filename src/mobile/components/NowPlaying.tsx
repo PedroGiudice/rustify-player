@@ -22,34 +22,35 @@
      estado nem restauração da ordem, e a UI aplica o snapshot que
      volta. Não é origin — a fila mantém a origem por item. A fileira
      é shuffle | prev | play | next | repeat.
+   - cabeçalho (25/09, mobile-1): Letra, Curtir, Mais opções e Fechar
+     em alvos de 44px; Rádio da faixa, Fila e shape/render do fundo
+     moram na sheet de "Mais opções" (kind `np`).
    O seek É real: o contrato tem seek_to.
    ============================================================ */
 
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
-import { back, isNpOpen, navigate, navigateFromNp } from "../nav";
+import { back, isNpOpen, navigateFromNp } from "../nav";
 import {
   current,
   cycleRepeat,
   isLiked,
   next,
   pb,
-  playSimilar,
   previous,
   queueContextId,
   queueEntries,
   queueOrigin,
   repeat,
   seek,
-  showToast,
   shuffleUpcoming,
   toggle,
   toggleLike,
 } from "../store";
 import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
 import { canShuffleUpcoming } from "../queueModel";
-import { useRenderer, useShape } from "../bg/spectrum";
+import { openSheet } from "../sheet";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
 
@@ -135,6 +136,27 @@ export function NowPlaying() {
     e.stopPropagation();
   };
 
+  // Seek pelo teclado / leitor de tela (mobile-20): o arraste é só ponteiro.
+  const SEEK_STEP_MS = 5000;
+  const onSeekKey = (e: KeyboardEvent) => {
+    const dur = pb.durationMs;
+    if (dur <= 0) return;
+    const at = pb.positionMs;
+    const to =
+      e.key === "ArrowRight" || e.key === "ArrowUp"
+        ? at + SEEK_STEP_MS
+        : e.key === "ArrowLeft" || e.key === "ArrowDown"
+          ? at - SEEK_STEP_MS
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? dur
+              : null;
+    if (to == null) return;
+    e.preventDefault();
+    void seek(Math.max(0, Math.min(dur, to)));
+  };
+
   // Arrastar pra baixo fecha (porte do protótipo)
   let ny = 0, nt = 0;
   const onDown = (e: PointerEvent) => {
@@ -151,6 +173,10 @@ export function NowPlaying() {
       class="np"
       attr:data-open={isNpOpen() ? "" : undefined}
       attr:data-lyr={showLyrics() ? "" : undefined}
+      // Fechado, o NP só sai da tela por translateY: sem inert o TalkBack
+      // percorria Curtir/Fechar invisíveis (mobile-20).
+      inert={!isNpOpen()}
+      aria-hidden={isNpOpen() ? undefined : "true"}
       onPointerDown={onDown}
       onPointerUp={onUp}
     >
@@ -159,25 +185,11 @@ export function NowPlaying() {
         <div class="grab" />
         <div class="nphead">
           <div class="eyebrow">Now playing</div>
-          <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-            <button
-              class="shapebtn"
-              onClick={() => {
-                useRenderer.next();
-                showToast("Render · " + useRenderer.name());
-              }}
-            >
-              {useRenderer.name()}
-            </button>
-            <button
-              class="shapebtn"
-              onClick={() => {
-                useShape.next();
-                showToast("Shape · " + useShape.name());
-              }}
-            >
-              {useShape.name()}
-            </button>
+          {/* Quatro alvos de 44px no máximo (mobile-1): na largura útil do S24
+              (316px) as sete ações de antes transbordavam ~90px e o overflow
+              cortava Fila e Fechar. Rádio, Fila e shape/render moram na sheet
+              de "Mais opções". */}
+          <div class="npacts">
             <Show when={lyrics().length > 0}>
               <button
                 class="iconbtn"
@@ -205,17 +217,15 @@ export function NowPlaying() {
                   </button>
                   <button
                     class="iconbtn"
-                    aria-label="Rádio da faixa"
-                    onClick={() => void playSimilar(t())}
+                    aria-label="Mais opções"
+                    aria-haspopup="dialog"
+                    onClick={() => openSheet({ kind: "np", track: t() })}
                   >
-                    <Icon.radio />
+                    <Icon.more />
                   </button>
                 </>
               )}
             </Show>
-            <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>
-              <Icon.queue />
-            </button>
             <button class="iconbtn" aria-label="Fechar" onClick={() => back()}>
               <Icon.down />
             </button>
@@ -285,6 +295,14 @@ export function NowPlaying() {
               <div class="bar">
                 <div
                   class="seek"
+                  role="slider"
+                  tabindex="0"
+                  aria-label="Posição na faixa"
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round((pb.durationMs || t().duration_ms) / 1000)}
+                  aria-valuenow={Math.round(shownMs() / 1000)}
+                  aria-valuetext={`${fmtDuration(shownMs())} de ${fmtDuration(pb.durationMs || t().duration_ms)}`}
+                  onKeyDown={onSeekKey}
                   onPointerDown={onSeekDown}
                   onPointerMove={onSeekMove}
                   onPointerUp={onSeekUp}

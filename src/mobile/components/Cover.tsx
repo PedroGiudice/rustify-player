@@ -19,8 +19,14 @@ export function Cover(props: {
   cls?: string;
   icon?: "note" | "disc" | "person";
 }) {
-  const [failed, setFailed] = createSignal(false);
-  const src = createMemo(() => (failed() ? null : assetSrc(props.path)));
+  // A falha é da CAPA, não da instância (mobile-6): no mini e no NP o Cover
+  // sobrevive à troca de faixa (Show não keyed) e só o path muda. Um booleano
+  // grudava o placeholder em todas as faixas seguintes.
+  const [failedPath, setFailedPath] = createSignal<string | null>(null);
+  const src = createMemo(() => {
+    const p = props.path ?? null;
+    return p && p === failedPath() ? null : assetSrc(p);
+  });
   const tone = createMemo(() => toneFor(props.seed));
   const Glyph = () => {
     const k = props.icon ?? "note";
@@ -35,7 +41,7 @@ export function Cover(props: {
       }}
     >
       <Show when={src()} fallback={<Glyph />}>
-        <img src={src()!} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+        <img src={src()!} alt="" loading="lazy" decoding="async" onError={() => setFailedPath(props.path ?? null)} />
       </Show>
     </div>
   );

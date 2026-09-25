@@ -139,16 +139,20 @@ export const normSetTarget = (lufs: number) =>
 // ── Library commands ───────────────────────────────────────────
 
 export const getState = () => invoke<AppState>("get_state");
-export const libGetAlbums = (opts?: { artist?: string; genre?: string; limit?: number }) =>
-  invoke<Album[]>("lib_list_albums", { artist: opts?.artist, genre: opts?.genre, limit: opts?.limit ?? 500 });
-export const libGetArtists = (opts?: { genre?: string; limit?: number }) =>
-  invoke<Artist[]>("lib_list_artists", { genre: opts?.genre, limit: opts?.limit ?? 500 });
+// Listagens de álbuns/artistas: o backend ordena por nome e só trunca
+// quando recebe um número. `limit: null` = acervo inteiro; omitido =
+// default. Quem navega o acervo (grades, detalhe) passa null — corte
+// alfabético silencioso escondia parte da biblioteca.
+export const libGetAlbums = (opts?: { artist?: string; genre?: string; limit?: number | null }) =>
+  invoke<Album[]>("lib_list_albums", { artist: opts?.artist, genre: opts?.genre, limit: opts?.limit === undefined ? 500 : opts.limit });
+export const libGetArtists = (opts?: { genre?: string; limit?: number | null }) =>
+  invoke<Artist[]>("lib_list_artists", { genre: opts?.genre, limit: opts?.limit === undefined ? 500 : opts.limit });
 export const libGetTracks = (opts?: { album?: string; artist?: string; genre?: string; limit?: number }) =>
   invoke<Track[]>("lib_list_tracks", { album: opts?.album, artist: opts?.artist, genre: opts?.genre, limit: opts?.limit ?? 5000 });
 export const libGetTracksByAlbum = (albumTitle: string, limit?: number) =>
   invoke<Track[]>("lib_list_tracks", { album: albumTitle, limit: limit ?? 200 });
-export const libGetAlbumsByArtist = (artistName: string, limit?: number) =>
-  invoke<Album[]>("lib_list_albums", { artist: artistName, limit: limit ?? 100 });
+export const libGetAlbumsByArtist = (artistName: string, limit?: number | null) =>
+  invoke<Album[]>("lib_list_albums", { artist: artistName, limit: limit === undefined ? 100 : limit });
 export const libGetTracksByArtist = (artistName: string, limit?: number) =>
   invoke<Track[]>("lib_list_tracks", { artist: artistName, limit: limit ?? 200 });
 export const libToggleLike = (trackId: string) => invoke<boolean>("lib_toggle_like", { trackId });
@@ -306,13 +310,23 @@ export function themeVar(name: string): string | null {
   return _themeVars?.[name] ?? null;
 }
 
-/** Esquece o tema ativo (caminho "sem tema" do Settings). */
+/** Tira do <html> as vars que o tema ativo escreveu e o esquece (caminho
+    "Default" do Settings). Só as DELE: zoom, vars dos Tweaks e do adaptive
+    ink continuam — o listener de rustify:theme-applied re-asserta o resto. */
 export function clearThemeVars() {
+  const root = document.documentElement;
+  for (const prop of Object.keys(_themeVars ?? {})) root.style.removeProperty(prop);
   _themeVars = null;
 }
 
 export function applyTheme(vars: Record<string, string>) {
   const root = document.documentElement;
+  // Vars que o tema anterior declarou e este não: removidas, senão o valor
+  // de A continuava valendo sob B (mistura de temas). Overrides do usuário
+  // sobre elas voltam pelo listener de rustify:theme-applied.
+  for (const prop of Object.keys(_themeVars ?? {})) {
+    if (!(prop in vars)) root.style.removeProperty(prop);
+  }
   _themeVars = { ...vars };
   for (const [prop, val] of Object.entries(vars)) {
     root.style.setProperty(prop, val);
@@ -336,8 +350,29 @@ export async function applyThemeByName(filename: string): Promise<ContrastCheck[
 export const watchTheme = (filename: string) =>
   invoke("watch_theme", { filename });
 
+/** Derruba o watcher do tema ativo no backend (volta ao Default). */
+export const unwatchTheme = () => invoke<void>("unwatch_theme");
+
 export const onThemeChanged = (cb: (filename: string) => void) =>
   listen<string>("theme-changed", (e) => cb(e.payload));
+
+/** Hot-reload do tema: quando o watcher avisa que o YAML mudou, re-aplica —
+    mas só se o arquivo ainda é o tema ATIVO. Um evento atrasado do tema
+    anterior (ou chegado depois de voltar ao Default) não pode ressuscitá-lo
+    nem regravar a escolha do usuário. Registrar UMA vez, no boot, com ou
+    sem tema salvo: quem parte do Default e escolhe um YAML no Settings
+    também ganha o recarregamento a quente. */
+export function wireThemeHotReload() {
+  return onThemeChanged(async (fname) => {
+    if (localStorage.getItem("rustify-theme") !== fname) return;
+    try {
+      await applyThemeByName(fname);
+      console.log("[theme] hot-reloaded:", fname);
+    } catch (e) {
+      console.warn("[theme] hot-reload failed:", e);
+    }
+  });
+}
 
 // ── Helpers ────────────────────────────────────────────────────
 

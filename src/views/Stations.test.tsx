@@ -2,7 +2,7 @@
    Stations.test.tsx — Testes da view de stations.
    Cobre: feature card (.st-feature) com eyebrow, titulo grande,
    chips de seeds, CTA preto; canvas <StationViz />; grid de 6
-   st-cards com card #1 carregando badge .st-card__live.
+   st-cards sem nenhum selo "Live" (a tela não sabe o que está no ar).
 
    Utiliza mock do window.__TAURI__ para simular o backend Rust
    sem precisar do runtime Tauri.
@@ -226,28 +226,83 @@ describe("Stations view", () => {
     expect(cards.length).toBe(6);
   });
 
-  it("primeiro card tem badge Live verde no canto", async () => {
+  it("nenhum card nem o destaque afirmam reprodução ao vivo (estsig-1)", async () => {
+    // O destaque é só a station mais tocada (sort por played desc no
+    // backend); "Live · streaming now" e o selo "Live" eram resíduo do mock.
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
     const { container } = render(() => <Stations />);
     await waitFor(() => {
-      const cards = container.querySelectorAll(".st-card");
-      expect(cards.length).toBeGreaterThan(0);
+      expect(container.querySelectorAll(".st-card").length).toBe(6);
     });
-    const cards = container.querySelectorAll(".st-card");
-    const liveBadge = cards[0].querySelector(".st-card__live");
-    expect(liveBadge).toBeTruthy();
-    expect(liveBadge!.textContent).toContain("Live");
+    expect(container.querySelector(".st-card__live")).toBeNull();
+    expect(container.textContent).not.toMatch(/Live|streaming now/);
+    expect(container.querySelector(".st-feature__eyebrow")?.textContent).toBe("Most played");
   });
 
-  it("cards subsequentes nao tem badge Live", async () => {
+  it("CTA do destaque usa ícone do bundle offline e diz o que faz (estsig-20, estsig-13)", async () => {
+    await import("../icons-offline");
+    const { iconLoaded } = await import("iconify-icon");
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
     const { container } = render(() => <Stations />);
     await waitFor(() => {
-      const cards = container.querySelectorAll(".st-card");
-      expect(cards.length).toBe(6);
+      expect(container.querySelector(".st-feature__cta")).toBeTruthy();
     });
-    const cards = container.querySelectorAll(".st-card");
-    for (let i = 1; i < cards.length; i++) {
-      expect(cards[i].querySelector(".st-card__live")).toBeFalsy();
-    }
+    const cta = container.querySelector(".st-feature__cta")!;
+    // Tocar uma station inicia sessão nova: não é "Resume".
+    expect(cta.textContent).toContain("Play station");
+    const icon = cta.querySelector("iconify-icon")!.getAttribute("icon")!;
+    expect(iconLoaded(icon)).toBe(true);
+  });
+
+  it("cabeçalho conta stations (seed e mood) e não pisca '—' no refetch (estsig-13, motor-v6)", async () => {
+    let resolveSecond: ((v: Station[]) => void) | null = null;
+    let calls = 0;
+    vi.mocked(tauriApi.libListStations).mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve(MOCK_STATIONS);
+      return new Promise<Station[]>((res) => { resolveSecond = res; });
+    });
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
+    const { container } = render(() => <Stations />);
+    const stats = () => container.querySelector(".view__stats")!.textContent;
+    await waitFor(() => expect(stats()).toBe("6 stations"));
+    // Apagar dispara refetch; enquanto ele não volta, o número fica.
+    const btn = container.querySelector(".st-card__delete") as HTMLButtonElement;
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(calls).toBe(2));
+    expect(stats()).toBe("6 stations");
+    resolveSecond!(MOCK_STATIONS.slice(1));
+    await waitFor(() => expect(stats()).toBe("5 stations"));
+  });
+
+  it("card é operável por teclado e ações de criar são botões (estsig-2)", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libPlayStation).mockImplementation(async () => []);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
+    const { container, getByText } = render(() => <Stations />);
+    await waitFor(() => expect(container.querySelectorAll(".st-card").length).toBe(6));
+    const card = container.querySelectorAll<HTMLElement>(".st-card")[1];
+    // Tocar é um <button> de verdade (Enter/Espaço nativos), irmão do de
+    // apagar — o card em si não é mais role=button (revisão da fase 0).
+    const play = card.querySelector<HTMLButtonElement>(".st-card__play")!;
+    expect(play.tagName).toBe("BUTTON");
+    fireEvent.click(play);
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libPlayStation)).toHaveBeenCalledWith("sunday-slow-2", expect.any(Number));
+    });
+    expect(getByText(/New from current track/).tagName).toBe("BUTTON");
+    expect(getByText(/Nova mood station/).tagName).toBe("BUTTON");
   });
 
   it("estado loading mostra fallback antes do backend responder", () => {
@@ -261,7 +316,7 @@ describe("Stations view", () => {
     expect(cards.length).toBe(6);
   });
 
-  it("0.5 empty-state nao tem o botao disabled Resume station", async () => {
+  it("0.5 empty-state nao tem o botao disabled de tocar station", async () => {
     // Simula backend sem stations (empty-state)
     (globalThis as any).window.__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
       if (cmd === "lib_list_stations") return [];
@@ -272,10 +327,8 @@ describe("Stations view", () => {
       // O feature card fallback (empty-state) deve estar visivel
       expect(container.querySelector(".st-feature")).toBeTruthy();
     });
-    // Botao "Resume station" (era disabled, agora removido) NAO deve existir
-    const allBtns = Array.from(container.querySelectorAll("button"));
-    const resumeBtn = allBtns.find((b) => (b.textContent ?? "").includes("Resume station"));
-    expect(resumeBtn).toBeUndefined();
+    // CTA de tocar (era disabled, agora removido) NAO deve existir
+    expect(container.querySelector(".st-feature .st-feature__cta")).toBeNull();
     // O texto explicativo do empty-state continua presente
     expect((container.querySelector(".st-feature")?.textContent ?? "")).toContain("Stations aparecem aqui");
   });
@@ -422,6 +475,20 @@ describe("Criacao de mood station", () => {
     expect(getByText("study")).toBeTruthy();
   });
 
+  it("chips expõem seleção e os campos têm rótulo (estsig-2)", async () => {
+    const { getByText, container } = render(() => <Stations />);
+    fireEvent.click(getByText(/Nova mood station/));
+    await waitFor(() => {
+      expect(container.querySelector(".st-mood-create")).toBeTruthy();
+    });
+    const chip = getByText("dark");
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector(".st-mood-create__genre")!.getAttribute("aria-label")).toBeTruthy();
+    expect(container.querySelector(".st-mood-create__name")!.getAttribute("aria-label")).toBeTruthy();
+  });
+
   it("botao de criar fica desabilitado sem nenhum chip selecionado", async () => {
     const { getByText, container } = render(() => <Stations />);
     fireEvent.click(getByText(/Nova mood station/));
@@ -479,17 +546,51 @@ describe("Criacao de mood station", () => {
   });
 });
 
-describe("StationCard (reatividade de isFirst/seedLine)", () => {
-  it("badge Live segue props.isFirst apos mudanca", () => {
-    const [first, setFirst] = createSignal(false);
+describe("StationCard (reatividade de seedLine e estado armado)", () => {
+  it("apagar não dispara o play do card; o botão de tocar dispara (estsig-2)", () => {
+    const onResume = vi.fn();
     const { container } = render(() => (
-      <StationCard station={MOCK_STATIONS[0]} isFirst={first()} onResume={() => {}} />
+      <StationCard station={MOCK_STATIONS[0]} onResume={onResume} onDelete={() => {}} />
     ));
-    expect(container.querySelector(".st-card__live")).toBeFalsy();
-    setFirst(true);
-    expect(container.querySelector(".st-card__live")).toBeTruthy();
-    setFirst(false);
-    expect(container.querySelector(".st-card__live")).toBeFalsy();
+    const del = container.querySelector(".st-card__delete") as HTMLButtonElement;
+    fireEvent.click(del);
+    expect(onResume).not.toHaveBeenCalled();
+    fireEvent.click(container.querySelector(".st-card__play")!);
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledWith("midnight-1");
+  });
+
+  it("nenhum controle fica aninhado em outro: tocar e apagar são botões irmãos", () => {
+    // Filhos de role=button são apresentacionais: o WebKitGTK não expunha
+    // o botão de apagar ao Orca, e o aria-label do card engolia descrição,
+    // seeds e contadores (revisão da fase 0, 25/09).
+    const { container, getByRole } = render(() => (
+      <StationCard station={MOCK_STATIONS[0]} onResume={() => {}} onDelete={() => {}} />
+    ));
+    const card = container.querySelector(".st-card")!;
+    expect(card.getAttribute("role")).toBeNull();
+    expect(card.hasAttribute("tabindex")).toBe(false);
+    expect(card.hasAttribute("aria-label")).toBe(false);
+    const play = getByRole("button", { name: `Tocar station ${MOCK_STATIONS[0].name}` });
+    const del = getByRole("button", { name: `Apagar ${MOCK_STATIONS[0].name}` });
+    expect(play.contains(del)).toBe(false);
+    expect(del.contains(play)).toBe(false);
+    // A descrição fica fora do nome do controle e segue legível.
+    expect(play.textContent).not.toContain(MOCK_STATIONS[0].desc);
+  });
+
+  it("não mostra slot de match vazio quando o backend não preenche match_avg (estsig-13)", () => {
+    const st = { ...MOCK_STATIONS[0], stats: { ...MOCK_STATIONS[0].stats, match_avg: null } };
+    const { container } = render(() => <StationCard station={st} onResume={() => {}} />);
+    const stats = Array.from(container.querySelectorAll(".st-card__stats > span")).map((s) => s.textContent);
+    expect(stats).not.toContain("—");
+    expect(stats.length).toBe(2);
+  });
+
+  it("seed de uma faixa usa singular (motor-v7)", () => {
+    const st = { ...MOCK_STATIONS[0], seed_track_ids: ["1"] };
+    const { container } = render(() => <StationCard station={st} onResume={() => {}} />);
+    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("seed · 1 track");
   });
 
   it("botao de apagar exige confirmacao e nao dispara o play do card", () => {
@@ -500,7 +601,6 @@ describe("StationCard (reatividade de isFirst/seedLine)", () => {
     const { container } = render(() => (
       <StationCard
         station={MOCK_STATIONS[0]}
-        isFirst={false}
         onResume={onResume}
         onDelete={onDelete}
       />
@@ -525,7 +625,7 @@ describe("StationCard (reatividade de isFirst/seedLine)", () => {
     const onDelete = vi.fn();
     const [st, setSt] = createSignal<Station>(MOCK_STATIONS[0]);
     const { container } = render(() => (
-      <StationCard station={st()} isFirst={false} onResume={() => {}} onDelete={onDelete} />
+      <StationCard station={st()} onResume={() => {}} onDelete={onDelete} />
     ));
     const btn = container.querySelector(".st-card__delete") as HTMLButtonElement;
     fireEvent.click(btn); // arma a station 0
@@ -543,7 +643,7 @@ describe("StationCard (reatividade de isFirst/seedLine)", () => {
   it("seedLine re-deriva quando a station muda de kind", () => {
     const [st, setSt] = createSignal<Station>(MOCK_STATIONS[0]); // seed, 3 tracks
     const { container } = render(() => (
-      <StationCard station={st()} isFirst={false} onResume={() => {}} />
+      <StationCard station={st()} onResume={() => {}} />
     ));
     expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("seed · 3 tracks");
     setSt(MOCK_STATIONS[4]); // mood, query "minimal electronic"

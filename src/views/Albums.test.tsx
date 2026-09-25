@@ -115,3 +115,12 @@ describe("Albums — botao card__play", () => {
     expect(ancestorSpy).not.toHaveBeenCalled();
   });
 });
+
+// ds-2: o botão de tocar do card era só um ícone, sem nome acessível.
+describe("Albums — nome acessível do card__play (ds-2)", () => {
+  it("o card__play diz qual álbum toca", async () => {
+    const { container } = render(() => <Albums />);
+    await vi.waitFor(() => expect(container.querySelector(".card__play")).toBeTruthy());
+    expect(container.querySelector(".card__play")!.getAttribute("aria-label")).toBe("Tocar Album X");
+  });
+});

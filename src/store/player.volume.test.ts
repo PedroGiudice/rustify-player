@@ -15,7 +15,7 @@ vi.mock("../tauri", () => ({
   setVolume: (v: number) => setVolumeMock(v),
 }));
 
-import { player, changeVolume, applyPersistedVolume } from "./player";
+import { player, setPlayer, changeVolume, applyPersistedVolume, toggleMute } from "./player";
 
 beforeEach(() => {
   localStorage.clear();
@@ -51,5 +51,26 @@ describe("applyPersistedVolume", () => {
     localStorage.setItem("kv-volume", "banana");
     await applyPersistedVolume();
     expect(player.volume).toBe(1);
+  });
+});
+
+describe("toggleMute", () => {
+  it("muta no store e no engine sem gravar 0 como preferência", async () => {
+    await changeVolume(0.6);
+    setVolumeMock.mockClear();
+    await toggleMute();
+    expect(player.isMuted).toBe(true);
+    expect(player.volume).toBeCloseTo(0.6);
+    expect(setVolumeMock).toHaveBeenLastCalledWith(0);
+    expect(localStorage.getItem("kv-volume")).toBe("0.6");
+  });
+
+  it("desmutar devolve o volume guardado ao engine", async () => {
+    await changeVolume(0.6);
+    await toggleMute();
+    await toggleMute();
+    expect(player.isMuted).toBe(false);
+    expect(setVolumeMock).toHaveBeenLastCalledWith(0.6);
+    setPlayer("isMuted", false);
   });
 });

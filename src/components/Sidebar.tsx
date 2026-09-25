@@ -15,14 +15,16 @@ import { For, Index, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
 import { activeCount } from "../store/crate";
+import { tweaks, tweaksOpen } from "../store/tweaks";
 import { Icon, ICONS } from "./Icon";
+import { modCombo } from "../lib/keyboard";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
 import logoCassette from "../assets/logo-cassette.png";
 
 const PRIMARY = [
   { route: "/home",    icon: ICONS.home,    label: "Home" },
-  { route: "/search",  icon: ICONS.search,  label: "Search", kbd: "⌘K", action: "search" as const },
+  { route: "/search",  icon: ICONS.search,  label: "Search", kbd: modCombo("K"), action: "search" as const },
   // Logo abaixo de Search (spec §4.1): é busca, só que além do acervo.
   // Badge de jobs ativos (não-terminais) via store/crate — some em 0.
   { route: "/crate",   icon: ICONS.packageOpen, label: "Crate" },
@@ -58,6 +60,13 @@ export function Sidebar() {
   });
 
   const isActive = (r: string) => route().path === r;
+  // A classe .active só pinta: aria-current diz ao leitor de tela em que
+  // página se está (ds-2).
+  const current = (r: string) => (isActive(r) ? ("page" as const) : undefined);
+  // No modo icons o rótulo sai da tela (fica só para leitor de tela):
+  // o tooltip é a única dica do que cada ícone faz. No modo labels
+  // seria redundante com o texto visível.
+  const tip = (label: string) => (tweaks().sidebar === "icons" ? label : undefined);
 
   function handleNavClick(e: MouseEvent, item: { route: string; action?: "search" }) {
     e.preventDefault();
@@ -86,7 +95,9 @@ export function Sidebar() {
           {(item) => (
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              aria-current={current(item.route)}
               href={`#${item.route}`}
+              title={tip(item.label)}
               onClick={(e) => handleNavClick(e, item)}
             >
               <Icon name={item.icon} size={16} />
@@ -106,7 +117,9 @@ export function Sidebar() {
           {(item) => (
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              aria-current={current(item.route)}
               href={`#${item.route}`}
+              title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
             >
               <Icon name={item.icon} size={16} />
@@ -124,6 +137,14 @@ export function Sidebar() {
           <div
             class="np-mini"
             onClick={() => navigate("/now-playing")}
+            onKeyDown={(e) => {
+              // role=button promete Enter/Espaço; sem isto o chip recebia
+              // foco por Tab e não fazia nada.
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                navigate("/now-playing");
+              }
+            }}
             role="button"
             tabindex="0"
           >
@@ -147,7 +168,9 @@ export function Sidebar() {
 
         <a
           class={`nav-item${isActive("/now-playing") ? " active" : ""}`}
+          aria-current={current("/now-playing")}
           href="#/now-playing"
+          title={tip("Now Playing")}
           onClick={(e) => { e.preventDefault(); navigate("/now-playing"); }}
         >
           <Icon name={ICONS.music} size={16} />
@@ -159,7 +182,9 @@ export function Sidebar() {
           {(item) => (
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              aria-current={current(item.route)}
               href={`#${item.route}`}
+              title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
             >
               <Icon name={item.icon} size={16} />
@@ -168,12 +193,17 @@ export function Sidebar() {
           )}
         </For>
 
-        {/* Tweaks: dispara o painel flutuante (fonts + zoom). */}
+        {/* Tweaks: dispara o painel flutuante (aparência, fundo, loudness).
+            .active enquanto o painel está aberto, junto com aria-expanded
+            (cfg-9). */}
         <button
           class="nav-item"
+          classList={{ active: tweaksOpen() }}
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
-          title="Tweaks (fonts, zoom)"
+          aria-controls="tweaks-panel"
+          aria-expanded={tweaksOpen() ? "true" : "false"}
+          title="Tweaks (appearance, background, loudness)"
         >
           <Icon name={ICONS.bolt} size={16} />
           <span>Tweaks</span>

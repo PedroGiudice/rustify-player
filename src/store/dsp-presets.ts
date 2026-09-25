@@ -13,8 +13,45 @@ import { produce } from "solid-js/store";
 import {
   FILTER_TYPES, FILTER_MODES, SLOPES, LIMITER_MODES,
   type EqBand, type DspStore,
-  dsp, setDsp, applyFullDspState,
+  dsp, setDsp, applyFullDspState, isFlatEq, isDefaultEq,
 } from "./dsp";
+
+// ── Presets embutidos ─────────────────────────────────────────
+// Sempre os primeiros chips, sem registro em localStorage: "Flat" zera o
+// EQ; "Padrão" é a curva default do app (que antes se chamava Flat).
+
+export const FLAT_PRESET = "Flat";
+export const DEFAULT_PRESET = "Padrão";
+export const BUILTIN_PRESETS: readonly string[] = [FLAT_PRESET, DEFAULT_PRESET];
+
+/** Chip marcado ao abrir o Signal. Um nome salvo de preset do usuário vale
+    como está; "Flat" só vale se a curva for plana de fato (o Flat antigo
+    aplicava a curva colorida, e o nome ficou salvo assim). */
+export function resolveActivePreset(stored: string, bands: readonly EqBand[]): string {
+  if (stored && stored !== FLAT_PRESET && stored !== DEFAULT_PRESET) return stored;
+  if (isFlatEq(bands)) return FLAT_PRESET;
+  if (isDefaultEq(bands)) return DEFAULT_PRESET;
+  return "";
+}
+
+/** Motivo para recusar `name` como nome de preset, ou null se serve.
+    `current` = nome que está sendo renomeado (pode manter o próprio). */
+export function presetNameError(name: string, existing: readonly string[], current?: string): string | null {
+  const n = name.trim();
+  if (!n) return "Nome vazio.";
+  if (BUILTIN_PRESETS.includes(n)) return `"${n}" é um preset embutido. Escolha outro nome.`;
+  if (current !== undefined && n !== current && existing.includes(n)) {
+    return `Já existe um preset chamado "${n}".`;
+  }
+  return null;
+}
+
+/** Nome de um preset importado: arquivo "Flat.json" não pode sombrear o
+    preset embutido (ficaria inalcançável e sem Rename/Delete). */
+export function importPresetName(name: string): string {
+  const n = name.trim();
+  return BUILTIN_PRESETS.includes(n) ? `${n} (importado)` : n;
+}
 
 export interface DspPreset {
   name: string;

@@ -66,76 +66,17 @@ import {
   applyPresetToStore,
   parseEasyEffects,
   toEasyEffects,
+  FLAT_PRESET,
+  DEFAULT_PRESET,
+  BUILTIN_PRESETS,
+  resolveActivePreset,
+  presetNameError,
+  importPresetName,
   type DspPreset,
 } from "../store/dsp-presets";
-import { resetToFlat } from "../store/dsp";
+import { resetToFlat, resetToDefault } from "../store/dsp";
 
 const ENGINE_MODES = ["IIR", "FIR", "FFT", "SPM"] as const;
-
-// Roadmap cards — visual only, sem backend.
-interface RoadmapCard {
-  icon: string;
-  title: string;
-  sub: string;
-  desc: string;
-}
-
-const ROADMAP_DYN: RoadmapCard[] = [
-  {
-    icon: "lucide:layers",
-    title: "Multiband compressor",
-    sub: "LSP × 8 · Modern",
-    desc: "8 freq bands with independent attack/release. Present in user's EasyEffects presets. Would slot between EQ and Limiter.",
-  },
-  {
-    icon: "lucide:trending-down",
-    title: "Compressor",
-    sub: "LSP · single band",
-    desc: "Single-band downward compressor with sidechain. Lighter than MB-Comp when you only need glue.",
-  },
-  {
-    icon: "lucide:gauge",
-    title: "Maximizer",
-    sub: "Calf · loudness",
-    desc: "Brick-wall maximizer pushing perceived loudness. Tends to fight Limiter — pick one.",
-  },
-  {
-    icon: "lucide:fence",
-    title: "Gate",
-    sub: "LSP · expander",
-    desc: "Closes below threshold. Mostly useful for live recordings with hum & hiss floor.",
-  },
-];
-
-const ROADMAP_SPACE: RoadmapCard[] = [
-  {
-    icon: "lucide:headphones",
-    title: "Crossfeed",
-    sub: "bs2b · Meier",
-    desc: "Reduces hard L/R separation on headphones. Subtle, hi-fi-adjacent. Stock GStreamer plugin.",
-  },
-  {
-    icon: "lucide:radio-tower",
-    title: "Convolver",
-    sub: "zita · IR loader",
-    desc: "Loads impulse responses for room/headphone correction or speaker emulation.",
-  },
-  {
-    icon: "lucide:speaker",
-    title: "Stereo tools",
-    sub: "LSP · M/S width",
-    desc: "Mid/Side decomposition, width control, balance, stereo image rotation.",
-  },
-  {
-    icon: "lucide:volume-2",
-    title: "Loudness",
-    sub: "ISO 226 · Fletcher-Munson",
-    desc: "Equal-loudness curve compensation at low listening levels. Different stage from ReplayGain.",
-  },
-];
-
-// "Flat" e sempre o primeiro chip — reseta pra bands default sem precisar de preset salvo.
-const FLAT_PRESET = "Flat";
 
 export default function Signal() {
   // Loudness normalization: fonte unica de verdade e o store de tweaks
@@ -146,9 +87,12 @@ export default function Signal() {
   // Sincronizacao backend no mount.
   onMount(() => { applyFullDspState(); });
 
-  // Presets reais (localStorage). Sempre exibe "Flat" como primeiro chip.
+  // Presets reais (localStorage). "Flat" e "Padrão" são sempre os primeiros
+  // chips (embutidos, sem registro salvo).
   const [presets, setPresets] = createSignal<DspPreset[]>(loadPresets());
-  const [activePreset, setActivePreset] = createSignal<string>(getActivePresetName() || FLAT_PRESET);
+  const [activePreset, setActivePreset] = createSignal<string>(
+    resolveActivePreset(getActivePresetName(), dsp.eq.bands),
+  );
 
   function refreshPresets() {
     setPresets(loadPresets());
@@ -161,15 +105,24 @@ export default function Signal() {
       resetToFlat();
       return;
     }
+    if (name === DEFAULT_PRESET) {
+      resetToDefault();
+      return;
+    }
     const p = presets().find((x) => x.name === name);
     if (p) applyPresetToStore(p);
   }
 
   function handleSave() {
     const current = activePreset();
-    const suggestion = current && current !== FLAT_PRESET ? current : "";
-    const name = window.prompt("Nome do preset:", suggestion);
-    if (!name) return;
+    const suggestion = current && !BUILTIN_PRESETS.includes(current) ? current : "";
+    const raw = window.prompt("Nome do preset:", suggestion);
+    if (!raw?.trim()) return;
+    // Salvar com o nome de um preset existente sobrescreve (é o fluxo de
+    // "salvar alterações"); só nome vazio ou embutido é recusado.
+    const err = presetNameError(raw, []);
+    if (err) { window.alert(err); return; }
+    const name = raw.trim();
     const list = loadPresets().filter((p) => p.name !== name);
     list.push(snapshotCurrentDsp(name));
     savePresets(list);
@@ -180,9 +133,13 @@ export default function Signal() {
 
   function handleRename() {
     const cur = activePreset();
-    if (!cur || cur === FLAT_PRESET) return;
-    const newName = window.prompt(`Renomear "${cur}" para:`, cur);
-    if (!newName || newName === cur) return;
+    if (!cur || BUILTIN_PRESETS.includes(cur)) return;
+    const raw = window.prompt(`Renomear "${cur}" para:`, cur);
+    if (!raw?.trim()) return;
+    const err = presetNameError(raw, loadPresets().map((p) => p.name), cur);
+    if (err) { window.alert(err); return; }
+    const newName = raw.trim();
+    if (newName === cur) return;
     const list = loadPresets().map((p) => (p.name === cur ? { ...p, name: newName } : p));
     savePresets(list);
     setActivePresetName(newName);
@@ -192,11 +149,14 @@ export default function Signal() {
 
   function handleDelete() {
     const cur = activePreset();
-    if (!cur || cur === FLAT_PRESET) return;
+    if (!cur || BUILTIN_PRESETS.includes(cur)) return;
     if (!window.confirm(`Apagar preset "${cur}"?`)) return;
     savePresets(loadPresets().filter((p) => p.name !== cur));
-    setActivePresetName(FLAT_PRESET);
-    setActivePreset(FLAT_PRESET);
+    // Apagar o registro não muda o que toca: só marca Flat/Padrão se a
+    // curva atual for uma delas.
+    const next = resolveActivePreset("", dsp.eq.bands);
+    setActivePresetName(next);
+    setActivePreset(next);
     refreshPresets();
   }
 
@@ -210,7 +170,7 @@ export default function Signal() {
       try {
         const text = await file.text();
         const json = JSON.parse(text);
-        const name = file.name.replace(/\.json$/i, "");
+        const name = importPresetName(file.name.replace(/\.json$/i, ""));
         const preset = parseEasyEffects(json, name);
         const list = loadPresets().filter((p) => p.name !== name);
         list.push(preset);
@@ -226,6 +186,16 @@ export default function Signal() {
     };
     input.click();
   }
+
+  // Estado real de cada estágio. O master bypass desliga EQ, Limiter e Bass
+  // (set_bypassed em dsp.rs), mas NÃO o norm_gain: a normalização só segue
+  // o toggle do Tweaks.
+  const eqLive = () => dsp.eq.enabled && !dsp.bypass;
+  const limLive = () => dsp.limiter.enabled && !dsp.bypass;
+  const bassLive = () => dsp.bass.enabled && !dsp.bypass;
+  const normLive = () => tweaks().loudnessNorm;
+  /** Rótulo de um estágio que não processa: bypass vence o "off" próprio. */
+  const offLabel = () => (dsp.bypass ? "bypassed" : "off");
 
   function handleExport() {
     const snap = snapshotCurrentDsp(activePreset() || "rustify-export");
@@ -250,26 +220,29 @@ export default function Signal() {
         </div>
         <div class="view__stats">
           <span><b>{dsp.bypass ? "Bypassed" : "Active"}</b></span>
-          <span>chain <b>{[dsp.eq.enabled, dsp.limiter.enabled, dsp.bass.enabled].filter(Boolean).length}</b>/3 stages</span>
+          <span>chain <b>{[eqLive(), normLive(), limLive(), bassLive()].filter(Boolean).length}</b>/4 stages</span>
           <span>bit-perfect except DSP</span>
         </div>
       </header>
 
       <div class="sig">
 
-        {/* ── Master bypass bar ── */}
+        {/* ── Master (bypass) bar ──
+            Mesma polaridade dos toggles dos estágios: ligado = processando.
+            O bypass não alcança a normalização (norm_gain), que é do Tweaks. */}
         <div class="sig-master-bar">
           <div class="sig-master-bar__meta">
-            <h3 class="sig-master-bar__title">Master bypass</h3>
+            <h3 class="sig-master-bar__title">DSP chain</h3>
             <span class="sig-master-bar__sub">
-              Routes raw stream around the entire chain · <b>{dsp.bypass ? "on" : "off"}</b> currently
+              EQ · Limiter · Bass <b>{dsp.bypass ? "bypassed" : "processing"}</b> · normalization is set in Tweaks
             </span>
           </div>
           <button
             class="tog"
-            aria-pressed={dsp.bypass ? "true" : "false"}
+            aria-pressed={dsp.bypass ? "false" : "true"}
+            aria-label="DSP chain (EQ, Limiter, Bass)"
             onClick={toggleBypass}
-            title="Toggle master bypass"
+            title={dsp.bypass ? "Turn EQ, Limiter and Bass back on" : "Bypass EQ, Limiter and Bass"}
           />
         </div>
 
@@ -277,26 +250,26 @@ export default function Signal() {
         <div class="sig-stat-row">
           <StatTile
             label="EQ"
-            on={dsp.eq.enabled && !dsp.bypass}
-            value={`${dsp.eq.bands.length} bands`}
+            on={eqLive()}
+            value={eqLive() ? `${dsp.eq.bands.length} bands` : offLabel()}
             sub={`${FILTER_MODES[dsp.eq.bands[dsp.activeBand]?.filterMode ?? 6]} · ${ENGINE_MODES[dsp.eq.mode]} mode`}
           />
           <StatTile
             label="Limiter"
-            on={dsp.limiter.enabled && !dsp.bypass}
-            value={dsp.limiter.enabled ? `${dsp.limiter.threshold.toFixed(1)} dB` : "off"}
+            on={limLive()}
+            value={limLive() ? `${dsp.limiter.threshold.toFixed(1)} dB` : offLabel()}
             sub={`${LIMITER_MODES[dsp.limiter.mode]} · lookahead ${dsp.limiter.lookahead.toFixed(1)} ms`}
           />
           <StatTile
             label="Bass"
-            on={dsp.bass.enabled && !dsp.bypass}
-            value={dsp.bass.enabled ? `${dsp.bass.amount.toFixed(1)} dB` : "off"}
-            sub={`scope ${dsp.bass.freq} Hz · floor ${dsp.bass.floor} Hz`}
+            on={bassLive()}
+            value={bassLive() ? `${dsp.bass.amount.toFixed(1)} dB` : offLabel()}
+            sub={`scope ${dsp.bass.freq.toFixed(0)} Hz · floor ${dsp.bass.floor.toFixed(0)} Hz`}
           />
           <StatTile
             label="Normalize"
-            on={tweaks().loudnessNorm && !dsp.bypass}
-            value={tweaks().loudnessNorm ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
+            on={normLive()}
+            value={normLive() ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
             sub="LUFS · per-track"
           />
         </div>
@@ -309,19 +282,19 @@ export default function Signal() {
           <span class="sig-chain__arrow">→</span>
           <span class="sig-chain__node">audioconvert</span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={dsp.eq.enabled && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={eqLive() ? "true" : "false"}>
             <span class="dot" />LSP Para EQ × 16
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={tweaks().loudnessNorm && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={normLive() ? "true" : "false"}>
             <span class="dot" />norm_gain
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={dsp.limiter.enabled && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={limLive() ? "true" : "false"}>
             <span class="dot" />LSP Limiter
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={dsp.bass.enabled && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={bassLive() ? "true" : "false"}>
             <span class="dot" />Calf Bass Enh.
           </span>
           <span class="sig-chain__arrow">→</span>
@@ -339,6 +312,14 @@ export default function Signal() {
               title="Reseta todas as bandas pra 0 dB"
             >
               {FLAT_PRESET}
+            </button>
+            <button
+              class="sig-pre"
+              aria-pressed={activePreset() === DEFAULT_PRESET ? "true" : undefined}
+              onClick={() => handlePresetClick(DEFAULT_PRESET)}
+              title="Aplica a curva padrão do Rustify"
+            >
+              {DEFAULT_PRESET}
             </button>
             <For each={presets()}>{(p) => (
               <button
@@ -364,7 +345,7 @@ export default function Signal() {
             <button
               class="sig-pbtn"
               onClick={handleRename}
-              disabled={!activePreset() || activePreset() === FLAT_PRESET}
+              disabled={!activePreset() || BUILTIN_PRESETS.includes(activePreset())}
               title="Renomeia preset selecionado"
             >
               {/* @ts-ignore */}
@@ -373,7 +354,7 @@ export default function Signal() {
             <button
               class="sig-pbtn"
               onClick={handleDelete}
-              disabled={!activePreset() || activePreset() === FLAT_PRESET}
+              disabled={!activePreset() || BUILTIN_PRESETS.includes(activePreset())}
               title="Apaga preset selecionado"
             >
               {/* @ts-ignore */}
@@ -391,10 +372,11 @@ export default function Signal() {
         </div>
 
         {/* ── Parametric EQ panel ── */}
-        <div class="sig-panel">
+        <div class="sig-panel" data-live={eqLive() ? "true" : "false"}>
           <div class="sig-panel__head">
             <h3 class="sig-panel__title">Parametric Equalizer</h3>
             <span class="sig-panel__badge">LSP × 16 · Stereo</span>
+            <Show when={!eqLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               mode <b>{ENGINE_MODES[dsp.eq.mode]}</b> · gain <b>{dsp.eq.input_gain.toFixed(1)}</b> / <b>{dsp.eq.output_gain.toFixed(1)}</b> dB
             </span>
@@ -409,10 +391,6 @@ export default function Signal() {
           <div class="sig-panel__body">
 
             <EqCanvas bands={dsp.eq.bands} activeBand={dsp.activeBand} />
-            <div class="eq-xaxis">
-              <span>20</span><span>50</span><span>100</span><span>200</span><span>500</span>
-              <span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span>
-            </div>
 
             <div class="faders">
               <For each={dsp.eq.bands}>{(band, i) => (
@@ -468,10 +446,11 @@ export default function Signal() {
         </div>
 
         {/* ── Limiter panel ── */}
-        <div class="sig-panel">
+        <div class="sig-panel" data-live={limLive() ? "true" : "false"}>
           <div class="sig-panel__head">
             <h3 class="sig-panel__title">Limiter</h3>
             <span class="sig-panel__badge">LSP · Stereo</span>
+            <Show when={!limLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               threshold <b>{dsp.limiter.threshold.toFixed(1)}</b> dB · stereo-link <b>{dsp.limiter.stereo_link.toFixed(0)}</b>%
             </span>
@@ -549,12 +528,13 @@ export default function Signal() {
         </div>
 
         {/* ── Bass Enhancer panel ── */}
-        <div class="sig-panel">
+        <div class="sig-panel" data-live={bassLive() ? "true" : "false"}>
           <div class="sig-panel__head">
             <h3 class="sig-panel__title">Bass Enhancer</h3>
             <span class="sig-panel__badge">Calf</span>
+            <Show when={!bassLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
-              amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq}</b> Hz
+              amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq.toFixed(0)}</b> Hz
             </span>
             <button
               class="tog"
@@ -595,36 +575,6 @@ export default function Signal() {
               <ParamRow label="Floor" value={dsp.bass.floor} min={20} max={200} unit="Hz" decimals={0} onInput={setBassFloor} />
               <ParamRow label="Input gain" value={dsp.bass.input_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setBassLevels(v, dsp.bass.output_gain)} />
               <ParamRow label="Output gain" value={dsp.bass.output_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setBassLevels(dsp.bass.input_gain, v)} />
-            </div>
-
-          </div>
-        </div>
-
-        {/* ── Roadmap panel (visual only, sem backend) ── */}
-        <div class="sig-panel">
-          <div class="sig-panel__head">
-            <h3 class="sig-panel__title">Roadmap</h3>
-            <span class="sig-panel__badge">not wired</span>
-            <span class="sig-panel__meta">
-              design sketches for future GStreamer / LV2 stages — none of these live in dsp.rs today
-            </span>
-          </div>
-          <div class="sig-panel__body">
-
-            <div class="sig-subhead">
-              <span class="sig-subhead__title">Dynamics &amp; level</span>
-              <span class="sig-subhead__hint">candidates from EasyEffects preset imports</span>
-            </div>
-            <div class="plug-rack" style={{ "margin-bottom": "18px" }}>
-              <For each={ROADMAP_DYN}>{(card) => <RoadmapCardEl card={card} />}</For>
-            </div>
-
-            <div class="sig-subhead">
-              <span class="sig-subhead__title">Spatial &amp; tonal</span>
-              <span class="sig-subhead__hint">headphone-focused candidates</span>
-            </div>
-            <div class="plug-rack" style={{ "margin-bottom": "18px" }}>
-              <For each={ROADMAP_SPACE}>{(card) => <RoadmapCardEl card={card} />}</For>
             </div>
 
           </div>
@@ -757,39 +707,6 @@ function BandDetail() {
         >
           M
         </button>
-      </div>
-    </div>
-  );
-}
-
-function RoadmapCardEl(props: { card: RoadmapCard }) {
-  // TODO: backend support pending — toggle e visual only.
-  const [on, setOn] = createSignal(false);
-  return (
-    <div class="plug-card" data-on={on() ? "true" : "false"}>
-      <button class="plug-card__add" title="Add to chain (not wired)" onClick={() => setOn(!on())}>
-        {/* @ts-ignore */}
-        <iconify-icon icon="lucide:plus" noobserver />
-      </button>
-      <div class="plug-card__head">
-        <span class="plug-card__icon">
-          {/* @ts-ignore */}
-          <iconify-icon icon={props.card.icon} noobserver />
-        </span>
-        <div class="plug-card__title-wrap">
-          <h4 class="plug-card__title">{props.card.title}</h4>
-          <span class="plug-card__sub">{props.card.sub}</span>
-        </div>
-      </div>
-      <p class="plug-card__desc">{props.card.desc}</p>
-      <div class="plug-card__footer">
-        <span class="plug-card__stat">{on() ? "in chain · last stage" : "not in chain"}</span>
-        <button
-          class="tog"
-          aria-pressed={on() ? "true" : "false"}
-          onClick={() => setOn(!on())}
-          title="Toggle (visual only)"
-        />
       </div>
     </div>
   );

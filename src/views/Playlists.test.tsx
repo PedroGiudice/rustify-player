@@ -30,9 +30,11 @@ vi.mock("../tauri", () => ({
 }));
 
 import Playlists from "./Playlists";
+import { pins, unpinPlaylist, pinPlaylist } from "../store/pins";
 
 afterEach(() => {
   cleanup();
+  for (const n of pins()) unpinPlaylist(n);
 });
 
 describe("Playlists view", () => {
@@ -41,52 +43,52 @@ describe("Playlists view", () => {
     expect(getByText("Playlists")).toBeTruthy();
   });
 
-  it("renderiza toolbar com search input e 2 botoes (sem Recently played)", () => {
+  // lib-9 (auditoria 25/09): o principio do CEO e "implementar de verdade
+  // ou remover limpo". Os testes antigos fixavam o mock de smart playlists
+  // e os botoes sem acao; agora fixam a ausencia deles ate existir backend.
+  it("toolbar tem so o filtro: sem New playlist / New smart playlist sem acao", () => {
     const { container, getByPlaceholderText } = render(() => <Playlists />);
     expect(container.querySelector(".coll-toolbar")).toBeTruthy();
     expect(getByPlaceholderText("Filter playlists…")).toBeTruthy();
-    const buttons = container.querySelectorAll(".coll-toolbar .sig-pbtn");
-    expect(buttons.length).toBe(2);
-    const labels = Array.from(buttons).map((b) => b.textContent ?? "");
-    expect(labels.some((t) => t.includes("New playlist"))).toBe(true);
-    expect(labels.some((t) => t.includes("New smart playlist"))).toBe(true);
-    // item 1.4: o botao zumbi "Recently played" foi removido
-    expect(labels.some((t) => t.includes("Recently played"))).toBe(false);
+    expect(container.querySelectorAll(".coll-toolbar button").length).toBe(0);
+    expect(container.textContent).not.toContain("New playlist");
+    expect(container.textContent).not.toContain("New smart playlist");
   });
 
-  it("renderiza Smart playlists table com 6 heads e 3 rows preview", () => {
+  it("nao renderiza o mock de smart playlists nem o conta no cabecalho", () => {
     const { container } = render(() => <Playlists />);
-    const smartTbl = container.querySelector(".smart-tbl");
-    expect(smartTbl).toBeTruthy();
-    const heads = smartTbl!.querySelectorAll(".smart-tbl__head");
-    expect(heads.length).toBe(6);
-    const rows = smartTbl!.querySelectorAll(".smart-tbl__row");
-    expect(rows.length).toBe(3);
-    const firstRule = smartTbl!.querySelector(".smart-tbl__rule");
-    expect(firstRule).toBeTruthy();
-    expect(firstRule!.textContent!.length).toBeGreaterThan(0);
+    expect(container.querySelector(".smart-tbl")).toBeNull();
+    expect(container.textContent).not.toMatch(/smart/i);
   });
 
-  it("renderiza All playlists section com card pl-card--new dashed", () => {
+  it("All playlists so tem playlists reais (sem o card tracejado de criar)", async () => {
     const { container } = render(() => <Playlists />);
-    const allHeads = Array.from(container.querySelectorAll(".section__title")).filter(
-      (h) => (h.textContent ?? "").toLowerCase().startsWith("all playlists")
-    );
-    expect(allHeads.length).toBe(1);
-    const allGrid = allHeads[0].closest("section")?.querySelector(".pl-grid");
-    expect(allGrid).toBeTruthy();
-    const cards = allGrid!.querySelectorAll(".pl-card");
-    // O primeiro card e sempre o "new playlist" dashed
-    expect(cards.length).toBeGreaterThanOrEqual(1);
-    expect(cards[0].classList.contains("pl-card--new")).toBe(true);
-    expect(cards[0].textContent).toContain("New playlist");
+    const allHead = () =>
+      Array.from(container.querySelectorAll(".section__title")).find(
+        (h) => (h.textContent ?? "").toLowerCase().startsWith("all playlists"),
+      );
+    await vi.waitFor(() => {
+      const cards = allHead()!.closest("section")!.querySelectorAll(".pl-card");
+      expect(cards.length).toBe(mockFolders.length);
+    });
+    expect(container.querySelector(".pl-card--new")).toBeNull();
+  });
+
+  it("secao Pinned nao tem o 'Reorder' sem acao", async () => {
+    pinPlaylist("Alpha Tunes");
+    const { container } = render(() => <Playlists />);
+    await vi.waitFor(() => {
+      const titles = Array.from(container.querySelectorAll(".section__title")).map((h) => h.textContent);
+      expect(titles).toContain("Pinned");
+    });
+    expect(container.textContent).not.toContain("Reorder");
   });
 });
 
 describe("Playlists — Sort by name", () => {
   function getCardNames(container: HTMLElement) {
     return Array.from(
-      container.querySelectorAll(".pl-grid .pl-card:not(.pl-card--new) .pl-card__title"),
+      container.querySelectorAll(".pl-grid .pl-card .pl-card__title"),
     ).map((el) => el.textContent ?? "");
   }
 
@@ -102,11 +104,19 @@ describe("Playlists — Sort by name", () => {
     });
   });
 
+  it("o Sort é um <button type=button> (o <a> sem href ficava fora da ordem de Tab)", async () => {
+    const { container } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(getSortLink(container)).toBeTruthy());
+    const sort = getSortLink(container);
+    expect(sort.tagName).toBe("BUTTON");
+    expect(sort.getAttribute("type")).toBe("button");
+  });
+
   it("cliques sucessivos no Sort alternam entre A→Z, Z→A e ordem original", async () => {
     const { container } = render(() => <Playlists />);
 
     await vi.waitFor(() => {
-      const cards = container.querySelectorAll(".pl-grid .pl-card:not(.pl-card--new)");
+      const cards = container.querySelectorAll(".pl-grid .pl-card");
       expect(cards.length).toBeGreaterThanOrEqual(3);
     });
 
@@ -134,5 +144,95 @@ describe("Playlists — Sort by name", () => {
     fireEvent.click(sortLink);
     const afterThirdClick = getCardNames(container);
     expect(afterThirdClick).toEqual(initialOrder);
+  });
+});
+
+describe("Playlists — card fixado (lib-26)", () => {
+  it("mostra a contagem de faixas uma vez só", async () => {
+    pinPlaylist("Middle Road");
+    const { getByText } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
+    const card = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
+    const hits = (card.textContent ?? "").match(/8 tracks/g) ?? [];
+    expect(hits.length).toBe(1);
+  });
+});
+
+describe("Playlists — filtro", () => {
+  it("o filtro alcança também as fixadas", async () => {
+    pinPlaylist("Alpha Tunes");
+    pinPlaylist("Zoo Songs");
+    const { container, getByPlaceholderText } = render(() => <Playlists />);
+    const names = () =>
+      Array.from(container.querySelectorAll(".pl-card .pl-card__title")).map((e) => e.textContent ?? "");
+    await vi.waitFor(() => expect(names().length).toBe(3));
+
+    fireEvent.input(getByPlaceholderText("Filter playlists…"), { target: { value: "zoo" } });
+    await vi.waitFor(() => expect(names()).toEqual(["Zoo Songs"]));
+  });
+});
+
+describe("cards de playlist: teclado (ds-2)", () => {
+  // role=button + tabIndex=0 sem onKeyDown: o Tab parava no card, o leitor
+  // anunciava "botão", e Enter/Espaço não abriam a playlist (o Espaço ainda
+  // rolava a página). Depois o card virou role=button com o fixar aninhado:
+  // Enter no fixar subia até o card, navegava e o preventDefault engolia o
+  // clique nativo do fixar (regressão da revisão da fase 0). Agora abrir é
+  // um <button> próprio (o nome), irmão do fixar — mesmo padrão do card de
+  // station.
+  async function firstCard(container: HTMLElement, sel: string) {
+    await vi.waitFor(() => expect(container.querySelector(sel)).toBeTruthy());
+    return container.querySelector<HTMLElement>(sel)!;
+  }
+
+  it("abrir é um botão de verdade e leva à playlist do card", async () => {
+    window.location.hash = "";
+    const { container } = render(() => <Playlists />);
+    const card = await firstCard(container, ".pl-grid .pl-card");
+    const open = card.querySelector<HTMLElement>(".pl-card__open")!;
+    expect(open.tagName).toBe("BUTTON");
+    expect(open.getAttribute("type")).toBe("button");
+    const name = open.textContent!;
+    fireEvent.click(open);
+    expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent(name)}`);
+  });
+
+  it("nenhum controle fica aninhado em outro: abrir e fixar são irmãos", async () => {
+    const { container } = render(() => <Playlists />);
+    const card = await firstCard(container, ".pl-grid .pl-card");
+    expect(card.getAttribute("role")).toBeNull();
+    expect(card.hasAttribute("tabindex")).toBe(false);
+    const open = card.querySelector(".pl-card__open")!;
+    const pin = card.querySelector(".pl-card__pin")!;
+    expect(open.contains(pin)).toBe(false);
+    expect(pin.contains(open)).toBe(false);
+  });
+
+  it("Enter e Espaço no botão de fixar não navegam nem engolem a ativação do fixar", async () => {
+    window.location.hash = "";
+    const { container } = render(() => <Playlists />);
+    const card = await firstCard(container, ".pl-grid .pl-card");
+    const pin = card.querySelector<HTMLElement>(".pl-card__pin")!;
+    for (const key of ["Enter", " "]) {
+      const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      pin.dispatchEvent(ev);
+      // preventDefault no keydown cancelaria o clique nativo do <button>.
+      expect(ev.defaultPrevented).toBe(false);
+    }
+    expect(window.location.hash).toBe("");
+    const name = card.querySelector(".pl-card__open")!.textContent!;
+    fireEvent.click(pin);
+    expect(pins()).toContain(name);
+    expect(window.location.hash).toBe("");
+  });
+
+  it("card fixado também abre pelo botão", async () => {
+    window.location.hash = "";
+    pinPlaylist("Middle Road");
+    const { getByText } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
+    const pinnedCard = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
+    fireEvent.click(pinnedCard.querySelector(".pl-card__open")!);
+    expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent("Middle Road")}`);
   });
 });

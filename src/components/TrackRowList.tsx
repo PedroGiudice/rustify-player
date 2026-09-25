@@ -55,7 +55,16 @@ export function TrackRowList(props: TrackRowListProps) {
       }}
       role="row"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") props.onClick(); }}
+      onKeyDown={(e) => {
+        // preventDefault: sem ele o Espaço também rola o contêiner da view
+        // (inclusive no auto-repeat). !e.repeat: segurar a tecla re-tocaria a
+        // faixa a cada repetição — play_count inflado e track_skipped perto de
+        // 0 s da própria faixa escolhida.
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (!e.repeat) props.onClick();
+        }
+      }}
     >
       {/* Cover com NPI overlay quando current */}
       <div style={{ position: "relative", width: coverPx(), height: coverPx(), flex: "none" }}>

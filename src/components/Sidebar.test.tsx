@@ -3,10 +3,15 @@
    O <Index> deve atualizar height in-place nos MESMOS spans a
    cada tick de 220ms (o <For> antigo keiava por valor e recriava
    os 3 nodes por tick).
+
+   Modo sidebar=icons (auditoria de UI 25/09, shell-22): o rótulo
+   some da tela, então cada item precisa de tooltip. O nome
+   acessível continua vindo do texto do rótulo (o CSS o esconde só
+   visualmente).
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup } from "@solidjs/testing-library";
+import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 
 vi.mock("../tauri", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../tauri")>();
@@ -21,6 +26,7 @@ import * as tauriApi from "../tauri";
 import { Sidebar } from "./Sidebar";
 import { setPlayer } from "../store/player";
 import { bootCrateStore, __resetForTests } from "../store/crate";
+import { setTweaksOpen, updateTweak } from "../store/tweaks";
 import type { Track, DownloadJob } from "../tauri";
 
 const TRACK: Track = {
@@ -115,5 +121,107 @@ describe("Sidebar — badge do Crate (jobs ativos)", () => {
       el.textContent?.includes("Crate"),
     )!;
     expect(crateItem.querySelector(".nav-item__badge")?.textContent).toBe("2");
+  });
+});
+
+// cfg-9: nada na sidebar indicava que o painel Tweaks estava aberto.
+describe("Sidebar: gatilho do Tweaks", () => {
+  it("expõe aria-expanded/aria-controls seguindo o estado do painel", () => {
+    setTweaksOpen(false);
+    const { getByText } = render(() => <Sidebar />);
+    const btn = getByText("Tweaks").closest("button")!;
+    expect(btn.getAttribute("aria-controls")).toBe("tweaks-panel");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    setTweaksOpen(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    setTweaksOpen(false);
+  });
+
+  it("mostra estado visual ativo enquanto o painel está aberto, coerente com aria-expanded", () => {
+    setTweaksOpen(false);
+    const { getByText } = render(() => <Sidebar />);
+    const btn = getByText("Tweaks").closest("button")!;
+    expect(btn.classList.contains("active")).toBe(false);
+    setTweaksOpen(true);
+    expect(btn.classList.contains("active")).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    setTweaksOpen(false);
+    expect(btn.classList.contains("active")).toBe(false);
+  });
+});
+
+describe("Sidebar — modo icons (shell-22)", () => {
+  afterEach(() => updateTweak("sidebar", "labels"));
+
+  it("no modo icons todo item de navegação tem tooltip com o rótulo", () => {
+    updateTweak("sidebar", "icons");
+    const { container } = render(() => <Sidebar />);
+    const items = Array.from(container.querySelectorAll<HTMLElement>(".nav-item"));
+    expect(items.length).toBeGreaterThan(0);
+    for (const el of items) {
+      const label = el.querySelector("span:not(.nav-item__kbd):not(.nav-item__badge)")?.textContent;
+      expect(label).toBeTruthy();
+      // O Tweaks tem title próprio ("Tweaks (appearance, background, loudness)").
+      expect(el.getAttribute("title")?.startsWith(label!)).toBe(true);
+    }
+  });
+
+  it("no modo labels o rótulo está visível e não há tooltip redundante", () => {
+    updateTweak("sidebar", "labels");
+    const { container } = render(() => <Sidebar />);
+    const crate = Array.from(container.querySelectorAll<HTMLElement>(".nav-item"))
+      .find((el) => el.textContent?.includes("Crate"))!;
+    expect(crate.getAttribute("title")).toBeNull();
+  });
+});
+
+describe("Sidebar — chip do now playing por teclado (ds-2)", () => {
+  afterEach(() => { window.location.hash = ""; });
+
+  it("Enter e Espaço no .np-mini abrem o Now Playing, como o clique", () => {
+    vi.useRealTimers();
+    setPlayer({ currentTrack: TRACK, isPlaying: false });
+    const { container } = render(() => <Sidebar />);
+    const chip = container.querySelector(".np-mini") as HTMLElement;
+    fireEvent.keyDown(chip, { key: "Enter" });
+    expect(window.location.hash).toBe("#/now-playing");
+    window.location.hash = "";
+    fireEvent.keyDown(chip, { key: " " });
+    expect(window.location.hash).toBe("#/now-playing");
+  });
+});
+
+// ds-2 / nav: a rota ativa só aparecia pela classe .active — o leitor de
+// tela não sabia em que página o usuário estava.
+describe("Sidebar — rota ativa (ds-2)", () => {
+  afterEach(() => {
+    window.location.hash = "";
+    window.dispatchEvent(new Event("hashchange"));
+  });
+
+  it("o link da rota ativa leva aria-current=page, e só ele", () => {
+    window.location.hash = "#/library";
+    window.dispatchEvent(new Event("hashchange"));
+    const { container } = render(() => <Sidebar />);
+    const current = Array.from(container.querySelectorAll("[aria-current]"));
+    expect(current.map((el) => el.textContent)).toEqual(["Library"]);
+    expect(current[0].getAttribute("aria-current")).toBe("page");
+    expect(current[0].classList.contains("active")).toBe(true);
+
+    window.location.hash = "#/settings";
+    window.dispatchEvent(new Event("hashchange"));
+    const now = Array.from(container.querySelectorAll("[aria-current]"));
+    expect(now.map((el) => el.textContent)).toEqual(["Settings"]);
+  });
+});
+
+// shell-13: fora do Mac o atalho é Ctrl, e a dica dizia ⌘K (o jsdom
+// reporta plataforma vazia, que não é Mac).
+describe("Sidebar — dica de atalho da busca (shell-13)", () => {
+  it("fora do Mac mostra Ctrl+K, não ⌘K", () => {
+    const { container } = render(() => <Sidebar />);
+    const kbd = Array.from(container.querySelectorAll(".nav-item__kbd")).map((el) => el.textContent);
+    expect(kbd).toContain("Ctrl+K");
+    expect(kbd.join(" ")).not.toContain("⌘");
   });
 });

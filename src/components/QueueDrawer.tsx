@@ -3,15 +3,19 @@
    the live queue + recently played history.
 
    Reactive to player.queue, player.queueIndex.
-   Opens on Q key or 'rustify:open-queue' custom event.
+   Opens on Q key or 'rustify:open-queue' custom event. O evento
+   alterna; com detail { open: boolean } força o estado (a ação
+   "Open queue" da palette pede abrir, não alternar).
    ============================================================ */
 
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { Icon, ICONS } from "./Icon";
 import { TrackRowList } from "./TrackRowList";
 import { player, setQueue } from "../store/player";
 import { playTrack, playQueueUpcoming } from "./PlayerBar";
 import { fmtDur } from "../lib/format";
+import { isTypingContext } from "../lib/keyboard";
+import { pushEscLayer } from "../lib/escLayers";
 
 export const QUEUE_EVENT = "rustify:open-queue";
 
@@ -29,12 +33,15 @@ export function QueueDrawer() {
   const [open, setOpen] = createSignal(false);
 
   onMount(() => {
-    const onOpenEvt = () => setOpen((v) => !v);
+    const onOpenEvt = (e: Event) => {
+      const want = (e as CustomEvent<{ open?: boolean } | null>).detail?.open;
+      setOpen((v) => (typeof want === "boolean" ? want : !v));
+    };
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
-      if (e.key === "Escape" && open()) { e.preventDefault(); setOpen(false); }
-      else if (e.key.toLowerCase() === "q") { e.preventDefault(); setOpen((v) => !v); }
+      if (isTypingContext(e)) return;
+      if (
+        e.key.toLowerCase() === "q" && !e.ctrlKey && !e.metaKey && !e.altKey
+      ) { e.preventDefault(); setOpen((v) => !v); }
     };
     window.addEventListener(QUEUE_EVENT, onOpenEvt);
     window.addEventListener("keydown", onKey);
@@ -42,6 +49,13 @@ export function QueueDrawer() {
       window.removeEventListener(QUEUE_EVENT, onOpenEvt);
       window.removeEventListener("keydown", onKey);
     });
+  });
+
+  // Esc fecha a gaveta pela pilha única (lib/escLayers): o menu de contexto
+  // aberto por cima fecha antes, e o App não sai do cinema no mesmo toque.
+  createEffect(() => {
+    if (!open()) return;
+    onCleanup(pushEscLayer(() => setOpen(false)));
   });
 
   const upcoming = () => player.queue.slice(player.queueIndex + 1);

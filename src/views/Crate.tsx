@@ -16,8 +16,12 @@
    ============================================================ */
 
 import {
-  createSignal, createMemo, For, Show, onMount, onCleanup, type JSX,
+  createSignal, createMemo, createEffect, on, For, Show, onMount, onCleanup, batch, type JSX,
 } from "solid-js";
+import { route } from "../router";
+import { pushEscLayer } from "../lib/escLayers";
+import { modCombo } from "../lib/keyboard";
+import { createStore, reconcile } from "solid-js/store";
 import {
   slskStatus, slskSearch, slskResults, slskCancelSearch, slskDedupProbe,
   slskDownload, slskTryOtherSource, slskCancel,
@@ -30,7 +34,18 @@ import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
+/** Id do seletor de destino da toolbar no `openDest` da view (as linhas
+    usam o group_key, que sempre tem separador \u0001 — não colide). */
+const TOOLBAR_DEST = "toolbar";
+
+/** Poll de resultados — só enquanto a busca está `running` (crate-1). */
 const POLL_MS = 800;
+/** Status da rede muda devagar; consultar a cada poll de busca era
+    desperdício (crate-1). */
+const STATUS_POLL_MS = 5000;
+/** Janela de uma busca no backend (`SEARCH_WINDOW`, coordinator.rs) — a
+    barra de progresso da busca corre contra ela (spec §6.1). */
+const SEARCH_WINDOW_MS = 25_000;
 
 /** Circunferência do anel de cooldown (r=6) — casa com o
     stroke-dasharray:37.7 do handoff. */
@@ -48,6 +63,89 @@ type RowState =
 const IN_FLIGHT = new Set<DownloadJob["state"]["kind"]>([
   "queued", "enqueued", "downloading", "stalled", "processing", "indexing",
 ]);
+
+/** Estados em que a linha oferece [Cancelar] — o ⌫ do teclado cancela
+    exatamente nos mesmos (crate-2: antes cancelava também stalled/
+    processing, que a UI não deixa cancelar). */
+const CANCELLABLE = new Set<DownloadJob["state"]["kind"]>(["queued", "enqueued", "downloading"]);
+
+/** Há fonte ainda não tentada? Mesma regra do backend
+    (`try_other_source_sync`: primeira alternativa fora de
+    `tried_source_ids`). Sem ela, [Trocar fonte] seria um botão morto que
+    só devolve "sem outras fontes" (crate-6). */
+function hasUntriedSource(job: DownloadJob): boolean {
+  return job.alternates.some((c) => !job.tried_source_ids.includes(c.id));
+}
+
+/** Respostas de erro do coordinator (strings fixas do backend, sem
+    acento) → texto de tela. Desconhecido passa cru. */
+const BACKEND_ERRORS: Record<string, string> = {
+  "coordinator nao respondeu a tempo": "o serviço de downloads não respondeu a tempo",
+  "coordinator indisponivel": "o serviço de downloads está indisponível",
+  "busca desconhecida ou expirada": "a busca expirou, busque de novo",
+  "grupo nao encontrado nessa busca": "a faixa não está mais nessa busca, busque de novo",
+  "fonte nao encontrada nesse grupo": "essa fonte não está mais disponível, busque de novo",
+  "destino de playlist invalido": "nome de playlist inválido",
+  "job nao encontrado": "o download não existe mais",
+  "sem outras fontes disponiveis": "não há outras fontes para tentar",
+  "job em estado que nao aceita troca de fonte agora": "o download está num estado que não aceita troca de fonte agora",
+};
+
+function errorText(e: unknown): string {
+  const raw =
+    typeof e === "string"
+      ? e
+      : e && typeof e === "object" && "message" in e
+        ? String((e as { message: unknown }).message)
+        : String(e ?? "");
+  return BACKEND_ERRORS[raw] ?? raw;
+}
+
+/** Aviso de erro em texto simples (crate-6) — reaproveita o banner âmbar
+    do Crate, sem sistema de toast novo. */
+function NoticeBanner(props: { text: string; onClose: () => void }) {
+  return (
+    <div class="crate-banner" data-tone="amber" role="alert">
+      <Icon name={ICONS.alert} size={15} />
+      <p>{props.text}</p>
+      <span class="crate-banner__sp" />
+      <button type="button" class="crate-banner__act" onClick={props.onClose}>
+        Fechar
+      </button>
+    </div>
+  );
+}
+
+/** Minúsculas, sem acento, só letras/dígitos separados por espaço. */
+function normWords(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** Qual faixa do acervo o banner "Já tem no acervo" pode afirmar. O probe
+    (busca local) casa cada termo por substring em título, artista OU
+    álbum, então buscar por artista/álbum sempre achava alguma faixa, e o
+    banner afirmava posse de uma faixa que o usuário não buscou (crate-v4).
+    Só vale a faixa cujo título (sem "(feat. …)", "[…]" e " - sufixo")
+    aparece inteiro, como palavras, no termo buscado. */
+export function dedupMatch(query: string, tracks: Track[]): Track | null {
+  const q = ` ${normWords(query)} `;
+  return (
+    tracks.find((t) => {
+      const core = normWords(t.title.replace(/\([^)]*\)|\[[^\]]*\]/g, " ").replace(/\s[-–—]\s.*$/, " "));
+      return core.length > 0 && q.includes(` ${core} `);
+    }) ?? null
+  );
+}
+
+/** Decodifica o param da rota sem explodir em `%` solto. */
+function decodeParam(p: string): string {
+  try { return decodeURIComponent(p); } catch { return p; }
+}
 
 function deriveRowState(group: ResultGroup, job: DownloadJob | null): RowState {
   if (job && job.state.kind !== "canceled") return job.state.kind as RowState;
@@ -140,7 +238,9 @@ function DestChip(props: {
           + (props.warn ? " crate-dest__btn--warn" : "")
         }
         data-override={props.override ? "true" : undefined}
-        title="Destino de tudo que for baixado"
+        title={props.variant === "row" ? "Destino desta faixa" : "Destino de tudo que for baixado"}
+        aria-haspopup="true"
+        aria-expanded={props.open ? "true" : "false"}
         onClick={(e) => { e.stopPropagation(); props.onToggle(); }}
       >
         <Show when={props.variant === "toolbar"}>
@@ -282,40 +382,90 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
     candidato, com o caminho remoto completo em mono. */
 function SourcesPanel(props: {
   group: ResultGroup;
+  /** Job desta linha, se houver — o painel precisa saber quem está
+      servindo e quem já foi tentado (crate-16). */
+  job: DownloadJob | null;
   onUse: (sourceId: string) => void;
 }) {
+  // Com download em voo, 'Usar' criava um SEGUNDO download paralelo da
+  // mesma faixa (job novo por peer) e o primeiro sumia da aba Buscar
+  // (crate-16). Enquanto houver job em voo, 'Usar' fica desabilitado; a
+  // troca é pelo [Trocar fonte] ou cancelando antes.
+  const inFlight = () => props.job != null && IN_FLIGHT.has(props.job.state.kind);
+  const isCurrent = (c: Candidate) =>
+    props.job != null && c.username === props.job.username && c.filename === props.job.remote_filename;
+  const inUse = (c: Candidate) => inFlight() && isCurrent(c);
+  /** Fonte já usada por este job e que não está servindo agora. A fonte
+      original de um job que trocou de fonte não entra: o board não guarda
+      o id dela (só as alternativas tentadas). */
+  const wasTried = (c: Candidate) => {
+    const j = props.job;
+    if (!j || j.state.kind === "ready" || j.state.kind === "canceled" || inUse(c)) return false;
+    return j.tried_source_ids.includes(c.id) || isCurrent(c);
+  };
+  const byId = createMemo(
+    () => new Map([props.group.best, ...props.group.alternates].map((c) => [c.id, c])),
+  );
+  // Ordem de CHEGADA, não de score: durante a busca o backend reordena os
+  // candidatos a cada poll, e o 'Usar' sob o cursor passava a apontar pra
+  // outro peer entre a mira e o clique (crate-v5). Peer novo entra no fim;
+  // peer que sumiu sai. Linhas chaveadas pelo id (string), então o nó DOM
+  // de cada peer também fica parado.
+  const order = createMemo<string[]>((prev) => {
+    const m = byId();
+    const next = prev.filter((id) => m.has(id));
+    for (const id of m.keys()) if (!next.includes(id)) next.push(id);
+    return next.length === prev.length && next.every((id, i) => id === prev[i]) ? prev : next;
+  }, []);
+
   return (
     <div class="crate-sources">
       <div class="crate-src-head">
         <div>Peer</div><div>Qualidade</div><div>Tamanho</div><div>Fila</div><div>Velocidade</div><div />
       </div>
-      <For each={[props.group.best, ...props.group.alternates]}>
-        {(c: Candidate) => (
-          <div class="crate-src" data-flag={c.warn ? "live" : undefined}>
-            <div class="crate-src-peer">
-              <span class="nm">{c.username}</span>
-              <Show when={c.warn}>
-                <span class="crate-pill crate-pill--warn">⚠ {c.warn}</span>
-              </Show>
-            </div>
-            <span class="crate-badge">{candidateQuality(c, props.group.quality_label)}</span>
-            <div class="crate-src-val">{formatSize(c.size)}</div>
-            <Show
-              when={c.free_slot}
-              fallback={<div class="crate-src-queued">fila {c.queue_length}</div>}
-            >
-              <div class="crate-src-free">livre</div>
-            </Show>
-            <div class={`crate-src-val${c.upload_speed < 300_000 ? " crate-src-val--dim" : ""}`}>
-              {formatSpeed(c.upload_speed)}
-            </div>
-            <div class="crate-r-act">
-              <button type="button" class="crate-btn" onClick={(e) => { e.stopPropagation(); props.onUse(c.id); }}>
-                Usar
-              </button>
-            </div>
-            <div class="crate-src-path"><bdi>{c.filename}</bdi></div>
-          </div>
+      <For each={order()}>
+        {(id) => (
+          <Show when={byId().get(id)}>
+            {(c: () => Candidate) => (
+              <div class="crate-src" data-flag={c().warn ? "live" : undefined}>
+                <div class="crate-src-peer">
+                  <span class="nm">{c().username}</span>
+                  <Show when={inUse(c())}>
+                    <span class="crate-pill crate-pill--live">em uso</span>
+                  </Show>
+                  <Show when={wasTried(c())}>
+                    <span class="crate-pill crate-pill--sub">tentada</span>
+                  </Show>
+                  <Show when={c().warn}>
+                    <span class="crate-pill crate-pill--warn">⚠ {c().warn}</span>
+                  </Show>
+                </div>
+                <span class="crate-badge">{candidateQuality(c(), props.group.quality_label)}</span>
+                <div class="crate-src-val">{formatSize(c().size)}</div>
+                <Show
+                  when={c().free_slot}
+                  fallback={<div class="crate-src-queued">fila {c().queue_length}</div>}
+                >
+                  <div class="crate-src-free">livre</div>
+                </Show>
+                <div class={`crate-src-val${c().upload_speed < 300_000 ? " crate-src-val--dim" : ""}`}>
+                  {formatSpeed(c().upload_speed)}
+                </div>
+                <div class="crate-r-act">
+                  <button
+                    type="button"
+                    class="crate-btn"
+                    disabled={inFlight()}
+                    title={inFlight() ? "Esta faixa já está baixando. Use [Trocar fonte] ou cancele antes." : undefined}
+                    onClick={(e) => { e.stopPropagation(); if (!inFlight()) props.onUse(id); }}
+                  >
+                    Usar
+                  </button>
+                </div>
+                <div class="crate-src-path"><bdi>{c().filename}</bdi></div>
+              </div>
+            )}
+          </Show>
         )}
       </For>
     </div>
@@ -324,6 +474,8 @@ function SourcesPanel(props: {
 
 // ── Linha de resultado (um ResultGroup agregado) ──────────────────
 function CrateRow(props: {
+  /** id da linha, alvo do aria-activedescendant da lista. */
+  rowId: string;
   group: ResultGroup;
   job: DownloadJob | null;
   dest: string | null;
@@ -331,6 +483,10 @@ function CrateRow(props: {
   isSelected: boolean;
   isExpanded: boolean;
   folders: FolderPlaylist[];
+  /** Estado do seletor vive na view (um aberto por vez, sobrevive ao
+      poll — crate-1/crate-11), não num signal local da linha. */
+  destOpen: boolean;
+  onDestOpen: (open: boolean) => void;
   onSelect: () => void;
   onToggleExpand: () => void;
   onDownload: (sourceId: string, dest: string) => void;
@@ -339,7 +495,7 @@ function CrateRow(props: {
   onTrySource: (jobId: string) => void;
   onGoToOwned: (trackId: string) => void;
 }) {
-  const [destOpen, setDestOpen] = createSignal(false);
+  const setDestOpen = (open: boolean) => props.onDestOpen(open);
   const state = createMemo<RowState>(() => deriveRowState(props.group, props.job));
   const sourceCount = () => props.group.alternates.length + 1;
 
@@ -350,15 +506,21 @@ function CrateRow(props: {
 
   return (
     <div class="crate-row-wrap" data-focus={props.isSelected ? "true" : "false"}>
+      {/* A lista mantém o foco e aponta a selecionada por
+          aria-activedescendant: a linha precisa de id e de nome (título +
+          artista) para o leitor de tela dizer qual o Enter vai acionar. */}
       <div
         class="crate-row"
+        id={props.rowId}
+        role="group"
+        aria-labelledby={`${props.rowId}-t ${props.rowId}-s`}
         data-state={state()}
         data-selected={props.isSelected ? "true" : "false"}
         onClick={props.onSelect}
       >
         <div class="crate-r-main">
-          <div class="crate-r-title">{props.group.display_title}</div>
-          <div class="crate-r-sub">
+          <div class="crate-r-title" id={`${props.rowId}-t`}>{props.group.display_title}</div>
+          <div class="crate-r-sub" id={`${props.rowId}-s`}>
             {props.group.display_artist ?? "—"}
             {props.group.album_hint ? ` · ${props.group.album_hint}` : ""}
           </div>
@@ -391,9 +553,9 @@ function CrateRow(props: {
             placeholder="escolher"
             warn={!props.dest}
             override={props.destOverridden}
-            open={destOpen()}
+            open={props.destOpen}
             folders={props.folders}
-            onToggle={() => setDestOpen((v) => !v)}
+            onToggle={() => setDestOpen(!props.destOpen)}
             onPick={(f) => { props.onPickDest(f); setDestOpen(false); }}
           />
         </Show>
@@ -439,7 +601,7 @@ function CrateRow(props: {
               <Icon name={ICONS.play} size={12} /> Tocar
             </button>
           </Show>
-          <Show when={state() === "queued" || state() === "enqueued" || state() === "downloading"}>
+          <Show when={CANCELLABLE.has(state() as DownloadJob["state"]["kind"])}>
             <button
               type="button"
               class="crate-btn crate-btn--quiet"
@@ -448,7 +610,12 @@ function CrateRow(props: {
               <Icon name={ICONS.close} size={12} /> Cancelar
             </button>
           </Show>
-          <Show when={state() === "stalled" || state() === "failed" || (state() === "rejected" && !isAlreadyOwnedRejection())}>
+          <Show
+            when={
+              (state() === "stalled" || state() === "failed" || (state() === "rejected" && !isAlreadyOwnedRejection()))
+              && props.job != null && hasUntriedSource(props.job)
+            }
+          >
             <button
               type="button"
               class="crate-btn"
@@ -494,6 +661,7 @@ function CrateRow(props: {
       <Show when={props.isExpanded}>
         <SourcesPanel
           group={props.group}
+          job={props.job}
           onUse={(sourceId) => {
             // Sem dest resolvido, mesmo comportamento do [Baixar]
             // (spec §4.5 caso 4): abre o seletor em vez de ficar
@@ -543,7 +711,7 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
               <Icon name={ICONS.close} size={12} /> Cancelar
             </button>
           </Show>
-          <Show when={kind() === "stalled" || kind() === "failed"}>
+          <Show when={(kind() === "stalled" || kind() === "failed") && hasUntriedSource(props.job)}>
             <button type="button" class="crate-btn" onClick={props.onTrySource}>
               <Icon name={ICONS.refresh} size={12} /> Trocar fonte
             </button>
@@ -593,10 +761,15 @@ function CrateTerminalCard(props: { job: DownloadJob }) {
 // ── View principal ─────────────────────────────────────────────
 export default function Crate(props: { param?: string | null }) {
   const [tab, setTab] = createSignal<"search" | "queue">("search");
-  const [query, setQuery] = createSignal(props.param ? decodeURIComponent(props.param) : "");
+  const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : "");
   const [searchId, setSearchId] = createSignal<string | null>(null);
   const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(null);
-  const [searching, setSearching] = createSignal(false);
+  // "Buscando" = pedido em andamento no IPC OU a busca atual ainda na
+  // janela do backend. Derivado do snapshot (fonte da verdade), em vez de
+  // um signal próprio que dessincronizava quando uma busca nova era
+  // recusada com a anterior ainda em voo.
+  const [pending, setPending] = createSignal(false);
+  const searching = () => pending() || snapshot()?.state === "running";
   const [status, setStatus] = createSignal<SlskStatus | null>(null);
   // Dois canais distintos de "a rede te barrou":
   //  - min-interval (Err "cooldown:N") → countdown NO BOTÃO, sem banner;
@@ -605,7 +778,13 @@ export default function Crate(props: { param?: string | null }) {
   const [cooldownTotal, setCooldownTotal] = createSignal(0);
   const [coldSeconds, setColdSeconds] = createSignal<number | null>(null);
   const [dedupTrack, setDedupTrack] = createSignal<Track | null>(null);
-  const [selectedIndex, setSelectedIndex] = createSignal(0);
+  // Erro de busca ou de ação (baixar/cancelar/trocar fonte) em texto
+  // simples na tela — antes ia só pro console (crate-6).
+  const [notice, setNotice] = createSignal<string | null>(null);
+  // Seleção pela CHAVE da faixa, não pela posição: durante a busca as
+  // linhas reordenam, e a seleção por índice pulava pra outra faixa entre
+  // a escolha e o Enter. `null` = primeira linha.
+  const [selectedKey, setSelectedKey] = createSignal<string | null>(null);
   const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
   const [folders, setFolders] = createSignal<FolderPlaylist[]>([]);
   // NUNCA semear com loadLastDest() (bug IM-D1, review da Etapa D): isso
@@ -614,21 +793,53 @@ export default function Crate(props: { param?: string | null }) {
   // nível 2 — nunca vencer até o usuário clicar no ×. `null` = toolbar sem
   // override; loadLastDest() só entra como fallback dentro de resolvedDest.
   const [destOverride, setDestOverride] = createSignal<string | null>(null);
-  const [toolbarDestOpen, setToolbarDestOpen] = createSignal(false);
+  // Qual seletor de destino está aberto: TOOLBAR_DEST ou o group_key da
+  // linha. Um signal só = um aberto por vez (crate-11).
+  const [openDest, setOpenDest] = createSignal<string | null>(null);
   const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>({});
   const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>({});
 
-  let inputEl!: HTMLInputElement;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
-  let cooldownTimer: ReturnType<typeof setInterval> | undefined;
+  // Grupos num store reconciliado por `group_key`: cada slsk_results chega
+  // como objeto novo (o backend clona o snapshot), e o <For> por referência
+  // recriava todas as linhas a cada poll — seletor de destino fechando
+  // sozinho, foco perdido, hover piscando (crate-1). Com o reconcile, a
+  // mesma faixa mantém a mesma linha e só os campos alterados notificam.
+  const [results, setResults] = createStore<{ groups: ResultGroup[] }>({ groups: [] });
 
-  const groups = () => snapshot()?.groups ?? [];
+  let inputEl!: HTMLInputElement;
+  let listEl: HTMLDivElement | undefined;
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let statusTimer: ReturnType<typeof setInterval> | undefined;
+  let cooldownTimer: ReturnType<typeof setInterval> | undefined;
+  /** Número da chamada de doSearch mais recente (só ela baixa o pending). */
+  let searchSeq = 0;
+
+  const groups = () => results.groups;
+  const responsesSeen = () => snapshot()?.responses_seen ?? 0;
+  const searchPct = () => Math.min(100, ((snapshot()?.elapsed_ms ?? 0) / SEARCH_WINDOW_MS) * 100);
+  const selectedIndex = createMemo(() => {
+    const k = selectedKey();
+    const i = k == null ? -1 : groups().findIndex((g) => g.group_key === k);
+    return i >= 0 ? i : 0;
+  });
+
+  function applySnapshot(snap: SearchSnapshot | null) {
+    batch(() => {
+      setSnapshot(snap);
+      setResults("groups", reconcile(snap?.groups ?? [], { key: "group_key" }));
+    });
+  }
   const libraryCount = () => folders().reduce((n, f) => n + f.track_count, 0);
   const inFlightJobs = () => jobs().filter((j) => IN_FLIGHT.has(j.state.kind));
   const finishedJobs = () => jobs().filter((j) => !IN_FLIGHT.has(j.state.kind));
 
+  /** Precedência (spec §4.5 + handoff v1.1): a escolha feita NA LINHA vem
+      primeiro — o chip da linha "herda o destino global até ser trocado na
+      própria linha". Depois toolbar > artista no acervo > último usado.
+      Antes a toolbar vencia a linha em silêncio, com o chip pintado de
+      override mas mostrando (e baixando para) a pasta da toolbar (crate-3). */
   function resolvedDest(g: ResultGroup): string | null {
-    return destOverride() ?? rowOverrides()[g.group_key] ?? g.suggested_dest ?? loadLastDest();
+    return rowOverrides()[g.group_key] ?? destOverride() ?? g.suggested_dest ?? loadLastDest();
   }
 
   function jobFor(groupKey: string): DownloadJob | null {
@@ -636,6 +847,28 @@ export default function Crate(props: { param?: string | null }) {
     if (!id) return null;
     return jobs().find((j) => j.job_id === id) ?? null;
   }
+
+  // Seletor de destino aberto = popover: fecha com clique fora de qualquer
+  // `.crate-dest` e com Esc (crate-11, pendência v1.1 do CLAUDE.md).
+  // Listeners só existem enquanto há um aberto. O Esc vem da pilha única
+  // (lib/escLayers): a ⌘K por cima trata o próprio Esc antes, o Tweaks
+  // aberto por baixo espera o próximo. Devolve o foco ao chip quando ele
+  // estava dentro do menu que vai sumir.
+  createEffect(() => {
+    if (openDest() == null) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t?.closest?.(".crate-dest")) setOpenDest(null);
+    };
+    const onEsc = () => {
+      const owner = (document.activeElement as HTMLElement | null)?.closest?.(".crate-dest");
+      setOpenDest(null);
+      owner?.querySelector<HTMLElement>(".crate-dest__btn")?.focus();
+    };
+    document.addEventListener("mousedown", onDown, true);
+    onCleanup(pushEscLayer(onEsc));
+    onCleanup(() => document.removeEventListener("mousedown", onDown, true));
+  });
 
   /** Countdown do min-interval. `force` NÃO passa por aqui — forçar não
       reseta nem zera o intervalo mínimo, só ignora o guard no backend. */
@@ -655,110 +888,187 @@ export default function Crate(props: { param?: string | null }) {
   async function doSearch(force = false) {
     const q = query().trim();
     if (!q) return;
+    const seq = ++searchSeq;
     const prevId = searchId();
-    if (prevId) slskCancelSearch(prevId).catch(() => {});
     setColdSeconds(null);
-    setSearching(true);
+    setNotice(null);
+    setPending(true);
     setDedupTrack(null);
     try {
       const id = await slskSearch(q, force);
+      // A anterior só é cancelada depois que o backend ACEITOU a nova:
+      // cancelar antes fazia uma busca recusada pelo pacer (cooldown)
+      // matar a que estava em voo, congelando os resultados (crate-8).
+      if (prevId && prevId !== id) slskCancelSearch(prevId).catch(() => {});
       setSearchId(id);
-      setSnapshot(null);
-      setSelectedIndex(0);
+      applySnapshot(null);
+      setSelectedKey(null);
       setExpandedKey(null);
+      setOpenDest((k) => (k === TOOLBAR_DEST ? k : null));
       setGroupJobs({});
       setRowOverrides({});
-      slskDedupProbe(q).then((tracks) => setDedupTrack(tracks[0] ?? null)).catch(() => setDedupTrack(null));
+      slskDedupProbe(q).then((tracks) => setDedupTrack(dedupMatch(q, tracks))).catch(() => setDedupTrack(null));
       const snap = await slskResults(id);
-      setSnapshot(snap);
-      setSearching(snap.state === "running");
+      if (searchId() !== id) return;
+      applySnapshot(snap);
     } catch (e) {
-      setSearching(false);
       const parsed = parseSlskSearchError(e);
       if (parsed.kind === "cooldown") startCooldown(parsed.seconds ?? 0);
       else if (parsed.kind === "cold") setColdSeconds(parsed.seconds ?? 0);
+      // Os demais eram engolidos: o clique em Buscar não mostrava nada
+      // (crate-6). O pacer segue intacto — isto só conta o que houve.
+      else if (parsed.kind === "busy") {
+        setNotice("Limite de 40 buscas por hora atingido. Espere alguns minutos antes de buscar de novo.");
+      } else if (parsed.kind === "offline") {
+        setNotice("O slskd não está respondendo. Confira se ele está rodando.");
+      } else {
+        setNotice(`Não deu pra buscar: ${errorText(e)}.`);
+      }
+    } finally {
+      if (seq === searchSeq) setPending(false);
     }
   }
 
   async function handleDownload(g: ResultGroup, sourceId: string, dest: string) {
     const id = searchId();
     if (!id) return;
+    setNotice(null);
     try {
       const jobId = await slskDownload(id, g.group_key, sourceId, dest);
       setGroupJobs((m) => ({ ...m, [g.group_key]: jobId }));
       saveLastDest(dest);
     } catch (e) {
       console.error("[crate] slskDownload falhou:", e);
+      setNotice(`Não deu pra baixar "${g.display_title}": ${errorText(e)}.`);
     }
   }
 
   async function handleCancel(jobId: string) {
-    try { await slskCancel(jobId); } catch (e) { console.error("[crate] slskCancel falhou:", e); }
+    setNotice(null);
+    try {
+      await slskCancel(jobId);
+    } catch (e) {
+      console.error("[crate] slskCancel falhou:", e);
+      setNotice(`Não deu pra cancelar o download: ${errorText(e)}.`);
+    }
   }
 
   async function handleTrySource(jobId: string) {
-    try { await slskTryOtherSource(jobId); } catch (e) { console.error("[crate] slskTryOtherSource falhou:", e); }
+    setNotice(null);
+    try {
+      await slskTryOtherSource(jobId);
+    } catch (e) {
+      console.error("[crate] slskTryOtherSource falhou:", e);
+      setNotice(`Não deu pra trocar a fonte: ${errorText(e)}.`);
+    }
   }
 
-  function handleGlobalKey(e: KeyboardEvent) {
-    const inInput = document.activeElement === inputEl;
-    if (e.key === "Escape") {
-      if (inInput) inputEl.blur();
-      setExpandedKey(null);
-      return;
-    }
-    if (inInput || tab() !== "search") return;
+  function scrollSelectedIntoView() {
+    listEl
+      ?.querySelector<HTMLElement>('.crate-row-wrap[data-focus="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  function moveSelection(delta: number) {
     const list = groups();
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((i) => Math.min(list.length - 1, i + 1)); return; }
-    if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((i) => Math.max(0, i - 1)); return; }
-    if (e.key === "ArrowRight") {
-      const g = list[selectedIndex()];
-      if (g) { e.preventDefault(); setExpandedKey(g.group_key); }
-      return;
-    }
-    if (e.key === "Backspace") {
-      const g = list[selectedIndex()];
-      const job = g ? jobFor(g.group_key) : null;
-      if (job) { e.preventDefault(); handleCancel(job.job_id); }
-      return;
-    }
-    if (e.key === "Enter") {
-      const g = list[selectedIndex()];
-      if (!g) return;
-      e.preventDefault();
-      const job = jobFor(g.group_key);
-      const st = deriveRowState(g, job);
-      if (st === "owned" && g.owned) { playById(g.owned.track_id); return; }
-      if (st === "ready" && job && job.state.kind === "ready") { playById(job.state.track_id); return; }
-      if (st === "idle") {
-        const dest = resolvedDest(g);
-        if (dest) handleDownload(g, g.best.id, dest);
+    if (list.length === 0) return;
+    const next = Math.max(0, Math.min(list.length - 1, selectedIndex() + delta));
+    setSelectedKey(list[next].group_key);
+    scrollSelectedIntoView();
+  }
+
+  /** Teclado da lista (spec §4.3). Escopado ao elemento da lista — não ao
+      window (crate-2): antes, Enter/⌫ em QUALQUER controle (inclusive o
+      input da ⌘K por cima) baixava/cancelava a linha selecionada. Teclas
+      vindas de um controle dentro da lista (botões da linha, opções do
+      seletor) ficam com o próprio controle. */
+  function handleListKey(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
+    const t = e.target as HTMLElement | null;
+    if (t && t !== e.currentTarget && t.closest("input, textarea, select, button, a, [contenteditable]")) return;
+    const list = groups();
+    const g = list[selectedIndex()];
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        moveSelection(1);
+        return;
+      case "ArrowUp":
+        e.preventDefault();
+        if (selectedIndex() === 0) inputEl.focus();
+        else moveSelection(-1);
+        return;
+      case "ArrowRight":
+        if (g) { e.preventDefault(); setExpandedKey(g.group_key); }
+        return;
+      case "Escape":
+        if (openDest() != null) return; // o Esc fecha o seletor aberto, só isso
+        setExpandedKey(null);
+        return;
+      case "Backspace": {
+        const job = g ? jobFor(g.group_key) : null;
+        if (job && CANCELLABLE.has(job.state.kind)) { e.preventDefault(); handleCancel(job.job_id); }
+        return;
+      }
+      case "Enter": {
+        if (!g) return;
+        e.preventDefault();
+        const job = jobFor(g.group_key);
+        const st = deriveRowState(g, job);
+        if (st === "owned" && g.owned) { playById(g.owned.track_id); return; }
+        if (st === "ready" && job && job.state.kind === "ready") { playById(job.state.track_id); return; }
+        if (st === "idle") {
+          const dest = resolvedDest(g);
+          if (dest) { handleDownload(g, g.best.id, dest); return; }
+          // Sem destino: mesmo comportamento do clique em [Baixar] (spec
+          // §4.5 caso 4) — abre o seletor, com o foco na 1ª pasta (crate-4).
+          setOpenDest(g.group_key);
+          listEl
+            ?.querySelector<HTMLElement>('.crate-row-wrap[data-focus="true"] .crate-dest__opt')
+            ?.focus();
+        }
+        return;
       }
     }
   }
+
+  // ⌘K "Procurar na rede" com o Crate já aberto: /crate/a → /crate/b não
+  // remonta a view (o Dynamic do RouterView só troca de componente quando
+  // muda o path), então o param novo precisa refazer a busca aqui
+  // (crate-v1). `navigate()` re-emite a rota ao re-navegar para o mesmo
+  // hash, e isso também refaz — é um pedido explícito de busca.
+  createEffect(on(route, (r) => {
+    if (r.path !== "/crate" || !r.param) return;
+    setTab("search");
+    setQuery(decodeParam(r.param));
+    void doSearch();
+  }, { defer: true }));
 
   onMount(() => {
     bootCrateStore();
     libListFolders().then(setFolders).catch(() => {});
-    slskStatus().then(setStatus).catch(() => {});
+    const refreshStatus = () => { slskStatus().then(setStatus).catch(() => {}); };
+    refreshStatus();
+    statusTimer = setInterval(refreshStatus, STATUS_POLL_MS);
 
+    // Só polla enquanto a busca ainda pode mudar: `running`, ou antes do
+    // primeiro snapshot chegar. Estado terminal (done/empty/failed/
+    // canceled) não muda mais no backend — seguir pollando só recriava
+    // trabalho a cada 800 ms com a view aberta (crate-1).
     pollTimer = setInterval(() => {
       const id = searchId();
-      if (id) {
-        slskResults(id).then((snap) => {
-          setSnapshot(snap);
-          setSearching(snap.state === "running");
-        }).catch(() => {});
-      }
-      slskStatus().then(setStatus).catch(() => {});
+      const snap = snapshot();
+      if (!id || (snap && snap.state !== "running")) return;
+      slskResults(id).then((next) => {
+        if (searchId() !== id) return; // resposta atrasada de uma busca já trocada
+        applySnapshot(next);
+      }).catch(() => {});
     }, POLL_MS);
-
-    window.addEventListener("keydown", handleGlobalKey);
 
     onCleanup(() => {
       if (pollTimer) clearInterval(pollTimer);
+      if (statusTimer) clearInterval(statusTimer);
       if (cooldownTimer) clearInterval(cooldownTimer);
-      window.removeEventListener("keydown", handleGlobalKey);
       const id = searchId();
       if (id) slskCancelSearch(id).catch(() => {});
     });
@@ -800,8 +1110,34 @@ export default function Crate(props: { param?: string | null }) {
                 value={query()}
                 spellcheck={false}
                 placeholder="Buscar na rede Soulseek…"
+                // Uma busca em voo por vez (spec §6.1, "campo desabilita"):
+                // somente leitura mantém o foco e o ↓ para a lista.
+                readOnly={searching()}
+                aria-busy={searching() ? "true" : "false"}
                 onInput={(e) => setQuery(e.currentTarget.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(false); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    // Enter a mais durante a busca cancelava a busca em voo
+                    // e recomeçava do zero, gastando o limite horário (crate-8).
+                    if (!searching()) doSearch(false);
+                    return;
+                  }
+                  // ↓ entra na lista (paridade com a ⌘K, spec §4.3) — antes
+                  // era preciso descobrir um Esc pra sair do campo (crate-4).
+                  if (e.key === "ArrowDown" && groups().length > 0 && listEl) {
+                    e.preventDefault();
+                    listEl.focus();
+                    scrollSelectedIntoView();
+                    return;
+                  }
+                  if (e.key === "Escape" && openDest() == null) {
+                    // Consumido: o Tweaks aberto por baixo espera o próximo Esc.
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                    setExpandedKey(null);
+                  }
+                }}
               />
               <div class="crate-search__kbd">
                 <kbd class="crate-kbd">Enter</kbd>
@@ -840,10 +1176,10 @@ export default function Crate(props: { param?: string | null }) {
               variant="toolbar"
               value={destOverride()}
               placeholder="destino padrão"
-              open={toolbarDestOpen()}
+              open={openDest() === TOOLBAR_DEST}
               folders={folders()}
-              onToggle={() => setToolbarDestOpen((v) => !v)}
-              onPick={(f) => { setDestOverride(f); saveLastDest(f); setToolbarDestOpen(false); }}
+              onToggle={() => setOpenDest((k) => (k === TOOLBAR_DEST ? null : TOOLBAR_DEST))}
+              onPick={(f) => { setDestOverride(f); saveLastDest(f); setOpenDest(null); }}
             />
             <Show when={destOverride()}>
               <button type="button" class="crate-dest__clear" onClick={() => setDestOverride(null)} title="Limpar destino fixo">
@@ -852,8 +1188,12 @@ export default function Crate(props: { param?: string | null }) {
             </Show>
           </div>
 
-          <Show when={coldSeconds() != null || dedupTrack()}>
+          <Show when={coldSeconds() != null || dedupTrack() || notice()}>
             <div class="crate-banners">
+              <Show when={notice()}>
+                {(text) => <NoticeBanner text={text()} onClose={() => setNotice(null)} />}
+              </Show>
+
               <Show when={coldSeconds() != null}>
                 <div class="crate-banner" data-tone="amber">
                   <Icon name={ICONS.alert} size={15} />
@@ -892,7 +1232,29 @@ export default function Crate(props: { param?: string | null }) {
 
           <Show when={searchId()}>
             <div class="crate-list-head">
-              <h2>Resultados · {groups().length}&nbsp;faixas</h2>
+              {/* Durante a busca: respostas que já chegaram + barra contra a
+                  janela de 25 s (spec §6.1). Antes era 'Resultados · 0
+                  faixas', que parece resultado final (crate-8). */}
+              <Show
+                when={searching()}
+                fallback={<h2>Resultados · {groups().length}&nbsp;faixas</h2>}
+              >
+                <div class="crate-list-head__lead">
+                  <h2>
+                    Buscando · {responsesSeen()}&nbsp;{responsesSeen() === 1 ? "resposta" : "respostas"}
+                  </h2>
+                  <div
+                    class="crate-prog"
+                    role="progressbar"
+                    aria-label="Janela da busca"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow={Math.round(searchPct())}
+                  >
+                    <i style={{ width: `${searchPct()}%` }} />
+                  </div>
+                </div>
+              </Show>
               <div class="crate-keys">
                 <kbd class="crate-kbd">↑↓</kbd> navegar
                 <kbd class="crate-kbd">→</kbd> fontes
@@ -902,11 +1264,20 @@ export default function Crate(props: { param?: string | null }) {
           </Show>
 
           <Show when={groups().length > 0}>
-            <div class="crate-list">
+            <div
+              class="crate-list"
+              ref={listEl}
+              tabindex="0"
+              role="group"
+              aria-label="Resultados da busca"
+              aria-activedescendant={`crate-row-${selectedIndex()}`}
+              onKeyDown={handleListKey}
+            >
               <div class="crate-list-inner">
                 <For each={groups()}>
                   {(g, i) => (
                     <CrateRow
+                      rowId={`crate-row-${i()}`}
                       group={g}
                       job={jobFor(g.group_key)}
                       dest={resolvedDest(g)}
@@ -914,7 +1285,9 @@ export default function Crate(props: { param?: string | null }) {
                       isSelected={i() === selectedIndex()}
                       isExpanded={expandedKey() === g.group_key}
                       folders={folders()}
-                      onSelect={() => setSelectedIndex(i())}
+                      destOpen={openDest() === g.group_key}
+                      onDestOpen={(open) => setOpenDest(open ? g.group_key : null)}
+                      onSelect={() => { setSelectedKey(g.group_key); listEl?.focus({ preventScroll: true }); }}
                       onToggleExpand={() => setExpandedKey((k) => (k === g.group_key ? null : g.group_key))}
                       onDownload={(sourceId, dest) => handleDownload(g, sourceId, dest)}
                       onPickDest={(dest) => setRowOverrides((m) => ({ ...m, [g.group_key]: dest }))}
@@ -945,7 +1318,7 @@ export default function Crate(props: { param?: string | null }) {
                 <h3>Nada buscado ainda</h3>
                 <p>A busca só dispara no Enter — o Crate nunca busca enquanto você digita.</p>
                 <div class="crate-empty__hintline">
-                  <kbd class="crate-kbd">⌘K</kbd> → digite → <kbd class="crate-kbd">Procurar na rede</kbd>
+                  <kbd class="crate-kbd">{modCombo("K")}</kbd> → digite → <kbd class="crate-kbd">Procurar na rede</kbd>
                 </div>
               </div>
             </div>
@@ -953,6 +1326,14 @@ export default function Crate(props: { param?: string | null }) {
         </Show>
 
         <Show when={tab() === "queue"}>
+          <Show when={notice()}>
+            {(text) => (
+              <div class="crate-banners">
+                <NoticeBanner text={text()} onClose={() => setNotice(null)} />
+              </div>
+            )}
+          </Show>
+
           <Show when={inFlightJobs().length > 0}>
             <div class="crate-q-sec"><h2>Em voo · {inFlightJobs().length}</h2></div>
             <div class="crate-list" style={{ "padding-top": "0" }}>

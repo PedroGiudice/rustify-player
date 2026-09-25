@@ -1,6 +1,6 @@
 // src/components/TrackRowTable.tsx — linha de track para listas .tracks (Família A).
 // Uso: dentro de <div class="tracks"> ou <div class="tracks tracks--with-cover">.
-// O container pai gerencia o grid; este componente emite filhos com display:contents.
+// O container pai define as colunas; a linha é um grid com subgrid (ver .tracks__row).
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { player } from "../store/player";
@@ -38,10 +38,18 @@ export function TrackRowTable(props: TrackRowTableProps) {
       classList={{ "tracks__row--current": isCurrent() }}
       onClick={props.onClick}
       onContextMenu={(e) => openTrackMenu(e, props.track, { list: props.contextList, onPlay: props.onClick })}
-      style={{ display: "contents" }}
       role="row"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") props.onClick(); }}
+      onKeyDown={(e) => {
+        // preventDefault: sem ele o Espaço também rola o contêiner da view
+        // (inclusive no auto-repeat). !e.repeat: segurar a tecla re-tocaria a
+        // faixa a cada repetição — play_count inflado e track_skipped perto de
+        // 0 s da própria faixa escolhida.
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (!e.repeat) props.onClick();
+        }
+      }}
     >
       {/* Célula índice: NPI quando current, número formatado quando não */}
       <div class="tracks__idx">

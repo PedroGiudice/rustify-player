@@ -4,23 +4,47 @@
    Lyrics from libGetLyrics(track.id); synced to player.positionSecs.
    Shape/renderer state via useShape()/useRenderer() (SpectrumCanvas).
    Seletores empilhados no canto inferior-direito: renderer em cima,
-   shape embaixo. Atalhos: [ ] shape, , . renderer.
+   shape embaixo. Atalhos: [ ] shape, , . renderer. Só existem com o
+   fundo 2D; com o WebGL a cena se escolhe no Tweaks (botão de ajustes).
    ============================================================ */
 
-import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import { player } from "../store/player";
 import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { useRenderer, useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
-import { tweaks } from "../store/tweaks";
+import { tweaks, setTweaksOpen } from "../store/tweaks";
+import { glStatus } from "../gl/meta";
+import { GL_CANVAS } from "../gl/palette";
+import { cssColorToRgb } from "../lib/color";
+import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
 import { navigate } from "../router";
+import { isTypingContext } from "../lib/keyboard";
 import { openTrackMenu } from "../store/contextMenu";
 
 export default function NowPlaying() {
   const shape = useShape();
   const renderer = useRenderer();
+  // Shape/renderer só existem no fundo 2D. Com as cenas WebGL montadas
+  // (mesma condição do App.tsx), os seletores e os atalhos [ ] , . mudariam
+  // índices que ninguém lê — a cena WebGL se escolhe no Tweaks. Memo: o
+  // glStatus muda 1x/s (fps) e só o booleano interessa aqui.
+  const glActive = createMemo(() => tweaks().bgEngine === "webgl" && glStatus().ok !== false);
+
+  // Botão de ajustes do fundo: abre o Tweaks já na seção "Fundo" (motor e
+  // cena), marcada com data-tweaks-section em Tweaks.tsx. O painel fica em
+  // display:none fechado — só dá pra medir a posição no quadro seguinte.
+  function openBgSettings() {
+    setTweaksOpen(true);
+    requestAnimationFrame(() => {
+      const sec = document.querySelector<HTMLElement>('[data-tweaks-section="fundo"]');
+      const body = sec?.closest<HTMLElement>(".tweaks__body");
+      if (!sec || !body) return;
+      body.scrollTop += sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
+    });
+  }
   // Estado inicial lê o data-attr canônico no shell — se o user voltou
   // pra /now-playing com cinema ativo, mantém o ícone correto.
   const [cinema, setCinema] = createSignal(
@@ -41,22 +65,28 @@ export default function NowPlaying() {
     onCleanup(() => window.removeEventListener("rustify:cinema", onCinema));
   });
 
-  // Lyrics resource keyed by current track id
-  const [lyrics] = createResource(
+  // Letra da faixa atual. A view roda dentro do <Suspense> do router: ler
+  // `resource()` com a busca pendente liga o fallback "Loading…" e derruba
+  // o Now Playing inteiro a cada troca de faixa. Com initialValue o resource
+  // já nasce resolvido e `.latest` devolve o último valor sem suspender —
+  // durante os milissegundos do IPC fica a letra anterior, depois troca.
+  const [lyricsRes] = createResource(
     () => player.currentTrack?.id ?? null,
     async (id) => (id ? await libGetLyrics(id).catch(() => [] as LyricLine[]) : [] as LyricLine[]),
+    { initialValue: [] as LyricLine[] },
   );
+  const lyrics = () => lyricsRes.latest;
 
   // Letra SEM sincronismo chega com t=0 em todas as linhas (lyrics_from_embedded
   // faz esse fallback quando o texto não tem timestamps — caso de tag ID3 com
   // letra corrida, 73 faixas do acervo em 08/2026). Tratá-la como sincronizada
   // trava o card: `activeLine` elege a ÚLTIMA linha já em pos=0 e o rail fixa o
   // scroll no fim durante a música inteira, anunciando "synced".
-  const isSynced = createMemo(() => (lyrics() ?? []).some((l) => l.t > 0));
+  const isSynced = createMemo(() => lyrics().some((l) => l.t > 0));
 
   // Find the active lyric index based on positionSecs
   const activeLine = createMemo(() => {
-    const ls = lyrics() ?? [];
+    const ls = lyrics();
     if (ls.length === 0 || !isSynced()) return -1;
     const pos = player.positionSecs;
     let idx = -1;
@@ -99,6 +129,64 @@ export default function NowPlaying() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(b)); } catch {}
   }
 
+  // ── Contraste do card: a escala de texto segue a luminância REAL do
+  // vidro (lib/lyricsInk.ts). Atrás do card está o canvas do tema no
+  // fundo 2D e o preto fixo no WebGL; alpha/brightness vêm do slider
+  // Lyrics glass (ou do tema, ou dos fallbacks do CSS). Re-mede quando o
+  // store de Tweaks avisa que escreveu as vars do vidro
+  // (rustify:tweaks-applied), e não no signal: a escrita do store roda num
+  // rAF próprio, e medir pelo signal podia ler o passo anterior do slider.
+  //
+  // Sem getComputedStyle na medição (cfg-15): durante o arrasto ela roda
+  // por quadro, logo depois de o store escrever no :root, e forçaria o
+  // recálculo de estilo da árvore. As vars do vidro só existem inline no
+  // <html> (store ou tema; o CSS só tem os fallbacks), e o --bg-canvas
+  // também é inline quando há tema — sem tema vem do :root do CSS, que só
+  // muda com rustify:theme-applied, então é lido uma vez por tema.
+  const [ink, setInk] = createSignal<Partial<Record<LyricsInkVar, string>>>({});
+  let sheetCanvas: string | null = null;
+  const inlineVar = (name: string) => document.documentElement.style.getPropertyValue(name).trim();
+  function canvasColor(): string {
+    const inline = inlineVar("--bg-canvas");
+    if (inline) return inline;
+    sheetCanvas ??= getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim();
+    return sheetCanvas;
+  }
+  function measureInk() {
+    const html = document.documentElement;
+    const backdrop = glActive() ? GL_CANVAS : cssColorToRgb(canvasColor());
+    if (!backdrop) { setInk({}); return; }
+    const alpha = parseFloat(inlineVar("--lyrics-bg-alpha"));
+    const brightness = parseFloat(inlineVar("--lyrics-bg-brightness"));
+    setInk(lyricsInk(glassSurface({
+      backdrop,
+      alpha: Number.isFinite(alpha) ? alpha : 0.193,
+      brightness: html.dataset.lyricsSolid === "on" ? null : Number.isFinite(brightness) ? brightness : 0.82,
+    })));
+  }
+  let inkRaf = 0;
+  const scheduleInk = () => {
+    cancelAnimationFrame(inkRaf);
+    inkRaf = requestAnimationFrame(measureInk);
+  };
+  createEffect(() => {
+    glActive();
+    scheduleInk();
+  });
+  const onThemeApplied = () => {
+    sheetCanvas = null;
+    scheduleInk();
+  };
+  onMount(() => {
+    window.addEventListener("rustify:tweaks-applied", scheduleInk);
+    window.addEventListener("rustify:theme-applied", onThemeApplied);
+    onCleanup(() => {
+      cancelAnimationFrame(inkRaf);
+      window.removeEventListener("rustify:tweaks-applied", scheduleInk);
+      window.removeEventListener("rustify:theme-applied", onThemeApplied);
+    });
+  });
+
   const [box, setBox] = createSignal<Box>({ x: 0, y: 0, w: DEFAULT_W, h: DEFAULT_H });
   // Sinal de drag/resize ativo: durante interacao, o card vira solid + sem
   // backdrop-filter pra nao matar o WebKit recalculando blur/saturate/
@@ -122,13 +210,15 @@ export default function NowPlaying() {
     };
     setBox(clamp(initial, rect.width, rect.height));
 
-    // Reclamp em resize da janela
-    const onResize = () => {
+    // Reclamp quando o .np muda de tamanho — não só no resize da janela:
+    // cinema e sidebar em ícones mudam --sidebar-w sem evento de janela, e
+    // o card ficava cortado pelo overflow do .np (alça de resize escondida).
+    const ro = new ResizeObserver(() => {
       const r = npEl.getBoundingClientRect();
       setBox((b) => clamp(b, r.width, r.height));
-    };
-    window.addEventListener("resize", onResize);
-    onCleanup(() => window.removeEventListener("resize", onResize));
+    });
+    ro.observe(npEl);
+    onCleanup(() => ro.disconnect());
   });
 
   function startDrag(e: MouseEvent) {
@@ -235,13 +325,13 @@ export default function NowPlaying() {
   // Keyboard: [ ] cicla shape, , . cicla renderer, F cinema mode.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
+      if (isTypingContext(e)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "[") { e.preventDefault(); shape.prev(); }
-      else if (e.key === "]") { e.preventDefault(); shape.next(); }
-      else if (e.key === ",") { e.preventDefault(); renderer.prev(); }
-      else if (e.key === ".") { e.preventDefault(); renderer.next(); }
+      const bg2d = !glActive();
+      if (bg2d && e.key === "[") { e.preventDefault(); shape.prev(); }
+      else if (bg2d && e.key === "]") { e.preventDefault(); shape.next(); }
+      else if (bg2d && e.key === ",") { e.preventDefault(); renderer.prev(); }
+      else if (bg2d && e.key === ".") { e.preventDefault(); renderer.next(); }
       else if (e.key.toLowerCase() === "f") { e.preventDefault(); toggleCinema(); }
     };
     window.addEventListener("keydown", onKey);
@@ -258,7 +348,9 @@ export default function NowPlaying() {
           <button title="Cinema mode (F)" onClick={toggleCinema}>
             <Icon name={cinema() ? ICONS.shrink : ICONS.expand} size={14} />
           </button>
-          <button title="Spectrum settings"><Icon name={ICONS.settings} size={14} /></button>
+          <button title="Spectrum settings" onClick={openBgSettings}>
+            <Icon name={ICONS.settings} size={14} />
+          </button>
           <button
             title="More"
             disabled={!player.currentTrack}
@@ -299,12 +391,31 @@ export default function NowPlaying() {
                 <span class="np__tag-source"><b>Local</b> · PipeWire</span>
               </div>
               <h1 class="np__title">{player.currentTrack?.title ?? "Nothing playing"}</h1>
-              <p class="np__artist" onClick={() => navigate("/artists")}>
-                {player.currentTrack?.artist_name ?? "—"}
-              </p>
-              <p class="np__album" onClick={() => navigate("/albums")}>
-                {player.currentTrack?.album_title ?? "—"}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
-              </p>
+              {/* Artista e álbum levam à página DA entidade (mesmas rotas do
+                  menu de contexto e da paleta), não à grade genérica; são
+                  <button> pra entrarem na ordem de Tab. */}
+              <Show when={player.currentTrack?.artist_name} fallback={<p class="np__artist">—</p>}>
+                {(name) => (
+                  <button
+                    type="button"
+                    class="np__artist"
+                    onClick={() => navigate(`/artist/${encodeURIComponent(name())}`)}
+                  >
+                    {name()}
+                  </button>
+                )}
+              </Show>
+              <Show when={player.currentTrack?.album_title} fallback={<p class="np__album">—</p>}>
+                {(title) => (
+                  <button
+                    type="button"
+                    class="np__album"
+                    onClick={() => navigate(`/album/${encodeURIComponent(title())}`)}
+                  >
+                    {title()}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
+                  </button>
+                )}
+              </Show>
 
               <Show when={player.techInfo.sampleRate}>
                 <div class="np__specs">
@@ -335,7 +446,7 @@ export default function NowPlaying() {
             </div>
           </div>
 
-          <Show when={tweaks().lyricsVisible && (lyrics() ?? []).length > 0}>
+          <Show when={tweaks().lyricsVisible && lyrics().length > 0}>
             <aside
               class="np__lyrics-card np__lyrics-card--floating"
               classList={{ "is-interacting": interacting() }}
@@ -348,6 +459,7 @@ export default function NowPlaying() {
                 // Glass blur escala com tamanho: caixa maior, blur maior.
                 // Range: 10px (min, ~280+220) -> 32px (cap em ~1200+).
                 "--lyrics-blur": `${Math.min(32, Math.max(10, (box().w + box().h) * 0.025))}px`,
+                ...ink(),
               }}
             >
               <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste pra mover">
@@ -364,15 +476,21 @@ export default function NowPlaying() {
                 ref={railViewportEl!}
               >
                 <div class="np__lyrics-rail" ref={railEl!}>
-                  <For each={lyrics() ?? []}>
+                  <For each={lyrics()}>
                     {(line, i) => {
+                      // Sem linha ativa (a = -1, letra não sincronizada) não
+                      // há "próxima": sem o guarda, a linha 0 virava is-near.
+                      const base = line.header ? "np__lyric is-header" : "np__lyric";
                       const cls = () => {
                         const a = activeLine();
-                        if (i() === a) return "np__lyric is-active";
-                        if (Math.abs(i() - a) === 1) return "np__lyric is-near";
-                        return "np__lyric";
+                        if (a < 0) return base;
+                        if (i() === a) return `${base} is-active`;
+                        if (Math.abs(i() - a) === 1) return `${base} is-near`;
+                        return base;
                       };
-                      return <p class={cls()}>{line.line}</p>;
+                      // Linha só com timestamp (interlúdio) vira "…" em vez de
+                      // um <p> vazio que some do destaque — paridade com o mobile.
+                      return <p class={cls()}>{line.line || "…"}</p>;
                     }}
                   </For>
                 </div>
@@ -388,31 +506,33 @@ export default function NowPlaying() {
         </div>
 
         {/* Seletores empilhados: renderer (como pintar) em cima,
-            shape (campo) embaixo. Mesmo estilo ‹ nome ›. */}
-        <div class="np__viz-nav">
-          <div class="np__nav-row">
-            <button title="Previous renderer (,)" onClick={() => renderer.prev()}>
-              <Icon name={ICONS.chevronLeft} size={14} />
-            </button>
-            <span class="np__nav-name" onClick={() => renderer.next()}>
-              render · <b>{renderer.name()}</b>
-            </span>
-            <button title="Next renderer (.)" onClick={() => renderer.next()}>
-              <Icon name={ICONS.chevronRight} size={14} />
-            </button>
+            shape (campo) embaixo. Mesmo estilo ‹ nome ›. Só no fundo 2D. */}
+        <Show when={!glActive()}>
+          <div class="np__viz-nav">
+            <div class="np__nav-row">
+              <button title="Previous renderer (,)" onClick={() => renderer.prev()}>
+                <Icon name={ICONS.chevronLeft} size={14} />
+              </button>
+              <span class="np__nav-name" onClick={() => renderer.next()}>
+                render · <b>{renderer.name()}</b>
+              </span>
+              <button title="Next renderer (.)" onClick={() => renderer.next()}>
+                <Icon name={ICONS.chevronRight} size={14} />
+              </button>
+            </div>
+            <div class="np__nav-row">
+              <button title="Previous shape ([)" onClick={() => shape.prev()}>
+                <Icon name={ICONS.chevronLeft} size={14} />
+              </button>
+              <span class="np__nav-name" onClick={() => shape.next()}>
+                shape · <b>{shape.name()}</b>
+              </span>
+              <button title="Next shape (])" onClick={() => shape.next()}>
+                <Icon name={ICONS.chevronRight} size={14} />
+              </button>
+            </div>
           </div>
-          <div class="np__nav-row">
-            <button title="Previous shape ([)" onClick={() => shape.prev()}>
-              <Icon name={ICONS.chevronLeft} size={14} />
-            </button>
-            <span class="np__nav-name" onClick={() => shape.next()}>
-              shape · <b>{shape.name()}</b>
-            </span>
-            <button title="Next shape (])" onClick={() => shape.next()}>
-              <Icon name={ICONS.chevronRight} size={14} />
-            </button>
-          </div>
-        </div>
+        </Show>
       </div>
     </article>
   );

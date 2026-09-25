@@ -846,8 +846,8 @@ fn themes_dir() -> PathBuf {
 ///   2. Tokens Extractor Lab (atuais) — pass-through direto. Aceita qualquer
 ///      key que case com um prefixo conhecido do design system ativo:
 ///      fg-*, bg-*, line-*, tone-*, blue-*, green-*, amber-*, rose-*,
-///      purple-*, radius-*, shadow-*, dur-*, ease-*, font-*, ring-focus,
-///      sidebar-w, playerbar-h, titlebar-h.
+///      purple-*, radius-*, shadow-*, dur-*, ease-*, font-*, lyrics-*,
+///      ring-focus, sidebar-w, playerbar-h, titlebar-h.
 fn yaml_key_to_css_prop(key: &str) -> Option<String> {
     // Camada 1 — aliases legados.
     let legacy = match key {
@@ -920,6 +920,9 @@ fn yaml_key_to_css_prop(key: &str) -> Option<String> {
         "dur-", "ease-",
         // Type
         "font-",
+        // Card de letras do Now Playing (--lyrics-bg-alpha/-brightness):
+        // o knob "Lyrics glass" é regido por tema e só assim o tema o rege.
+        "lyrics-",
     ];
     const ALLOWED_EXACT: &[&str] = &[
         "ring-focus", "sidebar-w", "playerbar-h", "titlebar-h",
@@ -1072,6 +1075,117 @@ fn ensure_bg_ink_contrast(ink_hex: &str, canvas_hex: &str, min_ratio: f64) -> Op
     Some(hex)
 }
 
+/// `#rrggbb`, `#rrggbbaa`, `rgb(r,g,b)` ou `rgba(r,g,b,a)` -> (r,g,b,a) em
+/// 0..1. Diferente do `hex_to_rgb`, entende rgba e NAO descarta o alpha.
+fn parse_css_color(v: &str) -> Option<(f64, f64, f64, f64)> {
+    let v = v.trim();
+    if let Some(h) = v.strip_prefix('#') {
+        if h.len() != 6 && h.len() != 8 {
+            return None;
+        }
+        let ch = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok().map(|x| x as f64 / 255.0);
+        let a = if h.len() == 8 { ch(6)? } else { 1.0 };
+        return Some((ch(0)?, ch(2)?, ch(4)?, a));
+    }
+    let low = v.to_ascii_lowercase();
+    if !(low.starts_with("rgb(") || low.starts_with("rgba(")) || !low.ends_with(')') {
+        return None;
+    }
+    let inner = &v[v.find('(')? + 1..v.len() - 1];
+    let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
+    if parts.len() != 3 && parts.len() != 4 {
+        return None;
+    }
+    let r = parts[0].parse::<f64>().ok()? / 255.0;
+    let g = parts[1].parse::<f64>().ok()? / 255.0;
+    let b = parts[2].parse::<f64>().ok()? / 255.0;
+    let a = if parts.len() == 4 { parts[3].parse::<f64>().ok()?.clamp(0.0, 1.0) } else { 1.0 };
+    Some((r, g, b, a))
+}
+
+type Rgb = (f64, f64, f64);
+
+fn over(c: (f64, f64, f64, f64), bg: Rgb) -> Rgb {
+    let (r, g, b, a) = c;
+    (r * a + bg.0 * (1.0 - a), g * a + bg.1 * (1.0 - a), b * a + bg.2 * (1.0 - a))
+}
+
+fn mix(x: Rgb, y: Rgb, t: f64) -> Rgb {
+    (x.0 * (1.0 - t) + y.0 * t, x.1 * (1.0 - t) + y.1 * t, x.2 * (1.0 - t) + y.2 * t)
+}
+
+fn rgb_to_hex(c: Rgb) -> String {
+    let q = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    format!("#{:02x}{:02x}{:02x}", q(c.0), q(c.1), q(c.2))
+}
+
+/// Garante a rampa fg decrescente na ponta fraca: fg-7 e fg-8 nunca com mais
+/// contraste contra o canvas que o degrau anterior. Corrige no lugar e
+/// devolve (chave, antes, depois) de cada troca.
+///
+/// Motivo (sistema-v1): os YAMLs da cmr-auto derivaram fg-8 de
+/// `dividers.prominent` como "alias rgb, sem alpha" — o rgba(texto, 0.16)
+/// virou o proprio texto. fg-8 == fg-1 em 4 temas (fundo do `.tog`
+/// desligado igual ao do ligado, bordas "sutis" brancas) e fg-7 mais claro
+/// que fg-5 em 9. Reposicao: o "chao" e `dividers.prominent` COMPOSTO sobre
+/// o canvas (o que os temas pretendiam); fg-7 = 60% do degrau ancora (fg-6,
+/// senao fg-5) + 40% do chao. `scripts/themes/validate.py` replica, com os
+/// mesmos numeros no teste.
+fn enforce_fg_ramp(
+    vars: &mut std::collections::HashMap<String, String>,
+) -> Vec<(String, String, String)> {
+    let mut fixes = Vec::new();
+    let Some(canvas_c) = vars.get("--bg-canvas").and_then(|v| parse_css_color(v)) else {
+        return fixes;
+    };
+    let canvas: Rgb = (canvas_c.0, canvas_c.1, canvas_c.2);
+    let canvas_y = relative_luminance(canvas.0, canvas.1, canvas.2);
+    let strength = |c: Rgb| contrast_ratio(relative_luminance(c.0, c.1, c.2), canvas_y);
+    let parsed = |vars: &std::collections::HashMap<String, String>, k: &str| {
+        vars.get(k).and_then(|v| parse_css_color(v))
+    };
+
+    let anchor_key = if parsed(vars, "--fg-6").is_some() { "--fg-6" } else { "--fg-5" };
+    let Some(anchor_c) = parsed(vars, anchor_key) else {
+        return fixes;
+    };
+    let anchor = over(anchor_c, canvas);
+    let s_anchor = strength(anchor);
+
+    let floor = parsed(vars, "--divider-hi")
+        .map(|d| over(d, canvas))
+        .filter(|d| strength(*d) < s_anchor)
+        .unwrap_or_else(|| mix(anchor, canvas, 0.5));
+
+    let mut rgb7: Option<Rgb> = None;
+    if let Some(c7) = parsed(vars, "--fg-7") {
+        let mut cur = over(c7, canvas);
+        if strength(cur) > s_anchor {
+            let new = rgb_to_hex(mix(anchor, floor, 0.4));
+            let old = vars.insert("--fg-7".to_string(), new.clone()).unwrap_or_default();
+            if let Some(p) = parse_css_color(&new) {
+                cur = (p.0, p.1, p.2);
+            }
+            fixes.push(("--fg-7".to_string(), old, new));
+        }
+        rgb7 = Some(cur);
+    }
+    if let Some(c8) = parsed(vars, "--fg-8") {
+        let reference = rgb7.map_or(s_anchor, strength);
+        if strength(over(c8, canvas)) > reference {
+            let pick = if strength(floor) <= reference {
+                floor
+            } else {
+                mix(rgb7.unwrap_or(anchor), canvas, 0.5)
+            };
+            let new = rgb_to_hex(pick);
+            let old = vars.insert("--fg-8".to_string(), new.clone()).unwrap_or_default();
+            fixes.push(("--fg-8".to_string(), old, new));
+        }
+    }
+    fixes
+}
+
 #[derive(Serialize)]
 struct ContrastCheck {
     pair: String,
@@ -1158,6 +1272,12 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     yaml_to_css_vars(&val, "", &mut vars);
     bridge_legacy_to_extractor_lab(&mut vars);
 
+    // Enforcement: rampa fg decrescente na ponta fraca (fg-7/fg-8). Temas
+    // com a rampa invertida são corrigidos na saída; o validate.py avisa.
+    for (key, before, after) in enforce_fg_ramp(&mut vars) {
+        tracing::warn!(theme = %filename, %key, %before, %after, "rampa fg invertida corrigida");
+    }
+
     // Enforcement: nenhum tema entrega ink de bg invisível. O piso 3:1
     // (não-texto WCAG) vale pro fallback do tema; o adaptive ink da capa
     // mira 4:1 por conta própria (deriveInk v3 no frontend).
@@ -1240,6 +1360,17 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
 /// o YAML de A mudava no disco, mesmo com B ativo.
 struct ThemeWatchState(Mutex<Option<ThemeWatchHandle>>);
 
+impl ThemeWatchState {
+    /// Derruba o watcher ativo, se houver. `take` + `stop` fora do lock: nao
+    /// seguramos o Mutex durante o join da thread.
+    fn stop_current(&self) {
+        let previous = self.0.lock().unwrap().take();
+        if let Some(prev) = previous {
+            prev.stop();
+        }
+    }
+}
+
 /// Handle de um watcher de tema ativo. Segurar este valor mantem o watcher e a
 /// thread de debounce vivos; `stop()` os derruba de forma ordenada.
 struct ThemeWatchHandle {
@@ -1306,12 +1437,8 @@ fn watch_theme(
         return Err(format!("Theme not found: {filename}"));
     }
 
-    // Derruba o watcher anterior (se houver) ANTES de criar o novo. `take` +
-    // `stop` fora do lock: nao seguramos o Mutex durante o join da thread.
-    let previous = state.0.lock().unwrap().take();
-    if let Some(prev) = previous {
-        prev.stop();
-    }
+    // Derruba o watcher anterior (se houver) ANTES de criar o novo.
+    state.stop_current();
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(
@@ -1355,6 +1482,14 @@ fn watch_theme(
         thread: Some(thread),
     });
     Ok(())
+}
+
+/// Para o watcher do tema ativo. O Settings chama ao voltar pro Default: sem
+/// isto o watcher do tema anterior seguia vivo e, a cada edicao do YAML dele,
+/// emitia `theme-changed` pra um tema que o usuario ja tinha abandonado.
+#[tauri::command]
+fn unwatch_theme(state: State<ThemeWatchState>) {
+    state.stop_current();
 }
 
 #[tauri::command]
@@ -3291,6 +3426,7 @@ pub fn run() {
             list_themes,
             load_theme,
             watch_theme,
+            unwatch_theme,
             get_track_color,
             get_track_palette,
             log_event,
@@ -4284,6 +4420,95 @@ typography:
         assert!(ensure_bg_ink_contrast("rgba(0,0,0,0.5)", "#111110", 3.0).is_none());
     }
 
+    // ── sistema-v1: rampa fg invertida ───────────────────────────────────────
+    // Os YAMLs da cmr-auto declaram fg-8 como "dividers.prominent (alias rgb,
+    // sem alpha)": o hex do rgba SEM o 0.16, isto é, a cor do texto principal.
+    // fg-8 == fg-1 em 4 temas (switch desligado com a cor do ligado) e fg-7
+    // mais claro que fg-5 em 9. Os números abaixo são os MESMOS do
+    // scripts/themes/test_validate.py (paridade com o validador).
+
+    const TEMA_RAMPA_INVERTIDA: &str = r##"
+name: Copper
+author: CI
+surfaces:
+  lowest: "#111110"
+  base: "#151513"
+dividers:
+  subtle: "rgba(237, 234, 227, 0.08)"
+  prominent: "rgba(237, 234, 227, 0.16)"
+text:
+  primary: "#edeae3"
+  secondary: "#a29e94"
+  muted: "#85827b"
+fg-2: '#e6e2db'
+fg-3: '#a29e94'
+fg-5: '#85827b'
+fg-7: '#afaca5'
+fg-8: '#edeae3'
+"##;
+
+    fn forca_vs_canvas(vars: &HashMap<String, String>, key: &str) -> f64 {
+        ratio_of(&vars[key], &vars["--bg-canvas"])
+    }
+
+    #[test]
+    fn fg_ramp_invertida_e_corrigida_como_no_validate_py() {
+        let mut vars = parse_tema(TEMA_RAMPA_INVERTIDA);
+        let fixes = enforce_fg_ramp(&mut vars);
+        // fg-8 = dividers.prominent composto sobre o canvas (com o alpha).
+        assert_eq!(vars["--fg-8"], "#343432");
+        // fg-7 = 60% do degrau âncora (fg-6 = text.muted) + 40% do fg-8.
+        assert_eq!(vars["--fg-7"], "#65635e");
+        let keys: Vec<&str> = fixes.iter().map(|(k, _, _)| k.as_str()).collect();
+        assert_eq!(keys, ["--fg-7", "--fg-8"]);
+        let s: Vec<f64> = (5..=8).map(|i| forca_vs_canvas(&vars, &format!("--fg-{i}"))).collect();
+        assert!(s.windows(2).all(|w| w[0] >= w[1]), "rampa fg-5..fg-8 deve decrescer: {s:?}");
+        // O switch desligado (fg-8) deixa de ter a cor do ligado (fg-1).
+        assert_ne!(vars["--fg-8"], vars["--fg-1"]);
+    }
+
+    #[test]
+    fn fg_ramp_monotonica_fica_intocada() {
+        let mut vars = parse_tema(
+            r##"
+name: Dark
+surfaces:
+  lowest: "#050505"
+dividers:
+  prominent: "rgba(255, 255, 255, 0.16)"
+text:
+  primary: "#F0F0F0"
+  muted: "#808080"
+fg-7: '#6e6e6e'
+fg-8: '#404040'
+"##,
+        );
+        assert!(enforce_fg_ramp(&mut vars).is_empty());
+        assert_eq!(vars["--fg-7"], "#6e6e6e");
+        assert_eq!(vars["--fg-8"], "#404040");
+    }
+
+    #[test]
+    fn fg_ramp_nao_mexe_no_fg8_rgba_do_bridge() {
+        // Sem fg-8 explícito o bridge põe o rgba do divider (com alpha), que já
+        // é fraco: fica como está.
+        let mut vars = parse_tema(TEMA_MINIMAL);
+        let antes = vars["--fg-8"].clone();
+        assert!(enforce_fg_ramp(&mut vars).is_empty());
+        assert_eq!(vars["--fg-8"], antes);
+    }
+
+    // np-18: o card de letras consome --lyrics-bg-alpha/--lyrics-bg-brightness
+    // e o knob "Lyrics glass" é regido por tema, mas nenhum YAML conseguia
+    // declarar essas vars (prefixo recusado pelo parser).
+    #[test]
+    fn secao_lyrics_do_yaml_vira_vars_lyrics() {
+        assert_eq!(yaml_key_to_css_prop("lyrics-bg-alpha").as_deref(), Some("--lyrics-bg-alpha"));
+        let vars = parse_tema("name: L\nlyrics:\n  bg-alpha: 0.3\n  bg-brightness: 0.7\n");
+        assert_eq!(vars.get("--lyrics-bg-alpha").map(String::as_str), Some("0.3"));
+        assert_eq!(vars.get("--lyrics-bg-brightness").map(String::as_str), Some("0.7"));
+    }
+
     #[test]
     fn contraste_pares_semanticos_sao_calculados_apos_bridge() {
         // Verifica que todos os tokens dos pares de contraste estao presentes
@@ -4414,6 +4639,32 @@ typography:
         drop(tx);
         handle.join().unwrap();
         assert_eq!(calls.load(Ordering::Relaxed), 0, "teardown nao deve emitir");
+    }
+
+    // config-v3: voltar ao Default no Settings não tinha como derrubar o
+    // watcher — só um watch_theme NOVO derrubava o anterior. stop_current é
+    // o que o comando unwatch_theme chama.
+    #[test]
+    fn stop_current_derruba_o_watcher_ativo_e_esvazia_o_estado() {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_thread = shutdown.clone();
+        let thread = std::thread::spawn(move || {
+            theme_debounce_loop(rx, &shutdown_thread, std::time::Duration::from_millis(5), || {});
+        });
+        let state = ThemeWatchState(Mutex::new(Some(ThemeWatchHandle {
+            watcher: None,
+            shutdown: shutdown.clone(),
+            thread: Some(thread),
+        })));
+        // Sem watcher real, o canal fecha pelo tx do teste (no app, dropar o
+        // watcher faz isso dentro do stop()).
+        drop(tx);
+        state.stop_current();
+        assert!(state.0.lock().unwrap().is_none(), "estado deve ficar vazio");
+        assert!(shutdown.load(Ordering::Relaxed), "shutdown sinalizado");
+        // Sem watcher ativo é no-op, sem panic.
+        state.stop_current();
     }
 
     #[test]

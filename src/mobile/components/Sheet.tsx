@@ -9,11 +9,13 @@
    voltar do Android (sentinela de history, em sheet.ts).
    ============================================================ */
 
-import { For, Show, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { closeSheet, closeSheetThen, openSheet, sheet } from "../sheet";
 import type { SheetSpec } from "../sheet";
-import { navigate } from "../nav";
+import { navigate, navigateFromNp } from "../nav";
+import { is2dActive } from "../bg/engine";
+import { useRenderer, useShape } from "../bg/spectrum";
 import { albumKey, fmtDuration } from "../derive";
 import {
   enqueueEnd,
@@ -27,6 +29,9 @@ import {
 import type { Track, TrackContext } from "../types";
 
 type IconName = keyof typeof Icon;
+
+/** Uma sheet por vez: o título da aberta nomeia o diálogo (aria-labelledby). */
+const TITLE_ID = "sheet-title";
 
 interface Action {
   label: string;
@@ -122,7 +127,7 @@ function TrackSheet(props: { spec: Extract<SheetSpec, { kind: "track" }> }) {
   return (
     <>
       <div class="sheet__head">
-        <div class="sheet__title">{props.spec.track.title}</div>
+        <div class="sheet__title" id={TITLE_ID}>{props.spec.track.title}</div>
         <div class="sheet__sub">
           {[props.spec.track.artist_name, props.spec.track.album_title]
             .filter(Boolean)
@@ -155,6 +160,62 @@ function TrackSheet(props: { spec: Extract<SheetSpec, { kind: "track" }> }) {
   );
 }
 
+/**
+ * "Mais opções" do Now Playing (mobile-1): o cabeçalho só comporta quatro
+ * alvos de 44px na largura útil do S24 (316px), e as ações secundárias
+ * transbordavam — o overflow cortava justamente Fila e Fechar.
+ */
+function NpSheet(props: { track: Track }) {
+  return (
+    <>
+      <div class="sheet__head">
+        <div class="sheet__title" id={TITLE_ID}>{props.track.title}</div>
+        <div class="sheet__sub">
+          {[props.track.artist_name, props.track.album_title].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+      <button
+        class="sheet__act"
+        onClick={() => {
+          void playSimilar(props.track);
+          closeSheet();
+        }}
+      >
+        <Icon.radio class="lead" />
+        <div class="sheet__actlabel">
+          <span>Rádio da faixa</span>
+          <span class="sheet__acthint">vizinhos por similaridade</span>
+        </div>
+      </button>
+      {/* replace, não push: o voltar da fila não pode reabrir o NP (mobile-v3) */}
+      <button class="sheet__act" onClick={() => closeSheetThen(() => navigateFromNp("/queue"))}>
+        <Icon.queue class="lead" />
+        <div class="sheet__actlabel">
+          <span>Fila</span>
+        </div>
+      </button>
+      {/* Só com o canvas 2D desenhando (mobile-2). Trocar não fecha a sheet:
+          o rótulo mostra o novo valor e dá pra ciclar em sequência. */}
+      <Show when={is2dActive()}>
+        <button class="sheet__act" onClick={() => useRenderer.next()}>
+          <Icon.sparkle class="lead" />
+          <div class="sheet__actlabel">
+            <span>Render do fundo</span>
+            <span class="sheet__acthint">{useRenderer.name()}</span>
+          </div>
+        </button>
+        <button class="sheet__act" onClick={() => useShape.next()}>
+          <Icon.sparkle class="lead" />
+          <div class="sheet__actlabel">
+            <span>Shape do fundo</span>
+            <span class="sheet__acthint">{useShape.name()}</span>
+          </div>
+        </button>
+      </Show>
+    </>
+  );
+}
+
 function InfoSheet(props: { track: Track }) {
   const rows = (): [string, string][] => {
     const t = props.track;
@@ -177,7 +238,7 @@ function InfoSheet(props: { track: Track }) {
   return (
     <>
       <div class="sheet__head">
-        <div class="sheet__title">Informações</div>
+        <div class="sheet__title" id={TITLE_ID}>Informações</div>
         <div class="sheet__sub">{props.track.title}</div>
       </div>
       <For each={rows()}>
@@ -195,6 +256,30 @@ function InfoSheet(props: { track: Track }) {
 export function Sheet() {
   const [dragY, setDragY] = createSignal(0);
   let startY: number | null = null;
+  let panelEl: HTMLDivElement | undefined;
+
+  // Ao ABRIR (não ao trocar o conteúdo), o foco entra na sheet: sem isso o
+  // leitor de tela seguia na tela de baixo, atrás do scrim (mobile-20).
+  // Ao FECHAR, volta a quem abriu: a sheet vira display:none com o foco
+  // dentro e ele caía no body (o TalkBack voltava ao topo da página). Só
+  // se quem abriu ainda está no DOM e fora de uma subárvore inerte (a ação
+  // pode ter trocado de tela ou aberto o Now Playing por cima).
+  let wasOpen = false;
+  let opener: HTMLElement | null = null;
+  createEffect(() => {
+    const open = sheet() != null;
+    if (open && !wasOpen) {
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      panelEl?.focus({ preventScroll: true });
+    } else if (!open && wasOpen) {
+      const back = opener;
+      opener = null;
+      if (back?.isConnected && !back.closest("[inert]") && panelEl?.contains(document.activeElement)) {
+        back.focus({ preventScroll: true });
+      }
+    }
+    wasOpen = open;
+  });
 
   const onMove = (e: PointerEvent) => {
     if (startY == null) return;
@@ -208,9 +293,20 @@ export function Sheet() {
   };
 
   return (
-    <div class="sheet" attr:data-open={sheet() ? "" : undefined} role="dialog" aria-modal="true">
+    <div
+      class="sheet"
+      attr:data-open={sheet() ? "" : undefined}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={sheet() ? TITLE_ID : undefined}
+    >
       <div class="scrim" onClick={() => closeSheet()} />
-      <div class="panel" style={dragY() ? { transform: `translateY(${dragY()}px)` } : undefined}>
+      <div
+        class="panel"
+        ref={panelEl}
+        tabindex="-1"
+        style={dragY() ? { transform: `translateY(${dragY()}px)` } : undefined}
+      >
         <div
           class="grab"
           onPointerDown={(e) => (startY = e.clientY)}
@@ -220,12 +316,14 @@ export function Sheet() {
         />
         <Show when={sheet()}>
           {(spec) => (
-            <Show
-              when={spec().kind === "track" ? (spec() as Extract<SheetSpec, { kind: "track" }>) : null}
-              fallback={<InfoSheet track={spec().track} />}
-            >
-              {(s) => <TrackSheet spec={s()} />}
-            </Show>
+            <Switch fallback={<InfoSheet track={spec().track} />}>
+              <Match when={spec().kind === "track" ? (spec() as Extract<SheetSpec, { kind: "track" }>) : null}>
+                {(s) => <TrackSheet spec={s()} />}
+              </Match>
+              <Match when={spec().kind === "np" ? spec() : null}>
+                {(s) => <NpSheet track={s().track} />}
+              </Match>
+            </Switch>
           )}
         </Show>
       </div>

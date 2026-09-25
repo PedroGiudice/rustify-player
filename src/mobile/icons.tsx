@@ -161,6 +161,14 @@ export const Icon = {
       <path d="M12 3.5 13.6 9 19 10.5 13.6 12 12 17.5 10.4 12 5 10.5 10.4 9zM18.5 15.5l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7z" />
     </svg>
   ),
+  /** "Mais opções" (overflow do cabeçalho do NP, mobile-1). */
+  more: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <circle cx="12" cy="5.5" r="1.1" />
+      <circle cx="12" cy="12" r="1.1" />
+      <circle cx="12" cy="18.5" r="1.1" />
+    </svg>
+  ),
   heart: (p: IcoProps = {}) => (
     <svg {...S} class={cx(p)}>
       <path d="M12 20S4 15.4 4 10.4A4.4 4.4 0 0 1 12 8a4.4 4.4 0 0 1 8 2.4C20 15.4 12 20 12 20z" />
