@@ -311,6 +311,32 @@ describe("NowPlaying — contraste do card de letras (np-2, ds-18)", () => {
     setGlStatus({ ok: true, renderer: "x", error: "", fps: 60 });
     expect(await cardFg1()).toBe(LYRICS_DESIGN_INK["--fg-1"]);
   });
+
+  // Integração cfg-15 x np-2: a escrita das vars do vidro passou para um
+  // rAF do store de Tweaks, e a medição daqui roda num rAF próprio. A ordem
+  // entre os dois depende da ordem dos observadores do signal (que o Solid
+  // embaralha a cada re-execução): ao soltar o slider, o card ficava com a
+  // escala do passo anterior. O store avisa depois de escrever; o card
+  // re-mede nesse aviso, sem depender do signal.
+  it("re-mede quando o store avisa que aplicou as vars (rustify:tweaks-applied)", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--bg-canvas", "#fafafa");
+    try {
+      const first = await cardFg1();
+      root.style.setProperty("--lyrics-bg-alpha", "0.650");
+      root.style.setProperty("--lyrics-bg-brightness", "0.520");
+      const expected = lyricsInk(glassSurface({ backdrop: { r: 250, g: 250, b: 250 }, alpha: 0.65, brightness: 0.52 }));
+      expect(expected["--fg-1"]).not.toBe(first);
+      window.dispatchEvent(new Event("rustify:tweaks-applied"));
+      await waitFor(() => {
+        const card = document.querySelector(".np__lyrics-card") as HTMLElement;
+        expect(card.style.getPropertyValue("--fg-1")).toBe(expected["--fg-1"]);
+      });
+    } finally {
+      root.style.removeProperty("--lyrics-bg-alpha");
+      root.style.removeProperty("--lyrics-bg-brightness");
+    }
+  });
 });
 
 // nowplaying-v4 / cfg-10 (integração): o listener próprio do Now Playing

@@ -132,8 +132,10 @@ export default function NowPlaying() {
   // ── Contraste do card: a escala de texto segue a luminância REAL do
   // vidro (lib/lyricsInk.ts). Atrás do card está o canvas do tema no
   // fundo 2D e o preto fixo no WebGL; alpha/brightness vêm do slider
-  // Lyrics glass (ou do tema, ou dos fallbacks do CSS). Mede no quadro
-  // seguinte a qualquer mudança, depois que o store/tema escreveram as vars.
+  // Lyrics glass (ou do tema, ou dos fallbacks do CSS). Re-mede quando o
+  // store de Tweaks avisa que escreveu as vars (rustify:tweaks-applied), e
+  // não no signal: a escrita do store roda num rAF próprio, e medir pelo
+  // signal podia ler o passo anterior do slider.
   const [ink, setInk] = createSignal<Partial<Record<LyricsInkVar, string>>>({});
   function measureInk() {
     const html = document.documentElement;
@@ -154,14 +156,15 @@ export default function NowPlaying() {
     inkRaf = requestAnimationFrame(measureInk);
   };
   createEffect(() => {
-    tweaks();
     glActive();
     scheduleInk();
   });
   onMount(() => {
+    window.addEventListener("rustify:tweaks-applied", scheduleInk);
     window.addEventListener("rustify:theme-applied", scheduleInk);
     onCleanup(() => {
       cancelAnimationFrame(inkRaf);
+      window.removeEventListener("rustify:tweaks-applied", scheduleInk);
       window.removeEventListener("rustify:theme-applied", scheduleInk);
     });
   });

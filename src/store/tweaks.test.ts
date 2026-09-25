@@ -293,6 +293,31 @@ describe("arrasto de slider (cfg-15)", () => {
     spy.mockRestore();
   });
 
+  // Integração com o np-2: o card de letras do NowPlaying mede as vars do
+  // vidro num rAF próprio, e a ordem entre esse rAF e o daqui depende da
+  // ordem dos observadores do signal, que o Solid embaralha a cada
+  // re-execução — a medição chegava a ler o passo anterior do slider.
+  // applyTweaks avisa, DEPOIS de escrever, quem precisa medir.
+  it("avisa (rustify:tweaks-applied) depois de escrever as vars, a cada quadro", () => {
+    flushTweaks(); // quadro/timer reais pendentes de testes anteriores
+    vi.useFakeTimers();
+    resetTweaks();
+    loadTweaks();
+    flushTweaks();
+    const seen: string[] = [];
+    const onApplied = () => seen.push(html().style.getPropertyValue("--lyrics-bg-alpha"));
+    window.addEventListener("rustify:tweaks-applied", onApplied);
+    try {
+      for (const g of [0.1, 0.4, 0.7]) {
+        updateTweak("lyricsGlass", g);
+        vi.advanceTimersByTime(20);
+      }
+    } finally {
+      window.removeEventListener("rustify:tweaks-applied", onApplied);
+    }
+    expect(seen).toEqual(["0.101", "0.284", "0.467"]);
+  });
+
   it("flushTweaks aplica e grava o pendente na hora (fechar a janela)", () => {
     flushTweaks(); // quadro/timer reais pendentes de testes anteriores
     vi.useFakeTimers();

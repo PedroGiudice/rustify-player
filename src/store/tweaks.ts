@@ -306,6 +306,13 @@ export function applyTweaks(s: TweaksState = state()) {
     s.bgBeatMode === "speed" ? "1" : s.bgBeatMode === "pulse" ? "2" : "0",
   );
   html.style.setProperty("--bg-beat-depth", s.bgBeatDepth.toFixed(2));
+
+  // Aviso pra quem MEDE o resultado (o card de letras do NowPlaying lê as
+  // vars do vidro com getComputedStyle). Desde o cfg-15 a escrita roda num
+  // rAF deste store; um rAF agendado por outro effect no mesmo quadro pode
+  // rodar antes dela — a ordem segue a dos observadores do signal, que o
+  // Solid embaralha a cada re-execução — e ler o valor anterior.
+  window.dispatchEvent(new Event("rustify:tweaks-applied"));
 }
 
 /** Deriva e escreve as vars do lyrics glass a partir do slider. */
