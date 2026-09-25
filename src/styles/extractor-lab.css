@@ -118,7 +118,13 @@
   --shadow-card:     0 1px 4px rgba(0,0,0,0.04);
   --shadow-hover:    0 8px 24px rgba(0,0,0,0.06);
   --shadow-compact:  0 6px 18px rgba(0,0,0,0.05);
-  --ring-focus:      0 0 0 2px rgba(163,163,163,0.15);
+  /* Foco com contraste real: o anel antigo (rgba(163,163,163,.15)) dava
+     1,13:1 no claro e 1,24:1 no really-dark, invisível. --blue-ring segue
+     tema e accent adaptativo; #3b82f6 sobre o paper dá 3,7:1 (WCAG 1.4.11
+     pede 3:1). --ring-focus = versão box-shadow (inputs), --focus-outline
+     = versão outline (foco de teclado, :focus-visible). */
+  --ring-focus:      0 0 0 2px var(--blue-ring);
+  --focus-outline:   2px solid var(--blue-ring);
   --shadow-knob:     0 1px 2px rgba(0,0,0,0.18);
 
   /* Glass panels (tematizavel: glass.tint/alpha/blur no YAML) */
@@ -161,6 +167,15 @@ input { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Foco de teclado: um anel só, com o accent do tema, no lugar do anel
+   padrão do WebKitGTK (sem relação com o tema e ausente em parte dos
+   botões). :where() deixa a especificidade em zero, então quem já zera
+   o outline de propósito (inputs com anel próprio) continua valendo. */
+:where(:focus-visible) {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
 
 iconify-icon { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 
@@ -263,6 +278,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: transform var(--dur-base), filter var(--dur-base);
 }
 .tl-dot:hover { filter: brightness(1.05); }
+/* O outline:none acima tirava o foco de teclado dos botões da janela. */
+.tl-dot:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 .tl-dot:active { transform: scale(0.92); }
 
 /* Elementos que NAO devem iniciar drag */
