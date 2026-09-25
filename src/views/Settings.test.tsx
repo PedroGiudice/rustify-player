@@ -58,7 +58,7 @@ afterEach(() => {
 import Settings from "./Settings";
 import * as ipc from "../tauri";
 import { tweaks, updateTweak } from "../store/tweaks";
-import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
+import { resumeOnLaunch, setResumeOnLaunch, setPlayer } from "../store/player";
 
 describe("Settings view", () => {
   it("renderiza heading", () => {
@@ -234,6 +234,20 @@ describe("Settings view", () => {
       expect(value("backend")).not.toMatch(/cpal/i);
       expect(value("license")).toBe("MIT");
     });
+  });
+
+  // cfg-24: com o som mudo o PlayerBar mostra 0% e o Settings mostrava o
+  // volume guardado (72%).
+  it("volume do Settings respeita o mute (mostra 0 como o PlayerBar)", () => {
+    setPlayer({ volume: 0.72, isMuted: true });
+    const { container } = render(() => <Settings />);
+    const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
+      (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase() === "volume",
+    )!;
+    const range = row.querySelector("input[type='range']") as HTMLInputElement;
+    expect(range.value).toBe("0");
+    expect(row.textContent).toContain("0%");
+    setPlayer({ volume: 1, isMuted: false });
   });
 
   it("Update flow: botao Check for updates dispara checkForUpdate", async () => {

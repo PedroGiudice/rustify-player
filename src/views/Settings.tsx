@@ -159,7 +159,9 @@ export default function Settings() {
     updateTweak("loudnessNorm", !tweaks().loudnessNorm);
   }
 
-  const volumePct = () => Math.round(player.volume * 100);
+  // Mudo = 0%, igual ao PlayerBar (cfg-24). Mexer no slider desmuta via
+  // changeVolume, como no slider da barra.
+  const volumePct = () => (player.isMuted ? 0 : Math.round(player.volume * 100));
   function onVolumeChange(e: Event) {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     const vol = val / 100;
