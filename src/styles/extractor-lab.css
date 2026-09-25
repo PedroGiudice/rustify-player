@@ -1521,14 +1521,49 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   margin: -2px 0 2px;
 }
 
-/* ── data-density="compact": reduz padding/gap em toda a UI ───── */
-html[data-density="compact"] .nav-item { padding: 5px 10px; }
-html[data-density="compact"] .view { padding: 16px 20px; }
-html[data-density="compact"] .track-table__td,
-html[data-density="compact"] .track-table__th { padding: 4px 8px; }
-html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
-html[data-density="compact"] .playerbar { height: 60px; }
+/* ── data-density="compact": reduz padding/gap em toda a UI ─────
+   So REDUZ espaco que existe no modo normal, nas classes que as telas
+   usam. O .view nao tem padding (o respiro mora em .view__head,
+   .view__body e nos containers de cada tela): dar padding a ele
+   somava margem e descolava os cabecalhos full-bleed. O prefixo
+   html[...] vence qualquer regra base de uma classe, entao a posicao
+   deste bloco no arquivo nao importa. A altura da playerbar vem so do
+   token (o grid do .app le --playerbar-h). Travado em
+   src/styles/layout-modes.test.ts, contra este arquivo. */
 html[data-density="compact"] { --playerbar-h: 60px; }
+html[data-density="compact"] .nav-item { padding: 5px 10px; }
+/* Cabecalho, abas e corpo das views */
+html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
+html[data-density="compact"] .tabs { padding: 0 24px; }
+html[data-density="compact"] .tab { padding: 8px 12px; }
+html[data-density="compact"] .tab.active::after { left: 12px; right: 12px; }
+/* .crate-body desenha o proprio espacamento (padding/gap 0) com gutters
+   de 40px: o cabecalho do Crate mantem o gutter lateral pra alinhar. */
+html[data-density="compact"] .view__body:not(.crate-body) { padding: 16px 24px 32px; gap: 20px; }
+html[data-density="compact"] .view:has(> .crate-body) > .view__head { padding-left: 40px; padding-right: 40px; }
+html[data-density="compact"] .section__head { margin-bottom: 8px; }
+html[data-density="compact"] .toolbar { margin-bottom: 12px; }
+/* Tabela de faixas (Tracks, Album, Playlist): cabecalhos e celulas das
+   linhas (netas de .tracks, via .tracks__row display:contents) */
+html[data-density="compact"] .tracks > div,
+html[data-density="compact"] .tracks > .tracks__row > div { padding: 5px 10px; }
+/* Linhas de lista (Home, History) */
+html[data-density="compact"] .row { padding: 6px 12px; contain-intrinsic-size: auto 53px; }
+html[data-density="compact"] .row.is-current { padding-left: 10px; }
+/* Grades de cards */
+html[data-density="compact"] .card-grid,
+html[data-density="compact"] .pl-grid { gap: 14px 12px; }
+html[data-density="compact"] .card__cover,
+html[data-density="compact"] .pl-card__cover { margin-bottom: 8px; }
+/* Containers proprios: Playlists/Stations, Signal, Settings */
+html[data-density="compact"] .coll { padding: 16px 24px 32px; gap: 20px; }
+html[data-density="compact"] .sig { padding: 14px 24px 40px; gap: 12px; }
+html[data-density="compact"] .set { padding: 16px 24px 32px; gap: 14px; }
+html[data-density="compact"] .set-panel__head { padding: 10px 16px; }
+html[data-density="compact"] .set-row { padding: 8px 16px; }
+html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
+/* Painel Tweaks */
+html[data-density="compact"] .tweaks__body { padding: 10px 12px 12px; gap: 8px; }
 
 /* ── data-sidebar="icons": sidebar colapsada, so icones ─────────
    Por padrao (sem o atributo) a sidebar exibe icone + texto.
@@ -1542,10 +1577,28 @@ html[data-sidebar="icons"] .nav-item__kbd { display: none; }
 /* Esconde o texto do nav-item (span sem classe que envolve o label).
    O Icon vira <iconify-icon>, nao span — entao filtro generico nao
    afeta o icone. Sem isso o label do nav sobra ao lado do icone
-   numa sidebar de 56px e quebra o layout. */
-html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd) { display: none; }
+   numa sidebar de 56px e quebra o layout.
+   Escondido SO visualmente (fora do fluxo, recortado): display:none
+   tirava o texto da arvore de acessibilidade e o link ficava sem nome. */
+html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge) {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
 html[data-sidebar="icons"] .nav-item {
   justify-content: center; padding: 8px; gap: 0;
+  position: relative;
+}
+/* Contador de downloads do Crate: continua visivel, no canto do icone
+   (em 56px nao cabe ao lado dele). */
+html[data-sidebar="icons"] .nav-item__badge {
+  position: absolute; top: 1px; right: 1px;
+  margin: 0; padding: 0 3px;
+  min-width: 14px;
+  font-size: 9px; line-height: 12px;
 }
 html[data-sidebar="icons"] .np-mini { display: none; }
 
