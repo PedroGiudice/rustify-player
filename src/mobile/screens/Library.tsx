@@ -19,7 +19,7 @@ import { navigate } from "../nav";
 import { albums, artists, folders, libReady, playTrackFrom, tracks } from "../store";
 import { fmtCount } from "../derive";
 
-type Facet = "folders" | "albums" | "artists" | "tracks";
+export type Facet = "folders" | "albums" | "artists" | "tracks";
 const FACETS: Array<{ id: Facet; label: string }> = [
   { id: "folders", label: "Pastas" },
   { id: "albums", label: "Álbuns" },
@@ -27,8 +27,18 @@ const FACETS: Array<{ id: Facet; label: string }> = [
   { id: "tracks", label: "Faixas" },
 ];
 
+/* Faceta no MÓDULO, não na tela (mobile-3): voltar de um álbum recria a
+   Library, e um signal local voltava a "Pastas" a cada remontagem. */
+const [facet, setFacet] = createSignal<Facet>("folders");
+export { facet as libraryFacet };
+
+/** Abre a Library numa faceta — os "Ver todos/todas" da Home. */
+export function openLibraryAt(f: Facet) {
+  setFacet(f);
+  navigate("/library");
+}
+
 export function Library() {
-  const [facet, setFacet] = createSignal<Facet>("folders");
   const sub = () =>
     `${fmtCount(tracks().length)} faixas · ${albums().length} álbuns · ${artists().length} artistas`;
 

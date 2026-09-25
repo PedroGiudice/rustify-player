@@ -17,6 +17,7 @@ import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
 import { Empty, SecHead, ViewHead } from "../components/ui";
 import { navigate } from "../nav";
+import { openLibraryAt } from "./Library";
 import {
   albums,
   favorites,
@@ -108,7 +109,7 @@ export function Home() {
 
         <Show when={folders().length}>
           <div class="sec">
-            <SecHead label="Pastas" link={{ label: "Ver todas", onClick: () => navigate("/library") }} />
+            <SecHead label="Pastas" link={{ label: "Ver todas", onClick: () => openLibraryAt("folders") }} />
             <div class="card" style={{ padding: "2px 12px" }}>
               <For each={folders().slice(0, 5)}>
                 {(f) => (
@@ -128,7 +129,7 @@ export function Home() {
 
         <Show when={albums().length}>
           <div class="sec">
-            <SecHead label="Álbuns" link={{ label: "Ver todos", onClick: () => navigate("/library") }} />
+            <SecHead label="Álbuns" link={{ label: "Ver todos", onClick: () => openLibraryAt("albums") }} />
             <div class="grid">
               <For each={albums().slice(0, 4)}>
                 {(a) => (

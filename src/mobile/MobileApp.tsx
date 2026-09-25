@@ -42,7 +42,7 @@ import { Artist } from "./screens/Artist";
 import { Queue } from "./screens/Queue";
 import { Settings } from "./screens/Settings";
 import { Stations } from "./screens/Stations";
-import { baseRoute, bootRoute, isNpOpen } from "./nav";
+import { baseRoute, bootRoute, isNpOpen, rememberScroll, restoreScroll, savedScroll } from "./nav";
 import { bootStore, current, pb, toast } from "./store";
 import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
@@ -135,10 +135,20 @@ function Bg() {
 
 export function MobileApp() {
   let viewEl: HTMLDivElement | undefined;
-  // Trocou de tela: volta ao topo (o protótipo zerava o scrollTop).
+  let cancelRestore: (() => void) | undefined;
+  const stopRestore = () => {
+    cancelRestore?.();
+    cancelRestore = undefined;
+  };
+  // Trocou de tela: entrada NOVA do histórico abre no topo (como no
+  // protótipo); VOLTAR devolve a rolagem que a entrada tinha (mobile-3).
   createEffect(() => {
     baseRoute();
-    if (viewEl) viewEl.scrollTop = 0;
+    stopRestore();
+    if (!viewEl) return;
+    const y = savedScroll();
+    if (y == null) viewEl.scrollTop = 0;
+    else cancelRestore = restoreScroll(viewEl, y);
   });
 
   // Ink do bg + accents seguem a dominante da capa da faixa corrente.
@@ -150,7 +160,15 @@ export function MobileApp() {
     <div class="device">
       <Bg />
       <div class="shell">
-        <div class="view" ref={viewEl}>{screen()}</div>
+        <div
+          class="view"
+          ref={viewEl}
+          onScroll={() => viewEl && rememberScroll(viewEl.scrollTop)}
+          onPointerDown={stopRestore}
+          onWheel={stopRestore}
+        >
+          {screen()}
+        </div>
         <Dock />
       </div>
       <NowPlaying />

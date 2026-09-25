@@ -40,9 +40,12 @@ function loadRecent(): string[] {
   }
 }
 
+/* Termo e escopo no MÓDULO (mobile-3): abrir um artista e voltar recria a
+   tela, e signals locais devolviam o campo vazio. */
+const [q, setQ] = createSignal("");
+const [scope, setScope] = createSignal<Scope>("all");
+
 export function Search() {
-  const [q, setQ] = createSignal("");
-  const [scope, setScope] = createSignal<Scope>("all");
   const [recent, setRecent] = createSignal(loadRecent());
 
   const remember = (term: string) => {
