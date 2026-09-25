@@ -545,7 +545,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .hero-tile--has-cover .hero-tile__eyebrow { color: rgba(255,255,255,0.78); }
 .hero-tile--has-cover .hero-tile__title  { color: #ffffff; }
 .hero-tile--has-cover .hero-tile__sub    { color: rgba(255,255,255,0.74); }
-.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: var(--fg-1); }
+/* Fundo branco literal (o tile com capa assume overlay escuro): o icone
+   precisa de tinta escura literal. var(--fg-1) e quase branco nos temas
+   escuros e sumia no botao. */
+.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: #111111; }
 .hero-tile--has-cover .hero-tile__eyebrow .dot { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); }
 .hero-tile__eyebrow {
   font-size: 10.5px; font-weight: 700;
@@ -602,6 +605,12 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row__tech  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
 .row__when  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
 .row__time  { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
+/* Linha informativa, sem acao (aba Genres da Library): coluna unica.
+   Com o grid de 5 colunas do .row, o unico filho caia na coluna de
+   40px e o nome truncava; pointer e hover prometiam um clique que
+   nao existe. */
+.row--static { grid-template-columns: 1fr; cursor: default; }
+.row--static:hover { background: transparent; }
 
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 16px; }
 .card { cursor: pointer; }
@@ -995,7 +1004,13 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .tracks--with-cover {
   grid-template-columns: 36px 44px 1fr 180px 110px 70px;
 }
-.tracks > div {
+/* Celulas: os cabecalhos sao filhos diretos de .tracks, mas as celulas
+   das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row com
+   display:contents, que some da caixa mas NAO da arvore DOM. So
+   `.tracks > div` nunca alcancava as linhas (sem padding, separador nem
+   o flex que alinha # e Length). */
+.tracks > div,
+.tracks > .tracks__row > div {
   padding: 9px 14px;
   border-bottom: 1px solid var(--line-3);
   display: flex; align-items: center;
@@ -1003,16 +1018,25 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   /* Evita texto "vazando" pra fora da celula em titles/albums longos */
   overflow: hidden;
 }
+/* Titulo (b + small empilhados) e celulas de texto ficam block: flex
+   poria b/small lado a lado e o texto viraria item anonimo, sem
+   ellipsis. align-content centra o bloco na altura da linha. */
+.tracks > .tracks__row > .tracks__title,
+.tracks > .tracks__row > .tracks__cell { display: block; align-content: center; }
 .tracks__head {
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
   color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line-2) !important;
 }
-.tracks__row { cursor: pointer; transition: background var(--dur-base); }
-.tracks__row--current > div { background: var(--blue-bg); }
-.tracks__row--current .tracks__title b { color: var(--blue-fg); }
+.tracks__row { cursor: pointer; }
+/* Transicao nas celulas: o wrapper display:contents nao tem caixa. */
+.tracks__row > div { transition: background var(--dur-base); }
 .tracks__row:hover > div { background: var(--bg-soft); }
+/* Depois do hover e com a mesma especificidade: o hover nao apaga o
+   destaque da faixa atual. */
+.tracks__row.tracks__row--current > div { background: var(--blue-bg); }
+.tracks__row--current .tracks__title b { color: var(--blue-fg); }
 .tracks__idx { color: var(--fg-6); font-family: var(--font-mono); font-size: 11px; justify-content: center; }
 .tracks__cover { padding: 6px 0 6px 10px !important; }
 .tracks__cover img {
@@ -1552,14 +1576,49 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   margin: -2px 0 2px;
 }
 
-/* ── data-density="compact": reduz padding/gap em toda a UI ───── */
-html[data-density="compact"] .nav-item { padding: 5px 10px; }
-html[data-density="compact"] .view { padding: 16px 20px; }
-html[data-density="compact"] .track-table__td,
-html[data-density="compact"] .track-table__th { padding: 4px 8px; }
-html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
-html[data-density="compact"] .playerbar { height: 60px; }
+/* ── data-density="compact": reduz padding/gap em toda a UI ─────
+   So REDUZ espaco que existe no modo normal, nas classes que as telas
+   usam. O .view nao tem padding (o respiro mora em .view__head,
+   .view__body e nos containers de cada tela): dar padding a ele
+   somava margem e descolava os cabecalhos full-bleed. O prefixo
+   html[...] vence qualquer regra base de uma classe, entao a posicao
+   deste bloco no arquivo nao importa. A altura da playerbar vem so do
+   token (o grid do .app le --playerbar-h). Travado em
+   src/styles/layout-modes.test.ts, contra este arquivo. */
 html[data-density="compact"] { --playerbar-h: 60px; }
+html[data-density="compact"] .nav-item { padding: 5px 10px; }
+/* Cabecalho, abas e corpo das views */
+html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
+html[data-density="compact"] .tabs { padding: 0 24px; }
+html[data-density="compact"] .tab { padding: 8px 12px; }
+html[data-density="compact"] .tab.active::after { left: 12px; right: 12px; }
+/* .crate-body desenha o proprio espacamento (padding/gap 0) com gutters
+   de 40px: o cabecalho do Crate mantem o gutter lateral pra alinhar. */
+html[data-density="compact"] .view__body:not(.crate-body) { padding: 16px 24px 32px; gap: 20px; }
+html[data-density="compact"] .view:has(> .crate-body) > .view__head { padding-left: 40px; padding-right: 40px; }
+html[data-density="compact"] .section__head { margin-bottom: 8px; }
+html[data-density="compact"] .toolbar { margin-bottom: 12px; }
+/* Tabela de faixas (Tracks, Album, Playlist): cabecalhos e celulas das
+   linhas (netas de .tracks, via .tracks__row display:contents) */
+html[data-density="compact"] .tracks > div,
+html[data-density="compact"] .tracks > .tracks__row > div { padding: 5px 10px; }
+/* Linhas de lista (Home, History) */
+html[data-density="compact"] .row { padding: 6px 12px; contain-intrinsic-size: auto 53px; }
+html[data-density="compact"] .row.is-current { padding-left: 10px; }
+/* Grades de cards */
+html[data-density="compact"] .card-grid,
+html[data-density="compact"] .pl-grid { gap: 14px 12px; }
+html[data-density="compact"] .card__cover,
+html[data-density="compact"] .pl-card__cover { margin-bottom: 8px; }
+/* Containers proprios: Playlists/Stations, Signal, Settings */
+html[data-density="compact"] .coll { padding: 16px 24px 32px; gap: 20px; }
+html[data-density="compact"] .sig { padding: 14px 24px 40px; gap: 12px; }
+html[data-density="compact"] .set { padding: 16px 24px 32px; gap: 14px; }
+html[data-density="compact"] .set-panel__head { padding: 10px 16px; }
+html[data-density="compact"] .set-row { padding: 8px 16px; }
+html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
+/* Painel Tweaks */
+html[data-density="compact"] .tweaks__body { padding: 10px 12px 12px; gap: 8px; }
 
 /* ── data-sidebar="icons": sidebar colapsada, so icones ─────────
    Por padrao (sem o atributo) a sidebar exibe icone + texto.
@@ -1574,22 +1633,25 @@ html[data-sidebar="icons"] .nav-item__kbd { display: none; }
    O Icon vira <iconify-icon>, nao span — entao filtro generico nao
    afeta o icone. Sem isso o label do nav sobra ao lado do icone
    numa sidebar de 56px e quebra o layout.
-   Esconde SO na tela: display:none tirava o nome acessivel do link
-   (leitor de tela anunciava link sem nome). O tooltip vem do title
-   que o Sidebar.tsx poe neste modo. O contador do Crate fica de fora
-   do filtro: some-lo escondia os downloads ativos. */
+   Escondido SO visualmente (fora do fluxo, recortado): display:none
+   tirava o texto da arvore de acessibilidade e o link ficava sem nome
+   (leitor de tela anunciava link sem nome). O tooltip vem do title que
+   o Sidebar.tsx poe neste modo. O contador do Crate fica de fora do
+   filtro: some-lo escondia os downloads ativos. */
 html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge) {
   position: absolute;
   width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
   overflow: hidden;
-  clip-path: inset(50%);
+  clip: rect(0 0 0 0); clip-path: inset(50%);
   white-space: nowrap;
 }
 html[data-sidebar="icons"] .nav-item {
-  position: relative;
   justify-content: center; padding: 8px; gap: 0;
+  position: relative;
 }
-/* Contador no canto do item, sem empurrar o icone centralizado. */
+/* Contador de downloads do Crate: continua visivel, no canto do item
+   (em 56px nao cabe ao lado do icone), sem empurrar o icone centralizado. */
 html[data-sidebar="icons"] .nav-item__badge {
   position: absolute; top: 0; right: 0;
   margin: 0;
@@ -2445,7 +2507,7 @@ html { --glow: 0; }
 }
 
 /* ════════════════════════════════════════════════════════════
-   PLAYLISTS — collection cards + smart-tbl + create-new tile
+   PLAYLISTS — collection cards (pastas do acervo)
    ════════════════════════════════════════════════════════════ */
 .coll {
   padding: 28px 40px 56px;
@@ -2575,59 +2637,6 @@ html { --glow: 0; }
 .pl-card__pin:hover { color: var(--fg-1); border-color: var(--fg-3); }
 .pl-card__pin.is-pinned:hover { background: var(--fg-2); border-color: var(--fg-2); }
 .pl-card__pin iconify-icon { width: 12px; height: 12px; }
-.pl-card--new .pl-card__cover {
-  display: grid; place-items: center;
-  background: var(--bg-soft);
-  border-style: dashed;
-  border-color: var(--fg-8);
-  color: var(--fg-5);
-}
-.pl-card--new .pl-card__cover iconify-icon { width: 28px; height: 28px; color: var(--fg-4); }
-.pl-card--new .pl-card__title { color: var(--fg-3); }
-
-/* Smart playlists table — table semantica (display:contents+grid era fragil em WebKitGTK) */
-.smart-tbl {
-  width: 100%;
-  background: var(--bg-paper);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.smart-tbl th,
-.smart-tbl td {
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--line-3);
-  vertical-align: middle;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.smart-tbl tbody tr:last-child td { border-bottom: none; }
-.smart-tbl col.smart-tbl__col-icon    { width: 32px; }
-.smart-tbl col.smart-tbl__col-name    { width: auto; }
-.smart-tbl col.smart-tbl__col-rule    { width: 35%; }
-.smart-tbl col.smart-tbl__col-updated { width: 140px; }
-.smart-tbl col.smart-tbl__col-num     { width: 80px; }
-.smart-tbl__head {
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
-  color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--line-2) !important;
-}
-.smart-tbl__head--num { text-align: right; }
-.smart-tbl__row { cursor: pointer; }
-.smart-tbl__row:hover td { background: var(--bg-soft); transition: background var(--dur-base); }
-.smart-tbl__icon { width: 32px; color: var(--fg-5); }
-.smart-tbl__icon iconify-icon { width: 14px; height: 14px; vertical-align: middle; }
-.smart-tbl__name { font-weight: 600; color: var(--fg-1); }
-.smart-tbl__rule { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-5); letter-spacing: -0.01em; }
-.smart-tbl__updated { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
-.smart-tbl__count { font-family: var(--font-mono); font-size: 11px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
-.smart-tbl__time { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ════════════════════════════════════════════════════════════
    STATIONS — feature card + seed grid + live badge

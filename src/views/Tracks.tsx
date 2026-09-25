@@ -31,56 +31,62 @@ export default function Tracks() {
     playTrack(t);
   }
 
+  // Aberta direto (/tracks) a view traz o proprio .view — o unico
+  // container que rola (.main tem overflow:hidden). Como aba, a Library
+  // ja fornece o dela.
   const standalone = () => route().path === "/tracks";
 
+  const body = () => (
+    <div class="view__body">
+      <div class="toolbar">
+        <button class={`chip${genre() === null ? " active" : ""}`} onClick={() => setGenre(null)}>All</button>
+        <For each={genres() ?? []}>
+          {(g: any) => (
+            <button
+              class={`chip${genre() === g.name ? " active" : ""}`}
+              onClick={() => setGenre(g.name)}
+            >
+              {g.name}
+            </button>
+          )}
+        </For>
+      </div>
+
+      <div class="tracks">
+        <div class="tracks__head tracks__idx">#</div>
+        <div class="tracks__head">Title</div>
+        <div class="tracks__head">Album</div>
+        <div class="tracks__head">Genre</div>
+        <div class="tracks__head tracks__mono">Length</div>
+
+        <For each={tracks() ?? []}>
+          {(t, i) => (
+            <TrackRowTable
+              track={t}
+              index={i() + 1}
+              onClick={() => play(t)}
+              contextList={tracks() ?? []}
+            />
+          )}
+        </For>
+
+        <Show when={(tracks() ?? []).length === 0 && !tracks.loading}>
+          <div style={{ "grid-column": "1 / -1", padding: "32px", "text-align": "center", color: "var(--fg-5)" }}>
+            Nenhuma track encontrada.
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+
   return (
-    <>
-      <Show when={standalone()}>
+    <Show when={standalone()} fallback={body()}>
+      <article class="view">
         <header class="view__head">
           <div><h1>Tracks</h1></div>
         </header>
-      </Show>
-
-      <div class="view__body">
-        <div class="toolbar">
-          <button class={`chip${genre() === null ? " active" : ""}`} onClick={() => setGenre(null)}>All</button>
-          <For each={genres() ?? []}>
-            {(g: any) => (
-              <button
-                class={`chip${genre() === g.name ? " active" : ""}`}
-                onClick={() => setGenre(g.name)}
-              >
-                {g.name}
-              </button>
-            )}
-          </For>
-        </div>
-
-        <div class="tracks">
-          <div class="tracks__head tracks__idx">#</div>
-          <div class="tracks__head">Title</div>
-          <div class="tracks__head">Album</div>
-          <div class="tracks__head">Genre</div>
-          <div class="tracks__head tracks__mono">Length</div>
-
-          <For each={tracks() ?? []}>
-            {(t, i) => (
-              <TrackRowTable
-                track={t}
-                index={i() + 1}
-                onClick={() => play(t)}
-                contextList={tracks() ?? []}
-              />
-            )}
-          </For>
-
-          <Show when={(tracks() ?? []).length === 0 && !tracks.loading}>
-            <div style={{ "grid-column": "1 / -1", padding: "32px", "text-align": "center", color: "var(--fg-5)" }}>
-              Nenhuma track encontrada.
-            </div>
-          </Show>
-        </div>
-      </div>
-    </>
+        {body()}
+      </article>
+    </Show>
   );
 }

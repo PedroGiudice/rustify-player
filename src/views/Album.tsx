@@ -23,7 +23,7 @@ export default function AlbumView() {
   const [album] = createResource(title, async (t): Promise<Album | null> => {
     if (!t) return null;
     try {
-      const list = await libGetAlbums({ limit: 500 });
+      const list = await libGetAlbums({ limit: null });
       return list.find((a) => a.title === t) ?? null;
     } catch { return null; }
   });

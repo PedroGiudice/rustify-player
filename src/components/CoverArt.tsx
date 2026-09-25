@@ -8,7 +8,7 @@
        "no art" cleanly.
    ============================================================ */
 
-import { Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import type { Tone, Glyph } from "../tones";
 import cassetteFallback from "../assets/cassette-fallback.png";
 
@@ -21,7 +21,8 @@ export interface CoverArtProps {
   tone?: Tone;
   /** Kept for back-compat with old call sites. Ignored. */
   glyph?: Glyph;
-  /** Visual variant: sm (40px), md (responsive aspect-1), lg (200px), xl (NP). */
+  /** Visual variant. So muda o tamanho relativo do cassete (e o raio do sm);
+      quem dimensiona e o chamador, via style/class (ex: .card__cover). */
   size?: "sm" | "md" | "lg" | "xl";
   /** Inline style overrides — typically width/height when 'md'. */
   style?: import("solid-js").JSX.CSSProperties;
@@ -40,20 +41,27 @@ export function CoverArt(props: CoverArtProps) {
       default:   return "cover";
     }
   };
+  // Capa que falha (cache apagado, arquivo corrompido) cai no cassete, como
+  // capa ausente — esconder so o <img> deixava uma caixa vazia. Guarda a URL
+  // que falhou: trocar de capa tenta a nova.
+  const [failedSrc, setFailedSrc] = createSignal<string | null>(null);
+  const liveSrc = () => (props.src && props.src !== failedSrc() ? props.src : null);
   return (
     <div
       class={`${sizeClass()} cover--fallback${props.class ? ` ${props.class}` : ""}`}
       style={props.style}
     >
       <Show
-        when={props.src}
+        when={liveSrc()}
         fallback={<img class="cover__cassette" src={cassetteFallback} alt="" />}
       >
         {(src) => (
           <img
             src={src()}
             alt={props.alt ?? ""}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            loading="lazy"
+            decoding="async"
+            onError={() => setFailedSrc(src())}
           />
         )}
       </Show>

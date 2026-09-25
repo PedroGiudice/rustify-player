@@ -139,16 +139,20 @@ export const normSetTarget = (lufs: number) =>
 // ── Library commands ───────────────────────────────────────────
 
 export const getState = () => invoke<AppState>("get_state");
-export const libGetAlbums = (opts?: { artist?: string; genre?: string; limit?: number }) =>
-  invoke<Album[]>("lib_list_albums", { artist: opts?.artist, genre: opts?.genre, limit: opts?.limit ?? 500 });
-export const libGetArtists = (opts?: { genre?: string; limit?: number }) =>
-  invoke<Artist[]>("lib_list_artists", { genre: opts?.genre, limit: opts?.limit ?? 500 });
+// Listagens de álbuns/artistas: o backend ordena por nome e só trunca
+// quando recebe um número. `limit: null` = acervo inteiro; omitido =
+// default. Quem navega o acervo (grades, detalhe) passa null — corte
+// alfabético silencioso escondia parte da biblioteca.
+export const libGetAlbums = (opts?: { artist?: string; genre?: string; limit?: number | null }) =>
+  invoke<Album[]>("lib_list_albums", { artist: opts?.artist, genre: opts?.genre, limit: opts?.limit === undefined ? 500 : opts.limit });
+export const libGetArtists = (opts?: { genre?: string; limit?: number | null }) =>
+  invoke<Artist[]>("lib_list_artists", { genre: opts?.genre, limit: opts?.limit === undefined ? 500 : opts.limit });
 export const libGetTracks = (opts?: { album?: string; artist?: string; genre?: string; limit?: number }) =>
   invoke<Track[]>("lib_list_tracks", { album: opts?.album, artist: opts?.artist, genre: opts?.genre, limit: opts?.limit ?? 5000 });
 export const libGetTracksByAlbum = (albumTitle: string, limit?: number) =>
   invoke<Track[]>("lib_list_tracks", { album: albumTitle, limit: limit ?? 200 });
-export const libGetAlbumsByArtist = (artistName: string, limit?: number) =>
-  invoke<Album[]>("lib_list_albums", { artist: artistName, limit: limit ?? 100 });
+export const libGetAlbumsByArtist = (artistName: string, limit?: number | null) =>
+  invoke<Album[]>("lib_list_albums", { artist: artistName, limit: limit === undefined ? 100 : limit });
 export const libGetTracksByArtist = (artistName: string, limit?: number) =>
   invoke<Track[]>("lib_list_tracks", { artist: artistName, limit: limit ?? 200 });
 export const libToggleLike = (trackId: string) => invoke<boolean>("lib_toggle_like", { trackId });

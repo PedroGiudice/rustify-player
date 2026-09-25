@@ -14,9 +14,16 @@ const { mockTracks, mockSnap, mockAlbums, mockSetQueue, mockPlayTrack } = vi.hoi
   mockTracks: [
     { id: "10", title: "Song 1", artist_name: "Band", album_title: "Great Album", album_cover_path: null, album_year: 2023, duration_ms: 240000, path: "/s1.flac", lrc_path: null },
   ],
-  mockSnap: { tracks_total: 50, albums_total: 5, artists_total: 3, embeddings_done: 40, embeddings_pending: 10, embeddings_failed: 0 },
+  // Espelha o IndexerSnapshot real (library-indexer/src/types.rs): NAO tem
+  // albums_total nem artists_total. O mock antigo inventava os dois campos
+  // e escondia que a Home afirmava "12 albums" (o tamanho da prateleira).
+  mockSnap: { tracks_total: 50, embeddings_done: 40, embeddings_pending: 10, embeddings_failed: 0, scan_in_progress: false },
+  // Acervo maior que a prateleira de 12 da Home.
   mockAlbums: [
     { title: "Great Album", artist_name: "Band", cover_path: null, year: 2023, track_count: 1 },
+    ...Array.from({ length: 29 }, (_, i) => ({
+      title: `Other ${String(i).padStart(2, "0")}`, artist_name: "Band", cover_path: null, year: 2023, track_count: 3,
+    })),
   ],
   mockSetQueue: vi.fn(),
   mockPlayTrack: vi.fn(),
@@ -113,5 +120,29 @@ describe("Home — botao card__play no grid de albums", () => {
     fireEvent.click(btn);
 
     expect(ancestorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home — cabeçalho e prateleira de álbuns", () => {
+  it("a contagem de álbuns vem do acervo, não do tamanho da prateleira", async () => {
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelector(".view__stats")).toBeTruthy());
+    const stats = container.querySelector(".view__stats")!.textContent ?? "";
+    expect(stats).toContain("30 albums");
+    expect(tauri.libGetAlbums).toHaveBeenCalledWith({ limit: null });
+  });
+
+  it("a prateleira mostra 12 álbuns e não se rotula como favoritos", async () => {
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelectorAll(".card").length).toBe(12));
+    const titles = Array.from(container.querySelectorAll(".section__title")).map((h) => h.textContent ?? "");
+    expect(titles.some((t) => /favorit/i.test(t))).toBe(false);
+  });
+
+  it("sem a listagem de álbuns, a Home não afirma contagem nenhuma", async () => {
+    vi.mocked(tauri.libGetAlbums).mockRejectedValueOnce(new Error("indexer fora"));
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelector(".view__stats")).toBeTruthy());
+    expect(container.querySelector(".view__stats")!.textContent).not.toMatch(/albums/);
   });
 });
