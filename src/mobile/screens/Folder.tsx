@@ -20,15 +20,20 @@ import { Show, createResource } from "solid-js";
 import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LazyList, TopBar } from "../components/ui";
+import { Empty, LazyList, LoadError, TopBar } from "../components/ui";
 import { libListFolderTracks } from "../ipc";
 import { playFolder, playFolderFrom, shuffleFolder } from "../store";
 import { fmtTotal } from "../derive";
 
 export function Folder(props: { param: string | null }) {
   const name = () => props.param ?? "";
-  const [data] = createResource(name, (n) => (n ? libListFolderTracks(n) : Promise.resolve([])));
-  const list = () => data() ?? [];
+  const [data, { refetch }] = createResource(name, (n) =>
+    n ? libListFolderTracks(n) : Promise.resolve([]),
+  );
+  // Ler um resource em erro RELANÇA a exceção (Solid 1.9) e, sem boundary,
+  // derrubava a tela (mobile-13). `data.error` lê sem lançar: com erro, a
+  // lista é vazia e a tela mostra o estado de erro.
+  const list = () => (data.error ? [] : (data() ?? []));
 
   return (
     <div class="screen">
@@ -39,13 +44,23 @@ export function Folder(props: { param: string | null }) {
           <h1>{name()}</h1>
           <div class="meta">
             <Show when={!data.loading} fallback="carregando…">
-              {list().length} faixas · {fmtTotal(list().map((t) => t.duration_ms))}
+              <Show when={!data.error} fallback="falha ao carregar">
+                {list().length} faixas · {fmtTotal(list().map((t) => t.duration_ms))}
+              </Show>
             </Show>
           </div>
         </div>
       </div>
 
-      <Show when={list().length} fallback={<Show when={!data.loading}><Empty title="Pasta vazia" hint="Nenhuma faixa indexada nesta pasta." /></Show>}>
+      <Show when={data.error && !data.loading}>
+        <LoadError
+          title="Não deu para carregar a pasta"
+          detail={String(data.error)}
+          onRetry={() => void refetch()}
+        />
+      </Show>
+
+      <Show when={list().length} fallback={<Show when={!data.loading && !data.error}><Empty title="Pasta vazia" hint="Nenhuma faixa indexada nesta pasta." /></Show>}>
         <div class="actions">
           <button class="btn btn--pri" onClick={() => void playFolder(list(), name())}>
             <Icon.play />

@@ -12,7 +12,7 @@
    ============================================================ */
 
 import { createSignal } from "solid-js";
-import { isSceneKey, type SceneKey } from "../../gl/meta";
+import { glStatus, isSceneKey, type SceneKey } from "../../gl/meta";
 
 export type BgEngine = "2d" | "webgl";
 
@@ -43,6 +43,15 @@ const [bgEngine, setEngineSignal] = createSignal<BgEngine>(loadEngine());
 const [bgScene, setSceneSignal] = createSignal<SceneKey>(loadScene());
 
 export { bgEngine, bgScene };
+
+/**
+ * O canvas 2D está desenhando DE FATO: motor 2D escolhido, ou WebGL que
+ * falhou e deixou o 2D assumir (MobileApp monta pela mesma regra). É o que
+ * decide se shape/render têm alvo — pela preferência, o NP mostrava os dois
+ * no WebGL sem ninguém desenhar (mobile-2) e o Settings os escondia no
+ * fallback, com o 2D vivo (mobile-v5).
+ */
+export const is2dActive = () => bgEngine() !== "webgl" || glStatus().ok === false;
 
 function persist(key: string, val: string) {
   try {

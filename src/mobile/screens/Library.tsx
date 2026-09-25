@@ -14,12 +14,12 @@ import { For, Show, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LazyList, ViewHead } from "../components/ui";
+import { Empty, LazyList, LibGate, ViewHead, libSub } from "../components/ui";
 import { navigate } from "../nav";
-import { albums, artists, folders, libReady, playTrackFrom, tracks } from "../store";
+import { albums, artists, folders, playTrackFrom, tracks } from "../store";
 import { fmtCount } from "../derive";
 
-type Facet = "folders" | "albums" | "artists" | "tracks";
+export type Facet = "folders" | "albums" | "artists" | "tracks";
 const FACETS: Array<{ id: Facet; label: string }> = [
   { id: "folders", label: "Pastas" },
   { id: "albums", label: "Álbuns" },
@@ -27,14 +27,24 @@ const FACETS: Array<{ id: Facet; label: string }> = [
   { id: "tracks", label: "Faixas" },
 ];
 
+/* Faceta no MÓDULO, não na tela (mobile-3): voltar de um álbum recria a
+   Library, e um signal local voltava a "Pastas" a cada remontagem. */
+const [facet, setFacet] = createSignal<Facet>("folders");
+export { facet as libraryFacet };
+
+/** Abre a Library numa faceta — os "Ver todos/todas" da Home. */
+export function openLibraryAt(f: Facet) {
+  setFacet(f);
+  navigate("/library");
+}
+
 export function Library() {
-  const [facet, setFacet] = createSignal<Facet>("folders");
   const sub = () =>
     `${fmtCount(tracks().length)} faixas · ${albums().length} álbuns · ${artists().length} artistas`;
 
   return (
     <div class="screen">
-      <ViewHead title="Library" sub={libReady() ? sub() : "carregando acervo…"} />
+      <ViewHead title="Library" sub={libSub(sub)} />
 
       <div class="chiprow">
         <For each={FACETS}>
@@ -46,7 +56,7 @@ export function Library() {
         </For>
       </div>
 
-      <Show when={libReady()} fallback={<Empty title="Carregando biblioteca…" />}>
+      <LibGate>
         <Show when={facet() === "folders"}>
           <Show when={folders().length} fallback={<Empty title="Nenhuma pasta" hint="As pastas de 1º nível de Music viram playlists." />}>
             <div class="rowlist">
@@ -124,7 +134,7 @@ export function Library() {
         </Show>
 
         <div style={{ height: "14px" }} />
-      </Show>
+      </LibGate>
     </div>
   );
 }

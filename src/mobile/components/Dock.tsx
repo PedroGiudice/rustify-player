@@ -13,7 +13,7 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
-import { activeTab, navigate, openNowPlaying } from "../nav";
+import { activeTab, baseRoute, navigate, openNowPlaying } from "../nav";
 import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from "../store";
 import { originLabel, originSrc } from "../derive";
 
@@ -23,6 +23,22 @@ const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/library", label: "Library", icon: Icon.library },
   { path: "/queue", label: "Queue", icon: Icon.queue },
 ];
+
+/** Sobe a tela corrente ao topo (a .view é o scroller do shell). */
+function scrollViewToTop() {
+  const view = document.querySelector<HTMLElement>(".view");
+  if (!view) return;
+  if (typeof view.scrollTo === "function") view.scrollTo({ top: 0, behavior: "smooth" });
+  else view.scrollTop = 0;
+}
+
+/** Tocar a aba JÁ ativa, na raiz dela, sobe ao topo (mobile-4): navigate()
+ *  não faz nada quando o hash já é o alvo, e o toque morria. Numa sub-rota
+ *  (pasta, álbum…) a aba continua levando de volta à raiz. */
+function onTab(path: string) {
+  if (baseRoute().path === path) scrollViewToTop();
+  else navigate(path);
+}
 
 function Vu() {
   const [bars, setBars] = createSignal([4, 4, 4, 4]);
@@ -42,10 +58,14 @@ export function Dock() {
 
   // Gestos do mini (porte do protótipo)
   let sx = 0, sy = 0, st = 0;
+  /** Último pointerup no mini: o click que o navegador dispara logo depois é
+   *  eco do gesto (tap ou swipe), não uma segunda intenção. */
+  let lastUp = 0;
   const onDown = (e: PointerEvent) => {
     sx = e.clientX; sy = e.clientY; st = Date.now();
   };
   const onUp = (e: PointerEvent) => {
+    lastUp = Date.now();
     const dx = e.clientX - sx, dy = e.clientY - sy;
     if (Date.now() - st > 600) return;
     if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
@@ -59,6 +79,17 @@ export function Dock() {
     if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && !(e.target as HTMLElement).closest("button.iconbtn")) {
       openNowPlaying();
     }
+  };
+  /* Caminho sem ponteiro (mobile-20): teclado e ativação do TalkBack, que
+     chega como click sem gesto antes. Com gesto, o onUp já decidiu. */
+  const onInfoClick = () => {
+    if (Date.now() - lastUp < 700) return;
+    openNowPlaying();
+  };
+  const onInfoKey = (e: KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    openNowPlaying();
   };
 
   return (
@@ -83,7 +114,15 @@ export function Dock() {
         {(t) => (
           <div class="mini" onPointerDown={onDown} onPointerUp={onUp}>
             <Cover path={t().album_cover_path} seed={t().id} />
-            <div class="info" style={{ flex: 1, "min-width": 0 }}>
+            <div
+              class="info"
+              style={{ flex: 1, "min-width": 0 }}
+              role="button"
+              tabindex="0"
+              aria-label={`Abrir Now Playing: ${t().title}`}
+              onClick={onInfoClick}
+              onKeyDown={onInfoKey}
+            >
               <div class="tt">{t().title}</div>
               <div class="ts">
                 <span class="srcbadge" attr:data-src={originSrc(queueOrigin(), queueContextId())}>
@@ -118,13 +157,14 @@ export function Dock() {
           </div>
         )}
       </Show>
-      <nav class="tabbar">
+      <nav class="tabbar" aria-label="Navegação principal">
         <For each={TAB_DEFS}>
           {(tab) => (
             <button
               class="tab"
               attr:data-on={activeTab() === tab.path ? "" : undefined}
-              onClick={() => navigate(tab.path)}
+              aria-current={activeTab() === tab.path ? "page" : undefined}
+              onClick={() => onTab(tab.path)}
             >
               <tab.icon />
               <span>{tab.label}</span>

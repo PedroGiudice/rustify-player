@@ -172,10 +172,15 @@ export const hasPlayback = createMemo(() => current() != null);
 const [toast, setToast] = createSignal<string | null>(null);
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export { toast };
+/** Tempo de leitura (mobile-v4): 1,6 s cobre as confirmações curtas
+ *  ("Curtida", "Toca em seguida"); texto longo ("Rádio por artista — <título>
+ *  ainda sem análise") ganha ~55 ms por caractere, com teto de 5 s. */
+const toastMs = (msg: string) => Math.min(5000, Math.max(1600, 800 + msg.length * 55));
+
 export function showToast(msg: string) {
   setToast(msg);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => setToast(null), 1600);
+  toastTimer = setTimeout(() => setToast(null), toastMs(msg));
 }
 
 // ── Leitura da fila real ──────────────────────────────────────
@@ -660,6 +665,8 @@ export async function rescan() {
   try {
     const count = await ipc.libRescan();
     await loadLibrary();
+    // Carregou: um erro de carga anterior deixou de valer.
+    setLibError(null);
     await loadIntel();
     showToast(`Biblioteca re-indexada · ${count} faixas`);
   } catch (e) {
@@ -706,6 +713,40 @@ async function bootCall<T>(
   }
 }
 
+/** Carga da biblioteca com o teto do boot. A falha vira `libError` — as telas
+ *  mostram erro com "tentar de novo", NUNCA "acervo vazio" (mobile-12): o
+ *  timeout de IPC no boot frio mandava o usuário ressincronizar o celular
+ *  quando bastava tentar de novo. */
+let libInflight: Promise<boolean> | null = null;
+
+function loadLibraryGuarded(): Promise<boolean> {
+  if (libInflight) return libInflight;
+  libInflight = (async () => {
+    try {
+      await bootCall("loadLibrary", loadLibrary, 6000);
+      setLibError(null);
+      return true;
+    } catch (e) {
+      console.error("[mobile] carga da biblioteca falhou:", e);
+      setLibError(String(e));
+      return false;
+    } finally {
+      setLibReady(true);
+      libInflight = null;
+    }
+  })();
+  return libInflight;
+}
+
+/** "Tentar de novo" dos estados de erro. Enquanto tenta, as telas voltam a
+ *  "Carregando biblioteca…" em vez de manter o erro velho na tela. */
+export async function reloadLibrary() {
+  if (libInflight) return; // toque repetido: a carga em curso já responde
+  setLibReady(false);
+  setLibError(null);
+  if (await loadLibraryGuarded()) void loadIntel();
+}
+
 export async function bootStore() {
   // initialize PRECISA vir antes de qualquer outra chamada ao plugin.
   try {
@@ -714,15 +755,7 @@ export async function bootStore() {
     console.error("[mobile] initialize falhou:", e);
   }
 
-  try {
-    await bootCall("loadLibrary", loadLibrary, 6000);
-    setLibError(null);
-  } catch (e) {
-    console.error("[mobile] carga da biblioteca falhou:", e);
-    setLibError(String(e));
-  } finally {
-    setLibReady(true);
-  }
+  await loadLibraryGuarded();
 
   await syncState();
   // A fila vem do serviço — inclusive quando o WebView reiniciou sozinho

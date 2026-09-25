@@ -14,7 +14,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LazyList, SecHead, ViewHead } from "../components/ui";
+import { Empty, LazyList, LibGate, SecHead, ViewHead } from "../components/ui";
 import { navigate } from "../nav";
 import { albums, artists, folders, playTrackFrom, tracks } from "../store";
 import { normalize, searchTracks } from "../derive";
@@ -40,9 +40,12 @@ function loadRecent(): string[] {
   }
 }
 
+/* Termo e escopo no MÓDULO (mobile-3): abrir um artista e voltar recria a
+   tela, e signals locais devolviam o campo vazio. */
+const [q, setQ] = createSignal("");
+const [scope, setScope] = createSignal<Scope>("all");
+
 export function Search() {
-  const [q, setQ] = createSignal("");
-  const [scope, setScope] = createSignal<Scope>("all");
   const [recent, setRecent] = createSignal(loadRecent());
 
   const remember = (term: string) => {
@@ -133,106 +136,108 @@ export function Search() {
           </Show>
         }
       >
-        <Show when={nothing()}>
-          <Empty title="Nada encontrado" hint={`Nenhum resultado para “${q()}”.`} />
-        </Show>
+        <LibGate>
+          <Show when={nothing()}>
+            <Empty title="Nada encontrado" hint={`Nenhum resultado para “${q()}”.`} />
+          </Show>
 
-        <Show when={show("folders") && folderHits().length}>
-          <div class="sec">
-            <SecHead label="Pastas" />
-            <div class="rowlist">
-              <For each={folderHits()}>
-                {(f) => (
-                  <button
-                    class="rowitem"
-                    onClick={() => {
-                      remember(q());
-                      navigate("/folder", f.name);
-                    }}
-                  >
-                    <Cover seed={f.name} />
-                    <div style={{ flex: 1, "min-width": 0 }}>
-                      <div class="rt">{f.name}</div>
-                      <div class="rowsub">{f.track_count} faixas</div>
-                    </div>
-                    <Icon.chev />
-                  </button>
-                )}
-              </For>
+          <Show when={show("folders") && folderHits().length}>
+            <div class="sec">
+              <SecHead label="Pastas" />
+              <div class="rowlist">
+                <For each={folderHits()}>
+                  {(f) => (
+                    <button
+                      class="rowitem"
+                      onClick={() => {
+                        remember(q());
+                        navigate("/folder", f.name);
+                      }}
+                    >
+                      <Cover seed={f.name} />
+                      <div style={{ flex: 1, "min-width": 0 }}>
+                        <div class="rt">{f.name}</div>
+                        <div class="rowsub">{f.track_count} faixas</div>
+                      </div>
+                      <Icon.chev />
+                    </button>
+                  )}
+                </For>
+              </div>
             </div>
-          </div>
-        </Show>
+          </Show>
 
-        <Show when={show("artists") && artistHits().length}>
-          <div class="sec">
-            <SecHead label="Artistas" />
-            <div class="rowlist">
-              <For each={artistHits()}>
-                {(a) => (
-                  <button
-                    class="rowitem"
-                    onClick={() => {
-                      remember(q());
-                      navigate("/artist", a.name);
-                    }}
-                  >
-                    <Cover path={a.cover} seed={a.name} icon="person" />
-                    <div style={{ flex: 1, "min-width": 0 }}>
-                      <div class="rt">{a.name}</div>
-                      <div class="rowsub">{a.track_count} faixas</div>
-                    </div>
-                    <Icon.chev />
-                  </button>
-                )}
-              </For>
+          <Show when={show("artists") && artistHits().length}>
+            <div class="sec">
+              <SecHead label="Artistas" />
+              <div class="rowlist">
+                <For each={artistHits()}>
+                  {(a) => (
+                    <button
+                      class="rowitem"
+                      onClick={() => {
+                        remember(q());
+                        navigate("/artist", a.name);
+                      }}
+                    >
+                      <Cover path={a.cover} seed={a.name} icon="person" />
+                      <div style={{ flex: 1, "min-width": 0 }}>
+                        <div class="rt">{a.name}</div>
+                        <div class="rowsub">{a.track_count} faixas</div>
+                      </div>
+                      <Icon.chev />
+                    </button>
+                  )}
+                </For>
+              </div>
             </div>
-          </div>
-        </Show>
+          </Show>
 
-        <Show when={show("albums") && albumHits().length}>
-          <div class="sec">
-            <SecHead label="Álbuns" />
-            <div class="grid">
-              <For each={albumHits()}>
-                {(a) => (
-                  <button
-                    class="alb"
-                    onClick={() => {
-                      remember(q());
-                      navigate("/album", a.key);
-                    }}
-                  >
-                    <Cover path={a.cover} seed={a.key} cls="art" icon="disc" />
-                    <div class="t">{a.title}</div>
-                    <div class="s">{a.artist ?? "—"}</div>
-                  </button>
-                )}
-              </For>
+          <Show when={show("albums") && albumHits().length}>
+            <div class="sec">
+              <SecHead label="Álbuns" />
+              <div class="grid">
+                <For each={albumHits()}>
+                  {(a) => (
+                    <button
+                      class="alb"
+                      onClick={() => {
+                        remember(q());
+                        navigate("/album", a.key);
+                      }}
+                    >
+                      <Cover path={a.cover} seed={a.key} cls="art" icon="disc" />
+                      <div class="t">{a.title}</div>
+                      <div class="s">{a.artist ?? "—"}</div>
+                    </button>
+                  )}
+                </For>
+              </div>
             </div>
-          </div>
-        </Show>
+          </Show>
 
-        <Show when={show("tracks") && hits().length}>
-          <div class="sec" style={{ padding: 0 }}>
-            <div style={{ padding: "0 20px" }}>
-              <SecHead label="Faixas" />
+          <Show when={show("tracks") && hits().length}>
+            <div class="sec" style={{ padding: 0 }}>
+              <div style={{ padding: "0 20px" }}>
+                <SecHead label="Faixas" />
+              </div>
+              <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
+                <LazyList items={hits()} chunk={40}>
+                  {(t, i) => (
+                    <TrackRow
+                      track={t}
+                      onPlay={() => {
+                        remember(q());
+                        void playTrackFrom(hits(), i());
+                      }}
+                    />
+                  )}
+                </LazyList>
+              </div>
             </div>
-            <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
-              <LazyList items={hits()} chunk={40}>
-                {(t, i) => (
-                  <TrackRow
-                    track={t}
-                    onPlay={() => {
-                      remember(q());
-                      void playTrackFrom(hits(), i());
-                    }}
-                  />
-                )}
-              </LazyList>
-            </div>
-          </div>
-        </Show>
-        <div style={{ height: "16px" }} />
+          </Show>
+          <div style={{ height: "16px" }} />
+        </LibGate>
       </Show>
     </div>
   );

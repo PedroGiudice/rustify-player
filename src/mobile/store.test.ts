@@ -10,7 +10,7 @@
    ("shuffle da playlist vira shuffle geral").
    ============================================================ */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track } from "./types";
 
 vi.mock("./ipc", () => ({
@@ -32,6 +32,8 @@ vi.mock("./ipc", () => ({
 import * as ipc from "./ipc";
 import {
   isLiked,
+  libError,
+  libReady,
   loadRecents,
   pb,
   playFolder,
@@ -42,12 +44,15 @@ import {
   queueEntries,
   queueOrigin,
   recents,
+  reloadLibrary,
   rescan,
   shuffleFolder,
   shuffleList,
+  showToast,
   shuffleUpcoming,
   toast,
   toggleLike,
+  tracks,
 } from "./store";
 
 const track = (id: number): Track =>
@@ -465,5 +470,69 @@ describe('loadRecents (shelf "Recently played" — CMR-215)', () => {
     await loadRecents();
     await loadRecents();
     expect(ipc.libRecentPlays).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("showToast (tempo de leitura — mobile-v4)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("confirmação curta continua sumindo em ~1,6 s", async () => {
+    vi.useFakeTimers();
+    showToast("Curtida");
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(toast()).toBe("Curtida");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(toast()).toBeNull();
+  });
+
+  it("mensagem longa fica o bastante para ser lida", async () => {
+    vi.useFakeTimers();
+    const msg = "Rádio por artista — Uma Faixa Com Um Nome Bem Comprido ainda sem análise";
+    showToast(msg);
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(toast()).toBe(msg);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(toast()).toBeNull();
+  });
+});
+
+describe("reloadLibrary (falha de carga vira erro, não acervo vazio — mobile-12)", () => {
+  const listTracks = () => ipc.libListTracks as ReturnType<typeof vi.fn>;
+
+  /** As três tentativas do bootCall falham (bridge fria, IPC perdida). */
+  async function failThreeTimes() {
+    vi.useFakeTimers();
+    try {
+      for (let i = 0; i < 3; i++) listTracks().mockRejectedValueOnce(new Error("bridge fria"));
+      const p = reloadLibrary();
+      // Tentar de novo mostra "carregando", não o erro velho.
+      expect(libReady()).toBe(false);
+      await vi.advanceTimersByTimeAsync(5000);
+      await p;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("IPC que falha nas três tentativas: libError preenchido e libReady de volta", async () => {
+    await failThreeTimes();
+    expect(libReady()).toBe(true);
+    expect(libError()).toMatch(/bridge fria/);
+  });
+
+  it("tentar de novo com sucesso limpa o erro, carrega o acervo e a inteligência", async () => {
+    await failThreeTimes();
+    listTracks().mockResolvedValueOnce([track(1)]);
+    await reloadLibrary();
+    expect(libError()).toBeNull();
+    expect(tracks().map((t) => t.id)).toEqual(["1"]);
+    expect(ipc.libListStations).toHaveBeenCalled();
+  });
+
+  it("rescan bem-sucedido depois de uma falha também limpa o erro", async () => {
+    await failThreeTimes();
+    listTracks().mockResolvedValueOnce([track(2)]);
+    await rescan();
+    expect(libError()).toBeNull();
   });
 });
