@@ -582,6 +582,12 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row__tech  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
 .row__when  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
 .row__time  { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
+/* Linha informativa, sem acao (aba Genres da Library): coluna unica.
+   Com o grid de 5 colunas do .row, o unico filho caia na coluna de
+   40px e o nome truncava; pointer e hover prometiam um clique que
+   nao existe. */
+.row--static { grid-template-columns: 1fr; cursor: default; }
+.row--static:hover { background: transparent; }
 
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 16px; }
 .card { cursor: pointer; }

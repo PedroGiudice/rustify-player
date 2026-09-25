@@ -70,7 +70,7 @@ export default function Library() {
         <div class="view__body">
           <For each={meta()?.genres ?? []}>
             {(g: any) => (
-              <div class="row">
+              <div class="row row--static">
                 <div class="row__meta">
                   <div class="row__title">{g.name}</div>
                   <div class="row__sub">{g.track_count} tracks</div>
