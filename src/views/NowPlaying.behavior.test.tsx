@@ -237,6 +237,46 @@ describe("NowPlaying — seletores do fundo 2D (np-6)", () => {
   });
 });
 
+describe("NowPlaying — card de letras acompanha o tamanho do .np (np-9)", () => {
+  it("reposiciona o card quando o .np encolhe sem resize da janela", async () => {
+    const observers: Array<{ cb: ResizeObserverCallback; targets: Element[] }> = [];
+    (globalThis as any).ResizeObserver = class {
+      private o: { cb: ResizeObserverCallback; targets: Element[] };
+      constructor(cb: ResizeObserverCallback) {
+        this.o = { cb, targets: [] };
+        observers.push(this.o);
+      }
+      observe(el: Element) { this.o.targets.push(el); }
+      disconnect() { this.o.targets = []; }
+    };
+    let npW = 1200;
+    const rect = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const w = this.classList.contains("np") ? npW : 0;
+        const hgt = this.classList.contains("np") ? 800 : 0;
+        return { width: w, height: hgt, top: 0, left: 0, right: w, bottom: hgt, x: 0, y: 0, toJSON() {} } as DOMRect;
+      });
+    localStorage.setItem("rustify-lyrics-card", JSON.stringify({ x: 700, y: 32, w: 380, h: 460 }));
+    h.libGetLyrics.mockResolvedValue([{ t: 1, line: "linha" }]);
+    setPlayer({ currentTrack: track("A") });
+
+    const { container } = render(() => <NowPlaying />);
+    await waitFor(() => expect(container.querySelector(".np__lyrics-card")).not.toBeNull());
+    const card = () => container.querySelector(".np__lyrics-card") as HTMLElement;
+    expect(card().style.left).toBe("700px");
+
+    // Sai do cinema / sidebar vira ícones: o .np encolhe, a janela não.
+    npW = 900;
+    const np = container.querySelector(".np")!;
+    for (const o of observers) {
+      if (o.targets.includes(np)) o.cb([], {} as ResizeObserver);
+    }
+    expect(card().style.left).toBe(`${900 - 380}px`);
+    rect.mockRestore();
+  });
+});
+
 describe("NowPlaying — botão de ajustes do fundo (np-7)", () => {
   it("abre o Tweaks e rola até a seção Fundo", async () => {
     // Painel de Tweaks mínimo: o NowPlaying só depende do marcador da seção.

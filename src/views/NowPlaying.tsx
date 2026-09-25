@@ -147,13 +147,15 @@ export default function NowPlaying() {
     };
     setBox(clamp(initial, rect.width, rect.height));
 
-    // Reclamp em resize da janela
-    const onResize = () => {
+    // Reclamp quando o .np muda de tamanho — não só no resize da janela:
+    // cinema e sidebar em ícones mudam --sidebar-w sem evento de janela, e
+    // o card ficava cortado pelo overflow do .np (alça de resize escondida).
+    const ro = new ResizeObserver(() => {
       const r = npEl.getBoundingClientRect();
       setBox((b) => clamp(b, r.width, r.height));
-    };
-    window.addEventListener("resize", onResize);
-    onCleanup(() => window.removeEventListener("resize", onResize));
+    });
+    ro.observe(npEl);
+    onCleanup(() => ro.disconnect());
   });
 
   function startDrag(e: MouseEvent) {
