@@ -85,7 +85,13 @@ export default function App() {
     const onCinemaToggle = (e: Event) => {
       const next = (e as CustomEvent<boolean>).detail;
       setCinema(next);
-      document.getElementById("rustify-app")?.setAttribute("data-cinema", next ? "true" : "false");
+      const app = document.getElementById("rustify-app");
+      app?.setAttribute("data-cinema", next ? "true" : "false");
+      // No cinema o CSS some com a chrome só por opacity: sem inert o Tab
+      // parava nos sliders de seek e volume invisíveis e as setas mudavam
+      // faixa e volume sem retorno visual.
+      app?.querySelectorAll(":scope > .titlebar, :scope > .sidebar, :scope > .playerbar")
+        .forEach((el) => el.toggleAttribute("inert", next));
     };
     window.addEventListener("rustify:cinema", onCinemaToggle);
 

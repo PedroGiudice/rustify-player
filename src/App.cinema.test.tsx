@@ -9,13 +9,20 @@
    menu de contexto também saía do cinema no mesmo toque — o handler do
    App é registrado antes dos overlays no window. Com uma camada aberta
    na pilha (lib/escLayers), o Esc é dela.
+
+   No cinema a chrome (titlebar, sidebar, playerbar) some só por
+   opacity: o Tab seguia parando nos sliders de seek e volume
+   invisíveis, e as setas mudavam faixa e volume sem retorno visual.
+   Em cinema a chrome fica inerte.
    ============================================================ */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup } from "@solidjs/testing-library";
 
-vi.mock("./components/Titlebar", () => ({ Titlebar: () => null }));
-vi.mock("./components/Sidebar", () => ({ Sidebar: () => null }));
-vi.mock("./components/PlayerBar", () => ({ PlayerBar: () => null }));
+vi.mock("./components/Titlebar", () => ({ Titlebar: () => <header class="titlebar"><button>min</button></header> }));
+vi.mock("./components/Sidebar", () => ({ Sidebar: () => <aside class="sidebar"><a href="#/home">Home</a></aside> }));
+vi.mock("./components/PlayerBar", () => ({
+  PlayerBar: () => <footer class="playerbar"><div class="progress" role="slider" tabindex="0" /></footer>,
+}));
 vi.mock("./components/CommandPalette", () => ({ CommandPalette: () => null }));
 vi.mock("./components/QueueDrawer", () => ({ QueueDrawer: () => null }));
 vi.mock("./components/TrackContextMenu", () => ({ TrackContextMenu: () => null }));
@@ -98,5 +105,18 @@ describe("App — cinema", () => {
     } finally {
       btn.remove();
     }
+  });
+
+  it("no cinema a chrome fica inerte; fora dele volta a ser navegável", () => {
+    const { container } = render(() => <App />);
+    const chrome = () => ["titlebar", "sidebar", "playerbar"]
+      .map((c) => container.querySelector<HTMLElement>(`.${c}`)!);
+    for (const el of chrome()) expect(el.hasAttribute("inert")).toBe(false);
+
+    window.dispatchEvent(new CustomEvent<boolean>("rustify:cinema", { detail: true }));
+    for (const el of chrome()) expect(el.hasAttribute("inert")).toBe(true);
+
+    window.dispatchEvent(new CustomEvent<boolean>("rustify:cinema", { detail: false }));
+    for (const el of chrome()) expect(el.hasAttribute("inert")).toBe(false);
   });
 });
