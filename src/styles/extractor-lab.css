@@ -1929,6 +1929,31 @@ html { --glow: 0; }
   font-variant-numeric: tabular-nums;
 }
 .fader[data-active="true"] .fader__val { color: var(--fg-1); font-weight: 600; }
+/* Edição do ganho (duplo clique no valor): cabe na coluna do fader. */
+.fader__input {
+  width: 100%;
+  max-width: 48px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--fg-1);
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  padding: 1px 2px;
+  -moz-appearance: textfield;
+}
+.fader__input::-webkit-outer-spin-button,
+.fader__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fader__input:focus { outline: 0; border-color: var(--fg-7); box-shadow: var(--ring-focus); }
+/* Sliders operáveis por teclado (estsig-3): foco visível só via teclado. */
+.fader__track:focus-visible,
+.param-row__slider:focus-visible {
+  outline: 2px solid var(--blue-ring);
+  outline-offset: 2px;
+}
 
 /* Band detail editor (below faders) */
 .band-detail {

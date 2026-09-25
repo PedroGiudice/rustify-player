@@ -134,6 +134,48 @@ describe("Fader", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("trilho é um slider focável com valor em dB (estsig-3)", () => {
+    const { container } = render(() => (
+      <Fader bandIdx={2} freq={63} gainDb={2.5} active={false} onActivate={() => {}} onChange={() => {}} />
+    ));
+    const track = container.querySelector<HTMLElement>(".fader__track")!;
+    expect(track.getAttribute("role")).toBe("slider");
+    expect(track.tabIndex).toBe(0);
+    expect(track.getAttribute("aria-orientation")).toBe("vertical");
+    expect(track.getAttribute("aria-valuemin")).toBe("-36");
+    expect(track.getAttribute("aria-valuemax")).toBe("36");
+    expect(track.getAttribute("aria-valuenow")).toBe("2.5");
+    expect(track.getAttribute("aria-valuetext")).toBe("+2.5 dB");
+    expect(track.getAttribute("aria-label")).toContain("63");
+  });
+
+  it("setas (Shift = 1 dB), PageUp/PageDown e Home/End mudam o ganho (estsig-3)", () => {
+    const onChange = vi.fn();
+    const { container } = render(() => (
+      <Fader bandIdx={0} freq={1000} gainDb={2.5} active={true} onActivate={() => {}} onChange={onChange} />
+    ));
+    const track = container.querySelector<HTMLElement>(".fader__track")!;
+    const key = (k: string, shiftKey = false) =>
+      track.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey, bubbles: true, cancelable: true }));
+    key("ArrowUp");
+    key("ArrowDown");
+    key("ArrowUp", true);
+    key("PageUp");
+    key("PageDown");
+    key("Home");
+    key("End");
+    expect(onChange.mock.calls.map((c) => c[0])).toEqual([2.6, 2.4, 3.5, 5.5, -0.5, -36, 36]);
+  });
+
+  it("foco pelo teclado ativa a banda (estsig-3)", () => {
+    const onActivate = vi.fn();
+    const { container } = render(() => (
+      <Fader bandIdx={4} freq={160} gainDb={0} active={false} onActivate={onActivate} onChange={() => {}} />
+    ));
+    container.querySelector<HTMLElement>(".fader__track")!.focus();
+    expect(onActivate).toHaveBeenCalled();
+  });
+
   it("commit via input clamp em -36/+36", () => {
     const onChange = vi.fn();
     const { container } = render(() => (

@@ -3,6 +3,8 @@
    Render: <hz> + <track (zero + fill + thumb)> + <val>.
    Range -36..+36 dB, step 0.1. Inversao Y (cursor sobe = mais gain).
    Double-click no valor abre <input type=number> inline com Enter/ESC.
+   Teclado no trilho (role=slider): setas 0.1 dB (Shift = 1 dB),
+   PageUp/PageDown 3 dB, Home/End = -36/+36. Focar o trilho ativa a banda.
    ============================================================ */
 
 import { Component, createMemo, createSignal, Show, onCleanup } from "solid-js";
@@ -71,6 +73,22 @@ export const Fader: Component<FaderProps> = (props) => {
     try { trackEl.releasePointerCapture(e.pointerId); } catch {}
   }
 
+  function onTrackKeyDown(e: KeyboardEvent) {
+    const fine = e.shiftKey ? 1 : 0.1;
+    let next: number;
+    switch (e.key) {
+      case "ArrowUp": case "ArrowRight": next = props.gainDb + fine; break;
+      case "ArrowDown": case "ArrowLeft": next = props.gainDb - fine; break;
+      case "PageUp": next = props.gainDb + 3; break;
+      case "PageDown": next = props.gainDb - 3; break;
+      case "Home": next = -DB_RANGE; break;
+      case "End": next = DB_RANGE; break;
+      default: return;
+    }
+    e.preventDefault();
+    props.onChange(quantize(next));
+  }
+
   function commitInput() {
     if (!inputEl) return;
     const raw = parseFloat(inputEl.value);
@@ -117,6 +135,16 @@ export const Fader: Component<FaderProps> = (props) => {
       <div
         ref={trackEl}
         class="fader__track"
+        role="slider"
+        tabIndex={0}
+        aria-orientation="vertical"
+        aria-label={`Band ${props.bandIdx + 1} (${fmtHz(props.freq)} Hz) gain`}
+        aria-valuemin={-DB_RANGE}
+        aria-valuemax={DB_RANGE}
+        aria-valuenow={Number(props.gainDb.toFixed(1))}
+        aria-valuetext={`${fmtDb(props.gainDb)} dB`}
+        onKeyDown={onTrackKeyDown}
+        onFocus={() => props.onActivate()}
         onPointerDown={onTrackPointerDown}
         onPointerMove={onTrackPointerMove}
         onPointerUp={onTrackPointerUp}

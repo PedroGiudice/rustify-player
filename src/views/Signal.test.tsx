@@ -54,7 +54,7 @@ vi.mock("../tauri", () => ({
 }));
 
 import Signal from "./Signal";
-import { dsp } from "../store/dsp";
+import { dsp, setBassFreq, setBassFloor } from "../store/dsp";
 import * as ipc from "../tauri";
 
 beforeEach(() => {
@@ -161,6 +161,19 @@ describe("Signal view", () => {
     expect(normNode.dataset.on).toBe(normOn);
     expect(container.querySelector(".sig-master-bar")!.textContent).not.toMatch(/entire chain/i);
     master.click();
+  });
+
+  it("Scope e Floor do Bass aparecem formatados no tile e no cabeçalho (motor-v3)", () => {
+    // Valor cru que o ParamRow antigo gravava no store (e que segue
+    // persistido em localStorage de quem já arrastou).
+    setBassFreq(137.46376811594203);
+    setBassFloor(33.3333333);
+    const { container } = render(() => <Signal />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("scope 137 Hz · floor 33 Hz");
+    expect(text).not.toMatch(/137\.46/);
+    setBassFreq(120);
+    setBassFloor(20);
   });
 
   it("click em fader atualiza activeBand do store", () => {

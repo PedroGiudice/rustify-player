@@ -264,7 +264,7 @@ export default function Signal() {
             label="Bass"
             on={bassLive()}
             value={bassLive() ? `${dsp.bass.amount.toFixed(1)} dB` : offLabel()}
-            sub={`scope ${dsp.bass.freq} Hz · floor ${dsp.bass.floor} Hz`}
+            sub={`scope ${dsp.bass.freq.toFixed(0)} Hz · floor ${dsp.bass.floor.toFixed(0)} Hz`}
           />
           <StatTile
             label="Normalize"
@@ -534,7 +534,7 @@ export default function Signal() {
             <span class="sig-panel__badge">Calf</span>
             <Show when={!bassLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
-              amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq}</b> Hz
+              amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq.toFixed(0)}</b> Hz
             </span>
             <button
               class="tog"
