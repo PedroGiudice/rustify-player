@@ -152,3 +152,43 @@ describe("Playlists — filtro", () => {
     await vi.waitFor(() => expect(names()).toEqual(["Zoo Songs"]));
   });
 });
+
+describe("cards de playlist: teclado (ds-2)", () => {
+  // role=button + tabIndex=0 sem onKeyDown: o Tab parava no card, o leitor
+  // anunciava "botão", e Enter/Espaço não abriam a playlist (o Espaço ainda
+  // rolava a página).
+  async function firstCard(container: HTMLElement, sel: string) {
+    await vi.waitFor(() => expect(container.querySelector(sel)).toBeTruthy());
+    return container.querySelector<HTMLElement>(sel)!;
+  }
+
+  it("Enter abre a playlist do card", async () => {
+    window.location.hash = "";
+    const { container } = render(() => <Playlists />);
+    const card = await firstCard(container, ".pl-grid .pl-card");
+    const name = card.querySelector(".pl-card__title")!.textContent!;
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent(name)}`);
+  });
+
+  it("Espaço abre a playlist e não rola a página", async () => {
+    window.location.hash = "";
+    const { container } = render(() => <Playlists />);
+    const card = await firstCard(container, ".pl-grid .pl-card");
+    const name = card.querySelector(".pl-card__title")!.textContent!;
+    const ev = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    card.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent(name)}`);
+  });
+
+  it("card fixado também abre com Enter", async () => {
+    window.location.hash = "";
+    pinPlaylist("Middle Road");
+    const { container, getByText } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
+    const pinnedCard = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
+    fireEvent.keyDown(pinnedCard, { key: "Enter" });
+    expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent("Middle Road")}`);
+  });
+});

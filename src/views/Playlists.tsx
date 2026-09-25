@@ -26,6 +26,14 @@ function openPlaylist(folder: FolderPlaylist) {
   navigate(`/playlist/${encodeURIComponent(folder.name)}`);
 }
 
+/** role=button promete Enter/Espaço: sem isto o card recebia foco por Tab
+    e não fazia nada (o Espaço ainda rolava a página). */
+function openOnKey(e: KeyboardEvent, folder: FolderPlaylist) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  openPlaylist(folder);
+}
+
 // ── Tones de fallback (vide tokens em extractor-lab.css) ─────────
 type Tone =
   | "tone-lavender" | "tone-mint" | "tone-peach" | "tone-sky"
@@ -170,7 +178,7 @@ export default function Playlists() {
             <div class="pl-grid">
               <For each={pinned()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => openPlaylist(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
+                  <div class="pl-card" onClick={() => openPlaylist(p)} onKeyDown={(e) => openOnKey(e, p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <div class="pl-card__cover">
                       <CoverMosaic folder={p} />
                     </div>
@@ -201,7 +209,7 @@ export default function Playlists() {
             <div class="pl-grid">
               <For each={rest()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => openPlaylist(p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
+                  <div class="pl-card" onClick={() => openPlaylist(p)} onKeyDown={(e) => openOnKey(e, p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <div class="pl-card__cover">
                       <CoverMosaic folder={p} />
                     </div>
