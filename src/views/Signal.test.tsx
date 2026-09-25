@@ -114,6 +114,42 @@ describe("Signal view", () => {
     expect(dsp.activeBand).toBe(5);
   });
 
+  it("chip Flat zera o EQ e o chip Padrão aplica a curva default (estsig-5)", () => {
+    const { getByText } = render(() => <Signal />);
+    getByText("Padrão").click();
+    expect(dsp.eq.bands.some((b) => b.gain_db !== 0)).toBe(true);
+    getByText("Flat").click();
+    expect(dsp.eq.bands.every((b) => b.gain_db === 0)).toBe(true);
+  });
+
+  it("salvar com nome de preset embutido é recusado (motor-v5)", () => {
+    localStorage.removeItem("rustify-dsp-presets");
+    vi.spyOn(window, "prompt").mockReturnValue("Flat");
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const { getByText } = render(() => <Signal />);
+    getByText("Save").click();
+    expect(alertSpy).toHaveBeenCalled();
+    expect(localStorage.getItem("rustify-dsp-presets")).toBeNull();
+  });
+
+  it("renomear para um nome que já existe é recusado (motor-v5)", () => {
+    localStorage.removeItem("rustify-dsp-presets");
+    const promptSpy = vi.spyOn(window, "prompt");
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    const { getByText, container } = render(() => <Signal />);
+    promptSpy.mockReturnValueOnce("Aki");
+    getByText("Save").click();
+    promptSpy.mockReturnValueOnce("Rock");
+    getByText("Save").click();
+    // "Rock" ativo; renomear para "Aki" colidiria.
+    promptSpy.mockReturnValueOnce("Aki");
+    getByText("Rename").click();
+    const names = Array.from(container.querySelectorAll(".sig-pre")).map((b) => b.textContent);
+    expect(names.filter((n) => n === "Aki").length).toBe(1);
+    expect(names).toContain("Rock");
+    localStorage.removeItem("rustify-dsp-presets");
+  });
+
   it("roadmap cards flipam data-on local sem afetar backend", () => {
     const { container } = render(() => <Signal />);
     const cards = container.querySelectorAll<HTMLElement>(".plug-card");

@@ -66,9 +66,15 @@ import {
   applyPresetToStore,
   parseEasyEffects,
   toEasyEffects,
+  FLAT_PRESET,
+  DEFAULT_PRESET,
+  BUILTIN_PRESETS,
+  resolveActivePreset,
+  presetNameError,
+  importPresetName,
   type DspPreset,
 } from "../store/dsp-presets";
-import { resetToFlat } from "../store/dsp";
+import { resetToFlat, resetToDefault } from "../store/dsp";
 
 const ENGINE_MODES = ["IIR", "FIR", "FFT", "SPM"] as const;
 
@@ -134,9 +140,6 @@ const ROADMAP_SPACE: RoadmapCard[] = [
   },
 ];
 
-// "Flat" e sempre o primeiro chip — reseta pra bands default sem precisar de preset salvo.
-const FLAT_PRESET = "Flat";
-
 export default function Signal() {
   // Loudness normalization: fonte unica de verdade e o store de tweaks
   // (tweaks().loudnessNorm / loudnessTarget). A Signal so EXIBE — o
@@ -146,9 +149,12 @@ export default function Signal() {
   // Sincronizacao backend no mount.
   onMount(() => { applyFullDspState(); });
 
-  // Presets reais (localStorage). Sempre exibe "Flat" como primeiro chip.
+  // Presets reais (localStorage). "Flat" e "Padrão" são sempre os primeiros
+  // chips (embutidos, sem registro salvo).
   const [presets, setPresets] = createSignal<DspPreset[]>(loadPresets());
-  const [activePreset, setActivePreset] = createSignal<string>(getActivePresetName() || FLAT_PRESET);
+  const [activePreset, setActivePreset] = createSignal<string>(
+    resolveActivePreset(getActivePresetName(), dsp.eq.bands),
+  );
 
   function refreshPresets() {
     setPresets(loadPresets());
@@ -161,15 +167,24 @@ export default function Signal() {
       resetToFlat();
       return;
     }
+    if (name === DEFAULT_PRESET) {
+      resetToDefault();
+      return;
+    }
     const p = presets().find((x) => x.name === name);
     if (p) applyPresetToStore(p);
   }
 
   function handleSave() {
     const current = activePreset();
-    const suggestion = current && current !== FLAT_PRESET ? current : "";
-    const name = window.prompt("Nome do preset:", suggestion);
-    if (!name) return;
+    const suggestion = current && !BUILTIN_PRESETS.includes(current) ? current : "";
+    const raw = window.prompt("Nome do preset:", suggestion);
+    if (!raw?.trim()) return;
+    // Salvar com o nome de um preset existente sobrescreve (é o fluxo de
+    // "salvar alterações"); só nome vazio ou embutido é recusado.
+    const err = presetNameError(raw, []);
+    if (err) { window.alert(err); return; }
+    const name = raw.trim();
     const list = loadPresets().filter((p) => p.name !== name);
     list.push(snapshotCurrentDsp(name));
     savePresets(list);
@@ -180,9 +195,13 @@ export default function Signal() {
 
   function handleRename() {
     const cur = activePreset();
-    if (!cur || cur === FLAT_PRESET) return;
-    const newName = window.prompt(`Renomear "${cur}" para:`, cur);
-    if (!newName || newName === cur) return;
+    if (!cur || BUILTIN_PRESETS.includes(cur)) return;
+    const raw = window.prompt(`Renomear "${cur}" para:`, cur);
+    if (!raw?.trim()) return;
+    const err = presetNameError(raw, loadPresets().map((p) => p.name), cur);
+    if (err) { window.alert(err); return; }
+    const newName = raw.trim();
+    if (newName === cur) return;
     const list = loadPresets().map((p) => (p.name === cur ? { ...p, name: newName } : p));
     savePresets(list);
     setActivePresetName(newName);
@@ -192,11 +211,14 @@ export default function Signal() {
 
   function handleDelete() {
     const cur = activePreset();
-    if (!cur || cur === FLAT_PRESET) return;
+    if (!cur || BUILTIN_PRESETS.includes(cur)) return;
     if (!window.confirm(`Apagar preset "${cur}"?`)) return;
     savePresets(loadPresets().filter((p) => p.name !== cur));
-    setActivePresetName(FLAT_PRESET);
-    setActivePreset(FLAT_PRESET);
+    // Apagar o registro não muda o que toca: só marca Flat/Padrão se a
+    // curva atual for uma delas.
+    const next = resolveActivePreset("", dsp.eq.bands);
+    setActivePresetName(next);
+    setActivePreset(next);
     refreshPresets();
   }
 
@@ -210,7 +232,7 @@ export default function Signal() {
       try {
         const text = await file.text();
         const json = JSON.parse(text);
-        const name = file.name.replace(/\.json$/i, "");
+        const name = importPresetName(file.name.replace(/\.json$/i, ""));
         const preset = parseEasyEffects(json, name);
         const list = loadPresets().filter((p) => p.name !== name);
         list.push(preset);
@@ -340,6 +362,14 @@ export default function Signal() {
             >
               {FLAT_PRESET}
             </button>
+            <button
+              class="sig-pre"
+              aria-pressed={activePreset() === DEFAULT_PRESET ? "true" : undefined}
+              onClick={() => handlePresetClick(DEFAULT_PRESET)}
+              title="Aplica a curva padrão do Rustify"
+            >
+              {DEFAULT_PRESET}
+            </button>
             <For each={presets()}>{(p) => (
               <button
                 class="sig-pre"
@@ -364,7 +394,7 @@ export default function Signal() {
             <button
               class="sig-pbtn"
               onClick={handleRename}
-              disabled={!activePreset() || activePreset() === FLAT_PRESET}
+              disabled={!activePreset() || BUILTIN_PRESETS.includes(activePreset())}
               title="Renomeia preset selecionado"
             >
               {/* @ts-ignore */}
@@ -373,7 +403,7 @@ export default function Signal() {
             <button
               class="sig-pbtn"
               onClick={handleDelete}
-              disabled={!activePreset() || activePreset() === FLAT_PRESET}
+              disabled={!activePreset() || BUILTIN_PRESETS.includes(activePreset())}
               title="Apaga preset selecionado"
             >
               {/* @ts-ignore */}

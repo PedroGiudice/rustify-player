@@ -444,12 +444,36 @@ export function setBassLevels(input: number, output: number) {
 
 // ── Reset / Preset ────────────────────────────────────────────
 
-export function resetToFlat() {
-  const def = defaultState();
+/** Aplica bandas ao EQ (cópia) com ganhos de entrada/saída em 0 dB. */
+function resetEqBands(bands: EqBand[]) {
   setDsp(produce((s) => {
-    s.eq.bands = def.eq.bands.map((b) => ({ ...b }));
+    s.eq.bands = bands.map((b) => ({ ...b }));
     s.eq.input_gain = 0;
     s.eq.output_gain = 0;
   }));
   applyFullDspState();
+}
+
+/** Flat de verdade: mesmas frequências/Q das bandas default, Bell, 0 dB. */
+export function resetToFlat() {
+  resetEqBands(DEFAULT_BANDS.map((b) => ({ ...b, gain_db: 0, type: 1, slope: 0, solo: false, mute: false })));
+}
+
+/** Curva padrão do Rustify (DEFAULT_BANDS, levemente colorida). */
+export function resetToDefault() {
+  resetEqBands(DEFAULT_BANDS);
+}
+
+/** Todas as bandas audíveis com 0 dB e sem filtro de passagem/entalhe:
+    resposta plana. */
+export function isFlatEq(bands: readonly EqBand[]): boolean {
+  return bands.every((b) => b.type === 0 || b.mute || (b.gain_db === 0 && (b.type === 1 || b.type === 3 || b.type === 5)));
+}
+
+/** Bandas iguais à curva padrão (freq, ganho, Q e tipo). */
+export function isDefaultEq(bands: readonly EqBand[]): boolean {
+  return bands.length === DEFAULT_BANDS.length && bands.every((b, i) => {
+    const d = DEFAULT_BANDS[i];
+    return b.freq === d.freq && b.gain_db === d.gain_db && b.q === d.q && b.type === d.type && !b.mute && !b.solo;
+  });
 }
