@@ -29,6 +29,7 @@ import {
   updateTweak,
   clearDirty,
   isDirty,
+  resetTweaks,
   setAdaptiveColor,
   tweaks,
 } from "./tweaks";
@@ -209,5 +210,32 @@ describe("lyricsGlass regido por tema", () => {
       delete themeVars["--lyrics-bg-alpha"];
       delete themeVars["--lyrics-bg-brightness"];
     }
+  });
+});
+
+// config-v4: o Mono funciona por html[data-type="mono"] { --font-sans:
+// var(--font-mono) }, mas a UI Font escolhida (ou a fonte do tema) grava
+// --font-sans no style inline, que vence qualquer regra de folha: marcar
+// Mono não mudava nada na tela.
+describe("Type Mono", () => {
+  it("vence a UI Font escolhida e devolve a fonte ao voltar pra Sans", () => {
+    resetTweaks();
+    loadTweaks();
+    updateTweak("fontUI", "Foo Sans");
+    updateTweak("type", "mono");
+    expect(html().style.getPropertyValue("--font-sans")).toBe("var(--font-mono)");
+    updateTweak("type", "body");
+    expect(html().style.getPropertyValue("--font-sans")).toContain('"Foo Sans"');
+    resetTweaks();
+  });
+
+  it("segue valendo depois que um tema é aplicado", () => {
+    resetTweaks();
+    loadTweaks();
+    updateTweak("type", "mono");
+    html().style.setProperty("--font-sans", '"Tema Sans", sans-serif');
+    window.dispatchEvent(new CustomEvent("rustify:theme-applied", { detail: { ink: null } }));
+    expect(html().style.getPropertyValue("--font-sans")).toBe("var(--font-mono)");
+    resetTweaks();
   });
 });

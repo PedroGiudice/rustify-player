@@ -191,6 +191,18 @@ export async function listSystemFonts(): Promise<string[]> {
   return fontsCache;
 }
 
+/** --font-sans que o USUÁRIO impõe, ou null (vale o tema/:root). Type Mono
+    vence a UI Font: o html[data-type="mono"] do CSS perde pra qualquer
+    --font-sans inline (UI Font ou fonte do tema), então o Mono também
+    precisa ir pro inline — senão marcar Mono não muda nada (config-v4). */
+function userFontSans(s: TweaksState): string | null {
+  if (s.type === "mono") return "var(--font-mono)";
+  if (s.fontUI) {
+    return `"${s.fontUI}", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`;
+  }
+  return null;
+}
+
 // ── Aplicacao no DOM ──────────────────────────────────────────
 export function applyTweaks(s: TweaksState = state()) {
   const html = document.documentElement;
@@ -199,11 +211,9 @@ export function applyTweaks(s: TweaksState = state()) {
   // unset, RESTAURAR o que o tema declarou — removeProperty apagaria a
   // inline var do applyTheme e mataria a fonte do tema no primeiro toque
   // em qualquer knob (achado da auditoria).
-  if (s.fontUI) {
-    html.style.setProperty(
-      "--font-sans",
-      `"${s.fontUI}", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`,
-    );
+  const fontSans = userFontSans(s);
+  if (fontSans !== null) {
+    html.style.setProperty("--font-sans", fontSans);
   } else {
     const tv = themeVar("--font-sans");
     if (tv !== null) html.style.setProperty("--font-sans", tv);
@@ -436,12 +446,8 @@ window.addEventListener("rustify:theme-applied", (e: Event) => {
   _themeInk = detail?.ink ?? null;
   const s = state();
   const html = document.documentElement;
-  if (s.fontUI) {
-    html.style.setProperty(
-      "--font-sans",
-      `"${s.fontUI}", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`,
-    );
-  }
+  const fontSans = userFontSans(s);
+  if (fontSans !== null) html.style.setProperty("--font-sans", fontSans);
   if (s.fontMono) {
     html.style.setProperty(
       "--font-mono",
