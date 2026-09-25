@@ -633,6 +633,9 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: opacity var(--dur-base), transform var(--dur-base);
 }
 .card:hover .card__play { opacity: 1; transform: none; }
+/* Só no hover, o Tab parava num botão invisível (ds-1). */
+.card:focus-within .card__play,
+.card__play:focus-visible { opacity: 1; transform: none; }
 .card__play iconify-icon { width: 12px; height: 12px; }
 
 /* ────────────────────────────────────────────────────────────
@@ -1033,6 +1036,21 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Transicao nas celulas: o wrapper display:contents nao tem caixa. */
 .tracks__row > div { transition: background var(--dur-base); }
 .tracks__row:hover > div { background: var(--bg-soft); }
+/* Foco de teclado (ds-1): a linha tem tabIndex, mas display:contents não
+   tem caixa e o outline global não pinta nada. O anel vai nas células,
+   por dentro (as vizinhas cobririam um anel externo): topo e base em
+   todas, a lateral na primeira e na última. Mesma cor do --focus-outline. */
+.tracks__row:focus-visible { outline: 0; }
+.tracks__row:focus-visible > div {
+  background: var(--bg-soft);
+  box-shadow: inset 0 2px 0 var(--blue-ring), inset 0 -2px 0 var(--blue-ring);
+}
+.tracks__row:focus-visible > div:first-child {
+  box-shadow: inset 2px 0 0 var(--blue-ring), inset 0 2px 0 var(--blue-ring), inset 0 -2px 0 var(--blue-ring);
+}
+.tracks__row:focus-visible > div:last-child {
+  box-shadow: inset -2px 0 0 var(--blue-ring), inset 0 2px 0 var(--blue-ring), inset 0 -2px 0 var(--blue-ring);
+}
 /* Depois do hover e com a mesma especificidade: o hover nao apaga o
    destaque da faixa atual. */
 .tracks__row.tracks__row--current > div { background: var(--blue-bg); }
@@ -2469,6 +2487,8 @@ html { --glow: 0; }
   letter-spacing: -0.005em;
 }
 .coll-search input::placeholder { color: var(--fg-6); }
+/* O input zera o outline; o anel vai no contêiner (ds-1). */
+.coll-search:focus-within { border-color: var(--fg-7); box-shadow: var(--ring-focus); }
 .coll-search iconify-icon { width: 13px; height: 13px; }
 
 .pl-grid {

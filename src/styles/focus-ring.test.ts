@@ -52,3 +52,35 @@ describe("anel de foco", () => {
     expect(ring && outlineOf(ring)).toBe("var(--focus-outline)");
   });
 });
+
+// ds-1 restante (auditoria de UI 25/09): controles que só apareciam no
+// hover ou que zeravam o anel sem pôr outro no lugar.
+function ruleFor(selector: string): CSSStyleRule | undefined {
+  return rules.find((r) => r.selectorText.split(",").some((s) => s.trim() === selector));
+}
+
+describe("anel de foco — ds-1", () => {
+  it(".card__play aparece no foco de teclado e com o card em :focus-within", () => {
+    for (const sel of [".card__play:focus-visible", ".card:focus-within .card__play"]) {
+      const r = ruleFor(sel);
+      expect(r, sel).toBeTruthy();
+      expect(r!.style.getPropertyValue("opacity").trim()).toBe("1");
+    }
+  });
+
+  it("linha do TrackRowTable (display:contents) desenha o anel nas células", () => {
+    // outline no próprio .tracks__row não pinta: display:contents não tem caixa.
+    const r = ruleFor(".tracks__row:focus-visible > div");
+    expect(r).toBeTruthy();
+    expect(r!.style.getPropertyValue("box-shadow")).toContain("var(--blue-ring)");
+    const first = ruleFor(".tracks__row:focus-visible > div:first-child");
+    const last = ruleFor(".tracks__row:focus-visible > div:last-child");
+    expect(first && first.style.getPropertyValue("box-shadow")).toContain("var(--blue-ring)");
+    expect(last && last.style.getPropertyValue("box-shadow")).toContain("var(--blue-ring)");
+  });
+
+  it(".coll-search zera o outline do input e põe o anel no contêiner", () => {
+    const r = ruleFor(".coll-search:focus-within");
+    expect(r && r.style.getPropertyValue("box-shadow").trim()).toBe("var(--ring-focus)");
+  });
+});
