@@ -11,6 +11,7 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { Icon } from "../icons";
 import { back } from "../nav";
+import { libError, libReady, reloadLibrary } from "../store";
 
 export function ViewHead(props: { title: string; sub?: string; right?: JSX.Element }) {
   return (
@@ -61,6 +62,51 @@ export function Empty(props: { title: string; hint?: string }) {
       </Show>
     </div>
   );
+}
+
+/** Falha de carga: diz o que houve e oferece tentar de novo. Uma falha NUNCA
+ *  pode aparecer como "vazio" ou "não encontrado" (mobile-12/13/14). */
+export function LoadError(props: { title: string; detail?: string | null; onRetry: () => void }) {
+  return (
+    <div class="empty" role="alert">
+      <div class="e1">{props.title}</div>
+      <Show when={props.detail}>
+        <div class="e2">{props.detail}</div>
+      </Show>
+      <button class="btn empty__retry" onClick={() => props.onRetry()}>
+        Tentar de novo
+      </button>
+    </div>
+  );
+}
+
+/** Só mostra o conteúdo com o acervo carregado. Antes disso, "Carregando
+ *  biblioteca…"; com a carga em falha, o erro com "tentar de novo" — e não
+ *  o "acervo vazio"/"não encontrado" que o conteúdo diria sem dados. */
+export function LibGate(props: { children: JSX.Element }) {
+  return (
+    <Show when={libReady()} fallback={<Empty title="Carregando biblioteca…" />}>
+      <Show
+        when={!libError()}
+        fallback={
+          <LoadError
+            title="Não deu para carregar a biblioteca"
+            detail={libError()}
+            onRetry={() => void reloadLibrary()}
+          />
+        }
+      >
+        {props.children}
+      </Show>
+    </Show>
+  );
+}
+
+/** Subtítulo das telas de acervo: contagens só quando elas são verdade. */
+export function libSub(ok: () => string): string {
+  if (!libReady()) return "carregando acervo…";
+  if (libError()) return "acervo indisponível";
+  return ok();
 }
 
 export function LazyList<T>(props: {

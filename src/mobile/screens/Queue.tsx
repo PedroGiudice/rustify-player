@@ -14,7 +14,7 @@
 
 import { For, Show } from "solid-js";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, SecHead, ViewHead } from "../components/ui";
+import { Empty, LibGate, SecHead, ViewHead } from "../components/ui";
 import {
   current,
   pb,
@@ -55,61 +55,65 @@ export function Queue() {
     <div class="screen">
       <ViewHead title="Queue" sub={sub()} />
 
-      <Show
-        when={total() || current()}
-        fallback={<Empty title="Fila vazia" hint="Toque uma faixa, pasta ou álbum para montar a fila." />}
-      >
-        <Show when={split().past.length}>
-          <div class="sec" style={{ padding: 0 }}>
-            <div style={{ padding: "0 20px" }}>
-              <SecHead label="Já tocadas" />
-            </div>
-            <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.62 }}>
-              <For each={split().past}>
-                {(t, i) => (
-                  <Show when={t} fallback={<MissingRow index={i()} />}>
-                    {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(i())} />}
-                  </Show>
-                )}
-              </For>
-            </div>
-          </div>
-        </Show>
-
-        <Show when={current()}>
-          {(t) => (
-            <div class="sec">
-              <div class="eyebrow" style={{ "margin-bottom": "10px" }}>
-                Tocando agora
+      {/* Sem o acervo carregado, cada item viraria "Faixa fora do acervo" —
+          falso quando o que falhou foi a carga (mobile-12). */}
+      <LibGate>
+        <Show
+          when={total() || current()}
+          fallback={<Empty title="Fila vazia" hint="Toque uma faixa, pasta ou álbum para montar a fila." />}
+        >
+          <Show when={split().past.length}>
+            <div class="sec" style={{ padding: 0 }}>
+              <div style={{ padding: "0 20px" }}>
+                <SecHead label="Já tocadas" />
               </div>
-              <div class="card" style={{ padding: "2px 12px", "border-color": "var(--accent-c)" }}>
-                <TrackRow track={t()} onPlay={() => {}} />
-              </div>
-            </div>
-          )}
-        </Show>
-
-        <Show when={split().upcoming.length}>
-          <div class="sec" style={{ padding: 0 }}>
-            <div style={{ padding: "0 20px" }}>
-              <SecHead label="A seguir" />
-            </div>
-            <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
-              <For each={split().upcoming}>
-                {(t, i) => {
-                  const at = () => Math.max(0, pb.index) + 1 + i();
-                  return (
-                    <Show when={t} fallback={<MissingRow index={at()} />}>
-                      {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(at())} />}
+              <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.62 }}>
+                <For each={split().past}>
+                  {(t, i) => (
+                    <Show when={t} fallback={<MissingRow index={i()} />}>
+                      {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(i())} />}
                     </Show>
-                  );
-                }}
-              </For>
+                  )}
+                </For>
+              </div>
             </div>
-          </div>
+          </Show>
+
+          <Show when={current()}>
+            {(t) => (
+              <div class="sec">
+                <div class="eyebrow" style={{ "margin-bottom": "10px" }}>
+                  Tocando agora
+                </div>
+                <div class="card" style={{ padding: "2px 12px", "border-color": "var(--accent-c)" }}>
+                  <TrackRow track={t()} onPlay={() => {}} />
+                </div>
+              </div>
+            )}
+          </Show>
+
+          <Show when={split().upcoming.length}>
+            <div class="sec" style={{ padding: 0 }}>
+              <div style={{ padding: "0 20px" }}>
+                <SecHead label="A seguir" />
+              </div>
+              <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
+                <For each={split().upcoming}>
+                  {(t, i) => {
+                    const at = () => Math.max(0, pb.index) + 1 + i();
+                    return (
+                      <Show when={t} fallback={<MissingRow index={at()} />}>
+                        {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(at())} />}
+                      </Show>
+                    );
+                  }}
+                </For>
+              </div>
+            </div>
+          </Show>
+          <div style={{ height: "14px" }} />
         </Show>
-        <div style={{ height: "14px" }} />
-      </Show>
+      </LibGate>
     </div>
   );
 }

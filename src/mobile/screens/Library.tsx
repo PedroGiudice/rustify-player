@@ -14,9 +14,9 @@ import { For, Show, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { Cover } from "../components/Cover";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LazyList, ViewHead } from "../components/ui";
+import { Empty, LazyList, LibGate, ViewHead, libSub } from "../components/ui";
 import { navigate } from "../nav";
-import { albums, artists, folders, libReady, playTrackFrom, tracks } from "../store";
+import { albums, artists, folders, playTrackFrom, tracks } from "../store";
 import { fmtCount } from "../derive";
 
 export type Facet = "folders" | "albums" | "artists" | "tracks";
@@ -44,7 +44,7 @@ export function Library() {
 
   return (
     <div class="screen">
-      <ViewHead title="Library" sub={libReady() ? sub() : "carregando acervo…"} />
+      <ViewHead title="Library" sub={libSub(sub)} />
 
       <div class="chiprow">
         <For each={FACETS}>
@@ -56,7 +56,7 @@ export function Library() {
         </For>
       </div>
 
-      <Show when={libReady()} fallback={<Empty title="Carregando biblioteca…" />}>
+      <LibGate>
         <Show when={facet() === "folders"}>
           <Show when={folders().length} fallback={<Empty title="Nenhuma pasta" hint="As pastas de 1º nível de Music viram playlists." />}>
             <div class="rowlist">
@@ -134,7 +134,7 @@ export function Library() {
         </Show>
 
         <div style={{ height: "14px" }} />
-      </Show>
+      </LibGate>
     </div>
   );
 }

@@ -254,6 +254,15 @@
   margin-top: 6px;
   text-wrap: pretty;
 }
+/* "Tentar de novo" dos estados de erro de carga (mobile-12/13): o .btn é
+   flex:1 numa fileira; aqui é um botão só, centrado pelo text-align do
+   .empty. */
+.empty .empty__retry {
+  display: inline-flex;
+  flex: none;
+  margin-top: 16px;
+  padding: 0 22px;
+}
 .searchfield {
   margin: 0 20px 16px;
   display: flex;

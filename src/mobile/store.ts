@@ -660,6 +660,8 @@ export async function rescan() {
   try {
     const count = await ipc.libRescan();
     await loadLibrary();
+    // Carregou: um erro de carga anterior deixou de valer.
+    setLibError(null);
     await loadIntel();
     showToast(`Biblioteca re-indexada · ${count} faixas`);
   } catch (e) {
@@ -706,6 +708,40 @@ async function bootCall<T>(
   }
 }
 
+/** Carga da biblioteca com o teto do boot. A falha vira `libError` — as telas
+ *  mostram erro com "tentar de novo", NUNCA "acervo vazio" (mobile-12): o
+ *  timeout de IPC no boot frio mandava o usuário ressincronizar o celular
+ *  quando bastava tentar de novo. */
+let libInflight: Promise<boolean> | null = null;
+
+function loadLibraryGuarded(): Promise<boolean> {
+  if (libInflight) return libInflight;
+  libInflight = (async () => {
+    try {
+      await bootCall("loadLibrary", loadLibrary, 6000);
+      setLibError(null);
+      return true;
+    } catch (e) {
+      console.error("[mobile] carga da biblioteca falhou:", e);
+      setLibError(String(e));
+      return false;
+    } finally {
+      setLibReady(true);
+      libInflight = null;
+    }
+  })();
+  return libInflight;
+}
+
+/** "Tentar de novo" dos estados de erro. Enquanto tenta, as telas voltam a
+ *  "Carregando biblioteca…" em vez de manter o erro velho na tela. */
+export async function reloadLibrary() {
+  if (libInflight) return; // toque repetido: a carga em curso já responde
+  setLibReady(false);
+  setLibError(null);
+  if (await loadLibraryGuarded()) void loadIntel();
+}
+
 export async function bootStore() {
   // initialize PRECISA vir antes de qualquer outra chamada ao plugin.
   try {
@@ -714,15 +750,7 @@ export async function bootStore() {
     console.error("[mobile] initialize falhou:", e);
   }
 
-  try {
-    await bootCall("loadLibrary", loadLibrary, 6000);
-    setLibError(null);
-  } catch (e) {
-    console.error("[mobile] carga da biblioteca falhou:", e);
-    setLibError(String(e));
-  } finally {
-    setLibReady(true);
-  }
+  await loadLibraryGuarded();
 
   await syncState();
   // A fila vem do serviço — inclusive quando o WebView reiniciou sozinho
