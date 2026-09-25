@@ -14,7 +14,7 @@ import {
   player, setPlayer,
   applyTrackStarted, updatePosition, setPlayingState,
   setLiked, cycleRepeat, advanceQueue, retreatQueue, jumpToQueueIndex,
-  shuffleQueue, reconcileFromState, setQueue, changeVolume,
+  shuffleQueue, reconcileFromState, setQueue, changeVolume, toggleMute,
   rememberRecent, recentlyPlayed,
 } from "../store/player";
 import type { QueueScope, QueueSource } from "../store/player";
@@ -24,7 +24,7 @@ import { tweaks, updateTweak } from "../store/tweaks";
 import {
   playerPlay, playerPause, playerResume, playerSeek,
   playerEnqueueNext, playerSetOrigin, playerLoadPaused,
-  setVolume, libIsLiked, libToggleLike, libRecordPlay,
+  libIsLiked, libToggleLike, libRecordPlay,
   libAutoplayNext, libStationNext, getState,
   coverUrl, formatDuration, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds,
@@ -41,6 +41,31 @@ export { CMD_PALETTE_EVENT };
 
 // Exclusão do autoplay: vive no store (rememberRecent/recentlyPlayed) —
 // os setters de fila são o choke point que registra qualquer troca.
+
+// Passos de teclado dos sliders (padrão WAI-ARIA: setas = passo fino,
+// PageUp/PageDown = passo largo, Home/End = pontas).
+const SEEK_STEP_SECS = 5;
+const SEEK_PAGE_SECS = 30;
+const VOL_STEP = 0.05;
+const VOL_PAGE = 0.2;
+
+/** Novo valor de um slider para a tecla, ou null se a tecla não é do
+    slider. Setas pra direita/cima sobem; esquerda/baixo descem. */
+function sliderKeyValue(
+  key: string, value: number, max: number, step: number, page: number,
+): number | null {
+  let next: number;
+  switch (key) {
+    case "ArrowRight": case "ArrowUp": next = value + step; break;
+    case "ArrowLeft": case "ArrowDown": next = value - step; break;
+    case "PageUp": next = value + page; break;
+    case "PageDown": next = value - page; break;
+    case "Home": next = 0; break;
+    case "End": next = max; break;
+    default: return null;
+  }
+  return Math.max(0, Math.min(max, next));
+}
 
 // Throttle disk writes — saving every position tick would be wasteful;
 // every 10s plus lifecycle events (track change, pause, seek, beforeunload)
@@ -334,6 +359,17 @@ export function PlayerBar() {
     setPlayer("positionSecs", pct * player.durationSecs);
   }
 
+  function onSeekKeyDown(e: KeyboardEvent) {
+    if (!player.currentTrack || !player.durationSecs || player.isScrubbing) return;
+    const next = sliderKeyValue(
+      e.key, player.positionSecs, player.durationSecs, SEEK_STEP_SECS, SEEK_PAGE_SECS,
+    );
+    if (next === null) return;
+    e.preventDefault();
+    setPlayer("positionSecs", next);
+    playerSeek(next).catch(console.error);
+  }
+
   // ── Volume ─────────────────────────────────────────────────────
 
   function onVolPointerDown(e: PointerEvent) {
@@ -353,10 +389,13 @@ export function PlayerBar() {
     window.addEventListener("pointerup", onUp);
   }
 
-  function toggleMute() {
-    const muted = !player.isMuted;
-    setPlayer("isMuted", muted);
-    setVolume(muted ? 0 : player.volume).catch(console.error);
+  function onVolKeyDown(e: KeyboardEvent) {
+    // Parte do volume efetivo: mudo conta como 0 (é o que o slider mostra).
+    const next = sliderKeyValue(e.key, player.isMuted ? 0 : player.volume, 1, VOL_STEP, VOL_PAGE);
+    if (next === null) return;
+    e.preventDefault();
+    // Arredonda pra não acumular erro de ponto flutuante (0.55000000001).
+    changeVolume(Math.round(next * 100) / 100).catch(console.error);
   }
 
   // ── Like ───────────────────────────────────────────────────────
@@ -571,8 +610,15 @@ export function PlayerBar() {
             class="progress"
             id="pb-progress"
             ref={seekBarRef}
+            role="slider"
+            tabindex="0"
             aria-label="Seek"
+            aria-valuemin="0"
+            aria-valuemax={Math.round(player.durationSecs)}
+            aria-valuenow={Math.round(player.positionSecs)}
+            aria-valuetext={`${formatDuration(player.positionSecs)} of ${formatDuration(player.durationSecs)}`}
             onPointerDown={onSeekPointerDown}
+            onKeyDown={onSeekKeyDown}
           >
             <div class="progress__fill" id="pb-progress-fill" style={{ width: `${pct()}%` }} />
             <div class="progress__thumb" id="pb-progress-thumb" style={{ left: `${pct()}%` }} />
@@ -622,15 +668,29 @@ export function PlayerBar() {
         </button>
 
         <div class="pb-vol">
-          <button class="pb-btn" id="pb-vol-btn" aria-label="Volume" title="Mute" onClick={toggleMute}>
+          <button
+            class="pb-btn"
+            id="pb-vol-btn"
+            aria-label={player.isMuted ? "Unmute" : "Mute"}
+            aria-pressed={player.isMuted ? "true" : "false"}
+            title={player.isMuted ? "Unmute" : "Mute"}
+            onClick={() => { toggleMute().catch(console.error); }}
+          >
             <Icon name={player.isMuted ? ICONS.volumeMute : ICONS.volume} size={14} />
           </button>
           <div
             class="progress"
             id="pb-vol-progress"
             ref={volBarRef}
+            role="slider"
+            tabindex="0"
             aria-label="Volume"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={Math.round(volPct())}
+            aria-valuetext={player.isMuted ? "muted" : `${Math.round(volPct())}%`}
             onPointerDown={onVolPointerDown}
+            onKeyDown={onVolKeyDown}
           >
             <div class="progress__fill" id="pb-vol-fill" style={{ width: `${volPct()}%` }} />
           </div>

@@ -1093,7 +1093,17 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   height: 100%; background: var(--fg-3); border-radius: inherit;
   transition: background var(--dur-base);
 }
-.progress:hover .progress__fill { background: var(--fg-1); }
+/* Área de clique de 16px sem mexer no trilho de 3px: o pseudo-elemento
+   pertence ao .progress, então o ponteiro sobre ele cai no mesmo
+   onPointerDown (e no mesmo :hover). Sem fundo, não aparece. */
+.progress::before {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 16px;
+  transform: translateY(-50%);
+}
+.progress:hover .progress__fill,
+.progress:focus-visible .progress__fill { background: var(--fg-1); }
 .progress__thumb {
   position: absolute; top: 50%;
   width: 10px; height: 10px;
@@ -1101,7 +1111,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   transform: translate(-50%, -50%);
   opacity: 0; transition: opacity var(--dur-base);
 }
-.progress:hover .progress__thumb { opacity: 1; }
+.progress:hover .progress__thumb,
+.progress:focus-visible .progress__thumb { opacity: 1; }
 
 .pb-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .pb-tech {
