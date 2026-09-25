@@ -63,7 +63,13 @@ export default function AlbumView() {
             </p>
           </div>
         </div>
-        <button class="hero-tile__cta" style={{ position: "static", opacity: 1, width: "32px", height: "32px" }} onClick={playAll}>
+        <button
+          class="hero-tile__cta"
+          type="button"
+          aria-label={`Tocar ${title() ?? "álbum"}`}
+          style={{ position: "static", opacity: 1, width: "32px", height: "32px" }}
+          onClick={playAll}
+        >
           <Icon name={ICONS.play} size={12} />
         </button>
       </header>

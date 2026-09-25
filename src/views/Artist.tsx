@@ -57,7 +57,7 @@ export default function ArtistView() {
                     size="md"
                     class="card__cover"
                   >
-                    <button class="card__play" type="button" onClick={(e) => { e.stopPropagation(); playAlbum(a); }}>
+                    <button class="card__play" type="button" aria-label={`Tocar ${a.title}`} onClick={(e) => { e.stopPropagation(); playAlbum(a); }}>
                       <Icon name={ICONS.play} size={12} />
                     </button>
                   </CoverArt>

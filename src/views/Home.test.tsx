@@ -123,6 +123,16 @@ describe("Home — botao card__play no grid de albums", () => {
   });
 });
 
+// ds-2: o botão de tocar do card era só um ícone, sem nome acessível.
+describe("Home — nome acessível do card__play (ds-2)", () => {
+  it("cada card__play diz qual álbum toca", async () => {
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelector(".card__play")).toBeTruthy());
+    const btn = container.querySelector(".card__play")!;
+    expect(btn.getAttribute("aria-label")).toBe("Tocar Great Album");
+  });
+});
+
 describe("Home — cabeçalho e prateleira de álbuns", () => {
   it("a contagem de álbuns vem do acervo, não do tamanho da prateleira", async () => {
     const { container } = render(() => <Home />);
