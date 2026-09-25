@@ -19,13 +19,22 @@ import { fmtDur, relTime } from "../lib/format";
 
 export default function Home() {
   const [data] = createResource(async () => {
-    const [snap, recent, albums, recs] = await Promise.all([
+    const [snap, recent, allAlbums, recs] = await Promise.all([
       libSnapshot(),
       libListHistory(8).catch(() => []),
-      libGetAlbums({ limit: 12 }).catch(() => []),
+      // Lista completa: o backend agrupa o acervo inteiro de qualquer forma
+      // (o limit so trunca a resposta), e o total real sai dela — o snapshot
+      // nao tem albums_total. A prateleira segue sendo os 12 primeiros.
+      libGetAlbums({ limit: null }).catch(() => null),
       libRecommendations().catch(() => ({ most_played: [], based_on_top: [], discover: [] })),
     ]);
-    return { snap, recent, albums, recs };
+    return {
+      snap,
+      recent,
+      albums: (allAlbums ?? []).slice(0, 12),
+      albumsTotal: allAlbums?.length ?? null,
+      recs,
+    };
   });
 
   async function shuffleAll() {
@@ -56,7 +65,9 @@ export default function Home() {
           {(d) => (
             <div class="view__stats">
               <span><b>{d().snap.tracks_total.toLocaleString()}</b> tracks</span>
-              <span><b>{(d().snap.albums_total ?? d().albums.length).toLocaleString()}</b> albums</span>
+              <Show when={d().albumsTotal != null}>
+                <span><b>{d().albumsTotal!.toLocaleString()}</b> albums</span>
+              </Show>
               <span><b>{d().snap.embeddings_done.toLocaleString()}</b> embedded</span>
             </div>
           )}
@@ -163,7 +174,9 @@ export default function Home() {
               <Show when={d().albums.length > 0}>
                 <section>
                   <div class="section__head">
-                    <h2 class="section__title">Based on your favorites</h2>
+                    {/* Ordem alfabetica (os 12 primeiros do acervo): nada de
+                        "favoritos" enquanto a selecao nao usar sinal de gosto. */}
+                    <h2 class="section__title">Albums</h2>
                     <a class="section__action" href="#/albums">View all →</a>
                   </div>
                   <div class="card-grid">
