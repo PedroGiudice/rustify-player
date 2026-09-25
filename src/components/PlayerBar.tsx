@@ -29,7 +29,7 @@ import {
   coverUrl, formatDuration, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds,
 } from "../tauri";
-import { showPlayerMenu } from "../js/components/context-menu.js";
+import { openTrackMenu } from "../store/contextMenu";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
@@ -420,7 +420,10 @@ export function PlayerBar() {
           class="pb-meta"
           onClick={() => navigate("/now-playing")}
           onContextMenu={(e) => {
-            if (player.currentTrack) showPlayerMenu(e, player.currentTrack);
+            // Mesmo menu Solid das linhas de faixa e do "More" do Now
+            // Playing. O showPlayerMenu legado (src/js) não tem CSS no
+            // build e nunca aparecia na tela.
+            if (player.currentTrack) openTrackMenu(e, player.currentTrack);
           }}
         >
           <span class="pb-title" id="pb-title">
@@ -461,7 +464,7 @@ export function PlayerBar() {
             id="pb-more"
             aria-label="More"
             title="More"
-            onClick={(e) => { if (player.currentTrack) showPlayerMenu(e, player.currentTrack); }}
+            onClick={(e) => { if (player.currentTrack) openTrackMenu(e, player.currentTrack); }}
           >
             <Icon name={ICONS.more} size={14} />
           </button>
