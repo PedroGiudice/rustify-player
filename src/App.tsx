@@ -65,9 +65,10 @@ export default function App() {
       else if (k === "h") { e.preventDefault(); navigate("/home"); }
       else if (k === "l") { e.preventDefault(); navigate("/library"); }
       else if (e.key === "Escape") {
+        // Sai pelo mesmo evento do botão: o listener abaixo grava o estado
+        // e o NowPlaying, que espelha o cinema pelo evento, acompanha.
         if (cinema()) {
-          setCinema(false);
-          document.getElementById("rustify-app")?.setAttribute("data-cinema", "false");
+          window.dispatchEvent(new CustomEvent<boolean>("rustify:cinema", { detail: false }));
         }
       }
     };
