@@ -178,3 +178,27 @@ describe("Sidebar — chip do now playing por teclado (ds-2)", () => {
     expect(window.location.hash).toBe("#/now-playing");
   });
 });
+
+// ds-2 / nav: a rota ativa só aparecia pela classe .active — o leitor de
+// tela não sabia em que página o usuário estava.
+describe("Sidebar — rota ativa (ds-2)", () => {
+  afterEach(() => {
+    window.location.hash = "";
+    window.dispatchEvent(new Event("hashchange"));
+  });
+
+  it("o link da rota ativa leva aria-current=page, e só ele", () => {
+    window.location.hash = "#/library";
+    window.dispatchEvent(new Event("hashchange"));
+    const { container } = render(() => <Sidebar />);
+    const current = Array.from(container.querySelectorAll("[aria-current]"));
+    expect(current.map((el) => el.textContent)).toEqual(["Library"]);
+    expect(current[0].getAttribute("aria-current")).toBe("page");
+    expect(current[0].classList.contains("active")).toBe(true);
+
+    window.location.hash = "#/settings";
+    window.dispatchEvent(new Event("hashchange"));
+    const now = Array.from(container.querySelectorAll("[aria-current]"));
+    expect(now.map((el) => el.textContent)).toEqual(["Settings"]);
+  });
+});

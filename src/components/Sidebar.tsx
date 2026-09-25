@@ -59,6 +59,9 @@ export function Sidebar() {
   });
 
   const isActive = (r: string) => route().path === r;
+  // A classe .active só pinta: aria-current diz ao leitor de tela em que
+  // página se está (ds-2).
+  const current = (r: string) => (isActive(r) ? ("page" as const) : undefined);
   // No modo icons o rótulo sai da tela (fica só para leitor de tela):
   // o tooltip é a única dica do que cada ícone faz. No modo labels
   // seria redundante com o texto visível.
@@ -91,6 +94,7 @@ export function Sidebar() {
           {(item) => (
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              aria-current={current(item.route)}
               href={`#${item.route}`}
               title={tip(item.label)}
               onClick={(e) => handleNavClick(e, item)}
@@ -112,6 +116,7 @@ export function Sidebar() {
           {(item) => (
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              aria-current={current(item.route)}
               href={`#${item.route}`}
               title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
@@ -162,6 +167,7 @@ export function Sidebar() {
 
         <a
           class={`nav-item${isActive("/now-playing") ? " active" : ""}`}
+          aria-current={current("/now-playing")}
           href="#/now-playing"
           title={tip("Now Playing")}
           onClick={(e) => { e.preventDefault(); navigate("/now-playing"); }}
@@ -175,6 +181,7 @@ export function Sidebar() {
           {(item) => (
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
+              aria-current={current(item.route)}
               href={`#${item.route}`}
               title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
