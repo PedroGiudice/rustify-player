@@ -12,14 +12,15 @@
      - mid_band_mag   (200-2 000 Hz)
      - high_band_mag  (2 000-12 000 Hz)
 
-   O peso de cada banda é controlado por Tweaks via CSS vars
-   --bg-bass-gain / --bg-mid-gain / --bg-treble-gain (0..2). O
-   smoothing final no canvas (decay quando FFT para) sai de
-   --bg-smoothing (0..1 → tau em ENV_TAU_MIN..ENV_TAU_MAX).
+   O peso de cada banda é controlado pelos Tweaks (bgBassGain /
+   bgMidGain / bgTrebleGain, 0..2), lidos do store a cada frame
+   (bgKnobs) — não passam pelo :root desde o cfg-15. O smoothing
+   final no canvas (decay quando FFT para) sai de bgSmoothing
+   (0..1 → tau em ENV_TAU_MIN..ENV_TAU_MAX).
 
    Regra crítica: o envelope de AMPLITUDE nunca toca em fase nem
    em ink — senão vira screensaver. O beat-sync tem DOIS modos
-   (--bg-beat-mode; espelham o Beat Sync Lab do handoff):
+   (bgBeatMode; espelham o Beat Sync Lab do handoff):
      1 = SPEED (default): energia do kick (expandKick, envelope
          BEAT_TAU) empurra a DERIVADA do relógio — o movimento
          acelera no beat, contínuo, sem salto de fase. Preferência
@@ -48,9 +49,10 @@ import { createSignal, onCleanup, onMount } from "solid-js";
 import { SHAPES } from "../shapes";
 import { RENDERERS } from "../renderers";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
+import { bgKnobs, tweaks } from "../store/tweaks";
 import {
   createBeatPll, pllStep, beatPulse, expandKick, speedBoostGain,
-  BEAT_TAU, BEAT_DEPTH_DEFAULT, INK_PULSE,
+  BEAT_TAU, INK_PULSE,
 } from "../lib/beatPll";
 
 const SHAPE_KEY = "rustify-mock-shape";
@@ -144,30 +146,20 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
   let smoothedEnv = 0;
   let lastFrameMs = performance.now();
 
-  // Beat-sync: beatSync = gate de --bg-beat-sync (1/0); beatMode =
-  // --bg-beat-mode (1 speed / 2 pulse); beatDepth = intensidade de
-  // --bg-beat-depth (0.3/0.55/0.85 no Tweaks). Modo speed usa o
-  // envelope beatEnv; modo pulse usa o PLL (lib/beatPll.ts).
+  // Beat-sync: modo speed usa o envelope beatEnv; modo pulse usa o PLL
+  // (lib/beatPll.ts). Gate, modo e intensidade vêm do store (bgKnobs).
   const pll = createBeatPll();
   let beatEnv = 0;
-  let beatSync = 1;
-  let beatMode = 1;
-  let beatDepth = BEAT_DEPTH_DEFAULT;
 
-  // Cor da tinta + ganhos por banda + smoothing. Lidos das CSS
-  // vars que Tweaks escreve no <html> (~3x/s, sem listener).
-  // A tinta tem DOIS estados: alvo (amostrado a 3Hz) e corrente
-  // (lerp exponencial a 60fps no frame loop) — o morph de cor é
-  // contínuo mesmo com amostragem esparsa e var que salta.
+  // Cor da tinta: lida da CSS var --bg-ink-rgb (~3x/s, sem listener) —
+  // a resolução usuário > capa > tema mora no store e o EqCanvas e o
+  // WebGL leem a mesma var. A tinta tem DOIS estados: alvo (amostrado a
+  // 3Hz) e corrente (lerp exponencial a 60fps no frame loop) — o morph
+  // de cor é contínuo mesmo com amostragem esparsa e var que salta.
   let inkTgt = { r: 23, g: 23, b: 23 };
   let inkCur = { r: 23, g: 23, b: 23 };
   let inkSampled = false;
   let inkRgb = "23, 23, 23";
-  let bassGain = 1.0;
-  let midGain = 1.0;
-  let trebleGain = 0.8;
-  let smoothing = 0.3;
-  let speed = 1.0;
   // Tau (s) do lerp da tinta. Default 0.35 (troca de faixa/tema responde
   // rápido); o CICLO da paleta (adaptiveInk) seta --bg-ink-morph com um
   // tau longo antes de trocar a cor — deriva ambiental, não evento.
@@ -214,9 +206,14 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       raf = requestAnimationFrame(frame);
       if (document.hidden || !canvas.isConnected) return;
 
-      // Re-ler CSS vars dos Tweaks ~3x/s pra refletir mudanças sem
-      // listener Solid. 5 leituras agrupadas no mesmo tick pra evitar
-      // 5 reflows separados em janelas onde getComputedStyle não
+      // Knobs do Tweaks: leitura do store a cada frame (sem listener, sem
+      // tocar no DOM). Arrastar o slider responde no quadro seguinte.
+      const { bassGain, midGain, trebleGain, smoothing, speed, beatSync, beatMode, beatDepth } =
+        bgKnobs(tweaks());
+
+      // Re-ler as CSS vars de cor ~3x/s pra refletir mudanças sem
+      // listener Solid. Leituras agrupadas no mesmo tick pra evitar
+      // reflows separados em janelas onde getComputedStyle não
       // está warm.
       cfgCheckTick++;
       if (cfgCheckTick % 20 === 0) {
@@ -230,23 +227,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
             if (!inkSampled) { inkCur = { ...inkTgt }; inkSampled = true; }
           }
         }
-        const b = parseFloat(cs.getPropertyValue("--bg-bass-gain"));
-        const m = parseFloat(cs.getPropertyValue("--bg-mid-gain"));
-        const tr = parseFloat(cs.getPropertyValue("--bg-treble-gain"));
-        const sm = parseFloat(cs.getPropertyValue("--bg-smoothing"));
-        const sp = parseFloat(cs.getPropertyValue("--bg-speed"));
-        const bs = parseFloat(cs.getPropertyValue("--bg-beat-sync"));
-        const bm = parseFloat(cs.getPropertyValue("--bg-beat-mode"));
-        const bd = parseFloat(cs.getPropertyValue("--bg-beat-depth"));
         const im = parseFloat(cs.getPropertyValue("--bg-ink-morph"));
-        if (Number.isFinite(b)) bassGain = b;
-        if (Number.isFinite(m)) midGain = m;
-        if (Number.isFinite(tr)) trebleGain = tr;
-        if (Number.isFinite(sm)) smoothing = sm;
-        if (Number.isFinite(sp)) speed = sp;
-        if (Number.isFinite(bs)) beatSync = bs;
-        if (Number.isFinite(bm)) beatMode = bm;
-        if (Number.isFinite(bd)) beatDepth = bd;
         inkMorphTau = Number.isFinite(im) && im > 0 ? im : 0.35;
       }
 
@@ -304,7 +285,7 @@ export function SpectrumCanvas(props: SpectrumCanvasProps) {
       }
 
       // Suavização exponencial: smoothedEnv converge pra target com
-      // tau controlado por --bg-smoothing (0..1 → ENV_TAU_MIN..MAX).
+      // tau controlado por bgSmoothing (0..1 → ENV_TAU_MIN..MAX).
       const tau = ENV_TAU_MIN + smoothing * (ENV_TAU_MAX - ENV_TAU_MIN);
       const alpha = 1 - Math.exp(-dt / tau);
       smoothedEnv += (target - smoothedEnv) * alpha;

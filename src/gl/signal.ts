@@ -9,9 +9,9 @@
    somar antes destruiria justamente isso.
 
    O que é preservado do 2D, porque é contrato do Tweaks:
-     - gains por banda (--bg-bass/mid/treble-gain), aplicados
+     - gains por banda (bgBass/Mid/TrebleGain), aplicados
        ANTES do smoothing, com clamp em 1 (saturar é do domínio);
-     - smoothing (--bg-smoothing) → tau em ENV_TAU_MIN..MAX;
+     - smoothing (bgSmoothing) → tau em ENV_TAU_MIN..MAX;
      - bgSpeed no relógio virtual — só a DERIVADA muda, nunca
        recomputamos t do zero (sem salto de fase);
      - beat-sync: modo SPEED empurra a derivada do relógio; modo
@@ -31,7 +31,7 @@
 import { expandKick, speedBoostGain, BEAT_TAU } from "../lib/beatPll";
 
 /** Tau (s) do decay dos envelopes por banda — mesmos limites do
-    SpectrumCanvas, mapeados por --bg-smoothing (0..1). */
+    SpectrumCanvas, mapeados por bgSmoothing (0..1). */
 const ENV_TAU_MIN = 0.1;
 const ENV_TAU_MAX = 0.8;
 

@@ -389,7 +389,7 @@ export function Tweaks() {
           />
           <div class="tweaks__hint">Speed: kick acelera o movimento · Pulse: pulso de amplitude no tempo</div>
           {/* Slider contínuo (2026-07-19): o pipeline sempre foi contínuo
-              (--bg-beat-depth); os 3 presets eram só amarra da UI. Ajuste
+              (bgBeatDepth); os 3 presets eram só amarra da UI. Ajuste
               fino sem esperar release. 0.55 segue o default calibrado. */}
           <NumberSlider
             label="Beat depth"

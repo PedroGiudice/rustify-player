@@ -71,12 +71,12 @@ export interface TweaksState {
         pulso modula amplitude. Em música real com bass sustentado o
         lock é parcial (medido: lockMean ~0.18 na melhor calibração) —
         modo experimental.
-      Consumido via --bg-beat-sync (0/1) + --bg-beat-mode (0/1/2). */
+      Consumido do store via bgKnobs (gate 0/1 + modo 0/1/2). */
   bgBeatMode: "off" | "speed" | "pulse";
   /** Intensidade do beat-sync (vale pros dois modos): 0.3 sutil,
       0.55 default, 0.85 forte. No speed mapeia pro ganho de velocidade
       (0.55 → ganho 1.5, o calibrado da v0.2.52); no pulse é o
-      BEAT_DEPTH do pulso de amplitude. Via --bg-beat-depth. */
+      BEAT_DEPTH do pulso de amplitude. Via bgKnobs. */
   bgBeatDepth: number;
 
   // ── Loudness ────────────────────────────────────────────────
@@ -204,6 +204,67 @@ function userFontSans(s: TweaksState): string | null {
 }
 
 // ── Aplicacao no DOM ──────────────────────────────────────────
+// Escrita diferencial (cfg-15): custom property herdada no :root, mesmo
+// reescrita com o valor que já tinha, invalida o estilo da árvore inteira
+// (o mesmo mecanismo da regra que proíbe transition de custom property no
+// :root). Arrastar um slider rodava applyTweaks por quadro e reescrevia
+// ~25 vars. Compara com o valor INLINE atual — não com um cache próprio,
+// porque o applyTheme escreve as mesmas vars — e só toca no que mudou.
+// Devolve se escreveu.
+function writeVar(name: string, value: string | null): boolean {
+  const st = document.documentElement.style;
+  if (value === null) {
+    if (st.getPropertyValue(name) === "") return false;
+    st.removeProperty(name);
+    return true;
+  }
+  if (st.getPropertyValue(name) === value) return false;
+  st.setProperty(name, value);
+  return true;
+}
+
+/** Var regida por tema: valor do usuário, ou o que o tema declarou, ou nada. */
+function writeThemeVar(name: string, userValue: string | null): boolean {
+  return writeVar(name, userValue ?? themeVar(name));
+}
+
+function writeData(key: string, value: string | undefined): boolean {
+  const ds = document.documentElement.dataset;
+  if (ds[key] === value) return false;
+  if (value === undefined) delete ds[key];
+  else ds[key] = value;
+  return true;
+}
+
+/** Números que o frame loop do fundo 2D consome (SpectrumCanvas). Os knobs
+    do fundo são lidos só por JS — nenhum CSS os usa —, então vivem no
+    store e não no :root (cfg-15). O WebGL lê o store direto (GlBackground). */
+export interface BgKnobs {
+  bassGain: number;
+  midGain: number;
+  trebleGain: number;
+  smoothing: number;
+  speed: number;
+  /** Gate do beat-sync: 1 ligado, 0 desligado. */
+  beatSync: number;
+  /** 0 = off, 1 = speed, 2 = pulse. */
+  beatMode: number;
+  beatDepth: number;
+}
+
+export function bgKnobs(s: TweaksState): BgKnobs {
+  return {
+    bassGain: s.bgBassGain,
+    midGain: s.bgMidGain,
+    trebleGain: s.bgTrebleGain,
+    smoothing: s.bgSmoothing,
+    speed: s.bgSpeed,
+    beatSync: s.bgBeatMode !== "off" ? 1 : 0,
+    beatMode: s.bgBeatMode === "speed" ? 1 : s.bgBeatMode === "pulse" ? 2 : 0,
+    beatDepth: s.bgBeatDepth,
+  };
+}
+
 export function applyTweaks(s: TweaksState = state()) {
   const html = document.documentElement;
 
@@ -211,49 +272,25 @@ export function applyTweaks(s: TweaksState = state()) {
   // unset, RESTAURAR o que o tema declarou — removeProperty apagaria a
   // inline var do applyTheme e mataria a fonte do tema no primeiro toque
   // em qualquer knob (achado da auditoria).
-  const fontSans = userFontSans(s);
-  if (fontSans !== null) {
-    html.style.setProperty("--font-sans", fontSans);
-  } else {
-    const tv = themeVar("--font-sans");
-    if (tv !== null) html.style.setProperty("--font-sans", tv);
-    else html.style.removeProperty("--font-sans");
-  }
-
-  if (s.fontMono) {
-    html.style.setProperty(
-      "--font-mono",
-      `"${s.fontMono}", ui-monospace, "SF Mono", "Menlo", "Consolas", monospace`,
-    );
-  } else {
-    const tv = themeVar("--font-mono");
-    if (tv !== null) html.style.setProperty("--font-mono", tv);
-    else html.style.removeProperty("--font-mono");
-  }
+  writeThemeVar("--font-sans", userFontSans(s));
+  writeThemeVar(
+    "--font-mono",
+    s.fontMono ? `"${s.fontMono}", ui-monospace, "SF Mono", "Menlo", "Consolas", monospace` : null,
+  );
 
   // zoom afeta TUDO inclusive font-size em px hardcoded.
-  // Suportado pelo WebKitGTK do Tauri.
-  html.style.zoom = String(s.scale);
-  html.style.removeProperty("font-size");
+  // Suportado pelo WebKitGTK do Tauri. Relayout inteiro: só quando muda.
+  const zoom = String(s.scale);
+  if (html.style.zoom !== zoom) html.style.zoom = zoom;
+  if (html.style.getPropertyValue("font-size") !== "") html.style.removeProperty("font-size");
 
-  if (s.density === "compact") html.dataset.density = "compact";
-  else delete html.dataset.density;
-
-  if (s.sidebar === "icons") html.dataset.sidebar = "icons";
-  else delete html.dataset.sidebar;
-
-  if (s.type === "mono") html.dataset.type = "mono";
-  else delete html.dataset.type;
+  writeData("density", s.density === "compact" ? "compact" : undefined);
+  writeData("sidebar", s.sidebar === "icons" ? "icons" : undefined);
+  writeData("type", s.type === "mono" ? "mono" : undefined);
 
   // Glow é theme-governed: escrever incondicionalmente estompava o --glow
   // declarado pelo tema a cada mudança de knob. Só o valor dirty vence.
-  if (isDirty("glow")) {
-    html.style.setProperty("--glow", String(s.glow));
-  } else {
-    const tv = themeVar("--glow");
-    if (tv !== null) html.style.setProperty("--glow", tv);
-    else html.style.removeProperty("--glow");
-  }
+  writeThemeVar("--glow", isDirty("glow") ? String(s.glow) : null);
 
   // Lyrics glass: slider unico controla alpha + brightness + (em valores
   // altos) desliga o backdrop-filter — replicando a estetica do modo
@@ -262,69 +299,55 @@ export function applyTweaks(s: TweaksState = state()) {
   // o data attr `data-lyrics-solid` ativa a regra CSS que zera o backdrop.
   // Sem dirty, vale o tema (seção lyrics do YAML); sem tema, os fallbacks
   // do CSS. removeProperty puro apagaria a var inline do applyTheme.
+  let glassChanged: boolean;
   if (isDirty("lyricsGlass")) {
-    applyLyricsGlass(s);
+    glassChanged = applyLyricsGlass(s);
   } else {
-    for (const name of ["--lyrics-bg-alpha", "--lyrics-bg-brightness"]) {
-      const tv = themeVar(name);
-      if (tv !== null) html.style.setProperty(name, tv);
-      else html.style.removeProperty(name);
-    }
-    html.dataset.lyricsSolid = "off";
+    const a = writeThemeVar("--lyrics-bg-alpha", null);
+    const b = writeThemeVar("--lyrics-bg-brightness", null);
+    const c = writeData("lyricsSolid", "off");
+    glassChanged = a || b || c;
   }
 
   // Cor das linhas do spectrum bg: resolvida pela precedência
-  // usuário > capa > tema > default (ver resolveInk).
-  applyInkResolved(s);
+  // usuário > capa > tema > default (ver resolveInk). Só re-resolve se
+  // alguma entrada mudou — sem tema, resolver lê o canvas computado.
+  if (inkKey(s) !== _inkKey) applyInkResolved(s);
 
   // Accent da UI: capa (adaptiveAccent) > tema. Roda em todo state change
-  // pra cobrir o toggle sem listener dedicado.
+  // pra cobrir o toggle sem listener dedicado (escrita diferencial).
   applyAccentResolved(s);
 
   // EQ spectrum overlay: data attr e debug-only. EqCanvas le tweaks().eqSpectrumOverlay direto.
-  html.dataset.eqSpectrum = s.eqSpectrumOverlay ? "on" : "off";
+  writeData("eqSpectrum", s.eqSpectrumOverlay ? "on" : "off");
 
-  // Motor do bg: quem MONTA o canvas é o App (lê o store direto); o data
-  // attr existe pro CSS poder tratar os dois fundos de forma diferente
-  // (o WebGL pinta superfície opaca, o 2D é transparente sobre o tema).
-  html.dataset.bgEngine = s.bgEngine;
+  // Motor do bg: quem MONTA o canvas é o App (lê o store direto).
+  writeData("bgEngine", s.bgEngine);
 
-  // Bg reactivity: 3 ganhos por banda + smoothing. SpectrumCanvas
-  // lê essas vars no frame loop (~3x/s) sem listener, igual o
-  // bgInk. Range esperado: 0..2 nos gains, 0..1 no smoothing.
-  html.style.setProperty("--bg-bass-gain", s.bgBassGain.toFixed(3));
-  html.style.setProperty("--bg-mid-gain", s.bgMidGain.toFixed(3));
-  html.style.setProperty("--bg-treble-gain", s.bgTrebleGain.toFixed(3));
-  html.style.setProperty("--bg-smoothing", s.bgSmoothing.toFixed(3));
-  html.style.setProperty("--bg-speed", s.bgSpeed.toFixed(3));
-  // Beat sync: 3 vars numéricas (o canvas lê com parseFloat no mesmo
-  // batch, sem parsing de bool/string): gate 0/1, modo 0=off/1=speed/
-  // 2=pulse, intensidade.
-  html.style.setProperty("--bg-beat-sync", s.bgBeatMode !== "off" ? "1" : "0");
-  html.style.setProperty(
-    "--bg-beat-mode",
-    s.bgBeatMode === "speed" ? "1" : s.bgBeatMode === "pulse" ? "2" : "0",
-  );
-  html.style.setProperty("--bg-beat-depth", s.bgBeatDepth.toFixed(2));
+  // Knobs do fundo (ganhos por banda, smoothing, velocidade, beat-sync):
+  // NÃO vão pro :root. SpectrumCanvas e GlBackground leem do store
+  // (bgKnobs / tweaks()).
 
-  // Aviso pra quem MEDE o resultado (o card de letras do NowPlaying lê as
-  // vars do vidro com getComputedStyle). Desde o cfg-15 a escrita roda num
-  // rAF deste store; um rAF agendado por outro effect no mesmo quadro pode
-  // rodar antes dela — a ordem segue a dos observadores do signal, que o
-  // Solid embaralha a cada re-execução — e ler o valor anterior.
-  window.dispatchEvent(new Event("rustify:tweaks-applied"));
+  // Aviso pra quem MEDE o vidro (o card de letras do NowPlaying). Desde o
+  // cfg-15 a escrita roda num rAF deste store; um rAF agendado por outro
+  // effect no mesmo quadro pode rodar antes dela — a ordem segue a dos
+  // observadores do signal, que o Solid embaralha a cada re-execução — e
+  // ler o valor anterior. Só quando o vidro mudou: arrastar qualquer
+  // outro slider não pode custar uma re-medição por quadro.
+  if (glassChanged) window.dispatchEvent(new Event("rustify:tweaks-applied"));
 }
 
-/** Deriva e escreve as vars do lyrics glass a partir do slider. */
-function applyLyricsGlass(s: TweaksState) {
-  const html = document.documentElement;
+/** Deriva e escreve as vars do lyrics glass a partir do slider. Devolve
+    se alguma mudou. */
+function applyLyricsGlass(s: TweaksState): boolean {
   const SOLID_THRESHOLD = 0.85;
   const g = Math.max(0, Math.min(1, s.lyricsGlass));
   const alpha = 0.04 + g * 0.61;          // 0.04 .. 0.65
   const brightness = 0.92 - g * 0.40;     // 0.92 .. 0.52
-  html.style.setProperty("--lyrics-bg-alpha", alpha.toFixed(3));
-  html.style.setProperty("--lyrics-bg-brightness", brightness.toFixed(3));
-  html.dataset.lyricsSolid = g >= SOLID_THRESHOLD ? "on" : "off";
+  const a = writeVar("--lyrics-bg-alpha", alpha.toFixed(3));
+  const b = writeVar("--lyrics-bg-brightness", brightness.toFixed(3));
+  const c = writeData("lyricsSolid", g >= SOLID_THRESHOLD ? "on" : "off");
+  return a || b || c;
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -343,6 +366,8 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 // a capa via setAdaptiveColor (src/lib/adaptiveInk.ts).
 let _themeInk: string | null = null;
 let _adaptiveColor: string | null = null;
+/** inkKey() da última resolução do ink (ver applyInkResolved). */
+let _inkKey = "";
 
 /** Ink base do tema ativo (ou default) — referência de luminância pro
     deriveInk do adaptive. */
@@ -382,26 +407,21 @@ const ACCENT_VARS = [
 ] as const;
 
 function applyAccentResolved(s: TweaksState = state()) {
-  const html = document.documentElement;
   const a = s.adaptiveAccent ? _adaptiveAccent : null;
   if (a) {
     const { r, g, b } = hexToRgb(a.accent);
-    html.style.setProperty("--primary", a.accent);
-    html.style.setProperty("--primary-container", a.container);
-    html.style.setProperty("--primary-fixed-dim", a.container);
-    html.style.setProperty("--on-primary", a.on);
-    html.style.setProperty("--on-primary-container", a.on);
-    html.style.setProperty("--blue-fg", a.accent);
-    html.style.setProperty("--blue-ring", a.accent);
-    html.style.setProperty("--blue-bg", `rgba(${r}, ${g}, ${b}, 0.12)`);
+    writeVar("--primary", a.accent);
+    writeVar("--primary-container", a.container);
+    writeVar("--primary-fixed-dim", a.container);
+    writeVar("--on-primary", a.on);
+    writeVar("--on-primary-container", a.on);
+    writeVar("--blue-fg", a.accent);
+    writeVar("--blue-ring", a.accent);
+    writeVar("--blue-bg", `rgba(${r}, ${g}, ${b}, 0.12)`);
     return;
   }
   // Restaura o accent do tema ativo; sem tema, remove (caem os :root).
-  for (const name of ACCENT_VARS) {
-    const v = themeVar(name);
-    if (v !== null) html.style.setProperty(name, v);
-    else html.style.removeProperty(name);
-  }
+  for (const name of ACCENT_VARS) writeThemeVar(name, null);
 }
 
 /** Piso de visibilidade (não-texto WCAG). O deriveInk da capa mira 4:1 por
@@ -435,11 +455,21 @@ function resolveInk(s: TweaksState): string {
     registrada no :root força restyle global por frame no WebKitGTK
     (medido 2026-07-17: 60fps -> 29fps, stall de 382ms). */
 function applyInkResolved(s: TweaksState = state()) {
+  _inkKey = inkKey(s);
   const target = resolveInk(s);
   const to = hexToRgb(target);
-  const html = document.documentElement;
-  html.style.setProperty("--bg-ink", target);
-  html.style.setProperty("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
+  writeVar("--bg-ink", target);
+  writeVar("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
+}
+
+/** Tudo de que o ink resolvido depende. applyTweaks só re-resolve quando
+    isto muda; tema e capa chamam applyInkResolved direto (o applyTheme
+    reescreve --bg-ink inline, então o listener sempre re-resolve). */
+function inkKey(s: TweaksState): string {
+  return [
+    isDirty("bgInk"), s.bgInk, s.adaptiveInk, _adaptiveColor, _themeInk,
+    themeVar("--bg-canvas"),
+  ].join("|");
 }
 
 // Tema aplicado (boot, troca no picker, hot-reload do watcher): captura o

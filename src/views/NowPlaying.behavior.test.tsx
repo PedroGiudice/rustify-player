@@ -337,6 +337,33 @@ describe("NowPlaying — contraste do card de letras (np-2, ds-18)", () => {
       root.style.removeProperty("--lyrics-bg-brightness");
     }
   });
+
+  // cfg-15: o aviso do store chegava a cada quadro do arrasto de qualquer
+  // slider, e cada medição chamava getComputedStyle(html) logo depois de o
+  // store escrever no :root — recálculo de estilo forçado por quadro. As
+  // vars do vidro só existem inline no <html> (store ou tema), então a
+  // medição lê o inline.
+  it("re-medir no aviso do store não chama getComputedStyle", async () => {
+    const root = document.documentElement;
+    root.style.setProperty("--bg-canvas", "#fafafa");
+    try {
+      await cardFg1();
+      const gcs = vi.spyOn(window, "getComputedStyle");
+      root.style.setProperty("--lyrics-bg-alpha", "0.650");
+      root.style.setProperty("--lyrics-bg-brightness", "0.520");
+      const expected = lyricsInk(glassSurface({ backdrop: { r: 250, g: 250, b: 250 }, alpha: 0.65, brightness: 0.52 }));
+      window.dispatchEvent(new Event("rustify:tweaks-applied"));
+      await waitFor(() => {
+        const card = document.querySelector(".np__lyrics-card") as HTMLElement;
+        expect(card.style.getPropertyValue("--fg-1")).toBe(expected["--fg-1"]);
+      });
+      expect(gcs.mock.calls.filter(([el]) => el === root)).toEqual([]);
+      gcs.mockRestore();
+    } finally {
+      root.style.removeProperty("--lyrics-bg-alpha");
+      root.style.removeProperty("--lyrics-bg-brightness");
+    }
+  });
 });
 
 // nowplaying-v4 / cfg-10 (integração): o listener próprio do Now Playing

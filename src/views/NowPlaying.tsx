@@ -133,17 +133,31 @@ export default function NowPlaying() {
   // vidro (lib/lyricsInk.ts). Atrás do card está o canvas do tema no
   // fundo 2D e o preto fixo no WebGL; alpha/brightness vêm do slider
   // Lyrics glass (ou do tema, ou dos fallbacks do CSS). Re-mede quando o
-  // store de Tweaks avisa que escreveu as vars (rustify:tweaks-applied), e
-  // não no signal: a escrita do store roda num rAF próprio, e medir pelo
-  // signal podia ler o passo anterior do slider.
+  // store de Tweaks avisa que escreveu as vars do vidro
+  // (rustify:tweaks-applied), e não no signal: a escrita do store roda num
+  // rAF próprio, e medir pelo signal podia ler o passo anterior do slider.
+  //
+  // Sem getComputedStyle na medição (cfg-15): durante o arrasto ela roda
+  // por quadro, logo depois de o store escrever no :root, e forçaria o
+  // recálculo de estilo da árvore. As vars do vidro só existem inline no
+  // <html> (store ou tema; o CSS só tem os fallbacks), e o --bg-canvas
+  // também é inline quando há tema — sem tema vem do :root do CSS, que só
+  // muda com rustify:theme-applied, então é lido uma vez por tema.
   const [ink, setInk] = createSignal<Partial<Record<LyricsInkVar, string>>>({});
+  let sheetCanvas: string | null = null;
+  const inlineVar = (name: string) => document.documentElement.style.getPropertyValue(name).trim();
+  function canvasColor(): string {
+    const inline = inlineVar("--bg-canvas");
+    if (inline) return inline;
+    sheetCanvas ??= getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim();
+    return sheetCanvas;
+  }
   function measureInk() {
     const html = document.documentElement;
-    const cs = getComputedStyle(html);
-    const backdrop = glActive() ? GL_CANVAS : cssColorToRgb(cs.getPropertyValue("--bg-canvas"));
+    const backdrop = glActive() ? GL_CANVAS : cssColorToRgb(canvasColor());
     if (!backdrop) { setInk({}); return; }
-    const alpha = parseFloat(cs.getPropertyValue("--lyrics-bg-alpha"));
-    const brightness = parseFloat(cs.getPropertyValue("--lyrics-bg-brightness"));
+    const alpha = parseFloat(inlineVar("--lyrics-bg-alpha"));
+    const brightness = parseFloat(inlineVar("--lyrics-bg-brightness"));
     setInk(lyricsInk(glassSurface({
       backdrop,
       alpha: Number.isFinite(alpha) ? alpha : 0.193,
@@ -159,13 +173,17 @@ export default function NowPlaying() {
     glActive();
     scheduleInk();
   });
+  const onThemeApplied = () => {
+    sheetCanvas = null;
+    scheduleInk();
+  };
   onMount(() => {
     window.addEventListener("rustify:tweaks-applied", scheduleInk);
-    window.addEventListener("rustify:theme-applied", scheduleInk);
+    window.addEventListener("rustify:theme-applied", onThemeApplied);
     onCleanup(() => {
       cancelAnimationFrame(inkRaf);
       window.removeEventListener("rustify:tweaks-applied", scheduleInk);
-      window.removeEventListener("rustify:theme-applied", scheduleInk);
+      window.removeEventListener("rustify:theme-applied", onThemeApplied);
     });
   });
 
