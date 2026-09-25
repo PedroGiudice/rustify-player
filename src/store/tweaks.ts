@@ -549,11 +549,54 @@ export function loadTweaks() {
 // a cada boot. Persistência e aplicação só valem após o load.
 let _loaded = false;
 
+// Agrupamento (cfg-15): arrastar um slider dispara um input por evento, e
+// cada applyTweaks mexe em custom properties herdadas no :root — restyle da
+// árvore inteira (o mesmo mecanismo da regra que proíbe transition de
+// custom property no :root). A escrita no DOM vai pra UM rAF por quadro,
+// com o estado mais recente; a gravação no localStorage (JSON.stringify +
+// setItem síncrono) espera o arrasto parar. flushTweaks fecha o que estiver
+// pendente — no beforeunload, pra não perder o último ajuste.
+const SAVE_DEBOUNCE_MS = 300;
+let _applyFrame: number | null = null;
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleApply() {
+  if (_applyFrame !== null) return;
+  _applyFrame = requestAnimationFrame(() => {
+    _applyFrame = null;
+    applyTweaks(state());
+  });
+}
+
+function scheduleSave() {
+  if (_saveTimer !== null) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    save(state());
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/** Aplica e grava agora o que estiver agendado. */
+export function flushTweaks() {
+  if (_applyFrame !== null) {
+    cancelAnimationFrame(_applyFrame);
+    _applyFrame = null;
+    applyTweaks(state());
+  }
+  if (_saveTimer !== null) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+    save(state());
+  }
+}
+
+window.addEventListener("beforeunload", flushTweaks);
+
 createEffect(() => {
-  const s = state();
+  state();
   if (!_loaded) return;
-  applyTweaks(s);
-  save(s);
+  scheduleApply();
+  scheduleSave();
 });
 
 // ── Loudness → backend (IPC) ──────────────────────────────────

@@ -7,7 +7,7 @@
    antiga infere dirty por diferença contra DEFAULTS.
    ============================================================ */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Vars do "tema ativo" que o themeVar do mock devolve (vazio = sem tema).
 const themeVars = vi.hoisted(() => ({}) as Record<string, string>);
@@ -25,6 +25,7 @@ vi.mock("../tauri", () => ({
 import {
   DEFAULTS,
   applyTweaks,
+  flushTweaks,
   loadTweaks,
   updateTweak,
   clearDirty,
@@ -63,6 +64,7 @@ describe("precedência do ink", () => {
     loadTweaks();
     setAdaptiveColor("#224433");
     updateTweak("bgInk", "#101010");
+    flushTweaks();
     expect(isDirty("bgInk")).toBe(true);
     expect(currentInk()).toBe("#101010");
   });
@@ -72,6 +74,7 @@ describe("precedência do ink", () => {
     setAdaptiveColor("#224433");
     updateTweak("bgInk", "#101010");
     clearDirty("bgInk");
+    flushTweaks();
     expect(currentInk()).toBe("#224433");
   });
 
@@ -140,6 +143,7 @@ describe("bgBeatMode + bgBeatDepth (beat-sync do bg)", () => {
     localStorage.setItem("kv-tweaks", "{}");
     loadTweaks();
     updateTweak("bgBeatMode", "off");
+    flushTweaks();
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("0");
     expect(html().style.getPropertyValue("--bg-beat-mode")).toBe("0");
   });
@@ -148,6 +152,7 @@ describe("bgBeatMode + bgBeatDepth (beat-sync do bg)", () => {
     localStorage.setItem("kv-tweaks", "{}");
     loadTweaks();
     updateTweak("bgBeatMode", "pulse");
+    flushTweaks();
     expect(html().style.getPropertyValue("--bg-beat-sync")).toBe("1");
     expect(html().style.getPropertyValue("--bg-beat-mode")).toBe("2");
   });
@@ -190,6 +195,7 @@ describe("lyricsGlass regido por tema", () => {
   it("com dirty, escreve as vars derivadas do slider", () => {
     loadTweaks();
     updateTweak("lyricsGlass", 0.5);
+    flushTweaks();
     expect(html().style.getPropertyValue("--lyrics-bg-alpha")).not.toBe("");
   });
 
@@ -203,6 +209,7 @@ describe("lyricsGlass regido por tema", () => {
       loadTweaks();
       updateTweak("lyricsGlass", 0.9);
       clearDirty("lyricsGlass");
+      flushTweaks();
       applyTweaks();
       expect(html().style.getPropertyValue("--lyrics-bg-alpha")).toBe("0.4");
       expect(html().style.getPropertyValue("--lyrics-bg-brightness")).toBe("0.7");
@@ -223,8 +230,10 @@ describe("Type Mono", () => {
     loadTweaks();
     updateTweak("fontUI", "Foo Sans");
     updateTweak("type", "mono");
+    flushTweaks();
     expect(html().style.getPropertyValue("--font-sans")).toBe("var(--font-mono)");
     updateTweak("type", "body");
+    flushTweaks();
     expect(html().style.getPropertyValue("--font-sans")).toContain('"Foo Sans"');
     resetTweaks();
   });
@@ -233,9 +242,66 @@ describe("Type Mono", () => {
     resetTweaks();
     loadTweaks();
     updateTweak("type", "mono");
+    flushTweaks();
     html().style.setProperty("--font-sans", '"Tema Sans", sans-serif');
     window.dispatchEvent(new CustomEvent("rustify:theme-applied", { detail: { ink: null } }));
     expect(html().style.getPropertyValue("--font-sans")).toBe("var(--font-mono)");
     resetTweaks();
+  });
+});
+
+// cfg-15: cada evento de input do slider rodava o applyTweaks inteiro
+// (custom properties herdadas no :root = restyle da árvore) e gravava o
+// kv-tweaks (JSON.stringify + setItem síncrono). Agora: escrita das vars
+// agrupada por quadro (rAF) e gravação com debounce.
+describe("arrasto de slider (cfg-15)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("vários inputs no mesmo quadro escrevem a var uma vez, com o valor final", () => {
+    flushTweaks(); // quadro/timer reais pendentes de testes anteriores
+    vi.useFakeTimers();
+    resetTweaks();
+    loadTweaks();
+    flushTweaks();
+    const spy = vi.spyOn(html().style, "setProperty");
+    for (const v of [1.1, 1.2, 1.3, 1.4, 1.5]) updateTweak("bgBassGain", v);
+    const writes = () => spy.mock.calls.filter(([k]) => k === "--bg-bass-gain");
+    expect(writes()).toHaveLength(0);
+    vi.advanceTimersByTime(20);
+    expect(writes()).toEqual([["--bg-bass-gain", "1.500"]]);
+    spy.mockRestore();
+  });
+
+  it("grava o kv-tweaks uma vez depois que o arrasto para", () => {
+    flushTweaks(); // quadro/timer reais pendentes de testes anteriores
+    vi.useFakeTimers();
+    resetTweaks();
+    loadTweaks();
+    flushTweaks();
+    const spy = vi.spyOn(Storage.prototype, "setItem");
+    const saves = () => spy.mock.calls.filter(([k]) => k === "kv-tweaks");
+    for (const v of [0.5, 0.6, 0.7]) {
+      updateTweak("bgSpeed", v);
+      vi.advanceTimersByTime(20);
+    }
+    expect(saves()).toHaveLength(0);
+    vi.advanceTimersByTime(1000);
+    expect(saves()).toHaveLength(1);
+    expect(JSON.parse(saves()[0][1] as string).bgSpeed).toBe(0.7);
+    spy.mockRestore();
+  });
+
+  it("flushTweaks aplica e grava o pendente na hora (fechar a janela)", () => {
+    flushTweaks(); // quadro/timer reais pendentes de testes anteriores
+    vi.useFakeTimers();
+    resetTweaks();
+    loadTweaks();
+    flushTweaks();
+    updateTweak("bgMidGain", 1.7);
+    flushTweaks();
+    expect(html().style.getPropertyValue("--bg-mid-gain")).toBe("1.700");
+    expect(JSON.parse(localStorage.getItem("kv-tweaks")!).bgMidGain).toBe(1.7);
   });
 });
