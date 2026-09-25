@@ -2978,6 +2978,27 @@ html { --glow: 0; }
 }
 .set-about-item__value.is-mono-strong { font-weight: 600; }
 
+/* Badge de status (calculadora WCAG do Settings). Portado do
+   components.css órfão, que nunca entrou no bundle, para os tokens
+   vivos: os triplets semânticos, que o bridge dos temas preenche a
+   partir de signal.ok/warn/error. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--fg-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+}
+.status-pill--ok   { color: var(--green-fg); border-color: var(--green-ring); }
+.status-pill--warn { color: var(--amber-fg); border-color: var(--amber-ring); }
+.status-pill--err  { color: var(--rose-fg);  border-color: var(--rose-ring); }
+
 /* ========================================================================
  * RESOURCES PANEL — btop-inspired overlay
  * ====================================================================== */

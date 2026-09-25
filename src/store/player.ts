@@ -9,6 +9,7 @@
      setQueue(tracks, 0)  // mutação
    ============================================================ */
 
+import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { Track, TrackInfo } from "../tauri";
 import { setVolume as ipcSetVolume } from "../tauri";
@@ -131,6 +132,25 @@ export async function applyPersistedVolume(retries = 5): Promise<void> {
       setTimeout(() => { applyPersistedVolume(retries - 1).catch(() => {}); }, 300);
     }
   }
+}
+
+// ── Resume on launch: preferência persistida ──────────────────
+// Liga/desliga a restauração da sessão (fila + posição) no boot. O
+// PlayerBar consulta antes do restoreSession; o Settings é quem muda.
+// A chave mantém o nome legado do mockup: preserva a escolha que o
+// usuário já tinha salvo quando o toggle ainda não tinha efeito.
+const RESUME_KEY = "rustify-mock-resume-launch";
+
+export function loadResumeOnLaunch(): boolean {
+  try { return localStorage.getItem(RESUME_KEY) !== "false"; } catch { return true; }
+}
+
+const [resumeOnLaunch, _setResumeOnLaunch] = createSignal(loadResumeOnLaunch());
+export { resumeOnLaunch };
+
+export function setResumeOnLaunch(on: boolean) {
+  _setResumeOnLaunch(on);
+  try { localStorage.setItem(RESUME_KEY, String(on)); } catch {}
 }
 
 // ── Mutações (API pública do store) ───────────────────────────

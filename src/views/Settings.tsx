@@ -4,15 +4,18 @@
    Recriacao da view Settings seguindo o mockup do handoff
    (data-screen="settings"). 4 paineis verticais:
 
-   1. Appearance — Theme segmented (Light/Dark/Auto),
-      Compact sidebar tog, Cinema mode kbd, Beat sync segmented
-      (Off/Subtle/Default/Pulse) persistindo em rustify-mock-sync.
-   2. Playback — Resume on launch tog, Volume slider, Normalize tog.
+   1. Appearance — tema YAML (o tema é o modo: não há mais seletor
+      Light/Dark/Auto, que gravava um body[data-theme] sem CSS),
+      Compact sidebar tog e Beat sync (o MESMO estado do Tweaks:
+      sidebar e bgBeatMode), Cinema mode kbd.
+   2. Playback — Resume on launch tog (preferência lida pelo
+      PlayerBar no boot), Volume slider, Normalize tog.
       (Tier 0 removeu crossfade, gapless, output device, scrobble.)
    3. Library — Music folder (read-only), Re-scan (accent), Embeddings
-      (read-only stat), qdrant status (read-only), library stats tile grid.
-   4. About — grid 6 items mono (Version, Tauri, Backend,
-      Identifier, Branch, License).
+      (read-only stat), qdrant (endpoint e vetores; o status NAO e
+      consultado, entao nao e exibido), library stats tile grid.
+   4. About — grid mono (Version, Tauri, Backend, Identifier, License).
+      Os valores fixos aqui precisam bater com o Cargo.toml.
 
    PRESERVADO do Settings antigo (NAO QUEBRAR):
    - Update flow (checkForUpdate / installUpdate / restartApp)
@@ -25,13 +28,13 @@ import { createResource, createSignal, For, onCleanup, onMount, Show } from "sol
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan,
-  listThemes, applyThemeByName, loadTheme, watchTheme, onThemeChanged,
+  listThemes, applyThemeByName, loadTheme, watchTheme, unwatchTheme, onThemeChanged,
   clearThemeVars,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
-import { applyTweaks, tweaks, updateTweak } from "../store/tweaks";
-import { player, changeVolume } from "../store/player";
+import { applyTweaks, tweaks, updateTweak, type TweaksState } from "../store/tweaks";
+import { player, changeVolume, resumeOnLaunch, setResumeOnLaunch } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
 
@@ -44,12 +47,13 @@ function wcagLabel(c: ContrastCheck): string {
   return "fail";
 }
 
-/** Classe CSS para o badge de classificacao */
+/** Classe CSS para o badge de classificacao: AA/AAA ok, AA-large (so texto
+    grande) warn, abaixo de 3:1 err. Estilo em extractor-lab.css (.status-pill). */
 function wcagBadgeClass(c: ContrastCheck): string {
-  if (c.pass_aaa) return "status-pill status-pill--ok";
-  if (c.pass_aa)  return "status-pill status-pill--ok";
-  // warn para AA-large (3:1) e para fail — components.css nao tem --err
-  return "status-pill status-pill--warn";
+  const label = wcagLabel(c);
+  if (label === "AAA" || label === "AA") return "status-pill status-pill--ok";
+  if (label === "AA-large") return "status-pill status-pill--warn";
+  return "status-pill status-pill--err";
 }
 
 function relativeTime(isoStr: string | null | undefined): string {
@@ -62,50 +66,6 @@ function relativeTime(isoStr: string | null | undefined): string {
     if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)} h ago`;
     return then.toLocaleDateString();
   } catch { return ""; }
-}
-
-// ── localStorage keys que dialogam com T10 (SpectrumCanvas) ─────
-const SYNC_KEY = "rustify-mock-sync";
-type SyncMode = "off" | "subtle" | "default" | "pulse";
-function loadSyncMode(): SyncMode {
-  try {
-    const raw = localStorage.getItem(SYNC_KEY);
-    if (raw === "off" || raw === "subtle" || raw === "default" || raw === "pulse") return raw;
-  } catch {}
-  return "default";
-}
-function saveSyncMode(m: SyncMode) {
-  try { localStorage.setItem(SYNC_KEY, m); } catch {}
-}
-
-// Outros toggles client-only (futuro: persistir via store plugin)
-const COMPACT_KEY = "rustify-mock-compact-sidebar";
-const RESUME_KEY  = "rustify-mock-resume-launch";
-
-// Tema theme picker — bridge entre seg (Light/Dark/Auto) e o
-// listThemes existente. Light/Dark/Auto sao "modes" cosmeticos
-// que afetam document.body[data-theme]. O picker custom continua
-// disponivel pra YAMLs custom (mas movemos pra dentro do mesmo
-// painel pra nao quebrar fluidez).
-type ThemeMode = "light" | "dark" | "auto";
-const THEME_MODE_KEY = "rustify-theme-mode";
-function loadThemeMode(): ThemeMode {
-  try {
-    const raw = localStorage.getItem(THEME_MODE_KEY);
-    if (raw === "light" || raw === "dark" || raw === "auto") return raw;
-  } catch {}
-  return "light";
-}
-
-function applyThemeMode(m: ThemeMode) {
-  try {
-    if (m === "auto") {
-      document.body.removeAttribute("data-theme");
-    } else {
-      document.body.setAttribute("data-theme", m);
-    }
-    localStorage.setItem(THEME_MODE_KEY, m);
-  } catch {}
 }
 
 export default function Settings() {
@@ -133,74 +93,78 @@ export default function Settings() {
   const [activeTheme, setActiveTheme] = createSignal(localStorage.getItem("rustify-theme") || "");
   const [contrast, setContrast] = createSignal<ContrastCheck[]>([]);
 
-  async function selectThemeFile(filename: string) {
+  // Erro da última tentativa de aplicar tema (YAML inválido, arquivo sumiu).
+  const [themeError, setThemeError] = createSignal<string | null>(null);
+
+  async function selectThemeFile(filename: string, select?: HTMLSelectElement) {
+    setThemeError(null);
     if (!filename) {
-      document.documentElement.removeAttribute("style");
-      localStorage.removeItem("rustify-theme");
+      // Default: tira só as vars do tema (o resto do inline — zoom, Tweaks,
+      // adaptive ink — fica), derruba o watcher e re-aplica os Tweaks por
+      // cima do :root, sem o ink do tema.
       clearThemeVars();
+      localStorage.removeItem("rustify-theme");
+      unwatchTheme().catch((e) => console.warn("[theme] unwatch failed:", e));
       setActiveTheme("");
       setContrast([]);
-      // O removeAttribute acima apaga TODAS as inline vars — inclusive as
-      // dos Tweaks (zoom, glow, fontes). Notifica o store (ink do tema
-      // deixa de existir) e re-aplica os tweaks por inteiro.
       window.dispatchEvent(new CustomEvent("rustify:theme-applied", {
         detail: { ink: null },
       }));
       applyTweaks();
       return;
     }
-    const checks = await applyThemeByName(filename);
-    setActiveTheme(filename);
-    setContrast(checks);
-    // Inicia watcher de hot-reload para este arquivo YAML.
-    // Quando o watcher emite "theme-changed", o listener abaixo (no onMount)
-    // re-aplica e re-calcula o contraste.
+    try {
+      const checks = await applyThemeByName(filename);
+      setActiveTheme(filename);
+      setContrast(checks);
+    } catch (e) {
+      // O tema anterior segue na tela; o <select> (não controlado pelo
+      // DOM) voltaria mentindo — devolve a seleção ao tema ativo.
+      setThemeError(String(e));
+      if (select) select.value = activeTheme();
+      return;
+    }
+    // Hot-reload: o watcher emite "theme-changed" e quem re-aplica é o
+    // listener do boot (wireThemeHotReload); o daqui só refaz o contraste.
     watchTheme(filename).catch((e) => console.warn("[theme] watch failed:", e));
   }
 
-  const failingContrast = () => contrast().filter((c) => !c.pass_aa);
+  // Falha = nem texto grande passa (< 3:1). AA-large conta à parte: é
+  // válido pra texto grande e não pode inflar o contador de falhas.
+  const failingContrast = () => contrast().filter((c) => wcagLabel(c) === "fail");
+  const largeOnlyContrast = () => contrast().filter((c) => wcagLabel(c) === "AA-large");
 
-  // ── Theme mode (Light/Dark/Auto) — seg do Appearance ──────────
-  const [themeMode, setThemeMode] = createSignal<ThemeMode>(loadThemeMode());
-  function pickThemeMode(m: ThemeMode) {
-    setThemeMode(m);
-    applyThemeMode(m);
-  }
-
-  // ── Beat sync (seg do Appearance, persist em rustify-mock-sync)
-  const [syncMode, setSyncMode] = createSignal<SyncMode>(loadSyncMode());
-  function pickSync(m: SyncMode) {
-    setSyncMode(m);
-    saveSyncMode(m);
-  }
-
-  // ── Toggles cosmeticos (compact sidebar, resume) ─────
-  const [compact, setCompact] = createSignal(localStorage.getItem(COMPACT_KEY) === "true");
+  // ── Compact sidebar e Beat sync: o MESMO estado do Tweaks ────
+  // (antes gravavam chaves que nenhum outro arquivo lia — cfg-1).
+  const compactSidebar = () => tweaks().sidebar === "icons";
   function toggleCompact() {
-    const next = !compact();
-    setCompact(next);
-    try { localStorage.setItem(COMPACT_KEY, String(next)); } catch {}
+    updateTweak("sidebar", compactSidebar() ? "labels" : "icons");
   }
-  const [resumeLaunch, setResumeLaunch] = createSignal(localStorage.getItem(RESUME_KEY) !== "false");
+  const BEAT_MODES: Array<[TweaksState["bgBeatMode"], string]> = [
+    ["off", "Off"], ["speed", "Speed"], ["pulse", "Pulse"],
+  ];
+
   function toggleResume() {
-    const next = !resumeLaunch();
-    setResumeLaunch(next);
-    try { localStorage.setItem(RESUME_KEY, String(next)); } catch {}
+    setResumeOnLaunch(!resumeOnLaunch());
   }
 
-  // ── Volume + normalize (preservado, visual ainda no painel Audio
-  //    do Playback — apesar de o mockup nao mostrar volume aqui,
-  //    a logica precisa ficar acessivel) ──────────────────────────
+  // ── Tema: diagnóstico ao abrir + contraste no hot-reload ──────
   onMount(() => {
-    // Re-aplica theme mode salvo no boot pra refletir em document.body.
-    applyThemeMode(themeMode());
+    // Diagnóstico do tema ativo ao abrir (sem isto a tabela só aparecia
+    // depois de uma nova seleção ou de um hot-reload). loadTheme é leitura
+    // pura: não re-aplica nada.
+    const current = activeTheme();
+    if (current) {
+      loadTheme(current)
+        .then((r) => { if (activeTheme() === current) setContrast(r.contrast); })
+        .catch((e) => console.warn("[theme] contrast on open failed:", e));
+    }
 
-    // Hot-reload de tema: quem APLICA é o listener do boot (main.tsx) —
-    // registrar um segundo applyThemeByName aqui duplicava IPC e aplicação
-    // (achado da auditoria). Este listener só atualiza a calculadora de
-    // contraste da view, via loadTheme (leitura pura, não aplica).
+    // Hot-reload de tema: quem APLICA é o listener do boot
+    // (wireThemeHotReload). Este só atualiza a calculadora — e só para o
+    // tema ativo: evento atrasado de outro arquivo não troca a tabela.
     const unlisten = onThemeChanged((filename) => {
-      if (!filename) return;
+      if (!filename || filename !== activeTheme()) return;
       loadTheme(filename)
         .then((r) => setContrast(r.contrast))
         .catch((e) => console.warn("[theme] refresh contrast failed:", e));
@@ -209,6 +173,7 @@ export default function Settings() {
     onCleanup(() => { unlisten.then((fn) => fn()).catch(() => {}); });
   });
 
+  // ── Volume + normalize (painel Playback) ─────────────────────
   // Normalize: fonte ÚNICA é tweaks().loudnessNorm — o effect de loudness
   // do store empurra pro backend. O estado local + localStorage paralelo
   // que vivia aqui revertia silenciosamente (auditoria: o store re-aplicava
@@ -217,7 +182,9 @@ export default function Settings() {
     updateTweak("loudnessNorm", !tweaks().loudnessNorm);
   }
 
-  const volumePct = () => Math.round(player.volume * 100);
+  // Mudo = 0%, igual ao PlayerBar (cfg-24). Mexer no slider desmuta via
+  // changeVolume, como no slider da barra.
+  const volumePct = () => (player.isMuted ? 0 : Math.round(player.volume * 100));
   function onVolumeChange(e: Event) {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     const vol = val / 100;
@@ -288,7 +255,7 @@ export default function Settings() {
           <p class="view__head-hint">Library, audio, appearance — v{version() ?? "—"}.</p>
         </div>
         <div class="view__stats">
-          <span>config <b>~/.config/rustify-player</b></span>
+          <span>data <b>~/.local/share/rustify-player</b></span>
         </div>
       </header>
 
@@ -302,27 +269,11 @@ export default function Settings() {
             <span class="set-panel__sub">light is the default Extractor Lab palette</span>
           </div>
 
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Theme</div>
-              <div class="set-row__hint">
-                Light is the default. Auto follows your OS preference. Dark is the legacy editorial-hi-fi theme.
-              </div>
-            </div>
-            <div class="set-row__control">
-              <div class="seg">
-                <button aria-pressed={themeMode() === "light" ? "true" : "false"} onClick={() => pickThemeMode("light")}>Light</button>
-                <button aria-pressed={themeMode() === "dark" ? "true" : "false"} onClick={() => pickThemeMode("dark")}>Dark</button>
-                <button aria-pressed={themeMode() === "auto" ? "true" : "false"} onClick={() => pickThemeMode("auto")}>Auto</button>
-              </div>
-            </div>
-          </div>
-
           {/* Theme YAML picker — mantido pra estilos custom ── */}
           <div class="set-row">
             <div>
               <div class="set-row__label">Custom theme YAML</div>
-              <div class="set-row__hint">YAMLs em ~/.local/share/rustify-player/themes/. Independente do mode acima.</div>
+              <div class="set-row__hint">YAMLs em ~/.local/share/rustify-player/themes/.</div>
             </div>
             <div class="set-row__control">
               <Show
@@ -333,7 +284,7 @@ export default function Settings() {
                   <select
                     class="set-folder-btn"
                     value={activeTheme()}
-                    onChange={(e) => selectThemeFile(e.currentTarget.value)}
+                    onChange={(e) => selectThemeFile(e.currentTarget.value, e.currentTarget)}
                   >
                     <option value="">Default (Extractor Lab)</option>
                     <For each={t()}>
@@ -345,17 +296,43 @@ export default function Settings() {
             </div>
           </div>
 
+          <Show when={themeError()}>
+            <div class="set-row">
+              <div class="set-row__hint" role="alert" style={{ color: "var(--rose-fg)" }}>
+                Tema não aplicado: {themeError()}
+              </div>
+            </div>
+          </Show>
+
           <Show when={contrast().length > 0}>
             <div class="set-row set-row--col">
               <div style={{ width: "100%" }}>
                 <div class="set-row__label" style={{ "margin-bottom": "8px" }}>
                   Contraste WCAG
-                  <span
-                    class={`status-pill ${failingContrast().length > 0 ? "status-pill--warn" : "status-pill--ok"}`}
-                    style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
-                  >
-                    {failingContrast().length > 0 ? `${failingContrast().length} falha(s)` : "AA ok"}
-                  </span>
+                  <Show when={failingContrast().length > 0}>
+                    <span
+                      class="status-pill status-pill--err"
+                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                    >
+                      {`${failingContrast().length} falha(s)`}
+                    </span>
+                  </Show>
+                  <Show when={largeOnlyContrast().length > 0}>
+                    <span
+                      class="status-pill status-pill--warn"
+                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                    >
+                      {`${largeOnlyContrast().length} só AA-large`}
+                    </span>
+                  </Show>
+                  <Show when={failingContrast().length === 0 && largeOnlyContrast().length === 0}>
+                    <span
+                      class="status-pill status-pill--ok"
+                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                    >
+                      AA ok
+                    </span>
+                  </Show>
                 </div>
                 {/* Tabela compacta com todos os pares */}
                 <div style={{ display: "grid", "grid-template-columns": "1fr auto auto", gap: "2px 12px", "font-size": "11px", "font-family": "var(--font-mono)" }}>
@@ -379,12 +356,12 @@ export default function Settings() {
           <div class="set-row">
             <div>
               <div class="set-row__label">Compact sidebar</div>
-              <div class="set-row__hint">Collapses Coleções labels and shows icons only.</div>
+              <div class="set-row__hint">Shows icons only. Same knob as Tweaks › Sidebar.</div>
             </div>
             <div class="set-row__control">
               <button
                 class="tog"
-                aria-pressed={compact() ? "true" : "false"}
+                aria-pressed={compactSidebar() ? "true" : "false"}
                 onClick={toggleCompact}
                 type="button"
                 title="Toggle compact sidebar"
@@ -406,16 +383,23 @@ export default function Settings() {
             <div>
               <div class="set-row__label">Beat sync</div>
               <div class="set-row__hint">
-                Controla quanto a animacao do Now Playing reage ao envelope do audio.
-                Pulse marca cada kick; Subtle so respira; Off desliga a reatividade.
+                Mesmo controle do Tweaks: Speed acelera o movimento do fundo no kick;
+                Pulse pulsa a amplitude no tempo; Off desliga a reatividade ao beat.
               </div>
             </div>
             <div class="set-row__control">
               <div class="seg">
-                <button aria-pressed={syncMode() === "off" ? "true" : "false"} onClick={() => pickSync("off")}>Off</button>
-                <button aria-pressed={syncMode() === "subtle" ? "true" : "false"} onClick={() => pickSync("subtle")}>Subtle</button>
-                <button aria-pressed={syncMode() === "default" ? "true" : "false"} onClick={() => pickSync("default")}>Default</button>
-                <button aria-pressed={syncMode() === "pulse" ? "true" : "false"} onClick={() => pickSync("pulse")}>Pulse</button>
+                <For each={BEAT_MODES}>
+                  {([mode, label]) => (
+                    <button
+                      type="button"
+                      aria-pressed={tweaks().bgBeatMode === mode ? "true" : "false"}
+                      onClick={() => updateTweak("bgBeatMode", mode)}
+                    >
+                      {label}
+                    </button>
+                  )}
+                </For>
               </div>
             </div>
           </div>
@@ -436,7 +420,7 @@ export default function Settings() {
               <div class="set-row__hint">Re-abre a ultima faixa na ultima posicao.</div>
             </div>
             <div class="set-row__control">
-              <button class="tog" aria-pressed={resumeLaunch() ? "true" : "false"} onClick={toggleResume} type="button" title="Toggle resume" />
+              <button class="tog" aria-pressed={resumeOnLaunch() ? "true" : "false"} onClick={toggleResume} type="button" title="Toggle resume" />
             </div>
           </div>
 
@@ -487,7 +471,7 @@ export default function Settings() {
           <div class="set-row">
             <div>
               <div class="set-row__label">Music folder</div>
-              <div class="set-row__hint mono">~/Music/library</div>
+              <div class="set-row__hint mono">~/Music</div>
             </div>
           </div>
 
@@ -523,7 +507,7 @@ export default function Settings() {
           <div class="set-row">
             <div>
               <div class="set-row__label">qdrant process</div>
-              <div class="set-row__hint mono">localhost:6333 · vec-dim 1024 · status ok</div>
+              <div class="set-row__hint mono">localhost:6333 · vectors mert 768 · lyrics 1024</div>
             </div>
           </div>
 
@@ -555,7 +539,7 @@ export default function Settings() {
         </div>
 
         {/* ════════════════════════════════════════════════════════
-            4. ABOUT (grid 6 items mono + update flow preservado
+            4. ABOUT (grid mono + update flow preservado
                integrado como primeira row, antes do grid)
             ════════════════════════════════════════════════════════ */}
         <div class="set-panel">
@@ -631,19 +615,15 @@ export default function Settings() {
             </div>
             <div class="set-about-item">
               <span class="set-about-item__label">Backend</span>
-              <span class="set-about-item__value">Rust · GStreamer · cpal</span>
+              <span class="set-about-item__value">Rust · GStreamer</span>
             </div>
             <div class="set-about-item">
               <span class="set-about-item__label">Identifier</span>
               <span class="set-about-item__value">dev.cmr.rustifyplayer</span>
             </div>
             <div class="set-about-item">
-              <span class="set-about-item__label">Branch</span>
-              <span class="set-about-item__value">feature/signal-screens-handoff</span>
-            </div>
-            <div class="set-about-item">
               <span class="set-about-item__label">License</span>
-              <span class="set-about-item__value">GPL-3.0</span>
+              <span class="set-about-item__value">MIT</span>
             </div>
           </div>
         </div>

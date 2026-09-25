@@ -21,6 +21,7 @@ import * as tauriApi from "../tauri";
 import { Sidebar } from "./Sidebar";
 import { setPlayer } from "../store/player";
 import { bootCrateStore, __resetForTests } from "../store/crate";
+import { setTweaksOpen } from "../store/tweaks";
 import type { Track, DownloadJob } from "../tauri";
 
 const TRACK: Track = {
@@ -115,5 +116,19 @@ describe("Sidebar — badge do Crate (jobs ativos)", () => {
       el.textContent?.includes("Crate"),
     )!;
     expect(crateItem.querySelector(".nav-item__badge")?.textContent).toBe("2");
+  });
+});
+
+// cfg-9: nada na sidebar indicava que o painel Tweaks estava aberto.
+describe("Sidebar: gatilho do Tweaks", () => {
+  it("expõe aria-expanded/aria-controls seguindo o estado do painel", () => {
+    setTweaksOpen(false);
+    const { getByText } = render(() => <Sidebar />);
+    const btn = getByText("Tweaks").closest("button")!;
+    expect(btn.getAttribute("aria-controls")).toBe("tweaks-panel");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    setTweaksOpen(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    setTweaksOpen(false);
   });
 });

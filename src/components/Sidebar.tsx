@@ -15,6 +15,7 @@ import { For, Index, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
 import { activeCount } from "../store/crate";
+import { tweaksOpen } from "../store/tweaks";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
@@ -168,12 +169,14 @@ export function Sidebar() {
           )}
         </For>
 
-        {/* Tweaks: dispara o painel flutuante (fonts + zoom). */}
+        {/* Tweaks: dispara o painel flutuante (aparência, fundo, loudness). */}
         <button
           class="nav-item"
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
-          title="Tweaks (fonts, zoom)"
+          aria-controls="tweaks-panel"
+          aria-expanded={tweaksOpen() ? "true" : "false"}
+          title="Tweaks (appearance, background, loudness)"
         >
           <Icon name={ICONS.bolt} size={16} />
           <span>Tweaks</span>

@@ -15,7 +15,8 @@ token de cor.
 
 Além dos erros, emite AVISOS (não reprovam): colapso semântico entre
 sig-ok/warn/err, erro indistinguível do accent, hierarquia de texto
-duplicada. Avisos existem pra guiar a curadoria (theme-maker); temas
+duplicada, rampa fg invertida (fg-7/fg-8 mais fortes que o degrau
+anterior — o backend corrige na saída, com os mesmos números daqui). Avisos existem pra guiar a curadoria (theme-maker); temas
 monocromáticos legítimos os disparariam como erro, por isso não gateiam.
 """
 import sys, glob, os, re
@@ -68,7 +69,8 @@ LEGACY = {
 TONE_NAMES = ["mint", "sky", "peach", "rose", "lavender", "butter", "bone", "paper"]
 
 ALLOWED_PREFIXES = ["fg-", "bg-", "line-", "tone-", "blue-", "green-", "amber-",
-                    "rose-", "purple-", "radius-", "shadow-", "dur-", "ease-", "font-"]
+                    "rose-", "purple-", "radius-", "shadow-", "dur-", "ease-", "font-",
+                    "lyrics-"]
 ALLOWED_EXACT = ["ring-focus", "sidebar-w", "playerbar-h", "titlebar-h"]
 
 BRIDGE = [
@@ -153,6 +155,15 @@ def flatten(val, prefix, out, dropped):
             dropped.append(prefix)
 
 
+def apply_bridge(vars_):
+    """Espelho de bridge_legacy_to_extractor_lab: só preenche o que o YAML
+    não declarou."""
+    for legacy, targets in BRIDGE:
+        if legacy in vars_:
+            for t in targets:
+                vars_.setdefault(t, vars_[legacy])
+
+
 def hex_to_rgb(h):
     h = h.lstrip("#")
     if len(h) < 6:
@@ -172,6 +183,112 @@ def contrast(c1, c2):
     l1, l2 = lum(*c1), lum(*c2)
     hi, lo = max(l1, l2), min(l1, l2)
     return (hi + 0.05) / (lo + 0.05)
+
+
+# ── Rampa fg (espelho de enforce_fg_ramp no desktop.rs) ─────────────────
+# Mesmas fórmulas, na mesma ordem, pra dar o mesmo hex byte a byte; o
+# arredondamento imita o f64::round do Rust (meio pra longe do zero), que o
+# round() do Python (banker's) não faz.
+
+def parse_css_color(v):
+    """'#rrggbb', '#rrggbbaa', 'rgb(r,g,b)' ou 'rgba(r,g,b,a)' -> (r,g,b,a)
+    em 0..1, ou None."""
+    v = str(v).strip()
+    if v.startswith("#"):
+        h = v[1:]
+        if len(h) not in (6, 8):
+            return None
+        try:
+            ch = [int(h[i:i + 2], 16) / 255.0 for i in range(0, len(h), 2)]
+        except ValueError:
+            return None
+        return (ch[0], ch[1], ch[2], ch[3] if len(ch) == 4 else 1.0)
+    low = v.lower()
+    if low.startswith("rgb(") or low.startswith("rgba("):
+        if not low.endswith(")"):
+            return None
+        parts = [p.strip() for p in v[v.index("(") + 1:-1].split(",")]
+        if len(parts) not in (3, 4):
+            return None
+        try:
+            r, g, b = (float(p) / 255.0 for p in parts[:3])
+            a = float(parts[3]) if len(parts) == 4 else 1.0
+        except ValueError:
+            return None
+        return (r, g, b, min(1.0, max(0.0, a)))
+    return None
+
+
+def _over(c, bg):
+    r, g, b, a = c
+    return (r * a + bg[0] * (1.0 - a), g * a + bg[1] * (1.0 - a), b * a + bg[2] * (1.0 - a))
+
+
+def _mix(x, y, t):
+    return (x[0] * (1.0 - t) + y[0] * t, x[1] * (1.0 - t) + y[1] * t, x[2] * (1.0 - t) + y[2] * t)
+
+
+def _round_half_away(x):
+    f = float(int(x // 1))
+    return f + 1.0 if x - f >= 0.5 else f
+
+
+def _to_hex(rgb):
+    def c(v):
+        return int(min(255.0, max(0.0, _round_half_away(v * 255.0))))
+    return "#{:02x}{:02x}{:02x}".format(c(rgb[0]), c(rgb[1]), c(rgb[2]))
+
+
+def enforce_fg_ramp(vars_):
+    """fg-7 e fg-8 nunca mais fortes (contraste contra o canvas) que o degrau
+    anterior. Corrige no lugar e devolve [(chave, antes, depois)].
+
+    Derivação de reposição: o 'chão' é dividers.prominent COMPOSTO sobre o
+    canvas (o que os YAMLs pretendiam ao derivar fg-8 dele, sem descartar o
+    alpha); fg-7 = 60% do degrau âncora (fg-6, senão fg-5) + 40% do chão."""
+    canvas_c = parse_css_color(vars_.get("--bg-canvas", ""))
+    if canvas_c is None:
+        return []
+    canvas = canvas_c[:3]
+    anchor_key = "--fg-6" if parse_css_color(vars_.get("--fg-6", "")) else "--fg-5"
+    anchor_c = parse_css_color(vars_.get(anchor_key, ""))
+    if anchor_c is None:
+        return []
+    anchor = _over(anchor_c, canvas)
+
+    def strength(rgb):
+        return contrast(rgb, canvas)
+
+    s_anchor = strength(anchor)
+    floor = None
+    div = parse_css_color(vars_.get("--divider-hi", ""))
+    if div is not None:
+        d = _over(div, canvas)
+        if strength(d) < s_anchor:
+            floor = d
+    if floor is None:
+        floor = _mix(anchor, canvas, 0.5)
+
+    fixes = []
+    rgb7 = None
+    c7 = parse_css_color(vars_.get("--fg-7", ""))
+    if c7 is not None:
+        rgb7 = _over(c7, canvas)
+        if strength(rgb7) > s_anchor:
+            new = _to_hex(_mix(anchor, floor, 0.4))
+            fixes.append(("--fg-7", vars_["--fg-7"], new))
+            vars_["--fg-7"] = new
+            rgb7 = parse_css_color(new)[:3]
+    c8 = parse_css_color(vars_.get("--fg-8", ""))
+    if c8 is not None:
+        ref = strength(rgb7) if rgb7 is not None else s_anchor
+        if strength(_over(c8, canvas)) > ref:
+            base = rgb7 if rgb7 is not None else anchor
+            pick = floor if strength(floor) <= ref else _mix(base, canvas, 0.5)
+            new = _to_hex(pick)
+            fixes.append(("--fg-8", vars_["--fg-8"], new))
+            vars_["--fg-8"] = new
+    return fixes
 
 
 def rgb_to_hsl(r, g, b):
@@ -240,10 +357,8 @@ def validate_file(fn):
 
     vars_, dropped = {}, []
     flatten(doc, "", vars_, dropped)
-    for legacy, targets in BRIDGE:
-        if legacy in vars_:
-            for t in targets:
-                vars_.setdefault(t, vars_[legacy])
+    apply_bridge(vars_)
+    ramp_fixes = enforce_fg_ramp(vars_)
 
     for d in dropped:
         problems.append(f"chave descartada (não vira var): {d}")
@@ -273,7 +388,13 @@ def validate_file(fn):
         r = contrast(c1, c2)
         if r < 4.5:
             problems.append(f"contraste AA reprovado {label}: {r:.2f} (fg={fg} bg={bg})")
-    return problems, semantic_warnings(vars_)
+    warns = semantic_warnings(vars_)
+    for key, before, after in ramp_fixes:
+        warns.append(
+            f"rampa fg invertida: {key[2:]} {before} mais forte que o degrau anterior "
+            f"— o backend corrige para {after}; declare a rampa decrescente"
+        )
+    return problems, warns
 
 
 def main():
