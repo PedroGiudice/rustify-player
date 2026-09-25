@@ -46,6 +46,7 @@ import * as opener from "@tauri-apps/plugin-opener";
 import { __resetForTests } from "../store/crate";
 import { navigate } from "../router";
 import Crate from "./Crate";
+import { pushEscLayer } from "../lib/escLayers";
 
 const EMPTY_SNAPSHOT: SearchSnapshot = {
   state: "empty",
@@ -715,6 +716,37 @@ describe("Crate — seletor de destino se comporta como popover", () => {
     const { container } = await openRowMenu();
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(container.querySelector(".crate-dest__menu")).toBeFalsy();
+  });
+
+  it("Esc no campo de busca com o Tweaks aberto só tira o foco do campo", async () => {
+    let tweaksClosed = 0;
+    const pop = pushEscLayer(() => { tweaksClosed++; pop(); });
+    try {
+      const { container } = await searchAndRender([group()]);
+      const input = container.querySelector(".coll-search input") as HTMLInputElement;
+      input.focus();
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(document.activeElement).not.toBe(input);
+      expect(tweaksClosed).toBe(0);
+    } finally {
+      pop();
+    }
+  });
+
+  it("Esc com o Tweaks aberto por baixo fecha o seletor e o painel espera o próximo", async () => {
+    // O Tweaks abre antes: na pilha de lib/escLayers ele fica embaixo.
+    let tweaksClosed = 0;
+    const pop = pushEscLayer(() => { tweaksClosed++; pop(); });
+    try {
+      const { container } = await openRowMenu();
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(container.querySelector(".crate-dest__menu")).toBeFalsy();
+      expect(tweaksClosed).toBe(0);
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(tweaksClosed).toBe(1);
+    } finally {
+      pop();
+    }
   });
 
   it("um aberto por vez: abrir o da toolbar fecha o da linha", async () => {

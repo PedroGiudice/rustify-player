@@ -19,6 +19,7 @@ import {
   createSignal, createMemo, createEffect, on, For, Show, onMount, onCleanup, batch, type JSX,
 } from "solid-js";
 import { route } from "../router";
+import { pushEscLayer } from "../lib/escLayers";
 import { createStore, reconcile } from "solid-js/store";
 import {
   slskStatus, slskSearch, slskResults, slskCancelSearch, slskDedupProbe,
@@ -840,28 +841,24 @@ export default function Crate(props: { param?: string | null }) {
 
   // Seletor de destino aberto = popover: fecha com clique fora de qualquer
   // `.crate-dest` e com Esc (crate-11, pendência v1.1 do CLAUDE.md).
-  // Listeners só existem enquanto há um aberto. O Esc respeita
-  // defaultPrevented (a ⌘K por cima trata o próprio Esc) e devolve o foco
-  // ao chip quando ele estava dentro do menu que vai sumir.
+  // Listeners só existem enquanto há um aberto. O Esc vem da pilha única
+  // (lib/escLayers): a ⌘K por cima trata o próprio Esc antes, o Tweaks
+  // aberto por baixo espera o próximo. Devolve o foco ao chip quando ele
+  // estava dentro do menu que vai sumir.
   createEffect(() => {
     if (openDest() == null) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Element | null;
       if (!t?.closest?.(".crate-dest")) setOpenDest(null);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      e.preventDefault();
+    const onEsc = () => {
       const owner = (document.activeElement as HTMLElement | null)?.closest?.(".crate-dest");
       setOpenDest(null);
       owner?.querySelector<HTMLElement>(".crate-dest__btn")?.focus();
     };
     document.addEventListener("mousedown", onDown, true);
-    window.addEventListener("keydown", onKey);
-    onCleanup(() => {
-      document.removeEventListener("mousedown", onDown, true);
-      window.removeEventListener("keydown", onKey);
-    });
+    onCleanup(pushEscLayer(onEsc));
+    onCleanup(() => document.removeEventListener("mousedown", onDown, true));
   });
 
   /** Countdown do min-interval. `force` NÃO passa por aqui — forçar não
@@ -1126,6 +1123,8 @@ export default function Crate(props: { param?: string | null }) {
                     return;
                   }
                   if (e.key === "Escape" && openDest() == null) {
+                    // Consumido: o Tweaks aberto por baixo espera o próximo Esc.
+                    e.preventDefault();
                     e.currentTarget.blur();
                     setExpandedKey(null);
                   }

@@ -12,8 +12,9 @@
    - Painel monta uma vez via <Portal>; visibilidade via classList
    ============================================================ */
 
-import { For, Show, createResource, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
+import { pushEscLayer } from "../lib/escLayers";
 import {
   tweaks,
   tweaksOpen,
@@ -204,20 +205,15 @@ export function Tweaks() {
   onMount(() => {
     const onToggle = () => setTweaksOpen(!tweaksOpen());
     window.addEventListener("toggle-tweaks", onToggle);
-    // Esc fecha o painel aberto. Captura no window: roda antes do handler
-    // global do App (bubble) e para ali — o overlay de cima fecha primeiro,
-    // sem sair do cinema mode no mesmo toque.
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !tweaksOpen()) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setTweaksOpen(false);
-    };
-    window.addEventListener("keydown", onKey, true);
-    onCleanup(() => {
-      window.removeEventListener("toggle-tweaks", onToggle);
-      window.removeEventListener("keydown", onKey, true);
-    });
+    onCleanup(() => window.removeEventListener("toggle-tweaks", onToggle));
+  });
+
+  // Esc fecha o painel aberto quando ele é a camada de cima (lib/escLayers).
+  // Captura no window com stopPropagation roubava o Esc da ⌘K, da fila, do
+  // menu de contexto e do input do Fader, que ficam por cima do painel.
+  createEffect(() => {
+    if (!tweaksOpen()) return;
+    onCleanup(pushEscLayer(() => setTweaksOpen(false)));
   });
 
   return (

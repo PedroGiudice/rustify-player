@@ -8,13 +8,14 @@
    "Open queue" da palette pede abrir, não alternar).
    ============================================================ */
 
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { Icon, ICONS } from "./Icon";
 import { TrackRowList } from "./TrackRowList";
 import { player, setQueue } from "../store/player";
 import { playTrack, playQueueUpcoming } from "./PlayerBar";
 import { fmtDur } from "../lib/format";
 import { isTypingContext } from "../lib/keyboard";
+import { pushEscLayer } from "../lib/escLayers";
 
 export const QUEUE_EVENT = "rustify:open-queue";
 
@@ -38,8 +39,7 @@ export function QueueDrawer() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (isTypingContext(e)) return;
-      if (e.key === "Escape" && open()) { e.preventDefault(); setOpen(false); }
-      else if (
+      if (
         e.key.toLowerCase() === "q" && !e.ctrlKey && !e.metaKey && !e.altKey
       ) { e.preventDefault(); setOpen((v) => !v); }
     };
@@ -49,6 +49,13 @@ export function QueueDrawer() {
       window.removeEventListener(QUEUE_EVENT, onOpenEvt);
       window.removeEventListener("keydown", onKey);
     });
+  });
+
+  // Esc fecha a gaveta pela pilha única (lib/escLayers): o menu de contexto
+  // aberto por cima fecha antes, e o App não sai do cinema no mesmo toque.
+  createEffect(() => {
+    if (!open()) return;
+    onCleanup(pushEscLayer(() => setOpen(false)));
   });
 
   const upcoming = () => player.queue.slice(player.queueIndex + 1);

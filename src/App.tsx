@@ -32,6 +32,7 @@ import { Tweaks } from "./views/Tweaks";
 import { loadTweaks, tweaks } from "./store/tweaks";
 import { glStatus } from "./gl/meta";
 import { isTypingContext } from "./lib/keyboard";
+import { hasEscLayer } from "./lib/escLayers";
 
 // three.js só entra no processo se o usuário ligar o motor WebGL no
 // Tweaks — dynamic import mantém o boot do fundo 2D do tamanho que
@@ -65,6 +66,11 @@ export default function App() {
       else if (k === "h") { e.preventDefault(); navigate("/home"); }
       else if (k === "l") { e.preventDefault(); navigate("/library"); }
       else if (e.key === "Escape") {
+        // Esc de overlay (fila, menu, Tweaks, ⌘K, seletor do Crate) ou de
+        // controle focado não sai do cinema no mesmo toque: consumido ou
+        // com camada aberta na pilha (lib/escLayers), qualquer que seja a
+        // ordem em que os listeners do window rodam.
+        if (e.defaultPrevented || hasEscLayer()) return;
         // Sai pelo mesmo evento do botão: o listener abaixo grava o estado
         // e o NowPlaying, que espelha o cinema pelo evento, acompanha.
         if (cinema()) {
