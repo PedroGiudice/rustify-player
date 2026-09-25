@@ -9,8 +9,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Vars do "tema ativo" que o themeVar do mock devolve (vazio = sem tema).
+const themeVars = vi.hoisted(() => ({}) as Record<string, string>);
+
 vi.mock("../tauri", () => ({
-  themeVar: () => null,
+  themeVar: (name: string) => themeVars[name] ?? null,
   clearThemeVars: vi.fn(),
   normSetEnabled: vi.fn().mockResolvedValue(undefined),
   normSetTarget: vi.fn().mockResolvedValue(undefined),
@@ -21,6 +24,7 @@ vi.mock("../tauri", () => ({
 
 import {
   DEFAULTS,
+  applyTweaks,
   loadTweaks,
   updateTweak,
   clearDirty,
@@ -186,5 +190,24 @@ describe("lyricsGlass regido por tema", () => {
     loadTweaks();
     updateTweak("lyricsGlass", 0.5);
     expect(html().style.getPropertyValue("--lyrics-bg-alpha")).not.toBe("");
+  });
+
+  // np-18: com a seção lyrics no YAML, o applyTheme escreve --lyrics-* no
+  // inline; sem dirty, o applyTweaks fazia removeProperty e matava o valor
+  // do tema — o "↺ tema" voltava pra constante do CSS, não pro tema.
+  it("sem dirty, restaura as vars de lyrics que o tema declarou", () => {
+    themeVars["--lyrics-bg-alpha"] = "0.4";
+    themeVars["--lyrics-bg-brightness"] = "0.7";
+    try {
+      loadTweaks();
+      updateTweak("lyricsGlass", 0.9);
+      clearDirty("lyricsGlass");
+      applyTweaks();
+      expect(html().style.getPropertyValue("--lyrics-bg-alpha")).toBe("0.4");
+      expect(html().style.getPropertyValue("--lyrics-bg-brightness")).toBe("0.7");
+    } finally {
+      delete themeVars["--lyrics-bg-alpha"];
+      delete themeVars["--lyrics-bg-brightness"];
+    }
   });
 });

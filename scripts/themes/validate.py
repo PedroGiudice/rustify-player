@@ -69,7 +69,8 @@ LEGACY = {
 TONE_NAMES = ["mint", "sky", "peach", "rose", "lavender", "butter", "bone", "paper"]
 
 ALLOWED_PREFIXES = ["fg-", "bg-", "line-", "tone-", "blue-", "green-", "amber-",
-                    "rose-", "purple-", "radius-", "shadow-", "dur-", "ease-", "font-"]
+                    "rose-", "purple-", "radius-", "shadow-", "dur-", "ease-", "font-",
+                    "lyrics-"]
 ALLOWED_EXACT = ["ring-focus", "sidebar-w", "playerbar-h", "titlebar-h"]
 
 BRIDGE = [

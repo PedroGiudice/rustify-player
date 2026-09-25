@@ -846,8 +846,8 @@ fn themes_dir() -> PathBuf {
 ///   2. Tokens Extractor Lab (atuais) — pass-through direto. Aceita qualquer
 ///      key que case com um prefixo conhecido do design system ativo:
 ///      fg-*, bg-*, line-*, tone-*, blue-*, green-*, amber-*, rose-*,
-///      purple-*, radius-*, shadow-*, dur-*, ease-*, font-*, ring-focus,
-///      sidebar-w, playerbar-h, titlebar-h.
+///      purple-*, radius-*, shadow-*, dur-*, ease-*, font-*, lyrics-*,
+///      ring-focus, sidebar-w, playerbar-h, titlebar-h.
 fn yaml_key_to_css_prop(key: &str) -> Option<String> {
     // Camada 1 — aliases legados.
     let legacy = match key {
@@ -920,6 +920,9 @@ fn yaml_key_to_css_prop(key: &str) -> Option<String> {
         "dur-", "ease-",
         // Type
         "font-",
+        // Card de letras do Now Playing (--lyrics-bg-alpha/-brightness):
+        // o knob "Lyrics glass" é regido por tema e só assim o tema o rege.
+        "lyrics-",
     ];
     const ALLOWED_EXACT: &[&str] = &[
         "ring-focus", "sidebar-w", "playerbar-h", "titlebar-h",
@@ -4493,6 +4496,17 @@ fg-8: '#404040'
         let antes = vars["--fg-8"].clone();
         assert!(enforce_fg_ramp(&mut vars).is_empty());
         assert_eq!(vars["--fg-8"], antes);
+    }
+
+    // np-18: o card de letras consome --lyrics-bg-alpha/--lyrics-bg-brightness
+    // e o knob "Lyrics glass" é regido por tema, mas nenhum YAML conseguia
+    // declarar essas vars (prefixo recusado pelo parser).
+    #[test]
+    fn secao_lyrics_do_yaml_vira_vars_lyrics() {
+        assert_eq!(yaml_key_to_css_prop("lyrics-bg-alpha").as_deref(), Some("--lyrics-bg-alpha"));
+        let vars = parse_tema("name: L\nlyrics:\n  bg-alpha: 0.3\n  bg-brightness: 0.7\n");
+        assert_eq!(vars.get("--lyrics-bg-alpha").map(String::as_str), Some("0.3"));
+        assert_eq!(vars.get("--lyrics-bg-brightness").map(String::as_str), Some("0.7"));
     }
 
     #[test]

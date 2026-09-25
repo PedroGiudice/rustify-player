@@ -250,12 +250,16 @@ export function applyTweaks(s: TweaksState = state()) {
   // "dragged" (sem blur, fundo carbono ~55%). Range estendido pra
   // permitir o look full-solid via Tweaks. Acima de SOLID_THRESHOLD
   // o data attr `data-lyrics-solid` ativa a regra CSS que zera o backdrop.
-  // Sem dirty, o CSS decide pelos fallbacks inline (tema-neutro).
+  // Sem dirty, vale o tema (seção lyrics do YAML); sem tema, os fallbacks
+  // do CSS. removeProperty puro apagaria a var inline do applyTheme.
   if (isDirty("lyricsGlass")) {
     applyLyricsGlass(s);
   } else {
-    html.style.removeProperty("--lyrics-bg-alpha");
-    html.style.removeProperty("--lyrics-bg-brightness");
+    for (const name of ["--lyrics-bg-alpha", "--lyrics-bg-brightness"]) {
+      const tv = themeVar(name);
+      if (tv !== null) html.style.setProperty(name, tv);
+      else html.style.removeProperty(name);
+    }
     html.dataset.lyricsSolid = "off";
   }
 

@@ -128,6 +128,13 @@ def test_validate_file_avisa_rampa():
     check("copper avisa fg-7", any("fg-7" in w and "#65635e" in w for w in warns), True)
 
 
+def test_prefixo_lyrics():
+    v, dropped = vars_of("name: L\nlyrics:\n  bg-alpha: 0.3\n  bg-brightness: 0.7\n")
+    check("lyrics-bg-alpha vira var", v.get("--lyrics-bg-alpha"), "0.3")
+    check("lyrics-bg-brightness vira var", v.get("--lyrics-bg-brightness"), "0.7")
+    check("lyrics nada descartado", dropped, [])
+
+
 def main():
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
