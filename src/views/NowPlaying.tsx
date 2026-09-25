@@ -305,12 +305,31 @@ export default function NowPlaying() {
                 <span class="np__tag-source"><b>Local</b> · PipeWire</span>
               </div>
               <h1 class="np__title">{player.currentTrack?.title ?? "Nothing playing"}</h1>
-              <p class="np__artist" onClick={() => navigate("/artists")}>
-                {player.currentTrack?.artist_name ?? "—"}
-              </p>
-              <p class="np__album" onClick={() => navigate("/albums")}>
-                {player.currentTrack?.album_title ?? "—"}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
-              </p>
+              {/* Artista e álbum levam à página DA entidade (mesmas rotas do
+                  menu de contexto e da paleta), não à grade genérica; são
+                  <button> pra entrarem na ordem de Tab. */}
+              <Show when={player.currentTrack?.artist_name} fallback={<p class="np__artist">—</p>}>
+                {(name) => (
+                  <button
+                    type="button"
+                    class="np__artist"
+                    onClick={() => navigate(`/artist/${encodeURIComponent(name())}`)}
+                  >
+                    {name()}
+                  </button>
+                )}
+              </Show>
+              <Show when={player.currentTrack?.album_title} fallback={<p class="np__album">—</p>}>
+                {(title) => (
+                  <button
+                    type="button"
+                    class="np__album"
+                    onClick={() => navigate(`/album/${encodeURIComponent(title())}`)}
+                  >
+                    {title()}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
+                  </button>
+                )}
+              </Show>
 
               <Show when={player.techInfo.sampleRate}>
                 <div class="np__specs">

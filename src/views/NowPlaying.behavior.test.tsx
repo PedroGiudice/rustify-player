@@ -173,3 +173,28 @@ describe("NowPlaying — linhas da letra (np-4, nowplaying-v2)", () => {
     expect(lines[1].classList.contains("is-active")).toBe(true);
   });
 });
+
+describe("NowPlaying — artista e álbum (np-10, shell-v1, biblioteca-v2)", () => {
+  it("são botões alcançáveis por teclado que levam à página da entidade", () => {
+    h.libGetLyrics.mockResolvedValue([]);
+    setPlayer({ currentTrack: track("A", { artist_name: "Sade & Co", album_title: "Love Deluxe" }) });
+    const { container } = render(() => <NowPlaying />);
+
+    const artist = container.querySelector(".np__artist") as HTMLElement;
+    const album = container.querySelector(".np__album") as HTMLElement;
+    expect(artist.tagName).toBe("BUTTON");
+    expect(album.tagName).toBe("BUTTON");
+
+    artist.click();
+    expect(h.navigate).toHaveBeenLastCalledWith(`/artist/${encodeURIComponent("Sade & Co")}`);
+    album.click();
+    expect(h.navigate).toHaveBeenLastCalledWith(`/album/${encodeURIComponent("Love Deluxe")}`);
+  });
+
+  it("sem faixa não oferece link nenhum", () => {
+    setPlayer({ currentTrack: null });
+    const { container } = render(() => <NowPlaying />);
+    expect(container.querySelector("button.np__artist")).toBeNull();
+    expect(container.querySelector("button.np__album")).toBeNull();
+  });
+});
