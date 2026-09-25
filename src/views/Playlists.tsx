@@ -10,28 +10,25 @@
    - "Pinned" = lista persistida em localStorage via store/pins.ts.
      Toggle via icon no canto sup. dir. do card.
 
-   Click no card -> navega pra /playlist/<name> (Playlist.tsx).
+   Click no card -> navega pra /playlist/<name> (Playlist.tsx). Abrir é
+   um <button> próprio (o nome), irmão do de fixar: o card como
+   role=button deixava o fixar aninhado, e Enter no fixar subia até o
+   card, navegava e o preventDefault engolia o fixar. O ::after do botão
+   cobre o card inteiro (extractor-lab.css), mesmo padrão do card de
+   station.
    Pin toggle -> store/pins, sem navegar.
 
    Fallback do mosaico: se o folder tem < 4 covers distintas, slots
    vazios viram placeholder colorido (tones do extractor-lab).
    ============================================================ */
 
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js";
 import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
-import { isPinned, togglePin, pins } from "../store/pins";
+import { togglePin, pins } from "../store/pins";
 import { navigate } from "../router";
 
 function openPlaylist(folder: FolderPlaylist) {
   navigate(`/playlist/${encodeURIComponent(folder.name)}`);
-}
-
-/** role=button promete Enter/Espaço: sem isto o card recebia foco por Tab
-    e não fazia nada (o Espaço ainda rolava a página). */
-function openOnKey(e: KeyboardEvent, folder: FolderPlaylist) {
-  if (e.key !== "Enter" && e.key !== " ") return;
-  e.preventDefault();
-  openPlaylist(folder);
 }
 
 // ── Tones de fallback (vide tokens em extractor-lab.css) ─────────
@@ -63,18 +60,8 @@ function CoverMosaic(props: { folder: FolderPlaylist }) {
     }
     return out;
   });
-  const pinned = createMemo(() => pins().includes(props.folder.name));
   return (
     <>
-      <button
-        class="pl-card__pin"
-        classList={{ "is-pinned": pinned() }}
-        title={pinned() ? "Unpin" : "Pin"}
-        onClick={(e) => { e.stopPropagation(); togglePin(props.folder.name); }}
-      >
-        {/* @ts-ignore */}
-        <iconify-icon icon="lucide:pin" noobserver />
-      </button>
       <For each={cells()}>
         {(c) => (
           <Show
@@ -93,6 +80,36 @@ function CoverMosaic(props: { folder: FolderPlaylist }) {
         )}
       </For>
     </>
+  );
+}
+
+// ── Card ────────────────────────────────────────────────────────
+// O fixar fica no nível do card (fora da capa): a capa ganha transform no
+// hover, o que a tornaria um contexto de empilhamento e deixaria o fixar
+// por baixo do ::after do botão de abrir.
+function PlaylistCard(props: { folder: FolderPlaylist; children?: JSX.Element }) {
+  const pinned = createMemo(() => pins().includes(props.folder.name));
+  return (
+    <div class="pl-card">
+      <div class="pl-card__cover">
+        <CoverMosaic folder={props.folder} />
+      </div>
+      <button type="button" class="pl-card__title pl-card__open" onClick={() => openPlaylist(props.folder)}>
+        {props.folder.name}
+      </button>
+      {/* Depois do abrir na ordem de Tab (nome primeiro); a posição é absoluta. */}
+      <button
+        type="button"
+        class="pl-card__pin"
+        classList={{ "is-pinned": pinned() }}
+        title={pinned() ? "Unpin" : "Pin"}
+        onClick={() => togglePin(props.folder.name)}
+      >
+        {/* @ts-ignore */}
+        <iconify-icon icon="lucide:pin" noobserver />
+      </button>
+      {props.children}
+    </div>
   );
 }
 
@@ -178,16 +195,12 @@ export default function Playlists() {
             <div class="pl-grid">
               <For each={pinned()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => openPlaylist(p)} onKeyDown={(e) => openOnKey(e, p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
-                    <div class="pl-card__cover">
-                      <CoverMosaic folder={p} />
-                    </div>
-                    <div class="pl-card__title">{p.name}</div>
+                  <PlaylistCard folder={p}>
                     <div class="pl-card__sub">Folder · {p.track_count} tracks</div>
                     <div class="pl-card__meta">
                       <span>{fmtTracks(p.track_count)}</span>
                     </div>
-                  </div>
+                  </PlaylistCard>
                 )}
               </For>
             </div>
@@ -209,13 +222,9 @@ export default function Playlists() {
             <div class="pl-grid">
               <For each={rest()}>
                 {(p) => (
-                  <div class="pl-card" onClick={() => openPlaylist(p)} onKeyDown={(e) => openOnKey(e, p)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
-                    <div class="pl-card__cover">
-                      <CoverMosaic folder={p} />
-                    </div>
-                    <div class="pl-card__title">{p.name}</div>
+                  <PlaylistCard folder={p}>
                     <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
-                  </div>
+                  </PlaylistCard>
                 )}
               </For>
             </div>

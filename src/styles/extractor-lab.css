@@ -2519,6 +2519,18 @@ html { --glow: 0; }
   margin: 0 0 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* O nome é o botão de abrir (irmão do de fixar, nenhum controle aninhado
+   em outro). O ::after estende a área de clique ao card inteiro e carrega o
+   anel de foco no contorno do card — mesmo padrão do .st-card__play. */
+.pl-card__open { display: block; width: 100%; text-align: start; }
+.pl-card__open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-2xl);
+}
+.pl-card__open:focus-visible { outline: 0; }
+.pl-card__open:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
 .pl-card__sub {
   font-size: 12px; color: var(--fg-5);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -2532,6 +2544,7 @@ html { --glow: 0; }
   align-items: center;
   gap: 8px;
 }
+/* No nível do card (fora da capa) e acima do ::after do .pl-card__open. */
 .pl-card__pin {
   position: absolute;
   top: 10px; left: 10px;
@@ -2554,6 +2567,8 @@ html { --glow: 0; }
   opacity: 1;
   transform: scale(1);
 }
+/* Acompanha a capa, que sobe 2px no hover do card. */
+.pl-card:hover .pl-card__pin { transform: translateY(-2px); }
 .pl-card__pin.is-pinned {
   color: var(--fg-1);
   background: var(--fg-1);

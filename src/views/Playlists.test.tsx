@@ -156,39 +156,64 @@ describe("Playlists — filtro", () => {
 describe("cards de playlist: teclado (ds-2)", () => {
   // role=button + tabIndex=0 sem onKeyDown: o Tab parava no card, o leitor
   // anunciava "botão", e Enter/Espaço não abriam a playlist (o Espaço ainda
-  // rolava a página).
+  // rolava a página). Depois o card virou role=button com o fixar aninhado:
+  // Enter no fixar subia até o card, navegava e o preventDefault engolia o
+  // clique nativo do fixar (regressão da revisão da fase 0). Agora abrir é
+  // um <button> próprio (o nome), irmão do fixar — mesmo padrão do card de
+  // station.
   async function firstCard(container: HTMLElement, sel: string) {
     await vi.waitFor(() => expect(container.querySelector(sel)).toBeTruthy());
     return container.querySelector<HTMLElement>(sel)!;
   }
 
-  it("Enter abre a playlist do card", async () => {
+  it("abrir é um botão de verdade e leva à playlist do card", async () => {
     window.location.hash = "";
     const { container } = render(() => <Playlists />);
     const card = await firstCard(container, ".pl-grid .pl-card");
-    const name = card.querySelector(".pl-card__title")!.textContent!;
-    fireEvent.keyDown(card, { key: "Enter" });
+    const open = card.querySelector<HTMLElement>(".pl-card__open")!;
+    expect(open.tagName).toBe("BUTTON");
+    expect(open.getAttribute("type")).toBe("button");
+    const name = open.textContent!;
+    fireEvent.click(open);
     expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent(name)}`);
   });
 
-  it("Espaço abre a playlist e não rola a página", async () => {
+  it("nenhum controle fica aninhado em outro: abrir e fixar são irmãos", async () => {
+    const { container } = render(() => <Playlists />);
+    const card = await firstCard(container, ".pl-grid .pl-card");
+    expect(card.getAttribute("role")).toBeNull();
+    expect(card.hasAttribute("tabindex")).toBe(false);
+    const open = card.querySelector(".pl-card__open")!;
+    const pin = card.querySelector(".pl-card__pin")!;
+    expect(open.contains(pin)).toBe(false);
+    expect(pin.contains(open)).toBe(false);
+  });
+
+  it("Enter e Espaço no botão de fixar não navegam nem engolem a ativação do fixar", async () => {
     window.location.hash = "";
     const { container } = render(() => <Playlists />);
     const card = await firstCard(container, ".pl-grid .pl-card");
-    const name = card.querySelector(".pl-card__title")!.textContent!;
-    const ev = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
-    card.dispatchEvent(ev);
-    expect(ev.defaultPrevented).toBe(true);
-    expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent(name)}`);
+    const pin = card.querySelector<HTMLElement>(".pl-card__pin")!;
+    for (const key of ["Enter", " "]) {
+      const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      pin.dispatchEvent(ev);
+      // preventDefault no keydown cancelaria o clique nativo do <button>.
+      expect(ev.defaultPrevented).toBe(false);
+    }
+    expect(window.location.hash).toBe("");
+    const name = card.querySelector(".pl-card__open")!.textContent!;
+    fireEvent.click(pin);
+    expect(pins()).toContain(name);
+    expect(window.location.hash).toBe("");
   });
 
-  it("card fixado também abre com Enter", async () => {
+  it("card fixado também abre pelo botão", async () => {
     window.location.hash = "";
     pinPlaylist("Middle Road");
-    const { container, getByText } = render(() => <Playlists />);
+    const { getByText } = render(() => <Playlists />);
     await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
     const pinnedCard = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
-    fireEvent.keyDown(pinnedCard, { key: "Enter" });
+    fireEvent.click(pinnedCard.querySelector(".pl-card__open")!);
     expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent("Middle Road")}`);
   });
 });
