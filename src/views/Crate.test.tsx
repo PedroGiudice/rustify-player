@@ -395,6 +395,74 @@ describe("Crate — erros aparecem na tela (crate-6)", () => {
   });
 });
 
+describe("Crate — fontes com download já existente (crate-16)", () => {
+  const cand1 = () => candidate({ id: "cand1", username: "peer_a", filename: "A\\01 - Sicko Mode.flac" });
+  const cand2 = () => candidate({ id: "cand2", username: "peer_b", filename: "B\\01 - Sicko Mode.flac" });
+  const cand3 = () => candidate({ id: "cand3", username: "peer_c", filename: "C\\01 - Sicko Mode.flac" });
+
+  async function withJob(state: DownloadJob["state"], extra: Partial<DownloadJob>) {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    const utils = await searchAndRender([
+      group({ suggested_dest: "Rap & Hip-Hop", best: cand1(), alternates: [cand2(), cand3()] }),
+    ]);
+    const baixar = Array.from(utils.container.querySelectorAll(".crate-row button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixar);
+    await waitFor(() => expect(tauriApi.slskDownload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(emit).not.toBeNull());
+    emit!([dlJob("job1", state, extra)]);
+    await waitFor(() => {
+      expect(utils.container.querySelector(".crate-row")!.getAttribute("data-state")).toBe(state.kind);
+    });
+    fireEvent.click(utils.container.querySelector(".crate-row__sources")!);
+    const srcRow = (peer: string) =>
+      Array.from(utils.container.querySelectorAll(".crate-src")).find(
+        (r) => r.querySelector(".nm")?.textContent === peer,
+      )!;
+    return { ...utils, srcRow };
+  }
+
+  it("com download em andamento, 'Usar' fica desabilitado e as fontes em uso e já tentadas aparecem marcadas", async () => {
+    // Trocou de fonte duas vezes: peer_b já tentado, peer_c servindo agora.
+    const { container, srcRow } = await withJob(
+      { kind: "downloading", pct: 30, bps: 1_000_000, eta_s: 20 },
+      {
+        username: "peer_c",
+        remote_filename: "C\\01 - Sicko Mode.flac",
+        alternates: [cand2(), cand3()],
+        tried_source_ids: ["cand2", "cand3"],
+      },
+    );
+    const uses = Array.from(container.querySelectorAll(".crate-src .crate-btn")) as HTMLButtonElement[];
+    expect(uses.length).toBe(3);
+    expect(uses.every((b) => b.disabled)).toBe(true);
+    uses.forEach((b) => fireEvent.click(b));
+    expect(tauriApi.slskDownload).toHaveBeenCalledTimes(1);
+
+    expect(srcRow("peer_c").textContent).toContain("em uso");
+    expect(srcRow("peer_b").textContent).toContain("tentada");
+    expect(srcRow("peer_b").textContent).not.toContain("em uso");
+  });
+
+  it("com o download terminado em falha, 'Usar' volta a funcionar e a fonte que falhou fica marcada", async () => {
+    const { srcRow } = await withJob(
+      { kind: "failed", reason: "peer recusou", retryable: true },
+      { username: "peer_a", remote_filename: "A\\01 - Sicko Mode.flac", alternates: [cand2(), cand3()] },
+    );
+    expect(srcRow("peer_a").textContent).toContain("tentada");
+    const use = srcRow("peer_b").querySelector(".crate-btn") as HTMLButtonElement;
+    expect(use.disabled).toBe(false);
+    fireEvent.click(use);
+    await waitFor(() => expect(tauriApi.slskDownload).toHaveBeenCalledTimes(2));
+    expect(tauriApi.slskDownload).toHaveBeenLastCalledWith("srch1", group().group_key, "cand2", "Rap & Hip-Hop");
+  });
+});
+
 describe("Crate — evento slsk-jobs", () => {
   it("transiciona a linha para ready e habilita ▸ Tocar", async () => {
     let emit: ((jobs: DownloadJob[]) => void) | null = null;

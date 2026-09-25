@@ -354,8 +354,27 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
     candidato, com o caminho remoto completo em mono. */
 function SourcesPanel(props: {
   group: ResultGroup;
+  /** Job desta linha, se houver — o painel precisa saber quem está
+      servindo e quem já foi tentado (crate-16). */
+  job: DownloadJob | null;
   onUse: (sourceId: string) => void;
 }) {
+  // Com download em voo, 'Usar' criava um SEGUNDO download paralelo da
+  // mesma faixa (job novo por peer) e o primeiro sumia da aba Buscar
+  // (crate-16). Enquanto houver job em voo, 'Usar' fica desabilitado; a
+  // troca é pelo [Trocar fonte] ou cancelando antes.
+  const inFlight = () => props.job != null && IN_FLIGHT.has(props.job.state.kind);
+  const isCurrent = (c: Candidate) =>
+    props.job != null && c.username === props.job.username && c.filename === props.job.remote_filename;
+  const inUse = (c: Candidate) => inFlight() && isCurrent(c);
+  /** Fonte já usada por este job e que não está servindo agora. A fonte
+      original de um job que trocou de fonte não entra: o board não guarda
+      o id dela (só as alternativas tentadas). */
+  const wasTried = (c: Candidate) => {
+    const j = props.job;
+    if (!j || j.state.kind === "ready" || j.state.kind === "canceled" || inUse(c)) return false;
+    return j.tried_source_ids.includes(c.id) || isCurrent(c);
+  };
   const byId = createMemo(
     () => new Map([props.group.best, ...props.group.alternates].map((c) => [c.id, c])),
   );
@@ -383,6 +402,12 @@ function SourcesPanel(props: {
               <div class="crate-src" data-flag={c().warn ? "live" : undefined}>
                 <div class="crate-src-peer">
                   <span class="nm">{c().username}</span>
+                  <Show when={inUse(c())}>
+                    <span class="crate-pill crate-pill--live">em uso</span>
+                  </Show>
+                  <Show when={wasTried(c())}>
+                    <span class="crate-pill crate-pill--sub">tentada</span>
+                  </Show>
                   <Show when={c().warn}>
                     <span class="crate-pill crate-pill--warn">⚠ {c().warn}</span>
                   </Show>
@@ -399,7 +424,13 @@ function SourcesPanel(props: {
                   {formatSpeed(c().upload_speed)}
                 </div>
                 <div class="crate-r-act">
-                  <button type="button" class="crate-btn" onClick={(e) => { e.stopPropagation(); props.onUse(id); }}>
+                  <button
+                    type="button"
+                    class="crate-btn"
+                    disabled={inFlight()}
+                    title={inFlight() ? "Esta faixa já está baixando. Use [Trocar fonte] ou cancele antes." : undefined}
+                    onClick={(e) => { e.stopPropagation(); if (!inFlight()) props.onUse(id); }}
+                  >
                     Usar
                   </button>
                 </div>
@@ -594,6 +625,7 @@ function CrateRow(props: {
       <Show when={props.isExpanded}>
         <SourcesPanel
           group={props.group}
+          job={props.job}
           onUse={(sourceId) => {
             // Sem dest resolvido, mesmo comportamento do [Baixar]
             // (spec §4.5 caso 4): abre o seletor em vez de ficar
