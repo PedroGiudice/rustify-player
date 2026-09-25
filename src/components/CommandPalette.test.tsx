@@ -205,3 +205,31 @@ describe("CommandPalette — dicas de atalho (shell-13)", () => {
     expect(container.textContent).not.toContain("⌘");
   });
 });
+
+// shell-8 (erro): o catch de libSearch devolvia lista vazia, e a falha da
+// busca local aparecia como "nada encontrado" (o "Procurar na rede" no
+// topo). Agora uma linha diz que a busca falhou.
+describe("CommandPalette — falha da busca local (shell-8)", () => {
+  it("libSearch rejeitado mostra 'Busca local falhou'", async () => {
+    vi.mocked(tauriApi.libSearch).mockRejectedValue(new Error("indexer caiu"));
+    const { container, findByText } = render(() => <CommandPalette />);
+    openPalette();
+    const input = container.querySelector(".palette__input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko" } });
+    const line = await findByText("Busca local falhou");
+    expect(line.getAttribute("role")).toBe("status");
+    // A saída pela rede continua lá.
+    expect(container.textContent).toContain('Procurar "sicko" na rede');
+  });
+
+  it("busca que responde vazia não mostra erro", async () => {
+    vi.mocked(tauriApi.libSearch).mockResolvedValue({ tracks: [], albums: [], artists: [] } as any);
+    const { container } = render(() => <CommandPalette />);
+    openPalette();
+    const input = container.querySelector(".palette__input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko" } });
+    await waitFor(() => expect(tauriApi.libSearch).toHaveBeenCalledWith("sicko", 6));
+    await waitFor(() => expect(container.querySelector(".palette__item")?.textContent).toContain("Procurar"));
+    expect(container.textContent).not.toContain("Busca local falhou");
+  });
+});

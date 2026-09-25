@@ -48,6 +48,8 @@ interface SearchBundle {
   tracks: Track[];
   albums: Album[];
   artists: Artist[];
+  /** libSearch rejeitou: a lista vazia NÃO quer dizer "nada encontrado". */
+  failed?: boolean;
 }
 
 function fmtDur(ms: number): string {
@@ -85,7 +87,11 @@ export function CommandPalette() {
         albums: (r?.albums as Album[]) ?? [],
         artists: (r?.artists as Artist[]) ?? [],
       };
-    } catch { return empty; }
+    } catch (e) {
+      // Sem isto a falha aparecia como "nada encontrado" (shell-8).
+      console.error("[palette] busca local falhou:", e);
+      return { ...empty, failed: true };
+    }
   });
 
   const hasResults = () => {
@@ -303,6 +309,9 @@ export function CommandPalette() {
           <span class="palette__esc">ESC</span>
         </div>
         <div class="palette__list" ref={listEl}>
+          <Show when={searchResults()?.failed}>
+            <div class="palette__error" role="status">Busca local falhou</div>
+          </Show>
           <For each={items()}>
             {(it, i) => {
               // Accessors (nao consts): i() e sectionBoundaries() sao signals;
