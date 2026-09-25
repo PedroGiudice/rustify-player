@@ -4,6 +4,9 @@
    - O atalho Q ignorava só input e textarea e não olhava
      modificadores: com foco num <select>, a busca por letra abria a
      fila, e Ctrl+Q também alternava (shell-13, nowplaying-v4).
+   - O evento de abrir aceita detail.open: a ação "Open queue" da
+     palette pede abrir e não pode fechar a gaveta já aberta
+     (shell-v4). Sem detail, segue alternando (botão da barra).
    ============================================================ */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -11,7 +14,7 @@ import { render, cleanup } from "@solidjs/testing-library";
 
 vi.mock("./PlayerBar", () => ({ playTrack: vi.fn(), playQueueUpcoming: vi.fn() }));
 
-import { QueueDrawer } from "./QueueDrawer";
+import { QueueDrawer, QUEUE_EVENT } from "./QueueDrawer";
 
 afterEach(() => {
   cleanup();
@@ -49,6 +52,24 @@ describe("atalho Q da fila", () => {
     pressOn(document.body, "q", { ctrlKey: true });
     pressOn(document.body, "q", { altKey: true });
     pressOn(document.body, "q", { metaKey: true });
+    expect(isOpen(container)).toBe(false);
+  });
+});
+
+describe("evento de abrir a fila (shell-v4)", () => {
+  it("detail.open=true abre e mantém aberta", () => {
+    const { container } = render(() => <QueueDrawer />);
+    window.dispatchEvent(new CustomEvent(QUEUE_EVENT, { detail: { open: true } }));
+    expect(isOpen(container)).toBe(true);
+    window.dispatchEvent(new CustomEvent(QUEUE_EVENT, { detail: { open: true } }));
+    expect(isOpen(container)).toBe(true);
+  });
+
+  it("sem detail o evento alterna (botão Queue da PlayerBar)", () => {
+    const { container } = render(() => <QueueDrawer />);
+    window.dispatchEvent(new CustomEvent(QUEUE_EVENT));
+    expect(isOpen(container)).toBe(true);
+    window.dispatchEvent(new CustomEvent(QUEUE_EVENT));
     expect(isOpen(container)).toBe(false);
   });
 });

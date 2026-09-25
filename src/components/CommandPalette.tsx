@@ -120,7 +120,12 @@ export function CommandPalette() {
     {
       kind: "action", id: "queue", icon: ICONS.queue,
       title: "Open queue", sub: "see what's up next",
-      run: () => { window.dispatchEvent(new CustomEvent("rustify:open-queue")); close(); },
+      // detail.open: abre (ou mantém aberta). Sem ele o QueueDrawer
+      // alterna, e a ação fechava a fila que já estava aberta.
+      run: () => {
+        window.dispatchEvent(new CustomEvent("rustify:open-queue", { detail: { open: true } }));
+        close();
+      },
     },
     {
       kind: "action", id: "signal", icon: ICONS.signal,

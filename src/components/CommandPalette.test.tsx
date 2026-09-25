@@ -100,3 +100,18 @@ describe("CommandPalette — ActionItem do Crate", () => {
     expect(items.some((t) => t.includes("Procurar"))).toBe(false);
   });
 });
+
+describe("CommandPalette — ação Open queue (shell-v4)", () => {
+  it("pede para ABRIR a fila (detail.open=true), não alterna", async () => {
+    const seen: unknown[] = [];
+    const onQ = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener("rustify:open-queue", onQ);
+    const { container } = render(() => <CommandPalette />);
+    openPalette();
+    const item = Array.from(container.querySelectorAll(".palette__item"))
+      .find((el) => el.textContent?.includes("Open queue")) as HTMLElement;
+    fireEvent.click(item);
+    window.removeEventListener("rustify:open-queue", onQ);
+    expect(seen).toEqual([{ open: true }]);
+  });
+});

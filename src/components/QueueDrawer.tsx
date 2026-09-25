@@ -3,7 +3,9 @@
    the live queue + recently played history.
 
    Reactive to player.queue, player.queueIndex.
-   Opens on Q key or 'rustify:open-queue' custom event.
+   Opens on Q key or 'rustify:open-queue' custom event. O evento
+   alterna; com detail { open: boolean } força o estado (a ação
+   "Open queue" da palette pede abrir, não alternar).
    ============================================================ */
 
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
@@ -30,7 +32,10 @@ export function QueueDrawer() {
   const [open, setOpen] = createSignal(false);
 
   onMount(() => {
-    const onOpenEvt = () => setOpen((v) => !v);
+    const onOpenEvt = (e: Event) => {
+      const want = (e as CustomEvent<{ open?: boolean } | null>).detail?.open;
+      setOpen((v) => (typeof want === "boolean" ? want : !v));
+    };
     const onKey = (e: KeyboardEvent) => {
       if (isTypingContext(e)) return;
       if (e.key === "Escape" && open()) { e.preventDefault(); setOpen(false); }
