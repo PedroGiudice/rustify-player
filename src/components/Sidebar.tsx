@@ -17,13 +17,14 @@ import { player } from "../store/player";
 import { activeCount } from "../store/crate";
 import { tweaks, tweaksOpen } from "../store/tweaks";
 import { Icon, ICONS } from "./Icon";
+import { modCombo } from "../lib/keyboard";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
 import logoCassette from "../assets/logo-cassette.png";
 
 const PRIMARY = [
   { route: "/home",    icon: ICONS.home,    label: "Home" },
-  { route: "/search",  icon: ICONS.search,  label: "Search", kbd: "⌘K", action: "search" as const },
+  { route: "/search",  icon: ICONS.search,  label: "Search", kbd: modCombo("K"), action: "search" as const },
   // Logo abaixo de Search (spec §4.1): é busca, só que além do acervo.
   // Badge de jobs ativos (não-terminais) via store/crate — some em 0.
   { route: "/crate",   icon: ICONS.packageOpen, label: "Crate" },

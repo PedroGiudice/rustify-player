@@ -23,3 +23,19 @@ export function isTypingContext(e: KeyboardEvent): boolean {
   // host editável nos dois ambientes.
   return !!t.closest?.('[contenteditable]:not([contenteditable="false"])');
 }
+
+// ── Dica do modificador ──────────────────────────────────────
+// Os atalhos com modificador aceitam metaKey || ctrlKey, mas as dicas
+// diziam ⌘ em qualquer máquina (shell-13). O app roda no WebKitGTK
+// (Linux), onde a tecla é Ctrl. Só texto: nenhum atalho novo.
+
+/** true em Mac/iOS, pela string de plataforma do navegador. */
+export function isMacPlatform(platform: string = navigator.platform): boolean {
+  return /mac|iphone|ipad|ipod/i.test(platform);
+}
+
+/** Rótulo de um atalho com o modificador da plataforma: "⌘K" no Mac,
+    "Ctrl+K" fora dele. */
+export function modCombo(key: string, platform: string = navigator.platform): string {
+  return isMacPlatform(platform) ? `⌘${key}` : `Ctrl+${key}`;
+}

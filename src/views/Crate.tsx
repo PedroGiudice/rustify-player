@@ -20,6 +20,7 @@ import {
 } from "solid-js";
 import { route } from "../router";
 import { pushEscLayer } from "../lib/escLayers";
+import { modCombo } from "../lib/keyboard";
 import { createStore, reconcile } from "solid-js/store";
 import {
   slskStatus, slskSearch, slskResults, slskCancelSearch, slskDedupProbe,
@@ -1317,7 +1318,7 @@ export default function Crate(props: { param?: string | null }) {
                 <h3>Nada buscado ainda</h3>
                 <p>A busca só dispara no Enter — o Crate nunca busca enquanto você digita.</p>
                 <div class="crate-empty__hintline">
-                  <kbd class="crate-kbd">⌘K</kbd> → digite → <kbd class="crate-kbd">Procurar na rede</kbd>
+                  <kbd class="crate-kbd">{modCombo("K")}</kbd> → digite → <kbd class="crate-kbd">Procurar na rede</kbd>
                 </div>
               </div>
             </div>

@@ -18,6 +18,7 @@ import { playTrack } from "./PlayerBar";
 import { setQueue, enqueueEnd, enqueueNext } from "../store/player";
 import { openTrackMenu } from "../store/contextMenu";
 import { libSearch, libShuffle, coverUrl, type Track, type Album, type Artist } from "../tauri";
+import { modCombo } from "../lib/keyboard";
 
 export const CMD_PALETTE_EVENT = "rustify:open-palette";
 
@@ -420,7 +421,7 @@ export function CommandPalette() {
                     </div>
                     <div class="palette__item-hint">
                       {it.kind === "track"
-                        ? "↵ play · ⌘↵ next · ⇧↵ queue"
+                        ? `↵ play · ${modCombo("↵")} next · ⇧↵ queue`
                         : it.kind === "album" || it.kind === "artist"
                           ? "↵ open"
                           : "↵"}
@@ -434,7 +435,7 @@ export function CommandPalette() {
         <div class="palette__footer">
           <span><span class="kbd">↑↓</span> navigate</span>
           <span><span class="kbd">↵</span> play</span>
-          <span><span class="kbd">⌘↵</span> play next</span>
+          <span><span class="kbd">{modCombo("↵")}</span> play next</span>
           <span><span class="kbd">⇧↵</span> add to queue</span>
         </div>
       </div>

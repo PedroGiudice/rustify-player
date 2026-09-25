@@ -1086,3 +1086,14 @@ describe("Crate — rota /crate/<busca> reativa (crate-v1)", () => {
     await waitFor(() => expect(tauriApi.slskSearch).toHaveBeenCalledWith("travis scott", false));
   });
 });
+
+// shell-13: a dica do estado vazio dizia ⌘K em qualquer máquina.
+describe("Crate — dica de atalho no estado vazio (shell-13)", () => {
+  it("fora do Mac mostra Ctrl+K", async () => {
+    const { container } = render(() => <Crate />);
+    await waitFor(() => expect(container.querySelector(".crate-empty__hintline")).toBeTruthy());
+    const line = container.querySelector(".crate-empty__hintline")!.textContent ?? "";
+    expect(line).toContain("Ctrl+K");
+    expect(line).not.toContain("⌘");
+  });
+});

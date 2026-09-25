@@ -8,7 +8,7 @@
    ============================================================ */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { isTypingContext } from "./keyboard";
+import { isMacPlatform, modCombo, isTypingContext } from "./keyboard";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -59,5 +59,33 @@ describe("isTypingContext", () => {
     expect(isTypingContext(keyOn(btn))).toBe(false);
     expect(isTypingContext(keyOn(div))).toBe(false);
     expect(isTypingContext(keyOn(document.body))).toBe(false);
+  });
+});
+
+// shell-13: as dicas diziam ⌘K e ⌘↵ em qualquer máquina, mas fora do Mac o
+// atalho é Ctrl (os listeners aceitam metaKey || ctrlKey). O app roda no
+// WebKitGTK (Linux): navigator.platform = "Linux x86_64".
+describe("modCombo (dica de atalho por plataforma)", () => {
+  it("no Mac usa ⌘ colado na tecla", () => {
+    expect(modCombo("K", "MacIntel")).toBe("⌘K");
+    expect(modCombo("↵", "MacIntel")).toBe("⌘↵");
+  });
+
+  it("fora do Mac usa Ctrl+", () => {
+    expect(modCombo("K", "Linux x86_64")).toBe("Ctrl+K");
+    expect(modCombo("↵", "Win32")).toBe("Ctrl+↵");
+    expect(modCombo("K", "")).toBe("Ctrl+K");
+  });
+
+  it("isMacPlatform reconhece Mac, iPhone e iPad", () => {
+    expect(isMacPlatform("MacIntel")).toBe(true);
+    expect(isMacPlatform("iPad")).toBe(true);
+    expect(isMacPlatform("iPhone")).toBe(true);
+    expect(isMacPlatform("Linux x86_64")).toBe(false);
+    expect(isMacPlatform("Win32")).toBe(false);
+  });
+
+  it("sem argumento, lê a plataforma do navegador", () => {
+    expect(modCombo("K")).toBe(isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K");
   });
 });

@@ -214,3 +214,14 @@ describe("Sidebar — rota ativa (ds-2)", () => {
     expect(now.map((el) => el.textContent)).toEqual(["Settings"]);
   });
 });
+
+// shell-13: fora do Mac o atalho é Ctrl, e a dica dizia ⌘K (o jsdom
+// reporta plataforma vazia, que não é Mac).
+describe("Sidebar — dica de atalho da busca (shell-13)", () => {
+  it("fora do Mac mostra Ctrl+K, não ⌘K", () => {
+    const { container } = render(() => <Sidebar />);
+    const kbd = Array.from(container.querySelectorAll(".nav-item__kbd")).map((el) => el.textContent);
+    expect(kbd).toContain("Ctrl+K");
+    expect(kbd.join(" ")).not.toContain("⌘");
+  });
+});

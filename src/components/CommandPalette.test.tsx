@@ -184,3 +184,24 @@ describe("CommandPalette — navegação por teclado (shell-8)", () => {
     expect(vi.mocked(playTrack)).toHaveBeenCalledWith(second);
   });
 });
+
+// shell-13: fora do Mac o "tocar em seguida" é Ctrl+Enter; a dica dizia ⌘↵.
+describe("CommandPalette — dicas de atalho (shell-13)", () => {
+  it("fora do Mac, rodapé e dica da faixa dizem Ctrl+↵", async () => {
+    vi.mocked(tauriApi.libSearch).mockResolvedValue({
+      tracks: [{ id: "1", title: "Sicko Mode", artist_name: "Travis Scott", album_title: null, album_cover_path: null, album_year: null, duration_ms: 180000, path: "/a.flac", lrc_path: null }],
+      albums: [],
+      artists: [],
+    } as any);
+    const { container, getByText } = render(() => <CommandPalette />);
+    openPalette();
+    const input = container.querySelector(".palette__input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko" } });
+    await waitFor(() => expect(getByText("Sicko Mode")).toBeTruthy());
+    const footer = container.querySelector(".palette__footer")!.textContent ?? "";
+    expect(footer).toContain("Ctrl+↵");
+    const hints = Array.from(container.querySelectorAll(".palette__item-hint")).map((el) => el.textContent ?? "");
+    expect(hints.some((t) => t.includes("Ctrl+↵ next"))).toBe(true);
+    expect(container.textContent).not.toContain("⌘");
+  });
+});
