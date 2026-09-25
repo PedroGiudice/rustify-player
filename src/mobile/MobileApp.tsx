@@ -159,7 +159,14 @@ export function MobileApp() {
   return (
     <div class="device">
       <Bg />
-      <div class="shell">
+      {/* Com o NP aberto por cima, a tela e o dock atrás saem do foco e da
+          árvore de acessibilidade (o TalkBack percorria o que estava
+          escondido). O inverso — NP fechado — é tratado no próprio NP. */}
+      <div
+        class="shell"
+        inert={isNpOpen()}
+        aria-hidden={isNpOpen() ? "true" : undefined}
+      >
         <div
           class="view"
           ref={viewEl}
