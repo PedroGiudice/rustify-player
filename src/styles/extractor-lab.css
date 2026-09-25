@@ -3576,6 +3576,11 @@ html { --glow: 0; }
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5); margin: 0; white-space: nowrap;
 }
+/* Busca em voo: título + barra fina da janela de 25 s lado a lado. */
+.crate-list-head__lead {
+  display: flex; align-items: center; gap: 12px;
+  flex: 1; min-width: 0;
+}
 .crate-keys {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-6); white-space: nowrap;
@@ -3586,6 +3591,11 @@ html { --glow: 0; }
   border-top: 1px solid var(--line-2);
   border-bottom: 1px solid var(--line-2);
 }
+/* A lista de resultados é focável (o teclado do Crate é escopado a ela):
+   o anel de foco vai no corpo da lista, com o token do app, e não no
+   contorno padrão do WebKit em volta da caixa com o padding lateral. */
+.crate-list:focus { outline: none; }
+.crate-list:focus-visible > .crate-list-inner { box-shadow: var(--ring-focus); }
 .crate-row-wrap { position: relative; }
 .crate-row-wrap + .crate-row-wrap { border-top: 1px solid var(--line-2); }
 .crate-row-wrap:hover { background: var(--bg-soft); }
@@ -3677,6 +3687,12 @@ html { --glow: 0; }
 }
 .crate-btn:hover { border-color: var(--fg-8); background: var(--bg-soft); color: var(--fg-1); }
 .crate-btn iconify-icon { width: 12px; height: 12px; }
+/* 'Usar' com download já em voo (crate-16): sem hover, sem cursor de ação. */
+.crate-btn:disabled,
+.crate-btn:disabled:hover {
+  cursor: default; opacity: 0.45;
+  border-color: var(--line-2); background: var(--bg-paper); color: var(--fg-2);
+}
 .crate-btn--primary {
   background: var(--fg-1); border-color: var(--fg-1); color: var(--bg-canvas);
 }

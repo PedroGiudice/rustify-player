@@ -11,7 +11,7 @@
    no-op depois da primeira vez.
    ============================================================ */
 
-import { createSignal } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { slskJobs, onSlskJobs, type DownloadJob } from "../tauri";
 
 // Estados não-terminais (board.rs IN_FLIGHT + Queued — Queued ainda não
@@ -25,11 +25,21 @@ const NON_TERMINAL_KINDS = new Set<DownloadJob["state"]["kind"]>([
   "indexing",
 ]);
 
-const [jobsSignal, setJobsSignal] = createSignal<DownloadJob[]>([]);
-export const jobs = jobsSignal;
+// Store reconciliado por `job_id`: cada slsk-jobs traz o board inteiro em
+// objetos novos (spec §3.5); com um signal simples, o <For> da Fila
+// descartava e recriava todas as linhas a cada evento (crate-1). Com o
+// reconcile, o mesmo job mantém a identidade e só os campos que mudaram
+// notificam.
+const [board, setBoard] = createStore<{ list: DownloadJob[] }>({ list: [] });
+
+function setJobsSignal(next: DownloadJob[]): void {
+  setBoard("list", reconcile(next, { key: "job_id" }));
+}
+
+export const jobs = (): DownloadJob[] => board.list;
 
 export function activeCount(): number {
-  return jobsSignal().filter((j) => NON_TERMINAL_KINDS.has(j.state.kind)).length;
+  return board.list.filter((j) => NON_TERMINAL_KINDS.has(j.state.kind)).length;
 }
 
 let booted = false;
