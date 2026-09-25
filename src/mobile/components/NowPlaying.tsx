@@ -50,6 +50,7 @@ import {
 import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
 import { canShuffleUpcoming } from "../queueModel";
 import { useRenderer, useShape } from "../bg/spectrum";
+import { is2dActive } from "../bg/engine";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
 
@@ -160,24 +161,28 @@ export function NowPlaying() {
         <div class="nphead">
           <div class="eyebrow">Now playing</div>
           <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-            <button
-              class="shapebtn"
-              onClick={() => {
-                useRenderer.next();
-                showToast("Render · " + useRenderer.name());
-              }}
-            >
-              {useRenderer.name()}
-            </button>
-            <button
-              class="shapebtn"
-              onClick={() => {
-                useShape.next();
-                showToast("Shape · " + useShape.name());
-              }}
-            >
-              {useShape.name()}
-            </button>
+            {/* Só com o canvas 2D desenhando: no WebGL trocavam um estado que
+                ninguém desenha (mobile-2). */}
+            <Show when={is2dActive()}>
+              <button
+                class="shapebtn"
+                onClick={() => {
+                  useRenderer.next();
+                  showToast("Render · " + useRenderer.name());
+                }}
+              >
+                {useRenderer.name()}
+              </button>
+              <button
+                class="shapebtn"
+                onClick={() => {
+                  useShape.next();
+                  showToast("Shape · " + useShape.name());
+                }}
+              >
+                {useShape.name()}
+              </button>
+            </Show>
             <Show when={lyrics().length > 0}>
               <button
                 class="iconbtn"

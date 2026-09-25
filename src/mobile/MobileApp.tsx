@@ -47,8 +47,7 @@ import { bootStore, current, pb, toast } from "./store";
 import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
 import { mockFft, mountSpectrum, pushFft } from "./bg/spectrum";
-import { bgEngine } from "./bg/engine";
-import { glStatus } from "../gl/meta";
+import { is2dActive } from "./bg/engine";
 import { onFft } from "./ipc";
 import { bootUpdater } from "./updater";
 
@@ -124,7 +123,7 @@ function Bg() {
   return (
     <div class="app-bg" attr:data-mode={isNpOpen() ? "focused" : "ambient"} aria-hidden="true">
       <div class="app-bg__curtain" />
-      <Show when={bgEngine() === "webgl" && glStatus().ok !== false} fallback={<Spectrum2d />}>
+      <Show when={!is2dActive()} fallback={<Spectrum2d />}>
         <Suspense fallback={<Spectrum2d />}>
           <GlBg />
         </Suspense>

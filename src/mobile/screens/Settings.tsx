@@ -19,7 +19,7 @@ import { For, Show } from "solid-js";
 import { ViewHead } from "../components/ui";
 import { BEAT_MODES, beatMode, setBeatMode } from "../bg/beatSetting";
 import { useRenderer, useShape } from "../bg/spectrum";
-import { bgEngine, bgScene, setBgEngine, setBgScene } from "../bg/engine";
+import { bgEngine, bgScene, is2dActive, setBgEngine, setBgScene } from "../bg/engine";
 import { glStatus, resetGlStatus, SCENE_HINTS, SCENE_KEYS, SCENE_LABELS } from "../../gl/meta";
 import {
   albums,
@@ -169,7 +169,9 @@ export function Settings() {
           </Show>
         </Show>
 
-        <Show when={bgEngine() === "2d"}>
+        {/* O que está desenhando, não a preferência: com o WebGL em falha o
+            2D assumiu e precisa dos controles (mobile-v5). */}
+        <Show when={is2dActive()}>
           <div class="setrow setrow--inline">
             <div>
               <div class="setrow__label">Background render + shape</div>
