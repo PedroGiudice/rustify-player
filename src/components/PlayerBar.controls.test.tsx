@@ -9,9 +9,11 @@
    - Seek e volume são sliders de verdade: role, tabindex, valores
      ARIA e teclado (setas, Home/End, PageUp/PageDown) (shell-2,
      ds-2).
-   - O botão de mudo diz o que faz ("Mute"/"Unmute"), expõe
-     aria-pressed e passa pelo store em vez de chamar o IPC direto
-     (shell-v3).
+   - O botão de mudo é um toggle: rótulo fixo "Mute" com
+     aria-pressed refletindo o estado (o title diz a ação) e passa
+     pelo store em vez de chamar o IPC direto (shell-v3). Rótulo
+     dinâmico junto com aria-pressed fazia o leitor anunciar
+     "Unmute, pressionado" (revisão da fase 0, 25/09).
    ============================================================ */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -173,7 +175,7 @@ describe("volume como slider (shell-2, ds-2)", () => {
 });
 
 describe("botão de mudo (shell-v3)", () => {
-  it("rótulo e title dizem a ação, e aria-pressed reflete o estado", () => {
+  it("toggle de rótulo fixo: aria-pressed reflete o estado e o title diz a ação", () => {
     setPlayer({ volume: 0.6, isMuted: false });
     const { container } = render(() => <PlayerBar />);
     const btn = container.querySelector("#pb-vol-btn") as HTMLElement;
@@ -182,7 +184,7 @@ describe("botão de mudo (shell-v3)", () => {
     expect(btn.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(btn);
     expect(player.isMuted).toBe(true);
-    expect(btn.getAttribute("aria-label")).toBe("Unmute");
+    expect(btn.getAttribute("aria-label")).toBe("Mute");
     expect(btn.getAttribute("title")).toBe("Unmute");
     expect(btn.getAttribute("aria-pressed")).toBe("true");
   });

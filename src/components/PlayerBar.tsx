@@ -677,7 +677,9 @@ export function PlayerBar() {
           <button
             class="pb-btn"
             id="pb-vol-btn"
-            aria-label={player.isMuted ? "Unmute" : "Mute"}
+            // Toggle: rótulo fixo + aria-pressed. Rótulo dinâmico com
+            // aria-pressed virava "Unmute, pressionado" no leitor de tela.
+            aria-label="Mute"
             aria-pressed={player.isMuted ? "true" : "false"}
             title={player.isMuted ? "Unmute" : "Mute"}
             onClick={() => { toggleMute().catch(console.error); }}
