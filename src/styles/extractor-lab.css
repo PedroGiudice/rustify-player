@@ -1219,8 +1219,12 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* ────────────────────────────────────────────────────────────
    QUEUE DRAWER
    ──────────────────────────────────────────────────────────── */
+/* Véu e gaveta ficam ENTRE a titlebar e a PlayerBar: cobrindo a barra,
+   pausar ou pular com a fila aberta custava dois cliques (o primeiro só
+   fechava a fila), e os botões da janela e a área de arraste sumiam. */
 .queue-scrim {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h); left: 0;
   background: rgba(23,23,23,0.16);
   z-index: 90; opacity: 0; pointer-events: none;
   transition: opacity 200ms var(--ease-out);
@@ -1228,7 +1232,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .queue-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
 
 .queue-drawer {
-  position: fixed; top: 0; right: 0; bottom: var(--playerbar-h);
+  position: fixed; top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h);
   width: 380px;
   background: var(--bg-paper);
   border-left: 1px solid var(--line-2);
