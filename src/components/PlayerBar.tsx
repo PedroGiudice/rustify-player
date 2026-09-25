@@ -217,8 +217,9 @@ export function PlayerBar() {
     // Restore the previous session in paused state. The backend
     // already filtered out snapshots older than 6h, so anything
     // returned is "fresh enough" to be useful. "Resume on launch"
-    // desligado no Settings pula a restauração (cfg-1).
-    if (resumeOnLaunch()) await restoreSession();
+    // desligado no Settings pula fila, posição, shuffle e repeat
+    // (cfg-1); a exclusão de recentes do autoplay volta sempre.
+    await restoreSession(resumeOnLaunch());
   }
 
   onCleanup(() => {
@@ -226,10 +227,17 @@ export function PlayerBar() {
     unlistenMpris?.();
   });
 
-  async function restoreSession() {
+  async function restoreSession(resume: boolean) {
     try {
       const snap = await persistLoadState();
-      if (!snap || snap.queue_ids.length === 0 || snap.track_id == null) return;
+      if (!snap) return;
+      // Repopulate the recently-played exclusion set so autoplay/radio
+      // don't immediately suggest tracks the user heard last session.
+      // É do motor, não da sessão: independe do "Resume on launch" e de
+      // a fila salva ainda existir.
+      for (const id of snap.recently_played) rememberRecent(id);
+      if (!resume) return;
+      if (snap.queue_ids.length === 0 || snap.track_id == null) return;
       const tracks = await libGetTracksByIds(snap.queue_ids);
       if (tracks.length === 0) return;
       // The library may have moved on (tracks deleted, re-indexed).
@@ -250,9 +258,6 @@ export function PlayerBar() {
         positionSecs: snap.position_ms / 1000,
         durationSecs: (tracks[newIndex].duration_ms ?? 0) / 1000,
       });
-      // Repopulate the recently-played exclusion set so autoplay/radio
-      // don't immediately suggest tracks the user heard last session.
-      for (const id of snap.recently_played) rememberRecent(id);
       const current = tracks[newIndex];
       await playerLoadPaused(current.path, snap.position_ms, current.id);
       if (current.id) {
