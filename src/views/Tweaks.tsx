@@ -332,7 +332,9 @@ export function Tweaks() {
             options={[[true, "On"], [false, "Off"]]}
           />
 
-          <div class="tweaks__divider"><span>Fundo</span></div>
+          {/* data-tweaks-section: o botão de ajustes do Now Playing abre o
+              painel rolado até aqui. */}
+          <div class="tweaks__divider" data-tweaks-section="fundo"><span>Fundo</span></div>
           <EngineRow />
           <Show when={tweaks().bgEngine === "webgl"}>
             <GlSection />

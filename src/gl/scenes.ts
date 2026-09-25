@@ -17,6 +17,8 @@
    lab rodou assim e é o mesmo alvo). Antialias desligado, alpha
    desligado — as cenas limpam em preto puro (gl/palette.ts,
    GL_CANVAS; paridade com o fundo do 2D) e desenham por cima.
+   A Nébula, que é toda fillrate, desenha num buffer de até 256
+   linhas e escala para a tela (gl/budget.ts).
    ============================================================ */
 
 import {
@@ -27,6 +29,7 @@ import {
   Float32BufferAttribute,
   Line,
   LineBasicMaterial,
+  LinearFilter,
   MathUtils,
   Mesh,
   OrthographicCamera,
@@ -37,10 +40,13 @@ import {
   ShaderMaterial,
   Vector2,
   WebGLRenderer,
+  WebGLRenderTarget,
   type Camera,
   type IUniform,
 } from "three";
 
+import { advanceDustTravel } from "./motion";
+import { NEBULA_MAX_ROWS, reducedBufferSize } from "./budget";
 import type { GlPalette, Rgb } from "./palette";
 import type { GlSignal } from "./signal";
 import type { SceneKey } from "./meta";
@@ -135,6 +141,12 @@ abstract class SceneBase {
 
   update?(sig: GlSignal, dt: number): void;
 
+  /** Desenha o quadro. Cena que usa buffer próprio sobrescreve e deve
+      devolver o renderer apontando para a tela (setRenderTarget(null)). */
+  render(r: WebGLRenderer): void {
+    r.render(this.scene, this.camera);
+  }
+
   dispose(): void {
     for (const d of this.disposables) {
       try { d.dispose(); } catch { /* contexto já perdido */ }
@@ -144,8 +156,13 @@ abstract class SceneBase {
   }
 }
 
-/** Poeira: 6000 pontos em volume fluindo para a câmera, disco aditivo. */
+/** Poeira: 6000 pontos em volume fluindo para a câmera, disco aditivo.
+    O fluxo em z é integrado na CPU (gl/motion.ts, CMR-267): o shader só
+    recebe o deslocamento pronto em uTravel. */
 class Dust extends SceneBase {
+  private readonly travelU: IUniform<number> = { value: 0 };
+  private lastClock: number | null = null;
+
   constructor() {
     super();
     const cam = new PerspectiveCamera(55, 16 / 9, 0.1, 200);
@@ -165,18 +182,17 @@ class Dust extends SceneBase {
     g.setAttribute("position", new BufferAttribute(pos, 3));
     g.setAttribute("aSeed", new BufferAttribute(seed, 1));
     const m = new ShaderMaterial({
-      uniforms: this.u as unknown as Record<string, IUniform>,
+      uniforms: { ...this.u, uTravel: this.travelU } as unknown as Record<string, IUniform>,
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
       vertexShader: `
         attribute float aSeed; varying float vSeed; varying float vDepth;
-        uniform float uTime,uLow,uMid,uBeat;
+        uniform float uTime,uLow,uBeat,uTravel;
         void main(){
           vSeed=aSeed;
           vec3 p=position;
-          float speed=3.0+4.0*uMid;
-          p.z=mod(p.z+uTime*speed+aSeed*90.0,90.0)-85.0;
+          p.z=mod(p.z+uTravel+aSeed*90.0,90.0)-85.0;
           p.x+=sin(uTime*0.4+aSeed*40.0)*1.6; p.y+=cos(uTime*0.33+aSeed*31.0)*1.1;
           vec4 mv=modelViewMatrix*vec4(p,1.0);
           float d=-mv.z; vDepth=clamp(1.0-d/85.0,0.0,1.0);
@@ -200,6 +216,12 @@ class Dust extends SceneBase {
   }
 
   update(sig: GlSignal): void {
+    // Avanço do relógio VIRTUAL (não o dt de parede): bgSpeed e o
+    // beat-sync seguem valendo para a deriva, como no uTime antigo.
+    const dClock = this.lastClock === null ? 0 : sig.clock - this.lastClock;
+    this.lastClock = sig.clock;
+    this.travelU.value = advanceDustTravel(this.travelU.value, dClock, sig.mid);
+
     const c = this.camera as PerspectiveCamera;
     c.position.x = Math.sin(sig.clock * 0.11) * 1.2;
     c.position.y = Math.cos(sig.clock * 0.09) * 0.8;
@@ -335,15 +357,50 @@ class Orbits extends SceneBase {
   }
 }
 
-/** Nébula: quad fullscreen, fbm com domain warping. Sem geometria. */
+/** Nébula: quad fullscreen, fbm com domain warping. Sem geometria.
+    O fbm roda num buffer de no máximo 256 linhas (gl/budget.ts) e um
+    segundo quad escala para a tela com filtro linear e dither IGN —
+    em resolução cheia a cena custava mais que um quadro de 60 fps. */
 class Nebula extends SceneBase {
+  private readonly rt = new WebGLRenderTarget(1, 1, {
+    minFilter: LinearFilter,
+    magFilter: LinearFilter,
+    depthBuffer: false,
+    generateMipmaps: false,
+  });
+  /** Resolução do buffer: o gl_FragCoord da passada reduzida vive nela. */
+  private readonly bufRes: IUniform<Vector2> = { value: new Vector2(1, 1) };
+  private readonly composite = new Scene();
+
   constructor() {
     super();
     this.camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const g = new PlaneGeometry(2, 2);
+    const vertexShader = `void main(){gl_Position=vec4(position.xy,0.0,1.0);}`;
+
+    // Composite: amostra o buffer na resolução da tela (u.uRes) e soma
+    // meio degrau de 8 bits de ruído IGN, que some com o banding que a
+    // escala linear revelaria no gradiente escuro.
+    const cm = new ShaderMaterial({
+      uniforms: { uTex: { value: this.rt.texture }, uRes: this.u.uRes } as unknown as Record<string, IUniform>,
+      depthTest: false,
+      depthWrite: false,
+      vertexShader,
+      fragmentShader: `
+        uniform sampler2D uTex; uniform vec2 uRes;
+        float ign(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}
+        void main(){
+          vec3 c=texture2D(uTex,gl_FragCoord.xy/uRes).rgb;
+          c+=(ign(gl_FragCoord.xy)-0.5)/255.0;
+          gl_FragColor=vec4(c,1.0);
+        }`,
+    });
+    this.composite.add(new Mesh(g, cm));
+    this.disposables.push(cm, this.rt);
+
     const m = new ShaderMaterial({
-      uniforms: this.u as unknown as Record<string, IUniform>,
-      vertexShader: `void main(){gl_Position=vec4(position.xy,0.0,1.0);}`,
+      uniforms: { ...this.u, uRes: this.bufRes } as unknown as Record<string, IUniform>,
+      vertexShader,
       fragmentShader: NOISE + `
         uniform vec2 uRes; uniform float uTime,uLow,uMid,uHigh,uBeat; uniform vec3 uCanvas,uInk,uInk2,uSoft;
         void main(){
@@ -362,6 +419,25 @@ class Nebula extends SceneBase {
     });
     this.scene.add(new Mesh(g, m));
     this.disposables.push(g, m);
+  }
+
+  resize(w: number, h: number, dpr: number): void {
+    super.resize(w, h, dpr);
+    const b = reducedBufferSize(w * dpr, h * dpr, NEBULA_MAX_ROWS);
+    this.rt.setSize(b.w, b.h);
+    this.bufRes.value.set(b.w, b.h);
+  }
+
+  render(r: WebGLRenderer): void {
+    r.setRenderTarget(this.rt);
+    r.render(this.scene, this.camera);
+    r.setRenderTarget(null);
+    r.render(this.composite, this.camera);
+  }
+
+  dispose(): void {
+    super.dispose();
+    this.composite.clear();
   }
 }
 
@@ -413,6 +489,9 @@ export class GlStage {
   setScene(key: SceneKey): void {
     if (key === this.key) return;
     this.current.dispose();
+    // Uma cena com buffer próprio (Nébula) nunca deixa o renderer
+    // apontando para ele; isto só garante que a próxima comece da tela.
+    this.renderer.setRenderTarget(null);
     this.key = key;
     this.current = new CTORS[key]();
     if (this.palette) this.current.setPalette(this.palette);
@@ -436,7 +515,7 @@ export class GlStage {
 
   frame(sig: GlSignal, dt: number): void {
     this.current.step(sig, dt);
-    this.renderer.render(this.current.scene, this.current.camera);
+    this.current.render(this.renderer);
   }
 
   dispose(): void {

@@ -82,6 +82,12 @@ vi.mock("../components/SpectrumCanvas", () => ({
 beforeEach(() => {
   mockOpenTrackMenu.mockClear();
   state.currentTrack = null;
+  // jsdom não tem ResizeObserver; o NowPlaying observa o .np para
+  // reposicionar o card de letras (o WebKitGTK do app tem).
+  (globalThis as any).ResizeObserver = class {
+    observe() {}
+    disconnect() {}
+  };
 });
 
 afterEach(() => {
