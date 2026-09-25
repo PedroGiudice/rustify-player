@@ -130,3 +130,46 @@ describe("NowPlaying — troca de faixa (np-1)", () => {
     expect(queryByTestId("fallback")).toBeNull();
   });
 });
+
+describe("NowPlaying — linhas da letra (np-4, nowplaying-v2)", () => {
+  async function renderWith(lines: LyricLine[]) {
+    h.libGetLyrics.mockResolvedValue(lines);
+    setPlayer({ currentTrack: track("A") });
+    const r = render(() => <NowPlaying />);
+    await waitFor(() => expect(r.container.querySelectorAll(".np__lyric").length).toBe(lines.length));
+    return r;
+  }
+
+  it("letra sem sincronismo não destaca a primeira linha como próxima", async () => {
+    const { container } = await renderWith([
+      { t: 0, line: "um" },
+      { t: 0, line: "dois" },
+      { t: 0, line: "três" },
+    ]);
+    expect(container.querySelector(".np__lyric.is-near")).toBeNull();
+    expect(container.querySelector(".np__lyric.is-active")).toBeNull();
+    expect(container.querySelector(".np__lyrics-viewport.is-unsynced")).not.toBeNull();
+  });
+
+  it("marca cabeçalhos de seção ([Chorus]) com classe própria", async () => {
+    const { container } = await renderWith([
+      { t: 1, line: "[Chorus]", header: true },
+      { t: 2, line: "verso" },
+    ]);
+    const lines = container.querySelectorAll(".np__lyric");
+    expect(lines[0].classList.contains("is-header")).toBe(true);
+    expect(lines[1].classList.contains("is-header")).toBe(false);
+  });
+
+  it("linha vazia do LRC (interlúdio) aparece como reticências, não como parágrafo vazio", async () => {
+    setPlayer("positionSecs", 5);
+    const { container } = await renderWith([
+      { t: 1, line: "antes" },
+      { t: 4, line: "" },
+      { t: 9, line: "depois" },
+    ]);
+    const lines = container.querySelectorAll(".np__lyric");
+    expect(lines[1].textContent).toBe("…");
+    expect(lines[1].classList.contains("is-active")).toBe(true);
+  });
+});

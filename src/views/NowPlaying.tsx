@@ -372,13 +372,19 @@ export default function NowPlaying() {
                 <div class="np__lyrics-rail" ref={railEl!}>
                   <For each={lyrics()}>
                     {(line, i) => {
+                      // Sem linha ativa (a = -1, letra não sincronizada) não
+                      // há "próxima": sem o guarda, a linha 0 virava is-near.
+                      const base = line.header ? "np__lyric is-header" : "np__lyric";
                       const cls = () => {
                         const a = activeLine();
-                        if (i() === a) return "np__lyric is-active";
-                        if (Math.abs(i() - a) === 1) return "np__lyric is-near";
-                        return "np__lyric";
+                        if (a < 0) return base;
+                        if (i() === a) return `${base} is-active`;
+                        if (Math.abs(i() - a) === 1) return `${base} is-near`;
+                        return base;
                       };
-                      return <p class={cls()}>{line.line}</p>;
+                      // Linha só com timestamp (interlúdio) vira "…" em vez de
+                      // um <p> vazio que some do destaque — paridade com o mobile.
+                      return <p class={cls()}>{line.line || "…"}</p>;
                     }}
                   </For>
                 </div>

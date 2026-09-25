@@ -847,6 +847,15 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .np__lyric.is-near   { color: var(--fg-4); }
 .np__lyric.is-active { color: var(--fg-1); font-weight: 600; }
+/* Letra sem sincronismo: não há linha ativa nem próxima — o texto todo é
+   leitura corrida, na cor de texto secundário e não na mais apagada. */
+.np__lyrics-viewport.is-unsynced .np__lyric { color: var(--fg-2); }
+/* Cabeçalho de seção ([Chorus]): rótulo, não verso (paridade com o mobile). */
+.np__lyrics-rail .np__lyric.is-header {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-5);
+}
 
 /* Now Playing corner controls */
 .np__corner {
