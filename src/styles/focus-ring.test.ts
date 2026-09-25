@@ -60,12 +60,21 @@ function ruleFor(selector: string): CSSStyleRule | undefined {
 }
 
 describe("anel de foco — ds-1", () => {
-  it(".card__play aparece no foco de teclado e com o card em :focus-within", () => {
-    for (const sel of [".card__play:focus-visible", ".card:focus-within .card__play"]) {
-      const r = ruleFor(sel);
-      expect(r, sel).toBeTruthy();
-      expect(r!.style.getPropertyValue("opacity").trim()).toBe("1");
-    }
+  it(".card__play aparece no foco de teclado", () => {
+    const r = ruleFor(".card__play:focus-visible");
+    expect(r).toBeTruthy();
+    expect(r!.style.getPropertyValue("opacity").trim()).toBe("1");
+  });
+
+  it(".card__play não fica visível por :focus-within (clique de mouse foca botão no WebKitGTK)", () => {
+    // No port GTK o <button> ganha foco também no clique. Com
+    // :focus-within o play ficava grudado no card depois de tocar o
+    // álbum; o card não tem outro alvo de foco, então :focus-visible
+    // no próprio botão já cobre o Tab.
+    const sticky = rules
+      .filter((r) => r.selectorText.split(",").some((s) => /:focus-within\s+\.card__play/.test(s)))
+      .map((r) => r.selectorText);
+    expect(sticky).toEqual([]);
   });
 
   it("linha do TrackRowTable (display:contents) desenha o anel nas células", () => {

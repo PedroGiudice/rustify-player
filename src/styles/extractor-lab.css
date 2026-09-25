@@ -633,8 +633,9 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: opacity var(--dur-base), transform var(--dur-base);
 }
 .card:hover .card__play { opacity: 1; transform: none; }
-/* Só no hover, o Tab parava num botão invisível (ds-1). */
-.card:focus-within .card__play,
+/* Só no hover, o Tab parava num botão invisível (ds-1). Sem
+   .card:focus-within: no WebKitGTK o clique de mouse também foca o
+   <button>, e o play ficava grudado no card depois de tocar o álbum. */
 .card__play:focus-visible { opacity: 1; transform: none; }
 .card__play iconify-icon { width: 12px; height: 12px; }
 
