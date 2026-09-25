@@ -959,7 +959,13 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .tracks--with-cover {
   grid-template-columns: 36px 44px 1fr 180px 110px 70px;
 }
-.tracks > div {
+/* Celulas: os cabecalhos sao filhos diretos de .tracks, mas as celulas
+   das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row com
+   display:contents, que some da caixa mas NAO da arvore DOM. So
+   `.tracks > div` nunca alcancava as linhas (sem padding, separador nem
+   o flex que alinha # e Length). */
+.tracks > div,
+.tracks > .tracks__row > div {
   padding: 9px 14px;
   border-bottom: 1px solid var(--line-3);
   display: flex; align-items: center;
@@ -967,16 +973,25 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   /* Evita texto "vazando" pra fora da celula em titles/albums longos */
   overflow: hidden;
 }
+/* Titulo (b + small empilhados) e celulas de texto ficam block: flex
+   poria b/small lado a lado e o texto viraria item anonimo, sem
+   ellipsis. align-content centra o bloco na altura da linha. */
+.tracks > .tracks__row > .tracks__title,
+.tracks > .tracks__row > .tracks__cell { display: block; align-content: center; }
 .tracks__head {
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
   color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line-2) !important;
 }
-.tracks__row { cursor: pointer; transition: background var(--dur-base); }
-.tracks__row--current > div { background: var(--blue-bg); }
-.tracks__row--current .tracks__title b { color: var(--blue-fg); }
+.tracks__row { cursor: pointer; }
+/* Transicao nas celulas: o wrapper display:contents nao tem caixa. */
+.tracks__row > div { transition: background var(--dur-base); }
 .tracks__row:hover > div { background: var(--bg-soft); }
+/* Depois do hover e com a mesma especificidade: o hover nao apaga o
+   destaque da faixa atual. */
+.tracks__row.tracks__row--current > div { background: var(--blue-bg); }
+.tracks__row--current .tracks__title b { color: var(--blue-fg); }
 .tracks__idx { color: var(--fg-6); font-family: var(--font-mono); font-size: 11px; justify-content: center; }
 .tracks__cover { padding: 6px 0 6px 10px !important; }
 .tracks__cover img {
