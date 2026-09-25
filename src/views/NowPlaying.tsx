@@ -41,22 +41,28 @@ export default function NowPlaying() {
     onCleanup(() => window.removeEventListener("rustify:cinema", onCinema));
   });
 
-  // Lyrics resource keyed by current track id
-  const [lyrics] = createResource(
+  // Letra da faixa atual. A view roda dentro do <Suspense> do router: ler
+  // `resource()` com a busca pendente liga o fallback "Loading…" e derruba
+  // o Now Playing inteiro a cada troca de faixa. Com initialValue o resource
+  // já nasce resolvido e `.latest` devolve o último valor sem suspender —
+  // durante os milissegundos do IPC fica a letra anterior, depois troca.
+  const [lyricsRes] = createResource(
     () => player.currentTrack?.id ?? null,
     async (id) => (id ? await libGetLyrics(id).catch(() => [] as LyricLine[]) : [] as LyricLine[]),
+    { initialValue: [] as LyricLine[] },
   );
+  const lyrics = () => lyricsRes.latest;
 
   // Letra SEM sincronismo chega com t=0 em todas as linhas (lyrics_from_embedded
   // faz esse fallback quando o texto não tem timestamps — caso de tag ID3 com
   // letra corrida, 73 faixas do acervo em 08/2026). Tratá-la como sincronizada
   // trava o card: `activeLine` elege a ÚLTIMA linha já em pos=0 e o rail fixa o
   // scroll no fim durante a música inteira, anunciando "synced".
-  const isSynced = createMemo(() => (lyrics() ?? []).some((l) => l.t > 0));
+  const isSynced = createMemo(() => lyrics().some((l) => l.t > 0));
 
   // Find the active lyric index based on positionSecs
   const activeLine = createMemo(() => {
-    const ls = lyrics() ?? [];
+    const ls = lyrics();
     if (ls.length === 0 || !isSynced()) return -1;
     const pos = player.positionSecs;
     let idx = -1;
@@ -335,7 +341,7 @@ export default function NowPlaying() {
             </div>
           </div>
 
-          <Show when={tweaks().lyricsVisible && (lyrics() ?? []).length > 0}>
+          <Show when={tweaks().lyricsVisible && lyrics().length > 0}>
             <aside
               class="np__lyrics-card np__lyrics-card--floating"
               classList={{ "is-interacting": interacting() }}
@@ -364,7 +370,7 @@ export default function NowPlaying() {
                 ref={railViewportEl!}
               >
                 <div class="np__lyrics-rail" ref={railEl!}>
-                  <For each={lyrics() ?? []}>
+                  <For each={lyrics()}>
                     {(line, i) => {
                       const cls = () => {
                         const a = activeLine();
