@@ -104,6 +104,14 @@ describe("Playlists — Sort by name", () => {
     });
   });
 
+  it("o Sort é um <button type=button> (o <a> sem href ficava fora da ordem de Tab)", async () => {
+    const { container } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(getSortLink(container)).toBeTruthy());
+    const sort = getSortLink(container);
+    expect(sort.tagName).toBe("BUTTON");
+    expect(sort.getAttribute("type")).toBe("button");
+  });
+
   it("cliques sucessivos no Sort alternam entre A→Z, Z→A e ordem original", async () => {
     const { container } = render(() => <Playlists />);
 
@@ -136,6 +144,17 @@ describe("Playlists — Sort by name", () => {
     fireEvent.click(sortLink);
     const afterThirdClick = getCardNames(container);
     expect(afterThirdClick).toEqual(initialOrder);
+  });
+});
+
+describe("Playlists — card fixado (lib-26)", () => {
+  it("mostra a contagem de faixas uma vez só", async () => {
+    pinPlaylist("Middle Road");
+    const { getByText } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
+    const card = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
+    const hits = (card.textContent ?? "").match(/8 tracks/g) ?? [];
+    expect(hits.length).toBe(1);
   });
 });
 

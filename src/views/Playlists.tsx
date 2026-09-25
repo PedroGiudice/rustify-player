@@ -196,10 +196,7 @@ export default function Playlists() {
               <For each={pinned()}>
                 {(p) => (
                   <PlaylistCard folder={p}>
-                    <div class="pl-card__sub">Folder · {p.track_count} tracks</div>
-                    <div class="pl-card__meta">
-                      <span>{fmtTracks(p.track_count)}</span>
-                    </div>
+                    <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
                   </PlaylistCard>
                 )}
               </For>
@@ -211,9 +208,9 @@ export default function Playlists() {
         <section>
           <div class="section__head">
             <h2 class="section__title">All playlists · {rest().length}</h2>
-            <a class="section__action" style={{ cursor: "pointer" }} onClick={cycleSortDir}>
+            <button type="button" class="section__action" onClick={cycleSortDir}>
               {sortDir() === "none" ? "Sort by name" : sortDir() === "asc" ? "Sort: A→Z ↑" : "Sort: Z→A ↓"}
-            </a>
+            </button>
           </div>
           <Show
             when={folders.loading || folders()}
