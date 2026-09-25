@@ -386,6 +386,49 @@ describe("Crate — destino: override da toolbar", () => {
   });
 });
 
+describe("Crate — seletor de destino se comporta como popover", () => {
+  const FOLDERS = [
+    { name: "Rap & Hip-Hop", track_count: 10, cover_path: null, cover_paths: [] },
+    { name: "Rock", track_count: 5, cover_path: null, cover_paths: [] },
+  ];
+
+  async function openRowMenu() {
+    vi.mocked(tauriApi.libListFolders).mockResolvedValue(FOLDERS);
+    const utils = await searchAndRender([group({ suggested_dest: "Rock" })]);
+    const chip = utils.container.querySelector(".crate-row .crate-dest__btn") as HTMLButtonElement;
+    expect(chip.getAttribute("aria-haspopup")).toBe("true");
+    expect(chip.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(chip);
+    expect(utils.container.querySelector(".crate-row .crate-dest__menu")).toBeTruthy();
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    return { ...utils, chip };
+  }
+
+  it("clique fora fecha; clique dentro do menu não fecha", async () => {
+    const { container } = await openRowMenu();
+    fireEvent.mouseDown(container.querySelector(".crate-dest__menu")!);
+    expect(container.querySelector(".crate-dest__menu")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(container.querySelector(".crate-dest__menu")).toBeFalsy();
+  });
+
+  it("Esc fecha", async () => {
+    const { container } = await openRowMenu();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(container.querySelector(".crate-dest__menu")).toBeFalsy();
+  });
+
+  it("um aberto por vez: abrir o da toolbar fecha o da linha", async () => {
+    const { container } = await openRowMenu();
+    const toolbarChip = container.querySelector(".crate-toolbar .crate-dest__btn") as HTMLButtonElement;
+    fireEvent.mouseDown(toolbarChip);
+    fireEvent.click(toolbarChip);
+    const menus = container.querySelectorAll(".crate-dest__menu");
+    expect(menus.length).toBe(1);
+    expect(container.querySelector(".crate-toolbar .crate-dest__menu")).toBeTruthy();
+  });
+});
+
 describe("Crate — destino: precedência (regressão IM-D1)", () => {
   // Bug: destOverride() era semeado com loadLastDest() no mount, promovendo
   // o nível 3 (último destino usado) a nível 1 (override da toolbar) —

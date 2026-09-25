@@ -16,7 +16,7 @@
    ============================================================ */
 
 import {
-  createSignal, createMemo, For, Show, onMount, onCleanup, batch, type JSX,
+  createSignal, createMemo, createEffect, For, Show, onMount, onCleanup, batch, type JSX,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
@@ -30,6 +30,10 @@ import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from ".
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+/** Id do seletor de destino da toolbar no `openDest` da view (as linhas
+    usam o group_key, que sempre tem separador \u0001 — não colide). */
+const TOOLBAR_DEST = "toolbar";
 
 /** Poll de resultados — só enquanto a busca está `running` (crate-1). */
 const POLL_MS = 800;
@@ -146,6 +150,8 @@ function DestChip(props: {
         }
         data-override={props.override ? "true" : undefined}
         title="Destino de tudo que for baixado"
+        aria-haspopup="true"
+        aria-expanded={props.open ? "true" : "false"}
         onClick={(e) => { e.stopPropagation(); props.onToggle(); }}
       >
         <Show when={props.variant === "toolbar"}>
@@ -355,6 +361,10 @@ function CrateRow(props: {
   isSelected: boolean;
   isExpanded: boolean;
   folders: FolderPlaylist[];
+  /** Estado do seletor vive na view (um aberto por vez, sobrevive ao
+      poll — crate-1/crate-11), não num signal local da linha. */
+  destOpen: boolean;
+  onDestOpen: (open: boolean) => void;
   onSelect: () => void;
   onToggleExpand: () => void;
   onDownload: (sourceId: string, dest: string) => void;
@@ -363,7 +373,7 @@ function CrateRow(props: {
   onTrySource: (jobId: string) => void;
   onGoToOwned: (trackId: string) => void;
 }) {
-  const [destOpen, setDestOpen] = createSignal(false);
+  const setDestOpen = (open: boolean) => props.onDestOpen(open);
   const state = createMemo<RowState>(() => deriveRowState(props.group, props.job));
   const sourceCount = () => props.group.alternates.length + 1;
 
@@ -415,9 +425,9 @@ function CrateRow(props: {
             placeholder="escolher"
             warn={!props.dest}
             override={props.destOverridden}
-            open={destOpen()}
+            open={props.destOpen}
             folders={props.folders}
-            onToggle={() => setDestOpen((v) => !v)}
+            onToggle={() => setDestOpen(!props.destOpen)}
             onPick={(f) => { props.onPickDest(f); setDestOpen(false); }}
           />
         </Show>
@@ -638,7 +648,9 @@ export default function Crate(props: { param?: string | null }) {
   // nível 2 — nunca vencer até o usuário clicar no ×. `null` = toolbar sem
   // override; loadLastDest() só entra como fallback dentro de resolvedDest.
   const [destOverride, setDestOverride] = createSignal<string | null>(null);
-  const [toolbarDestOpen, setToolbarDestOpen] = createSignal(false);
+  // Qual seletor de destino está aberto: TOOLBAR_DEST ou o group_key da
+  // linha. Um signal só = um aberto por vez (crate-11).
+  const [openDest, setOpenDest] = createSignal<string | null>(null);
   const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>({});
   const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>({});
 
@@ -676,6 +688,32 @@ export default function Crate(props: { param?: string | null }) {
     return jobs().find((j) => j.job_id === id) ?? null;
   }
 
+  // Seletor de destino aberto = popover: fecha com clique fora de qualquer
+  // `.crate-dest` e com Esc (crate-11, pendência v1.1 do CLAUDE.md).
+  // Listeners só existem enquanto há um aberto. O Esc respeita
+  // defaultPrevented (a ⌘K por cima trata o próprio Esc) e devolve o foco
+  // ao chip quando ele estava dentro do menu que vai sumir.
+  createEffect(() => {
+    if (openDest() == null) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t?.closest?.(".crate-dest")) setOpenDest(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      const owner = (document.activeElement as HTMLElement | null)?.closest?.(".crate-dest");
+      setOpenDest(null);
+      owner?.querySelector<HTMLElement>(".crate-dest__btn")?.focus();
+    };
+    document.addEventListener("mousedown", onDown, true);
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => {
+      document.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("keydown", onKey);
+    });
+  });
+
   /** Countdown do min-interval. `force` NÃO passa por aqui — forçar não
       reseta nem zera o intervalo mínimo, só ignora o guard no backend. */
   function startCooldown(seconds: number) {
@@ -705,6 +743,7 @@ export default function Crate(props: { param?: string | null }) {
       applySnapshot(null);
       setSelectedIndex(0);
       setExpandedKey(null);
+      setOpenDest((k) => (k === TOOLBAR_DEST ? k : null));
       setGroupJobs({});
       setRowOverrides({});
       slskDedupProbe(q).then((tracks) => setDedupTrack(tracks[0] ?? null)).catch(() => setDedupTrack(null));
@@ -887,10 +926,10 @@ export default function Crate(props: { param?: string | null }) {
               variant="toolbar"
               value={destOverride()}
               placeholder="destino padrão"
-              open={toolbarDestOpen()}
+              open={openDest() === TOOLBAR_DEST}
               folders={folders()}
-              onToggle={() => setToolbarDestOpen((v) => !v)}
-              onPick={(f) => { setDestOverride(f); saveLastDest(f); setToolbarDestOpen(false); }}
+              onToggle={() => setOpenDest((k) => (k === TOOLBAR_DEST ? null : TOOLBAR_DEST))}
+              onPick={(f) => { setDestOverride(f); saveLastDest(f); setOpenDest(null); }}
             />
             <Show when={destOverride()}>
               <button type="button" class="crate-dest__clear" onClick={() => setDestOverride(null)} title="Limpar destino fixo">
@@ -961,6 +1000,8 @@ export default function Crate(props: { param?: string | null }) {
                       isSelected={i() === selectedIndex()}
                       isExpanded={expandedKey() === g.group_key}
                       folders={folders()}
+                      destOpen={openDest() === g.group_key}
+                      onDestOpen={(open) => setOpenDest(open ? g.group_key : null)}
                       onSelect={() => setSelectedIndex(i())}
                       onToggleExpand={() => setExpandedKey((k) => (k === g.group_key ? null : g.group_key))}
                       onDownload={(sourceId, dest) => handleDownload(g, sourceId, dest)}
