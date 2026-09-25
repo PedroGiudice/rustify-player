@@ -78,68 +78,6 @@ import { resetToFlat, resetToDefault } from "../store/dsp";
 
 const ENGINE_MODES = ["IIR", "FIR", "FFT", "SPM"] as const;
 
-// Roadmap cards — visual only, sem backend.
-interface RoadmapCard {
-  icon: string;
-  title: string;
-  sub: string;
-  desc: string;
-}
-
-const ROADMAP_DYN: RoadmapCard[] = [
-  {
-    icon: "lucide:layers",
-    title: "Multiband compressor",
-    sub: "LSP × 8 · Modern",
-    desc: "8 freq bands with independent attack/release. Present in user's EasyEffects presets. Would slot between EQ and Limiter.",
-  },
-  {
-    icon: "lucide:trending-down",
-    title: "Compressor",
-    sub: "LSP · single band",
-    desc: "Single-band downward compressor with sidechain. Lighter than MB-Comp when you only need glue.",
-  },
-  {
-    icon: "lucide:gauge",
-    title: "Maximizer",
-    sub: "Calf · loudness",
-    desc: "Brick-wall maximizer pushing perceived loudness. Tends to fight Limiter — pick one.",
-  },
-  {
-    icon: "lucide:fence",
-    title: "Gate",
-    sub: "LSP · expander",
-    desc: "Closes below threshold. Mostly useful for live recordings with hum & hiss floor.",
-  },
-];
-
-const ROADMAP_SPACE: RoadmapCard[] = [
-  {
-    icon: "lucide:headphones",
-    title: "Crossfeed",
-    sub: "bs2b · Meier",
-    desc: "Reduces hard L/R separation on headphones. Subtle, hi-fi-adjacent. Stock GStreamer plugin.",
-  },
-  {
-    icon: "lucide:radio-tower",
-    title: "Convolver",
-    sub: "zita · IR loader",
-    desc: "Loads impulse responses for room/headphone correction or speaker emulation.",
-  },
-  {
-    icon: "lucide:speaker",
-    title: "Stereo tools",
-    sub: "LSP · M/S width",
-    desc: "Mid/Side decomposition, width control, balance, stereo image rotation.",
-  },
-  {
-    icon: "lucide:volume-2",
-    title: "Loudness",
-    sub: "ISO 226 · Fletcher-Munson",
-    desc: "Equal-loudness curve compensation at low listening levels. Different stage from ReplayGain.",
-  },
-];
-
 export default function Signal() {
   // Loudness normalization: fonte unica de verdade e o store de tweaks
   // (tweaks().loudnessNorm / loudnessTarget). A Signal so EXIBE — o
@@ -626,36 +564,6 @@ export default function Signal() {
           </div>
         </div>
 
-        {/* ── Roadmap panel (visual only, sem backend) ── */}
-        <div class="sig-panel">
-          <div class="sig-panel__head">
-            <h3 class="sig-panel__title">Roadmap</h3>
-            <span class="sig-panel__badge">not wired</span>
-            <span class="sig-panel__meta">
-              design sketches for future GStreamer / LV2 stages — none of these live in dsp.rs today
-            </span>
-          </div>
-          <div class="sig-panel__body">
-
-            <div class="sig-subhead">
-              <span class="sig-subhead__title">Dynamics &amp; level</span>
-              <span class="sig-subhead__hint">candidates from EasyEffects preset imports</span>
-            </div>
-            <div class="plug-rack" style={{ "margin-bottom": "18px" }}>
-              <For each={ROADMAP_DYN}>{(card) => <RoadmapCardEl card={card} />}</For>
-            </div>
-
-            <div class="sig-subhead">
-              <span class="sig-subhead__title">Spatial &amp; tonal</span>
-              <span class="sig-subhead__hint">headphone-focused candidates</span>
-            </div>
-            <div class="plug-rack" style={{ "margin-bottom": "18px" }}>
-              <For each={ROADMAP_SPACE}>{(card) => <RoadmapCardEl card={card} />}</For>
-            </div>
-
-          </div>
-        </div>
-
       </div>
     </article>
   );
@@ -783,39 +691,6 @@ function BandDetail() {
         >
           M
         </button>
-      </div>
-    </div>
-  );
-}
-
-function RoadmapCardEl(props: { card: RoadmapCard }) {
-  // TODO: backend support pending — toggle e visual only.
-  const [on, setOn] = createSignal(false);
-  return (
-    <div class="plug-card" data-on={on() ? "true" : "false"}>
-      <button class="plug-card__add" title="Add to chain (not wired)" onClick={() => setOn(!on())}>
-        {/* @ts-ignore */}
-        <iconify-icon icon="lucide:plus" noobserver />
-      </button>
-      <div class="plug-card__head">
-        <span class="plug-card__icon">
-          {/* @ts-ignore */}
-          <iconify-icon icon={props.card.icon} noobserver />
-        </span>
-        <div class="plug-card__title-wrap">
-          <h4 class="plug-card__title">{props.card.title}</h4>
-          <span class="plug-card__sub">{props.card.sub}</span>
-        </div>
-      </div>
-      <p class="plug-card__desc">{props.card.desc}</p>
-      <div class="plug-card__footer">
-        <span class="plug-card__stat">{on() ? "in chain · last stage" : "not in chain"}</span>
-        <button
-          class="tog"
-          aria-pressed={on() ? "true" : "false"}
-          onClick={() => setOn(!on())}
-          title="Toggle (visual only)"
-        />
       </div>
     </div>
   );

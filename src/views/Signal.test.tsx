@@ -1,7 +1,7 @@
 /* ============================================================
    Signal.test.tsx — Smoke tests do view portado pra Solid.
-   Cobre render dos 4 paineis, toggle bypass, activeBand muda
-   ao clicar fader, e roadmap card toggle local.
+   Cobre render dos 3 paineis, toggle bypass, activeBand muda
+   ao clicar fader, presets embutidos e validação de nomes.
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -79,7 +79,7 @@ afterEach(() => {
 });
 
 describe("Signal view", () => {
-  it("renderiza os 4 paineis (EQ, Limiter, Bass, Roadmap) e barras top", () => {
+  it("renderiza os 3 paineis reais (EQ, Limiter, Bass) e barras top", () => {
     const { container, getByText } = render(() => <Signal />);
     expect(getByText("Signal")).toBeTruthy();
     expect(container.querySelector(".sig-master-bar")).toBeTruthy();
@@ -87,8 +87,14 @@ describe("Signal view", () => {
     expect(container.querySelector(".sig-chain")).toBeTruthy();
     expect(container.querySelector(".sig-presets")).toBeTruthy();
     const panels = container.querySelectorAll(".sig-panel");
-    // 4 paineis: EQ, Limiter, Bass, Roadmap
-    expect(panels.length).toBe(4);
+    expect(panels.length).toBe(3);
+  });
+
+  it("não simula estágios inexistentes: sem painel Roadmap (estsig-14)", () => {
+    const { container } = render(() => <Signal />);
+    expect(container.querySelector(".plug-card")).toBeNull();
+    expect(container.textContent).not.toContain("Roadmap");
+    expect(container.textContent).not.toContain("in chain");
   });
 
   it("renderiza 16 faders na primeira painel", () => {
@@ -150,16 +156,4 @@ describe("Signal view", () => {
     localStorage.removeItem("rustify-dsp-presets");
   });
 
-  it("roadmap cards flipam data-on local sem afetar backend", () => {
-    const { container } = render(() => <Signal />);
-    const cards = container.querySelectorAll<HTMLElement>(".plug-card");
-    expect(cards.length).toBeGreaterThanOrEqual(8);
-    const first = cards[0];
-    expect(first.dataset.on).toBe("false");
-    const tog = first.querySelector<HTMLButtonElement>(".tog")!;
-    tog.click();
-    expect(first.dataset.on).toBe("true");
-    // Sem chamadas IPC pra Roadmap
-    // (nenhum mock especifico esperado)
-  });
 });
