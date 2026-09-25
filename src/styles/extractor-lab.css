@@ -525,7 +525,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .hero-tile--has-cover .hero-tile__eyebrow { color: rgba(255,255,255,0.78); }
 .hero-tile--has-cover .hero-tile__title  { color: #ffffff; }
 .hero-tile--has-cover .hero-tile__sub    { color: rgba(255,255,255,0.74); }
-.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: var(--fg-1); }
+/* Fundo branco literal (o tile com capa assume overlay escuro): o icone
+   precisa de tinta escura literal. var(--fg-1) e quase branco nos temas
+   escuros e sumia no botao. */
+.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: #111111; }
 .hero-tile--has-cover .hero-tile__eyebrow .dot { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); }
 .hero-tile__eyebrow {
   font-size: 10.5px; font-weight: 700;
