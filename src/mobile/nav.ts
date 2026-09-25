@@ -26,12 +26,21 @@ function parseHash(): Route {
   return { path: m[1], param: m[2] ? decodeURIComponent(m[2]) : null };
 }
 
+const sameRoute = (a: Route, b: Route) => a.path === b.path && a.param === b.param;
+
 const [route, setRoute] = createSignal<Route>(parseHash());
 
 /* A última rota que não é o Now Playing: é ela que continua
-   renderizada por baixo do overlay. */
+   renderizada por baixo do overlay.
+
+   Comparador por VALOR (mobile-v1): sync() cria um Route novo a cada
+   hashchange, e fechar o NP (#/np → #/library) mudava a identidade da
+   rota base sem mudar a rota. screen() recriava a tela inteira — faceta,
+   busca, lista carregada e rolagem se perdiam no gesto mais frequente do
+   app (abrir e fechar o NP). */
 const [baseRoute, setBaseRoute] = createSignal<Route>(
   parseHash().path === NP_ROUTE ? { path: DEFAULT_ROUTE, param: null } : parseHash(),
+  { equals: sameRoute },
 );
 
 function sync() {

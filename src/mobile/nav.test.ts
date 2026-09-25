@@ -6,7 +6,60 @@
    ============================================================ */
 
 import { describe, expect, it } from "vitest";
-import { TABS, tabForPath } from "./nav";
+import { createComputed, createRoot } from "solid-js";
+import { TABS, baseRoute, isNpOpen, navigateFromNp, tabForPath } from "./nav";
+
+/** jsdom dispara hashchange de forma assíncrona; espera o evento chegar. */
+function go(hash: string): Promise<void> {
+  return new Promise((resolve) => {
+    window.addEventListener("hashchange", () => resolve(), { once: true });
+    window.location.hash = hash;
+  });
+}
+
+/** Conta quantas vezes a rota base notificou (= quantas vezes screen() recria a tela). */
+function watchBase() {
+  let runs = -1;
+  const dispose = createRoot((d) => {
+    createComputed(() => {
+      baseRoute();
+      runs++;
+    });
+    return d;
+  });
+  return { runs: () => runs, dispose };
+}
+
+describe("baseRoute (mobile-v1)", () => {
+  it("abrir e fechar o Now Playing não notifica a rota base", async () => {
+    await go("#/library");
+    const w = watchBase();
+    await go("#/np");
+    expect(isNpOpen()).toBe(true);
+    await go("#/library");
+    expect(isNpOpen()).toBe(false);
+    expect(w.runs()).toBe(0);
+    w.dispose();
+  });
+
+  it("navigateFromNp para a mesma rota base não remonta a tela", async () => {
+    await go("#/album/Foo");
+    const w = watchBase();
+    await go("#/np");
+    navigateFromNp("/album", "Foo");
+    expect(baseRoute()).toEqual({ path: "/album", param: "Foo" });
+    expect(w.runs()).toBe(0);
+    w.dispose();
+  });
+
+  it("trocar de rota base continua notificando", async () => {
+    await go("#/library");
+    const w = watchBase();
+    await go("#/album/Bar");
+    expect(w.runs()).toBe(1);
+    w.dispose();
+  });
+});
 
 describe("TABS", () => {
   it("tem Queue no lugar de Settings", () => {
