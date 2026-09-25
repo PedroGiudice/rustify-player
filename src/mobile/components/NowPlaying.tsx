@@ -28,7 +28,7 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
-import { back, isNpOpen, navigate, navigateFromNp } from "../nav";
+import { back, isNpOpen, navigateFromNp } from "../nav";
 import {
   current,
   cycleRepeat,
@@ -218,7 +218,8 @@ export function NowPlaying() {
                 </>
               )}
             </Show>
-            <button class="iconbtn" aria-label="Fila" onClick={() => navigate("/queue")}>
+            {/* replace, não push: por cima do /np o voltar reabria o NP (mobile-v3) */}
+            <button class="iconbtn" aria-label="Fila" onClick={() => navigateFromNp("/queue")}>
               <Icon.queue />
             </button>
             <button class="iconbtn" aria-label="Fechar" onClick={() => back()}>

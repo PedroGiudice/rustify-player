@@ -6,7 +6,7 @@
    ============================================================ */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render } from "@solidjs/testing-library";
 import type { Track } from "../types";
 
 const h = vi.hoisted(() => ({
@@ -76,6 +76,16 @@ afterEach(() => {
   cleanup();
   setBgEngine("2d");
   resetGlStatus();
+  vi.clearAllMocks();
+});
+
+describe("NowPlaying — Fila (mobile-v3)", () => {
+  it("abre a fila SUBSTITUINDO o /np: voltar não reabre o Now Playing", () => {
+    const r = render(() => <NowPlaying />);
+    fireEvent.click(r.getByRole("button", { name: "Fila" }));
+    expect(h.navigateFromNp).toHaveBeenCalledWith("/queue");
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
 });
 
 describe("NowPlaying — shape/render (mobile-2)", () => {
