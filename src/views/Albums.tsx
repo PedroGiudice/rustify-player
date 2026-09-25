@@ -2,7 +2,7 @@
    views/Albums.tsx — Grid of all albums, click to play.
    ============================================================ */
 
-import { createResource, For, Show } from "solid-js";
+import { createResource, For, Show, type Accessor } from "solid-js";
 import { libGetAlbums, libGetTracksByAlbum, coverUrl, type Album } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
@@ -10,10 +10,12 @@ import { navigate, route } from "../router";
 import { CoverArt } from "../components/CoverArt";
 import { Icon, ICONS } from "../components/Icon";
 
-export default function Albums() {
-  const [albums] = createResource(async () => {
+/** `list`: listagem já buscada pela Library (que a usa na contagem da
+    aba). Sem ela — rota /albums direta — a view busca a própria. */
+export default function Albums(props: { param?: string; list?: Accessor<Album[] | undefined> }) {
+  const albums: Accessor<Album[] | undefined> = props.list ?? createResource(async () => {
     try { return await libGetAlbums({ limit: null }); } catch { return [] as Album[]; }
-  });
+  })[0];
 
   async function play(album: Album) {
     const tracks = await libGetTracksByAlbum(album.title);

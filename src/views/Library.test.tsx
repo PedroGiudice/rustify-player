@@ -92,3 +92,31 @@ describe("Library — contagens do cabeçalho e das abas", () => {
     expect(tabCount(container, "Artists")).toBe("—");
   });
 });
+
+describe("Library — uma varredura por listagem", () => {
+  // lib_list_albums/lib_list_artists varrem a coleção inteira do Qdrant.
+  // A contagem das abas e a própria aba buscavam a mesma lista duas vezes
+  // (revisão da fase 0, 25/09).
+  function openTab(container: HTMLElement, label: string) {
+    const tab = Array.from(container.querySelectorAll(".tab")).find((b) => b.textContent?.startsWith(label))!;
+    fireEvent.click(tab);
+  }
+
+  it("a aba Albums reusa a listagem da contagem", async () => {
+    vi.mocked(tauri.libGetAlbums).mockClear();
+    const { container } = render(() => <Library />);
+    await vi.waitFor(() => expect(container.querySelector(".tab__count")).toBeTruthy());
+    openTab(container, "Albums");
+    await vi.waitFor(() => expect(container.querySelectorAll(".card").length).toBe(7));
+    expect(tauri.libGetAlbums).toHaveBeenCalledTimes(1);
+  });
+
+  it("a aba Artists reusa a listagem da contagem", async () => {
+    vi.mocked(tauri.libGetArtists).mockClear();
+    const { container } = render(() => <Library />);
+    await vi.waitFor(() => expect(container.querySelector(".tab__count")).toBeTruthy());
+    openTab(container, "Artists");
+    await vi.waitFor(() => expect(container.querySelectorAll(".card").length).toBe(4));
+    expect(tauri.libGetArtists).toHaveBeenCalledTimes(1);
+  });
+});

@@ -17,12 +17,18 @@ export default function Library() {
   // O snapshot do indexer so tem tracks_total (IndexerSnapshot, types.rs):
   // albums/artists sao contados das listagens completas — o mesmo agrupamento
   // que as abas mostram. Falha vira null => "—", nunca numero inventado.
+  // Cada listagem varre a colecao inteira no backend: busca UMA vez aqui e
+  // as abas recebem a mesma lista em vez de refazer a varredura.
+  const albumsP = libGetAlbums({ limit: null }).catch(() => null);
+  const artistsP = libGetArtists({ limit: null }).catch(() => null);
+  const [albumList] = createResource(() => albumsP);
+  const [artistList] = createResource(() => artistsP);
   const [meta] = createResource(async () => {
     const [snap, genres, albums, artists] = await Promise.all([
       libSnapshot(),
       libListGenres().catch(() => []),
-      libGetAlbums({ limit: null }).catch(() => null),
-      libGetArtists({ limit: null }).catch(() => null),
+      albumsP,
+      artistsP,
     ]);
     return {
       snap,
@@ -75,8 +81,8 @@ export default function Library() {
       </nav>
 
       <Show when={tab() === "tracks"}><Tracks /></Show>
-      <Show when={tab() === "albums"}><Albums /></Show>
-      <Show when={tab() === "artists"}><Artists /></Show>
+      <Show when={tab() === "albums"}><Albums list={() => albumList() ?? undefined} /></Show>
+      <Show when={tab() === "artists"}><Artists list={() => artistList() ?? undefined} /></Show>
       <Show when={tab() === "genres"}>
         <div class="view__body">
           <For each={meta()?.genres ?? []}>
