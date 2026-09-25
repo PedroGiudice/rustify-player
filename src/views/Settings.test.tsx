@@ -32,7 +32,9 @@ vi.mock("../tauri", () => ({
   getTrackColor: vi.fn().mockResolvedValue(""),
   listThemes: vi.fn().mockResolvedValue([]),
   applyThemeByName: vi.fn().mockResolvedValue([]),
+  loadTheme: vi.fn().mockResolvedValue({ vars: {}, contrast: [] }),
   watchTheme: vi.fn().mockResolvedValue(undefined),
+  unwatchTheme: vi.fn().mockResolvedValue(undefined),
   // onThemeChanged retorna Promise<UnlistenFn>; mock com no-op
   onThemeChanged: vi.fn().mockResolvedValue(() => {}),
   checkForUpdate: vi.fn().mockResolvedValue({ update_available: false, current_version: "0.1.0" }),
@@ -337,6 +339,71 @@ describe("Settings view", () => {
       { pair: "par-fail",  ratio: 2.1, pass_aa: false, pass_aaa: false },
     ]);
     expect((await findByText("1 falha(s)")).className).toContain("status-pill--err");
+  });
+
+  // config-v2: YAML inválido rejeitava sem catch — nada na tela e o
+  // <select> mostrando um tema que não foi aplicado.
+  it("tema que falha ao carregar mostra o erro e o select volta ao tema ativo", async () => {
+    vi.mocked(ipc.listThemes).mockResolvedValue([
+      { filename: "quebrado.yaml", name: "Quebrado", author: "CI" },
+    ] as any);
+    vi.mocked(ipc.applyThemeByName).mockRejectedValueOnce("Invalid YAML: mapping values are not allowed");
+    const { findByRole } = render(() => <Settings />);
+    const select = (await findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "quebrado.yaml" } });
+    const alert = await findByRole("alert");
+    expect(alert.textContent).toContain("Invalid YAML");
+    expect(select.value).toBe("");
+    expect(ipc.watchTheme).not.toHaveBeenCalled();
+  });
+
+  // config-v3: voltar ao Default não derrubava o watcher do tema anterior;
+  // e o removeAttribute("style") apagava o inline inteiro (zoom, Tweaks).
+  it("voltar ao Default derruba o watcher e não apaga o style inline alheio ao tema", async () => {
+    localStorage.setItem("rustify-theme", "a.yaml");
+    vi.mocked(ipc.listThemes).mockResolvedValue([
+      { filename: "a.yaml", name: "A", author: "CI" },
+    ] as any);
+    document.documentElement.style.setProperty("--bg-ink-morph", "4000ms");
+    const { findByRole } = render(() => <Settings />);
+    const select = (await findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "" } });
+    expect(ipc.unwatchTheme).toHaveBeenCalled();
+    expect(ipc.clearThemeVars).toHaveBeenCalled();
+    expect(localStorage.getItem("rustify-theme")).toBeNull();
+    expect(document.documentElement.style.getPropertyValue("--bg-ink-morph")).toBe("4000ms");
+    document.documentElement.style.removeProperty("--bg-ink-morph");
+  });
+
+  // cfg-14: ao abrir o Settings com tema ativo, a tabela de contraste
+  // ficava vazia até uma nova seleção.
+  it("abre com o diagnóstico de contraste do tema ativo", async () => {
+    localStorage.setItem("rustify-theme", "a.yaml");
+    vi.mocked(ipc.loadTheme).mockResolvedValueOnce({
+      vars: {},
+      contrast: [{ pair: "texto/canvas", ratio: 12.5, pass_aa: true, pass_aaa: true }],
+    } as any);
+    const { findByText } = render(() => <Settings />);
+    expect(await findByText("texto/canvas")).toBeTruthy();
+    expect(ipc.loadTheme).toHaveBeenCalledWith("a.yaml");
+  });
+
+  // config-v3: um theme-changed de outro arquivo (watcher antigo) não pode
+  // trocar a tabela de contraste do tema ativo.
+  it("theme-changed de arquivo que não é o ativo não recalcula o contraste", async () => {
+    localStorage.setItem("rustify-theme", "a.yaml");
+    let onChanged: ((f: string) => void) | undefined;
+    vi.mocked(ipc.onThemeChanged).mockImplementationOnce(async (cb) => {
+      onChanged = cb;
+      return () => {};
+    });
+    render(() => <Settings />);
+    await vi.waitFor(() => expect(onChanged).toBeTruthy());
+    vi.mocked(ipc.loadTheme).mockClear();
+    onChanged!("b.yaml");
+    expect(ipc.loadTheme).not.toHaveBeenCalled();
+    onChanged!("a.yaml");
+    expect(ipc.loadTheme).toHaveBeenCalledWith("a.yaml");
   });
 
   it("calculadora exibe legenda WCAG abaixo da tabela", async () => {

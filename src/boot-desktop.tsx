@@ -57,19 +57,15 @@ async function boot() {
   applyPersistedVolume().catch((e) => console.warn("[volume] initial sync failed:", e));
   bootCrateStore().catch((e) => console.warn("[crate] boot failed:", e));
 
+  // Hot-reload armado SEMPRE (não só com tema salvo): quem parte do Default
+  // e escolhe um YAML no Settings também recarrega a quente. O listener só
+  // re-aplica o tema ativo (ver wireThemeHotReload).
+  const { applyThemeByName, watchTheme, wireThemeHotReload } = await import("./tauri");
+  wireThemeHotReload().catch((e) => console.warn("[theme] listener failed:", e));
   const savedTheme = localStorage.getItem("rustify-theme");
   if (savedTheme) {
-    const { applyThemeByName, watchTheme, onThemeChanged } = await import("./tauri");
-    applyThemeByName(savedTheme).catch(() => {});
-    watchTheme(savedTheme).catch(() => {});
-    onThemeChanged(async (fname) => {
-      try {
-        await applyThemeByName(fname);
-        console.log("[theme] hot-reloaded:", fname);
-      } catch (e) {
-        console.warn("[theme] hot-reload failed:", e);
-      }
-    });
+    applyThemeByName(savedTheme).catch((e) => console.warn("[theme] load failed:", savedTheme, e));
+    watchTheme(savedTheme).catch((e) => console.warn("[theme] watch failed:", e));
   }
 
   wireAdaptiveInk();

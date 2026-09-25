@@ -1240,6 +1240,17 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
 /// o YAML de A mudava no disco, mesmo com B ativo.
 struct ThemeWatchState(Mutex<Option<ThemeWatchHandle>>);
 
+impl ThemeWatchState {
+    /// Derruba o watcher ativo, se houver. `take` + `stop` fora do lock: nao
+    /// seguramos o Mutex durante o join da thread.
+    fn stop_current(&self) {
+        let previous = self.0.lock().unwrap().take();
+        if let Some(prev) = previous {
+            prev.stop();
+        }
+    }
+}
+
 /// Handle de um watcher de tema ativo. Segurar este valor mantem o watcher e a
 /// thread de debounce vivos; `stop()` os derruba de forma ordenada.
 struct ThemeWatchHandle {
@@ -1306,12 +1317,8 @@ fn watch_theme(
         return Err(format!("Theme not found: {filename}"));
     }
 
-    // Derruba o watcher anterior (se houver) ANTES de criar o novo. `take` +
-    // `stop` fora do lock: nao seguramos o Mutex durante o join da thread.
-    let previous = state.0.lock().unwrap().take();
-    if let Some(prev) = previous {
-        prev.stop();
-    }
+    // Derruba o watcher anterior (se houver) ANTES de criar o novo.
+    state.stop_current();
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(
@@ -1355,6 +1362,14 @@ fn watch_theme(
         thread: Some(thread),
     });
     Ok(())
+}
+
+/// Para o watcher do tema ativo. O Settings chama ao voltar pro Default: sem
+/// isto o watcher do tema anterior seguia vivo e, a cada edicao do YAML dele,
+/// emitia `theme-changed` pra um tema que o usuario ja tinha abandonado.
+#[tauri::command]
+fn unwatch_theme(state: State<ThemeWatchState>) {
+    state.stop_current();
 }
 
 #[tauri::command]
@@ -3291,6 +3306,7 @@ pub fn run() {
             list_themes,
             load_theme,
             watch_theme,
+            unwatch_theme,
             get_track_color,
             get_track_palette,
             log_event,
@@ -4414,6 +4430,32 @@ typography:
         drop(tx);
         handle.join().unwrap();
         assert_eq!(calls.load(Ordering::Relaxed), 0, "teardown nao deve emitir");
+    }
+
+    // config-v3: voltar ao Default no Settings não tinha como derrubar o
+    // watcher — só um watch_theme NOVO derrubava o anterior. stop_current é
+    // o que o comando unwatch_theme chama.
+    #[test]
+    fn stop_current_derruba_o_watcher_ativo_e_esvazia_o_estado() {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_thread = shutdown.clone();
+        let thread = std::thread::spawn(move || {
+            theme_debounce_loop(rx, &shutdown_thread, std::time::Duration::from_millis(5), || {});
+        });
+        let state = ThemeWatchState(Mutex::new(Some(ThemeWatchHandle {
+            watcher: None,
+            shutdown: shutdown.clone(),
+            thread: Some(thread),
+        })));
+        // Sem watcher real, o canal fecha pelo tx do teste (no app, dropar o
+        // watcher faz isso dentro do stop()).
+        drop(tx);
+        state.stop_current();
+        assert!(state.0.lock().unwrap().is_none(), "estado deve ficar vazio");
+        assert!(shutdown.load(Ordering::Relaxed), "shutdown sinalizado");
+        // Sem watcher ativo é no-op, sem panic.
+        state.stop_current();
     }
 
     #[test]

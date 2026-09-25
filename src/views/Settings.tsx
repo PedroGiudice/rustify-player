@@ -28,7 +28,7 @@ import { createResource, createSignal, For, onCleanup, onMount, Show } from "sol
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan,
-  listThemes, applyThemeByName, loadTheme, watchTheme, onThemeChanged,
+  listThemes, applyThemeByName, loadTheme, watchTheme, unwatchTheme, onThemeChanged,
   clearThemeVars,
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
@@ -93,28 +93,39 @@ export default function Settings() {
   const [activeTheme, setActiveTheme] = createSignal(localStorage.getItem("rustify-theme") || "");
   const [contrast, setContrast] = createSignal<ContrastCheck[]>([]);
 
-  async function selectThemeFile(filename: string) {
+  // Erro da última tentativa de aplicar tema (YAML inválido, arquivo sumiu).
+  const [themeError, setThemeError] = createSignal<string | null>(null);
+
+  async function selectThemeFile(filename: string, select?: HTMLSelectElement) {
+    setThemeError(null);
     if (!filename) {
-      document.documentElement.removeAttribute("style");
-      localStorage.removeItem("rustify-theme");
+      // Default: tira só as vars do tema (o resto do inline — zoom, Tweaks,
+      // adaptive ink — fica), derruba o watcher e re-aplica os Tweaks por
+      // cima do :root, sem o ink do tema.
       clearThemeVars();
+      localStorage.removeItem("rustify-theme");
+      unwatchTheme().catch((e) => console.warn("[theme] unwatch failed:", e));
       setActiveTheme("");
       setContrast([]);
-      // O removeAttribute acima apaga TODAS as inline vars — inclusive as
-      // dos Tweaks (zoom, glow, fontes). Notifica o store (ink do tema
-      // deixa de existir) e re-aplica os tweaks por inteiro.
       window.dispatchEvent(new CustomEvent("rustify:theme-applied", {
         detail: { ink: null },
       }));
       applyTweaks();
       return;
     }
-    const checks = await applyThemeByName(filename);
-    setActiveTheme(filename);
-    setContrast(checks);
-    // Inicia watcher de hot-reload para este arquivo YAML.
-    // Quando o watcher emite "theme-changed", o listener abaixo (no onMount)
-    // re-aplica e re-calcula o contraste.
+    try {
+      const checks = await applyThemeByName(filename);
+      setActiveTheme(filename);
+      setContrast(checks);
+    } catch (e) {
+      // O tema anterior segue na tela; o <select> (não controlado pelo
+      // DOM) voltaria mentindo — devolve a seleção ao tema ativo.
+      setThemeError(String(e));
+      if (select) select.value = activeTheme();
+      return;
+    }
+    // Hot-reload: o watcher emite "theme-changed" e quem re-aplica é o
+    // listener do boot (wireThemeHotReload); o daqui só refaz o contraste.
     watchTheme(filename).catch((e) => console.warn("[theme] watch failed:", e));
   }
 
@@ -137,16 +148,23 @@ export default function Settings() {
     setResumeOnLaunch(!resumeOnLaunch());
   }
 
-  // ── Volume + normalize (preservado, visual ainda no painel Audio
-  //    do Playback — apesar de o mockup nao mostrar volume aqui,
-  //    a logica precisa ficar acessivel) ──────────────────────────
+  // ── Tema: diagnóstico ao abrir + contraste no hot-reload ──────
   onMount(() => {
-    // Hot-reload de tema: quem APLICA é o listener do boot (main.tsx) —
-    // registrar um segundo applyThemeByName aqui duplicava IPC e aplicação
-    // (achado da auditoria). Este listener só atualiza a calculadora de
-    // contraste da view, via loadTheme (leitura pura, não aplica).
+    // Diagnóstico do tema ativo ao abrir (sem isto a tabela só aparecia
+    // depois de uma nova seleção ou de um hot-reload). loadTheme é leitura
+    // pura: não re-aplica nada.
+    const current = activeTheme();
+    if (current) {
+      loadTheme(current)
+        .then((r) => { if (activeTheme() === current) setContrast(r.contrast); })
+        .catch((e) => console.warn("[theme] contrast on open failed:", e));
+    }
+
+    // Hot-reload de tema: quem APLICA é o listener do boot
+    // (wireThemeHotReload). Este só atualiza a calculadora — e só para o
+    // tema ativo: evento atrasado de outro arquivo não troca a tabela.
     const unlisten = onThemeChanged((filename) => {
-      if (!filename) return;
+      if (!filename || filename !== activeTheme()) return;
       loadTheme(filename)
         .then((r) => setContrast(r.contrast))
         .catch((e) => console.warn("[theme] refresh contrast failed:", e));
@@ -155,6 +173,7 @@ export default function Settings() {
     onCleanup(() => { unlisten.then((fn) => fn()).catch(() => {}); });
   });
 
+  // ── Volume + normalize (painel Playback) ─────────────────────
   // Normalize: fonte ÚNICA é tweaks().loudnessNorm — o effect de loudness
   // do store empurra pro backend. O estado local + localStorage paralelo
   // que vivia aqui revertia silenciosamente (auditoria: o store re-aplicava
@@ -265,7 +284,7 @@ export default function Settings() {
                   <select
                     class="set-folder-btn"
                     value={activeTheme()}
-                    onChange={(e) => selectThemeFile(e.currentTarget.value)}
+                    onChange={(e) => selectThemeFile(e.currentTarget.value, e.currentTarget)}
                   >
                     <option value="">Default (Extractor Lab)</option>
                     <For each={t()}>
@@ -276,6 +295,14 @@ export default function Settings() {
               </Show>
             </div>
           </div>
+
+          <Show when={themeError()}>
+            <div class="set-row">
+              <div class="set-row__hint" role="alert" style={{ color: "var(--rose-fg)" }}>
+                Tema não aplicado: {themeError()}
+              </div>
+            </div>
+          </Show>
 
           <Show when={contrast().length > 0}>
             <div class="set-row set-row--col">
