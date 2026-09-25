@@ -65,9 +65,12 @@ vi.mock("../components/SpectrumCanvas", () => ({
 }));
 
 import * as playerMod from "../store/player";
+import * as tweaksMod from "../store/tweaks";
+import { resetGlStatus, setGlStatus } from "../gl/meta";
 import NowPlaying from "./NowPlaying";
 
 const setPlayer = (playerMod as any).__setPlayer as (...args: any[]) => void;
+const setTweaks = (tweaksMod as any).__setTweaks as (v: any) => void;
 
 function track(id: string, extra: Record<string, unknown> = {}) {
   return {
@@ -196,5 +199,65 @@ describe("NowPlaying — artista e álbum (np-10, shell-v1, biblioteca-v2)", () 
     const { container } = render(() => <NowPlaying />);
     expect(container.querySelector("button.np__artist")).toBeNull();
     expect(container.querySelector("button.np__album")).toBeNull();
+  });
+});
+
+describe("NowPlaying — seletores do fundo 2D (np-6)", () => {
+  afterEach(() => {
+    setTweaks({ lyricsVisible: true, bgEngine: "2d" });
+    resetGlStatus();
+  });
+
+  it("somem, e os atalhos [ ] , . param, quando o fundo é WebGL", () => {
+    setTweaks({ lyricsVisible: false, bgEngine: "webgl" });
+    setGlStatus({ ok: true, renderer: "x", error: "", fps: 60 });
+    const { container } = render(() => <NowPlaying />);
+    expect(container.querySelector(".np__viz-nav")).toBeNull();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
+    expect(h.shapePrev).not.toHaveBeenCalled();
+    expect(h.rendererPrev).not.toHaveBeenCalled();
+  });
+
+  it("voltam quando o WebGL falhou e o 2D reassumiu", () => {
+    setTweaks({ lyricsVisible: false, bgEngine: "webgl" });
+    setGlStatus({ ok: false, renderer: "", error: "sem contexto", fps: 0 });
+    const { container } = render(() => <NowPlaying />);
+    expect(container.querySelector(".np__viz-nav")).not.toBeNull();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+    expect(h.shapePrev).toHaveBeenCalledTimes(1);
+  });
+
+  it("aparecem e respondem no fundo 2D", () => {
+    setTweaks({ lyricsVisible: false, bgEngine: "2d" });
+    const { container } = render(() => <NowPlaying />);
+    expect(container.querySelector(".np__viz-nav")).not.toBeNull();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
+    expect(h.rendererPrev).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("NowPlaying — botão de ajustes do fundo (np-7)", () => {
+  it("abre o Tweaks e rola até a seção Fundo", async () => {
+    // Painel de Tweaks mínimo: o NowPlaying só depende do marcador da seção.
+    const body = document.createElement("div");
+    body.className = "tweaks__body";
+    const sec = document.createElement("div");
+    sec.setAttribute("data-tweaks-section", "fundo");
+    body.appendChild(sec);
+    document.body.appendChild(body);
+    let scrollTop = 40;
+    Object.defineProperty(body, "scrollTop", { get: () => scrollTop, set: (v) => { scrollTop = v; } });
+    body.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
+    sec.getBoundingClientRect = () => ({ top: 520 }) as DOMRect;
+
+    const { container } = render(() => <NowPlaying />);
+    const btn = container.querySelector('button[title="Spectrum settings"]') as HTMLButtonElement;
+    btn.click();
+    expect(h.setTweaksOpen).toHaveBeenCalledWith(true);
+
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(scrollTop).toBe(40 + 420);
+    body.remove();
   });
 });

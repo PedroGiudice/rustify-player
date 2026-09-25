@@ -4,7 +4,8 @@
    Lyrics from libGetLyrics(track.id); synced to player.positionSecs.
    Shape/renderer state via useShape()/useRenderer() (SpectrumCanvas).
    Seletores empilhados no canto inferior-direito: renderer em cima,
-   shape embaixo. Atalhos: [ ] shape, , . renderer.
+   shape embaixo. Atalhos: [ ] shape, , . renderer. Só existem com o
+   fundo 2D; com o WebGL a cena se escolhe no Tweaks (botão de ajustes).
    ============================================================ */
 
 import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
@@ -14,13 +15,31 @@ import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { useRenderer, useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
-import { tweaks } from "../store/tweaks";
+import { tweaks, setTweaksOpen } from "../store/tweaks";
+import { glStatus } from "../gl/meta";
 import { navigate } from "../router";
 import { openTrackMenu } from "../store/contextMenu";
 
 export default function NowPlaying() {
   const shape = useShape();
   const renderer = useRenderer();
+  // Shape/renderer só existem no fundo 2D. Com as cenas WebGL montadas
+  // (mesma condição do App.tsx), os seletores e os atalhos [ ] , . mudariam
+  // índices que ninguém lê — a cena WebGL se escolhe no Tweaks.
+  const glActive = () => tweaks().bgEngine === "webgl" && glStatus().ok !== false;
+
+  // Botão de ajustes do fundo: abre o Tweaks já na seção "Fundo" (motor e
+  // cena), marcada com data-tweaks-section em Tweaks.tsx. O painel fica em
+  // display:none fechado — só dá pra medir a posição no quadro seguinte.
+  function openBgSettings() {
+    setTweaksOpen(true);
+    requestAnimationFrame(() => {
+      const sec = document.querySelector<HTMLElement>('[data-tweaks-section="fundo"]');
+      const body = sec?.closest<HTMLElement>(".tweaks__body");
+      if (!sec || !body) return;
+      body.scrollTop += sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
+    });
+  }
   // Estado inicial lê o data-attr canônico no shell — se o user voltou
   // pra /now-playing com cinema ativo, mantém o ícone correto.
   const [cinema, setCinema] = createSignal(
@@ -244,10 +263,11 @@ export default function NowPlaying() {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "[") { e.preventDefault(); shape.prev(); }
-      else if (e.key === "]") { e.preventDefault(); shape.next(); }
-      else if (e.key === ",") { e.preventDefault(); renderer.prev(); }
-      else if (e.key === ".") { e.preventDefault(); renderer.next(); }
+      const bg2d = !glActive();
+      if (bg2d && e.key === "[") { e.preventDefault(); shape.prev(); }
+      else if (bg2d && e.key === "]") { e.preventDefault(); shape.next(); }
+      else if (bg2d && e.key === ",") { e.preventDefault(); renderer.prev(); }
+      else if (bg2d && e.key === ".") { e.preventDefault(); renderer.next(); }
       else if (e.key.toLowerCase() === "f") { e.preventDefault(); toggleCinema(); }
     };
     window.addEventListener("keydown", onKey);
@@ -264,7 +284,9 @@ export default function NowPlaying() {
           <button title="Cinema mode (F)" onClick={toggleCinema}>
             <Icon name={cinema() ? ICONS.shrink : ICONS.expand} size={14} />
           </button>
-          <button title="Spectrum settings"><Icon name={ICONS.settings} size={14} /></button>
+          <button title="Spectrum settings" onClick={openBgSettings}>
+            <Icon name={ICONS.settings} size={14} />
+          </button>
           <button
             title="More"
             disabled={!player.currentTrack}
@@ -419,31 +441,33 @@ export default function NowPlaying() {
         </div>
 
         {/* Seletores empilhados: renderer (como pintar) em cima,
-            shape (campo) embaixo. Mesmo estilo ‹ nome ›. */}
-        <div class="np__viz-nav">
-          <div class="np__nav-row">
-            <button title="Previous renderer (,)" onClick={() => renderer.prev()}>
-              <Icon name={ICONS.chevronLeft} size={14} />
-            </button>
-            <span class="np__nav-name" onClick={() => renderer.next()}>
-              render · <b>{renderer.name()}</b>
-            </span>
-            <button title="Next renderer (.)" onClick={() => renderer.next()}>
-              <Icon name={ICONS.chevronRight} size={14} />
-            </button>
+            shape (campo) embaixo. Mesmo estilo ‹ nome ›. Só no fundo 2D. */}
+        <Show when={!glActive()}>
+          <div class="np__viz-nav">
+            <div class="np__nav-row">
+              <button title="Previous renderer (,)" onClick={() => renderer.prev()}>
+                <Icon name={ICONS.chevronLeft} size={14} />
+              </button>
+              <span class="np__nav-name" onClick={() => renderer.next()}>
+                render · <b>{renderer.name()}</b>
+              </span>
+              <button title="Next renderer (.)" onClick={() => renderer.next()}>
+                <Icon name={ICONS.chevronRight} size={14} />
+              </button>
+            </div>
+            <div class="np__nav-row">
+              <button title="Previous shape ([)" onClick={() => shape.prev()}>
+                <Icon name={ICONS.chevronLeft} size={14} />
+              </button>
+              <span class="np__nav-name" onClick={() => shape.next()}>
+                shape · <b>{shape.name()}</b>
+              </span>
+              <button title="Next shape (])" onClick={() => shape.next()}>
+                <Icon name={ICONS.chevronRight} size={14} />
+              </button>
+            </div>
           </div>
-          <div class="np__nav-row">
-            <button title="Previous shape ([)" onClick={() => shape.prev()}>
-              <Icon name={ICONS.chevronLeft} size={14} />
-            </button>
-            <span class="np__nav-name" onClick={() => shape.next()}>
-              shape · <b>{shape.name()}</b>
-            </span>
-            <button title="Next shape (])" onClick={() => shape.next()}>
-              <Icon name={ICONS.chevronRight} size={14} />
-            </button>
-          </div>
-        </div>
+        </Show>
       </div>
     </article>
   );
