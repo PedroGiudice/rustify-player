@@ -172,10 +172,15 @@ export const hasPlayback = createMemo(() => current() != null);
 const [toast, setToast] = createSignal<string | null>(null);
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export { toast };
+/** Tempo de leitura (mobile-v4): 1,6 s cobre as confirmações curtas
+ *  ("Curtida", "Toca em seguida"); texto longo ("Rádio por artista — <título>
+ *  ainda sem análise") ganha ~55 ms por caractere, com teto de 5 s. */
+const toastMs = (msg: string) => Math.min(5000, Math.max(1600, 800 + msg.length * 55));
+
 export function showToast(msg: string) {
   setToast(msg);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => setToast(null), 1600);
+  toastTimer = setTimeout(() => setToast(null), toastMs(msg));
 }
 
 // ── Leitura da fila real ──────────────────────────────────────

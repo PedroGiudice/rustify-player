@@ -10,7 +10,7 @@
    ("shuffle da playlist vira shuffle geral").
    ============================================================ */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track } from "./types";
 
 vi.mock("./ipc", () => ({
@@ -48,6 +48,7 @@ import {
   rescan,
   shuffleFolder,
   shuffleList,
+  showToast,
   shuffleUpcoming,
   toast,
   toggleLike,
@@ -469,6 +470,29 @@ describe('loadRecents (shelf "Recently played" — CMR-215)', () => {
     await loadRecents();
     await loadRecents();
     expect(ipc.libRecentPlays).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("showToast (tempo de leitura — mobile-v4)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("confirmação curta continua sumindo em ~1,6 s", async () => {
+    vi.useFakeTimers();
+    showToast("Curtida");
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(toast()).toBe("Curtida");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(toast()).toBeNull();
+  });
+
+  it("mensagem longa fica o bastante para ser lida", async () => {
+    vi.useFakeTimers();
+    const msg = "Rádio por artista — Uma Faixa Com Um Nome Bem Comprido ainda sem análise";
+    showToast(msg);
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(toast()).toBe(msg);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(toast()).toBeNull();
   });
 });
 
