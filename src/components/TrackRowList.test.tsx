@@ -89,4 +89,25 @@ describe("TrackRowList teclado", () => {
       unmount();
     }
   });
+
+  it("segurar Enter ou Espaço toca uma vez só; a repetição não rola nem re-toca", () => {
+    // O auto-repeat do teclado dispara ~25-30 keydown/s com e.repeat=true.
+    // Cada play extra vira record_play (play_count inflado) e player_play,
+    // que grava track_skipped perto de 0 s da própria faixa escolhida
+    // (skip imediato, peso -0,6 no sinal v3).
+    for (const size of ["default", "compact"] as const) {
+      let plays = 0;
+      const { container, unmount } = render(() => (
+        <TrackRowList track={TRACK} onClick={() => { plays++; }} size={size} />
+      ));
+      const el = row(container);
+      for (const key of [" ", "Enter"]) {
+        expect(fireEvent.keyDown(el, { key }), `${size} ${key}`).toBe(false);
+        expect(fireEvent.keyDown(el, { key, repeat: true }), `${size} ${key} repeat`).toBe(false);
+        expect(fireEvent.keyDown(el, { key, repeat: true }), `${size} ${key} repeat`).toBe(false);
+      }
+      expect(plays, size).toBe(2);
+      unmount();
+    }
+  });
 });

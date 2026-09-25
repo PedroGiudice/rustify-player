@@ -88,6 +88,25 @@ describe("TrackRowTable — linha focável", () => {
     expect(plays).toBe(2);
   });
 
+  it("segurar Enter ou Espaço toca uma vez só; a repetição não rola nem re-toca", () => {
+    // O auto-repeat do teclado dispara ~25-30 keydown/s com e.repeat=true.
+    // Cada play extra vira record_play (play_count inflado) e player_play,
+    // que grava track_skipped perto de 0 s da própria faixa escolhida.
+    let plays = 0;
+    const { container } = render(() => (
+      <div class="tracks">
+        <TrackRowTable track={TRACK} index={1} onClick={() => { plays++; }} />
+      </div>
+    ));
+    const row = container.querySelector(".tracks__row") as HTMLElement;
+    for (const key of [" ", "Enter"]) {
+      expect(fireEvent.keyDown(row, { key }), key).toBe(false);
+      expect(fireEvent.keyDown(row, { key, repeat: true }), `${key} repeat`).toBe(false);
+      expect(fireEvent.keyDown(row, { key, repeat: true }), `${key} repeat`).toBe(false);
+    }
+    expect(plays).toBe(2);
+  });
+
   it("nem no modo compacto", () => {
     document.documentElement.setAttribute("data-density", "compact");
     const row = renderRow();
