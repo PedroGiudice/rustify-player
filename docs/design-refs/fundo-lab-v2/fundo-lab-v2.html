@@ -1,0 +1,1288 @@
+<title>Rustify Fundo Lab v2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --canvas: #111110; --base: #151513; --cont: #1f1f1c; --cont-hi: #262622;
+    --ink: #c6633d; --ink2: #d87a52; --on-ink: #0d0d0c;
+    --text: #edeae3; --text-2: #a29e94; --muted: #85827b;
+    --line: rgba(237,234,227,0.10); --line-2: rgba(237,234,227,0.18);
+    --ok: #7ea977; --warn: #cfa560; --err: #c46b58;
+    --f-display: "Fraunces", Georgia, "Times New Roman", serif;
+    --f-ui: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+    --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--base); color: var(--text);
+    font: 14px/1.5 var(--f-ui);
+    transition: background .35s ease, color .35s ease;
+  }
+  a { color: var(--ink2); }
+  .wrap { max-width: 1320px; margin: 0 auto; padding-inline: 22px; padding-block: 26px 56px; display: flex; flex-direction: column; gap: 22px; }
+
+  header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 32px; align-items: end; }
+  .eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  h1 { font: 300 clamp(28px, 3.8vw, 44px)/1.04 var(--f-display); letter-spacing: -0.012em; margin: 0; text-wrap: balance; }
+  h1 em { font-style: italic; font-weight: 500; color: var(--ink2); }
+  .lede { margin: 10px 0 0; color: var(--text-2); max-width: 66ch; }
+  .meta { font: 12px/1.6 var(--f-mono); color: var(--muted); text-align: right; }
+  .meta b { color: var(--text-2); font-weight: 500; }
+
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center;
+    padding: 12px 14px; background: var(--cont); border: 1px solid var(--line); border-radius: 10px;
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  }
+  .ctl { display: flex; align-items: center; gap: 8px; }
+  .ctl label, .ctl .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  select, button {
+    font: 500 13px var(--f-ui); color: var(--text); background: var(--cont-hi);
+    border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 10px; cursor: pointer;
+  }
+  button:hover, select:hover { border-color: var(--muted); }
+  select:focus-visible, button:focus-visible, input:focus-visible, .stage:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+  button.primary { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+  button:disabled { opacity: .5; cursor: progress; }
+  input[type=range] { accent-color: var(--ink); width: 130px; }
+  input[type=range]:disabled { opacity: .4; }
+  .val { font: 12px var(--f-mono); color: var(--text-2); min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+  .sig { display: flex; gap: 12px; align-items: center; margin-left: auto; }
+  .meters { display: flex; gap: 5px; align-items: flex-end; height: 22px; }
+  .meters span { display: block; width: 7px; height: 100%; background: var(--line-2); border-radius: 2px; position: relative; overflow: hidden; }
+  .meters span::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--v, 0) * 100%); background: var(--ink); }
+  .readout { font: 11px/1.35 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .readout b { color: var(--text-2); font-weight: 500; }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .grid.focus { grid-template-columns: minmax(0, 1fr); }
+  .grid.focus .tile:not(.on) { display: none; }
+  .tile { display: flex; flex-direction: column; background: var(--cont); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: var(--canvas); cursor: zoom-in; }
+  .grid.focus .stage { cursor: zoom-out; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage .err { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--text-2); font-size: 13px; }
+
+  .np {
+    position: absolute; left: 14px; top: 14px; width: min(46%, 290px);
+    padding: 12px 14px; border-radius: 10px;
+    background: color-mix(in srgb, var(--cont) 72%, transparent);
+    border: 1px solid var(--line-2); pointer-events: none; display: none;
+  }
+  body.np-on .np { display: block; }
+  .np .t { font: 500 15px/1.15 var(--f-display); }
+  .np .a { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+  .np .pb { height: 3px; margin-top: 10px; background: var(--line-2); border-radius: 2px; overflow: hidden; }
+  .np .pb i { display: block; height: 100%; width: 38%; background: var(--ink); }
+
+  figcaption { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 16px; padding: 14px 16px 16px; }
+  .rank { grid-row: span 4; font: 300 44px/0.9 var(--f-display); color: var(--ink2); font-variant-numeric: lining-nums tabular-nums; min-width: 1.1ch; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .name { font: 500 20px/1.15 var(--f-display); margin: 0; }
+  .cost { font: 500 10.5px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 5px 8px; white-space: nowrap; }
+  .cost.measured { color: var(--on-ink); background: var(--ink2); border-color: var(--ink2); }
+  .what { margin: 2px 0 0; color: var(--text-2); font-size: 13px; max-width: 64ch; }
+  .map { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--text-2); }
+  .map b { font: 500 10px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 5px; }
+  .live { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 8px; font: 11.5px/1.4 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .costbar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 6px; grid-column: 2; }
+  .costbar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .5s ease; }
+  .costbar i.warn { background: var(--warn); }
+  .costbar i.bad { background: var(--err); }
+
+  section.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px 32px; color: var(--text-2); font-size: 13.5px; }
+  section h2 { font: 500 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  section p { margin: 0 0 9px; max-width: 66ch; }
+  section code { font: 12px var(--f-mono); color: var(--text); }
+  kbd { font: 11px var(--f-mono); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 5px; color: var(--text-2); }
+
+  .panel { background: var(--cont); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; }
+  .panel h3 { font: 500 22px/1.15 var(--f-display); margin: 0 0 6px; text-wrap: balance; }
+  .panel > p { color: var(--text-2); max-width: 72ch; margin: 0 0 12px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font: 500 10.5px/1.2 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: top; }
+  td.num { font-family: var(--f-mono); color: var(--text); text-align: right; white-space: nowrap; }
+  td.nm { color: var(--text); font-weight: 500; white-space: nowrap; }
+  tr.ref td { color: var(--muted); font-style: italic; }
+  .verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 26px; margin-top: 6px; }
+  .verdict div { font-size: 13px; color: var(--text-2); }
+  .verdict b { display: block; font: 500 15px/1.2 var(--f-display); color: var(--text); margin-bottom: 3px; }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    header { grid-template-columns: minmax(0, 1fr); }
+    .meta { text-align: left; }
+    .sig { margin-left: 0; }
+    .bar { position: static; }
+  }
+  @media (max-width: 480px) {
+    .wrap { padding-inline: 16px; }
+    .np { width: 62%; padding: 9px 10px; }
+    .rank { font-size: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) { body, .costbar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <p class="eyebrow">Rustify · fundo do Now Playing · lab v2</p>
+      <h1>Seis fundos, do mais <em>leve</em> ao mais pesado</h1>
+      <p class="lede">Cada quadro é uma cena em WebGL2 puro, sem three.js, reagindo a um sinal que imita o FFT do app: graves, médios, agudos e kick, com o tremor real das bandas. A ordem é o custo de renderização medido na cmr-auto, no mesmo WebKitGTK e na mesma GPU do app. Com a máquina ociosa, a mais pesada das seis custou 3,6 ms, 22% de um quadro de 60 fps. A Nébula que está no app hoje custa 23 ms, 139% de um quadro.</p>
+    </div>
+    <div class="meta"><b id="glv">WebGL2 —</b><br><span id="gpu">renderer: lendo…</span><br><span id="ext">extensões: lendo…</span></div>
+  </header>
+
+  <div class="bar" role="toolbar" aria-label="Controles do laboratório">
+    <div class="ctl"><label for="theme">Tema</label>
+      <select id="theme">
+        <option value="copper">Copper (padrão)</option>
+        <option value="dark">Really Dark</option>
+        <option value="neon">Neon</option>
+        <option value="midnight">Midnight Blue</option>
+        <option value="uvinha">Uvinha</option>
+      </select>
+    </div>
+    <div class="ctl"><span class="lbl">Faixa</span>
+      <button id="auto" aria-pressed="true" title="Faixa simulada a 92 BPM com seções de energia a cada 32 s">simulada</button>
+      <input id="energy" type="range" min="0" max="100" value="60" disabled aria-label="Energia fixa">
+      <span class="val" id="energyVal">60</span>
+    </div>
+    <div class="ctl">
+      <button id="skip" title="Avança o relógio da animação em 10 minutos, para expor defeitos que só aparecem com o tempo">+10 min</button>
+      <button id="pause" aria-pressed="false" title="Pausa o tempo (Espaço)">pausar</button>
+      <button id="np" aria-pressed="true" title="Mostra um card de Now Playing por cima do fundo">card</button>
+    </div>
+    <div class="ctl"><button id="bench" class="primary" title="Mede cada cena sozinha em 1366×768 (tecla M)">Medir custo</button></div>
+    <div class="sig" aria-label="Sinal simulado">
+      <div class="meters"><span id="mLow"></span><span id="mMid"></span><span id="mHigh"></span><span id="mBeat"></span></div>
+      <div class="readout">graves · médios · agudos · kick<br>relógio <b id="clock">00:00</b> · <b id="fps">— fps</b></div>
+    </div>
+  </div>
+
+  <div class="grid" id="grid">
+    <figure class="tile" data-k="marble" style="margin:0">
+      <div class="stage" tabindex="0" role="button" aria-label="Focar Marmorizado"><canvas></canvas>
+        <div class="np"><div class="t">Sicko Mode</div><div class="a">Travis Scott · ASTROWORLD</div><div class="pb"><i></i></div></div></div>
+      <figcaption>
+        <span class="rank">1</span>
+        <div class="head"><h2 class="name">Marmorizado</h2><span class="cost measured" data-cost>cmr-auto · 1,00 ms</span></div>
+        <p class="what">Suminagashi: cada kick pinga uma gota, alternando tinta e água limpa no mesmo ponto, e os anéis se empurram. Uma corrente lenta estica tudo em filamentos. A faixa pinta uma gravura que se dissolve devagar.</p>
+        <ul class="map"><li><b>graves</b>tamanho da gota</li><li><b>médios</b>corrente</li><li><b>agudos</b>—</li><li><b>kick</b>pinga a gota</li></ul>
+        <div class="live"><span data-info>—</span><span data-ms></span></div>
+        <div class="costbar"><i></i></div>
+      </figcaption>
+    </figure>
+
+    <figure class="tile" data-k="motes" style="margin:0">
+      <div class="stage" tabindex="0" role="button" aria-label="Focar Poeira na luz"><canvas></canvas>
+        <div class="np"><div class="t">Sicko Mode</div><div class="a">Travis Scott · ASTROWORLD</div><div class="pb"><i></i></div></div></div>
+      <figcaption>
+        <span class="rank">2</span>
+        <div class="head"><h2 class="name">Poeira na luz</h2><span class="cost measured" data-cost>cmr-auto · 1,54 ms</span></div>
+        <p class="what">Poeira suspensa num facho diagonal, como sol entrando pela janela de um quarto escuro. Fora do facho ela quase some. É a Poeira de hoje reinventada e sem o defeito de velocidade (CMR-267).</p>
+        <ul class="map"><li><b>graves</b>a luz respira</li><li><b>médios</b>deriva</li><li><b>agudos</b>grãos faíscam</li><li><b>kick</b>lufada que assenta</li></ul>
+        <div class="live"><span data-info>—</span><span data-ms></span></div>
+        <div class="costbar"><i></i></div>
+      </figcaption>
+    </figure>
+
+    <figure class="tile" data-k="bokeh" style="margin:0">
+      <div class="stage" tabindex="0" role="button" aria-label="Focar Palco"><canvas></canvas>
+        <div class="np"><div class="t">Sicko Mode</div><div class="a">Travis Scott · ASTROWORLD</div><div class="pb"><i></i></div></div></div>
+      <figcaption>
+        <span class="rank">3</span>
+        <div class="head"><h2 class="name">Palco</h2><span class="cost measured" data-cost>cmr-auto · 1,96 ms</span></div>
+        <p class="what">Luzes de palco fora de foco em três planos de profundidade, com a abertura hexagonal da lente e uma franja de cor na borda. A capa é o plano de foco; o fundo é o palco desfocado atrás dela.</p>
+        <ul class="map"><li><b>graves</b>brilho geral</li><li><b>médios</b>deriva</li><li><b>agudos</b>luzes do fundo cintilam</li><li><b>kick</b>algumas luzes estouram</li></ul>
+        <div class="live"><span data-info>—</span><span data-ms></span></div>
+        <div class="costbar"><i></i></div>
+      </figcaption>
+    </figure>
+
+    <figure class="tile" data-k="chladni" style="margin:0">
+      <div class="stage" tabindex="0" role="button" aria-label="Focar Cimática"><canvas></canvas>
+        <div class="np"><div class="t">Sicko Mode</div><div class="a">Travis Scott · ASTROWORLD</div><div class="pb"><i></i></div></div></div>
+      <figcaption>
+        <span class="rank">4</span>
+        <div class="head"><h2 class="name">Cimática</h2><span class="cost measured" data-cost>cmr-auto · 2,29 ms</span></div>
+        <p class="what">Areia sobre uma placa vibrando. Os grãos migram para as linhas que não vibram e desenham figuras de Chladni. No silêncio a figura fica nítida; com grave a areia pula e borra. Figuras mais intrincadas acompanham faixas mais cheias e brilhantes. A física roda na GPU.</p>
+        <ul class="map"><li><b>graves</b>a placa vibra</li><li><b>médios + agudos</b>complexidade da figura</li><li><b>kick</b>a areia salta</li></ul>
+        <div class="live"><span data-info>—</span><span data-ms></span></div>
+        <div class="costbar"><i></i></div>
+      </figcaption>
+    </figure>
+
+    <figure class="tile" data-k="groove" style="margin:0">
+      <div class="stage" tabindex="0" role="button" aria-label="Focar Sulco"><canvas></canvas>
+        <div class="np"><div class="t">Sicko Mode</div><div class="a">Travis Scott · ASTROWORLD</div><div class="pb"><i></i></div></div></div>
+      <figcaption>
+        <span class="rank">5</span>
+        <div class="head"><h2 class="name">Sulco</h2><span class="cost measured" data-cost>cmr-auto · 2,79 ms</span></div>
+        <p class="what">Macro de um disco sob luz rasante. Cada volta do sulco guarda dois minutos do que tocou: o kick vira ondulação, os agudos viram brilho, e o silêncio entre faixas vira a faixa lisa de um LP de verdade. O sulco mais novo nasce no canto de baixo.</p>
+        <ul class="map"><li><b>graves</b>ondulação do sulco</li><li><b>agudos</b>reflexo fino</li><li><b>kick</b>marcas ao longo da volta</li><li><b>histórico</b>simulado, 3,5 h</li></ul>
+        <div class="live"><span data-info>—</span><span data-ms></span></div>
+        <div class="costbar"><i></i></div>
+      </figcaption>
+    </figure>
+
+    <figure class="tile" data-k="nebula" style="margin:0">
+      <div class="stage" tabindex="0" role="button" aria-label="Focar Nébula refinada"><canvas></canvas>
+        <div class="np"><div class="t">Sicko Mode</div><div class="a">Travis Scott · ASTROWORLD</div><div class="pb"><i></i></div></div></div>
+      <figcaption>
+        <span class="rank">6</span>
+        <div class="head"><h2 class="name">Nébula refinada</h2><span class="cost measured" data-cost>cmr-auto · 6,83 ms</span></div>
+        <p class="what">A Nébula que já está no app, com duas correções: calcula em um terço da resolução e escala (é um desenho de baixa frequência) e ganha dithering contra os degraus de cor no fundo escuro. A versão atual custa de 23 a 24 ms por quadro na cmr-auto, mais que um quadro inteiro de 60 fps. Esta custa 3,6 ms com a máquina ociosa e 6,8 ms com ela em uso.</p>
+        <ul class="map"><li><b>graves</b>corpo da nuvem</li><li><b>médios</b>veios de accent</li><li><b>agudos</b>brilho nas cristas</li><li><b>kick</b>densidade</li></ul>
+        <div class="live"><span data-info>—</span><span data-ms></span></div>
+        <div class="costbar"><i></i></div>
+      </figcaption>
+    </figure>
+
+  </div>
+
+  <div class="panel" id="costPanel">
+    <h3>Custo medido</h3>
+    <p>Medido na cmr-auto em 25/09, no WebKitGTK 2.52.6 do sistema (o mesmo motor que o app usa), Intel UHD 620. Cada cena foi desenhada sozinha em 1366×768: 20 quadros de aquecimento e 5 lotes de 24 quadros, sincronizando com a GPU no fim de cada lote. O número soma CPU e GPU. A máquina estava em uso na medição final (Rustify aberto, Chrome, Zed, carga entre 6 e 8), então a tabela mostra o melhor lote de três rodadas. Uma rodada anterior, com a máquina ociosa, deu cerca de metade desses tempos, na mesma ordem. O quadro de 60 fps tem 16,7 ms, e o fundo precisa deixar folga para o resto do app. A composição do canvas na tela é um custo fixo, igual para todas, e não entra aqui.</p>
+    <p id="costIntro"><b>Medir custo</b> repete a medição no aparelho em que você está e preenche a última coluna. A ordem dos quadros continua sendo a da cmr-auto, que é o alvo.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>#</th><th>Cena</th><th>Onde está o custo</th><th style="text-align:right">cmr-auto, ms</th><th style="text-align:right">do quadro de 16,7 ms</th><th style="text-align:right">sem processo de GPU, ms</th><th style="text-align:right">este aparelho, ms</th></tr></thead>
+        <tbody id="costRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" id="enginePanel">
+    <h3>Motor: por que este lab não usa three.js</h3>
+    <p>As quatro cenas de hoje usam do three.js só o material de shader, pontos e linhas: nada de luzes, modelos ou grafo de cena. As seis daqui foram escritas em WebGL2 direto, com um ajudante de cerca de 40 linhas, e isso bastou para tudo, inclusive render target em half-float e transform feedback.</p>
+    <div class="verdict">
+      <div><b>WebGPU: ainda não</b>O WebKitGTK do Ubuntu é compilado sem WebGPU, nem atrás de flag. No Android, o WebGPU está ligado para outras GPUs, mas a Xclipse do S24 (Exynos) ainda não foi liberada; a previsão é o Chrome 154. Nos dois alvos, WebGL2 é o teto hoje.</div>
+      <div><b>Sair do three.js: sim</b>O chunk do three.js tem 543 KB, e o WebGLRenderer dele não expõe transform feedback, que foi o que levou a Cimática de 8,3 ms para 1,3 ms (as duas medidas com a máquina ociosa). Recomendo WebGL2 direto com o ajudante deste lab. Se ele crescer, a alternativa é twgl.js (23 KB, com release em setembro de 2026).</div>
+      <div><b>O custo está na resolução, não na biblioteca</b>A Nébula que está no app custa de 23 a 24 ms por quadro na cmr-auto, mais de um quadro inteiro de 60 fps. A mesma cena em um terço da resolução custa 3,6 ms com a máquina ociosa. Trocar de motor não muda o custo de um shader; o que muda é quantos pixels ele pinta.</div>
+      <div><b>Processo de GPU do WebKitGTK</b>Desde a 2.51, o WebGL roda num processo separado, e há um PR aberto no WebKit sobre perda de cerca de 18% em animação contínua. Nesta medição, ligar ou desligar não mudou nada. Se o efeito existir, ele é de agendamento entre quadros e só aparece medindo o app animando.</div>
+      <div><b>O nome da GPU no Tweaks não serve</b>O WebKitGTK informa "Apple GPU" como renderer, mesmo numa Intel. Não dá para detectar a GPU nem uma renderização por software por esse campo. O fps medido é o único sinal confiável.</div>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div>
+      <h2>O que julgar</h2>
+      <p>Se o card continua legível por cima, se o movimento acompanha a música sem puxar o olho e se a paleta do tema continua sendo a do tema. Troque o tema na barra: as quatro cores de cada cena vêm dele, como no app.</p>
+      <p>O custo medido aqui é o do seu navegador e da sua GPU. O número que decide é o do app na cmr-auto (WebKitGTK 2.52, Intel UHD 620); ele será medido lá antes de qualquer merge.</p>
+    </div>
+    <div>
+      <h2>Como o sinal é simulado</h2>
+      <p>92 BPM: bumbo em cada tempo alimenta os graves, caixa em 2 e 4 os médios, chimbal em colcheias os agudos, e a energia sobe e desce a cada 32 s. Por cima vem o tremor que o FFT real tem. Depois o sinal passa pela mesma cadeia do app (<code>gl/signal.ts</code>): suavização, envelope de kick e relógio acelerado pelo beat.</p>
+      <p><b>+10 min</b> adianta o relógio. Foi assim que o defeito da Poeira atual apareceu: a velocidade dela cresce com o tempo de sessão. Nenhuma cena daqui multiplica o relógio por um sinal que oscila.</p>
+    </div>
+    <div>
+      <h2>Atalhos</h2>
+      <p><kbd>1</kbd> a <kbd>6</kbd> focam uma cena pela posição atual, <kbd>Esc</kbd> volta à grade, <kbd>Espaço</kbd> pausa, <kbd>M</kbd> mede o custo. Clicar num quadro também foca.</p>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+/* ============================================================
+   Utilidades
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+let seed = 0x9e3779b9 | 0;
+function rnd() { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; }
+const fmt = (n, d = 1) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/* ============================================================
+   Temas (copiados dos YAML da cmr-auto, como no lab v1).
+   soft = --fg-5 no app; aqui o tom "muted" de cada tema.
+   ============================================================ */
+const THEMES = {
+  copper:   { canvas:"#111110", base:"#151513", cont:"#1f1f1c", contHi:"#262622", ink:"#c6633d", ink2:"#d87a52", onInk:"#0d0d0c", text:"#edeae3", text2:"#a29e94", muted:"#85827b", line:"rgba(237,234,227,0.10)", line2:"rgba(237,234,227,0.18)" },
+  dark:     { canvas:"#050505", base:"#0c0c0c", cont:"#161616", contHi:"#1c1c1c", ink:"#997081", ink2:"#ede9eb", onInk:"#0a0a0a", text:"#f0f0f0", text2:"#b8b8b8", muted:"#808080", line:"rgba(255,255,255,0.08)", line2:"rgba(255,255,255,0.16)" },
+  neon:     { canvas:"#0a0a0c", base:"#0f0f12", cont:"#1a1a20", contHi:"#202028", ink:"#00ffff", ink2:"#33ffff", onInk:"#0a0a0c", text:"#ffffff", text2:"#c0c0c0", muted:"#888888", line:"rgba(255,255,255,0.12)", line2:"rgba(255,255,255,0.24)" },
+  midnight: { canvas:"#0a0a10", base:"#0f0f15", cont:"#1a1a22", contHi:"#20202a", ink:"#5e9bcd", ink2:"#7abbe5", onInk:"#0a0a10", text:"#e0e8f0", text2:"#a8b8c8", muted:"#808c9c", line:"rgba(180,200,220,0.08)", line2:"rgba(180,200,220,0.16)" },
+  uvinha:   { canvas:"#1d1622", base:"#251c2c", cont:"#33283c", contHi:"#3b2f45", ink:"#b48ae0", ink2:"#c9aaeb", onInk:"#1d1622", text:"#f2e7f0", text2:"#c9b8cb", muted:"#a893ab", line:"rgba(242,231,240,0.08)", line2:"rgba(180,138,224,0.55)" },
+};
+const hexRgb = (h) => { const v = parseInt(h.slice(1), 16); return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]; };
+let PAL = null;
+
+/* ============================================================
+   Sinal: faixa simulada + tremor de FFT + a cadeia do app
+   (gl/signal.ts com o cfg default e o kick de lib/beatPll.ts).
+   ============================================================ */
+const BPM = 92, BEAT = 60 / BPM;
+const ctl = { auto: true, energy: 0.6, paused: false };
+function makeSignal() {
+  return { t: 0, low: 0, mid: 0, high: 0, lastBeat: -1, lastEighth: -1,
+    raw: { low: 0, mid: 0, high: 0 },
+    env: { low: 0, mid: 0, high: 0, beat: 0, clock: 0 } };
+}
+function stepSignal(S, dt) {
+  S.t += dt;
+  const section = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(S.t * (2 * Math.PI / 32) - Math.PI / 2));
+  const e = ctl.auto ? section : ctl.energy;
+  const bi = Math.floor(S.t / BEAT), ei = Math.floor(S.t / (BEAT / 2));
+  const dec = (v, tau) => v * Math.exp(-dt / tau);
+  S.low = dec(S.low, 0.20); S.mid = dec(S.mid, 0.14); S.high = dec(S.high, 0.06);
+  if (ctl.auto) {
+    if (bi !== S.lastBeat) { S.lastBeat = bi; S.low = Math.max(S.low, 0.55 + 0.45 * e); if (bi % 2 === 1) S.mid = Math.max(S.mid, 0.5 + 0.4 * e); }
+    if (ei !== S.lastEighth) { S.lastEighth = ei; S.high = Math.max(S.high, 0.35 + 0.45 * e * (ei % 2 ? 0.7 : 1)); }
+    S.low = Math.max(S.low, 0.18 + 0.14 * e * (0.5 + 0.5 * Math.sin(S.t * 2.3)));
+    S.mid = Math.max(S.mid, 0.12 + 0.1 * e);
+    S.high = Math.max(S.high, 0.06 * e);
+  } else {
+    const br = 0.5 + 0.5 * Math.sin(S.t * (2 * Math.PI / 4.5));
+    S.low = e * (0.7 + 0.3 * br); S.mid = e * 0.6; S.high = e * (0.4 + 0.2 * (1 - br));
+  }
+  const n = () => rnd() - 0.5;
+  S.raw.low = clamp01(S.low * (1 + 0.30 * n()));
+  S.raw.mid = clamp01(S.mid * (1 + 0.50 * n()) + 0.05 * n());
+  S.raw.high = clamp01(S.high * (1 + 0.55 * n()));
+  const E = S.env, k = 1 - Math.exp(-dt / 0.31);        // smoothing 0.3 -> tau 0.31 s
+  E.low += (S.raw.low - E.low) * k;
+  E.mid += (S.raw.mid - E.mid) * k;
+  E.high += (clamp01(S.raw.high * 0.8) - E.high) * k;    // trebleGain 0.8
+  const tb = clamp01((S.raw.low - 0.1) / 0.5);           // expandKick
+  E.beat += (tb - E.beat) * (1 - Math.exp(-dt / 0.09));  // BEAT_TAU
+  E.clock += dt * (1 + E.beat);                          // modo speed, depth 0.55 -> ganho 1
+}
+
+/* ============================================================
+   WebGL2: um ajudante mínimo. É tudo o que as seis cenas usam.
+   ============================================================ */
+const HEAD = "#version 300 es\nprecision highp float;\nprecision highp int;\n";
+const UNI = `
+uniform vec2 uRes; uniform float uTime,uLow,uMid,uHigh,uBeat;
+uniform vec3 uCanvas,uInk,uInk2,uSoft;
+`;
+const FS_COMMON = UNI + `
+out vec4 outColor;
+float ign(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}
+vec3 dither(vec3 c){return c+(ign(gl_FragCoord.xy)-0.5)/255.0;}
+`;
+const VS_TRI = HEAD + `void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.0-1.0,0.0,1.0);}`;
+
+function makeProgram(gl, vsSrc, fsSrc, tfVaryings = null) {
+  const sh = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s); gl.deleteShader(s); throw new Error("shader: " + log); }
+    return s;
+  };
+  const vs = sh(gl.VERTEX_SHADER, vsSrc), fs = sh(gl.FRAGMENT_SHADER, fsSrc);
+  const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, fs);
+  if (tfVaryings) gl.transformFeedbackVaryings(p, tfVaryings, gl.SEPARATE_ATTRIBS);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error("link: " + gl.getProgramInfoLog(p));
+  gl.deleteShader(vs); gl.deleteShader(fs);
+  const locs = new Map();
+  const loc = (n) => { if (!locs.has(n)) locs.set(n, gl.getUniformLocation(p, n)); return locs.get(n); };
+  return {
+    p, loc,
+    use() { gl.useProgram(p); },
+    f(n, v) { gl.uniform1f(loc(n), v); },
+    i(n, v) { gl.uniform1i(loc(n), v); },
+    u(n, v) { gl.uniform1ui(loc(n), v >>> 0); },
+    v2(n, a, b) { gl.uniform2f(loc(n), a, b); },
+    v3(n, c) { gl.uniform3f(loc(n), c[0], c[1], c[2]); },
+    v4(n, a, b, c, d) { gl.uniform4f(loc(n), a, b, c, d); },
+    common(E, P, w, h) {
+      this.v2("uRes", w, h); this.f("uTime", E.clock);
+      this.f("uLow", E.low); this.f("uMid", E.mid); this.f("uHigh", E.high); this.f("uBeat", E.beat);
+      this.v3("uCanvas", P.canvas); this.v3("uInk", P.ink); this.v3("uInk2", P.ink2); this.v3("uSoft", P.soft);
+    },
+    dispose() { gl.deleteProgram(p); },
+  };
+}
+function makeTarget(gl, w, h, wantHalf = false) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  let half = wantHalf && !!gl.getExtension("EXT_color_buffer_float");
+  const alloc = () => gl.texImage2D(gl.TEXTURE_2D, 0, half ? gl.RGBA16F : gl.RGBA8, w, h, 0, gl.RGBA, half ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, null);
+  alloc();
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  if (half && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+    half = false; gl.bindTexture(gl.TEXTURE_2D, tex); alloc();
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fb, w, h, half, dispose() { gl.deleteTexture(tex); gl.deleteFramebuffer(fb); } };
+}
+
+/* ============================================================
+   1 · Poeira na luz
+   Facho analítico em tela cheia + 3.500 pontos. Vento e queda
+   são integrados na CPU (a correção do CMR-267): o sinal muda a
+   VELOCIDADE, nunca multiplica o relógio.
+   ============================================================ */
+const BEAM_FN = `
+float beam(vec2 q,float t){
+  float ang=-2.10+0.035*sin(t*0.05);
+  vec2 D=vec2(cos(ang),sin(ang));
+  vec2 S=vec2(0.35*uRes.x/uRes.y,0.75);
+  vec2 d=q-S;
+  float along=dot(d,D);
+  float perp=dot(d,vec2(-D.y,D.x));
+  float w=0.05+0.20*max(along,0.0);
+  float body=exp(-2.2*(perp*perp)/(w*w));
+  float streak=0.82+0.18*sin(perp/w*7.0+0.6*sin(t*0.07));
+  float att=smoothstep(0.0,0.15,along)*exp(-along*0.45);
+  return body*streak*att;
+}`;
+class Motes {
+  constructor(gl) {
+    this.gl = gl; this.N = 5000;
+    this.bg = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + BEAM_FN + `
+      void main(){
+        vec2 q=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+        float b=beam(q,uTime);
+        vec3 light=mix(uSoft,uInk,0.35);
+        vec3 col=uCanvas+light*b*(0.20+0.14*uLow+0.05*uBeat);
+        col*=1.0-0.35*dot(q,q);
+        outColor=vec4(dither(col),1.0);
+      }`);
+    this.pts = makeProgram(gl, HEAD + UNI + `
+      in vec4 aSeed; uniform vec2 uWind; uniform float uFall;
+      out float vA; out float vSoft; out vec3 vCol;
+      ` + BEAM_FN + `
+      void main(){
+        float a=uRes.x/uRes.y;
+        vec2 box=vec2(a+0.3,1.3);
+        float z=aSeed.z;
+        vec2 p=aSeed.xy*box-0.5*box;
+        p+=0.03*vec2(sin(uTime*(0.10+0.16*aSeed.w)+aSeed.w*40.0),cos(uTime*(0.08+0.14*aSeed.x)+aSeed.z*31.0));
+        p+=uWind*(0.35+1.1*z);
+        p.y-=uFall*(0.3+0.9*z);
+        p=mod(p+0.5*box,box)-0.5*box;
+        float lit=beam(p,uTime);
+        float glint=step(0.93,aSeed.w)*pow(max(0.0,sin(uTime*(0.5+aSeed.x*1.1)*6.2831+aSeed.y*50.0)),20.0)*uHigh*lit;
+        gl_PointSize=mix(1.3,5.5,z*z)*(1.0+1.2*glint);
+        vSoft=z;
+        vA=0.75*((0.035+1.1*pow(lit,0.8))*(0.45+0.55*z)*(0.8+0.4*uLow)+glint*1.5);
+        vCol=mix(uSoft,uInk,0.25+0.4*aSeed.x);
+        gl_Position=vec4(p.x/(0.5*a),p.y/0.5,0.0,1.0);
+      }`, HEAD + `
+      in float vA; in float vSoft; in vec3 vCol; out vec4 outColor;
+      void main(){
+        float d=length(gl_PointCoord-0.5)*2.0;
+        float m=1.0-smoothstep(mix(0.65,0.05,vSoft),1.0,d);
+        m*=m;
+        outColor=vec4(vCol*vA*m,1.0);
+      }`);
+    const data = new Float32Array(this.N * 4);
+    for (let i = 0; i < data.length; i++) data[i] = rnd();
+    this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
+    this.buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(this.pts.p, "aSeed");
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    this.empty = gl.createVertexArray();
+    this.wind = [0, 0]; this.fall = 0;
+  }
+  resize() {}
+  frame(E, P, dt, w, h) {
+    const gl = this.gl;
+    const dir = 0.9 + 0.4 * Math.sin(E.clock * 0.013);
+    const gust = 0.010 + 0.055 * E.beat;
+    this.wind[0] += Math.cos(dir) * gust * dt;
+    this.wind[1] += Math.sin(dir) * gust * 0.35 * dt;
+    this.fall += dt * 0.004;
+    gl.viewport(0, 0, w, h); gl.disable(gl.BLEND);
+    this.bg.use(); this.bg.common(E, P, w, h);
+    gl.bindVertexArray(this.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    this.pts.use(); this.pts.common(E, P, w, h);
+    this.pts.v2("uWind", this.wind[0], this.wind[1]); this.pts.f("uFall", this.fall);
+    gl.bindVertexArray(this.vao); gl.drawArrays(gl.POINTS, 0, this.N);
+    gl.disable(gl.BLEND);
+  }
+  info() { return "5.000 partículas · facho a 30° da vertical"; }
+  dispose() { const gl = this.gl; this.bg.dispose(); this.pts.dispose(); gl.deleteBuffer(this.buf); gl.deleteVertexArray(this.vao); gl.deleteVertexArray(this.empty); }
+}
+
+/* ============================================================
+   2 · Marmorizado (suminagashi)
+   A gravura vive numa textura em resolução cheia. Uma gota é o
+   mapa inverso exato de Jaffer/Lu/Mould (preserva área:
+   p_old = C + (p-C)·sqrt(1 - R²/|p-C|²)). A corrente é um campo
+   sem divergência. Entre um "cozimento" e outro a tela só lê a
+   textura com um deslocamento: a gravura é reamostrada poucas
+   vezes por segundo, não a cada quadro, então não borra.
+   ============================================================ */
+const FLOW_FN = `
+vec2 flow(vec2 q,float t){
+  float a1=2.1*q.x+1.3*q.y+t, a2=-1.7*q.x+2.6*q.y+0.8*t+1.3, a3=3.3*q.x-2.9*q.y-0.6*t+4.1;
+  float c1=cos(a1)*0.06, c2=cos(a2)*0.045, c3=cos(a3)*0.03;
+  float dx=2.1*c1-1.7*c2+3.3*c3;
+  float dy=1.3*c1+2.6*c2-2.9*c3;
+  return vec2(dy,-dx);
+}`;
+class Marble {
+  constructor(gl) {
+    this.gl = gl;
+    this.bake = makeProgram(gl, VS_TRI, HEAD + `
+      uniform sampler2D uSrc; uniform vec2 uSize; uniform float uAsp;
+      uniform vec4 uDrop; uniform vec3 uDropCol; uniform float uFlowDT,uFieldT,uFade; uniform vec3 uCanvas;
+      out vec4 outColor;
+      ` + FLOW_FN + `
+      // Catmull-Rom em 9 leituras, limitado ao mínimo/máximo dos 4 vizinhos:
+      // a gravura é reamostrada a cada gota, e o bilinear borraria os anéis.
+      vec3 sampleCR(sampler2D t,vec2 uv,vec2 sz){
+        vec2 sp=uv*sz; vec2 p1=floor(sp-0.5)+0.5; vec2 f=sp-p1;
+        vec2 w0=f*(-0.5+f*(1.0-0.5*f)), w1=1.0+f*f*(-2.5+1.5*f), w2=f*(0.5+f*(2.0-1.5*f)), w3=f*f*(-0.5+0.5*f);
+        vec2 w12=w1+w2, o12=w2/w12;
+        vec2 t0=(p1-1.0)/sz, t3=(p1+2.0)/sz, t12=(p1+o12)/sz;
+        vec3 r=texture(t,vec2(t0.x,t0.y)).rgb*w0.x*w0.y+texture(t,vec2(t12.x,t0.y)).rgb*w12.x*w0.y+texture(t,vec2(t3.x,t0.y)).rgb*w3.x*w0.y
+              +texture(t,vec2(t0.x,t12.y)).rgb*w0.x*w12.y+texture(t,vec2(t12.x,t12.y)).rgb*w12.x*w12.y+texture(t,vec2(t3.x,t12.y)).rgb*w3.x*w12.y
+              +texture(t,vec2(t0.x,t3.y)).rgb*w0.x*w3.y+texture(t,vec2(t12.x,t3.y)).rgb*w12.x*w3.y+texture(t,vec2(t3.x,t3.y)).rgb*w3.x*w3.y;
+        ivec2 ip=ivec2(floor(sp-0.5)); ivec2 mx=ivec2(sz)-1;
+        vec3 a=texelFetch(t,clamp(ip,ivec2(0),mx),0).rgb, b=texelFetch(t,clamp(ip+ivec2(1,0),ivec2(0),mx),0).rgb;
+        vec3 c=texelFetch(t,clamp(ip+ivec2(0,1),ivec2(0),mx),0).rgb, d=texelFetch(t,clamp(ip+ivec2(1,1),ivec2(0),mx),0).rgb;
+        return clamp(r,min(min(a,b),min(c,d)),max(max(a,b),max(c,d)));
+      }
+      void main(){
+        vec2 uv=gl_FragCoord.xy/uSize;
+        vec2 q=(uv-0.5)*vec2(uAsp,1.0);
+        vec2 qs=q; float inDrop=0.0;
+        if(uDrop.w>0.5){
+          vec2 d=q-uDrop.xy; float L=length(d); float R=uDrop.z;
+          float e=1.5/uSize.y;
+          inDrop=1.0-smoothstep(R-e,R+e,L);
+          float L2=max(L*L,R*R+1e-6);
+          qs=uDrop.xy+d*sqrt(max(0.0,1.0-R*R/L2));
+        }
+        qs+=flow(qs,uFieldT)*uFlowDT;
+        vec3 c=sampleCR(uSrc,qs/vec2(uAsp,1.0)+0.5,uSize);
+        c=mix(c,uCanvas,uFade);
+        c=mix(c,uDropCol,inDrop);
+        outColor=vec4(c,1.0);
+      }`);
+    this.show = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + `
+      uniform sampler2D uPrint; uniform float uFlowDT,uFieldT;
+      ` + FLOW_FN + `
+      void main(){
+        float asp=uRes.x/uRes.y;
+        vec2 uv=gl_FragCoord.xy/uRes;
+        vec2 q=(uv-0.5)*vec2(asp,1.0);
+        vec2 qs=q+flow(q,uFieldT)*uFlowDT;
+        vec3 c=texture(uPrint,qs/vec2(asp,1.0)+0.5).rgb;
+        float fib=fract(sin(dot(floor(gl_FragCoord.xy*vec2(0.5,2.0)),vec2(12.9898,78.233)))*43758.5453);
+        c*=0.988+0.024*fib;
+        c*=1.0-0.18*dot(q,q);
+        outColor=vec4(dither(c),1.0);
+      }`);
+    this.empty = gl.createVertexArray();
+    this.A = null; this.B = null; this.w2 = 0; this.h2 = 0;
+    this.flowDT = 0; this.sinceBake = 0; this.drops = 0; this.series = 0; this.inSeries = 0; this.seriesLen = 16;
+    this.center = [0.25, 0.05]; this.armed = true; this.sinceDrop = 0; this.needReset = true;
+  }
+  resize(w, h) {
+    const gl = this.gl;
+    this.A?.dispose(); this.B?.dispose();
+    this.w2 = w; this.h2 = h;
+    this.A = makeTarget(gl, w, h); this.B = makeTarget(gl, w, h);
+    this.asp = w / h; this.needReset = true;
+  }
+  onPalette() { this.needReset = true; }
+  relocate() {
+    const a = this.asp;
+    this.center = [(-0.30 + 0.72 * rnd()) * a, -0.30 + 0.6 * rnd()];
+    this.series++; this.inSeries = 0; this.seriesLen = 12 + Math.floor(rnd() * 12);
+  }
+  frame(E, P, dt, w, h) {
+    const gl = this.gl;
+    if (this.needReset) {
+      for (const t of [this.A, this.B]) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); gl.clearColor(P.canvas[0], P.canvas[1], P.canvas[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      this.needReset = false; this.flowDT = 0;
+      this.warm(P);
+    }
+    this.flowDT += dt * (0.010 + 0.035 * E.mid);
+    this.sinceBake += dt; this.sinceDrop += dt;
+    const fieldT = E.clock * 0.12;
+    let drop = null;
+    if (this.armed && E.beat > 0.62 && this.sinceDrop > 0.3) { drop = true; this.armed = false; }
+    if (E.beat < 0.45) this.armed = true;
+    if (!drop && this.sinceDrop > 3.0) drop = true;              // música sem kick: pinga pelo relógio
+    if (drop || this.sinceBake > 1.5) {
+      const seq = [P.ink, P.canvas, P.ink2, P.canvas, P.ink, P.canvas, P.soft, P.canvas];
+      const col = seq[this.inSeries % seq.length];
+      const R = 0.028 + 0.035 * E.low;
+      this.bake.use();
+      this.bake.v2("uSize", this.w2, this.h2); this.bake.f("uAsp", this.asp);
+      this.bake.v4("uDrop", this.center[0], this.center[1], R, drop ? 1 : 0);
+      this.bake.v3("uDropCol", col); this.bake.v3("uCanvas", P.canvas);
+      this.bake.f("uFlowDT", this.flowDT); this.bake.f("uFieldT", fieldT);
+      this.bake.f("uFade", 1 - Math.exp(-this.sinceBake / 150));
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.A.tex); this.bake.i("uSrc", 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.B.fb); gl.viewport(0, 0, this.w2, this.h2); gl.disable(gl.BLEND);
+      gl.bindVertexArray(this.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      [this.A, this.B] = [this.B, this.A];
+      this.flowDT = 0; this.sinceBake = 0;
+      if (drop) { this.drops++; this.sinceDrop = 0; if (++this.inSeries >= this.seriesLen) this.relocate(); }
+    }
+    gl.viewport(0, 0, w, h); gl.disable(gl.BLEND);
+    this.show.use(); this.show.common(E, P, w, h);
+    this.show.f("uFlowDT", this.flowDT); this.show.f("uFieldT", fieldT);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.A.tex); this.show.i("uPrint", 0);
+    gl.bindVertexArray(this.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  warm(P) {
+    // ~40 s de música de uma vez, só na abertura: três séries de gotas
+    const gl = this.gl, seq = [P.ink, P.canvas, P.ink2, P.canvas, P.ink, P.canvas, P.soft, P.canvas];
+    this.bake.use(); this.bake.v2("uSize", this.w2, this.h2); this.bake.f("uAsp", this.asp); this.bake.v3("uCanvas", P.canvas);
+    gl.disable(gl.BLEND); gl.bindVertexArray(this.empty); gl.viewport(0, 0, this.w2, this.h2);
+    for (let k = 0; k < 54; k++) {
+      this.bake.v4("uDrop", this.center[0], this.center[1], 0.03 + 0.03 * rnd(), 1);
+      this.bake.v3("uDropCol", seq[this.inSeries % seq.length]);
+      this.bake.f("uFlowDT", 0.045); this.bake.f("uFieldT", k * 0.35); this.bake.f("uFade", 0.004);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.A.tex); this.bake.i("uSrc", 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.B.fb); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      [this.A, this.B] = [this.B, this.A];
+      this.drops++; if (++this.inSeries >= this.seriesLen) this.relocate();
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  info() { return `série ${this.series + 1} · ${this.drops} gotas · gravura em ${this.w2}×${this.h2}`; }
+  dispose() { this.bake.dispose(); this.show.dispose(); this.A?.dispose(); this.B?.dispose(); this.gl.deleteVertexArray(this.empty); }
+}
+
+/* ============================================================
+   3 · Palco (bokeh)
+   48 discos instanciados em três planos. Abertura de 6 lâminas
+   com a MESMA rotação em todas as luzes (é uma lente só), borda
+   um pouco mais clara (aberração esférica) e franja cromática
+   por três avaliações do SDF em escalas vizinhas.
+   ============================================================ */
+class Bokeh {
+  constructor(gl) {
+    this.gl = gl; this.N = 48;
+    this.bg = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + `
+      void main(){
+        vec2 uv=gl_FragCoord.xy/uRes;
+        vec3 col=uCanvas+mix(uSoft,uInk,0.5)*0.035*smoothstep(0.2,1.0,uv.y)*(0.7+0.3*uLow);
+        outColor=vec4(dither(col),1.0);
+      }`);
+    this.disc = makeProgram(gl, HEAD + UNI + `
+      in vec2 aCorner; in vec4 aA; in vec4 aB; uniform float uDrift;
+      out vec2 vL; out vec3 vCol; out float vI; out float vEdge;
+      void main(){
+        float a=uRes.x/uRes.y;
+        float layer=aA.z;
+        vec2 base=vec2((aA.x-0.5)*(a+0.2),(aA.y-0.5)*1.15);
+        float amp=layer<0.5?0.008:(layer<1.5?0.05:0.09);
+        vec2 c=base+amp*vec2(sin(uDrift*(0.21+0.17*aB.y)+aB.y*6.28),cos(uDrift*(0.17+0.13*aB.x)+aB.y*4.1));
+        float R=layer<0.5?mix(0.010,0.024,aB.x):(layer<1.5?mix(0.040,0.070,aB.x):mix(0.11,0.19,aB.x));
+        float flare=aB.z*smoothstep(0.45,0.95,uBeat);
+        R*=1.0+0.10*flare;
+        float I=layer<0.5?1.0:(layer<1.5?0.55:0.18);
+        float tw=layer<0.5?(1.0+0.9*uHigh*sin(uTime*aB.w+aB.y*20.0)):1.0;
+        I*=tw*(0.55+0.45*uLow)*(1.0+1.8*flare);
+        vCol=aA.w<0.5?uInk:(aA.w<0.86?uInk2:mix(uInk2,vec3(1.0),0.45));
+        vI=I; vL=aCorner*1.15;
+        vEdge=layer<0.5?0.16:(layer<1.5?0.11:0.07);
+        vec2 q=c+aCorner*1.15*R;
+        gl_Position=vec4(q.x/(0.5*a),q.y/0.5,0.0,1.0);
+      }`, HEAD + `
+      in vec2 vL; in vec3 vCol; in float vI; in float vEdge; out vec4 outColor;
+      float sdHex(vec2 p,float r){const vec3 k=vec3(-0.866025404,0.5,0.577350269);p=abs(p);p-=2.0*min(dot(k.xy,p),0.0)*k.xy;p-=vec2(clamp(p.x,-k.z*r,k.z*r),r);return length(p)*sign(p.y);}
+      float ap(vec2 l){const float c=0.9659258,s=0.2588190;l=mat2(c,-s,s,c)*l;return mix(sdHex(l,0.88),length(l)-1.0,0.4);}
+      float prof(float d,float e){
+        float inside=1.0-smoothstep(-e,e,d);
+        float bubble=0.50+0.50*smoothstep(-0.55,0.0,d);      // centro um pouco mais escuro, borda acesa
+        float rim=exp(-abs(d+0.04)*22.0)*0.35;
+        float halo=exp(-max(d,0.0)*9.0)*0.10;                // luz que vaza da borda
+        return inside*(bubble+rim)+halo;
+      }
+      void main(){
+        float r=prof(ap(vL*1.012),vEdge), g=prof(ap(vL),vEdge), b=prof(ap(vL*0.988),vEdge);
+        vec3 c=vCol*vec3(r,g,b)*vI;
+        float n=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));
+        outColor=vec4(c+step(0.001,g)*(n-0.5)/255.0,1.0);
+      }`);
+    const inst = new Float32Array(this.N * 8);
+    for (let i = 0; i < this.N; i++) {
+      const layer = i < 26 ? 0 : i < 40 ? 1 : 2;
+      // plano de fundo = a treliça do palco: duas fileiras de refletores
+      const bx = layer === 0 ? (Math.floor(i / 2) + 0.5) / 13 + (rnd() - 0.5) * 0.02 : rnd();
+      const by = layer === 0 ? 0.80 + (i % 2) * 0.1 + (rnd() - 0.5) * 0.02 : rnd();
+      inst.set([bx, by, layer, rnd(),
+        rnd(), rnd(), layer > 0 && rnd() < 0.2 ? 1 : 0, 2 + rnd() * 5], i * 8);
+    }
+    this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
+    this.qbuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.qbuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]), gl.STATIC_DRAW);
+    const lc = gl.getAttribLocation(this.disc.p, "aCorner");
+    gl.enableVertexAttribArray(lc); gl.vertexAttribPointer(lc, 2, gl.FLOAT, false, 0, 0);
+    this.ibuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.ibuf); gl.bufferData(gl.ARRAY_BUFFER, inst, gl.STATIC_DRAW);
+    const la = gl.getAttribLocation(this.disc.p, "aA"), lb = gl.getAttribLocation(this.disc.p, "aB");
+    gl.enableVertexAttribArray(la); gl.vertexAttribPointer(la, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(la, 1);
+    gl.enableVertexAttribArray(lb); gl.vertexAttribPointer(lb, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(lb, 1);
+    gl.bindVertexArray(null);
+    this.empty = gl.createVertexArray();
+    this.drift = 0;
+  }
+  resize() {}
+  frame(E, P, dt, w, h) {
+    const gl = this.gl;
+    this.drift += dt * (0.25 + 0.6 * E.mid);
+    gl.viewport(0, 0, w, h); gl.disable(gl.BLEND);
+    this.bg.use(); this.bg.common(E, P, w, h);
+    gl.bindVertexArray(this.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    this.disc.use(); this.disc.common(E, P, w, h); this.disc.f("uDrift", this.drift);
+    gl.bindVertexArray(this.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.N);
+    gl.disable(gl.BLEND);
+  }
+  info() { return "48 luzes em 3 planos · abertura de 6 lâminas"; }
+  dispose() { const gl = this.gl; this.bg.dispose(); this.disc.dispose(); gl.deleteBuffer(this.qbuf); gl.deleteBuffer(this.ibuf); gl.deleteVertexArray(this.vao); gl.deleteVertexArray(this.empty); }
+}
+
+/* ============================================================
+   4 · Cimática (Chladni)
+   f(u,v) = cos(nπu)·cos(mπv) ± cos(mπu)·cos(nπv) numa placa
+   quadrada da largura da tela, cortada em cima e embaixo.
+   A areia desce o gradiente de f² (vai para onde f = 0) e salta
+   na proporção |f| × vibração: nos nós ela descansa, nos ventres
+   ela pula. A migração entre figuras é emergente.
+   A física roda na GPU por transform feedback (WebGL2): na CPU,
+   14 mil grãos custavam 8 ms por quadro na cmr-auto.
+   ============================================================ */
+const MODES = [[1,2,-1],[1,3,-1],[2,3,1],[1,4,1],[2,5,-1],[3,4,-1],[1,5,-1],[3,5,1],[2,7,-1],[4,5,1],[3,7,-1],[5,6,1]];
+class Chladni {
+  constructor(gl) {
+    this.gl = gl; this.N = 20000;
+    this.bg = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + `
+      void main(){
+        vec2 q=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+        vec3 col=uCanvas*(1.0+0.10*(1.0-smoothstep(0.0,1.1,length(q))));
+        outColor=vec4(dither(col),1.0);
+      }`);
+    this.sim = makeProgram(gl, HEAD + `
+      in vec2 aPos; out vec2 vOut;
+      uniform vec3 uM2; uniform vec3 uM1; uniform float uW1,uW2,uK,uJ,uMax,uDt,uVmin,uVmax; uniform uint uSeed;
+      uint hsh(uint x){x^=x>>16;x*=0x7feb352du;x^=x>>15;x*=0x846ca68bu;x^=x>>16;return x;}
+      float r01(uint a){return float(hsh(a))*(1.0/4294967296.0);}
+      vec3 plate(vec3 M,vec2 p){
+        float a=M.x,b=M.y,s=M.z;
+        float ca=cos(a*p.x),sa=sin(a*p.x),cb=cos(b*p.x),sb=sin(b*p.x);
+        float cav=cos(a*p.y),sav=sin(a*p.y),cbv=cos(b*p.y),sbv=sin(b*p.y);
+        return vec3(ca*cbv+s*cb*cav, -a*sa*cbv-s*b*sb*cav, -b*ca*sbv-s*a*cb*sav);
+      }
+      void main(){
+        vec2 p=aPos;
+        vec3 F=plate(uM2,p);
+        if(uW1>0.001) F=uW2*F+uW1*plate(uM1,p);
+        vec2 dp=-F.x*F.yz*uK*uDt;
+        float m=length(dp); if(m>uMax) dp*=uMax/m;
+        uint id=uint(gl_VertexID)*2u+uSeed;
+        dp+=(vec2(r01(id),r01(id+1u))-0.5)*uJ*min(1.5,abs(F.x));
+        p+=dp;
+        if(p.x<0.0) p.x=-p.x; else if(p.x>1.0) p.x=2.0-p.x;
+        if(p.y<uVmin) p.y=2.0*uVmin-p.y; else if(p.y>uVmax) p.y=2.0*uVmax-p.y;
+        vOut=p;
+        gl_Position=vec4(0.0);
+      }`, HEAD + `out vec4 o; void main(){o=vec4(0.0);}`, ["vOut"]);
+    this.pts = makeProgram(gl, HEAD + UNI + `
+      in vec2 aPos; in float aHue; out vec3 vCol;
+      void main(){
+        float asp=uRes.x/uRes.y;
+        gl_Position=vec4(aPos.x*2.0-1.0,(aPos.y-0.5)*asp*2.0,0.0,1.0);
+        gl_PointSize=1.6+0.6*aHue;
+        vCol=mix(uSoft,aHue>0.7?uInk2:uInk,0.45+0.4*aHue)*0.30;
+      }`, HEAD + `
+      in vec3 vCol; out vec4 outColor;
+      void main(){float d=length(gl_PointCoord-0.5)*2.0;outColor=vec4(vCol*(1.0-smoothstep(0.4,1.0,d)),1.0);}`);
+    const hue = new Float32Array(this.N); for (let i = 0; i < this.N; i++) hue[i] = rnd();
+    this.hbuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.hbuf); gl.bufferData(gl.ARRAY_BUFFER, hue, gl.STATIC_DRAW);
+    this.bufs = [gl.createBuffer(), gl.createBuffer()];
+    for (const b of this.bufs) { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, this.N * 8, gl.DYNAMIC_COPY); }
+    const lpSim = gl.getAttribLocation(this.sim.p, "aPos");
+    const lpDraw = gl.getAttribLocation(this.pts.p, "aPos"), lh = gl.getAttribLocation(this.pts.p, "aHue");
+    this.simVao = this.bufs.map((b) => { const v = gl.createVertexArray(); gl.bindVertexArray(v); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(lpSim); gl.vertexAttribPointer(lpSim, 2, gl.FLOAT, false, 0, 0); return v; });
+    this.drawVao = this.bufs.map((b) => {
+      const v = gl.createVertexArray(); gl.bindVertexArray(v);
+      gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(lpDraw); gl.vertexAttribPointer(lpDraw, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.hbuf); gl.enableVertexAttribArray(lh); gl.vertexAttribPointer(lh, 1, gl.FLOAT, false, 0, 0);
+      return v;
+    });
+    gl.bindVertexArray(null);
+    this.tf = gl.createTransformFeedback();
+    this.cur = 0; this.frameNo = 0; this.asp = 0;
+    this.empty = gl.createVertexArray();
+    this.mode = 2; this.prev = 2; this.blend = 1; this.cx = 0.35; this.time = 0; this.lastChange = -99;
+  }
+  resize(w, h) {
+    const asp = w / h;
+    const half = 0.5 / asp;
+    this.vmin = 0.5 - half; this.vmax = 0.5 + half;
+    if (Math.abs(asp - this.asp) < 1e-3) return;
+    this.asp = asp;
+    const init = new Float32Array(this.N * 2);
+    for (let i = 0; i < this.N; i++) { init[2 * i] = rnd(); init[2 * i + 1] = this.vmin + rnd() * (this.vmax - this.vmin); }
+    const gl = this.gl;
+    for (const b of this.bufs) { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferSubData(gl.ARRAY_BUFFER, 0, init); }
+  }
+  step(E, dtRaw) {
+    const gl = this.gl, dt = Math.min(dtRaw, 0.05);
+    this.time += dt;
+    const tot = E.low + E.mid + E.high;
+    const bright = (0.35 * E.mid + 0.65 * E.high) / (0.3 + tot);
+    const target = 0.55 * Math.min(1, tot / 1.6) + 0.45 * Math.min(1, bright * 1.6);
+    this.cx += (target - this.cx) * (1 - Math.exp(-dt / 5));
+    const idx = Math.max(0, Math.min(MODES.length - 1, Math.round((this.cx - 0.15) / 0.6 * (MODES.length - 1))));
+    if (idx !== this.mode && this.time - this.lastChange > 11) { this.prev = this.mode; this.mode = idx; this.blend = 0; this.lastChange = this.time; }
+    this.blend = Math.min(1, this.blend + dt / 2.5);
+    const w2 = this.blend * this.blend * (3 - 2 * this.blend);
+    const [n2, m2, s2] = MODES[this.mode], [n1, m1, s1] = MODES[this.prev];
+    const amp = 0.18 + 0.9 * E.low + 1.2 * Math.max(0, E.beat - 0.45);
+    const S = this.sim; S.use();
+    gl.uniform3f(S.loc("uM2"), n2 * Math.PI, m2 * Math.PI, s2);
+    gl.uniform3f(S.loc("uM1"), n1 * Math.PI, m1 * Math.PI, s1);
+    S.f("uW2", w2); S.f("uW1", 1 - w2); S.f("uK", 0.005); S.f("uJ", 0.03 * amp * Math.sqrt(dt)); S.f("uMax", 0.012);
+    S.f("uDt", dt); S.f("uVmin", this.vmin); S.f("uVmax", this.vmax);
+    S.u("uSeed", Math.imul(++this.frameNo, 0x9e3779b1));
+    const src = this.cur, dst = 1 - src;
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);      // WebGL2 recusa TF num buffer ainda ligado em outro alvo
+    gl.bindVertexArray(this.simVao[src]);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.tf);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.bufs[dst]);
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS, 0, this.N); gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    this.cur = dst;
+  }
+  frame(E, P, dt, w, h) {
+    const gl = this.gl;
+    if (dt > 0) this.step(E, dt);
+    gl.viewport(0, 0, w, h); gl.disable(gl.BLEND);
+    this.bg.use(); this.bg.common(E, P, w, h);
+    gl.bindVertexArray(this.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    this.pts.use(); this.pts.common(E, P, w, h);
+    gl.bindVertexArray(this.drawVao[this.cur]); gl.drawArrays(gl.POINTS, 0, this.N);
+    gl.disable(gl.BLEND);
+  }
+  info() { const [n, m] = MODES[this.mode]; return `modo (${n}, ${m})${this.blend < 1 ? " · migrando" : ""} · 20.000 grãos na GPU`; }
+  dispose() {
+    const gl = this.gl; this.bg.dispose(); this.sim.dispose(); this.pts.dispose();
+    this.bufs.forEach((b) => gl.deleteBuffer(b)); gl.deleteBuffer(this.hbuf);
+    [...this.simVao, ...this.drawVao, this.empty].forEach((v) => gl.deleteVertexArray(v));
+    gl.deleteTransformFeedback(this.tf);
+  }
+}
+
+/* ============================================================
+   5 · Sulco (macro de vinil)
+   Espiral estática na tela; o disco gira a 0,5 rpm e o conteúdo
+   corre ao longo dela. Cada ponto da espiral tem uma idade
+   s = (r - r0)/passo + (θ - θcabeça)/2π voltas; a amplitude vem
+   de um anel de histórico (8 amostras/s, 3,5 h) numa textura RG8.
+   O brilho é o leque anisotrópico do vinil: |cos(θ - θluz)|^k,
+   deslocado ±δ em cada parede do V e pela inclinação da ondulação.
+   ============================================================ */
+const H_TW = 512, H_TH = 256, H_N = H_TW * H_TH;
+function synthMusic(seconds, rate, push) {
+  let t = 0;
+  while (t < seconds) {
+    const len = 150 + rnd() * 120, bpm = 78 + rnd() * 60, base = 0.35 + rnd() * 0.35, bright = 0.2 + rnd() * 0.5, beat = 60 / bpm;
+    const arc = 2 + Math.floor(rnd() * 3);
+    for (let s = 0; s < len * rate && t < seconds; s++) {
+      const tt = s / rate;
+      const sec = 0.6 + 0.4 * Math.sin(tt / len * Math.PI * arc);
+      const kick = Math.exp(-((tt % beat) / beat) * 5);
+      const edge = Math.min(1, tt / 6) * Math.min(1, (len - tt) / 5);
+      push(clamp01(base * sec * (0.45 + 0.55 * kick) * edge * 1.3), clamp01(bright * sec * (0.6 + 0.4 * rnd()) * edge));
+      t += 1 / rate;
+    }
+    for (let s = 0; s < 2.5 * rate && t < seconds; s++) { push(0, 0); t += 1 / rate; }
+  }
+}
+class Groove {
+  constructor(gl) {
+    this.gl = gl; this.rate = 8; this.spg = 960;            // 960 amostras = 120 s = uma volta
+    this.data = new Uint8Array(H_N * 2); this.newest = -1; this.filled = 0;
+    this.acc = { t: 0, max: 0, hi: 0 }; this.rot = 0;
+    synthMusic(3.5 * 3600, this.rate, (a, g) => this.write(a, g, false));
+    this.tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, H_TW, H_TH, 0, gl.RG, gl.UNSIGNED_BYTE, this.data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    this.prog = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + `
+      uniform vec2 uCenter; uniform float uR0,uThH,uThL,uPitch,uSPG,uPhi,uRot,uFilled;
+      uniform int uNewest; uniform sampler2D uHist;
+      const int TW=${H_TW}; const int NTOT=${H_N};
+      vec2 texAt(int k){int i=uNewest-k; if(i<0) i+=NTOT; return texelFetch(uHist,ivec2(i-(i/TW)*TW,i/TW),0).rg;}
+      vec2 hist(float kf){ if(kf<0.0||kf>=uFilled-1.0) return vec2(0.0); float k0=floor(kf); int k=int(k0); return mix(texAt(k),texAt(k+1),kf-k0); }
+      void main(){
+        vec2 q=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+        vec2 d=q-uCenter; float r=length(d); float th=atan(d.y,d.x);
+        float rpx=r*uRes.y;
+        float s=(r-uR0)*uRes.y/uPitch+(th-uThH)/6.2831853;
+        vec2 AG=hist(s*uSPG-uPhi);
+        // ondulação com comprimento de onda fixo em pixels ao longo do sulco
+        float arc=rpx*(th-uRot);
+        float ph1=arc/22.0, ph2=arc/9.0+1.7;
+        float c1=fwidth(ph1)/6.2831853, c2=fwidth(ph2)/6.2831853;
+        float f1=1.0-smoothstep(0.18,0.35,c1), f2=1.0-smoothstep(0.18,0.35,c2);
+        float a1=0.14*AG.x*AG.x*f1, a2=0.05*AG.y*f2;
+        float wob=a1*sin(ph1)+a2*sin(ph2);
+        float dwob=(a1*cos(ph1)/22.0+a2*cos(ph2)/9.0)*uPitch;   // inclinação da parede (rad, aprox.)
+        float tilt=clamp(dwob,-0.6,0.6);
+        float sm=s+wob;
+        float g=fract(sm);
+        float fw=clamp(fwidth(sm),0.02,0.25);
+        float wIn=smoothstep(0.16-fw,0.16+fw,g)*(1.0-smoothstep(0.5-fw,0.5+fw,g));
+        float wOut=smoothstep(0.5-fw,0.5+fw,g)*(1.0-smoothstep(0.84-fw,0.84+fw,g));
+        float land=clamp(1.0-wIn-wOut,0.0,1.0);
+        float ang=th-uThL+0.05*sin(uTime*0.02);
+        float lIn=pow(abs(cos(ang+0.09+tilt*0.15)),70.0);
+        float lOut=pow(abs(cos(ang-0.09+tilt*0.15)),70.0);
+        float lLand=pow(abs(cos(ang)),10.0);
+        float sheen=wIn*lIn+wOut*lOut+land*lLand*0.30;
+        vec3 light=mix(uSoft,vec3(0.92),0.35);
+        vec3 col=uCanvas*(0.80+0.30*land);
+        col+=uInk*AG.x*0.09*(1.0-land);
+        col+=light*sheen*(0.62+0.25*uLow);
+        col+=uInk2*sheen*AG.y*0.30;
+        float blank=1.0-smoothstep(-0.6,0.0,s);
+        vec3 lac=uCanvas*0.92+light*pow(abs(cos(ang)),5.0)*0.09;
+        col=mix(col,lac,blank);
+        col*=1.0-0.22*dot(q,q);
+        outColor=vec4(dither(col),1.0);
+      }`);
+    this.empty = gl.createVertexArray();
+    this.pitch = 9; this.w = 1; this.h = 1;
+  }
+  write(a, g, upload) {
+    this.newest = (this.newest + 1) % H_N;
+    this.data[2 * this.newest] = Math.round(a * 255); this.data[2 * this.newest + 1] = Math.round(g * 255);
+    this.filled = Math.min(this.filled + 1, H_N);
+    if (upload) {
+      const gl = this.gl;
+      gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, this.newest % H_TW, Math.floor(this.newest / H_TW), 1, 1, gl.RG, gl.UNSIGNED_BYTE, this.data.subarray(2 * this.newest, 2 * this.newest + 2));
+    }
+  }
+  advance(sec) {
+    synthMusic(sec, this.rate, (a, g) => this.write(a, g, false));
+    const gl = this.gl; gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, H_TW, H_TH, 0, gl.RG, gl.UNSIGNED_BYTE, this.data);
+  }
+  resize(w, h) { this.w = w; this.h = h; }
+  frame(E, P, dt, w, h) {
+    const gl = this.gl, T = 1 / this.rate;
+    this.acc.t += dt; this.acc.max = Math.max(this.acc.max, E.low); this.acc.hi += E.high * dt;
+    while (this.acc.t >= T) {
+      const a = clamp01((this.acc.max - 0.12) / 0.7), g = clamp01(this.acc.hi / Math.max(this.acc.t, 1e-6) * 1.4);
+      this.write(a, g, true);
+      this.acc.t -= T; this.acc.hi = 0; this.acc.max = E.low;
+    }
+    this.rot += dt * 2 * Math.PI / 120;   // 0,5 rpm; em float32 a fase segue precisa por dezenas de horas
+    const asp = w / h;
+    gl.viewport(0, 0, w, h); gl.disable(gl.BLEND);
+    const p = this.prog; p.use(); p.common(E, P, w, h);
+    p.v2("uCenter", -asp / 2 - 0.35, -1.05); p.f("uR0", 0.72); p.f("uThH", 0.3); p.f("uThL", 0.80);
+    p.f("uPitch", this.pitch); p.f("uSPG", this.spg); p.f("uPhi", this.acc.t * this.rate); p.f("uRot", this.rot);
+    p.f("uFilled", this.filled); p.i("uNewest", this.newest);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); p.i("uHist", 0);
+    gl.bindVertexArray(this.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  info() { return `0,5 rpm · 1 volta = 2 min · ${fmt(this.filled / this.rate / 3600, 1)} h gravadas`; }
+  dispose() { const gl = this.gl; this.prog.dispose(); gl.deleteTexture(this.tex); gl.deleteVertexArray(this.empty); }
+}
+
+/* ============================================================
+   6 · Nébula (a do app) — refinada: buffer de 256 linhas + dither.
+   Com {full:true} é a referência da v0.2.78 (resolução cheia,
+   sem dither), usada só na medição.
+   ============================================================ */
+const NOISE = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec2 mod289(vec2 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec3 permute(vec3 x){return mod289(((x*34.0)+1.0)*x);}
+float snoise(vec2 v){
+  const vec4 C=vec4(0.211324865405187,0.366025403784439,-0.577350269189626,0.024390243902439);
+  vec2 i=floor(v+dot(v,C.yy)); vec2 x0=v-i+dot(i,C.xx);
+  vec2 i1=(x0.x>x0.y)?vec2(1.0,0.0):vec2(0.0,1.0);
+  vec4 x12=x0.xyxy+C.xxzz; x12.xy-=i1; i=mod289(i);
+  vec3 p=permute(permute(i.y+vec3(0.0,i1.y,1.0))+i.x+vec3(0.0,i1.x,1.0));
+  vec3 m=max(0.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.0); m=m*m; m=m*m;
+  vec3 x=2.0*fract(p*C.www)-1.0; vec3 h=abs(x)-0.5; vec3 ox=floor(x+0.5); vec3 a0=x-ox;
+  m*=1.79284291400159-0.85373472095314*(a0*a0+h*h);
+  vec3 g; g.x=a0.x*x0.x+h.x*x0.y; g.yz=a0.yz*x12.xz+h.yz*x12.yw;
+  return 130.0*dot(m,g);
+}
+float fbm(vec2 p){float f=0.0,a=0.5;for(int i=0;i<5;i++){f+=a*snoise(p);p=p*2.02+vec2(17.3,9.1);a*=0.5;}return f;}
+`;
+class Nebula {
+  constructor(gl, opts = {}) {
+    this.gl = gl; this.full = !!opts.full;
+    this.neb = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + NOISE + `
+      uniform float uDither;
+      void main(){
+        vec2 uv=gl_FragCoord.xy/uRes; vec2 p=(uv-0.5)*vec2(uRes.x/uRes.y,1.0)*1.6;
+        float t=uTime*0.06;
+        vec2 q=vec2(fbm(p+t),fbm(p+vec2(5.2,1.3)-t));
+        vec2 r=vec2(fbm(p+1.7*q*(0.8+0.6*uLow)+vec2(1.7,9.2)+t*0.7),fbm(p+1.7*q+vec2(8.3,2.8)-t*0.5));
+        float f=fbm(p+2.0*r);
+        float body=smoothstep(0.15,0.95,f*0.5+0.5);
+        vec3 col=mix(uCanvas,uInk,body*(0.35+0.5*uLow+0.2*uBeat));
+        col=mix(col,uInk2,smoothstep(0.55,0.95,length(r))*uMid*0.5);
+        col+=uSoft*pow(max(0.0,f),3.0)*uHigh*0.35;
+        float vig=1.0-0.45*dot(uv-0.5,uv-0.5)*2.0;
+        col*=vig;
+        outColor=vec4(uDither>0.5?dither(col):col,1.0);
+      }`);
+    this.up = makeProgram(gl, VS_TRI, HEAD + FS_COMMON + `
+      uniform sampler2D uTex;
+      void main(){ vec3 c=texture(uTex,gl_FragCoord.xy/uRes).rgb; outColor=vec4(dither(c),1.0); }`);
+    this.empty = gl.createVertexArray(); this.rt = null; this.w2 = 0; this.h2 = 0;
+  }
+  resize(w, h) {
+    if (this.full) return;
+    this.rt?.dispose();
+    this.h2 = Math.min(h, 256); this.w2 = Math.max(1, Math.round(w * this.h2 / h));
+    this.rt = makeTarget(this.gl, this.w2, this.h2);
+  }
+  frame(E, P, dt, w, h) {
+    const gl = this.gl;
+    gl.disable(gl.BLEND); gl.bindVertexArray(this.empty);
+    if (this.full) {
+      gl.viewport(0, 0, w, h);
+      this.neb.use(); this.neb.common(E, P, w, h); this.neb.f("uDither", 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3); return;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fb); gl.viewport(0, 0, this.w2, this.h2);
+    this.neb.use(); this.neb.common(E, P, this.w2, this.h2); this.neb.f("uDither", 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h);
+    this.up.use(); this.up.common(E, P, w, h);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.rt.tex); this.up.i("uTex", 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  info() { return this.full ? "resolução cheia" : `buffer de ${this.w2}×${this.h2} (⅓ em 1366×768) · 25 ruídos por pixel`; }
+  dispose() { const gl = this.gl; this.neb.dispose(); this.up.dispose(); this.rt?.dispose(); gl.deleteVertexArray(this.empty); }
+}
+
+/* ============================================================
+   Montagem
+   ============================================================ */
+const SCENES = {
+  motes:   { Ctor: Motes,   name: "Poeira na luz",   where: "Facho analítico em tela cheia e 5.000 pontos pequenos" },
+  marble:  { Ctor: Marble,  name: "Marmorizado",     where: "Uma leitura de textura por pixel; a gravura só é refeita a cada gota ou 1,5 s (Catmull-Rom, sem borrar)" },
+  bokeh:   { Ctor: Bokeh,   name: "Palco",           where: "48 discos aditivos; os grandes cobrem boa parte da tela" },
+  chladni: { Ctor: Chladni, name: "Cimática",        where: "Física de 20.000 grãos na GPU por transform feedback (na CPU, 14 mil grãos custavam 8,3 ms)" },
+  groove:  { Ctor: Groove,  name: "Sulco",           where: "Shader em tela cheia com atan, pow e quatro leituras de textura" },
+  nebula:  { Ctor: Nebula,  name: "Nébula refinada", where: "25 ruídos simplex por pixel, em um nono dos pixels" },
+};
+/* medido na cmr-auto em 25/09 (WebKitGTK 2.52.6, UHD 620), ms por quadro:
+   melhor lote de 3 rodadas (2 sem o processo de GPU), com a máquina em uso */
+const CMR = { marble: 1.0, motes: 1.542, bokeh: 1.958, chladni: 2.292, groove: 2.792, nebula: 6.833, nebulaFull: 23.833 };
+const CMR_NOGPU = { marble: 0.792, motes: 1.667, bokeh: 2.583, chladni: 2.542, groove: 3.167, nebula: 5.958, nebulaFull: 24.333 };
+const REF = { key: "nebulaFull", name: "Nébula atual (v0.2.78)", where: "Os mesmos 25 ruídos em todos os pixels", make: (gl) => new Nebula(gl, { full: true }) };
+
+const grid = $("grid");
+const stages = [];
+for (const tile of grid.querySelectorAll(".tile")) {
+  const key = tile.dataset.k, spec = SCENES[key];
+  const canvas = tile.querySelector("canvas");
+  const st = { key, tile, canvas, stage: tile.querySelector(".stage"), infoEl: tile.querySelector("[data-info]"), msEl: tile.querySelector("[data-ms]"),
+    costEl: tile.querySelector("[data-cost]"), barEl: tile.querySelector(".costbar i"), rankEl: tile.querySelector(".rank"), visible: true, w: 1, h: 1, scene: null, gl: null };
+  try {
+    const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: "high-performance" });
+    if (!gl) throw new Error("este navegador não entregou um contexto WebGL2");
+    st.gl = gl; st.scene = new spec.Ctor(gl);
+  } catch (e) {
+    const err = document.createElement("div"); err.className = "err";
+    err.textContent = "Cena indisponível: " + (e.message || e).split("\n")[0];
+    st.stage.appendChild(err); console.error(key, e);
+  }
+  stages.push(st);
+}
+
+function sizeStage(st) {
+  const r = st.canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  if (w === st.w && h === st.h) return;
+  st.w = w; st.h = h; st.canvas.width = w; st.canvas.height = h;
+  st.scene?.resize(w, h);
+}
+const ro = new ResizeObserver(() => stages.forEach(sizeStage));
+stages.forEach((st) => { ro.observe(st.canvas); sizeStage(st); });
+const io = new IntersectionObserver((ents) => { for (const en of ents) { const st = stages.find((s) => s.stage === en.target); if (st) st.visible = en.isIntersecting; } });
+stages.forEach((st) => io.observe(st.stage));
+
+/* diagnóstico: o mesmo dado que o app mostra no Tweaks */
+(function diag() {
+  const gl = stages.find((s) => s.gl)?.gl;
+  if (!gl) { $("glv").textContent = "WebGL2 indisponível"; $("gpu").textContent = ""; $("ext").textContent = ""; return; }
+  $("glv").textContent = "WebGL2";
+  const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+  $("gpu").textContent = "renderer: " + (dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  const has = (n) => (gl.getSupportedExtensions() || []).includes(n) ? "sim" : "não";
+  $("ext").textContent = `float RT: ${has("EXT_color_buffer_float")} · timer GPU: ${has("EXT_disjoint_timer_query_webgl2")}`;
+})();
+
+function applyTheme(k) {
+  const t = THEMES[k], root = document.documentElement.style;
+  root.setProperty("--canvas", t.canvas); root.setProperty("--base", t.base);
+  root.setProperty("--cont", t.cont); root.setProperty("--cont-hi", t.contHi);
+  root.setProperty("--ink", t.ink); root.setProperty("--ink2", t.ink2); root.setProperty("--on-ink", t.onInk);
+  root.setProperty("--text", t.text); root.setProperty("--text-2", t.text2); root.setProperty("--muted", t.muted);
+  root.setProperty("--line", t.line); root.setProperty("--line-2", t.line2);
+  PAL = { canvas: hexRgb(t.canvas), ink: hexRgb(t.ink), ink2: hexRgb(t.ink2), soft: hexRgb(t.muted) };
+  for (const st of stages) st.scene?.onPalette?.(PAL);
+}
+applyTheme("copper");
+
+/* ============================================================
+   Laço único
+   ============================================================ */
+const MAIN = makeSignal();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let last = performance.now(), focusKey = null, benchRunning = false;
+let frames = 0, acc = 0, infoTick = 0;
+const mm = (s) => { const t = Math.floor(s); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+function loop(now) {
+  requestAnimationFrame(loop);
+  let dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (document.hidden || benchRunning) return;
+  if (reduced) dt *= 0.25;
+  if (ctl.paused) dt = 0;
+  if (dt > 0) stepSignal(MAIN, dt);
+  const E = MAIN.env;
+  $("mLow").style.setProperty("--v", E.low.toFixed(3)); $("mMid").style.setProperty("--v", E.mid.toFixed(3));
+  $("mHigh").style.setProperty("--v", E.high.toFixed(3)); $("mBeat").style.setProperty("--v", E.beat.toFixed(3));
+  for (const st of stages) {
+    if (!st.scene || !st.visible) continue;
+    if (focusKey && st.key !== focusKey) continue;
+    st.scene.frame(E, PAL, dt, st.w, st.h);
+  }
+  frames++; acc += (now - (loop.prev || now)) / 1000; loop.prev = now;
+  if (acc >= 1) { $("fps").textContent = Math.round(frames / acc) + " fps"; frames = 0; acc = 0; }
+  if (++infoTick % 15 === 0) { $("clock").textContent = mm(E.clock); for (const st of stages) if (st.scene) st.infoEl.textContent = st.scene.info(); }
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   Medição: cada cena sozinha, 1366×768, contexto próprio.
+   readPixels de 1 pixel força a GPU a terminar o lote, então o
+   número inclui CPU (física, uploads) e GPU.
+   ============================================================ */
+const BUDGET = 1000 / 60;
+async function measure() {
+  if (benchRunning) return;
+  benchRunning = true;
+  const btn = $("bench"); btn.disabled = true; btn.textContent = "medindo…";
+  const tickUI = () => new Promise((r) => setTimeout(r, 0));
+  const results = [];
+  try {
+    const c = document.createElement("canvas"); c.width = 1366; c.height = 768;
+    const gl = c.getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: "high-performance" });
+    if (!gl) throw new Error("sem WebGL2 para medir");
+    const px = new Uint8Array(4);
+    const list = [...Object.entries(SCENES).map(([key, s]) => ({ key, name: s.name, where: s.where, make: (g) => new s.Ctor(g) })), REF];
+    for (const spec of list) {
+      btn.textContent = `medindo ${spec.name}…`;
+      await tickUI();
+      const scene = spec.make(gl); scene.resize(1366, 768);
+      const S = makeSignal(); const dt = 1 / 60;
+      for (let i = 0; i < 20; i++) { stepSignal(S, dt); scene.frame(S.env, PAL, dt, 1366, 768); }
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      const times = [];
+      for (let b = 0; b < 5; b++) {
+        const t0 = performance.now();
+        for (let i = 0; i < 24; i++) { stepSignal(S, dt); scene.frame(S.env, PAL, dt, 1366, 768); }
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        times.push((performance.now() - t0) / 24);
+        await tickUI();
+      }
+      times.sort((a, b) => a - b);
+      results.push({ ...spec, ms: times[2], min: times[0] });
+      scene.dispose();
+    }
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch (e) {
+    $("costIntro").textContent = "A medição falhou neste navegador: " + (e.message || e);
+  }
+  benchRunning = false; last = performance.now(); loop.prev = last;
+  btn.disabled = false; btn.textContent = "Medir de novo";
+  if (results.length) showResults(results);
+  window.__bench = results.map((r) => ({ key: r.key, ms: +r.ms.toFixed(3), min: +r.min.toFixed(3) }));
+  if (location.hash === "#medir") document.title = "BENCH " + JSON.stringify({ renderer: $("gpu").textContent, ext: $("ext").textContent, results: window.__bench });
+}
+function showResults(results) {
+  const local = Object.fromEntries(results.map((r) => [r.key, r.ms]));
+  for (const st of stages) if (local[st.key] != null) st.msEl.textContent = `neste aparelho: ${fmt(local[st.key], 2)} ms`;
+  const renderer = $("gpu").textContent.replace("renderer: ", "");
+  $("costIntro").innerHTML = `Última coluna medida neste aparelho (renderer informado: <code></code>). A ordem dos quadros continua sendo a da cmr-auto.`;
+  $("costIntro").querySelector("code").textContent = renderer;
+  renderRows(local);
+}
+function renderRows(local = {}) {
+  const keys = Object.keys(SCENES).sort((a, b) => CMR[a] - CMR[b]);
+  const row = (k, name, where, i, isRef) => `<tr class="${isRef ? "ref" : ""}"><td class="num">${isRef ? "ref." : i + 1}</td><td class="nm">${name}</td><td>${where}</td><td class="num">${fmt(CMR[k], 2)}</td><td class="num">${fmt((CMR[k] / BUDGET) * 100, 0)}%</td><td class="num">${fmt(CMR_NOGPU[k], 2)}</td><td class="num">${local[k] != null ? fmt(local[k], 2) : "—"}</td></tr>`;
+  $("costRows").innerHTML = keys.map((k, i) => row(k, SCENES[k].name, SCENES[k].where, i, false)).join("") + row("nebulaFull", REF.name, REF.where, 0, true);
+}
+renderRows();
+for (const st of stages) {
+  const ms = CMR[st.key]; if (ms == null) continue;
+  st.barEl.style.width = Math.min(100, (ms / 4) * 100) + "%";
+  st.barEl.className = ms > BUDGET * 0.3 ? "bad" : ms > BUDGET * 0.15 ? "warn" : "";
+}
+
+/* ============================================================
+   Controles
+   ============================================================ */
+function focusTile(st) {
+  const on = st && focusKey !== st.key;
+  focusKey = on ? st.key : null;
+  stages.forEach((s) => s.tile.classList.toggle("on", on && s === st));
+  grid.classList.toggle("focus", on);
+  requestAnimationFrame(() => stages.forEach(sizeStage));
+}
+stages.forEach((st) => {
+  st.stage.addEventListener("click", () => focusTile(st));
+  st.stage.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusTile(st); } });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.key >= "1" && e.key <= "6") { const tiles = [...grid.querySelectorAll(".tile")]; const st = stages.find((s) => s.tile === tiles[+e.key - 1]); if (st) focusTile(st); }
+  if (e.key === "Escape" && focusKey) focusTile(null);
+  if (e.key === " " && !e.target.closest?.(".stage")) { e.preventDefault(); $("pause").click(); }
+  if (e.key === "m" || e.key === "M") measure();
+});
+$("theme").addEventListener("change", (e) => applyTheme(e.target.value));
+const autoBtn = $("auto"), energy = $("energy");
+autoBtn.addEventListener("click", () => {
+  ctl.auto = !ctl.auto; autoBtn.setAttribute("aria-pressed", String(ctl.auto));
+  autoBtn.textContent = ctl.auto ? "simulada" : "fixa"; energy.disabled = ctl.auto;
+});
+energy.addEventListener("input", () => { ctl.energy = +energy.value / 100; $("energyVal").textContent = energy.value; });
+$("skip").addEventListener("click", () => {
+  MAIN.t += 600; MAIN.env.clock += 600;
+  for (const st of stages) st.scene?.advance?.(600);
+});
+$("pause").addEventListener("click", () => {
+  ctl.paused = !ctl.paused; $("pause").setAttribute("aria-pressed", String(ctl.paused));
+  $("pause").textContent = ctl.paused ? "continuar" : "pausar";
+});
+document.body.classList.add("np-on");
+$("np").addEventListener("click", () => { const on = document.body.classList.toggle("np-on"); $("np").setAttribute("aria-pressed", String(on)); });
+$("bench").addEventListener("click", measure);
+if (location.hash === "#medir") setTimeout(measure, 2500);
+</script>

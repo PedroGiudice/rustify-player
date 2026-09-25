@@ -193,13 +193,30 @@ as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
 - Falha de contexto WebGL nao deixa tela preta: `glStatus.ok === false` e
   o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
   motor chama `resetGlStatus()`.
-- DPR fixo em 1 e o fps medido no app aparece no Tweaks — e o gate da
-  feature na cmr-auto (UHD 620 @ 1366x768), nao enfeite. O custo por
-  cena AINDA NAO FOI MEDIDO no app real: Poeira/Orbitas gastam em
-  geometria (6000 pontos / 40 linhas), Relevo em vertices (120x88) e
-  Nebula inteira em fillrate (fbm com domain warping por pixel) — em
-  GPU integrada a mais barata nao e obvia. Medir pelo fps do painel
-  antes de afirmar qualquer coisa.
+- DPR fixo em 1 e o fps medido no app aparece no Tweaks — é o gate da
+  feature na cmr-auto (UHD 620 @ 1366x768), não enfeite. Custo MEDIDO
+  em 25/09 no WebKitGTK 2.52.6 da cmr-auto (cena sozinha, 1366x768,
+  sincronizando com a GPU): a **Nébula atual custa 23-24 ms por
+  quadro**, mais que um quadro inteiro de 60 fps. A mesma cena com
+  buffer de 256 linhas (⅓ da resolução) + upscale + dither custa
+  3,6 ms. O custo está na resolução, não na lib. Lab v2 (seis cenas
+  candidatas em WebGL2 puro, sem three) e método de medição em
+  `docs/design-refs/fundo-lab-v2/`: `wk_bench.py` roda o lab num
+  `Gtk.OffscreenWindow` com `GDK_BACKEND=x11 DISPLAY=:0
+  XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.*` (o backend Wayland
+  aborta sem contexto GL; nada aparece na tela do usuário). Medir com a
+  máquina ociosa: com o app aberto + Chrome os tempos dobram (a ordem
+  entre as cenas se mantém).
+- **Regra dura: nunca multiplicar o relógio por um sinal que oscila**
+  (`uTime * (a + b*uMid)`). A velocidade aparente vira
+  `speed + t·d(speed)/dt` e cresce com o tempo de sessão — era o
+  defeito da Poeira (CMR-267: 4 u/s projetados, 279 u/s aos 5 min).
+  Sinal muda VELOCIDADE; a posição é integrada na CPU (`x += dt*v`) e
+  entra como uniform, como a Órbitas faz com `zoff`.
+- O WebKitGTK mascara o renderer ("Apple GPU", mesmo na Intel): o nome
+  da GPU no Tweaks não identifica hardware nem render por software, e
+  não há timer de GPU (`WebGLTimerQueries` desligado). O fps medido é o
+  único sinal confiável.
 
 So escalar pra YAML / Tauri command novo quando o knob precisar
 de preset salvavel, share entre instalacoes, ou hot-reload por
