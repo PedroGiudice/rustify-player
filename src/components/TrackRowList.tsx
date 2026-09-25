@@ -55,7 +55,10 @@ export function TrackRowList(props: TrackRowListProps) {
       }}
       role="row"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") props.onClick(); }}
+      onKeyDown={(e) => {
+        // preventDefault: sem ele o Espaço também rola o contêiner da view.
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onClick(); }
+      }}
     >
       {/* Cover com NPI overlay quando current */}
       <div style={{ position: "relative", width: coverPx(), height: coverPx(), flex: "none" }}>
