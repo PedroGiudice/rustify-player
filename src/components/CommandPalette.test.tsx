@@ -4,6 +4,11 @@
    "Procurar "<q>" na rede →" sempre presente com query digitada,
    promovido ao topo quando a busca local não acha nada (spec §4.1).
    run() navega pra /crate/<q> e fecha o palette.
+
+   Auditoria de UI 25/09 (shell-8): as setas levam a seleção para a
+   área visível da lista, e Enter antes da busca responder espera o
+   resultado em vez de executar o item da busca anterior (ou o
+   "Procurar na rede" que ocupa o topo enquanto não há resultado).
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -20,6 +25,7 @@ vi.mock("../tauri", async (importOriginal) => {
 });
 
 import * as tauriApi from "../tauri";
+import { playTrack } from "./PlayerBar";
 import { CommandPalette, CMD_PALETTE_EVENT } from "./CommandPalette";
 
 beforeEach(() => {
@@ -113,5 +119,68 @@ describe("CommandPalette — ação Open queue (shell-v4)", () => {
     fireEvent.click(item);
     window.removeEventListener("rustify:open-queue", onQ);
     expect(seen).toEqual([{ open: true }]);
+  });
+});
+
+describe("CommandPalette — navegação por teclado (shell-8)", () => {
+  it("setas rolam o item ativo para a área visível", () => {
+    const scrollSpy = vi.fn();
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      const { container } = render(() => <CommandPalette />);
+      openPalette();
+      const input = container.querySelector(".palette__input") as HTMLInputElement;
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      const items = container.querySelectorAll(".palette__item");
+      expect(scrollSpy).toHaveBeenCalledTimes(1);
+      expect(scrollSpy.mock.contexts[0]).toBe(items[1]);
+      expect(scrollSpy.mock.calls[0][0]).toEqual({ block: "nearest" });
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      expect(scrollSpy.mock.contexts[1]).toBe(items[0]);
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
+  });
+
+  it("Enter logo após digitar espera a busca e toca a primeira faixa, não o Crate", async () => {
+    const track = {
+      id: "1", title: "Sicko Mode", artist_name: "Travis Scott", album_title: null,
+      album_cover_path: null, album_year: null, duration_ms: 180000, path: "/a.flac", lrc_path: null,
+    };
+    vi.mocked(tauriApi.libSearch).mockResolvedValue({ tracks: [track], albums: [], artists: [] } as any);
+    const { container } = render(() => <CommandPalette />);
+    openPalette();
+    const input = container.querySelector(".palette__input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(vi.mocked(playTrack)).toHaveBeenCalledWith(track);
+    });
+    expect(window.location.hash).not.toContain("/crate/");
+  });
+
+  it("Enter com a query mudada espera a busca nova, não executa o resultado anterior", async () => {
+    const first = {
+      id: "1", title: "Antiga", artist_name: null, album_title: null,
+      album_cover_path: null, album_year: null, duration_ms: 1, path: "/1", lrc_path: null,
+    };
+    const second = { ...first, id: "2", title: "Nova", path: "/2" };
+    vi.mocked(tauriApi.libSearch).mockImplementation(async (q: string) =>
+      ({ tracks: [q === "ab" ? second : first], albums: [], artists: [] }) as any);
+    const { container, getByText } = render(() => <CommandPalette />);
+    openPalette();
+    const input = container.querySelector(".palette__input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "a" } });
+    await waitFor(() => expect(getByText("Antiga")).toBeTruthy());
+
+    fireEvent.input(input, { target: { value: "ab" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => {
+      expect(vi.mocked(playTrack)).toHaveBeenCalled();
+    });
+    expect(vi.mocked(playTrack)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(playTrack)).toHaveBeenCalledWith(second);
   });
 });
