@@ -1533,10 +1533,30 @@ html[data-sidebar="icons"] .nav-item__kbd { display: none; }
 /* Esconde o texto do nav-item (span sem classe que envolve o label).
    O Icon vira <iconify-icon>, nao span — entao filtro generico nao
    afeta o icone. Sem isso o label do nav sobra ao lado do icone
-   numa sidebar de 56px e quebra o layout. */
-html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd) { display: none; }
+   numa sidebar de 56px e quebra o layout.
+   Esconde SO na tela: display:none tirava o nome acessivel do link
+   (leitor de tela anunciava link sem nome). O tooltip vem do title
+   que o Sidebar.tsx poe neste modo. O contador do Crate fica de fora
+   do filtro: some-lo escondia os downloads ativos. */
+html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge) {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 html[data-sidebar="icons"] .nav-item {
+  position: relative;
   justify-content: center; padding: 8px; gap: 0;
+}
+/* Contador no canto do item, sem empurrar o icone centralizado. */
+html[data-sidebar="icons"] .nav-item__badge {
+  position: absolute; top: 0; right: 0;
+  margin: 0;
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
 }
 html[data-sidebar="icons"] .np-mini { display: none; }
 

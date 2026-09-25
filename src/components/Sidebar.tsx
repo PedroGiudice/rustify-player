@@ -15,6 +15,7 @@ import { For, Index, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
 import { activeCount } from "../store/crate";
+import { tweaks } from "../store/tweaks";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
@@ -58,6 +59,10 @@ export function Sidebar() {
   });
 
   const isActive = (r: string) => route().path === r;
+  // No modo icons o rótulo sai da tela (fica só para leitor de tela):
+  // o tooltip é a única dica do que cada ícone faz. No modo labels
+  // seria redundante com o texto visível.
+  const tip = (label: string) => (tweaks().sidebar === "icons" ? label : undefined);
 
   function handleNavClick(e: MouseEvent, item: { route: string; action?: "search" }) {
     e.preventDefault();
@@ -87,6 +92,7 @@ export function Sidebar() {
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
               href={`#${item.route}`}
+              title={tip(item.label)}
               onClick={(e) => handleNavClick(e, item)}
             >
               <Icon name={item.icon} size={16} />
@@ -107,6 +113,7 @@ export function Sidebar() {
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
               href={`#${item.route}`}
+              title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
             >
               <Icon name={item.icon} size={16} />
@@ -148,6 +155,7 @@ export function Sidebar() {
         <a
           class={`nav-item${isActive("/now-playing") ? " active" : ""}`}
           href="#/now-playing"
+          title={tip("Now Playing")}
           onClick={(e) => { e.preventDefault(); navigate("/now-playing"); }}
         >
           <Icon name={ICONS.music} size={16} />
@@ -160,6 +168,7 @@ export function Sidebar() {
             <a
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
               href={`#${item.route}`}
+              title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
             >
               <Icon name={item.icon} size={16} />
