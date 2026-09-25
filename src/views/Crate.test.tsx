@@ -212,6 +212,67 @@ describe("Crate — busca nunca dispara on-input", () => {
   });
 });
 
+describe("Crate — busca em voo (crate-8)", () => {
+  function runningSnapshot(over: Partial<SearchSnapshot> = {}): SearchSnapshot {
+    return { ...snapshot([group()], "running"), responses_seen: 7, elapsed_ms: 12_500, ...over };
+  }
+
+  async function startSearch() {
+    const utils = render(() => <Crate />);
+    const input = utils.container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko mode" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(utils.container.querySelectorAll(".crate-row").length).toBeGreaterThan(0));
+    return { ...utils, input };
+  }
+
+  it("Enter no campo durante a busca não cancela nem reinicia a busca em voo; o campo fica somente leitura", async () => {
+    vi.mocked(tauriApi.slskResults).mockImplementation(async () => runningSnapshot());
+    const { input } = await startSearch();
+    expect(input.readOnly).toBe(true);
+    fireEvent.keyDown(input, { key: "Enter" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(tauriApi.slskSearch).toHaveBeenCalledTimes(1);
+    expect(tauriApi.slskCancelSearch).not.toHaveBeenCalled();
+  });
+
+  it("nova busca recusada pelo pacer não cancela a anterior; aceita, cancela a anterior", async () => {
+    vi.mocked(tauriApi.slskResults).mockImplementation(async () => snapshot([group()], "done"));
+    vi.mocked(tauriApi.slskSearch).mockResolvedValueOnce("srch1");
+    const { input } = await startSearch();
+    expect(input.readOnly).toBe(false);
+
+    vi.mocked(tauriApi.slskSearch).mockRejectedValueOnce("cooldown:3");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(tauriApi.slskSearch).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(tauriApi.slskCancelSearch).not.toHaveBeenCalled();
+
+    vi.mocked(tauriApi.slskSearch).mockResolvedValueOnce("srch2");
+    // espera o countdown do botão não importa: Enter no campo chama o backend,
+    // e é o backend (pacer) quem decide.
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(tauriApi.slskCancelSearch).toHaveBeenCalledWith("srch1"));
+  });
+
+  it("durante a busca o cabeçalho mostra respostas e a barra contra a janela de 25 s, não 'Resultados · 0 faixas'", async () => {
+    vi.mocked(tauriApi.slskResults).mockImplementation(async () => runningSnapshot({ groups: [] }));
+    const { container } = render(() => <Crate />);
+    const input = container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko mode" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(container.querySelector(".crate-list-head")).toBeTruthy());
+    await waitFor(() => expect(container.querySelector(".crate-list-head h2")!.textContent).toContain("7"));
+    const head = container.querySelector(".crate-list-head")!;
+    const text = (head.textContent ?? "").replace(/ /g, " ");
+    expect(text).toContain("Buscando");
+    expect(text).toContain("7 respostas");
+    expect(text).not.toContain("faixas");
+    const bar = head.querySelector(".crate-prog i") as HTMLElement;
+    expect(bar.style.width).toBe("50%");
+  });
+});
+
 describe("Crate — cooldown", () => {
   // v1.1: os dois canais são visualmente distintos — min-interval
   // (Err "cooldown:N") vira countdown NO BOTÃO, sem banner; rede fria

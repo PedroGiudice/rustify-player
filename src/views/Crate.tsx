@@ -41,6 +41,9 @@ const POLL_MS = 800;
 /** Status da rede muda devagar; consultar a cada poll de busca era
     desperdício (crate-1). */
 const STATUS_POLL_MS = 5000;
+/** Janela de uma busca no backend (`SEARCH_WINDOW`, coordinator.rs) — a
+    barra de progresso da busca corre contra ela (spec §6.1). */
+const SEARCH_WINDOW_MS = 25_000;
 
 /** Circunferência do anel de cooldown (r=6) — casa com o
     stroke-dasharray:37.7 do handoff. */
@@ -693,7 +696,12 @@ export default function Crate(props: { param?: string | null }) {
   const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : "");
   const [searchId, setSearchId] = createSignal<string | null>(null);
   const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(null);
-  const [searching, setSearching] = createSignal(false);
+  // "Buscando" = pedido em andamento no IPC OU a busca atual ainda na
+  // janela do backend. Derivado do snapshot (fonte da verdade), em vez de
+  // um signal próprio que dessincronizava quando uma busca nova era
+  // recusada com a anterior ainda em voo.
+  const [pending, setPending] = createSignal(false);
+  const searching = () => pending() || snapshot()?.state === "running";
   const [status, setStatus] = createSignal<SlskStatus | null>(null);
   // Dois canais distintos de "a rede te barrou":
   //  - min-interval (Err "cooldown:N") → countdown NO BOTÃO, sem banner;
@@ -735,8 +743,12 @@ export default function Crate(props: { param?: string | null }) {
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
+  /** Número da chamada de doSearch mais recente (só ela baixa o pending). */
+  let searchSeq = 0;
 
   const groups = () => results.groups;
+  const responsesSeen = () => snapshot()?.responses_seen ?? 0;
+  const searchPct = () => Math.min(100, ((snapshot()?.elapsed_ms ?? 0) / SEARCH_WINDOW_MS) * 100);
   const selectedIndex = createMemo(() => {
     const k = selectedKey();
     const i = k == null ? -1 : groups().findIndex((g) => g.group_key === k);
@@ -812,14 +824,18 @@ export default function Crate(props: { param?: string | null }) {
   async function doSearch(force = false) {
     const q = query().trim();
     if (!q) return;
+    const seq = ++searchSeq;
     const prevId = searchId();
-    if (prevId) slskCancelSearch(prevId).catch(() => {});
     setColdSeconds(null);
     setNotice(null);
-    setSearching(true);
+    setPending(true);
     setDedupTrack(null);
     try {
       const id = await slskSearch(q, force);
+      // A anterior só é cancelada depois que o backend ACEITOU a nova:
+      // cancelar antes fazia uma busca recusada pelo pacer (cooldown)
+      // matar a que estava em voo, congelando os resultados (crate-8).
+      if (prevId && prevId !== id) slskCancelSearch(prevId).catch(() => {});
       setSearchId(id);
       applySnapshot(null);
       setSelectedKey(null);
@@ -831,9 +847,7 @@ export default function Crate(props: { param?: string | null }) {
       const snap = await slskResults(id);
       if (searchId() !== id) return;
       applySnapshot(snap);
-      setSearching(snap.state === "running");
     } catch (e) {
-      setSearching(false);
       const parsed = parseSlskSearchError(e);
       if (parsed.kind === "cooldown") startCooldown(parsed.seconds ?? 0);
       else if (parsed.kind === "cold") setColdSeconds(parsed.seconds ?? 0);
@@ -846,6 +860,8 @@ export default function Crate(props: { param?: string | null }) {
       } else {
         setNotice(`Não deu pra buscar: ${errorText(e)}.`);
       }
+    } finally {
+      if (seq === searchSeq) setPending(false);
     }
   }
 
@@ -982,7 +998,6 @@ export default function Crate(props: { param?: string | null }) {
       slskResults(id).then((next) => {
         if (searchId() !== id) return; // resposta atrasada de uma busca já trocada
         applySnapshot(next);
-        setSearching(next.state === "running");
       }).catch(() => {});
     }, POLL_MS);
 
@@ -1031,9 +1046,19 @@ export default function Crate(props: { param?: string | null }) {
                 value={query()}
                 spellcheck={false}
                 placeholder="Buscar na rede Soulseek…"
+                // Uma busca em voo por vez (spec §6.1, "campo desabilita"):
+                // somente leitura mantém o foco e o ↓ para a lista.
+                readOnly={searching()}
+                aria-busy={searching() ? "true" : "false"}
                 onInput={(e) => setQuery(e.currentTarget.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); doSearch(false); return; }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    // Enter a mais durante a busca cancelava a busca em voo
+                    // e recomeçava do zero, gastando o limite horário (crate-8).
+                    if (!searching()) doSearch(false);
+                    return;
+                  }
                   // ↓ entra na lista (paridade com a ⌘K, spec §4.3) — antes
                   // era preciso descobrir um Esc pra sair do campo (crate-4).
                   if (e.key === "ArrowDown" && groups().length > 0 && listEl) {
@@ -1141,7 +1166,29 @@ export default function Crate(props: { param?: string | null }) {
 
           <Show when={searchId()}>
             <div class="crate-list-head">
-              <h2>Resultados · {groups().length}&nbsp;faixas</h2>
+              {/* Durante a busca: respostas que já chegaram + barra contra a
+                  janela de 25 s (spec §6.1). Antes era 'Resultados · 0
+                  faixas', que parece resultado final (crate-8). */}
+              <Show
+                when={searching()}
+                fallback={<h2>Resultados · {groups().length}&nbsp;faixas</h2>}
+              >
+                <div class="crate-list-head__lead">
+                  <h2>
+                    Buscando · {responsesSeen()}&nbsp;{responsesSeen() === 1 ? "resposta" : "respostas"}
+                  </h2>
+                  <div
+                    class="crate-prog"
+                    role="progressbar"
+                    aria-label="Janela da busca"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow={Math.round(searchPct())}
+                  >
+                    <i style={{ width: `${searchPct()}%` }} />
+                  </div>
+                </div>
+              </Show>
               <div class="crate-keys">
                 <kbd class="crate-kbd">↑↓</kbd> navegar
                 <kbd class="crate-kbd">→</kbd> fontes

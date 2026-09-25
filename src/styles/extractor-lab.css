@@ -3542,6 +3542,11 @@ html { --glow: 0; }
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5); margin: 0; white-space: nowrap;
 }
+/* Busca em voo: título + barra fina da janela de 25 s lado a lado. */
+.crate-list-head__lead {
+  display: flex; align-items: center; gap: 12px;
+  flex: 1; min-width: 0;
+}
 .crate-keys {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-6); white-space: nowrap;
