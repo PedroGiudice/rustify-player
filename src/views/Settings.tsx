@@ -433,6 +433,7 @@ export default function Settings() {
               <input
                 type="range"
                 class="slider"
+                aria-label="Volume"
                 min="0"
                 max="100"
                 value={volumePct()}

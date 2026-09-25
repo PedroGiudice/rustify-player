@@ -164,6 +164,11 @@ describe("Settings view", () => {
     expect(ipc.libRescan).toHaveBeenCalled();
   });
 
+  it("slider de volume tem nome acessível (o rótulo 'Volume' é um div solto)", () => {
+    const { getByRole } = render(() => <Settings />);
+    expect(getByRole("slider", { name: "Volume" })).toBeTruthy();
+  });
+
   it("Playback tem volume slider, normalize toggle, resume on launch toggle", () => {
     const { container } = render(() => <Settings />);
     // Volume range
