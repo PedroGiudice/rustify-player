@@ -2,6 +2,10 @@
    Sheet.test.tsx — acessibilidade da bottom-sheet (mobile-20):
    o diálogo tem nome (aria-labelledby no título) e o foco entra
    nele ao abrir, em vez de ficar na tela de baixo.
+
+   Revisão da fase 0 (25/09): ao fechar, o .sheet vira display:none
+   com o foco dentro e ele caía no body — o TalkBack voltava ao topo
+   da página em vez de à linha ou ao "Mais opções" que abriu a sheet.
    ============================================================ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,5 +63,40 @@ describe("Sheet — acessibilidade", () => {
     await Promise.resolve();
     const dlg = r.getByRole("dialog");
     expect(dlg.contains(document.activeElement)).toBe(true);
+  });
+
+  it("fechar devolve o foco ao controle que abriu a sheet", async () => {
+    render(() => <Sheet />);
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    try {
+      opener.focus();
+      openSheet({ kind: "np", track });
+      await Promise.resolve();
+      expect(document.activeElement).not.toBe(opener);
+
+      const popped = new Promise((r) => window.addEventListener("popstate", r, { once: true }));
+      closeSheet();
+      await popped;
+      expect(sheet()).toBeNull();
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      opener.remove();
+    }
+  });
+
+  it("controle que saiu do DOM enquanto a sheet estava aberta não recebe o foco", async () => {
+    render(() => <Sheet />);
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    openSheet({ kind: "np", track });
+    await Promise.resolve();
+    opener.remove();
+
+    const popped = new Promise((r) => window.addEventListener("popstate", r, { once: true }));
+    closeSheet();
+    await popped;
+    expect(document.activeElement).not.toBe(opener);
   });
 });

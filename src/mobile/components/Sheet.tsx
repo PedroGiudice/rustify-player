@@ -260,10 +260,24 @@ export function Sheet() {
 
   // Ao ABRIR (não ao trocar o conteúdo), o foco entra na sheet: sem isso o
   // leitor de tela seguia na tela de baixo, atrás do scrim (mobile-20).
+  // Ao FECHAR, volta a quem abriu: a sheet vira display:none com o foco
+  // dentro e ele caía no body (o TalkBack voltava ao topo da página). Só
+  // se quem abriu ainda está no DOM e fora de uma subárvore inerte (a ação
+  // pode ter trocado de tela ou aberto o Now Playing por cima).
   let wasOpen = false;
+  let opener: HTMLElement | null = null;
   createEffect(() => {
     const open = sheet() != null;
-    if (open && !wasOpen) panelEl?.focus({ preventScroll: true });
+    if (open && !wasOpen) {
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      panelEl?.focus({ preventScroll: true });
+    } else if (!open && wasOpen) {
+      const back = opener;
+      opener = null;
+      if (back?.isConnected && !back.closest("[inert]") && panelEl?.contains(document.activeElement)) {
+        back.focus({ preventScroll: true });
+      }
+    }
     wasOpen = open;
   });
 
