@@ -34,6 +34,29 @@ sudo dpkg -i /tmp/rustify-player_${V}_amd64.deb
 Nao compilar localmente na cmr-auto — i5 8th gen leva minutos. A VM leva
 segundos. Release.sh e o unico caminho.
 
+### Ambiente de build da VM (reconstruído em 25/09, depois da migração CMR-256)
+
+A migração para o servidor dedicado levou o repo, mas não o ambiente. Sem
+os itens abaixo, nada compila ou nada publica. Conferir antes de culpar o
+código:
+
+- `npm ci` (o `node_modules` não vem com o repo; `release.sh` usa `bun run build`).
+- `libgstreamer-plugins-bad1.0-dev` (apt): traz o `gstreamer-play-1.0.pc`.
+  Sem ele o `audio-engine` não compila, nem os testes.
+- `cargo tauri` = tauri-cli **2.11.5** (`cargo install tauri-cli --version
+  "=2.11.5" --locked`), mesma minor do crate `tauri` 2.11.
+- Android: JDK 17 (`openjdk-17-jdk-headless`); SDK em `~/Android/Sdk` com
+  `platform-tools`, `platforms;android-36`, `build-tools;36.1.0` (o AGP
+  baixa a `35.0.0` sozinho) e `ndk;27.0.12077973`; `rustup target add
+  aarch64-linux-android`. `ANDROID_HOME`/`NDK_HOME` já vêm do `~/.zshrc`.
+- Keystore: `~/.android/debug.keystore` é a cópia do backup
+  `cmr-auto:~/backups/rustify-debug.keystore` (certificado SHA-256
+  `5B:79:A4:13:…:4D:A3:49:32`). Outra keystore quebra o auto-update do S24.
+- Qdrant embutido: `src-tauri/binaries/qdrant-x86_64-unknown-linux-gnu`
+  (gitignored). Se faltar, o `release.sh` baixa a versão *latest*, o que
+  pode trocar a versão do banco na cmr-auto sem decisão. Manter a mesma
+  do `/usr/bin/qdrant` de lá (1.17.1 em 25/09).
+
 ## Superfície de rede (hardening 2026-07-17, v0.2.59)
 
 Todas as portas do app na cmr-auto escutam SÓ em 127.0.0.1 — MCP bridge
