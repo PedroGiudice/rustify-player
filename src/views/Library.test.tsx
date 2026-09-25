@@ -120,3 +120,23 @@ describe("Library — uma varredura por listagem", () => {
     expect(tauri.libGetArtists).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Library — semântica das abas", () => {
+  it("cada aba é role=tab e só a ativa tem aria-selected=true", async () => {
+    const { container } = render(() => <Library />);
+    const tabs = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tablist"] > button'));
+    expect(tabs.length).toBe(4);
+    for (const t of tabs) expect(t.getAttribute("role")).toBe("tab");
+    const selected = () => tabs.filter((t) => t.getAttribute("aria-selected") === "true").map((t) => t.textContent?.split(" ")[0]);
+    expect(selected()).toEqual(["Tracks"]);
+    fireEvent.click(tabs[3]);
+    expect(selected()).toEqual(["Genres"]);
+  });
+
+  it("a aba ativa aponta para o painel que ela controla", async () => {
+    const { container } = render(() => <Library />);
+    const active = container.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!;
+    const panel = document.getElementById(active.getAttribute("aria-controls")!);
+    expect(panel?.getAttribute("role")).toBe("tabpanel");
+  });
+});
