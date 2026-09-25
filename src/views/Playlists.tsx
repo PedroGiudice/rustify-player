@@ -112,8 +112,9 @@ export default function Playlists() {
 
   // Pinned: lista persistida em localStorage (store/pins.ts). Reativo a pins().
   // Ordem segue a ordem em pins() — primeiro pinado = primeiro card.
+  // Parte das pastas ja filtradas: o filtro vale pras fixadas tambem.
   const pinned = createMemo(() => {
-    const list = folders() ?? [];
+    const list = visibleFolders();
     const pinSet = pins();
     return pinSet
       .map((n) => list.find((f) => f.name === n))
@@ -121,7 +122,7 @@ export default function Playlists() {
   });
   const rest = createMemo(() => {
     const list = visibleFolders();
-    const pinnedNames = new Set(pinned().map((p) => p.name));
+    const pinnedNames = new Set(pins());
     const filtered = list.filter((f) => !pinnedNames.has(f.name));
     const dir = sortDir();
     if (dir === "none") return filtered;

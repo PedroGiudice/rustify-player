@@ -138,3 +138,17 @@ describe("Playlists — Sort by name", () => {
     expect(afterThirdClick).toEqual(initialOrder);
   });
 });
+
+describe("Playlists — filtro", () => {
+  it("o filtro alcança também as fixadas", async () => {
+    pinPlaylist("Alpha Tunes");
+    pinPlaylist("Zoo Songs");
+    const { container, getByPlaceholderText } = render(() => <Playlists />);
+    const names = () =>
+      Array.from(container.querySelectorAll(".pl-card .pl-card__title")).map((e) => e.textContent ?? "");
+    await vi.waitFor(() => expect(names().length).toBe(3));
+
+    fireEvent.input(getByPlaceholderText("Filter playlists…"), { target: { value: "zoo" } });
+    await vi.waitFor(() => expect(names()).toEqual(["Zoo Songs"]));
+  });
+});
