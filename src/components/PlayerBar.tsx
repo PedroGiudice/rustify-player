@@ -15,7 +15,7 @@ import {
   applyTrackStarted, updatePosition, setPlayingState,
   setLiked, cycleRepeat, advanceQueue, retreatQueue, jumpToQueueIndex,
   shuffleQueue, reconcileFromState, setQueue, changeVolume,
-  rememberRecent, recentlyPlayed,
+  rememberRecent, recentlyPlayed, resumeOnLaunch,
 } from "../store/player";
 import type { QueueScope, QueueSource } from "../store/player";
 import { registerSeen, registerSkipIfEarly, currentSession, ensureOpenRadioSession, noteAccepted } from "../store/radioSession";
@@ -191,8 +191,9 @@ export function PlayerBar() {
     // ── Session resume ────────────────────────────────────────
     // Restore the previous session in paused state. The backend
     // already filtered out snapshots older than 6h, so anything
-    // returned is "fresh enough" to be useful.
-    await restoreSession();
+    // returned is "fresh enough" to be useful. "Resume on launch"
+    // desligado no Settings pula a restauração (cfg-1).
+    if (resumeOnLaunch()) await restoreSession();
   }
 
   onCleanup(() => {

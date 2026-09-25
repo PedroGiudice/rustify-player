@@ -6,7 +6,8 @@
    - Update flow (botao Check / Install / Restart)
    - Library stats (TRACKS / ALBUMS / ARTISTS / GENRES tiles ou
      equivalente — preservados em alguma forma)
-   - Beat sync segmented persiste em localStorage rustify-mock-sync
+   - Beat sync, Compact sidebar e Resume on launch ligados ao estado
+     real (Tweaks / preferência do player), não a chaves sem consumidor
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -46,6 +47,7 @@ beforeEach(() => {
     app: { getVersion: vi.fn().mockResolvedValue("0.1.0") },
   };
   localStorage.clear();
+  setResumeOnLaunch(true);
 });
 
 afterEach(() => {
@@ -55,6 +57,8 @@ afterEach(() => {
 
 import Settings from "./Settings";
 import * as ipc from "../tauri";
+import { tweaks, updateTweak } from "../store/tweaks";
+import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
 
 describe("Settings view", () => {
   it("renderiza heading", () => {
@@ -74,32 +78,72 @@ describe("Settings view", () => {
     expect(titles).toContain("about");
   });
 
-  it("Appearance tem segmented theme (Light/Dark/Auto)", () => {
+  // cfg-1/ds-4: o seletor Light/Dark/Auto gravava body[data-theme], que
+  // nenhuma regra CSS lia. Os temas são todos escuros e o tema YAML é o
+  // modo — o seletor saiu (o teste antigo exigia o controle morto).
+  it("Appearance não tem o seletor Light/Dark/Auto (o tema YAML é o modo)", () => {
     const { container } = render(() => <Settings />);
-    const segs = container.querySelectorAll(".seg");
-    // Pelo menos um seg deve conter Light/Dark/Auto
-    const themeSeg = Array.from(segs).find((s) => {
+    const segs = Array.from(container.querySelectorAll(".seg"));
+    const themeSeg = segs.find((s) => {
       const txt = (s.textContent ?? "").toLowerCase();
       return txt.includes("light") && txt.includes("dark") && txt.includes("auto");
     });
-    expect(themeSeg).toBeTruthy();
+    expect(themeSeg).toBeUndefined();
+    expect(document.body.hasAttribute("data-theme")).toBe(false);
   });
 
-  it("Appearance tem Beat sync segmented com 4 opcoes e persiste no localStorage", () => {
+  // cfg-1: o seg antigo (Off/Subtle/Default/Pulse) gravava rustify-mock-sync,
+  // que ninguém lia. Agora é o MESMO estado do Tweaks (bgBeatMode).
+  it("Beat sync do Settings é o bgBeatMode do Tweaks", () => {
+    updateTweak("bgBeatMode", "speed");
     const { container } = render(() => <Settings />);
-    const segs = container.querySelectorAll(".seg");
-    const beatSyncSeg = Array.from(segs).find((s) => {
+    const segs = Array.from(container.querySelectorAll(".seg"));
+    const beatSyncSeg = segs.find((s) => {
       const txt = (s.textContent ?? "").toLowerCase();
-      return txt.includes("off") && txt.includes("subtle") && txt.includes("pulse");
+      return txt.includes("off") && txt.includes("speed") && txt.includes("pulse");
     });
     expect(beatSyncSeg).toBeTruthy();
-    const buttons = beatSyncSeg!.querySelectorAll("button");
-    expect(buttons.length).toBe(4);
+    const buttons = Array.from(beatSyncSeg!.querySelectorAll("button"));
+    expect(buttons.length).toBe(3);
+    const speedBtn = buttons.find((b) => (b.textContent ?? "").toLowerCase() === "speed")!;
+    expect(speedBtn.getAttribute("aria-pressed")).toBe("true");
 
-    // Click Pulse
-    const pulseBtn = Array.from(buttons).find((b) => (b.textContent ?? "").toLowerCase() === "pulse")!;
+    const pulseBtn = buttons.find((b) => (b.textContent ?? "").toLowerCase() === "pulse")!;
     fireEvent.click(pulseBtn);
-    expect(localStorage.getItem("rustify-mock-sync")).toBe("pulse");
+    expect(tweaks().bgBeatMode).toBe("pulse");
+    expect(pulseBtn.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  // cfg-1: Compact sidebar gravava uma chave sem consumidor. Agora é o
+  // knob Sidebar do Tweaks (icons = compacta).
+  it("Compact sidebar do Settings é o knob Sidebar do Tweaks", () => {
+    updateTweak("sidebar", "labels");
+    const { container } = render(() => <Settings />);
+    const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
+      (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("compact sidebar"),
+    )!;
+    const tog = row.querySelector("button.tog")!;
+    expect(tog.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(tog);
+    expect(tweaks().sidebar).toBe("icons");
+    expect(tog.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(tog);
+    expect(tweaks().sidebar).toBe("labels");
+  });
+
+  // cfg-1: Resume on launch gravava uma chave que o PlayerBar ignorava.
+  // O toggle agora escreve a preferência que o restoreSession consulta.
+  it("Resume on launch desligado grava a preferência lida no boot", () => {
+    const { container } = render(() => <Settings />);
+    const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
+      (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("resume"),
+    )!;
+    const tog = row.querySelector("button.tog")!;
+    expect(resumeOnLaunch()).toBe(true);
+    expect(tog.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(tog);
+    expect(resumeOnLaunch()).toBe(false);
+    expect(tog.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("Library panel renderiza stats (tracks/albums/artists/genres) preservados", async () => {
@@ -286,16 +330,10 @@ describe("Settings view", () => {
     });
 
     // Controles VIVOS devem continuar presentes
-    it("controles vivos: Theme seg, Beat sync, Volume, Normalize, Re-scan, Check for updates", () => {
+    it("controles vivos: Beat sync, Volume, Normalize, Re-scan, Check for updates", () => {
       const { container } = render(() => <Settings />);
-      // Theme seg (Light/Dark/Auto)
       const segs = Array.from(container.querySelectorAll(".seg"));
-      const themeSeg = segs.find((s) => {
-        const txt = (s.textContent ?? "").toLowerCase();
-        return txt.includes("light") && txt.includes("dark") && txt.includes("auto");
-      });
-      expect(themeSeg).toBeTruthy();
-      // Beat sync seg (Off/Subtle/Pulse)
+      // Beat sync seg (Off/Speed/Pulse)
       const beatSeg = segs.find((s) => {
         const txt = (s.textContent ?? "").toLowerCase();
         return txt.includes("off") && txt.includes("pulse");

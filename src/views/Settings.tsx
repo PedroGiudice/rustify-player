@@ -4,10 +4,12 @@
    Recriacao da view Settings seguindo o mockup do handoff
    (data-screen="settings"). 4 paineis verticais:
 
-   1. Appearance — Theme segmented (Light/Dark/Auto),
-      Compact sidebar tog, Cinema mode kbd, Beat sync segmented
-      (Off/Subtle/Default/Pulse) persistindo em rustify-mock-sync.
-   2. Playback — Resume on launch tog, Volume slider, Normalize tog.
+   1. Appearance — tema YAML (o tema é o modo: não há mais seletor
+      Light/Dark/Auto, que gravava um body[data-theme] sem CSS),
+      Compact sidebar tog e Beat sync (o MESMO estado do Tweaks:
+      sidebar e bgBeatMode), Cinema mode kbd.
+   2. Playback — Resume on launch tog (preferência lida pelo
+      PlayerBar no boot), Volume slider, Normalize tog.
       (Tier 0 removeu crossfade, gapless, output device, scrobble.)
    3. Library — Music folder (read-only), Re-scan (accent), Embeddings
       (read-only stat), qdrant status (read-only), library stats tile grid.
@@ -30,8 +32,8 @@ import {
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
-import { applyTweaks, tweaks, updateTweak } from "../store/tweaks";
-import { player, changeVolume } from "../store/player";
+import { applyTweaks, tweaks, updateTweak, type TweaksState } from "../store/tweaks";
+import { player, changeVolume, resumeOnLaunch, setResumeOnLaunch } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
 
@@ -62,50 +64,6 @@ function relativeTime(isoStr: string | null | undefined): string {
     if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)} h ago`;
     return then.toLocaleDateString();
   } catch { return ""; }
-}
-
-// ── localStorage keys que dialogam com T10 (SpectrumCanvas) ─────
-const SYNC_KEY = "rustify-mock-sync";
-type SyncMode = "off" | "subtle" | "default" | "pulse";
-function loadSyncMode(): SyncMode {
-  try {
-    const raw = localStorage.getItem(SYNC_KEY);
-    if (raw === "off" || raw === "subtle" || raw === "default" || raw === "pulse") return raw;
-  } catch {}
-  return "default";
-}
-function saveSyncMode(m: SyncMode) {
-  try { localStorage.setItem(SYNC_KEY, m); } catch {}
-}
-
-// Outros toggles client-only (futuro: persistir via store plugin)
-const COMPACT_KEY = "rustify-mock-compact-sidebar";
-const RESUME_KEY  = "rustify-mock-resume-launch";
-
-// Tema theme picker — bridge entre seg (Light/Dark/Auto) e o
-// listThemes existente. Light/Dark/Auto sao "modes" cosmeticos
-// que afetam document.body[data-theme]. O picker custom continua
-// disponivel pra YAMLs custom (mas movemos pra dentro do mesmo
-// painel pra nao quebrar fluidez).
-type ThemeMode = "light" | "dark" | "auto";
-const THEME_MODE_KEY = "rustify-theme-mode";
-function loadThemeMode(): ThemeMode {
-  try {
-    const raw = localStorage.getItem(THEME_MODE_KEY);
-    if (raw === "light" || raw === "dark" || raw === "auto") return raw;
-  } catch {}
-  return "light";
-}
-
-function applyThemeMode(m: ThemeMode) {
-  try {
-    if (m === "auto") {
-      document.body.removeAttribute("data-theme");
-    } else {
-      document.body.setAttribute("data-theme", m);
-    }
-    localStorage.setItem(THEME_MODE_KEY, m);
-  } catch {}
 }
 
 export default function Settings() {
@@ -160,41 +118,24 @@ export default function Settings() {
 
   const failingContrast = () => contrast().filter((c) => !c.pass_aa);
 
-  // ── Theme mode (Light/Dark/Auto) — seg do Appearance ──────────
-  const [themeMode, setThemeMode] = createSignal<ThemeMode>(loadThemeMode());
-  function pickThemeMode(m: ThemeMode) {
-    setThemeMode(m);
-    applyThemeMode(m);
-  }
-
-  // ── Beat sync (seg do Appearance, persist em rustify-mock-sync)
-  const [syncMode, setSyncMode] = createSignal<SyncMode>(loadSyncMode());
-  function pickSync(m: SyncMode) {
-    setSyncMode(m);
-    saveSyncMode(m);
-  }
-
-  // ── Toggles cosmeticos (compact sidebar, resume) ─────
-  const [compact, setCompact] = createSignal(localStorage.getItem(COMPACT_KEY) === "true");
+  // ── Compact sidebar e Beat sync: o MESMO estado do Tweaks ────
+  // (antes gravavam chaves que nenhum outro arquivo lia — cfg-1).
+  const compactSidebar = () => tweaks().sidebar === "icons";
   function toggleCompact() {
-    const next = !compact();
-    setCompact(next);
-    try { localStorage.setItem(COMPACT_KEY, String(next)); } catch {}
+    updateTweak("sidebar", compactSidebar() ? "labels" : "icons");
   }
-  const [resumeLaunch, setResumeLaunch] = createSignal(localStorage.getItem(RESUME_KEY) !== "false");
+  const BEAT_MODES: Array<[TweaksState["bgBeatMode"], string]> = [
+    ["off", "Off"], ["speed", "Speed"], ["pulse", "Pulse"],
+  ];
+
   function toggleResume() {
-    const next = !resumeLaunch();
-    setResumeLaunch(next);
-    try { localStorage.setItem(RESUME_KEY, String(next)); } catch {}
+    setResumeOnLaunch(!resumeOnLaunch());
   }
 
   // ── Volume + normalize (preservado, visual ainda no painel Audio
   //    do Playback — apesar de o mockup nao mostrar volume aqui,
   //    a logica precisa ficar acessivel) ──────────────────────────
   onMount(() => {
-    // Re-aplica theme mode salvo no boot pra refletir em document.body.
-    applyThemeMode(themeMode());
-
     // Hot-reload de tema: quem APLICA é o listener do boot (main.tsx) —
     // registrar um segundo applyThemeByName aqui duplicava IPC e aplicação
     // (achado da auditoria). Este listener só atualiza a calculadora de
@@ -302,27 +243,11 @@ export default function Settings() {
             <span class="set-panel__sub">light is the default Extractor Lab palette</span>
           </div>
 
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Theme</div>
-              <div class="set-row__hint">
-                Light is the default. Auto follows your OS preference. Dark is the legacy editorial-hi-fi theme.
-              </div>
-            </div>
-            <div class="set-row__control">
-              <div class="seg">
-                <button aria-pressed={themeMode() === "light" ? "true" : "false"} onClick={() => pickThemeMode("light")}>Light</button>
-                <button aria-pressed={themeMode() === "dark" ? "true" : "false"} onClick={() => pickThemeMode("dark")}>Dark</button>
-                <button aria-pressed={themeMode() === "auto" ? "true" : "false"} onClick={() => pickThemeMode("auto")}>Auto</button>
-              </div>
-            </div>
-          </div>
-
           {/* Theme YAML picker — mantido pra estilos custom ── */}
           <div class="set-row">
             <div>
               <div class="set-row__label">Custom theme YAML</div>
-              <div class="set-row__hint">YAMLs em ~/.local/share/rustify-player/themes/. Independente do mode acima.</div>
+              <div class="set-row__hint">YAMLs em ~/.local/share/rustify-player/themes/.</div>
             </div>
             <div class="set-row__control">
               <Show
@@ -379,12 +304,12 @@ export default function Settings() {
           <div class="set-row">
             <div>
               <div class="set-row__label">Compact sidebar</div>
-              <div class="set-row__hint">Collapses Coleções labels and shows icons only.</div>
+              <div class="set-row__hint">Shows icons only. Same knob as Tweaks › Sidebar.</div>
             </div>
             <div class="set-row__control">
               <button
                 class="tog"
-                aria-pressed={compact() ? "true" : "false"}
+                aria-pressed={compactSidebar() ? "true" : "false"}
                 onClick={toggleCompact}
                 type="button"
                 title="Toggle compact sidebar"
@@ -406,16 +331,23 @@ export default function Settings() {
             <div>
               <div class="set-row__label">Beat sync</div>
               <div class="set-row__hint">
-                Controla quanto a animacao do Now Playing reage ao envelope do audio.
-                Pulse marca cada kick; Subtle so respira; Off desliga a reatividade.
+                Mesmo controle do Tweaks: Speed acelera o movimento do fundo no kick;
+                Pulse pulsa a amplitude no tempo; Off desliga a reatividade ao beat.
               </div>
             </div>
             <div class="set-row__control">
               <div class="seg">
-                <button aria-pressed={syncMode() === "off" ? "true" : "false"} onClick={() => pickSync("off")}>Off</button>
-                <button aria-pressed={syncMode() === "subtle" ? "true" : "false"} onClick={() => pickSync("subtle")}>Subtle</button>
-                <button aria-pressed={syncMode() === "default" ? "true" : "false"} onClick={() => pickSync("default")}>Default</button>
-                <button aria-pressed={syncMode() === "pulse" ? "true" : "false"} onClick={() => pickSync("pulse")}>Pulse</button>
+                <For each={BEAT_MODES}>
+                  {([mode, label]) => (
+                    <button
+                      type="button"
+                      aria-pressed={tweaks().bgBeatMode === mode ? "true" : "false"}
+                      onClick={() => updateTweak("bgBeatMode", mode)}
+                    >
+                      {label}
+                    </button>
+                  )}
+                </For>
               </div>
             </div>
           </div>
@@ -436,7 +368,7 @@ export default function Settings() {
               <div class="set-row__hint">Re-abre a ultima faixa na ultima posicao.</div>
             </div>
             <div class="set-row__control">
-              <button class="tog" aria-pressed={resumeLaunch() ? "true" : "false"} onClick={toggleResume} type="button" title="Toggle resume" />
+              <button class="tog" aria-pressed={resumeOnLaunch() ? "true" : "false"} onClick={toggleResume} type="button" title="Toggle resume" />
             </div>
           </div>
 
