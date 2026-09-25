@@ -77,15 +77,19 @@ describe("anel de foco — ds-1", () => {
     expect(sticky).toEqual([]);
   });
 
-  it("linha do TrackRowTable (display:contents) desenha o anel nas células", () => {
-    // outline no próprio .tracks__row não pinta: display:contents não tem caixa.
-    const r = ruleFor(".tracks__row:focus-visible > div");
+  it("linha do TrackRowTable leva o anel do token, por dentro da própria caixa", () => {
+    // A linha tem caixa (subgrid; ver TrackRowTable.test.tsx): o anel é o
+    // outline global. .tracks tem overflow:hidden, então o offset é
+    // negativo para a borda do anel não ser cortada nas linhas das pontas.
+    const r = ruleFor(".tracks__row:focus-visible");
     expect(r).toBeTruthy();
-    expect(r!.style.getPropertyValue("box-shadow")).toContain("var(--blue-ring)");
-    const first = ruleFor(".tracks__row:focus-visible > div:first-child");
-    const last = ruleFor(".tracks__row:focus-visible > div:last-child");
-    expect(first && first.style.getPropertyValue("box-shadow")).toContain("var(--blue-ring)");
-    expect(last && last.style.getPropertyValue("box-shadow")).toContain("var(--blue-ring)");
+    expect(["0", "0px", "none"]).not.toContain(outlineOf(r!));
+    expect(parseFloat(r!.style.getPropertyValue("outline-offset"))).toBeLessThan(0);
+    // O contorno improvisado nas células (box-shadow com cor fixa) saiu.
+    const cellRing = rules
+      .filter((x) => x.selectorText.includes(".tracks__row:focus-visible >"))
+      .filter((x) => x.style.getPropertyValue("box-shadow") !== "");
+    expect(cellRing.map((x) => x.selectorText)).toEqual([]);
   });
 
   it(".coll-search zera o outline do input e põe o anel no contêiner", () => {

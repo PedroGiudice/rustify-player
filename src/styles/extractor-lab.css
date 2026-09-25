@@ -998,8 +998,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   overflow: hidden;
   display: grid;
   /* 5 colunas: idx | title (flex) | album | genre | length.
-     Tinha 6 antes (sobrava 70px) — com display:contents nas rows,
-     o slot vago empurrava todas as rows uma coluna pra direita. */
+     Tinha 6 antes (sobrava 70px) — com as rows em display:contents
+     (ate 25/09), o slot vago empurrava todas uma coluna pra direita. */
   grid-template-columns: 36px 1fr 180px 120px 70px;
   font-size: 13px;
 }
@@ -1009,11 +1009,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   grid-template-columns: 36px 44px 1fr 180px 110px 70px;
 }
 /* Celulas: os cabecalhos sao filhos diretos de .tracks, mas as celulas
-   das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row com
-   display:contents, que some da caixa mas NAO da arvore DOM. So
-   `.tracks > div` nunca alcancava as linhas (sem padding, separador nem
-   o flex que alinha # e Length). */
-.tracks > div,
+   das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row.
+   So `.tracks > div` nunca alcancava as linhas (sem padding, separador
+   nem o flex que alinha # e Length). O :not tira a propria linha: ela
+   tem caixa e ganharia padding e borda por cima das celulas. */
+.tracks > div:not(.tracks__row),
 .tracks > .tracks__row > div {
   padding: 9px 14px;
   border-bottom: 1px solid var(--line-3);
@@ -1033,25 +1033,23 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line-2) !important;
 }
-.tracks__row { cursor: pointer; }
-/* Transicao nas celulas: o wrapper display:contents nao tem caixa. */
+/* A linha e item do grid .tracks com subgrid: ocupa todas as colunas e
+   as celulas caem nas trilhas dos cabecalhos. Era display:contents, e no
+   WebKitGTK elemento sem caixa nao recebe foco: o Tab pulava as faixas
+   e o anel nunca aparecia. */
+.tracks__row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  cursor: pointer;
+}
+/* Fundo (hover, foco, atual) nas celulas, que ja carregam o separador. */
 .tracks__row > div { transition: background var(--dur-base); }
 .tracks__row:hover > div { background: var(--bg-soft); }
-/* Foco de teclado (ds-1): a linha tem tabIndex, mas display:contents não
-   tem caixa e o outline global não pinta nada. O anel vai nas células,
-   por dentro (as vizinhas cobririam um anel externo): topo e base em
-   todas, a lateral na primeira e na última. Mesma cor do --focus-outline. */
-.tracks__row:focus-visible { outline: 0; }
-.tracks__row:focus-visible > div {
-  background: var(--bg-soft);
-  box-shadow: inset 0 2px 0 var(--blue-ring), inset 0 -2px 0 var(--blue-ring);
-}
-.tracks__row:focus-visible > div:first-child {
-  box-shadow: inset 2px 0 0 var(--blue-ring), inset 0 2px 0 var(--blue-ring), inset 0 -2px 0 var(--blue-ring);
-}
-.tracks__row:focus-visible > div:last-child {
-  box-shadow: inset -2px 0 0 var(--blue-ring), inset 0 2px 0 var(--blue-ring), inset 0 -2px 0 var(--blue-ring);
-}
+/* Foco de teclado (ds-1): o anel global (--focus-outline) na propria
+   linha, por dentro — .tracks corta o que passa da borda. */
+.tracks__row:focus-visible { outline-offset: -2px; }
+.tracks__row:focus-visible > div { background: var(--bg-soft); }
 /* Depois do hover e com a mesma especificidade: o hover nao apaga o
    destaque da faixa atual. */
 .tracks__row.tracks__row--current > div { background: var(--blue-bg); }
@@ -1626,8 +1624,8 @@ html[data-density="compact"] .view:has(> .crate-body) > .view__head { padding-le
 html[data-density="compact"] .section__head { margin-bottom: 8px; }
 html[data-density="compact"] .toolbar { margin-bottom: 12px; }
 /* Tabela de faixas (Tracks, Album, Playlist): cabecalhos e celulas das
-   linhas (netas de .tracks, via .tracks__row display:contents) */
-html[data-density="compact"] .tracks > div,
+   linhas (netas de .tracks, dentro do .tracks__row; a linha fica sem padding) */
+html[data-density="compact"] .tracks > div:not(.tracks__row),
 html[data-density="compact"] .tracks > .tracks__row > div { padding: 5px 10px; }
 /* Linhas de lista (Home, History) */
 html[data-density="compact"] .row { padding: 6px 12px; contain-intrinsic-size: auto 53px; }
