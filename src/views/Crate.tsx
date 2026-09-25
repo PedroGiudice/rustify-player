@@ -16,8 +16,9 @@
    ============================================================ */
 
 import {
-  createSignal, createMemo, createEffect, For, Show, onMount, onCleanup, batch, type JSX,
+  createSignal, createMemo, createEffect, on, For, Show, onMount, onCleanup, batch, type JSX,
 } from "solid-js";
+import { route } from "../router";
 import { createStore, reconcile } from "solid-js/store";
 import {
   slskStatus, slskSearch, slskResults, slskCancelSearch, slskDedupProbe,
@@ -57,6 +58,16 @@ type RowState =
 const IN_FLIGHT = new Set<DownloadJob["state"]["kind"]>([
   "queued", "enqueued", "downloading", "stalled", "processing", "indexing",
 ]);
+
+/** Estados em que a linha oferece [Cancelar] — o ⌫ do teclado cancela
+    exatamente nos mesmos (crate-2: antes cancelava também stalled/
+    processing, que a UI não deixa cancelar). */
+const CANCELLABLE = new Set<DownloadJob["state"]["kind"]>(["queued", "enqueued", "downloading"]);
+
+/** Decodifica o param da rota sem explodir em `%` solto. */
+function decodeParam(p: string): string {
+  try { return decodeURIComponent(p); } catch { return p; }
+}
 
 function deriveRowState(group: ResultGroup, job: DownloadJob | null): RowState {
   if (job && job.state.kind !== "canceled") return job.state.kind as RowState;
@@ -473,7 +484,7 @@ function CrateRow(props: {
               <Icon name={ICONS.play} size={12} /> Tocar
             </button>
           </Show>
-          <Show when={state() === "queued" || state() === "enqueued" || state() === "downloading"}>
+          <Show when={CANCELLABLE.has(state() as DownloadJob["state"]["kind"])}>
             <button
               type="button"
               class="crate-btn crate-btn--quiet"
@@ -627,7 +638,7 @@ function CrateTerminalCard(props: { job: DownloadJob }) {
 // ── View principal ─────────────────────────────────────────────
 export default function Crate(props: { param?: string | null }) {
   const [tab, setTab] = createSignal<"search" | "queue">("search");
-  const [query, setQuery] = createSignal(props.param ? decodeURIComponent(props.param) : "");
+  const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : "");
   const [searchId, setSearchId] = createSignal<string | null>(null);
   const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(null);
   const [searching, setSearching] = createSignal(false);
@@ -639,7 +650,10 @@ export default function Crate(props: { param?: string | null }) {
   const [cooldownTotal, setCooldownTotal] = createSignal(0);
   const [coldSeconds, setColdSeconds] = createSignal<number | null>(null);
   const [dedupTrack, setDedupTrack] = createSignal<Track | null>(null);
-  const [selectedIndex, setSelectedIndex] = createSignal(0);
+  // Seleção pela CHAVE da faixa, não pela posição: durante a busca as
+  // linhas reordenam, e a seleção por índice pulava pra outra faixa entre
+  // a escolha e o Enter. `null` = primeira linha.
+  const [selectedKey, setSelectedKey] = createSignal<string | null>(null);
   const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
   const [folders, setFolders] = createSignal<FolderPlaylist[]>([]);
   // NUNCA semear com loadLastDest() (bug IM-D1, review da Etapa D): isso
@@ -662,11 +676,17 @@ export default function Crate(props: { param?: string | null }) {
   const [results, setResults] = createStore<{ groups: ResultGroup[] }>({ groups: [] });
 
   let inputEl!: HTMLInputElement;
+  let listEl: HTMLDivElement | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
 
   const groups = () => results.groups;
+  const selectedIndex = createMemo(() => {
+    const k = selectedKey();
+    const i = k == null ? -1 : groups().findIndex((g) => g.group_key === k);
+    return i >= 0 ? i : 0;
+  });
 
   function applySnapshot(snap: SearchSnapshot | null) {
     batch(() => {
@@ -741,7 +761,7 @@ export default function Crate(props: { param?: string | null }) {
       const id = await slskSearch(q, force);
       setSearchId(id);
       applySnapshot(null);
-      setSelectedIndex(0);
+      setSelectedKey(null);
       setExpandedKey(null);
       setOpenDest((k) => (k === TOOLBAR_DEST ? k : null));
       setGroupJobs({});
@@ -779,42 +799,86 @@ export default function Crate(props: { param?: string | null }) {
     try { await slskTryOtherSource(jobId); } catch (e) { console.error("[crate] slskTryOtherSource falhou:", e); }
   }
 
-  function handleGlobalKey(e: KeyboardEvent) {
-    const inInput = document.activeElement === inputEl;
-    if (e.key === "Escape") {
-      if (inInput) inputEl.blur();
-      setExpandedKey(null);
-      return;
-    }
-    if (inInput || tab() !== "search") return;
+  function scrollSelectedIntoView() {
+    listEl
+      ?.querySelector<HTMLElement>('.crate-row-wrap[data-focus="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  function moveSelection(delta: number) {
     const list = groups();
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((i) => Math.min(list.length - 1, i + 1)); return; }
-    if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((i) => Math.max(0, i - 1)); return; }
-    if (e.key === "ArrowRight") {
-      const g = list[selectedIndex()];
-      if (g) { e.preventDefault(); setExpandedKey(g.group_key); }
-      return;
-    }
-    if (e.key === "Backspace") {
-      const g = list[selectedIndex()];
-      const job = g ? jobFor(g.group_key) : null;
-      if (job) { e.preventDefault(); handleCancel(job.job_id); }
-      return;
-    }
-    if (e.key === "Enter") {
-      const g = list[selectedIndex()];
-      if (!g) return;
-      e.preventDefault();
-      const job = jobFor(g.group_key);
-      const st = deriveRowState(g, job);
-      if (st === "owned" && g.owned) { playById(g.owned.track_id); return; }
-      if (st === "ready" && job && job.state.kind === "ready") { playById(job.state.track_id); return; }
-      if (st === "idle") {
-        const dest = resolvedDest(g);
-        if (dest) handleDownload(g, g.best.id, dest);
+    if (list.length === 0) return;
+    const next = Math.max(0, Math.min(list.length - 1, selectedIndex() + delta));
+    setSelectedKey(list[next].group_key);
+    scrollSelectedIntoView();
+  }
+
+  /** Teclado da lista (spec §4.3). Escopado ao elemento da lista — não ao
+      window (crate-2): antes, Enter/⌫ em QUALQUER controle (inclusive o
+      input da ⌘K por cima) baixava/cancelava a linha selecionada. Teclas
+      vindas de um controle dentro da lista (botões da linha, opções do
+      seletor) ficam com o próprio controle. */
+  function handleListKey(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
+    const t = e.target as HTMLElement | null;
+    if (t && t !== e.currentTarget && t.closest("input, textarea, select, button, a, [contenteditable]")) return;
+    const list = groups();
+    const g = list[selectedIndex()];
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        moveSelection(1);
+        return;
+      case "ArrowUp":
+        e.preventDefault();
+        if (selectedIndex() === 0) inputEl.focus();
+        else moveSelection(-1);
+        return;
+      case "ArrowRight":
+        if (g) { e.preventDefault(); setExpandedKey(g.group_key); }
+        return;
+      case "Escape":
+        if (openDest() != null) return; // o Esc fecha o seletor aberto, só isso
+        setExpandedKey(null);
+        return;
+      case "Backspace": {
+        const job = g ? jobFor(g.group_key) : null;
+        if (job && CANCELLABLE.has(job.state.kind)) { e.preventDefault(); handleCancel(job.job_id); }
+        return;
+      }
+      case "Enter": {
+        if (!g) return;
+        e.preventDefault();
+        const job = jobFor(g.group_key);
+        const st = deriveRowState(g, job);
+        if (st === "owned" && g.owned) { playById(g.owned.track_id); return; }
+        if (st === "ready" && job && job.state.kind === "ready") { playById(job.state.track_id); return; }
+        if (st === "idle") {
+          const dest = resolvedDest(g);
+          if (dest) { handleDownload(g, g.best.id, dest); return; }
+          // Sem destino: mesmo comportamento do clique em [Baixar] (spec
+          // §4.5 caso 4) — abre o seletor, com o foco na 1ª pasta (crate-4).
+          setOpenDest(g.group_key);
+          listEl
+            ?.querySelector<HTMLElement>('.crate-row-wrap[data-focus="true"] .crate-dest__opt')
+            ?.focus();
+        }
+        return;
       }
     }
   }
+
+  // ⌘K "Procurar na rede" com o Crate já aberto: /crate/a → /crate/b não
+  // remonta a view (o Dynamic do RouterView só troca de componente quando
+  // muda o path), então o param novo precisa refazer a busca aqui
+  // (crate-v1). `navigate()` re-emite a rota ao re-navegar para o mesmo
+  // hash, e isso também refaz — é um pedido explícito de busca.
+  createEffect(on(route, (r) => {
+    if (r.path !== "/crate" || !r.param) return;
+    setTab("search");
+    setQuery(decodeParam(r.param));
+    void doSearch();
+  }, { defer: true }));
 
   onMount(() => {
     bootCrateStore();
@@ -838,13 +902,10 @@ export default function Crate(props: { param?: string | null }) {
       }).catch(() => {});
     }, POLL_MS);
 
-    window.addEventListener("keydown", handleGlobalKey);
-
     onCleanup(() => {
       if (pollTimer) clearInterval(pollTimer);
       if (statusTimer) clearInterval(statusTimer);
       if (cooldownTimer) clearInterval(cooldownTimer);
-      window.removeEventListener("keydown", handleGlobalKey);
       const id = searchId();
       if (id) slskCancelSearch(id).catch(() => {});
     });
@@ -887,7 +948,21 @@ export default function Crate(props: { param?: string | null }) {
                 spellcheck={false}
                 placeholder="Buscar na rede Soulseek…"
                 onInput={(e) => setQuery(e.currentTarget.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(false); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); doSearch(false); return; }
+                  // ↓ entra na lista (paridade com a ⌘K, spec §4.3) — antes
+                  // era preciso descobrir um Esc pra sair do campo (crate-4).
+                  if (e.key === "ArrowDown" && groups().length > 0 && listEl) {
+                    e.preventDefault();
+                    listEl.focus();
+                    scrollSelectedIntoView();
+                    return;
+                  }
+                  if (e.key === "Escape" && openDest() == null) {
+                    e.currentTarget.blur();
+                    setExpandedKey(null);
+                  }
+                }}
               />
               <div class="crate-search__kbd">
                 <kbd class="crate-kbd">Enter</kbd>
@@ -988,7 +1063,14 @@ export default function Crate(props: { param?: string | null }) {
           </Show>
 
           <Show when={groups().length > 0}>
-            <div class="crate-list">
+            <div
+              class="crate-list"
+              ref={listEl}
+              tabindex="0"
+              role="group"
+              aria-label="Resultados da busca"
+              onKeyDown={handleListKey}
+            >
               <div class="crate-list-inner">
                 <For each={groups()}>
                   {(g, i) => (
@@ -1002,7 +1084,7 @@ export default function Crate(props: { param?: string | null }) {
                       folders={folders()}
                       destOpen={openDest() === g.group_key}
                       onDestOpen={(open) => setOpenDest(open ? g.group_key : null)}
-                      onSelect={() => setSelectedIndex(i())}
+                      onSelect={() => { setSelectedKey(g.group_key); listEl?.focus({ preventScroll: true }); }}
                       onToggleExpand={() => setExpandedKey((k) => (k === g.group_key ? null : g.group_key))}
                       onDownload={(sourceId, dest) => handleDownload(g, sourceId, dest)}
                       onPickDest={(dest) => setRowOverrides((m) => ({ ...m, [g.group_key]: dest }))}

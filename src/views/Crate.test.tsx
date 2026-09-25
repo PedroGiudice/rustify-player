@@ -44,6 +44,7 @@ vi.mock("../tauri", async (importOriginal) => {
 import * as tauriApi from "../tauri";
 import * as opener from "@tauri-apps/plugin-opener";
 import { __resetForTests } from "../store/crate";
+import { navigate } from "../router";
 import Crate from "./Crate";
 
 const EMPTY_SNAPSHOT: SearchSnapshot = {
@@ -577,5 +578,156 @@ describe("Crate — aba Fila", () => {
     emit!([dlJob("j1", { kind: "downloading", pct: 60, bps: 1_000_000, eta_s: null })]);
     expect(container.querySelector(".crate-job")).toBe(row);
     expect(row.textContent).toContain("60%");
+  });
+});
+
+describe("Crate — teclado escopado à lista (crate-2, crate-4)", () => {
+  let external: HTMLElement | null = null;
+
+  afterEach(() => {
+    external?.remove();
+    external = null;
+    vi.useRealTimers();
+  });
+
+  const list = (c: HTMLElement) => c.querySelector(".crate-list") as HTMLElement;
+
+  async function searchWithJob(state: DownloadJob["state"]) {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    const utils = await searchAndRender([group({ suggested_dest: "Rap & Hip-Hop" })]);
+    const baixar = Array.from(utils.container.querySelectorAll(".crate-row button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixar);
+    await waitFor(() => expect(tauriApi.slskDownload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(emit).not.toBeNull());
+    emit!([dlJob("job1", state)]);
+    await waitFor(() => {
+      expect(utils.container.querySelector(".crate-row")!.getAttribute("data-state")).toBe(state.kind);
+    });
+    return utils;
+  }
+
+  it("Backspace e Enter com foco fora da lista (ex.: input da ⌘K) não cancelam nem baixam", async () => {
+    await searchWithJob({ kind: "downloading", pct: 10, bps: 1_000_000, eta_s: null });
+    external = document.createElement("input");
+    document.body.appendChild(external);
+    external.focus();
+    fireEvent.keyDown(external, { key: "Backspace" });
+    fireEvent.keyDown(external, { key: "Enter" });
+    fireEvent.keyDown(document.body, { key: "Backspace" });
+    expect(tauriApi.slskCancel).not.toHaveBeenCalled();
+    expect(tauriApi.slskDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it("tecla vinda de um botão dentro da lista não aciona a linha selecionada", async () => {
+    const { container } = await searchAndRender([group({ suggested_dest: "Rap & Hip-Hop" })]);
+    const sourcesBtn = container.querySelector(".crate-row__sources") as HTMLElement;
+    fireEvent.keyDown(sourcesBtn, { key: "Enter" });
+    expect(tauriApi.slskDownload).not.toHaveBeenCalled();
+  });
+
+  it("com foco na lista: ↓ seleciona a próxima linha e Enter baixa a selecionada", async () => {
+    const g1 = group({ group_key: "k1", suggested_dest: "Rap & Hip-Hop" });
+    const g2 = group({ group_key: "k2", display_title: "R.I.P. Screw", suggested_dest: "Rap & Hip-Hop" });
+    const { container } = await searchAndRender([g1, g2]);
+    const l = list(container);
+    l.focus();
+    expect(document.activeElement).toBe(l);
+    fireEvent.keyDown(l, { key: "ArrowDown" });
+    const wraps = container.querySelectorAll(".crate-row-wrap");
+    expect(wraps[1].getAttribute("data-focus")).toBe("true");
+    fireEvent.keyDown(l, { key: "Enter" });
+    await waitFor(() => {
+      expect(tauriApi.slskDownload).toHaveBeenCalledWith("srch1", "k2", g2.best.id, "Rap & Hip-Hop");
+    });
+  });
+
+  it("Backspace não cancela job travado (stalled), que não oferece Cancelar", async () => {
+    const { container } = await searchWithJob({ kind: "stalled", since_secs: 130 });
+    fireEvent.keyDown(list(container), { key: "Backspace" });
+    expect(tauriApi.slskCancel).not.toHaveBeenCalled();
+  });
+
+  it("Backspace com foco na lista cancela o download em andamento da linha selecionada", async () => {
+    const { container } = await searchWithJob({ kind: "downloading", pct: 10, bps: 1_000_000, eta_s: null });
+    fireEvent.keyDown(list(container), { key: "Backspace" });
+    await waitFor(() => expect(tauriApi.slskCancel).toHaveBeenCalledWith("job1"));
+  });
+
+  it("↓ no campo de busca leva o foco para a lista, e a seleção rola para a vista", async () => {
+    const scroll = vi.fn();
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      const { container } = await searchAndRender([group({ group_key: "k1" }), group({ group_key: "k2" })]);
+      const input = container.querySelector(".coll-search input") as HTMLInputElement;
+      input.focus();
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(list(container));
+      fireEvent.keyDown(list(container), { key: "ArrowDown" });
+      const wraps = container.querySelectorAll(".crate-row-wrap");
+      expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+      expect(scroll.mock.contexts.at(-1)).toBe(wraps[1]);
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
+  });
+
+  it("Enter numa linha sem destino abre o seletor, igual ao clique em Baixar", async () => {
+    const { container } = await searchAndRender([group({ suggested_dest: null })]);
+    fireEvent.keyDown(list(container), { key: "Enter" });
+    expect(container.querySelector(".crate-row .crate-dest__menu")).toBeTruthy();
+    expect(tauriApi.slskDownload).not.toHaveBeenCalled();
+  });
+
+  it("a seleção segue a faixa (não a posição) quando a ordem muda durante a busca", async () => {
+    vi.useFakeTimers();
+    let tick = 0;
+    const g1 = () => group({ group_key: "k1", display_title: "Sicko Mode" });
+    const g2 = () => group({ group_key: "k2", display_title: "R.I.P. Screw" });
+    const g3 = () => group({ group_key: "k3", display_title: "Butterfly Effect" });
+    vi.mocked(tauriApi.slskResults).mockImplementation(async () =>
+      snapshot(tick++ === 0 ? [g1(), g2()] : [g3(), g1(), g2()], "running"),
+    );
+    const { container } = render(() => <Crate />);
+    const input = container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "travis" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.advanceTimersByTimeAsync(0);
+    fireEvent.keyDown(list(container), { key: "ArrowDown" });
+    const selectedTitle = () =>
+      container.querySelector('.crate-row-wrap[data-focus="true"] .crate-r-title')?.textContent;
+    expect(selectedTitle()).toBe("R.I.P. Screw");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(container.querySelectorAll(".crate-row").length).toBe(3);
+    expect(selectedTitle()).toBe("R.I.P. Screw");
+  });
+});
+
+describe("Crate — rota /crate/<busca> reativa (crate-v1)", () => {
+  afterEach(async () => {
+    window.location.hash = "";
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  it("⌘K 'Procurar na rede' com o Crate aberto refaz a busca com o termo novo, e re-navegar para o mesmo termo também", async () => {
+    window.location.hash = "#/crate/sicko%20mode";
+    await new Promise((r) => setTimeout(r, 0));
+    const { container } = render(() => <Crate param="sicko%20mode" />);
+    await waitFor(() => expect(tauriApi.slskSearch).toHaveBeenCalledWith("sicko mode", false));
+
+    navigate("/crate/travis%20scott");
+    await waitFor(() => expect(tauriApi.slskSearch).toHaveBeenCalledWith("travis scott", false));
+    const input = container.querySelector(".coll-search input") as HTMLInputElement;
+    expect(input.value).toBe("travis scott");
+
+    vi.mocked(tauriApi.slskSearch).mockClear();
+    navigate("/crate/travis%20scott");
+    await waitFor(() => expect(tauriApi.slskSearch).toHaveBeenCalledWith("travis scott", false));
   });
 });

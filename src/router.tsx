@@ -55,6 +55,14 @@ export { route };
 // ── Helpers ────────────────────────────────────────────────────
 
 export function navigate(path: string) {
+  // Re-navegar para o hash atual não dispara hashchange. Re-emite a rota
+  // como objeto novo para quem observa NAVEGAÇÕES (ex.: ⌘K "Procurar na
+  // rede" com a mesma busca refaz a busca no Crate). Quem só lê campos da
+  // rota (path/param) recalcula para o mesmo valor e não reage.
+  if (window.location.hash === `#${path}`) {
+    _setRoute(parseHash());
+    return;
+  }
   window.location.hash = path;
 }
 
