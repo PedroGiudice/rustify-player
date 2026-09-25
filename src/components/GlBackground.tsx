@@ -17,7 +17,8 @@
    Orçamento medido no próprio app: `glStatus().fps` é atualizado
    1x/s e aparece no painel. É o gate de performance da feature,
    não um enfeite: se cair abaixo de ~30 na cmr-auto, o caminho é
-   trocar de cena (Nébula é a mais barata) ou voltar pro 2D.
+   trocar de cena ou voltar pro 2D. Custo medido por cena (lab v2,
+   25/09): docs/design-refs/fundo-lab-v2.
    ============================================================ */
 
 import { onCleanup, onMount } from "solid-js";
