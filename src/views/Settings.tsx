@@ -47,12 +47,13 @@ function wcagLabel(c: ContrastCheck): string {
   return "fail";
 }
 
-/** Classe CSS para o badge de classificacao */
+/** Classe CSS para o badge de classificacao: AA/AAA ok, AA-large (so texto
+    grande) warn, abaixo de 3:1 err. Estilo em extractor-lab.css (.status-pill). */
 function wcagBadgeClass(c: ContrastCheck): string {
-  if (c.pass_aaa) return "status-pill status-pill--ok";
-  if (c.pass_aa)  return "status-pill status-pill--ok";
-  // warn para AA-large (3:1) e para fail — components.css nao tem --err
-  return "status-pill status-pill--warn";
+  const label = wcagLabel(c);
+  if (label === "AAA" || label === "AA") return "status-pill status-pill--ok";
+  if (label === "AA-large") return "status-pill status-pill--warn";
+  return "status-pill status-pill--err";
 }
 
 function relativeTime(isoStr: string | null | undefined): string {
@@ -117,7 +118,10 @@ export default function Settings() {
     watchTheme(filename).catch((e) => console.warn("[theme] watch failed:", e));
   }
 
-  const failingContrast = () => contrast().filter((c) => !c.pass_aa);
+  // Falha = nem texto grande passa (< 3:1). AA-large conta à parte: é
+  // válido pra texto grande e não pode inflar o contador de falhas.
+  const failingContrast = () => contrast().filter((c) => wcagLabel(c) === "fail");
+  const largeOnlyContrast = () => contrast().filter((c) => wcagLabel(c) === "AA-large");
 
   // ── Compact sidebar e Beat sync: o MESMO estado do Tweaks ────
   // (antes gravavam chaves que nenhum outro arquivo lia — cfg-1).
@@ -278,12 +282,30 @@ export default function Settings() {
               <div style={{ width: "100%" }}>
                 <div class="set-row__label" style={{ "margin-bottom": "8px" }}>
                   Contraste WCAG
-                  <span
-                    class={`status-pill ${failingContrast().length > 0 ? "status-pill--warn" : "status-pill--ok"}`}
-                    style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
-                  >
-                    {failingContrast().length > 0 ? `${failingContrast().length} falha(s)` : "AA ok"}
-                  </span>
+                  <Show when={failingContrast().length > 0}>
+                    <span
+                      class="status-pill status-pill--err"
+                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                    >
+                      {`${failingContrast().length} falha(s)`}
+                    </span>
+                  </Show>
+                  <Show when={largeOnlyContrast().length > 0}>
+                    <span
+                      class="status-pill status-pill--warn"
+                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                    >
+                      {`${largeOnlyContrast().length} só AA-large`}
+                    </span>
+                  </Show>
+                  <Show when={failingContrast().length === 0 && largeOnlyContrast().length === 0}>
+                    <span
+                      class="status-pill status-pill--ok"
+                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                    >
+                      AA ok
+                    </span>
+                  </Show>
                 </div>
                 {/* Tabela compacta com todos os pares */}
                 <div style={{ display: "grid", "grid-template-columns": "1fr auto auto", gap: "2px 12px", "font-size": "11px", "font-family": "var(--font-mono)" }}>

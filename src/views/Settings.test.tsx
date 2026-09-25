@@ -298,6 +298,47 @@ describe("Settings view", () => {
     expect(await findByText("AAA")).toBeTruthy();
   });
 
+  // config-v6: AA-large e fail tinham a mesma classe (--warn) e o contador
+  // "N falha(s)" somava AA-large (válido pra texto grande) como falha.
+  async function renderWithChecks(checks: unknown[]) {
+    vi.mocked(ipc.applyThemeByName).mockResolvedValue(checks as any);
+    vi.mocked(ipc.listThemes).mockResolvedValue([
+      { filename: "t.yaml", name: "T", author: "CI" },
+    ] as any);
+    const r = render(() => <Settings />);
+    const select = (await r.findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "t.yaml" } });
+    await r.findByText("Contraste WCAG", { exact: false });
+    return r;
+  }
+
+  it("badge distingue AA/AAA (ok), AA-large (warn) e fail (err)", async () => {
+    const { findByText } = await renderWithChecks([
+      { pair: "par-aaa",   ratio: 8.0, pass_aa: true,  pass_aaa: true  },
+      { pair: "par-large", ratio: 3.5, pass_aa: false, pass_aaa: false },
+      { pair: "par-fail",  ratio: 2.1, pass_aa: false, pass_aaa: false },
+    ]);
+    expect((await findByText("AAA")).className).toContain("status-pill--ok");
+    expect((await findByText("AA-large")).className).toContain("status-pill--warn");
+    expect((await findByText("fail")).className).toContain("status-pill--err");
+  });
+
+  it("contador de falhas não soma AA-large; AA-large tem contagem própria", async () => {
+    const { findByText, queryByText } = await renderWithChecks([
+      { pair: "par-large", ratio: 3.5, pass_aa: false, pass_aaa: false },
+    ]);
+    expect(queryByText(/falha/)).toBeNull();
+    expect((await findByText("1 só AA-large")).className).toContain("status-pill--warn");
+  });
+
+  it("falha real (< 3:1) aparece no contador com a classe de erro", async () => {
+    const { findByText } = await renderWithChecks([
+      { pair: "par-large", ratio: 3.5, pass_aa: false, pass_aaa: false },
+      { pair: "par-fail",  ratio: 2.1, pass_aa: false, pass_aaa: false },
+    ]);
+    expect((await findByText("1 falha(s)")).className).toContain("status-pill--err");
+  });
+
   it("calculadora exibe legenda WCAG abaixo da tabela", async () => {
     const mockChecks = [
       { pair: "texto/canvas", ratio: 5.0, pass_aa: true, pass_aaa: false },
