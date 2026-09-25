@@ -21,6 +21,7 @@ import { GL_CANVAS } from "../gl/palette";
 import { cssColorToRgb } from "../lib/color";
 import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
 import { navigate } from "../router";
+import { isTypingContext } from "../lib/keyboard";
 import { openTrackMenu } from "../store/contextMenu";
 
 export default function NowPlaying() {
@@ -303,8 +304,7 @@ export default function NowPlaying() {
   // Keyboard: [ ] cicla shape, , . cicla renderer, F cinema mode.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
+      if (isTypingContext(e)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const bg2d = !glActive();
       if (bg2d && e.key === "[") { e.preventDefault(); shape.prev(); }

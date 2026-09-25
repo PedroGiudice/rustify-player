@@ -313,6 +313,35 @@ describe("NowPlaying — contraste do card de letras (np-2, ds-18)", () => {
   });
 });
 
+// nowplaying-v4 / cfg-10 (integração): o listener próprio do Now Playing
+// ignorava só input e textarea. Com foco num <select> (fonte do Tweaks,
+// tema do Settings), a busca por letra do select disparava F (cinema) e
+// [ ] , . (fundo). Mesmo filtro do App e da fila: isTypingContext.
+describe("NowPlaying — atalhos com foco num <select> (nowplaying-v4)", () => {
+  afterEach(() => setTweaks({ lyricsVisible: true, bgEngine: "2d" }));
+
+  it("F e [ vindos de um <select> não mudam o cinema nem o fundo", () => {
+    setTweaks({ lyricsVisible: false, bgEngine: "2d" });
+    render(() => <NowPlaying />);
+    const sel = document.createElement("select");
+    document.body.appendChild(sel);
+    const cinema = vi.fn();
+    window.addEventListener("rustify:cinema", cinema);
+    try {
+      sel.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }));
+      sel.dispatchEvent(new KeyboardEvent("keydown", { key: "[", bubbles: true }));
+      expect(cinema).not.toHaveBeenCalled();
+      expect(h.shapePrev).not.toHaveBeenCalled();
+      // Controle: fora do select os atalhos continuam valendo.
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+      expect(h.shapePrev).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("rustify:cinema", cinema);
+      sel.remove();
+    }
+  });
+});
+
 describe("NowPlaying — botão de ajustes do fundo (np-7)", () => {
   it("abre o Tweaks e rola até a seção Fundo", async () => {
     // Painel de Tweaks mínimo: o NowPlaying só depende do marcador da seção.
