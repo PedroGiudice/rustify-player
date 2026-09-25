@@ -187,6 +187,16 @@ export default function Signal() {
     input.click();
   }
 
+  // Estado real de cada estágio. O master bypass desliga EQ, Limiter e Bass
+  // (set_bypassed em dsp.rs), mas NÃO o norm_gain: a normalização só segue
+  // o toggle do Tweaks.
+  const eqLive = () => dsp.eq.enabled && !dsp.bypass;
+  const limLive = () => dsp.limiter.enabled && !dsp.bypass;
+  const bassLive = () => dsp.bass.enabled && !dsp.bypass;
+  const normLive = () => tweaks().loudnessNorm;
+  /** Rótulo de um estágio que não processa: bypass vence o "off" próprio. */
+  const offLabel = () => (dsp.bypass ? "bypassed" : "off");
+
   function handleExport() {
     const snap = snapshotCurrentDsp(activePreset() || "rustify-export");
     const json = toEasyEffects({ eq: snap.eq, limiter: snap.limiter, bass: snap.bass_enhancer });
@@ -210,26 +220,29 @@ export default function Signal() {
         </div>
         <div class="view__stats">
           <span><b>{dsp.bypass ? "Bypassed" : "Active"}</b></span>
-          <span>chain <b>{[dsp.eq.enabled, dsp.limiter.enabled, dsp.bass.enabled].filter(Boolean).length}</b>/3 stages</span>
+          <span>chain <b>{[eqLive(), normLive(), limLive(), bassLive()].filter(Boolean).length}</b>/4 stages</span>
           <span>bit-perfect except DSP</span>
         </div>
       </header>
 
       <div class="sig">
 
-        {/* ── Master bypass bar ── */}
+        {/* ── Master (bypass) bar ──
+            Mesma polaridade dos toggles dos estágios: ligado = processando.
+            O bypass não alcança a normalização (norm_gain), que é do Tweaks. */}
         <div class="sig-master-bar">
           <div class="sig-master-bar__meta">
-            <h3 class="sig-master-bar__title">Master bypass</h3>
+            <h3 class="sig-master-bar__title">DSP chain</h3>
             <span class="sig-master-bar__sub">
-              Routes raw stream around the entire chain · <b>{dsp.bypass ? "on" : "off"}</b> currently
+              EQ · Limiter · Bass <b>{dsp.bypass ? "bypassed" : "processing"}</b> · normalization is set in Tweaks
             </span>
           </div>
           <button
             class="tog"
-            aria-pressed={dsp.bypass ? "true" : "false"}
+            aria-pressed={dsp.bypass ? "false" : "true"}
+            aria-label="DSP chain (EQ, Limiter, Bass)"
             onClick={toggleBypass}
-            title="Toggle master bypass"
+            title={dsp.bypass ? "Turn EQ, Limiter and Bass back on" : "Bypass EQ, Limiter and Bass"}
           />
         </div>
 
@@ -237,26 +250,26 @@ export default function Signal() {
         <div class="sig-stat-row">
           <StatTile
             label="EQ"
-            on={dsp.eq.enabled && !dsp.bypass}
-            value={`${dsp.eq.bands.length} bands`}
+            on={eqLive()}
+            value={eqLive() ? `${dsp.eq.bands.length} bands` : offLabel()}
             sub={`${FILTER_MODES[dsp.eq.bands[dsp.activeBand]?.filterMode ?? 6]} · ${ENGINE_MODES[dsp.eq.mode]} mode`}
           />
           <StatTile
             label="Limiter"
-            on={dsp.limiter.enabled && !dsp.bypass}
-            value={dsp.limiter.enabled ? `${dsp.limiter.threshold.toFixed(1)} dB` : "off"}
+            on={limLive()}
+            value={limLive() ? `${dsp.limiter.threshold.toFixed(1)} dB` : offLabel()}
             sub={`${LIMITER_MODES[dsp.limiter.mode]} · lookahead ${dsp.limiter.lookahead.toFixed(1)} ms`}
           />
           <StatTile
             label="Bass"
-            on={dsp.bass.enabled && !dsp.bypass}
-            value={dsp.bass.enabled ? `${dsp.bass.amount.toFixed(1)} dB` : "off"}
+            on={bassLive()}
+            value={bassLive() ? `${dsp.bass.amount.toFixed(1)} dB` : offLabel()}
             sub={`scope ${dsp.bass.freq} Hz · floor ${dsp.bass.floor} Hz`}
           />
           <StatTile
             label="Normalize"
-            on={tweaks().loudnessNorm && !dsp.bypass}
-            value={tweaks().loudnessNorm ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
+            on={normLive()}
+            value={normLive() ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
             sub="LUFS · per-track"
           />
         </div>
@@ -269,19 +282,19 @@ export default function Signal() {
           <span class="sig-chain__arrow">→</span>
           <span class="sig-chain__node">audioconvert</span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={dsp.eq.enabled && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={eqLive() ? "true" : "false"}>
             <span class="dot" />LSP Para EQ × 16
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={tweaks().loudnessNorm && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={normLive() ? "true" : "false"}>
             <span class="dot" />norm_gain
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={dsp.limiter.enabled && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={limLive() ? "true" : "false"}>
             <span class="dot" />LSP Limiter
           </span>
           <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={dsp.bass.enabled && !dsp.bypass ? "true" : "false"}>
+          <span class="sig-chain__node" data-on={bassLive() ? "true" : "false"}>
             <span class="dot" />Calf Bass Enh.
           </span>
           <span class="sig-chain__arrow">→</span>
@@ -359,10 +372,11 @@ export default function Signal() {
         </div>
 
         {/* ── Parametric EQ panel ── */}
-        <div class="sig-panel">
+        <div class="sig-panel" data-live={eqLive() ? "true" : "false"}>
           <div class="sig-panel__head">
             <h3 class="sig-panel__title">Parametric Equalizer</h3>
             <span class="sig-panel__badge">LSP × 16 · Stereo</span>
+            <Show when={!eqLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               mode <b>{ENGINE_MODES[dsp.eq.mode]}</b> · gain <b>{dsp.eq.input_gain.toFixed(1)}</b> / <b>{dsp.eq.output_gain.toFixed(1)}</b> dB
             </span>
@@ -432,10 +446,11 @@ export default function Signal() {
         </div>
 
         {/* ── Limiter panel ── */}
-        <div class="sig-panel">
+        <div class="sig-panel" data-live={limLive() ? "true" : "false"}>
           <div class="sig-panel__head">
             <h3 class="sig-panel__title">Limiter</h3>
             <span class="sig-panel__badge">LSP · Stereo</span>
+            <Show when={!limLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               threshold <b>{dsp.limiter.threshold.toFixed(1)}</b> dB · stereo-link <b>{dsp.limiter.stereo_link.toFixed(0)}</b>%
             </span>
@@ -513,10 +528,11 @@ export default function Signal() {
         </div>
 
         {/* ── Bass Enhancer panel ── */}
-        <div class="sig-panel">
+        <div class="sig-panel" data-live={bassLive() ? "true" : "false"}>
           <div class="sig-panel__head">
             <h3 class="sig-panel__title">Bass Enhancer</h3>
             <span class="sig-panel__badge">Calf</span>
+            <Show when={!bassLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq}</b> Hz
             </span>

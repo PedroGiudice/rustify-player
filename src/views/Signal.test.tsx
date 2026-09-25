@@ -113,6 +113,56 @@ describe("Signal view", () => {
     bypassBtn.click();
   });
 
+  it("toggle master tem a mesma polaridade dos estágios: ligado = processando (estsig-6)", () => {
+    const { container } = render(() => <Signal />);
+    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    expect(dsp.bypass).toBe(false);
+    expect(master.getAttribute("aria-pressed")).toBe("true");
+    master.click();
+    expect(dsp.bypass).toBe(true);
+    expect(master.getAttribute("aria-pressed")).toBe("false");
+    master.click();
+  });
+
+  it("bypass e estágio desligado aparecem nos painéis e nos tiles (estsig-6)", () => {
+    const { container } = render(() => <Signal />);
+    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const panels = () => Array.from(container.querySelectorAll<HTMLElement>(".sig-panel"));
+    // Limiter e Bass começam desligados no default; EQ ligado.
+    const [eq, lim, bass] = panels();
+    expect(eq.dataset.live).toBe("true");
+    expect(lim.dataset.live).toBe("false");
+    expect(lim.querySelector(".sig-panel__state")?.textContent).toBe("off");
+    expect(bass.dataset.live).toBe("false");
+
+    master.click(); // bypass
+    for (const p of panels()) {
+      expect(p.dataset.live).toBe("false");
+      expect(p.querySelector(".sig-panel__state")?.textContent).toBe("bypassed");
+    }
+    const eqTile = container.querySelector<HTMLElement>(".sig-stat")!;
+    expect(eqTile.querySelector(".sig-stat__value")?.textContent).toBe("bypassed");
+    master.click();
+  });
+
+  it("bypass não desliga a normalização na tela, porque não desliga no backend (motor-v2)", () => {
+    const { container } = render(() => <Signal />);
+    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const normTile = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(".sig-stat")).find((t) =>
+        t.textContent?.includes("Normalize"),
+      )!;
+    const normOn = normTile().dataset.on;
+    master.click(); // bypass
+    expect(normTile().dataset.on).toBe(normOn);
+    const normNode = Array.from(container.querySelectorAll<HTMLElement>(".sig-chain__node")).find((n) =>
+      n.textContent?.includes("norm_gain"),
+    )!;
+    expect(normNode.dataset.on).toBe(normOn);
+    expect(container.querySelector(".sig-master-bar")!.textContent).not.toMatch(/entire chain/i);
+    master.click();
+  });
+
   it("click em fader atualiza activeBand do store", () => {
     const { container } = render(() => <Signal />);
     const faders = container.querySelectorAll<HTMLElement>(".fader");

@@ -1796,6 +1796,19 @@ html { --glow: 0; }
 }
 .sig-panel__meta b { color: var(--fg-2); font-weight: 600; }
 .sig-panel__body { padding: 18px; }
+/* Estágio que não processa (desligado ou em bypass): o painel diz isso e o
+   corpo esmaece. Os controles seguem editáveis. */
+.sig-panel__state {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--amber-fg);
+  padding: 2px 7px;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-ring);
+  border-radius: var(--radius-xs);
+}
+.sig-panel[data-live="false"] .sig-panel__body { opacity: 0.55; }
 
 /* === EQ === */
 .eq-canvas-wrap {
