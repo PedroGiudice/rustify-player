@@ -1,7 +1,7 @@
 /* ============================================================
    Signal.test.tsx — Smoke tests do view portado pra Solid.
-   Cobre render dos 4 paineis, toggle bypass, activeBand muda
-   ao clicar fader, e roadmap card toggle local.
+   Cobre render dos 3 paineis, toggle bypass, activeBand muda
+   ao clicar fader, presets embutidos e validação de nomes.
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -54,7 +54,7 @@ vi.mock("../tauri", () => ({
 }));
 
 import Signal from "./Signal";
-import { dsp } from "../store/dsp";
+import { dsp, setBassFreq, setBassFloor } from "../store/dsp";
 import * as ipc from "../tauri";
 
 beforeEach(() => {
@@ -79,7 +79,7 @@ afterEach(() => {
 });
 
 describe("Signal view", () => {
-  it("renderiza os 4 paineis (EQ, Limiter, Bass, Roadmap) e barras top", () => {
+  it("renderiza os 3 paineis reais (EQ, Limiter, Bass) e barras top", () => {
     const { container, getByText } = render(() => <Signal />);
     expect(getByText("Signal")).toBeTruthy();
     expect(container.querySelector(".sig-master-bar")).toBeTruthy();
@@ -87,8 +87,14 @@ describe("Signal view", () => {
     expect(container.querySelector(".sig-chain")).toBeTruthy();
     expect(container.querySelector(".sig-presets")).toBeTruthy();
     const panels = container.querySelectorAll(".sig-panel");
-    // 4 paineis: EQ, Limiter, Bass, Roadmap
-    expect(panels.length).toBe(4);
+    expect(panels.length).toBe(3);
+  });
+
+  it("não simula estágios inexistentes: sem painel Roadmap (estsig-14)", () => {
+    const { container } = render(() => <Signal />);
+    expect(container.querySelector(".plug-card")).toBeNull();
+    expect(container.textContent).not.toContain("Roadmap");
+    expect(container.textContent).not.toContain("in chain");
   });
 
   it("renderiza 16 faders na primeira painel", () => {
@@ -107,6 +113,69 @@ describe("Signal view", () => {
     bypassBtn.click();
   });
 
+  it("toggle master tem a mesma polaridade dos estágios: ligado = processando (estsig-6)", () => {
+    const { container } = render(() => <Signal />);
+    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    expect(dsp.bypass).toBe(false);
+    expect(master.getAttribute("aria-pressed")).toBe("true");
+    master.click();
+    expect(dsp.bypass).toBe(true);
+    expect(master.getAttribute("aria-pressed")).toBe("false");
+    master.click();
+  });
+
+  it("bypass e estágio desligado aparecem nos painéis e nos tiles (estsig-6)", () => {
+    const { container } = render(() => <Signal />);
+    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const panels = () => Array.from(container.querySelectorAll<HTMLElement>(".sig-panel"));
+    // Limiter e Bass começam desligados no default; EQ ligado.
+    const [eq, lim, bass] = panels();
+    expect(eq.dataset.live).toBe("true");
+    expect(lim.dataset.live).toBe("false");
+    expect(lim.querySelector(".sig-panel__state")?.textContent).toBe("off");
+    expect(bass.dataset.live).toBe("false");
+
+    master.click(); // bypass
+    for (const p of panels()) {
+      expect(p.dataset.live).toBe("false");
+      expect(p.querySelector(".sig-panel__state")?.textContent).toBe("bypassed");
+    }
+    const eqTile = container.querySelector<HTMLElement>(".sig-stat")!;
+    expect(eqTile.querySelector(".sig-stat__value")?.textContent).toBe("bypassed");
+    master.click();
+  });
+
+  it("bypass não desliga a normalização na tela, porque não desliga no backend (motor-v2)", () => {
+    const { container } = render(() => <Signal />);
+    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const normTile = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(".sig-stat")).find((t) =>
+        t.textContent?.includes("Normalize"),
+      )!;
+    const normOn = normTile().dataset.on;
+    master.click(); // bypass
+    expect(normTile().dataset.on).toBe(normOn);
+    const normNode = Array.from(container.querySelectorAll<HTMLElement>(".sig-chain__node")).find((n) =>
+      n.textContent?.includes("norm_gain"),
+    )!;
+    expect(normNode.dataset.on).toBe(normOn);
+    expect(container.querySelector(".sig-master-bar")!.textContent).not.toMatch(/entire chain/i);
+    master.click();
+  });
+
+  it("Scope e Floor do Bass aparecem formatados no tile e no cabeçalho (motor-v3)", () => {
+    // Valor cru que o ParamRow antigo gravava no store (e que segue
+    // persistido em localStorage de quem já arrastou).
+    setBassFreq(137.46376811594203);
+    setBassFloor(33.3333333);
+    const { container } = render(() => <Signal />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("scope 137 Hz · floor 33 Hz");
+    expect(text).not.toMatch(/137\.46/);
+    setBassFreq(120);
+    setBassFloor(20);
+  });
+
   it("click em fader atualiza activeBand do store", () => {
     const { container } = render(() => <Signal />);
     const faders = container.querySelectorAll<HTMLElement>(".fader");
@@ -114,16 +183,40 @@ describe("Signal view", () => {
     expect(dsp.activeBand).toBe(5);
   });
 
-  it("roadmap cards flipam data-on local sem afetar backend", () => {
-    const { container } = render(() => <Signal />);
-    const cards = container.querySelectorAll<HTMLElement>(".plug-card");
-    expect(cards.length).toBeGreaterThanOrEqual(8);
-    const first = cards[0];
-    expect(first.dataset.on).toBe("false");
-    const tog = first.querySelector<HTMLButtonElement>(".tog")!;
-    tog.click();
-    expect(first.dataset.on).toBe("true");
-    // Sem chamadas IPC pra Roadmap
-    // (nenhum mock especifico esperado)
+  it("chip Flat zera o EQ e o chip Padrão aplica a curva default (estsig-5)", () => {
+    const { getByText } = render(() => <Signal />);
+    getByText("Padrão").click();
+    expect(dsp.eq.bands.some((b) => b.gain_db !== 0)).toBe(true);
+    getByText("Flat").click();
+    expect(dsp.eq.bands.every((b) => b.gain_db === 0)).toBe(true);
   });
+
+  it("salvar com nome de preset embutido é recusado (motor-v5)", () => {
+    localStorage.removeItem("rustify-dsp-presets");
+    vi.spyOn(window, "prompt").mockReturnValue("Flat");
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const { getByText } = render(() => <Signal />);
+    getByText("Save").click();
+    expect(alertSpy).toHaveBeenCalled();
+    expect(localStorage.getItem("rustify-dsp-presets")).toBeNull();
+  });
+
+  it("renomear para um nome que já existe é recusado (motor-v5)", () => {
+    localStorage.removeItem("rustify-dsp-presets");
+    const promptSpy = vi.spyOn(window, "prompt");
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    const { getByText, container } = render(() => <Signal />);
+    promptSpy.mockReturnValueOnce("Aki");
+    getByText("Save").click();
+    promptSpy.mockReturnValueOnce("Rock");
+    getByText("Save").click();
+    // "Rock" ativo; renomear para "Aki" colidiria.
+    promptSpy.mockReturnValueOnce("Aki");
+    getByText("Rename").click();
+    const names = Array.from(container.querySelectorAll(".sig-pre")).map((b) => b.textContent);
+    expect(names.filter((n) => n === "Aki").length).toBe(1);
+    expect(names).toContain("Rock");
+    localStorage.removeItem("rustify-dsp-presets");
+  });
+
 });

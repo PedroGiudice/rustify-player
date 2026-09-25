@@ -2,10 +2,13 @@
    StationViz.tsx — Canvas usado na feature card de Stations.
    Visualiza 3 seed dots azuis pulsando + 28 generated dots cinza
    conectados por hairlines ao seed mais proximo. Hairline dot grid
-   ao fundo. 60fps via requestAnimationFrame.
+   ao fundo. requestAnimationFrame enquanto montado (o LazyStationViz
+   desmonta fora do viewport); com prefers-reduced-motion, um quadro
+   estatico. Dimensoes cacheadas: o backing store so e realocado no
+   ResizeObserver, nunca por frame (padrao do EqCanvas).
    ============================================================ */
 
-import { Component, createMemo, onCleanup, onMount } from "solid-js";
+import { Component, createEffect, createMemo, onCleanup, onMount } from "solid-js";
 
 export interface StationVizProps {
   seedCount?: number;
@@ -44,6 +47,13 @@ function makeGenerated(seeds: Seed[], count: number): Gen[] {
 export const StationViz: Component<StationVizProps> = (props) => {
   let canvasEl!: HTMLCanvasElement;
   let raf: number | null = null;
+  let observer: ResizeObserver | undefined;
+  let cssW = 0;
+  let cssH = 0;
+  const reducedMotion =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
   // Derivacao reativa de verdade: mudar props.seedCount/genCount pos-mount
@@ -60,19 +70,33 @@ export const StationViz: Component<StationVizProps> = (props) => {
 
   const generated = createMemo<Gen[]>(() => makeGenerated(seeds(), genCount()));
 
-  function draw() {
-    const ctx = canvasEl.getContext("2d");
-    if (!ctx) return;
+  /** Mede e reatribui o backing store só quando o tamanho físico muda.
+      Chamado no mount e pelo ResizeObserver — nunca por frame. */
+  function resize() {
+    if (!canvasEl) return;
     const r = canvasEl.getBoundingClientRect();
     if (!r.width || !r.height) return;
-
     const dpr = Math.min((typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1, 2);
-    canvasEl.width = Math.round(r.width * dpr);
-    canvasEl.height = Math.round(r.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const nextW = Math.round(r.width * dpr);
+    const nextH = Math.round(r.height * dpr);
+    cssW = r.width;
+    cssH = r.height;
+    if (canvasEl.width !== nextW || canvasEl.height !== nextH) {
+      canvasEl.width = nextW;
+      canvasEl.height = nextH;
+    }
+    const ctx = canvasEl.getContext("2d");
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
 
-    const w = r.width;
-    const h = r.height;
+  function draw() {
+    if (!canvasEl) return;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+    const w = cssW;
+    const h = cssH;
+    if (!w || !h) return;
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const t = (now - t0) * 0.001;
 
@@ -141,11 +165,23 @@ export const StationViz: Component<StationVizProps> = (props) => {
   }
 
   onMount(() => {
-    draw();
-    raf = requestAnimationFrame(tick);
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => resize());
+      observer.observe(canvasEl);
+    }
+    resize();
+    if (!reducedMotion) raf = requestAnimationFrame(tick);
+  });
+
+  // Sem loop (reduced motion), mudança de props precisa redesenhar.
+  createEffect(() => {
+    seeds();
+    generated();
+    if (reducedMotion) draw();
   });
 
   onCleanup(() => {
+    observer?.disconnect();
     if (raf !== null) {
       cancelAnimationFrame(raf);
       raf = null;

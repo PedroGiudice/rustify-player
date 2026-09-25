@@ -2,9 +2,11 @@
    views/Stations.tsx — Smart radio stations, hi-fi.
 
    Recriacao da tela do mockup `Rustify ExtractorLab.html`
-   (data-screen="stations"). Feature card com live eyebrow + titulo
-   grande + chips de seeds + CTA preto + canvas <StationViz />.
-   Grid de stations carregado via lib_list_stations do backend.
+   (data-screen="stations"). Feature card (a station mais tocada:
+   lib_list_stations ordena por played desc) + titulo grande + chips
+   de seeds + CTA preto + canvas <StationViz />. Grid de stations
+   carregado via lib_list_stations do backend. Nada aqui afirma que
+   uma station esta tocando: a tela nao consulta isso.
 
    StationViz so monta o canvas quando o feature card esta visivel
    no viewport (IntersectionObserver) — evita gastar CPU com RAF
@@ -127,10 +129,9 @@ function FeatureCard(props: {
   return (
     <section class="st-feature">
       <div>
-        <div class="st-feature__eyebrow">
-          <span class="dot" />
-          Live · streaming now
-        </div>
+        <Show when={props.station.stats.played > 0}>
+          <div class="st-feature__eyebrow">Most played</div>
+        </Show>
         <h2 class="st-feature__title">{props.station.name}</h2>
         <p class="st-feature__hint">
           {props.station.desc ||
@@ -145,8 +146,8 @@ function FeatureCard(props: {
           onClick={() => props.onResume(props.station.id)}
         >
           {/* @ts-ignore */}
-          <iconify-icon icon="ph:play-fill" noobserver />
-          Resume station
+          <iconify-icon icon="lucide:play" noobserver />
+          Play station
         </button>
       </div>
       <LazyStationViz />
@@ -155,19 +156,19 @@ function FeatureCard(props: {
 }
 
 // ── Station card individual ──────────────────────────────────────
-// Exportado para testes (regressao de reatividade de isFirst/seedLine).
+// Exportado para testes (regressao de reatividade de seedLine).
 export function StationCard(props: {
   station: Station;
-  isFirst: boolean;
   onResume: (id: string) => void;
   onDelete?: (id: string) => void;
 }) {
-  // Sem destructuring de props (quebra reatividade no Solid): isFirst vem
-  // do signal de indice do <For> e station pode trocar sob a mesma row.
-  const seedLine = () =>
-    props.station.kind === "seed"
-      ? `seed · ${props.station.seed_track_ids.length} tracks`
-      : `mood · ${props.station.query ?? ""}`;
+  // Sem destructuring de props (quebra reatividade no Solid): station pode
+  // trocar sob a mesma row.
+  const seedLine = () => {
+    if (props.station.kind !== "seed") return `mood · ${props.station.query ?? ""}`;
+    const n = props.station.seed_track_ids.length;
+    return `seed · ${n} ${n === 1 ? "track" : "tracks"}`;
+  };
 
   // Exclusao e destrutiva e o card inteiro dispara play: 1o clique arma,
   // 2o confirma. Desarma sozinho em 4s pra nao ficar uma bomba engatilhada
@@ -195,14 +196,24 @@ export function StationCard(props: {
     props.onDelete?.(props.station.id);
   }
 
+  // Card inteiro toca a station (clique ou Enter/Espaço). O teclado só age
+  // quando o foco está no próprio card: Enter no botão de apagar é dele.
+  function handleCardKey(e: KeyboardEvent) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    props.onResume(props.station.id);
+  }
+
   return (
-    <div class="st-card" onClick={() => props.onResume(props.station.id)}>
-      <Show when={props.isFirst}>
-        <span class="st-card__live">
-          <span class="dot" />
-          Live
-        </span>
-      </Show>
+    <div
+      class="st-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`Tocar station ${props.station.name}`}
+      onClick={() => props.onResume(props.station.id)}
+      onKeyDown={handleCardKey}
+    >
       <button
         type="button"
         class={`st-card__delete${armed() ? " is-armed" : ""}`}
@@ -233,11 +244,11 @@ export function StationCard(props: {
       <p class="st-card__desc">{props.station.desc}</p>
       <div class="st-card__stats">
         <span>{props.station.stats.played} played</span>
-        <span>
-          {props.station.stats.match_avg != null
-            ? `${Math.round(props.station.stats.match_avg * 100)}% match`
-            : "—"}
-        </span>
+        {/* match_avg é declarado mas nunca escrito pelo backend: sem slot
+            vazio enquanto não houver valor. */}
+        <Show when={props.station.stats.match_avg != null}>
+          <span>{`${Math.round(props.station.stats.match_avg! * 100)}% match`}</span>
+        </Show>
         <span>last: {formatRelative(props.station.stats.last_played_at)}</span>
       </div>
     </div>
@@ -306,6 +317,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
               <button
                 type="button"
                 class={`chip${selectedMoods().includes(m) ? " active" : ""}`}
+                aria-pressed={selectedMoods().includes(m) ? "true" : "false"}
                 onClick={() => toggle(selectedMoods, setSelectedMoods, m)}
               >
                 {m}
@@ -322,6 +334,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
               <button
                 type="button"
                 class={`chip${selectedActivities().includes(a) ? " active" : ""}`}
+                aria-pressed={selectedActivities().includes(a) ? "true" : "false"}
                 onClick={() => toggle(selectedActivities, setSelectedActivities, a)}
               >
                 {a}
@@ -333,6 +346,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
       <div class="st-mood-create__row">
         <select
           class="st-mood-create__genre"
+          aria-label="Gênero"
           value={genre()}
           onChange={(e) => setGenre(e.currentTarget.value)}
         >
@@ -344,6 +358,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
         <input
           class="st-mood-create__name"
           type="text"
+          aria-label="Nome da station"
           placeholder={autoName() || "Nome da station"}
           value={customName()}
           onInput={(e) => setCustomName(e.currentTarget.value)}
@@ -435,10 +450,14 @@ export default function Stations() {
           </p>
         </div>
         <div class="view__stats">
-          <Show when={!stations.loading} fallback={<span>—</span>}>
-            <span>
-              <b>{stations()?.length ?? 0}</b> seeded
-            </span>
+          {/* stations.latest mantém o último valor durante o refetch (play,
+              criar, apagar): o número não pisca "—" a cada ação. */}
+          <Show when={stations.latest} fallback={<span>—</span>}>
+            {(list) => (
+              <span>
+                <b>{list().length}</b> stations
+              </span>
+            )}
           </Show>
         </div>
       </header>
@@ -501,20 +520,21 @@ export default function Stations() {
           <div class="section__head">
             <h2 class="section__title">All stations</h2>
             <div style={{ display: "flex", gap: "16px" }}>
-              <a
+              <button
+                type="button"
                 class="section__action"
-                style={{ cursor: "pointer" }}
                 onClick={handleNewFromCurrent}
               >
                 New from current track →
-              </a>
-              <a
+              </button>
+              <button
+                type="button"
                 class="section__action"
-                style={{ cursor: "pointer" }}
+                aria-expanded={moodPanelOpen() ? "true" : "false"}
                 onClick={() => setMoodPanelOpen((v) => !v)}
               >
                 {moodPanelOpen() ? "Fechar" : "Nova mood station"} →
-              </a>
+              </button>
             </div>
           </div>
           <Show when={moodPanelOpen()}>
@@ -530,14 +550,8 @@ export default function Stations() {
               when={(stations()?.length ?? 0) > 0}
               fallback={
                 <For each={Array.from({ length: 6 })}>
-                  {(_, i) => (
+                  {() => (
                     <div class="st-card" style={{ opacity: "0.35" }}>
-                      <Show when={i() === 0}>
-                        <span class="st-card__live">
-                          <span class="dot" />
-                          Live
-                        </span>
-                      </Show>
                       <div class="st-card__top">
                         <div class="st-card__cover tone-lavender">
                           {/* @ts-ignore */}
@@ -553,7 +567,6 @@ export default function Stations() {
                       </p>
                       <div class="st-card__stats">
                         <span>0 played</span>
-                        <span>—</span>
                         <span>last: —</span>
                       </div>
                     </div>
@@ -562,10 +575,9 @@ export default function Stations() {
               }
             >
               <For each={stations()}>
-                {(s, i) => (
+                {(s) => (
                   <StationCard
                     station={s}
-                    isFirst={i() === 0}
                     onResume={handleResume}
                     onDelete={handleDelete}
                   />

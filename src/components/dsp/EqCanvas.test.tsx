@@ -95,6 +95,49 @@ describe("EqCanvas", () => {
     expect(fillRectCalls).toBe(0);
   });
 
+  it("re-desenha quando o tipo, o slope ou o solo da banda mudam (estsig-4)", async () => {
+    // Store como no app (dsp.eq.bands): a mutação é fina, por propriedade.
+    const { createStore } = await import("solid-js/store");
+    const [store, setStore] = createStore({ bands: DEFAULT.map((b) => ({ ...b })) });
+    render(() => <EqCanvas bands={store.bands} activeBand={0} />);
+    for (const [key, value] of [["type", 3], ["slope", 2], ["solo", true], ["filterMode", 0]] as const) {
+      const before = recordingCtx.arc.mock.calls.length;
+      setStore("bands", 4, key, value as never);
+      await Promise.resolve();
+      expect(recordingCtx.arc.mock.calls.length).toBeGreaterThan(before);
+    }
+  });
+
+  it("a escala do eixo Y cresce para mostrar ganhos acima de 18 dB (estsig-4)", async () => {
+    const [bands, setBands] = (await import("solid-js")).createSignal(DEFAULT);
+    const { container } = render(() => <EqCanvas bands={bands()} activeBand={0} />);
+    const labels = () => Array.from(container.querySelectorAll(".eq-yaxis span")).map((s) => s.textContent);
+    expect(labels()).toEqual(["+18", "+9", "0", "-9", "-18"]);
+    setBands(DEFAULT.map((b, i) => (i === 8 ? { ...b, gain_db: 30 } : b)));
+    await Promise.resolve();
+    expect(labels()).toEqual(["+36", "+18", "0", "-18", "-36"]);
+  });
+
+  it("grade horizontal cai nos valores rotulados do eixo Y (estsig-23)", () => {
+    recordingCtx.moveTo.mockClear();
+    render(() => <EqCanvas bands={DEFAULT} activeBand={0} />);
+    // h=180: mid=90, ±R em 90∓81, ±R/2 em 90∓40,5 (+0,5 de hairline).
+    const ys = recordingCtx.moveTo.mock.calls.filter((c: number[]) => c[0] === 26).map((c: number[]) => c[1]);
+    for (const y of [9.5, 50, 131, 171.5]) expect(ys).toContain(y);
+  });
+
+  it("rótulos do eixo X ficam na posição logarítmica real (estsig-23)", () => {
+    const { container } = render(() => <EqCanvas bands={DEFAULT} activeBand={0} />);
+    const spans = Array.from(container.querySelectorAll<HTMLElement>(".eq-xaxis span"));
+    const k1 = spans.find((s) => s.textContent === "1k")!;
+    // u(1 kHz) = (3 - log10 20) / 3 = 0.5663
+    expect(k1.style.left).toContain("0.5663");
+    const k20 = spans.find((s) => s.textContent === "20")!;
+    // 20 Hz = u 0: começa no PAD_X do canvas (+1px de borda do wrap).
+    // jsdom normaliza o calc() (a ordem dos fatores pode mudar).
+    expect(k20.style.left).toMatch(/27px \+ 0 \*|\* 0\)/);
+  });
+
   it("renderiza sem crashar quando overlay esta on (mesmo sem fft event)", () => {
     updateTweak("eqSpectrumOverlay", true);
     expect(() => {

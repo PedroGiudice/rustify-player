@@ -114,6 +114,45 @@ describe("ParamRow", () => {
     expect(onInput).not.toHaveBeenCalled();
   });
 
+  it("valor emitido pelo arrasto é arredondado às casas exibidas (motor-v3)", () => {
+    const onInput = vi.fn();
+    const { container } = render(() => (
+      <ParamRow label="Scope" value={120} min={20} max={500} unit="Hz" decimals={0} onInput={onInput} />
+    ));
+    const slider = container.querySelector<HTMLElement>(".param-row__slider")!;
+    stubRect(slider, 200);
+    slider.dispatchEvent(pointerEvent("pointerdown", { clientX: 49 })); // lerp = 137.6
+    expect(onInput.mock.calls[0][0]).toBe(138);
+  });
+
+  it("é focável e expõe valor com unidade para leitor de tela (estsig-3)", () => {
+    const { container } = render(() => (
+      <ParamRow label="Threshold" value={-6.04} min={-60} max={0} unit="dB" decimals={1} onInput={() => {}} />
+    ));
+    const slider = container.querySelector<HTMLElement>(".param-row__slider")!;
+    expect(slider.tabIndex).toBe(0);
+    expect(slider.getAttribute("aria-valuetext")).toBe("-6.0 dB");
+    expect(slider.getAttribute("aria-valuenow")).toBe("-6");
+  });
+
+  it("setas, PageUp/PageDown e Home/End ajustam o valor (estsig-3)", () => {
+    const onInput = vi.fn();
+    const { container } = render(() => (
+      <ParamRow label="x" value={5} min={0} max={10} unit="ms" decimals={1} onInput={onInput} />
+    ));
+    const slider = container.querySelector<HTMLElement>(".param-row__slider")!;
+    const key = (k: string, shiftKey = false) =>
+      slider.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey, bubbles: true, cancelable: true }));
+    key("ArrowRight");
+    key("ArrowDown");
+    key("ArrowUp", true);
+    key("PageUp");
+    key("PageDown");
+    key("Home");
+    key("End");
+    expect(onInput.mock.calls.map((c) => c[0])).toEqual([5.1, 4.9, 6, 6, 4, 0, 10]);
+  });
+
   it("decimals=0 formata sem casas", () => {
     const { getByText } = render(() => (
       <ParamRow label="x" value={42} min={0} max={100} unit="ms" decimals={0} onInput={() => {}} />

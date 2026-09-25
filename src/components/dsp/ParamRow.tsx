@@ -3,7 +3,10 @@
    Usado nos paineis Limiter e Bass do Signal.
    Markup: label + track (.param-row__slider > .param-row__track)
    + valor mono. Drag via pointerdown + setPointerCapture, lerp
-   sobre rect do slider.
+   sobre rect do slider. Teclado: setas (passo = menor casa exibida,
+   Shift x10), PageUp/PageDown (10% do range), Home/End (min/max).
+   Todo valor emitido é arredondado às casas exibidas: o store nunca
+   guarda o float cru do lerp (137.46376811594203 Hz).
    ============================================================ */
 
 import { Component, createMemo } from "solid-js";
@@ -33,6 +36,13 @@ export const ParamRow: Component<ParamRowProps> = (props) => {
   let dragging = false;
 
   const decimals = () => props.decimals ?? 1;
+  const step = () => Math.pow(10, -decimals());
+
+  /** Clamp em [min, max] + arredondamento às casas exibidas. */
+  function quantize(v: number): number {
+    const f = Math.pow(10, decimals());
+    return clamp(Math.round(v * f) / f, props.min, props.max);
+  }
   const pct = createMemo(() => {
     const range = props.max - props.min;
     if (range <= 0) return 0;
@@ -43,7 +53,7 @@ export const ParamRow: Component<ParamRowProps> = (props) => {
   function valueFromX(clientX: number): number {
     const rect = sliderEl.getBoundingClientRect();
     const t = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
-    return lerp(props.min, props.max, clamp(t, 0, 1));
+    return quantize(lerp(props.min, props.max, clamp(t, 0, 1)));
   }
 
   function onPointerDown(e: PointerEvent) {
@@ -73,6 +83,23 @@ export const ParamRow: Component<ParamRowProps> = (props) => {
     }
   }
 
+  function onKeyDown(e: KeyboardEvent) {
+    const fine = step() * (e.shiftKey ? 10 : 1);
+    const page = Math.max(step(), (props.max - props.min) / 10);
+    let next: number;
+    switch (e.key) {
+      case "ArrowRight": case "ArrowUp": next = props.value + fine; break;
+      case "ArrowLeft": case "ArrowDown": next = props.value - fine; break;
+      case "PageUp": next = props.value + page; break;
+      case "PageDown": next = props.value - page; break;
+      case "Home": next = props.min; break;
+      case "End": next = props.max; break;
+      default: return;
+    }
+    e.preventDefault();
+    props.onInput(quantize(next));
+  }
+
   return (
     <div class="param-row">
       <span class="param-row__label">{props.label}</span>
@@ -80,10 +107,13 @@ export const ParamRow: Component<ParamRowProps> = (props) => {
         ref={sliderEl}
         class="param-row__slider"
         role="slider"
+        tabIndex={0}
         aria-label={props.label}
         aria-valuemin={props.min}
         aria-valuemax={props.max}
-        aria-valuenow={props.value}
+        aria-valuenow={Number(props.value.toFixed(decimals()))}
+        aria-valuetext={`${props.value.toFixed(decimals())}${props.unit ? ` ${props.unit}` : ""}`}
+        onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
