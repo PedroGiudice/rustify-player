@@ -204,12 +204,26 @@ export function Tweaks() {
   onMount(() => {
     const onToggle = () => setTweaksOpen(!tweaksOpen());
     window.addEventListener("toggle-tweaks", onToggle);
-    onCleanup(() => window.removeEventListener("toggle-tweaks", onToggle));
+    // Esc fecha o painel aberto. Captura no window: roda antes do handler
+    // global do App (bubble) e para ali — o overlay de cima fecha primeiro,
+    // sem sair do cinema mode no mesmo toque.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !tweaksOpen()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setTweaksOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    onCleanup(() => {
+      window.removeEventListener("toggle-tweaks", onToggle);
+      window.removeEventListener("keydown", onKey, true);
+    });
   });
 
   return (
     <Portal mount={document.body}>
       <aside
+        id="tweaks-panel"
         class="tweaks"
         classList={{ "is-visible": tweaksOpen() }}
         aria-label="Tweaks"
