@@ -13,6 +13,8 @@ import { cleanup, fireEvent, render } from "@solidjs/testing-library";
 import type { Track } from "../types";
 
 const h = vi.hoisted(() => ({
+  npOpen: true,
+  seek: vi.fn(),
   navigate: vi.fn(),
   navigateFromNp: vi.fn(),
   back: vi.fn(),
@@ -23,7 +25,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("../nav", () => ({
   back: h.back,
-  isNpOpen: () => true,
+  isNpOpen: () => h.npOpen,
   navigate: h.navigate,
   navigateFromNp: h.navigateFromNp,
 }));
@@ -62,7 +64,7 @@ vi.mock("../store", () => {
     queueEntries: () => [],
     queueOrigin: () => "manual",
     repeat: () => "off",
-    seek: vi.fn(),
+    seek: h.seek,
     showToast: h.showToast,
     shuffleUpcoming: vi.fn(),
     toggle: vi.fn(),
@@ -94,6 +96,7 @@ afterEach(async () => {
   setBgEngine("2d");
   resetGlStatus();
   vi.clearAllMocks();
+  h.npOpen = true;
 });
 
 /** NP + a sheet (irmãos, como no MobileApp) com o overflow aberto. */
@@ -171,5 +174,35 @@ describe("NowPlaying — shape/render (mobile-2)", () => {
     expect(r.queryByText(useShape.name())).not.toBeNull();
     expect(sheet()?.kind).toBe("np");
     useShape.prev();
+  });
+});
+
+describe("NowPlaying — acessibilidade (mobile-20)", () => {
+  it("fechado, sai da árvore de acessibilidade e do foco (inert + aria-hidden)", () => {
+    h.npOpen = false;
+    const r = render(() => <NowPlaying />);
+    const np = r.container.querySelector(".np") as HTMLElement;
+    // O Solid aplica `inert` como PROPRIEDADE (no Chrome ela reflete no
+    // atributo; o jsdom não implementa a reflexão).
+    expect(np.inert).toBe(true);
+    expect(np.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("aberto, fica acessível", () => {
+    const r = render(() => <NowPlaying />);
+    const np = r.container.querySelector(".np") as HTMLElement;
+    expect(np.inert).toBeFalsy();
+    expect(np.hasAttribute("aria-hidden")).toBe(false);
+  });
+
+  it("o seek é um slider com posição e duração, ajustável pelo teclado", () => {
+    const r = render(() => <NowPlaying />);
+    const s = r.getByRole("slider", { name: "Posição na faixa" });
+    expect(s.getAttribute("aria-valuemin")).toBe("0");
+    expect(s.getAttribute("aria-valuemax")).toBe("180");
+    expect(s.getAttribute("aria-valuenow")).toBe("0");
+    expect(s.getAttribute("aria-valuetext")).toBe("0:00 de 3:00");
+    fireEvent.keyDown(s, { key: "ArrowRight" });
+    expect(h.seek).toHaveBeenCalledWith(5000);
   });
 });

@@ -975,6 +975,11 @@
 .sheet .panel::-webkit-scrollbar {
   display: none;
 }
+/* O painel recebe o foco ao abrir (leitor de tela, mobile-20); é contêiner,
+   não controle — sem anel de foco. */
+.sheet .panel:focus {
+  outline: none;
+}
 .sheet .grab {
   width: 38px;
   height: 4px;

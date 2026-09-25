@@ -9,7 +9,7 @@
    voltar do Android (sentinela de history, em sheet.ts).
    ============================================================ */
 
-import { For, Match, Show, Switch, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { closeSheet, closeSheetThen, openSheet, sheet } from "../sheet";
 import type { SheetSpec } from "../sheet";
@@ -29,6 +29,9 @@ import {
 import type { Track, TrackContext } from "../types";
 
 type IconName = keyof typeof Icon;
+
+/** Uma sheet por vez: o título da aberta nomeia o diálogo (aria-labelledby). */
+const TITLE_ID = "sheet-title";
 
 interface Action {
   label: string;
@@ -124,7 +127,7 @@ function TrackSheet(props: { spec: Extract<SheetSpec, { kind: "track" }> }) {
   return (
     <>
       <div class="sheet__head">
-        <div class="sheet__title">{props.spec.track.title}</div>
+        <div class="sheet__title" id={TITLE_ID}>{props.spec.track.title}</div>
         <div class="sheet__sub">
           {[props.spec.track.artist_name, props.spec.track.album_title]
             .filter(Boolean)
@@ -166,7 +169,7 @@ function NpSheet(props: { track: Track }) {
   return (
     <>
       <div class="sheet__head">
-        <div class="sheet__title">{props.track.title}</div>
+        <div class="sheet__title" id={TITLE_ID}>{props.track.title}</div>
         <div class="sheet__sub">
           {[props.track.artist_name, props.track.album_title].filter(Boolean).join(" · ")}
         </div>
@@ -235,7 +238,7 @@ function InfoSheet(props: { track: Track }) {
   return (
     <>
       <div class="sheet__head">
-        <div class="sheet__title">Informações</div>
+        <div class="sheet__title" id={TITLE_ID}>Informações</div>
         <div class="sheet__sub">{props.track.title}</div>
       </div>
       <For each={rows()}>
@@ -253,6 +256,16 @@ function InfoSheet(props: { track: Track }) {
 export function Sheet() {
   const [dragY, setDragY] = createSignal(0);
   let startY: number | null = null;
+  let panelEl: HTMLDivElement | undefined;
+
+  // Ao ABRIR (não ao trocar o conteúdo), o foco entra na sheet: sem isso o
+  // leitor de tela seguia na tela de baixo, atrás do scrim (mobile-20).
+  let wasOpen = false;
+  createEffect(() => {
+    const open = sheet() != null;
+    if (open && !wasOpen) panelEl?.focus({ preventScroll: true });
+    wasOpen = open;
+  });
 
   const onMove = (e: PointerEvent) => {
     if (startY == null) return;
@@ -266,9 +279,20 @@ export function Sheet() {
   };
 
   return (
-    <div class="sheet" attr:data-open={sheet() ? "" : undefined} role="dialog" aria-modal="true">
+    <div
+      class="sheet"
+      attr:data-open={sheet() ? "" : undefined}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={sheet() ? TITLE_ID : undefined}
+    >
       <div class="scrim" onClick={() => closeSheet()} />
-      <div class="panel" style={dragY() ? { transform: `translateY(${dragY()}px)` } : undefined}>
+      <div
+        class="panel"
+        ref={panelEl}
+        tabindex="-1"
+        style={dragY() ? { transform: `translateY(${dragY()}px)` } : undefined}
+      >
         <div
           class="grab"
           onPointerDown={(e) => (startY = e.clientY)}

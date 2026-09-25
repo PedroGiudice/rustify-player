@@ -43,7 +43,8 @@ import { Queue } from "./screens/Queue";
 import { Settings } from "./screens/Settings";
 import { Stations } from "./screens/Stations";
 import { baseRoute, bootRoute, isNpOpen, rememberScroll, restoreScroll, savedScroll } from "./nav";
-import { bootStore, current, pb, toast } from "./store";
+import { bootStore, current, pb } from "./store";
+import { Toast } from "./components/ui";
 import { applyAdaptiveColor } from "./adaptiveColor";
 import { applyBeatMode } from "./bg/beatSetting";
 import { mockFft, mountSpectrum, pushFft } from "./bg/spectrum";
@@ -172,13 +173,7 @@ export function MobileApp() {
       </div>
       <NowPlaying />
       <Sheet />
-      <Show when={toast()}>
-        {(msg) => (
-          <div class="toast" attr:data-on="">
-            {msg()}
-          </div>
-        )}
-      </Show>
+      <Toast />
     </div>
   );
 }

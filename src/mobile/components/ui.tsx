@@ -11,7 +11,7 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { Icon } from "../icons";
 import { back } from "../nav";
-import { libError, libReady, reloadLibrary } from "../store";
+import { libError, libReady, reloadLibrary, toast } from "../store";
 
 export function ViewHead(props: { title: string; sub?: string; right?: JSX.Element }) {
   return (
@@ -99,6 +99,24 @@ export function LibGate(props: { children: JSX.Element }) {
         {props.children}
       </Show>
     </Show>
+  );
+}
+
+/** Toast das confirmações. A região role=status existe SEMPRE e só o texto
+ *  entra e sai: live region criada junto com a mensagem não é anunciada de
+ *  forma confiável pelo TalkBack (mobile-20). O wrapper é estático e sem
+ *  tamanho — o .toast continua posicionado contra o .device. */
+export function Toast() {
+  return (
+    <div role="status" aria-live="polite">
+      <Show when={toast()}>
+        {(msg) => (
+          <div class="toast" attr:data-on="">
+            {msg()}
+          </div>
+        )}
+      </Show>
+    </div>
   );
 }
 
