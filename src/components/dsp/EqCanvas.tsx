@@ -17,8 +17,9 @@
    + objs) fora do Solid pra evitar overhead reativo no caminho hot.
    ============================================================ */
 
-import { Component, createEffect, onCleanup, onMount } from "solid-js";
+import { Component, createEffect, createSignal, For, onCleanup, onMount } from "solid-js";
 import type { EqBand } from "../../store/dsp";
+import { sampleCurve, pickDbRange, DB_RANGES } from "./eq-response";
 import { tweaks } from "../../store/tweaks";
 import { player } from "../../store/player";
 import { stepRgbLerp, type Rgb } from "../../lib/rgbLerp";
@@ -48,36 +49,40 @@ const DECADES = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const PAD_X = 26;
 const PAD_X_RIGHT = 8;
 
-// Escala Y do PLOT da curva (display only).
-const DB_VIS_RANGE = 18;
 const CURVE_STEPS = 256;
+
+// Frequências amostradas da curva: dependem só da fração do eixo (log),
+// não da largura do canvas — calculadas uma vez.
+const CURVE_FREQS = Float32Array.from({ length: CURVE_STEPS + 1 }, (_, i) =>
+  Math.pow(10, LOG_MIN + (i / CURVE_STEPS) * LOG_SPAN),
+);
+
+// Rótulos do eixo X, posicionados na mesma escala log da curva.
+const X_TICKS: { hz: number; label: string }[] = [
+  { hz: 20, label: "20" }, { hz: 50, label: "50" }, { hz: 100, label: "100" },
+  { hz: 200, label: "200" }, { hz: 500, label: "500" }, { hz: 1000, label: "1k" },
+  { hz: 2000, label: "2k" }, { hz: 5000, label: "5k" }, { hz: 10000, label: "10k" },
+  { hz: 20000, label: "20k" },
+];
+
+/** left CSS de um rótulo do eixo X. O eixo tem a largura do wrap; o canvas
+    começa 1px dentro (borda) e desenha de PAD_X até w - PAD_X_RIGHT. */
+function xTickLeft(hz: number): string {
+  const u = (Math.log10(hz) - LOG_MIN) / LOG_SPAN;
+  const inset = 1 + PAD_X;
+  const span = 2 + PAD_X + PAD_X_RIGHT;
+  return `calc(${inset}px + (100% - ${span}px) * ${Number(u.toFixed(4))})`;
+}
+
+function fmtDbLabel(v: number): string {
+  return v > 0 ? `+${v}` : String(v);
+}
 
 const DEFAULT_SAMPLE_RATE = 48000;
 
 function freqToX(hz: number, padX: number, innerW: number): number {
   const u = (Math.log10(hz) - LOG_MIN) / LOG_SPAN;
   return padX + u * innerW;
-}
-
-function xToFreq(x: number, padX: number, innerW: number): number {
-  const u = (x - padX) / innerW;
-  return Math.pow(10, LOG_MIN + u * LOG_SPAN);
-}
-
-/** Resposta peaking aprox. Lorentziana em dB (offset em oitavas).
-    bw_oct vem do Q via formula RBJ. */
-function peakingDbAt(f: number, b: EqBand): number {
-  if (b.gain_db === 0 || b.mute) return 0;
-  const q = b.q || 1;
-  const bwOct = (2 * Math.asinh(1 / (2 * q))) / Math.LN2;
-  const nOct = Math.log2(f / b.freq);
-  return b.gain_db / (1 + Math.pow((2 * nOct) / bwOct, 2));
-}
-
-function totalResponseDb(f: number, bands: EqBand[]): number {
-  let s = 0;
-  for (let i = 0; i < bands.length; i++) s += peakingDbAt(f, bands[i]);
-  return s;
 }
 
 export const EqCanvas: Component<EqCanvasProps> = (props) => {
@@ -146,6 +151,29 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   const sampleX = new Float32Array(CURVE_STEPS + 1);
   const sampleY = new Float32Array(CURVE_STEPS + 1);
 
+  // ── Curva em dB, cacheada: só recalcula quando bandas ou sample rate
+  // mudam (o loop de 60Hz do RTA redesenha sem refazer 16 biquads x 257).
+  const sampleDb = new Float32Array(CURVE_STEPS + 1);
+  let dotFreqs = new Float32Array(16);
+  let dotDb = new Float32Array(16);
+  let curveDirty = true;
+  // Escala do gráfico (±dB): acompanha a curva para não cortar ganhos
+  // acima de 18 dB (faders vão a ±36). Sinal só para os rótulos do eixo Y.
+  const [visRange, setVisRange] = createSignal<number>(DB_RANGES[0]);
+
+  function recomputeCurve(bands: EqBand[]) {
+    const peak = sampleCurve(bands, CURVE_FREQS, cachedSampleRate, sampleDb);
+    if (dotFreqs.length < bands.length) {
+      dotFreqs = new Float32Array(bands.length);
+      dotDb = new Float32Array(bands.length);
+    }
+    for (let i = 0; i < bands.length; i++) dotFreqs[i] = bands[i].freq;
+    sampleCurve(bands, dotFreqs.subarray(0, bands.length), cachedSampleRate, dotDb);
+    const range = pickDbRange(peak);
+    if (range !== visRange()) setVisRange(range);
+    curveDirty = false;
+  }
+
   function onFft(payload: FftPayload) {
     if (
       payload.sample_rate > 0 &&
@@ -153,6 +181,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     ) {
       cachedSampleRate = payload.sample_rate;
       bandBinRanges = computeBinRanges(cachedSampleRate);
+      curveDirty = true;
     }
     const now = performance.now();
     let dt = lastFftAt === 0 ? 0.016 : (now - lastFftAt) / 1000;
@@ -276,10 +305,12 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     ctx.clearRect(0, 0, w, h);
 
     // ── Grid hairline horizontal ──
+    // Nos mesmos valores dos rótulos do eixo Y (±R e ±R/2): a posição em
+    // px independe da escala R (ver dbToY da curva).
     ctx.strokeStyle = "rgba(0,0,0,0.05)";
     ctx.lineWidth = 1;
-    for (let i = 1; i < 5; i++) {
-      const y = (h / 5) * i + 0.5;
+    for (const frac of [-1, -0.5, 0.5, 1]) {
+      const y = mid - frac * (h / 2) * 0.9 + 0.5;
       ctx.beginPath();
       ctx.moveTo(PAD_X, y);
       ctx.lineTo(PAD_X + innerW, y);
@@ -360,21 +391,20 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
       }
     }
 
-    // ── Curva REAL: somatorio peaking ──
+    // ── Curva REAL: soma das bandas pelo tipo de filtro de cada uma ──
     const bands = props.bands;
     if (!bands?.length) return;
+    if (curveDirty) recomputeCurve(bands);
 
-    const dbToY = (db: number) => mid - (db / DB_VIS_RANGE) * (h / 2) * 0.9;
+    const range = visRange();
+    const dbToY = (db: number) =>
+      mid - (Math.max(-range, Math.min(range, db)) / range) * (h / 2) * 0.9;
 
-    // Amostra a curva em buffers reutilizados (sampleX/sampleY): sem alocar
-    // 257 tuplas por frame.
+    // Projeta a curva cacheada em buffers reutilizados (sampleX/sampleY):
+    // sem alocar 257 tuplas por frame.
     for (let i = 0; i <= CURVE_STEPS; i++) {
-      const x = PAD_X + (innerW * i) / CURVE_STEPS;
-      const f = xToFreq(x, PAD_X, innerW);
-      const db = totalResponseDb(f, bands);
-      const dbClamped = Math.max(-DB_VIS_RANGE, Math.min(DB_VIS_RANGE, db));
-      sampleX[i] = x;
-      sampleY[i] = dbToY(dbClamped);
+      sampleX[i] = PAD_X + (innerW * i) / CURVE_STEPS;
+      sampleY[i] = dbToY(sampleDb[i]);
     }
 
     // Fill carbono 5% (curva fechada até a linha 0 dB). Path direto no
@@ -403,9 +433,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     for (let i = 0; i < bands.length; i++) {
       const b = bands[i];
       const x = freqToX(b.freq, PAD_X, innerW);
-      const dbOnCurve = totalResponseDb(b.freq, bands);
-      const dbClamped = Math.max(-DB_VIS_RANGE, Math.min(DB_VIS_RANGE, dbOnCurve));
-      const y = dbToY(dbClamped);
+      const y = dbToY(dotDb[i]);
       const isActive = i === active;
       const used = b.gain_db !== 0;
       ctx.beginPath();
@@ -462,25 +490,34 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     }
   });
 
-  // Redraw on band/active change (comportamento existente).
+  // Redesenha quando qualquer campo que muda a resposta muda (tipo, slope,
+  // modo e solo inclusos) ou quando a banda ativa muda.
   createEffect(() => {
     void props.activeBand;
     for (const b of props.bands) {
       void b.freq; void b.gain_db; void b.q; void b.mute;
+      void b.type; void b.slope; void b.filterMode; void b.solo;
     }
+    curveDirty = true;
     draw();
   });
 
+  const yLabels = () => {
+    const r = visRange();
+    return [r, r / 2, 0, -r / 2, -r].map(fmtDbLabel);
+  };
+
   return (
-    <div class="eq-canvas-wrap">
-      <canvas ref={canvasEl} aria-hidden="true" />
-      <div class="eq-yaxis" aria-hidden="true">
-        <span>+18</span>
-        <span>+9</span>
-        <span>0</span>
-        <span>-9</span>
-        <span>-18</span>
+    <>
+      <div class="eq-canvas-wrap">
+        <canvas ref={canvasEl} aria-hidden="true" />
+        <div class="eq-yaxis" aria-hidden="true">
+          <For each={yLabels()}>{(t) => <span>{t}</span>}</For>
+        </div>
       </div>
-    </div>
+      <div class="eq-xaxis" aria-hidden="true">
+        <For each={X_TICKS}>{(t) => <span style={{ left: xTickLeft(t.hz) }}>{t.label}</span>}</For>
+      </div>
+    </>
   );
 };

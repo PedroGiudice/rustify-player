@@ -409,10 +409,6 @@ export default function Signal() {
           <div class="sig-panel__body">
 
             <EqCanvas bands={dsp.eq.bands} activeBand={dsp.activeBand} />
-            <div class="eq-xaxis">
-              <span>20</span><span>50</span><span>100</span><span>200</span><span>500</span>
-              <span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20k</span>
-            </div>
 
             <div class="faders">
               <For each={dsp.eq.bands}>{(band, i) => (

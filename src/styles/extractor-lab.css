@@ -1809,26 +1809,38 @@ html { --glow: 0; }
   margin-bottom: 4px;
 }
 .eq-canvas-wrap canvas { width: 100%; height: 100%; display: block; }
+/* Rótulos nos valores reais da curva: ±R em 5%/95% e ±R/2 em 27,5%/72,5%
+   da altura (EqCanvas: dbToY usa 90% da meia-altura). */
 .eq-yaxis {
   position: absolute;
-  left: 8px; top: 6px; bottom: 6px;
-  display: flex; flex-direction: column;
-  justify-content: space-between;
+  left: 8px; top: 0; bottom: 0;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-6);
   pointer-events: none;
   letter-spacing: -0.01em;
 }
-.eq-yaxis span { line-height: 1; }
+.eq-yaxis span { position: absolute; left: 0; line-height: 1; transform: translateY(-50%); }
+.eq-yaxis span:nth-child(1) { top: 5%; }
+.eq-yaxis span:nth-child(2) { top: 27.5%; }
+.eq-yaxis span:nth-child(3) { top: 50%; }
+.eq-yaxis span:nth-child(4) { top: 72.5%; }
+.eq-yaxis span:nth-child(5) { top: 95%; }
+/* Rótulos posicionados em escala log pelo EqCanvas (left inline). */
 .eq-xaxis {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 4px 0;
+  position: relative;
+  height: 16px;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-6);
   letter-spacing: -0.01em;
+}
+.eq-xaxis span {
+  position: absolute;
+  top: 4px;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 /* Faders row — 16 bands */
