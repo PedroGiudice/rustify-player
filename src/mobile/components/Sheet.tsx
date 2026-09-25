@@ -9,11 +9,13 @@
    voltar do Android (sentinela de history, em sheet.ts).
    ============================================================ */
 
-import { For, Show, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createSignal } from "solid-js";
 import { Icon } from "../icons";
 import { closeSheet, closeSheetThen, openSheet, sheet } from "../sheet";
 import type { SheetSpec } from "../sheet";
-import { navigate } from "../nav";
+import { navigate, navigateFromNp } from "../nav";
+import { is2dActive } from "../bg/engine";
+import { useRenderer, useShape } from "../bg/spectrum";
 import { albumKey, fmtDuration } from "../derive";
 import {
   enqueueEnd,
@@ -155,6 +157,62 @@ function TrackSheet(props: { spec: Extract<SheetSpec, { kind: "track" }> }) {
   );
 }
 
+/**
+ * "Mais opções" do Now Playing (mobile-1): o cabeçalho só comporta quatro
+ * alvos de 44px na largura útil do S24 (316px), e as ações secundárias
+ * transbordavam — o overflow cortava justamente Fila e Fechar.
+ */
+function NpSheet(props: { track: Track }) {
+  return (
+    <>
+      <div class="sheet__head">
+        <div class="sheet__title">{props.track.title}</div>
+        <div class="sheet__sub">
+          {[props.track.artist_name, props.track.album_title].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+      <button
+        class="sheet__act"
+        onClick={() => {
+          void playSimilar(props.track);
+          closeSheet();
+        }}
+      >
+        <Icon.radio class="lead" />
+        <div class="sheet__actlabel">
+          <span>Rádio da faixa</span>
+          <span class="sheet__acthint">vizinhos por similaridade</span>
+        </div>
+      </button>
+      {/* replace, não push: o voltar da fila não pode reabrir o NP (mobile-v3) */}
+      <button class="sheet__act" onClick={() => closeSheetThen(() => navigateFromNp("/queue"))}>
+        <Icon.queue class="lead" />
+        <div class="sheet__actlabel">
+          <span>Fila</span>
+        </div>
+      </button>
+      {/* Só com o canvas 2D desenhando (mobile-2). Trocar não fecha a sheet:
+          o rótulo mostra o novo valor e dá pra ciclar em sequência. */}
+      <Show when={is2dActive()}>
+        <button class="sheet__act" onClick={() => useRenderer.next()}>
+          <Icon.sparkle class="lead" />
+          <div class="sheet__actlabel">
+            <span>Render do fundo</span>
+            <span class="sheet__acthint">{useRenderer.name()}</span>
+          </div>
+        </button>
+        <button class="sheet__act" onClick={() => useShape.next()}>
+          <Icon.sparkle class="lead" />
+          <div class="sheet__actlabel">
+            <span>Shape do fundo</span>
+            <span class="sheet__acthint">{useShape.name()}</span>
+          </div>
+        </button>
+      </Show>
+    </>
+  );
+}
+
 function InfoSheet(props: { track: Track }) {
   const rows = (): [string, string][] => {
     const t = props.track;
@@ -220,12 +278,14 @@ export function Sheet() {
         />
         <Show when={sheet()}>
           {(spec) => (
-            <Show
-              when={spec().kind === "track" ? (spec() as Extract<SheetSpec, { kind: "track" }>) : null}
-              fallback={<InfoSheet track={spec().track} />}
-            >
-              {(s) => <TrackSheet spec={s()} />}
-            </Show>
+            <Switch fallback={<InfoSheet track={spec().track} />}>
+              <Match when={spec().kind === "track" ? (spec() as Extract<SheetSpec, { kind: "track" }>) : null}>
+                {(s) => <TrackSheet spec={s()} />}
+              </Match>
+              <Match when={spec().kind === "np" ? spec() : null}>
+                {(s) => <NpSheet track={s().track} />}
+              </Match>
+            </Switch>
           )}
         </Show>
       </div>

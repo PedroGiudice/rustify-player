@@ -22,6 +22,9 @@
      estado nem restauração da ordem, e a UI aplica o snapshot que
      volta. Não é origin — a fila mantém a origem por item. A fileira
      é shuffle | prev | play | next | repeat.
+   - cabeçalho (25/09, mobile-1): Letra, Curtir, Mais opções e Fechar
+     em alvos de 44px; Rádio da faixa, Fila e shape/render do fundo
+     moram na sheet de "Mais opções" (kind `np`).
    O seek É real: o contrato tem seek_to.
    ============================================================ */
 
@@ -35,22 +38,19 @@ import {
   isLiked,
   next,
   pb,
-  playSimilar,
   previous,
   queueContextId,
   queueEntries,
   queueOrigin,
   repeat,
   seek,
-  showToast,
   shuffleUpcoming,
   toggle,
   toggleLike,
 } from "../store";
 import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
 import { canShuffleUpcoming } from "../queueModel";
-import { useRenderer, useShape } from "../bg/spectrum";
-import { is2dActive } from "../bg/engine";
+import { openSheet } from "../sheet";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
 
@@ -160,29 +160,11 @@ export function NowPlaying() {
         <div class="grab" />
         <div class="nphead">
           <div class="eyebrow">Now playing</div>
-          <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-            {/* Só com o canvas 2D desenhando: no WebGL trocavam um estado que
-                ninguém desenha (mobile-2). */}
-            <Show when={is2dActive()}>
-              <button
-                class="shapebtn"
-                onClick={() => {
-                  useRenderer.next();
-                  showToast("Render · " + useRenderer.name());
-                }}
-              >
-                {useRenderer.name()}
-              </button>
-              <button
-                class="shapebtn"
-                onClick={() => {
-                  useShape.next();
-                  showToast("Shape · " + useShape.name());
-                }}
-              >
-                {useShape.name()}
-              </button>
-            </Show>
+          {/* Quatro alvos de 44px no máximo (mobile-1): na largura útil do S24
+              (316px) as sete ações de antes transbordavam ~90px e o overflow
+              cortava Fila e Fechar. Rádio, Fila e shape/render moram na sheet
+              de "Mais opções". */}
+          <div class="npacts">
             <Show when={lyrics().length > 0}>
               <button
                 class="iconbtn"
@@ -210,18 +192,15 @@ export function NowPlaying() {
                   </button>
                   <button
                     class="iconbtn"
-                    aria-label="Rádio da faixa"
-                    onClick={() => void playSimilar(t())}
+                    aria-label="Mais opções"
+                    aria-haspopup="dialog"
+                    onClick={() => openSheet({ kind: "np", track: t() })}
                   >
-                    <Icon.radio />
+                    <Icon.more />
                   </button>
                 </>
               )}
             </Show>
-            {/* replace, não push: por cima do /np o voltar reabria o NP (mobile-v3) */}
-            <button class="iconbtn" aria-label="Fila" onClick={() => navigateFromNp("/queue")}>
-              <Icon.queue />
-            </button>
             <button class="iconbtn" aria-label="Fechar" onClick={() => back()}>
               <Icon.down />
             </button>

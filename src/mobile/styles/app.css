@@ -372,6 +372,30 @@
 .np .eyebrow {
   color: var(--accent);
 }
+/* Ações do cabeçalho (mobile-1): no máximo 4 alvos de 44px (Letra, Curtir,
+   Mais, Fechar) = 188px, que cabem com o eyebrow nos 316px úteis do S24
+   (360 - 2×22). As ações nunca encolhem; se faltar largura, quem cede é o
+   eyebrow (reticências). A margem vertical negativa devolve os 8px que o
+   alvo cresceu em relação ao .iconbtn de 36px: a linha continua com a
+   mesma altura e capa/título não descem. */
+.np .nphead .eyebrow {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np .npacts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.np .npacts .iconbtn {
+  width: 44px;
+  height: 44px;
+  margin: -4px 0;
+  flex-shrink: 0;
+}
 /* [v0] 214px era o estado data-nolyr do handoff — aqui é o único estado */
 .np .cover {
   width: 214px;
@@ -769,20 +793,6 @@
 .shell {
   position: relative;
   z-index: 1;
-}
-.shapebtn {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--t3);
-  background: none;
-  border: 1px solid var(--div-subtle);
-  border-radius: var(--r-pill);
-  padding: 5px 10px;
-}
-.shapebtn:active {
-  color: var(--t1);
-  border-color: var(--outline);
 }
 
 /* ── Stations (CMR-190) — porte do handoff, stcard__body virou button ── */
