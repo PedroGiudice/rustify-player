@@ -13,7 +13,7 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
-import { activeTab, navigate, openNowPlaying } from "../nav";
+import { activeTab, baseRoute, navigate, openNowPlaying } from "../nav";
 import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from "../store";
 import { originLabel, originSrc } from "../derive";
 
@@ -23,6 +23,22 @@ const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/library", label: "Library", icon: Icon.library },
   { path: "/queue", label: "Queue", icon: Icon.queue },
 ];
+
+/** Sobe a tela corrente ao topo (a .view é o scroller do shell). */
+function scrollViewToTop() {
+  const view = document.querySelector<HTMLElement>(".view");
+  if (!view) return;
+  if (typeof view.scrollTo === "function") view.scrollTo({ top: 0, behavior: "smooth" });
+  else view.scrollTop = 0;
+}
+
+/** Tocar a aba JÁ ativa, na raiz dela, sobe ao topo (mobile-4): navigate()
+ *  não faz nada quando o hash já é o alvo, e o toque morria. Numa sub-rota
+ *  (pasta, álbum…) a aba continua levando de volta à raiz. */
+function onTab(path: string) {
+  if (baseRoute().path === path) scrollViewToTop();
+  else navigate(path);
+}
 
 function Vu() {
   const [bars, setBars] = createSignal([4, 4, 4, 4]);
@@ -124,7 +140,7 @@ export function Dock() {
             <button
               class="tab"
               attr:data-on={activeTab() === tab.path ? "" : undefined}
-              onClick={() => navigate(tab.path)}
+              onClick={() => onTab(tab.path)}
             >
               <tab.icon />
               <span>{tab.label}</span>
