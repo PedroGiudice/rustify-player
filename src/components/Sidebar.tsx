@@ -131,6 +131,14 @@ export function Sidebar() {
           <div
             class="np-mini"
             onClick={() => navigate("/now-playing")}
+            onKeyDown={(e) => {
+              // role=button promete Enter/Espaço; sem isto o chip recebia
+              // foco por Tab e não fazia nada.
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                navigate("/now-playing");
+              }
+            }}
             role="button"
             tabindex="0"
           >

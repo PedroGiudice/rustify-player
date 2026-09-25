@@ -11,7 +11,7 @@
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup } from "@solidjs/testing-library";
+import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 
 vi.mock("../tauri", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../tauri")>();
@@ -146,5 +146,21 @@ describe("Sidebar — modo icons (shell-22)", () => {
     const crate = Array.from(container.querySelectorAll<HTMLElement>(".nav-item"))
       .find((el) => el.textContent?.includes("Crate"))!;
     expect(crate.getAttribute("title")).toBeNull();
+  });
+});
+
+describe("Sidebar — chip do now playing por teclado (ds-2)", () => {
+  afterEach(() => { window.location.hash = ""; });
+
+  it("Enter e Espaço no .np-mini abrem o Now Playing, como o clique", () => {
+    vi.useRealTimers();
+    setPlayer({ currentTrack: TRACK, isPlaying: false });
+    const { container } = render(() => <Sidebar />);
+    const chip = container.querySelector(".np-mini") as HTMLElement;
+    fireEvent.keyDown(chip, { key: "Enter" });
+    expect(window.location.hash).toBe("#/now-playing");
+    window.location.hash = "";
+    fireEvent.keyDown(chip, { key: " " });
+    expect(window.location.hash).toBe("#/now-playing");
   });
 });
