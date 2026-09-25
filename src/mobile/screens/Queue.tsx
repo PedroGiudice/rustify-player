@@ -42,6 +42,21 @@ function MissingRow(props: { index: number }) {
 
 export function Queue() {
   const split = () => splitQueue(queue(), pb.index);
+
+  /* A fila abre na faixa ATUAL (mobile-5): "Já tocadas" vem antes e só
+     cresce com a continuidade ligada — no topo, a tela mostrava o passado e
+     "A seguir" ficava abaixo da dobra. Microtask: roda depois de o shell
+     zerar a rolagem da entrada nova; ao VOLTAR, a restauração por quadro
+     (nav.restoreScroll) vem depois e devolve a posição que o usuário deixou. */
+  const scrollToNow = (el: HTMLElement) => {
+    queueMicrotask(() => {
+      if (!split().past.length) return;
+      const view = el.closest<HTMLElement>(".view");
+      if (!view) return;
+      const gap = el.getBoundingClientRect().top - view.getBoundingClientRect().top;
+      view.scrollTop = Math.max(0, view.scrollTop + gap - 8);
+    });
+  };
   const total = () => queue().length;
 
   const sub = () => {
@@ -81,7 +96,7 @@ export function Queue() {
 
           <Show when={current()}>
             {(t) => (
-              <div class="sec">
+              <div class="sec qnow" ref={scrollToNow}>
                 <div class="eyebrow" style={{ "margin-bottom": "10px" }}>
                   Tocando agora
                 </div>
