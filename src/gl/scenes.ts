@@ -41,6 +41,7 @@ import {
   type IUniform,
 } from "three";
 
+import { advanceDustTravel } from "./motion";
 import type { GlPalette, Rgb } from "./palette";
 import type { GlSignal } from "./signal";
 import type { SceneKey } from "./meta";
@@ -144,8 +145,13 @@ abstract class SceneBase {
   }
 }
 
-/** Poeira: 6000 pontos em volume fluindo para a câmera, disco aditivo. */
+/** Poeira: 6000 pontos em volume fluindo para a câmera, disco aditivo.
+    O fluxo em z é integrado na CPU (gl/motion.ts, CMR-267): o shader só
+    recebe o deslocamento pronto em uTravel. */
 class Dust extends SceneBase {
+  private readonly travelU: IUniform<number> = { value: 0 };
+  private lastClock: number | null = null;
+
   constructor() {
     super();
     const cam = new PerspectiveCamera(55, 16 / 9, 0.1, 200);
@@ -165,18 +171,17 @@ class Dust extends SceneBase {
     g.setAttribute("position", new BufferAttribute(pos, 3));
     g.setAttribute("aSeed", new BufferAttribute(seed, 1));
     const m = new ShaderMaterial({
-      uniforms: this.u as unknown as Record<string, IUniform>,
+      uniforms: { ...this.u, uTravel: this.travelU } as unknown as Record<string, IUniform>,
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
       vertexShader: `
         attribute float aSeed; varying float vSeed; varying float vDepth;
-        uniform float uTime,uLow,uMid,uBeat;
+        uniform float uTime,uLow,uBeat,uTravel;
         void main(){
           vSeed=aSeed;
           vec3 p=position;
-          float speed=3.0+4.0*uMid;
-          p.z=mod(p.z+uTime*speed+aSeed*90.0,90.0)-85.0;
+          p.z=mod(p.z+uTravel+aSeed*90.0,90.0)-85.0;
           p.x+=sin(uTime*0.4+aSeed*40.0)*1.6; p.y+=cos(uTime*0.33+aSeed*31.0)*1.1;
           vec4 mv=modelViewMatrix*vec4(p,1.0);
           float d=-mv.z; vDepth=clamp(1.0-d/85.0,0.0,1.0);
@@ -200,6 +205,12 @@ class Dust extends SceneBase {
   }
 
   update(sig: GlSignal): void {
+    // Avanço do relógio VIRTUAL (não o dt de parede): bgSpeed e o
+    // beat-sync seguem valendo para a deriva, como no uTime antigo.
+    const dClock = this.lastClock === null ? 0 : sig.clock - this.lastClock;
+    this.lastClock = sig.clock;
+    this.travelU.value = advanceDustTravel(this.travelU.value, dClock, sig.mid);
+
     const c = this.camera as PerspectiveCamera;
     c.position.x = Math.sin(sig.clock * 0.11) * 1.2;
     c.position.y = Math.cos(sig.clock * 0.09) * 0.8;
