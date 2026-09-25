@@ -289,38 +289,57 @@ function SourcesPanel(props: {
   group: ResultGroup;
   onUse: (sourceId: string) => void;
 }) {
+  const byId = createMemo(
+    () => new Map([props.group.best, ...props.group.alternates].map((c) => [c.id, c])),
+  );
+  // Ordem de CHEGADA, não de score: durante a busca o backend reordena os
+  // candidatos a cada poll, e o 'Usar' sob o cursor passava a apontar pra
+  // outro peer entre a mira e o clique (crate-v5). Peer novo entra no fim;
+  // peer que sumiu sai. Linhas chaveadas pelo id (string), então o nó DOM
+  // de cada peer também fica parado.
+  const order = createMemo<string[]>((prev) => {
+    const m = byId();
+    const next = prev.filter((id) => m.has(id));
+    for (const id of m.keys()) if (!next.includes(id)) next.push(id);
+    return next.length === prev.length && next.every((id, i) => id === prev[i]) ? prev : next;
+  }, []);
+
   return (
     <div class="crate-sources">
       <div class="crate-src-head">
         <div>Peer</div><div>Qualidade</div><div>Tamanho</div><div>Fila</div><div>Velocidade</div><div />
       </div>
-      <For each={[props.group.best, ...props.group.alternates]}>
-        {(c: Candidate) => (
-          <div class="crate-src" data-flag={c.warn ? "live" : undefined}>
-            <div class="crate-src-peer">
-              <span class="nm">{c.username}</span>
-              <Show when={c.warn}>
-                <span class="crate-pill crate-pill--warn">⚠ {c.warn}</span>
-              </Show>
-            </div>
-            <span class="crate-badge">{candidateQuality(c, props.group.quality_label)}</span>
-            <div class="crate-src-val">{formatSize(c.size)}</div>
-            <Show
-              when={c.free_slot}
-              fallback={<div class="crate-src-queued">fila {c.queue_length}</div>}
-            >
-              <div class="crate-src-free">livre</div>
-            </Show>
-            <div class={`crate-src-val${c.upload_speed < 300_000 ? " crate-src-val--dim" : ""}`}>
-              {formatSpeed(c.upload_speed)}
-            </div>
-            <div class="crate-r-act">
-              <button type="button" class="crate-btn" onClick={(e) => { e.stopPropagation(); props.onUse(c.id); }}>
-                Usar
-              </button>
-            </div>
-            <div class="crate-src-path"><bdi>{c.filename}</bdi></div>
-          </div>
+      <For each={order()}>
+        {(id) => (
+          <Show when={byId().get(id)}>
+            {(c: () => Candidate) => (
+              <div class="crate-src" data-flag={c().warn ? "live" : undefined}>
+                <div class="crate-src-peer">
+                  <span class="nm">{c().username}</span>
+                  <Show when={c().warn}>
+                    <span class="crate-pill crate-pill--warn">⚠ {c().warn}</span>
+                  </Show>
+                </div>
+                <span class="crate-badge">{candidateQuality(c(), props.group.quality_label)}</span>
+                <div class="crate-src-val">{formatSize(c().size)}</div>
+                <Show
+                  when={c().free_slot}
+                  fallback={<div class="crate-src-queued">fila {c().queue_length}</div>}
+                >
+                  <div class="crate-src-free">livre</div>
+                </Show>
+                <div class={`crate-src-val${c().upload_speed < 300_000 ? " crate-src-val--dim" : ""}`}>
+                  {formatSpeed(c().upload_speed)}
+                </div>
+                <div class="crate-r-act">
+                  <button type="button" class="crate-btn" onClick={(e) => { e.stopPropagation(); props.onUse(id); }}>
+                    Usar
+                  </button>
+                </div>
+                <div class="crate-src-path"><bdi>{c().filename}</bdi></div>
+              </div>
+            )}
+          </Show>
         )}
       </For>
     </div>

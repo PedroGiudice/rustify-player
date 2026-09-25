@@ -477,6 +477,31 @@ describe("Crate — poll de resultados", () => {
     expect(wrap.querySelector(".crate-dest__menu")).toBeTruthy();
   });
 
+  it("painel de fontes mantém a ordem de chegada dos peers enquanto o ranking muda: o 'Usar' sob o cursor não troca de peer", async () => {
+    let tick = 0;
+    const a = () => candidate({ id: "cand_a", username: "peer_a" });
+    const b = () => candidate({ id: "cand_b", username: "peer_b" });
+    const c = () => candidate({ id: "cand_c", username: "peer_c" });
+    const { container } = await searchWithFakeTimers(() => {
+      // 1º poll: a > b. Depois: c entra no topo e b passa à frente de a.
+      const g = tick++ === 0
+        ? group({ suggested_dest: "Rap & Hip-Hop", best: a(), alternates: [b()] })
+        : group({ suggested_dest: "Rap & Hip-Hop", best: c(), alternates: [b(), a()] });
+      return snapshot([g], "running");
+    });
+    fireEvent.click(container.querySelector(".crate-row__sources")!);
+    const peers = () => Array.from(container.querySelectorAll(".crate-src .nm")).map((n) => n.textContent);
+    expect(peers()).toEqual(["peer_a", "peer_b"]);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(peers()).toEqual(["peer_a", "peer_b", "peer_c"]);
+
+    const firstUse = container.querySelector(".crate-src .crate-btn") as HTMLButtonElement;
+    fireEvent.click(firstUse);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tauriApi.slskDownload).toHaveBeenCalledWith("srch1", group().group_key, "cand_a", "Rap & Hip-Hop");
+  });
+
   it("slskStatus é consultado a cada 5 s, não a cada ciclo de poll", async () => {
     vi.useFakeTimers();
     render(() => <Crate />);
