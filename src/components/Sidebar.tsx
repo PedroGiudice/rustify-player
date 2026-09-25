@@ -192,9 +192,12 @@ export function Sidebar() {
           )}
         </For>
 
-        {/* Tweaks: dispara o painel flutuante (aparência, fundo, loudness). */}
+        {/* Tweaks: dispara o painel flutuante (aparência, fundo, loudness).
+            .active enquanto o painel está aberto, junto com aria-expanded
+            (cfg-9). */}
         <button
           class="nav-item"
+          classList={{ active: tweaksOpen() }}
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
           aria-controls="tweaks-panel"

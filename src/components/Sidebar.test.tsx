@@ -136,6 +136,18 @@ describe("Sidebar: gatilho do Tweaks", () => {
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     setTweaksOpen(false);
   });
+
+  it("mostra estado visual ativo enquanto o painel está aberto, coerente com aria-expanded", () => {
+    setTweaksOpen(false);
+    const { getByText } = render(() => <Sidebar />);
+    const btn = getByText("Tweaks").closest("button")!;
+    expect(btn.classList.contains("active")).toBe(false);
+    setTweaksOpen(true);
+    expect(btn.classList.contains("active")).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    setTweaksOpen(false);
+    expect(btn.classList.contains("active")).toBe(false);
+  });
 });
 
 describe("Sidebar — modo icons (shell-22)", () => {
