@@ -59,7 +59,7 @@
   .grid.focus { grid-template-columns: minmax(0, 1fr); }
   .grid.focus .tile:not(.on) { display: none; }
   .tile { display: flex; flex-direction: column; background: var(--cont); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: var(--canvas); cursor: zoom-in; }
+  .stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #000; cursor: zoom-in; }
   .grid.focus .stage { cursor: zoom-out; }
   .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .stage .err { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--text-2); font-size: 13px; }
@@ -271,8 +271,8 @@
   <section class="notes">
     <div>
       <h2>O que julgar</h2>
-      <p>Se o card continua legível por cima, se o movimento acompanha a música sem puxar o olho e se a paleta do tema continua sendo a do tema. Troque o tema na barra: as quatro cores de cada cena vêm dele, como no app.</p>
-      <p>O custo medido aqui é o do seu navegador e da sua GPU. O número que decide é o do app na cmr-auto (WebKitGTK 2.52, Intel UHD 620); ele será medido lá antes de qualquer merge.</p>
+      <p>Se o card continua legível por cima, se o movimento acompanha a música sem puxar o olho e se a paleta do tema continua sendo a do tema. O fundo é preto puro, como no app desde 20/09; tinta, accent e tom neutro vêm do tema. Troque o tema na barra para ver.</p>
+      <p>A ordem e os custos da tabela vêm da cmr-auto. O botão Medir custo mede o aparelho em que você está, só para comparação. Antes de a cena escolhida entrar no app, o fps dela é medido no próprio app.</p>
     </div>
     <div>
       <h2>Como o sinal é simulado</h2>
@@ -1144,7 +1144,8 @@ function applyTheme(k) {
   root.setProperty("--ink", t.ink); root.setProperty("--ink2", t.ink2); root.setProperty("--on-ink", t.onInk);
   root.setProperty("--text", t.text); root.setProperty("--text-2", t.text2); root.setProperty("--muted", t.muted);
   root.setProperty("--line", t.line); root.setProperty("--line-2", t.line2);
-  PAL = { canvas: hexRgb(t.canvas), ink: hexRgb(t.ink), ink2: hexRgb(t.ink2), soft: hexRgb(t.muted) };
+  // canvas GL é preto puro fixo no app (GL_CANVAS, decisão do CEO de 20/09); só tinta e acentos vêm do tema
+  PAL = { canvas: [0, 0, 0], ink: hexRgb(t.ink), ink2: hexRgb(t.ink2), soft: hexRgb(t.muted) };
   for (const st of stages) st.scene?.onPalette?.(PAL);
 }
 applyTheme("copper");
