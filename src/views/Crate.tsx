@@ -64,6 +64,53 @@ const IN_FLIGHT = new Set<DownloadJob["state"]["kind"]>([
     processing, que a UI não deixa cancelar). */
 const CANCELLABLE = new Set<DownloadJob["state"]["kind"]>(["queued", "enqueued", "downloading"]);
 
+/** Há fonte ainda não tentada? Mesma regra do backend
+    (`try_other_source_sync`: primeira alternativa fora de
+    `tried_source_ids`). Sem ela, [Trocar fonte] seria um botão morto que
+    só devolve "sem outras fontes" (crate-6). */
+function hasUntriedSource(job: DownloadJob): boolean {
+  return job.alternates.some((c) => !job.tried_source_ids.includes(c.id));
+}
+
+/** Respostas de erro do coordinator (strings fixas do backend, sem
+    acento) → texto de tela. Desconhecido passa cru. */
+const BACKEND_ERRORS: Record<string, string> = {
+  "coordinator nao respondeu a tempo": "o serviço de downloads não respondeu a tempo",
+  "coordinator indisponivel": "o serviço de downloads está indisponível",
+  "busca desconhecida ou expirada": "a busca expirou, busque de novo",
+  "grupo nao encontrado nessa busca": "a faixa não está mais nessa busca, busque de novo",
+  "fonte nao encontrada nesse grupo": "essa fonte não está mais disponível, busque de novo",
+  "destino de playlist invalido": "nome de playlist inválido",
+  "job nao encontrado": "o download não existe mais",
+  "sem outras fontes disponiveis": "não há outras fontes para tentar",
+  "job em estado que nao aceita troca de fonte agora": "o download está num estado que não aceita troca de fonte agora",
+};
+
+function errorText(e: unknown): string {
+  const raw =
+    typeof e === "string"
+      ? e
+      : e && typeof e === "object" && "message" in e
+        ? String((e as { message: unknown }).message)
+        : String(e ?? "");
+  return BACKEND_ERRORS[raw] ?? raw;
+}
+
+/** Aviso de erro em texto simples (crate-6) — reaproveita o banner âmbar
+    do Crate, sem sistema de toast novo. */
+function NoticeBanner(props: { text: string; onClose: () => void }) {
+  return (
+    <div class="crate-banner" data-tone="amber" role="alert">
+      <Icon name={ICONS.alert} size={15} />
+      <p>{props.text}</p>
+      <span class="crate-banner__sp" />
+      <button type="button" class="crate-banner__act" onClick={props.onClose}>
+        Fechar
+      </button>
+    </div>
+  );
+}
+
 /** Decodifica o param da rota sem explodir em `%` solto. */
 function decodeParam(p: string): string {
   try { return decodeURIComponent(p); } catch { return p; }
@@ -493,7 +540,12 @@ function CrateRow(props: {
               <Icon name={ICONS.close} size={12} /> Cancelar
             </button>
           </Show>
-          <Show when={state() === "stalled" || state() === "failed" || (state() === "rejected" && !isAlreadyOwnedRejection())}>
+          <Show
+            when={
+              (state() === "stalled" || state() === "failed" || (state() === "rejected" && !isAlreadyOwnedRejection()))
+              && props.job != null && hasUntriedSource(props.job)
+            }
+          >
             <button
               type="button"
               class="crate-btn"
@@ -588,7 +640,7 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
               <Icon name={ICONS.close} size={12} /> Cancelar
             </button>
           </Show>
-          <Show when={kind() === "stalled" || kind() === "failed"}>
+          <Show when={(kind() === "stalled" || kind() === "failed") && hasUntriedSource(props.job)}>
             <button type="button" class="crate-btn" onClick={props.onTrySource}>
               <Icon name={ICONS.refresh} size={12} /> Trocar fonte
             </button>
@@ -650,6 +702,9 @@ export default function Crate(props: { param?: string | null }) {
   const [cooldownTotal, setCooldownTotal] = createSignal(0);
   const [coldSeconds, setColdSeconds] = createSignal<number | null>(null);
   const [dedupTrack, setDedupTrack] = createSignal<Track | null>(null);
+  // Erro de busca ou de ação (baixar/cancelar/trocar fonte) em texto
+  // simples na tela — antes ia só pro console (crate-6).
+  const [notice, setNotice] = createSignal<string | null>(null);
   // Seleção pela CHAVE da faixa, não pela posição: durante a busca as
   // linhas reordenam, e a seleção por índice pulava pra outra faixa entre
   // a escolha e o Enter. `null` = primeira linha.
@@ -760,6 +815,7 @@ export default function Crate(props: { param?: string | null }) {
     const prevId = searchId();
     if (prevId) slskCancelSearch(prevId).catch(() => {});
     setColdSeconds(null);
+    setNotice(null);
     setSearching(true);
     setDedupTrack(null);
     try {
@@ -781,27 +837,50 @@ export default function Crate(props: { param?: string | null }) {
       const parsed = parseSlskSearchError(e);
       if (parsed.kind === "cooldown") startCooldown(parsed.seconds ?? 0);
       else if (parsed.kind === "cold") setColdSeconds(parsed.seconds ?? 0);
+      // Os demais eram engolidos: o clique em Buscar não mostrava nada
+      // (crate-6). O pacer segue intacto — isto só conta o que houve.
+      else if (parsed.kind === "busy") {
+        setNotice("Limite de 40 buscas por hora atingido. Espere alguns minutos antes de buscar de novo.");
+      } else if (parsed.kind === "offline") {
+        setNotice("O slskd não está respondendo. Confira se ele está rodando.");
+      } else {
+        setNotice(`Não deu pra buscar: ${errorText(e)}.`);
+      }
     }
   }
 
   async function handleDownload(g: ResultGroup, sourceId: string, dest: string) {
     const id = searchId();
     if (!id) return;
+    setNotice(null);
     try {
       const jobId = await slskDownload(id, g.group_key, sourceId, dest);
       setGroupJobs((m) => ({ ...m, [g.group_key]: jobId }));
       saveLastDest(dest);
     } catch (e) {
       console.error("[crate] slskDownload falhou:", e);
+      setNotice(`Não deu pra baixar "${g.display_title}": ${errorText(e)}.`);
     }
   }
 
   async function handleCancel(jobId: string) {
-    try { await slskCancel(jobId); } catch (e) { console.error("[crate] slskCancel falhou:", e); }
+    setNotice(null);
+    try {
+      await slskCancel(jobId);
+    } catch (e) {
+      console.error("[crate] slskCancel falhou:", e);
+      setNotice(`Não deu pra cancelar o download: ${errorText(e)}.`);
+    }
   }
 
   async function handleTrySource(jobId: string) {
-    try { await slskTryOtherSource(jobId); } catch (e) { console.error("[crate] slskTryOtherSource falhou:", e); }
+    setNotice(null);
+    try {
+      await slskTryOtherSource(jobId);
+    } catch (e) {
+      console.error("[crate] slskTryOtherSource falhou:", e);
+      setNotice(`Não deu pra trocar a fonte: ${errorText(e)}.`);
+    }
   }
 
   function scrollSelectedIntoView() {
@@ -1018,8 +1097,12 @@ export default function Crate(props: { param?: string | null }) {
             </Show>
           </div>
 
-          <Show when={coldSeconds() != null || dedupTrack()}>
+          <Show when={coldSeconds() != null || dedupTrack() || notice()}>
             <div class="crate-banners">
+              <Show when={notice()}>
+                {(text) => <NoticeBanner text={text()} onClose={() => setNotice(null)} />}
+              </Show>
+
               <Show when={coldSeconds() != null}>
                 <div class="crate-banner" data-tone="amber">
                   <Icon name={ICONS.alert} size={15} />
@@ -1128,6 +1211,14 @@ export default function Crate(props: { param?: string | null }) {
         </Show>
 
         <Show when={tab() === "queue"}>
+          <Show when={notice()}>
+            {(text) => (
+              <div class="crate-banners">
+                <NoticeBanner text={text()} onClose={() => setNotice(null)} />
+              </div>
+            )}
+          </Show>
+
           <Show when={inFlightJobs().length > 0}>
             <div class="crate-q-sec"><h2>Em voo · {inFlightJobs().length}</h2></div>
             <div class="crate-list" style={{ "padding-top": "0" }}>

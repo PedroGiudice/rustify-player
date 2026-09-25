@@ -248,6 +248,92 @@ describe("Crate — cooldown", () => {
   });
 });
 
+describe("Crate — erros aparecem na tela (crate-6)", () => {
+  const alertText = (c: HTMLElement) => c.querySelector('[role="alert"]')?.textContent ?? "";
+
+  async function searchWithRejection(err: string) {
+    vi.mocked(tauriApi.slskSearch).mockRejectedValueOnce(err);
+    const utils = render(() => <Crate />);
+    const input = utils.container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko mode" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(utils.container.querySelector('[role="alert"]')).toBeTruthy());
+    return utils;
+  }
+
+  it("busca recusada pelo limite horário (busy) explica o limite", async () => {
+    const { container } = await searchWithRejection("busy");
+    expect(alertText(container)).toContain("40 buscas por hora");
+  });
+
+  it("busca que falha por timeout do coordinator mostra o motivo em português", async () => {
+    const { container } = await searchWithRejection("coordinator nao respondeu a tempo");
+    expect(alertText(container)).toContain("não respondeu a tempo");
+  });
+
+  it("falha ao baixar aparece na tela, e Fechar some com o aviso", async () => {
+    vi.mocked(tauriApi.slskDownload).mockRejectedValueOnce("destino de playlist invalido");
+    const { container, getByText } = await searchAndRender([group({ suggested_dest: "Rap & Hip-Hop" })]);
+    const baixar = Array.from(container.querySelectorAll(".crate-row button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixar);
+    await waitFor(() => expect(alertText(container)).toContain("Não deu pra baixar"));
+    expect(alertText(container)).toContain("nome de playlist inválido");
+    fireEvent.click(getByText("Fechar"));
+    expect(container.querySelector('[role="alert"]')).toBeFalsy();
+  });
+
+  async function searchWithFailedJob(extra: Partial<DownloadJob>) {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    const utils = await searchAndRender([group({ suggested_dest: "Rap & Hip-Hop" })]);
+    const baixar = Array.from(utils.container.querySelectorAll(".crate-row button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixar);
+    await waitFor(() => expect(emit).not.toBeNull());
+    await waitFor(() => expect(tauriApi.slskDownload).toHaveBeenCalled());
+    emit!([dlJob("job1", { kind: "failed", reason: "peer recusou", retryable: true }, extra)]);
+    await waitFor(() => {
+      expect(utils.container.querySelector(".crate-row")!.getAttribute("data-state")).toBe("failed");
+    });
+    return utils;
+  }
+
+  const trocarFonte = (scope: Element) =>
+    Array.from(scope.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("Trocar fonte"));
+
+  it("'Trocar fonte' some quando não há fonte não tentada (na busca e na Fila)", async () => {
+    const { container, getByText } = await searchWithFailedJob({
+      alternates: [candidate({ id: "cand2", username: "peer_b" })],
+      tried_source_ids: ["cand2"],
+    });
+    expect(trocarFonte(container.querySelector(".crate-row")!)).toBeUndefined();
+    fireEvent.click(getByText(/^Fila/));
+    await waitFor(() => expect(container.querySelector(".crate-job")).toBeTruthy());
+    expect(trocarFonte(container.querySelector(".crate-job")!)).toBeUndefined();
+  });
+
+  it("'Trocar fonte' com fonte disponível chama o backend e mostra o erro se ele recusar", async () => {
+    vi.mocked(tauriApi.slskTryOtherSource).mockRejectedValueOnce(
+      "job em estado que nao aceita troca de fonte agora",
+    );
+    const { container } = await searchWithFailedJob({
+      alternates: [candidate({ id: "cand2", username: "peer_b" })],
+      tried_source_ids: [],
+    });
+    const btn = trocarFonte(container.querySelector(".crate-row")!)!;
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn);
+    await waitFor(() => expect(alertText(container)).toContain("Não deu pra trocar a fonte"));
+    expect(tauriApi.slskTryOtherSource).toHaveBeenCalledWith("job1");
+  });
+});
+
 describe("Crate — evento slsk-jobs", () => {
   it("transiciona a linha para ready e habilita ▸ Tocar", async () => {
     let emit: ((jobs: DownloadJob[]) => void) | null = null;
