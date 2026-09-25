@@ -184,21 +184,56 @@ describe("Settings view", () => {
     expect(outputLabel).toBeUndefined();
   });
 
-  it("About renderiza grid com 6 items mono (Version, Tauri, Backend, Identifier, Branch, License)", () => {
+  // cfg-2: a branch era fixa ("feature/signal-screens-handoff") e não
+  // corresponde a nada do build — o item saiu (o teste antigo o exigia).
+  it("About renderiza grid mono (Version, Tauri, Backend, Identifier, License), sem branch fixa", () => {
     const { container } = render(() => <Settings />);
     const aboutGrid = container.querySelector(".set-about-grid");
     expect(aboutGrid).toBeTruthy();
     const items = aboutGrid!.querySelectorAll(".set-about-item");
-    expect(items.length).toBe(6);
     const labels = Array.from(items).map((i) =>
       (i.querySelector(".set-about-item__label")?.textContent ?? "").toLowerCase()
     );
-    expect(labels).toContain("version");
-    expect(labels).toContain("tauri");
-    expect(labels).toContain("backend");
-    expect(labels).toContain("identifier");
-    expect(labels).toContain("branch");
-    expect(labels).toContain("license");
+    expect(labels).toEqual(["version", "tauri", "backend", "identifier", "license"]);
+  });
+
+  // cfg-2: placeholders do mockup exibidos como fato.
+  describe("Settings não exibe dado falso (cfg-2)", () => {
+    it("data dir real (~/.local/share/rustify-player), não ~/.config", () => {
+      const { container } = render(() => <Settings />);
+      const stats = container.querySelector(".view__stats")!.textContent ?? "";
+      expect(stats).toContain("~/.local/share/rustify-player");
+      expect(stats).not.toContain("~/.config");
+    });
+
+    it("pasta de música é a raiz real ~/Music", () => {
+      const { container } = render(() => <Settings />);
+      const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
+        (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("music folder"),
+      )!;
+      expect(row.querySelector(".set-row__hint")!.textContent!.trim()).toBe("~/Music");
+    });
+
+    it("linha do qdrant não afirma 'status ok' fixo e lista os dois vetores", () => {
+      const { container } = render(() => <Settings />);
+      const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
+        (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("qdrant"),
+      )!;
+      const hint = row.querySelector(".set-row__hint")!.textContent ?? "";
+      expect(hint).not.toMatch(/status ok/i);
+      expect(hint).toContain("768");
+      expect(hint).toContain("1024");
+    });
+
+    it("About: backend sem cpal e licença MIT (Cargo.toml)", () => {
+      const { container } = render(() => <Settings />);
+      const value = (label: string) =>
+        Array.from(container.querySelectorAll(".set-about-item")).find(
+          (i) => (i.querySelector(".set-about-item__label")?.textContent ?? "").toLowerCase() === label,
+        )!.querySelector(".set-about-item__value")!.textContent;
+      expect(value("backend")).not.toMatch(/cpal/i);
+      expect(value("license")).toBe("MIT");
+    });
   });
 
   it("Update flow: botao Check for updates dispara checkForUpdate", async () => {

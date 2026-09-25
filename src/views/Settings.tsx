@@ -12,9 +12,10 @@
       PlayerBar no boot), Volume slider, Normalize tog.
       (Tier 0 removeu crossfade, gapless, output device, scrobble.)
    3. Library — Music folder (read-only), Re-scan (accent), Embeddings
-      (read-only stat), qdrant status (read-only), library stats tile grid.
-   4. About — grid 6 items mono (Version, Tauri, Backend,
-      Identifier, Branch, License).
+      (read-only stat), qdrant (endpoint e vetores; o status NAO e
+      consultado, entao nao e exibido), library stats tile grid.
+   4. About — grid mono (Version, Tauri, Backend, Identifier, License).
+      Os valores fixos aqui precisam bater com o Cargo.toml.
 
    PRESERVADO do Settings antigo (NAO QUEBRAR):
    - Update flow (checkForUpdate / installUpdate / restartApp)
@@ -229,7 +230,7 @@ export default function Settings() {
           <p class="view__head-hint">Library, audio, appearance — v{version() ?? "—"}.</p>
         </div>
         <div class="view__stats">
-          <span>config <b>~/.config/rustify-player</b></span>
+          <span>data <b>~/.local/share/rustify-player</b></span>
         </div>
       </header>
 
@@ -419,7 +420,7 @@ export default function Settings() {
           <div class="set-row">
             <div>
               <div class="set-row__label">Music folder</div>
-              <div class="set-row__hint mono">~/Music/library</div>
+              <div class="set-row__hint mono">~/Music</div>
             </div>
           </div>
 
@@ -455,7 +456,7 @@ export default function Settings() {
           <div class="set-row">
             <div>
               <div class="set-row__label">qdrant process</div>
-              <div class="set-row__hint mono">localhost:6333 · vec-dim 1024 · status ok</div>
+              <div class="set-row__hint mono">localhost:6333 · vectors mert 768 · lyrics 1024</div>
             </div>
           </div>
 
@@ -487,7 +488,7 @@ export default function Settings() {
         </div>
 
         {/* ════════════════════════════════════════════════════════
-            4. ABOUT (grid 6 items mono + update flow preservado
+            4. ABOUT (grid mono + update flow preservado
                integrado como primeira row, antes do grid)
             ════════════════════════════════════════════════════════ */}
         <div class="set-panel">
@@ -563,19 +564,15 @@ export default function Settings() {
             </div>
             <div class="set-about-item">
               <span class="set-about-item__label">Backend</span>
-              <span class="set-about-item__value">Rust · GStreamer · cpal</span>
+              <span class="set-about-item__value">Rust · GStreamer</span>
             </div>
             <div class="set-about-item">
               <span class="set-about-item__label">Identifier</span>
               <span class="set-about-item__value">dev.cmr.rustifyplayer</span>
             </div>
             <div class="set-about-item">
-              <span class="set-about-item__label">Branch</span>
-              <span class="set-about-item__value">feature/signal-screens-handoff</span>
-            </div>
-            <div class="set-about-item">
               <span class="set-about-item__label">License</span>
-              <span class="set-about-item__value">GPL-3.0</span>
+              <span class="set-about-item__value">MIT</span>
             </div>
           </div>
         </div>
