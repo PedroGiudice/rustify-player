@@ -3299,8 +3299,8 @@ html { --glow: 0; }
 
 /* ── Menu de contexto de faixa (right-click) ──────────────────
    Renderizado por TrackContextMenu.tsx (Portal em document.body).
-   Posição via inline left/top; visual aqui. Mora AQUI (e nao em
-   components.css, que e orfao/nao-importado) pra entrar no bundle. */
+   Posição via inline left/top; visual aqui. Mora AQUI porque este e o
+   unico CSS do desktop (o components.css orfao foi removido). */
 .track-ctx-menu {
   position: fixed;
   z-index: 300;
