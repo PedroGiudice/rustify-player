@@ -16,8 +16,9 @@
    ============================================================ */
 
 import {
-  createSignal, createMemo, For, Show, onMount, onCleanup, type JSX,
+  createSignal, createMemo, For, Show, onMount, onCleanup, batch, type JSX,
 } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import {
   slskStatus, slskSearch, slskResults, slskCancelSearch, slskDedupProbe,
   slskDownload, slskTryOtherSource, slskCancel,
@@ -30,7 +31,11 @@ import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
+/** Poll de resultados — só enquanto a busca está `running` (crate-1). */
 const POLL_MS = 800;
+/** Status da rede muda devagar; consultar a cada poll de busca era
+    desperdício (crate-1). */
+const STATUS_POLL_MS = 5000;
 
 /** Circunferência do anel de cooldown (r=6) — casa com o
     stroke-dasharray:37.7 do handoff. */
@@ -618,11 +623,26 @@ export default function Crate(props: { param?: string | null }) {
   const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>({});
   const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>({});
 
+  // Grupos num store reconciliado por `group_key`: cada slsk_results chega
+  // como objeto novo (o backend clona o snapshot), e o <For> por referência
+  // recriava todas as linhas a cada poll — seletor de destino fechando
+  // sozinho, foco perdido, hover piscando (crate-1). Com o reconcile, a
+  // mesma faixa mantém a mesma linha e só os campos alterados notificam.
+  const [results, setResults] = createStore<{ groups: ResultGroup[] }>({ groups: [] });
+
   let inputEl!: HTMLInputElement;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
 
-  const groups = () => snapshot()?.groups ?? [];
+  const groups = () => results.groups;
+
+  function applySnapshot(snap: SearchSnapshot | null) {
+    batch(() => {
+      setSnapshot(snap);
+      setResults("groups", reconcile(snap?.groups ?? [], { key: "group_key" }));
+    });
+  }
   const libraryCount = () => folders().reduce((n, f) => n + f.track_count, 0);
   const inFlightJobs = () => jobs().filter((j) => IN_FLIGHT.has(j.state.kind));
   const finishedJobs = () => jobs().filter((j) => !IN_FLIGHT.has(j.state.kind));
@@ -663,14 +683,15 @@ export default function Crate(props: { param?: string | null }) {
     try {
       const id = await slskSearch(q, force);
       setSearchId(id);
-      setSnapshot(null);
+      applySnapshot(null);
       setSelectedIndex(0);
       setExpandedKey(null);
       setGroupJobs({});
       setRowOverrides({});
       slskDedupProbe(q).then((tracks) => setDedupTrack(tracks[0] ?? null)).catch(() => setDedupTrack(null));
       const snap = await slskResults(id);
-      setSnapshot(snap);
+      if (searchId() !== id) return;
+      applySnapshot(snap);
       setSearching(snap.state === "running");
     } catch (e) {
       setSearching(false);
@@ -740,23 +761,30 @@ export default function Crate(props: { param?: string | null }) {
   onMount(() => {
     bootCrateStore();
     libListFolders().then(setFolders).catch(() => {});
-    slskStatus().then(setStatus).catch(() => {});
+    const refreshStatus = () => { slskStatus().then(setStatus).catch(() => {}); };
+    refreshStatus();
+    statusTimer = setInterval(refreshStatus, STATUS_POLL_MS);
 
+    // Só polla enquanto a busca ainda pode mudar: `running`, ou antes do
+    // primeiro snapshot chegar. Estado terminal (done/empty/failed/
+    // canceled) não muda mais no backend — seguir pollando só recriava
+    // trabalho a cada 800 ms com a view aberta (crate-1).
     pollTimer = setInterval(() => {
       const id = searchId();
-      if (id) {
-        slskResults(id).then((snap) => {
-          setSnapshot(snap);
-          setSearching(snap.state === "running");
-        }).catch(() => {});
-      }
-      slskStatus().then(setStatus).catch(() => {});
+      const snap = snapshot();
+      if (!id || (snap && snap.state !== "running")) return;
+      slskResults(id).then((next) => {
+        if (searchId() !== id) return; // resposta atrasada de uma busca já trocada
+        applySnapshot(next);
+        setSearching(next.state === "running");
+      }).catch(() => {});
     }, POLL_MS);
 
     window.addEventListener("keydown", handleGlobalKey);
 
     onCleanup(() => {
       if (pollTimer) clearInterval(pollTimer);
+      if (statusTimer) clearInterval(statusTimer);
       if (cooldownTimer) clearInterval(cooldownTimer);
       window.removeEventListener("keydown", handleGlobalKey);
       const id = searchId();

@@ -117,8 +117,28 @@ afterEach(() => {
   cleanup();
 });
 
+function dlJob(id: string, state: DownloadJob["state"], extra: Partial<DownloadJob> = {}): DownloadJob {
+  return {
+    job_id: id,
+    username: "peer_a",
+    remote_filename: "VARIETY\\Artist\\Album\\01 - Artist - Sicko Mode.flac",
+    display: "Sicko Mode",
+    dest_playlist: "Rap & Hip-Hop",
+    state,
+    size: 30_000_000,
+    quality_label: "FLAC 16/44",
+    alternates: [],
+    tried_source_ids: [],
+    created_at: 0,
+    ...extra,
+  };
+}
+
 async function searchAndRender(groups: ResultGroup[], query = "sicko mode") {
-  vi.mocked(tauriApi.slskResults).mockResolvedValue(snapshot(groups));
+  // Objeto NOVO a cada chamada, como o IPC real (slsk_results clona o
+  // snapshot): devolver sempre o mesmo objeto mascarava o remount das
+  // linhas a cada poll (crate-1).
+  vi.mocked(tauriApi.slskResults).mockImplementation(async () => snapshot(structuredClone(groups)));
   const utils = render(() => <Crate />);
   const input = utils.container.querySelector(".coll-search input") as HTMLInputElement;
   fireEvent.input(input, { target: { value: query } });
@@ -411,11 +431,83 @@ describe("Crate — destino: precedência (regressão IM-D1)", () => {
 });
 
 describe("Crate — poll de resultados", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("clearInterval é chamado no onCleanup", async () => {
     const clearSpy = vi.spyOn(globalThis, "clearInterval");
     const { unmount } = render(() => <Crate />);
     unmount();
     expect(clearSpy).toHaveBeenCalled();
     clearSpy.mockRestore();
+  });
+
+  async function searchWithFakeTimers(results: () => SearchSnapshot) {
+    vi.useFakeTimers();
+    vi.mocked(tauriApi.slskResults).mockImplementation(async () => results());
+    const utils = render(() => <Crate />);
+    const input = utils.container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko mode" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.advanceTimersByTimeAsync(0);
+    return utils;
+  }
+
+  it("para de pollar slskResults quando a busca sai de running", async () => {
+    const { container } = await searchWithFakeTimers(() => snapshot([group()], "done"));
+    expect(container.querySelectorAll(".crate-row").length).toBe(1);
+    const calls = vi.mocked(tauriApi.slskResults).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(vi.mocked(tauriApi.slskResults).mock.calls.length).toBe(calls);
+  });
+
+  it("enquanto running, snapshot novo a cada poll não recria a linha nem fecha o seletor de destino", async () => {
+    const { container } = await searchWithFakeTimers(() =>
+      snapshot([group({ suggested_dest: null })], "running"),
+    );
+    const wrap = container.querySelector(".crate-row-wrap")!;
+    fireEvent.click(wrap.querySelector(".crate-row .crate-dest__btn")!);
+    expect(wrap.querySelector(".crate-dest__menu")).toBeTruthy();
+
+    const calls = vi.mocked(tauriApi.slskResults).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(vi.mocked(tauriApi.slskResults).mock.calls.length).toBeGreaterThan(calls);
+    expect(container.querySelector(".crate-row-wrap")).toBe(wrap);
+    expect(wrap.querySelector(".crate-dest__menu")).toBeTruthy();
+  });
+
+  it("slskStatus é consultado a cada 5 s, não a cada ciclo de poll", async () => {
+    vi.useFakeTimers();
+    render(() => <Crate />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tauriApi.slskStatus).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(tauriApi.slskStatus).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(tauriApi.slskStatus).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Crate — aba Fila", () => {
+  it("evento slsk-jobs com objetos novos atualiza a linha sem recriá-la", async () => {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    const { container, getByText } = render(() => <Crate />);
+    await waitFor(() => expect(emit).not.toBeNull());
+    emit!([dlJob("j1", { kind: "downloading", pct: 10, bps: 1_000_000, eta_s: null })]);
+    fireEvent.click(getByText(/^Fila/));
+    const row = await waitFor(() => {
+      const el = container.querySelector(".crate-job");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+    emit!([dlJob("j1", { kind: "downloading", pct: 60, bps: 1_000_000, eta_s: null })]);
+    expect(container.querySelector(".crate-job")).toBe(row);
+    expect(row.textContent).toContain("60%");
   });
 });

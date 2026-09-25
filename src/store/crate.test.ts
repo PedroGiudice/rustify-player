@@ -64,6 +64,23 @@ describe("bootCrateStore", () => {
     expect(jobs().map((j) => j.job_id)).toEqual(["a", "b"]);
   });
 
+  it("evento com objetos novos reconcilia por job_id: o mesmo job mantém a identidade (a Fila não remonta a linha)", async () => {
+    // Cada slsk-jobs chega do IPC como um board inteiro de objetos novos
+    // (spec §3.5). Sem reconciliação por chave, o <For> da Fila descartava
+    // e recriava todas as linhas a cada evento (crate-1).
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(ipc.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    await bootCrateStore();
+    emit!([job("a", "downloading", { pct: 10, bps: 100, eta_s: null }), job("b", "queued")]);
+    const before = jobs()[0];
+    emit!([job("a", "downloading", { pct: 55, bps: 100, eta_s: null }), job("b", "queued")]);
+    expect(jobs()[0]).toBe(before);
+    expect(jobs()[0].state).toMatchObject({ kind: "downloading", pct: 55 });
+  });
+
   it("idempotente: segunda chamada não re-assina nem re-hidrata", async () => {
     await bootCrateStore();
     await bootCrateStore();
