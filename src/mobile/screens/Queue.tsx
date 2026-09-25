@@ -82,7 +82,11 @@ export function Queue() {
               <div style={{ padding: "0 20px" }}>
                 <SecHead label="Já tocadas" />
               </div>
-              <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.62 }}>
+              {/* Esmaecido, mas no piso de 3:1 contra o --s-base (mobile-5,
+                  mesmo critério das linhas inativas da letra no desktop):
+                  com .62 a duração (--t4) caía para 2,17:1. .85 é o mínimo,
+                  com folga de arredondamento, que leva a --t4 a 3,06:1. */}
+              <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.85 }}>
                 <For each={split().past}>
                   {(t, i) => (
                     <Show when={t} fallback={<MissingRow index={i()} />}>

@@ -6,7 +6,7 @@
    "A seguir" ficava abaixo da dobra.
    ============================================================ */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@solidjs/testing-library";
 import type { Track } from "../types";
 
@@ -53,6 +53,7 @@ vi.mock("../store", () => ({
 }));
 
 import { Queue } from "./Queue";
+import { contrastRatio, hexToRgb, relLuminance } from "../../lib/color";
 
 /** Sem layout no jsdom: cada bloco declara onde "está" na tela. */
 function fakeLayout(tops: Record<string, number>) {
@@ -96,5 +97,42 @@ describe("Queue", () => {
     await Promise.resolve();
     expect((r.container.querySelector(".view") as HTMLElement).scrollTop).toBe(0);
     q.index = 3;
+  });
+});
+
+// mobile-5 (contraste): o histórico era esmaecido com opacity .62 no bloco
+// inteiro; sobre o fundo real (--s-base) a linha secundária (--t3) caía
+// para 2,58:1 e a duração (--t4) para 2,17:1. Mesmo critério do desktop
+// nas linhas inativas da letra: esmaecido, mas no piso de 3:1.
+describe("Queue — contraste do histórico (mobile-5)", () => {
+  let tokens: Record<string, string> = {};
+  beforeAll(async () => {
+    const NODE_FS = "node:fs";
+    const { readFileSync } = await import(/* @vite-ignore */ NODE_FS);
+    const root: string = (globalThis as any).process.cwd();
+    const css: string = readFileSync(`${root}/src/mobile/styles/tokens.css`, "utf8");
+    for (const m of css.matchAll(/(--[\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)) tokens[m[1]] ??= m[2];
+  });
+
+  /** Cor composta pelo navegador: opacity mistura em sRGB, canal a canal. */
+  function over(fg: string, bg: string, alpha: number): string {
+    const f = hexToRgb(fg)!, b = hexToRgb(bg)!;
+    const c = (x: number, y: number) => Math.round(alpha * x + (1 - alpha) * y).toString(16).padStart(2, "0");
+    return `#${c(f.r, b.r)}${c(f.g, b.g)}${c(f.b, b.b)}`;
+  }
+
+  it("esmaecido, mas texto e duração ficam em 3:1 ou mais contra o fundo", () => {
+    q.index = 3;
+    const r = render(() => <Queue />);
+    const past = r.container.querySelector(".rowlist") as HTMLElement;
+    expect(past.textContent).toContain("faixa 1");
+    const alpha = parseFloat(getComputedStyle(past).opacity);
+    expect(alpha).toBeLessThan(1);
+    const bg = tokens["--s-base"];
+    expect(bg).toBeTruthy();
+    for (const role of ["--t3", "--t4"]) {
+      const ratio = contrastRatio(relLuminance(over(tokens[role], bg, alpha))!, relLuminance(bg)!);
+      expect(ratio, role).toBeGreaterThanOrEqual(3);
+    }
   });
 });
