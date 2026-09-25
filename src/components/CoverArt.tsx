@@ -53,6 +53,8 @@ export function CoverArt(props: CoverArtProps) {
           <img
             src={src()}
             alt={props.alt ?? ""}
+            loading="lazy"
+            decoding="async"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
         )}

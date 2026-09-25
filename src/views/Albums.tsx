@@ -12,7 +12,7 @@ import { Icon, ICONS } from "../components/Icon";
 
 export default function Albums() {
   const [albums] = createResource(async () => {
-    try { return await libGetAlbums({ limit: 300 }); } catch { return [] as Album[]; }
+    try { return await libGetAlbums({ limit: null }); } catch { return [] as Album[]; }
   });
 
   async function play(album: Album) {

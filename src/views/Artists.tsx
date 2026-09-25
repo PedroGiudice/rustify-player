@@ -9,7 +9,7 @@ import { CoverArt } from "../components/CoverArt";
 
 export default function Artists() {
   const [artists] = createResource(async () => {
-    try { return await libGetArtists({ limit: 500 }); } catch { return [] as Artist[]; }
+    try { return await libGetArtists({ limit: null }); } catch { return [] as Artist[]; }
   });
   // Aberta direto (/artists) a view traz o proprio .view — o unico
   // container que rola (.main tem overflow:hidden). Como aba, a Library
