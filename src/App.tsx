@@ -31,6 +31,7 @@ import { Tweaks } from "./views/Tweaks";
 // reage ao evento "toggle-tweaks" disparado pela sidebar.
 import { loadTweaks, tweaks } from "./store/tweaks";
 import { glStatus } from "./gl/meta";
+import { isTypingContext } from "./lib/keyboard";
 
 // three.js só entra no processo se o usuário ligar o motor WebGL no
 // Tweaks — dynamic import mantém o boot do fundo 2D do tamanho que
@@ -57,8 +58,7 @@ export default function App() {
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
+      if (isTypingContext(e)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "n") { e.preventDefault(); navigate("/now-playing"); }

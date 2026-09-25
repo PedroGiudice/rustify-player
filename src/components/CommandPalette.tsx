@@ -10,7 +10,7 @@
    action items.
    ============================================================ */
 
-import { For, Show, batch, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, batch, createEffect, createMemo, createResource, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { navigate } from "../router";
@@ -62,7 +62,13 @@ export function CommandPalette() {
   // busca com ~150ms de atraso, evitando um scroll da biblioteca por tecla.
   const [debouncedQuery, setDebouncedQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
+  // Enter que chegou antes da busca da query atual responder: fica
+  // guardado (com os modificadores) e roda quando o resultado chega.
+  // Sem isso o Enter executava a lista da query ANTERIOR — ou, na
+  // primeira busca, o "Procurar na rede" que ocupa o topo sem resultado.
+  const [pendingEnter, setPendingEnter] = createSignal<{ mod: boolean; shift: boolean } | null>(null);
   let inputEl!: HTMLInputElement;
+  let listEl!: HTMLDivElement;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   // libSearch retorna { tracks, albums, artists } no backend.
@@ -120,7 +126,12 @@ export function CommandPalette() {
     {
       kind: "action", id: "queue", icon: ICONS.queue,
       title: "Open queue", sub: "see what's up next",
-      run: () => { window.dispatchEvent(new CustomEvent("rustify:open-queue")); close(); },
+      // detail.open: abre (ou mantém aberta). Sem ele o QueueDrawer
+      // alterna, e a ação fechava a fila que já estava aberta.
+      run: () => {
+        window.dispatchEvent(new CustomEvent("rustify:open-queue", { detail: { open: true } }));
+        close();
+      },
     },
     {
       kind: "action", id: "signal", icon: ICONS.signal,
@@ -169,7 +180,12 @@ export function CommandPalette() {
     setDebouncedQuery("");
     clearTimeout(debounceTimer);
     setActive(0);
+    setPendingEnter(null);
   }
+
+  /** A lista na tela ainda não é a da query digitada: debounce pendente
+      ou busca em andamento. */
+  const isStale = () => query() !== debouncedQuery() || searchResults.loading;
 
   function openPalette() {
     setOpen(true);
@@ -196,20 +212,52 @@ export function CommandPalette() {
     }
   }
 
+  // Mod+Enter = play next; Shift+Enter = queue
+  function activate(mods: { mod: boolean; shift: boolean }) {
+    const it = items()[active()];
+    if (!it) return;
+    if (it.kind === "track" && mods.mod)   { enqueueNext(it.track); close(); return; }
+    if (it.kind === "track" && mods.shift) { enqueueEnd(it.track);  close(); return; }
+    runItem(it);
+  }
+
+  // Roda o Enter guardado assim que a lista corresponde à query.
+  createEffect(() => {
+    const p = pendingEnter();
+    if (!p || isStale()) return;
+    setPendingEnter(null);
+    untrack(() => activate(p));
+  });
+
+  /** Seleção por teclado: move o índice e rola o item para a área
+      visível (a lista tem max-height e passa de 20 itens). Só no
+      teclado — no mouse o item já está sob o cursor. */
+  function moveActive(delta: number) {
+    const n = items().length;
+    if (!n) return;
+    const next = (active() + delta + n) % n;
+    setActive(next);
+    const el = listEl?.querySelectorAll<HTMLElement>(".palette__item")[next];
+    el?.scrollIntoView?.({ block: "nearest" });
+  }
+
   function handleKey(e: KeyboardEvent) {
     if (!open()) return;
-    const all = items();
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
-    if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => (i + 1) % all.length); return; }
-    if (e.key === "ArrowUp")   { e.preventDefault(); setActive((i) => (i - 1 + all.length) % all.length); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); moveActive(1); return; }
+    if (e.key === "ArrowUp")   { e.preventDefault(); moveActive(-1); return; }
     if (e.key === "Enter") {
       e.preventDefault();
-      const it = all[active()];
-      if (!it) return;
-      // Mod+Enter = play next; Shift+Enter = queue
-      if (it.kind === "track" && (e.metaKey || e.ctrlKey)) { enqueueNext(it.track); close(); return; }
-      if (it.kind === "track" && e.shiftKey)               { enqueueEnd(it.track);  close(); return; }
-      runItem(it);
+      const mods = { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey };
+      if (isStale()) {
+        // Antecipa o debounce: não faz sentido esperar 150ms com o
+        // usuário já pedindo o resultado.
+        clearTimeout(debounceTimer);
+        setPendingEnter(mods);
+        setDebouncedQuery(query());
+        return;
+      }
+      activate(mods);
     }
   }
 
@@ -246,14 +294,14 @@ export function CommandPalette() {
             placeholder="Buscar tracks, albums, artists ou comandos…"
             onInput={(e) => {
               const val = e.currentTarget.value;
-              batch(() => { setQuery(val); setActive(0); });
+              batch(() => { setQuery(val); setActive(0); setPendingEnter(null); });
               clearTimeout(debounceTimer);
               debounceTimer = setTimeout(() => setDebouncedQuery(val), 150);
             }}
           />
           <span class="palette__esc">ESC</span>
         </div>
-        <div class="palette__list">
+        <div class="palette__list" ref={listEl}>
           <For each={items()}>
             {(it, i) => {
               // Accessors (nao consts): i() e sectionBoundaries() sao signals;

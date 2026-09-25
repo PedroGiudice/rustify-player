@@ -121,6 +121,15 @@ export function changeVolume(vol: number): Promise<void> {
   return ipcSetVolume(v);
 }
 
+/** Mudo: store + engine, SEM persistir. O zero do mudo não é preferência
+    de volume — gravá-lo em kv-volume faria o app abrir mudo e perder o
+    volume escolhido. Desmutar devolve player.volume ao engine. */
+export function toggleMute(): Promise<void> {
+  const muted = !player.isMuted;
+  setPlayer("isMuted", muted);
+  return ipcSetVolume(muted ? 0 : player.volume);
+}
+
 /** Restaura o volume persistido no boot. Chamar uma vez (main.tsx). */
 export async function applyPersistedVolume(retries = 5): Promise<void> {
   const v = loadPersistedVolume();

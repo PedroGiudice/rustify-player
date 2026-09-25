@@ -118,7 +118,13 @@
   --shadow-card:     0 1px 4px rgba(0,0,0,0.04);
   --shadow-hover:    0 8px 24px rgba(0,0,0,0.06);
   --shadow-compact:  0 6px 18px rgba(0,0,0,0.05);
-  --ring-focus:      0 0 0 2px rgba(163,163,163,0.15);
+  /* Foco com contraste real: o anel antigo (rgba(163,163,163,.15)) dava
+     1,13:1 no claro e 1,24:1 no really-dark, invisível. --blue-ring segue
+     tema e accent adaptativo; #3b82f6 sobre o paper dá 3,7:1 (WCAG 1.4.11
+     pede 3:1). --ring-focus = versão box-shadow (inputs), --focus-outline
+     = versão outline (foco de teclado, :focus-visible). */
+  --ring-focus:      0 0 0 2px var(--blue-ring);
+  --focus-outline:   2px solid var(--blue-ring);
   --shadow-knob:     0 1px 2px rgba(0,0,0,0.18);
 
   /* Glass panels (tematizavel: glass.tint/alpha/blur no YAML) */
@@ -132,6 +138,9 @@
 
   /* Motion */
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Tematizável (motion.fast no YAML -> --dur-fast, desktop.rs). Era
+     consumido sem nunca ser definido: transition com duração inválida. */
+  --dur-fast: 0.12s;
   --dur-base: 0.15s;
   --dur-med:  0.18s;
 
@@ -161,6 +170,15 @@ input { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Foco de teclado: um anel só, com o accent do tema, no lugar do anel
+   padrão do WebKitGTK (sem relação com o tema e ausente em parte dos
+   botões). :where() deixa a especificidade em zero, então quem já zera
+   o outline de propósito (inputs com anel próprio) continua valendo. */
+:where(:focus-visible) {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
 
 iconify-icon { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 
@@ -263,6 +281,8 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   transition: transform var(--dur-base), filter var(--dur-base);
 }
 .tl-dot:hover { filter: brightness(1.05); }
+/* O outline:none acima tirava o foco de teclado dos botões da janela. */
+.tl-dot:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 .tl-dot:active { transform: scale(0.92); }
 
 /* Elementos que NAO devem iniciar drag */
@@ -1032,7 +1052,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-src {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 10px;   /* era 8.5px: no limite da legibilidade com DPR 1 */
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1042,7 +1062,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   padding: 0.5px 4px;
   margin-right: 7px;
   vertical-align: 1.5px;
-  line-height: 1.5;
+  line-height: 1.25;  /* 10px x 1.25 mantém a altura do chip de 8.5px x 1.5 */
 }
 .pb-src[data-kind="station"],
 .pb-src[data-kind="radio"] {
@@ -1058,7 +1078,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   transition: color var(--dur-base), background var(--dur-base);
 }
 .pb-icon-btn:hover, .pb-btn:hover { color: var(--fg-1); background: var(--bg-soft); }
-.pb-icon-btn[aria-pressed="true"], .pb-btn[aria-pressed="true"] { color: var(--fg-1); }
+/* Ligado precisa ser diferente de hover: com os dois em --fg-1, clicar
+   em shuffle/repeat/letra com o cursor em cima não mudava nada na tela.
+   --blue-fg segue o tema e o accent adaptativo (mesmo token do chip de
+   station). */
+.pb-icon-btn[aria-pressed="true"], .pb-btn[aria-pressed="true"] { color: var(--blue-fg); }
 .pb-like[aria-pressed="true"] { color: var(--rose-fg); }
 .pb-icon-btn iconify-icon, .pb-btn iconify-icon { width: 14px; height: 14px; }
 
@@ -1093,7 +1117,17 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   height: 100%; background: var(--fg-3); border-radius: inherit;
   transition: background var(--dur-base);
 }
-.progress:hover .progress__fill { background: var(--fg-1); }
+/* Área de clique de 16px sem mexer no trilho de 3px: o pseudo-elemento
+   pertence ao .progress, então o ponteiro sobre ele cai no mesmo
+   onPointerDown (e no mesmo :hover). Sem fundo, não aparece. */
+.progress::before {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 16px;
+  transform: translateY(-50%);
+}
+.progress:hover .progress__fill,
+.progress:focus-visible .progress__fill { background: var(--fg-1); }
 .progress__thumb {
   position: absolute; top: 50%;
   width: 10px; height: 10px;
@@ -1101,7 +1135,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   transform: translate(-50%, -50%);
   opacity: 0; transition: opacity var(--dur-base);
 }
-.progress:hover .progress__thumb { opacity: 1; }
+.progress:hover .progress__thumb,
+.progress:focus-visible .progress__thumb { opacity: 1; }
 
 .pb-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .pb-tech {
@@ -1208,8 +1243,12 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* ────────────────────────────────────────────────────────────
    QUEUE DRAWER
    ──────────────────────────────────────────────────────────── */
+/* Véu e gaveta ficam ENTRE a titlebar e a PlayerBar: cobrindo a barra,
+   pausar ou pular com a fila aberta custava dois cliques (o primeiro só
+   fechava a fila), e os botões da janela e a área de arraste sumiam. */
 .queue-scrim {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h); left: 0;
   background: rgba(23,23,23,0.16);
   z-index: 90; opacity: 0; pointer-events: none;
   transition: opacity 200ms var(--ease-out);
@@ -1217,7 +1256,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .queue-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
 
 .queue-drawer {
-  position: fixed; top: 0; right: 0; bottom: var(--playerbar-h);
+  position: fixed; top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h);
   width: 380px;
   background: var(--bg-paper);
   border-left: 1px solid var(--line-2);
@@ -1518,10 +1557,30 @@ html[data-sidebar="icons"] .nav-item__kbd { display: none; }
 /* Esconde o texto do nav-item (span sem classe que envolve o label).
    O Icon vira <iconify-icon>, nao span — entao filtro generico nao
    afeta o icone. Sem isso o label do nav sobra ao lado do icone
-   numa sidebar de 56px e quebra o layout. */
-html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd) { display: none; }
+   numa sidebar de 56px e quebra o layout.
+   Esconde SO na tela: display:none tirava o nome acessivel do link
+   (leitor de tela anunciava link sem nome). O tooltip vem do title
+   que o Sidebar.tsx poe neste modo. O contador do Crate fica de fora
+   do filtro: some-lo escondia os downloads ativos. */
+html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge) {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 html[data-sidebar="icons"] .nav-item {
+  position: relative;
   justify-content: center; padding: 8px; gap: 0;
+}
+/* Contador no canto do item, sem empurrar o icone centralizado. */
+html[data-sidebar="icons"] .nav-item__badge {
+  position: absolute; top: 0; right: 0;
+  margin: 0;
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
 }
 html[data-sidebar="icons"] .np-mini { display: none; }
 
@@ -1532,17 +1591,21 @@ html[data-type="mono"] { --font-sans: var(--font-mono); }
    Slider "Glow" no Tweaks (0..1, default 0.15) controla a intensidade
    do feedback visual em controles ativos. Antes so afetava .app
    (container viewport-filling, halo caia fora da tela — sem efeito
-   pratico). Agora cabea em todos os "ativos" reais do app.           */
+   pratico). Agora cabea em todos os "ativos" reais do app.
+   (O default visível e 0: sem tema com effects.glow nem knob mexido,
+   o halo tem alpha 0. O 0.15 e o default do knob no Tweaks.)         */
 html { --glow: 0; }
 .app { box-shadow: 0 0 calc(var(--glow, 0) * 60px) calc(var(--glow, 0) * 20px) rgba(0,0,0,calc(var(--glow, 0) * 0.15)); }
 
 /* Halo + transition unificada para estados ativos. `:where()` mantem
    specificity baixa pra nao colidir com hovers/focus existentes.
-   Halo azul (var(--blue-fg) ≈ #2563eb) proporcional ao --glow. */
+   Halo derivado de --blue-ring por color-mix, proporcional ao --glow
+   (spec themes-boost 2026-07-05): era rgba(37,99,235) fixo e brilhava
+   azul mesmo com tema cobre/verde ou com o accent da capa. */
 :where(
   .pb-icon-btn[aria-pressed="true"],
+  .pb-btn[aria-pressed="true"],
   .pb-like[aria-pressed="true"],
-  .toggle[aria-pressed="true"],
   .tog[aria-pressed="true"],
   .tog--blue[aria-pressed="true"],
   .nav-item.active,
@@ -1559,8 +1622,8 @@ html { --glow: 0; }
   .sm-toggle[data-on="true"]
 ) {
   box-shadow:
-    0 0 0 calc(1px + var(--glow, 0.15) * 2px) rgba(37, 99, 235, calc(var(--glow, 0.15) * 0.55)),
-    0 0 calc(var(--glow, 0.15) * 22px) calc(var(--glow, 0.15) * 4px) rgba(37, 99, 235, calc(var(--glow, 0.15) * 0.30));
+    0 0 0 calc(1px + var(--glow, 0.15) * 2px) color-mix(in srgb, var(--blue-ring) calc(var(--glow, 0.15) * 55%), transparent),
+    0 0 calc(var(--glow, 0.15) * 22px) calc(var(--glow, 0.15) * 4px) color-mix(in srgb, var(--blue-ring) calc(var(--glow, 0.15) * 30%), transparent);
   transition:
     box-shadow 0.18s var(--ease-out, ease-out),
     background-color 0.15s var(--ease-out, ease-out),
@@ -1572,7 +1635,6 @@ html { --glow: 0; }
 .pb-icon-btn:active,
 .pb-like:active,
 .tog:active,
-.toggle:active,
 .segmented button:active,
 .sm-toggle:active {
   transform: scale(0.96);
@@ -3001,6 +3063,12 @@ html { --glow: 0; }
 
 /* ========================================================================
  * RESOURCES PANEL — btop-inspired overlay
+ * O painel veio do design system antigo (tokens.css, fora do build):
+ * --space-*, --text-label-xs e --fw-medium nunca existiram aqui e zeravam
+ * padding e gap em qualquer tema; --surface, --divider, --on-surface* e
+ * --surface-container-* só existem quando o tema declara as chaves
+ * legadas (surfaces.*, dividers.*, text.*). Espaçamentos viram valores
+ * fixos e as cores ganham fallback nos tokens do Extractor Lab.
  * ====================================================================== */
 
 .resources {
@@ -3009,10 +3077,10 @@ html { --glow: 0; }
   right: 20px;
   width: 560px;
   max-height: calc(100% - 150px);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: color-mix(in srgb, var(--surface, var(--bg-paper)) 94%, transparent);
   backdrop-filter: blur(28px) saturate(130%);
   -webkit-backdrop-filter: blur(28px) saturate(130%);
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--divider));
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--divider, var(--line-2)));
   box-shadow:
     0 0 0 1px rgba(0,0,0,0.4),
     0 30px 80px rgba(0,0,0,0.55),
@@ -3027,89 +3095,89 @@ html { --glow: 0; }
 .resources__header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-label-xs);
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 10px;
   color: var(--primary);
-  border-bottom: 1px dashed color-mix(in srgb, var(--primary) 30%, var(--divider));
+  border-bottom: 1px dashed color-mix(in srgb, var(--primary) 30%, var(--divider, var(--line-2)));
   background: color-mix(in srgb, var(--primary) 6%, transparent);
   letter-spacing: 0.05em;
 }
 .resources__bracket { opacity: 0.7; }
-.resources__title { color: var(--on-surface); font-weight: var(--fw-medium); letter-spacing: 0.04em; flex: 1; }
+.resources__title { color: var(--on-surface, var(--fg-1)); font-weight: 500; letter-spacing: 0.04em; flex: 1; }
 .resources__close {
   width: 22px;
   height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--on-surface-mute);
+  color: var(--on-surface-mute, var(--fg-5));
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
   transition: color var(--dur-fast), background var(--dur-fast);
 }
-.resources__close:hover { color: var(--on-surface); background: var(--surface-container-high); }
+.resources__close:hover { color: var(--on-surface, var(--fg-1)); background: var(--surface-container-high, var(--bg-tint)); }
 
 .resources__body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-5);
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 20px;
   font-size: 11px;
-  color: var(--on-surface-variant);
+  color: var(--on-surface-variant, var(--fg-4));
   line-height: 1.5;
 }
 .resources__body::-webkit-scrollbar { width: 6px; }
-.resources__body::-webkit-scrollbar-thumb { background: var(--divider); }
+.resources__body::-webkit-scrollbar-thumb { background: var(--divider, var(--line-2)); }
 
 .resources__footer {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-label-xs);
-  color: var(--on-surface-mute);
-  border-top: 1px dashed var(--divider);
-  background: var(--surface-container-low);
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 10px;
+  color: var(--on-surface-mute, var(--fg-5));
+  border-top: 1px dashed var(--divider, var(--line-2));
+  background: var(--surface-container-low, var(--bg-soft));
   letter-spacing: 0.03em;
 }
-.resources__footer b { color: var(--on-surface); font-weight: var(--fw-medium); }
+.resources__footer b { color: var(--on-surface, var(--fg-1)); font-weight: 500; }
 .resources__footer .sep { opacity: 0.4; }
 
 /* Resource sections */
-.res-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.res-section { display: flex; flex-direction: column; gap: 8px; }
 .res-section__title {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: var(--space-3);
-  color: var(--on-surface);
-  font-size: var(--text-label-xs);
+  gap: 12px;
+  color: var(--on-surface, var(--fg-1));
+  font-size: 10px;
   letter-spacing: 0.05em;
 }
-.res-section__title > span:first-child { color: color-mix(in srgb, var(--primary) 85%, var(--on-surface)); }
+.res-section__title > span:first-child { color: color-mix(in srgb, var(--primary) 85%, var(--on-surface, var(--fg-1))); }
 .res-section__spark { color: var(--primary); opacity: 0.8; width: 120px; height: 24px; }
 .res-spark { display: block; width: 100%; height: 100%; }
-.res-section__value { color: var(--on-surface); font-variant-numeric: tabular-nums; font-weight: var(--fw-medium); }
+.res-section__value { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; font-weight: 500; }
 
 /* CPU cores */
-.res-cores { display: grid; grid-template-columns: 1fr 1fr; gap: 2px var(--space-5); margin-top: 2px; }
+.res-cores { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px; margin-top: 2px; }
 .res-core {
   display: grid;
   grid-template-columns: 24px 1fr 48px;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
   font-size: 11px;
 }
-.res-core__id { color: var(--on-surface-mute); }
+.res-core__id { color: var(--on-surface-mute, var(--fg-5)); }
 .res-core__bar {
   position: relative;
   display: block;
   height: 10px;
-  background: var(--surface-container-high);
+  background: var(--surface-container-high, var(--bg-tint));
   overflow: hidden;
 }
 .res-core__bar::before {
@@ -3121,13 +3189,13 @@ html { --glow: 0; }
   background: linear-gradient(90deg, var(--primary), var(--primary-container));
   transition: width 0.4s ease;
 }
-.res-core__pct { color: var(--on-surface); font-variant-numeric: tabular-nums; text-align: right; }
+.res-core__pct { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; text-align: right; }
 
 /* MEM bar */
 .res-mem-bar {
   position: relative;
   height: 14px;
-  background: var(--surface-container-high);
+  background: var(--surface-container-high, var(--bg-tint));
   overflow: hidden;
 }
 .res-mem-bar__used {
@@ -3142,16 +3210,16 @@ html { --glow: 0; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
   font-size: 10px;
-  color: var(--on-surface-mute);
+  color: var(--on-surface-mute, var(--fg-5));
   letter-spacing: 0.04em;
 }
 .res-legend .dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; vertical-align: middle; }
 .res-legend .dot--used { background: var(--primary); }
-.res-legend .dot--free { background: var(--surface-container-high); border: 1px solid var(--divider); }
+.res-legend .dot--free { background: var(--surface-container-high, var(--bg-tint)); border: 1px solid var(--divider, var(--line-2)); }
 .res-legend__sep { opacity: 0.4; }
-.res-legend b { color: var(--on-surface); font-weight: var(--fw-medium); }
+.res-legend b { color: var(--on-surface, var(--fg-1)); font-weight: 500; }
 
 
 /* ============================================================
