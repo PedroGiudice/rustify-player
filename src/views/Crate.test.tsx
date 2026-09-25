@@ -463,6 +463,53 @@ describe("Crate — fontes com download já existente (crate-16)", () => {
   });
 });
 
+describe("Crate — banner 'Já tem no acervo' (crate-v4)", () => {
+  function track(title: string, artist = "Travis Scott", album = "ASTROWORLD"): Track {
+    return {
+      id: `t-${title}`,
+      title,
+      artist_name: artist,
+      album_title: album,
+      album_cover_path: null,
+      album_year: 2018,
+      duration_ms: 300_000,
+      path: `/music/${title}.flac`,
+      lrc_path: null,
+    };
+  }
+
+  async function searchWithProbe(query: string, probe: Track[]) {
+    vi.mocked(tauriApi.slskDedupProbe).mockResolvedValue(probe);
+    const utils = await searchAndRender([group()], query);
+    await waitFor(() => expect(tauriApi.slskDedupProbe).toHaveBeenCalledWith(query));
+    await new Promise((r) => setTimeout(r, 0));
+    return utils;
+  }
+
+  const mintBanner = (c: HTMLElement) => c.querySelector('.crate-banner[data-tone="mint"]');
+
+  it("busca por artista/álbum não afirma posse de outra faixa do mesmo artista", async () => {
+    const { container } = await searchWithProbe("travis scott astroworld", [track("Stargazing")]);
+    expect(mintBanner(container)).toBeFalsy();
+  });
+
+  it("aponta a faixa cujo título está na busca, mesmo que não seja o primeiro resultado do acervo", async () => {
+    const { container } = await searchWithProbe("travis scott sicko mode", [
+      track("Stargazing"),
+      track("SICKO MODE (feat. Drake)"),
+    ]);
+    await waitFor(() => expect(mintBanner(container)).toBeTruthy());
+    expect(mintBanner(container)!.textContent).toContain("SICKO MODE");
+  });
+
+  it("compara sem acento e sem caixa", async () => {
+    const { container } = await searchWithProbe("tim maia nao quero dinheiro", [
+      track("Não Quero Dinheiro (Só Quero Amar)", "Tim Maia", "Tim Maia 1971"),
+    ]);
+    await waitFor(() => expect(mintBanner(container)).toBeTruthy());
+  });
+});
+
 describe("Crate — evento slsk-jobs", () => {
   it("transiciona a linha para ready e habilita ▸ Tocar", async () => {
     let emit: ((jobs: DownloadJob[]) => void) | null = null;
