@@ -222,6 +222,22 @@ describe("CommandPalette — falha da busca local (shell-8)", () => {
     expect(container.textContent).toContain('Procurar "sicko" na rede');
   });
 
+  // Leitor de tela (Orca via AT-SPI) só anuncia mudança DENTRO de uma
+  // região viva que já existia; região inserida já com o texto passa em
+  // silêncio. A região fica montada vazia e só o conteúdo muda.
+  it("a região de status existe antes da falha e recebe o texto no mesmo nó", async () => {
+    vi.mocked(tauriApi.libSearch).mockRejectedValue(new Error("indexer caiu"));
+    const { container, findByText } = render(() => <CommandPalette />);
+    openPalette();
+    const region = container.querySelector('.palette__list [role="status"]');
+    expect(region).toBeTruthy();
+    expect(region!.textContent).toBe("");
+    const input = container.querySelector(".palette__input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "sicko" } });
+    const line = await findByText("Busca local falhou");
+    expect(line).toBe(region);
+  });
+
   it("busca que responde vazia não mostra erro", async () => {
     vi.mocked(tauriApi.libSearch).mockResolvedValue({ tracks: [], albums: [], artists: [] } as any);
     const { container } = render(() => <CommandPalette />);

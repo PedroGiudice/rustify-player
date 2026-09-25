@@ -1266,6 +1266,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .palette__list { overflow-y: auto; padding: 6px 6px 12px; }
 .palette__section { padding: 10px 14px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
 .palette__error { padding: 10px 14px 4px; font-family: var(--font-mono); font-size: 11px; color: var(--rose-fg); }
+/* A região viva fica montada vazia. Some só o padding: display:none a
+   tiraria da árvore de acessibilidade e a falha voltaria a ser inserção
+   de região inteira, que o leitor de tela não anuncia. */
+.palette__error:empty { padding: 0; }
 .palette__item {
   display: grid;
   grid-template-columns: 28px 1fr auto;

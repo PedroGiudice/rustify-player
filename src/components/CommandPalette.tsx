@@ -309,9 +309,12 @@ export function CommandPalette() {
           <span class="palette__esc">ESC</span>
         </div>
         <div class="palette__list" ref={listEl}>
-          <Show when={searchResults()?.failed}>
-            <div class="palette__error" role="status">Busca local falhou</div>
-          </Show>
+          {/* Sempre montada: leitor de tela só anuncia mudança dentro de
+              uma região viva que já existia. Inserida junto com o texto,
+              a falha passava em silêncio. */}
+          <div class="palette__error" role="status">
+            {searchResults()?.failed ? "Busca local falhou" : ""}
+          </div>
           <For each={items()}>
             {(it, i) => {
               // Accessors (nao consts): i() e sectionBoundaries() sao signals;
