@@ -196,24 +196,12 @@ export function StationCard(props: {
     props.onDelete?.(props.station.id);
   }
 
-  // Card inteiro toca a station (clique ou Enter/Espaço). O teclado só age
-  // quando o foco está no próprio card: Enter no botão de apagar é dele.
-  function handleCardKey(e: KeyboardEvent) {
-    if (e.target !== e.currentTarget) return;
-    if (e.key !== "Enter" && e.key !== " ") return;
-    e.preventDefault();
-    props.onResume(props.station.id);
-  }
-
+  // Tocar é um <button> próprio (o nome da station), irmão do de apagar: o
+  // card como role=button deixava o apagar aninhado, e filhos de role=button
+  // são apresentacionais (o Orca não anunciava o apagar). O ::after do botão
+  // estende a área de clique ao card inteiro (extractor-lab.css).
   return (
-    <div
-      class="st-card"
-      role="button"
-      tabIndex={0}
-      aria-label={`Tocar station ${props.station.name}`}
-      onClick={() => props.onResume(props.station.id)}
-      onKeyDown={handleCardKey}
-    >
+    <div class="st-card">
       <button
         type="button"
         class={`st-card__delete${armed() ? " is-armed" : ""}`}
@@ -237,7 +225,14 @@ export function StationCard(props: {
           <iconify-icon icon={props.station.icon} noobserver />
         </div>
         <div class="st-card__head">
-          <span class="st-card__name">{props.station.name}</span>
+          <button
+            type="button"
+            class="st-card__name st-card__play"
+            aria-label={`Tocar station ${props.station.name}`}
+            onClick={() => props.onResume(props.station.id)}
+          >
+            {props.station.name}
+          </button>
           <span class="st-card__seed-line">{seedLine()}</span>
         </div>
       </div>

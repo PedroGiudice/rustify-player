@@ -41,7 +41,7 @@ describe("anel de foco", () => {
       .filter((r) => r.selectorText.includes(":focus-visible"))
       .filter((r) => {
         const o = outlineOf(r);
-        return o !== "" && o !== "var(--focus-outline)" && o !== "0" && o !== "none";
+        return o !== "" && o !== "var(--focus-outline)" && !["0", "0px", "none"].includes(o);
       })
       .map((r) => `${r.selectorText} { outline: ${outlineOf(r)} }`);
     expect(fixed).toEqual([]);

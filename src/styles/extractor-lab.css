@@ -2749,6 +2749,18 @@ html { --glow: 0; }
   letter-spacing: -0.005em;
   color: var(--fg-1);
 }
+/* O nome é o botão de tocar (irmão do de apagar, nenhum controle aninhado
+   em outro). O ::after estende a área de clique ao card inteiro e carrega o
+   anel de foco no contorno do card; inset -1px cobre a borda. */
+.st-card__play { text-align: start; }
+.st-card__play::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-xl);
+}
+.st-card__play:focus-visible { outline: 0; }
+.st-card__play:focus-visible::after { outline: var(--focus-outline); outline-offset: 2px; }
 .st-card__seed-line {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -2779,6 +2791,8 @@ html { --glow: 0; }
 }
 .st-card__delete {
   position: absolute;
+  /* Acima do ::after do .st-card__play, que cobre o card inteiro. */
+  z-index: 1;
   bottom: 10px; right: 12px;
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 6px;

@@ -293,9 +293,11 @@ describe("Stations view", () => {
     const { container, getByText } = render(() => <Stations />);
     await waitFor(() => expect(container.querySelectorAll(".st-card").length).toBe(6));
     const card = container.querySelectorAll<HTMLElement>(".st-card")[1];
-    expect(card.getAttribute("role")).toBe("button");
-    expect(card.tabIndex).toBe(0);
-    fireEvent.keyDown(card, { key: "Enter" });
+    // Tocar é um <button> de verdade (Enter/Espaço nativos), irmão do de
+    // apagar — o card em si não é mais role=button (revisão da fase 0).
+    const play = card.querySelector<HTMLButtonElement>(".st-card__play")!;
+    expect(play.tagName).toBe("BUTTON");
+    fireEvent.click(play);
     await waitFor(() => {
       expect(vi.mocked(tauriApi.libPlayStation)).toHaveBeenCalledWith("sunday-slow-2", expect.any(Number));
     });
@@ -545,16 +547,36 @@ describe("Criacao de mood station", () => {
 });
 
 describe("StationCard (reatividade de seedLine e estado armado)", () => {
-  it("Enter no botão de apagar não dispara o play do card (estsig-2)", () => {
+  it("apagar não dispara o play do card; o botão de tocar dispara (estsig-2)", () => {
     const onResume = vi.fn();
     const { container } = render(() => (
       <StationCard station={MOCK_STATIONS[0]} onResume={onResume} onDelete={() => {}} />
     ));
     const del = container.querySelector(".st-card__delete") as HTMLButtonElement;
-    fireEvent.keyDown(del, { key: "Enter" });
+    fireEvent.click(del);
     expect(onResume).not.toHaveBeenCalled();
-    fireEvent.keyDown(container.querySelector(".st-card")!, { key: " " });
+    fireEvent.click(container.querySelector(".st-card__play")!);
+    expect(onResume).toHaveBeenCalledTimes(1);
     expect(onResume).toHaveBeenCalledWith("midnight-1");
+  });
+
+  it("nenhum controle fica aninhado em outro: tocar e apagar são botões irmãos", () => {
+    // Filhos de role=button são apresentacionais: o WebKitGTK não expunha
+    // o botão de apagar ao Orca, e o aria-label do card engolia descrição,
+    // seeds e contadores (revisão da fase 0, 25/09).
+    const { container, getByRole } = render(() => (
+      <StationCard station={MOCK_STATIONS[0]} onResume={() => {}} onDelete={() => {}} />
+    ));
+    const card = container.querySelector(".st-card")!;
+    expect(card.getAttribute("role")).toBeNull();
+    expect(card.hasAttribute("tabindex")).toBe(false);
+    expect(card.hasAttribute("aria-label")).toBe(false);
+    const play = getByRole("button", { name: `Tocar station ${MOCK_STATIONS[0].name}` });
+    const del = getByRole("button", { name: `Apagar ${MOCK_STATIONS[0].name}` });
+    expect(play.contains(del)).toBe(false);
+    expect(del.contains(play)).toBe(false);
+    // A descrição fica fora do nome do controle e segue legível.
+    expect(play.textContent).not.toContain(MOCK_STATIONS[0].desc);
   });
 
   it("não mostra slot de match vazio quando o backend não preenche match_avg (estsig-13)", () => {
