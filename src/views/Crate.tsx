@@ -160,7 +160,7 @@ function DestChip(props: {
           + (props.warn ? " crate-dest__btn--warn" : "")
         }
         data-override={props.override ? "true" : undefined}
-        title="Destino de tudo que for baixado"
+        title={props.variant === "row" ? "Destino desta faixa" : "Destino de tudo que for baixado"}
         aria-haspopup="true"
         aria-expanded={props.open ? "true" : "false"}
         onClick={(e) => { e.stopPropagation(); props.onToggle(); }}
@@ -698,8 +698,13 @@ export default function Crate(props: { param?: string | null }) {
   const inFlightJobs = () => jobs().filter((j) => IN_FLIGHT.has(j.state.kind));
   const finishedJobs = () => jobs().filter((j) => !IN_FLIGHT.has(j.state.kind));
 
+  /** Precedência (spec §4.5 + handoff v1.1): a escolha feita NA LINHA vem
+      primeiro — o chip da linha "herda o destino global até ser trocado na
+      própria linha". Depois toolbar > artista no acervo > último usado.
+      Antes a toolbar vencia a linha em silêncio, com o chip pintado de
+      override mas mostrando (e baixando para) a pasta da toolbar (crate-3). */
   function resolvedDest(g: ResultGroup): string | null {
-    return destOverride() ?? rowOverrides()[g.group_key] ?? g.suggested_dest ?? loadLastDest();
+    return rowOverrides()[g.group_key] ?? destOverride() ?? g.suggested_dest ?? loadLastDest();
   }
 
   function jobFor(groupKey: string): DownloadJob | null {

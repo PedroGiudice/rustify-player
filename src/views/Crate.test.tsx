@@ -387,6 +387,42 @@ describe("Crate — destino: override da toolbar", () => {
   });
 });
 
+describe("Crate — destino escolhido na linha", () => {
+  it("vence o destino da toolbar: o chip mostra a escolha e o download vai para ela", async () => {
+    // Handoff v1.1: o chip da linha "herda o destino global até ser trocado
+    // na própria linha". Antes a toolbar vencia em silêncio, com o chip
+    // pintado de override mas mostrando a pasta da toolbar (crate-3).
+    vi.mocked(tauriApi.libListFolders).mockResolvedValue([
+      { name: "Rap & Hip-Hop", track_count: 10, cover_path: null, cover_paths: [] },
+      { name: "Rock", track_count: 5, cover_path: null, cover_paths: [] },
+    ]);
+    const g = group({ group_key: "k1" });
+    const { container } = await searchAndRender([g]);
+    const pick = (scope: Element, name: string) => {
+      fireEvent.click(scope.querySelector(".crate-dest__btn")!);
+      const opt = Array.from(scope.querySelectorAll(".crate-dest__opt")).find((b) =>
+        (b.textContent ?? "").includes(name),
+      ) as HTMLButtonElement;
+      fireEvent.click(opt);
+    };
+    await waitFor(() => expect(tauriApi.libListFolders).toHaveBeenCalled());
+    pick(container.querySelector(".crate-toolbar")!, "Rap & Hip-Hop");
+    const row = container.querySelector(".crate-row")!;
+    pick(row, "Rock");
+
+    const chip = row.querySelector(".crate-dest__btn")!;
+    expect(chip.textContent).toContain("Rock");
+    expect(chip.getAttribute("data-override")).toBe("true");
+    const baixar = Array.from(row.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixar);
+    await waitFor(() => {
+      expect(tauriApi.slskDownload).toHaveBeenCalledWith("srch1", "k1", g.best.id, "Rock");
+    });
+  });
+});
+
 describe("Crate — seletor de destino se comporta como popover", () => {
   const FOLDERS = [
     { name: "Rap & Hip-Hop", track_count: 10, cover_path: null, cover_paths: [] },
