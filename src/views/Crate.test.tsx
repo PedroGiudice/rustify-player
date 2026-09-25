@@ -977,6 +977,31 @@ describe("Crate — teclado escopado à lista (crate-2, crate-4)", () => {
     });
   });
 
+  it("a lista anuncia a linha selecionada: aria-activedescendant aponta para ela e ela tem nome", async () => {
+    // Revisão da fase 0 (25/09): a seleção vivia só no data-focus. Com
+    // leitor de tela, as setas não anunciavam nada e o Enter baixava uma
+    // linha que o usuário não sabia qual era.
+    const g1 = group({ group_key: "k1", suggested_dest: "Rap & Hip-Hop" });
+    const g2 = group({ group_key: "k2", display_title: "R.I.P. Screw", suggested_dest: "Rap & Hip-Hop" });
+    const { container } = await searchAndRender([g1, g2]);
+    const l = list(container);
+    const active = () => document.getElementById(l.getAttribute("aria-activedescendant") ?? "");
+    const nameOf = (el: Element) =>
+      (el.getAttribute("aria-labelledby") ?? "")
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join(" ");
+
+    expect(active()).toBeTruthy();
+    expect(l.contains(active())).toBe(true);
+    expect(nameOf(active()!)).toContain(g1.display_title);
+
+    l.focus();
+    fireEvent.keyDown(l, { key: "ArrowDown" });
+    expect(nameOf(active()!)).toContain("R.I.P. Screw");
+    expect(active()!.closest(".crate-row-wrap")!.getAttribute("data-focus")).toBe("true");
+  });
+
   it("Backspace não cancela job travado (stalled), que não oferece Cancelar", async () => {
     const { container } = await searchWithJob({ kind: "stalled", since_secs: 130 });
     fireEvent.keyDown(list(container), { key: "Backspace" });

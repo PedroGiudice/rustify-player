@@ -473,6 +473,8 @@ function SourcesPanel(props: {
 
 // ── Linha de resultado (um ResultGroup agregado) ──────────────────
 function CrateRow(props: {
+  /** id da linha, alvo do aria-activedescendant da lista. */
+  rowId: string;
   group: ResultGroup;
   job: DownloadJob | null;
   dest: string | null;
@@ -503,15 +505,21 @@ function CrateRow(props: {
 
   return (
     <div class="crate-row-wrap" data-focus={props.isSelected ? "true" : "false"}>
+      {/* A lista mantém o foco e aponta a selecionada por
+          aria-activedescendant: a linha precisa de id e de nome (título +
+          artista) para o leitor de tela dizer qual o Enter vai acionar. */}
       <div
         class="crate-row"
+        id={props.rowId}
+        role="group"
+        aria-labelledby={`${props.rowId}-t ${props.rowId}-s`}
         data-state={state()}
         data-selected={props.isSelected ? "true" : "false"}
         onClick={props.onSelect}
       >
         <div class="crate-r-main">
-          <div class="crate-r-title">{props.group.display_title}</div>
-          <div class="crate-r-sub">
+          <div class="crate-r-title" id={`${props.rowId}-t`}>{props.group.display_title}</div>
+          <div class="crate-r-sub" id={`${props.rowId}-s`}>
             {props.group.display_artist ?? "—"}
             {props.group.album_hint ? ` · ${props.group.album_hint}` : ""}
           </div>
@@ -1261,12 +1269,14 @@ export default function Crate(props: { param?: string | null }) {
               tabindex="0"
               role="group"
               aria-label="Resultados da busca"
+              aria-activedescendant={`crate-row-${selectedIndex()}`}
               onKeyDown={handleListKey}
             >
               <div class="crate-list-inner">
                 <For each={groups()}>
                   {(g, i) => (
                     <CrateRow
+                      rowId={`crate-row-${i()}`}
                       group={g}
                       job={jobFor(g.group_key)}
                       dest={resolvedDest(g)}
