@@ -11,8 +11,12 @@ import { createEffect, createRoot } from "solid-js";
 import { cancelGlBench, glBenchProgress, glBenchResult, runGlBench } from "./bench";
 import { BENCH_STORAGE_KEY } from "./benchStats";
 import {
+  RELIEF_DEFAULT,
+  glReliefOverride,
+  glReliefStyle,
   glSceneOverride,
   glStatus,
+  setGlReliefStyle,
   resetGlStatus,
   setGlActiveScene,
   setGlStatus,
@@ -53,6 +57,7 @@ afterEach(() => {
   disposeHost?.();
   disposeHost = undefined;
   setGlActiveScene(null);
+  setGlReliefStyle(RELIEF_DEFAULT);
   vi.useRealTimers();
 });
 
@@ -61,7 +66,7 @@ describe("runGlBench", () => {
     fakeHost();
     const onStart = vi.fn();
     const onFinish = vi.fn();
-    const p = runGlBench({ keys: ["dust", "relief"], timing: TIMING, onStart, onFinish });
+    const p = runGlBench({ keys: ["dust", "relief"], reliefVariants: [], timing: TIMING, onStart, onFinish });
     expect(onStart).toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(50);
     expect(glBenchProgress()?.key).toBe("dust");
@@ -87,7 +92,7 @@ describe("runGlBench", () => {
 
   it("cena que derruba o motor vira erro na tabela, a seguinte ainda mede", async () => {
     fakeHost(["dust"]);
-    const p = runGlBench({ keys: ["dust", "orbits"], timing: TIMING });
+    const p = runGlBench({ keys: ["dust", "orbits"], reliefVariants: [], timing: TIMING });
     await vi.advanceTimersByTimeAsync(5000);
     const r = await p;
     expect(r!.scenes[0]).toMatchObject({ key: "dust", ok: false, error: "cena dust: shader não compilou" });
@@ -98,7 +103,7 @@ describe("runGlBench", () => {
 
   it("motor que não monta a tempo também vira erro", async () => {
     // Sem host: ninguém responde ao override.
-    const p = runGlBench({ keys: ["nebula"], timing: TIMING });
+    const p = runGlBench({ keys: ["nebula"], reliefVariants: [], timing: TIMING });
     await vi.advanceTimersByTimeAsync(2000);
     const r = await p;
     expect(r!.scenes[0].error).toMatch(/não montou/);
@@ -107,7 +112,7 @@ describe("runGlBench", () => {
   it("Esc cancela, restaura e não salva", async () => {
     fakeHost();
     const onFinish = vi.fn();
-    const p = runGlBench({ keys: ["dust", "relief"], timing: TIMING, onFinish });
+    const p = runGlBench({ keys: ["dust", "relief"], reliefVariants: [], timing: TIMING, onFinish });
     await vi.advanceTimersByTimeAsync(400);
     const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     window.dispatchEvent(e);
@@ -122,9 +127,52 @@ describe("runGlBench", () => {
 
   it("uma medição por vez", async () => {
     fakeHost();
-    const a = runGlBench({ keys: ["dust"], timing: TIMING });
-    expect(await runGlBench({ keys: ["dust"], timing: TIMING })).toBeNull();
+    const a = runGlBench({ keys: ["dust"], reliefVariants: [], timing: TIMING });
+    expect(await runGlBench({ keys: ["dust"], reliefVariants: [], timing: TIMING })).toBeNull();
     await vi.advanceTimersByTimeAsync(3000);
     expect(await a).not.toBeNull();
+  });
+
+  it("mede as 4 cenas e depois o Relevo em cada variante, sem tocar na preferência", async () => {
+    fakeHost();
+    const pref = { lines: "contours", shape: "smooth", surface: "solid" } as const;
+    setGlReliefStyle(pref);
+    const seen: Array<ReturnType<typeof glReliefOverride>> = [];
+    const p = runGlBench({ timing: TIMING });
+    for (let i = 0; i < 80; i++) {
+      const pr = glBenchProgress();
+      if (pr?.phase === "medindo" && seen.length < pr.index) seen.push(glReliefOverride());
+      await vi.advanceTimersByTimeAsync(250);
+    }
+    const r = await p;
+    expect(r!.scenes.map((s) => s.key)).toEqual([
+      "dust", "relief", "orbits", "nebula", "relief", "relief", "relief", "relief", "relief",
+    ]);
+    expect(r!.scenes.slice(4).map((s) => s.variant)).toEqual(["original", "mesh", "ridges", "contours", "weave"]);
+    expect(r!.scenes[4].label).toBe("Relevo · Original");
+    expect(r!.scenes[6].label).toBe("Relevo · Cristas");
+    expect(r!.scenes.slice(0, 4).every((s) => s.variant === undefined)).toBe(true);
+    // Override com a forma/superfície da preferência; nulo nas cenas.
+    expect(seen.slice(0, 4)).toEqual([null, null, null, null]);
+    const forced = seen.slice(4);
+    expect(forced.map((o) => o!.lines)).toEqual(["original", "mesh", "ridges", "contours", "weave"]);
+    for (const o of forced) expect(o).toMatchObject({ shape: "smooth", surface: "solid" });
+    expect(glReliefOverride()).toBeNull();
+    expect(glReliefStyle()).toEqual(pref);
+    expect((window as any).__rustifyGlBench.scenes[8].variant).toBe("weave");
+    setGlReliefStyle(RELIEF_DEFAULT);
+  });
+
+  it("cancelar no meio das variantes limpa o override do Relevo", async () => {
+    fakeHost();
+    const p = runGlBench({ keys: [], reliefVariants: ["ridges", "weave"], timing: TIMING });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(glReliefOverride()?.lines).toBe("ridges");
+    cancelGlBench("janela escondida");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(await p).toBeNull();
+    expect(glReliefOverride()).toBeNull();
+    expect(glSceneOverride()).toBeNull();
+    expect(glReliefStyle()).toEqual(RELIEF_DEFAULT);
   });
 });

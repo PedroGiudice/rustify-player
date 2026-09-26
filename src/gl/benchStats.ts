@@ -13,7 +13,7 @@
    alta com engasgo regular.
    ============================================================ */
 
-import { isSceneKey, type SceneKey } from "./meta";
+import { isReliefLines, isSceneKey, type ReliefLines, type SceneKey } from "./meta";
 
 export const BENCH_OK_FPS = 58;
 export const BENCH_SLOW_MS = 20;
@@ -61,6 +61,9 @@ export function computeBenchStats(intervalsMs: readonly number[]): BenchStats {
 export interface BenchSceneResult extends BenchStats {
   key: SceneKey;
   label: string;
+  /** Variante de linhas do Relevo medida (só nas medições por variante;
+      ausente nas cenas e em resultados salvos antes de 26/09). */
+  variant?: ReliefLines;
   /** Motivo quando a cena não pôde ser medida (shader, contexto). */
   error?: string;
 }
@@ -87,6 +90,8 @@ export function parseBenchResult(raw: unknown): BenchResult | null {
     if (!s || typeof s !== "object") return null;
     const o = s as Record<string, unknown>;
     if (!isSceneKey(o.key)) continue; // cena aposentada depois da medição
+    // Variante do Relevo que saiu do código depois da medição: some da tabela.
+    if (o.variant !== undefined && !isReliefLines(o.variant)) continue;
     const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
     scenes.push({
       key: o.key,
@@ -96,6 +101,7 @@ export function parseBenchResult(raw: unknown): BenchResult | null {
       fpsLow1: num(o.fpsLow1),
       slowPct: num(o.slowPct),
       ok: o.ok === true,
+      ...(isReliefLines(o.variant) ? { variant: o.variant } : {}),
       ...(typeof o.error === "string" && o.error ? { error: o.error } : {}),
     });
   }
