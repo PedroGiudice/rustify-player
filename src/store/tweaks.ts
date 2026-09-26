@@ -5,10 +5,11 @@
    (fontScale/zoom) para o novo (scale).
    ============================================================ */
 
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, untrack } from "solid-js";
 import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
 import { ensureInkContrast } from "../lib/color";
 import {
+  glReliefStyle,
   isSceneKey,
   RELIEF_DEFAULT,
   sanitizeReliefStyle,
@@ -657,12 +658,16 @@ window.addEventListener("beforeunload", flushTweaks);
 
 // Espelho do estilo do Relevo no signal do gl/meta. Roda também antes
 // do load (inofensivo: só escreve signal, nunca localStorage) e de novo
-// quando o load troca o estado.
+// quando o load troca o estado. Só publica objeto novo quando um dos três
+// campos muda: a cena troca de programa por identidade, e arrastar um
+// slider qualquer do Tweaks não pode virar re-seleção a cada quadro.
 createEffect(() => {
   const s = state();
-  setGlReliefStyle(
-    sanitizeReliefStyle({ lines: s.reliefLines, shape: s.reliefShape, surface: s.reliefSurface }),
-  );
+  const next = sanitizeReliefStyle({ lines: s.reliefLines, shape: s.reliefShape, surface: s.reliefSurface });
+  const cur = untrack(glReliefStyle);
+  if (cur.lines !== next.lines || cur.shape !== next.shape || cur.surface !== next.surface) {
+    setGlReliefStyle(next);
+  }
 });
 
 createEffect(() => {

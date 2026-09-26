@@ -214,6 +214,12 @@ function GlSection() {
     desenhadas por pixel. */
 function ReliefControls() {
   const lines = () => tweaks().reliefLines;
+  // Variante que não compilou derrubou o motor pro 2D; escolher outra é
+  // tentar de novo, como nos botões de Cena.
+  const pick = <K extends "reliefLines" | "reliefShape" | "reliefSurface">(key: K, val: TweaksState[K]) => {
+    if (glStatus().ok === false) resetGlStatus();
+    updateTweak(key, val);
+  };
   return (
     <>
       <div class="tweaks__row">
@@ -225,7 +231,7 @@ function ReliefControls() {
                 class="segmented__btn"
                 classList={{ "is-active": lines() === m.key }}
                 title={m.hint}
-                onClick={() => updateTweak("reliefLines", m.key)}
+                onClick={() => pick("reliefLines", m.key)}
               >
                 {m.label}
               </button>
@@ -243,7 +249,7 @@ function ReliefControls() {
                 <button
                   class="segmented__btn"
                   classList={{ "is-active": tweaks().reliefShape === k }}
-                  onClick={() => updateTweak("reliefShape", k)}
+                  onClick={() => pick("reliefShape", k)}
                 >
                   {label}
                 </button>
@@ -261,7 +267,7 @@ function ReliefControls() {
                 <button
                   class="segmented__btn"
                   classList={{ "is-active": tweaks().reliefSurface === k }}
-                  onClick={() => updateTweak("reliefSurface", k)}
+                  onClick={() => pick("reliefSurface", k)}
                 >
                   {label}
                 </button>
