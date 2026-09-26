@@ -64,19 +64,14 @@ export type GlBenchWindowState =
   | ({ status: "done" } & BenchResult);
 
 const [progress, setProgress] = createSignal<BenchProgress | null>(null);
-const [result, setResult] = createSignal<BenchResult | null | undefined>(undefined);
+// Leitura única do localStorage no import (try/catch em loadBenchResult).
+const [result, setResult] = createSignal<BenchResult | null>(loadBenchResult());
 
 /** Cena em medição agora (null = parado). */
 export const glBenchProgress = progress;
 
-/** Último resultado (lido do localStorage na primeira consulta). */
-export function glBenchResult(): BenchResult | null {
-  const r = result();
-  if (r !== undefined) return r;
-  const loaded = loadBenchResult();
-  setResult(loaded);
-  return loaded;
-}
+/** Último resultado medido (sobrevive ao restart via "kv-gl-bench"). */
+export const glBenchResult = result;
 
 interface Token {
   cancelled: boolean;
