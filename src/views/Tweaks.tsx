@@ -286,7 +286,7 @@ function BenchTable(props: { r: BenchResult }) {
         )}
       </For>
       <div class="tweaks__hint">
-        {benchWhen(props.r)} · v{props.r.version} · {props.r.route}
+        {benchWhen(props.r)} · {props.r.version === "—" ? "versão desconhecida" : `v${props.r.version}`} · {props.r.route}
       </div>
     </div>
   );
