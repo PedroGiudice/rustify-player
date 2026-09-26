@@ -77,3 +77,112 @@ describe("stepGlSignal", () => {
     expect(s.clock).toBeLessThanOrEqual(0.1);
   });
 });
+
+describe("reação relativa (swell / pulse / midLift / level)", () => {
+  const run = (s: ReturnType<typeof createGlSignal>, n: number, low: number, mid: number, c: GlCfg, fresh = true) => {
+    for (let i = 0; i < n; i++) stepGlSignal(s, 1 / 60, fresh, { low, mid, high: 0 }, c);
+  };
+  const pulseCfg = cfg({ beatMode: "pulse", beatDepth: 1, smoothing: 0.3 });
+
+  it("nível constante não é lift: música alta não fica permanentemente alta", () => {
+    const s = createGlSignal();
+    run(s, 60 * 30, 0.8, 0.7, pulseCfg);
+    expect(s.low).toBeGreaterThan(0.7); // a banda absoluta segue alta (outras cenas)
+    expect(s.swell).toBeLessThan(0.01);
+    expect(s.midLift).toBeLessThan(0.01);
+    expect(s.pulse).toBeLessThan(0.01);
+  });
+
+  it("subida acima da média vira lift, e some quando a média alcança", () => {
+    const s = createGlSignal();
+    run(s, 60 * 20, 0.3, 0.2, pulseCfg);
+    run(s, 60 * 1, 0.6, 0.5, pulseCfg);
+    expect(s.swell).toBeGreaterThan(0.5);
+    expect(s.midLift).toBeGreaterThan(0.5);
+    run(s, 60 * 40, 0.6, 0.5, pulseCfg);
+    expect(s.swell).toBeLessThan(0.05);
+    expect(s.midLift).toBeLessThan(0.05);
+  });
+
+  it("relativo de verdade: o mesmo desenho em nível alto e baixo dá a mesma reação", () => {
+    // Kicks a 120 BPM sobre um grave sustentado, em duas escalas.
+    const pattern = (scale: number) => {
+      const s = createGlSignal();
+      let peak = 0;
+      for (let i = 0; i < 60 * 30; i++) {
+        const low = scale * (i % 30 < 4 ? 0.9 : 0.5);
+        stepGlSignal(s, 1 / 60, true, { low, mid: 0, high: 0 }, pulseCfg);
+        if (i > 60 * 20) peak = Math.max(peak, s.pulse);
+      }
+      return peak;
+    };
+    const hi = pattern(1);
+    const lo = pattern(0.6);
+    expect(hi).toBeGreaterThan(0.5);
+    expect(Math.abs(hi - lo)).toBeLessThan(0.1);
+  });
+
+  it("o ganho multiplica o lift (Bass não é placebo); gain 0 zera", () => {
+    const peak = (bassGain: number) => {
+      const s = createGlSignal();
+      run(s, 60 * 20, 0.3, 0, cfg({ ...pulseCfg, bassGain }));
+      run(s, 30, 0.45, 0, cfg({ ...pulseCfg, bassGain }));
+      return s.swell;
+    };
+    expect(peak(0)).toBe(0);
+    expect(peak(0.3)).toBeGreaterThan(0);
+    expect(peak(0.3)).toBeLessThan(0.5 * peak(1));
+  });
+
+  it("stream parado: tudo decai a zero, as médias congelam, a volta não é transiente", () => {
+    const s = createGlSignal();
+    for (let i = 0; i < 60 * 20; i++)
+      stepGlSignal(s, 1 / 60, true, { low: i % 30 < 4 ? 0.9 : 0.6, mid: 0.5, high: 0 }, pulseCfg);
+    const avg = s.lowAvg;
+    const dev = s.lowDev;
+    run(s, 60 * 10, 0, 0, pulseCfg, false);
+    for (const k of ["swell", "pulse", "midLift", "level"] as const) expect(s[k]).toBeLessThan(0.01);
+    expect(s.lowAvg).toBe(avg);
+    expect(s.lowDev).toBe(dev);
+    // Volta no nível médio de sempre: nada de swell/pulse gigante.
+    let maxSwell = 0;
+    let maxPulse = 0;
+    for (let i = 0; i < 60; i++) {
+      stepGlSignal(s, 1 / 60, true, { low: avg, mid: 0.5, high: 0 }, pulseCfg);
+      maxSwell = Math.max(maxSwell, s.swell);
+      maxPulse = Math.max(maxPulse, s.pulse);
+    }
+    expect(maxSwell).toBeLessThan(0.05);
+    expect(maxPulse).toBeLessThan(0.05);
+  });
+
+  it("partida: a 1ª amostra alta não deixa a faixa inteira 'abaixo da média'", () => {
+    const s = createGlSignal();
+    stepGlSignal(s, 1 / 60, true, { low: 0.9, mid: 0, high: 0 }, pulseCfg);
+    // Depois o trecho vive em 0,3 com kicks a 0,5: em 3 s já reage.
+    let peak = 0;
+    for (let i = 0; i < 60 * 3; i++) {
+      stepGlSignal(s, 1 / 60, true, { low: i % 30 < 4 ? 0.5 : 0.3, mid: 0, high: 0 }, pulseCfg);
+      if (i > 60 * 2) peak = Math.max(peak, s.pulse);
+    }
+    expect(peak).toBeGreaterThan(0.3);
+  });
+
+  it("beatMode off zera o pulse; beatDepth escala", () => {
+    const peakWith = (c: GlCfg) => {
+      const s = createGlSignal();
+      let peak = 0;
+      for (let i = 0; i < 60 * 20; i++) {
+        stepGlSignal(s, 1 / 60, true, { low: i % 30 < 4 ? 0.9 : 0.5, mid: 0, high: 0 }, c);
+        expect(c.beatMode !== "off" || s.pulse === 0).toBe(true);
+        if (i > 60 * 10) peak = Math.max(peak, s.pulse);
+      }
+      return peak;
+    };
+    expect(peakWith(cfg({ ...pulseCfg, beatMode: "off" }))).toBe(0);
+    const full = peakWith(cfg({ ...pulseCfg, beatDepth: 1 }));
+    const half = peakWith(cfg({ ...pulseCfg, beatDepth: 0.5 }));
+    expect(full).toBeGreaterThan(0.8);
+    expect(half).toBeCloseTo(full / 2, 1);
+  });
+});

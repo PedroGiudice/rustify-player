@@ -246,6 +246,19 @@ as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
   defeito da Poeira (CMR-267: 4 u/s projetados, 279 u/s aos 5 min).
   Sinal muda VELOCIDADE; a posição é integrada na CPU (`x += dt*v`) e
   entra como uniform, como a Órbitas faz com `zoff`.
+- **Reação do Relevo ao áudio (26/09)**: todas as variantes menos a
+  `original` (referência intacta, hash travado) reagem a campos
+  RELATIVOS à média da própria faixa (`swell`/`pulse`/`midLift`/`level`
+  em `gl/signal.ts`, princípio do MilkDrop), UMA função por banda (grave
+  = ondulação, kick = pulso, médios = onda de no máximo ±2,5), com teto
+  de 1,5x por joelho tanh (`gl/reliefReaction.ts`; uAmp/uWave calculados
+  na CPU por quadro). Motivo: o FFT é medido no monitor do sink, depois
+  de norm_gain/limiter/volume, e música de grave forte deixava o raw.low
+  sempre acima de ~0,43 — a cadeia absoluta ficava presa no teto. O
+  ganho do Tweaks multiplica o LIFT, nunca o raw (normalização relativa
+  cancelaria o ganho aplicado no raw). Metas travadas por faixa no replay
+  do sinal real gravado no app (`src/gl/__fixtures__/fft-real-2609.json`,
+  `gl/reliefReaction.test.ts`); o gl-bench tem `replay=fft-real-2609`.
 - O WebKitGTK mascara o renderer ("Apple GPU", mesmo na Intel): o nome
   da GPU no Tweaks não identifica hardware nem render por software, e
   não há timer de GPU (`WebGLTimerQueries` desligado). O fps medido é o

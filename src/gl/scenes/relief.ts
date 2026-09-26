@@ -15,9 +15,15 @@
 
    Todas as outras variantes seguem a decisão do CEO (26/09): cor e
    brilho ÚNICOS, estáveis no tempo — uInk com alfa constante; só a
-   névoa de distância muda a intensidade. A deformação é a mesma do
-   original (amplitude com graves/batida, onda de médios, rolagem em
-   z pelo relógio); o eixo forma só escolhe o fbm:
+   névoa de distância muda a intensidade. A deformação tem a mesma
+   FORMA da do original (fbm com amplitude, onda transversal dos
+   médios, rolagem em z pelo relógio), mas a REAÇÃO ao áudio é a
+   calibrada de gl/reliefReaction.ts (26/09): amplitude uAmp e onda
+   uWave calculadas uma vez por quadro na CPU a partir de swell,
+   pulse e midLift (relativos à média da própria faixa), com teto de
+   1,5x e onda de no máximo ±2,5. O original soma graves + batida +
+   médios absolutos e satura com música de grave forte. O eixo forma
+   só escolhe o fbm:
      detailed  fbm de 5 oitavas (o de glsl.ts, o terreno de sempre);
      smooth    fbm3 local, sem as 2 oitavas mais finas. A 5ª oitava tem
                comprimento de onda de ~1,3 unidade de mundo, quase a
@@ -56,6 +62,7 @@ import { lookAt, mat4, perspective } from "../mat4";
 import { effectiveReliefStyle, type ReliefShape, type ReliefStyle } from "../meta";
 import type { GlScene, SceneCtx, SceneDef, ScenePalette } from "../scene";
 import type { GlSignal } from "../signal";
+import { reliefAmp, reliefWaveAmp } from "../reliefReaction";
 
 export const RELIEF_GRID = { width: 150, height: 110, gx: 120, gy: 88 } as const;
 
@@ -167,8 +174,8 @@ const FBM3 = `
 float fbm3(vec2 p){float f=0.0,a=0.5;for(int i=0;i<3;i++){f+=a*snoise(p);p=p*2.02+vec2(17.3,9.1);a*=0.5;}return f;}
 `;
 
-/** VS das variantes de brilho único. Mesma deformação do original; só
-    o fbm muda com a forma. `dense` = superfície por pixel (passa ao FS
+/** VS das variantes de brilho único. Mesma forma de deformação do
+    original com a reação calibrada (uAmp/uWave); o fbm muda com a forma. `dense` = superfície por pixel (passa ao FS
     o xz de mundo ANTES do deslocamento, a altura deslocada e, na rede,
     o ruído estático de baixa frequência — calculado aqui e interpolado:
     nada de ruído por fragmento). */
@@ -185,13 +192,16 @@ function uniformVS(shape: ReliefShape, lines: LineKind): string {
   return HEAD + NOISE + (shape === "smooth" ? FBM3 : "") + `
 in vec3 position;
 uniform mat4 uView,uProj;
-uniform float uTime,uLow,uMid,uBeat;
+// uAmp: amplitude do fbm (5,5 em repouso, < 8,25 pelo teto);
+// uWave: amplitude da onda dos médios (0..2,5). Os dois vêm prontos
+// da CPU (gl/reliefReaction.ts): nada de reação calculada por vértice.
+uniform float uTime,uAmp,uWave;
 out float vD;${varyingsOf(lines, "out")}
 void main(){
   vec3 p=position;
   vec2 q=p.xz*0.045+vec2(0.0,uTime*0.10);
-  float h=${shape === "smooth" ? "fbm3" : "fbm"}(q)*(5.5+5.0*uLow+3.0*uBeat);
-  float ridge=sin(p.x*0.22+uTime*0.9)*exp(-abs(p.z+15.0)*0.05)*6.0*uMid;${lines === "ridges" || lines === "weave" ? "\n  vXZ=p.xz;" : ""}${
+  float h=${shape === "smooth" ? "fbm3" : "fbm"}(q)*uAmp;
+  float ridge=sin(p.x*0.22+uTime*0.9)*exp(-abs(p.z+15.0)*0.05)*uWave;${lines === "ridges" || lines === "weave" ? "\n  vXZ=p.xz;" : ""}${
     lines === "contours" ? "\n  vH=h+ridge;" : ""
   }${
     lines === "weave"
@@ -358,7 +368,11 @@ class Relief implements GlScene {
     const p = this.prog;
     p.use();
     p.common(sig, pal, w, h);
-    if (!this.isOriginal) p.f("uSolid", this.solid ? 1 : 0);
+    if (!this.isOriginal) {
+      p.f("uSolid", this.solid ? 1 : 0);
+      p.f("uAmp", reliefAmp(sig));
+      p.f("uWave", reliefWaveAmp(sig));
+    }
     p.m4("uView", this.view);
     p.m4("uProj", this.proj);
     const g = this.geo;
