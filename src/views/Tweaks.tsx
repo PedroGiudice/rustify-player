@@ -27,6 +27,8 @@ import {
   type TweaksState,
 } from "../store/tweaks";
 import {
+  RELIEF_LINES,
+  reliefHasSurface,
   glStatus,
   resetGlStatus,
   SCENE_HINTS,
@@ -190,6 +192,9 @@ function GlSection() {
         </div>
       </div>
       <div class="tweaks__hint">{SCENE_HINTS[tweaks().bgScene]}</div>
+      <Show when={tweaks().bgScene === "relief"}>
+        <ReliefControls />
+      </Show>
       <Show when={glStatus().ok === true}>
         <div class="tweaks__hint">
           {glStatus().renderer} · {glStatus().fps} fps
@@ -198,6 +203,71 @@ function GlSection() {
       <Show when={glStatus().ok === false}>
         <div class="tweaks__hint">
           Fundo WebGL fora do ar ({glStatus().error}) — o 2D assumiu.
+        </div>
+      </Show>
+    </>
+  );
+}
+
+/** Variantes do Relevo em avaliação (gl/meta.ts). "Relevo" some na
+    Original (referência intacta); "Superfície" só existe nas variantes
+    desenhadas por pixel. */
+function ReliefControls() {
+  const lines = () => tweaks().reliefLines;
+  return (
+    <>
+      <div class="tweaks__row">
+        <span class="tweaks__label">Linhas</span>
+        <div class="segmented segmented--wrap">
+          <For each={RELIEF_LINES}>
+            {(m) => (
+              <button
+                class="segmented__btn"
+                classList={{ "is-active": lines() === m.key }}
+                title={m.hint}
+                onClick={() => updateTweak("reliefLines", m.key)}
+              >
+                {m.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class="tweaks__hint">{RELIEF_LINES.find((m) => m.key === lines())?.hint}</div>
+      <Show when={lines() !== "original"}>
+        <div class="tweaks__row">
+          <span class="tweaks__label">Relevo</span>
+          <div class="segmented">
+            <For each={[["detailed", "Detalhado"], ["smooth", "Suave"]] as const}>
+              {([k, label]) => (
+                <button
+                  class="segmented__btn"
+                  classList={{ "is-active": tweaks().reliefShape === k }}
+                  onClick={() => updateTweak("reliefShape", k)}
+                >
+                  {label}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+      <Show when={reliefHasSurface(lines())}>
+        <div class="tweaks__row">
+          <span class="tweaks__label">Superfície</span>
+          <div class="segmented">
+            <For each={[["open", "Vazada"], ["solid", "Sólida"]] as const}>
+              {([k, label]) => (
+                <button
+                  class="segmented__btn"
+                  classList={{ "is-active": tweaks().reliefSurface === k }}
+                  onClick={() => updateTweak("reliefSurface", k)}
+                >
+                  {label}
+                </button>
+              )}
+            </For>
+          </div>
         </div>
       </Show>
     </>
@@ -302,7 +372,7 @@ function BenchSection() {
         Medir cenas
       </button>
       <div class="tweaks__hint">
-        10 s por cena (2 de aquecimento, 8 medindo) no motor WebGL, com esta tela aberta. Esc cancela.
+        10 s por medição (2 de aquecimento, 8 medindo) no motor WebGL, com esta tela aberta: as 4 cenas e depois o Relevo em cada estilo de linhas. Esc cancela.
       </div>
       <Show when={glBenchResult()}>{(r) => <BenchTable r={r()} />}</Show>
     </div>
