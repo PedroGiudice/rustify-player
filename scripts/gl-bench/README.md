@@ -1,7 +1,7 @@
 # gl-bench — custo por cena do motor WebGL2, no WebKitGTK real
 
 Mede cada cena registrada em `src/gl/registry.ts` sozinha, num canvas
-1366x768 fora do DOM, com o motor do app (`src/gl/engine.ts`): 20
+fora do DOM (1366x768 por padrão; `w=`/`h=` mudam), com o motor do app (`src/gl/engine.ts`): 20
 quadros de aquecimento e 5 lotes de 24 quadros, com `readPixels` de 1
 pixel no fim de cada lote para esperar a GPU. O número soma CPU e GPU.
 É o método do lab v2 (`docs/design-refs/fundo-lab-v2`), agora sobre o
@@ -37,11 +37,36 @@ export XDG_RUNTIME_DIR=/run/user/1000 \
 python3 run_bench.py gl-bench-build                 # todas as cenas
 python3 run_bench.py gl-bench-build --query full    # + cada cena reduzida em resolução cheia
 python3 run_bench.py gl-bench-build --query 'scenes=nebula&shots' --shots-dir ./shots
+# resolução real do CEO (monitor 1920x1080 com zoom 1,15 no Tweaks):
+python3 run_bench.py gl-bench-build --query 'w=1857&h=1048'
+# Relevo: todas as 15 variantes numa rodada, com um PNG de cada
+python3 run_bench.py gl-bench-build --query 'w=1857&h=1048&scenes=relief&relief=all&shots' --shots-dir ./shots
+# Relevo: uma variante só (linhas,forma,superfície)
+python3 run_bench.py gl-bench-build --query 'scenes=relief&relief=ridges,smooth,solid'
 rm -rf /tmp/gl-bench                                # no fim
 ```
 
 `--json` imprime só o JSON; `--nogpuproc` desliga o processo de GPU do
 WebGL (`UseGPUProcessForWebGL`) para comparar.
+
+Parâmetros da página (`--query`):
+
+| Parâmetro | Efeito |
+|---|---|
+| `scenes=a,b` | só essas cenas |
+| `w=1857&h=1048` | tamanho do canvas (padrão 1366x768, limite 64..4096) |
+| `full` | mede também cada cena reduzida em resolução cheia |
+| `relief=L,F,S` | força o estilo do Relevo: linhas (`original`, `mesh`, `ridges`, `contours`, `weave`), forma (`detailed`, `smooth`), superfície (`open`, `solid`); campo inválido cai no padrão, como no app |
+| `relief=all` | o Relevo em todas as variantes: original, mesh x 2 formas, ridges/contours/weave x 2 formas x 2 superfícies (15) |
+| `shots` | um PNG por cena/variante: `<cena>.png`, `relief-<linhas>-<forma>-<superfície>.png` |
+
+O shot (e a fração de pixels acesos) sai de UM quadro num instante
+fixo do sinal simulado, `SHOT_T` = 15,75 s em `bench.ts`: pico de
+energia do ciclo de 32 s do `sim.ts`, logo depois de um bumbo — terreno
+com relevo bem visível, e o mesmo instante para todas as variantes, que
+ficam comparáveis lado a lado. O resultado chega ao runner por POST
+`/result` (o título da página trunca em ~1000 caracteres e a rodada
+`relief=all` passa disso).
 
 ## Ler o resultado
 

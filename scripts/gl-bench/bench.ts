@@ -2,7 +2,7 @@
    gl-bench/bench.ts — custo por cena do motor WebGL2, offscreen.
 
    Mesmo método do lab v2 (docs/design-refs/fundo-lab-v2): cada cena
-   sozinha num canvas 1366x768 fora do DOM, 20 quadros de
+   sozinha num canvas fora do DOM (1366x768 por padrão), 20 quadros de
    aquecimento e 5 lotes de 24 quadros, com um readPixels de 1 pixel
    no fim de cada lote para esperar a GPU terminar. O número soma CPU
    (física, uploads) e GPU. A composição do canvas na tela não entra.
@@ -14,24 +14,59 @@
 
    Parâmetros (query string):
      scenes=a,b   só essas chaves
+     w=1857&h=1048
+                  tamanho do canvas (padrão 1366x768; 1857x1048 é o
+                  canvas real do CEO: monitor 1920x1080 com zoom 1,15)
      full         mede também, em resolução cheia, cada cena que usa
                   buffer reduzido (referência da alavanca maxRows)
-     shots        envia um PNG do último quadro de cada cena ao runner
-                  (POST /shot?name=<chave>.png)
+     relief=L,F,S força o estilo do Relevo (linhas, forma, superfície;
+                  ex.: relief=ridges,smooth,solid — campo inválido cai
+                  no padrão, como no app)
+     relief=all   mede o Relevo em TODAS as variantes numa rodada: o
+                  original, mesh x 2 formas e ridges/contours/weave x
+                  2 formas x 2 superfícies (15)
+     shots        envia um PNG de cada cena/variante ao runner
+                  (POST /shot?name=<chave>.png; Relevo com variante:
+                  relief-<linhas>-<forma>-<superfície>.png)
 
-   Ao terminar: document.title = "BENCH " + JSON (o runner lê daí).
+   O shot e a fração de pixels acesos saem de um quadro num instante
+   FIXO do sinal simulado (SHOT_T), igual para todas as cenas e
+   variantes: dá para comparar os PNGs lado a lado.
+
+   Ao terminar: POST /result com o JSON e depois document.title =
+   "BENCH " + JSON. O runner prefere o POST: o título do WebKit trunca
+   em ~1000 caracteres, e a rodada relief=all passa disso.
    ============================================================ */
 
 import { GlEngine } from "../../src/gl/engine";
 import { SCENES } from "../../src/gl/registry";
-import { SCENE_KEYS, SCENE_LABELS, type SceneKey } from "../../src/gl/meta";
+import {
+  RELIEF_LINES,
+  SCENE_KEYS,
+  SCENE_LABELS,
+  sanitizeReliefStyle,
+  setGlReliefOverride,
+  type ReliefStyle,
+  type SceneKey,
+} from "../../src/gl/meta";
 import { DEFAULT_GL_CFG, createGlSignal, stepGlSignal } from "../../src/gl/signal";
 import type { GlPalette } from "../../src/gl/palette";
 import type { SceneDef } from "../../src/gl/scene";
 import { createSim, stepSim } from "./sim";
 
-const W = 1366;
-const H = 768;
+const QS = new URLSearchParams(location.search);
+/** Tamanho do canvas; limitado a 4096 para não pedir buffer absurdo. */
+const dim = (name: string, def: number) => {
+  const v = parseInt(QS.get(name) ?? "", 10);
+  return Number.isFinite(v) && v >= 64 && v <= 4096 ? v : def;
+};
+const W = dim("w", 1366);
+const H = dim("h", 768);
+/** Instante do shot, em segundos do sinal simulado: 15,75 s fica no
+    pico de energia do ciclo de 32 s do sim.ts (máximo em t = 16 s) e
+    ~0,1 s depois de um bumbo (tempo 24 a 92 BPM = 15,65 s) — graves e
+    batida altos, terreno com relevo bem visível. */
+const SHOT_T = 15.75;
 const WARM = 20;
 const BATCHES = 5;
 const PER_BATCH = 24;
@@ -48,13 +83,15 @@ const COPPER: GlPalette = {
 interface SceneResult {
   key: string;
   label: string;
+  /** Relevo: "<linhas>-<forma>-<superfície>"; ausente nas outras cenas. */
+  variant?: string;
   /** Mediana dos 5 lotes, ms por quadro. */
   ms: number | null;
   min: number | null;
   max: number | null;
   /** Tamanho da saída da cena (o buffer reduzido, se houver). */
   out: string;
-  /** Fração de pixels acesos no último quadro (sanidade: 0 = nada desenhado). */
+  /** Fração de pixels acesos no quadro de SHOT_T (sanidade: 0 = nada desenhado). */
   lit: number | null;
   glError: number;
   error: string | null;
@@ -66,6 +103,14 @@ const log = (s: string) => {
   console.log("[gl-bench] " + s);
 };
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+/** Entrega o resultado ao runner (POST, sem limite de tamanho) e sinaliza
+    pelo título, que é o que o runner espera. */
+async function finish(out: unknown): Promise<void> {
+  const json = JSON.stringify(out);
+  await fetch("/result", { method: "POST", body: json }).catch(() => {});
+  document.title = "BENCH " + json;
+}
 
 function litFraction(gl: WebGL2RenderingContext, px: Uint8Array): number {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -88,22 +133,64 @@ async function postShot(name: string, px: Uint8Array): Promise<void> {
   if (blob) await fetch(`/shot?name=${encodeURIComponent(name)}`, { method: "POST", body: blob }).catch(() => {});
 }
 
+/** As 15 variantes do Relevo, na ordem do painel. "original" e "mesh"
+    ignoram a superfície (sempre vazadas) e o original ignora a forma. */
+function reliefVariants(): ReliefStyle[] {
+  const out: ReliefStyle[] = [{ lines: "original", shape: "detailed", surface: "open" }];
+  for (const shape of ["detailed", "smooth"] as const) out.push({ lines: "mesh", shape, surface: "open" });
+  for (const lines of ["ridges", "contours", "weave"] as const)
+    for (const shape of ["detailed", "smooth"] as const)
+      for (const surface of ["open", "solid"] as const) out.push({ lines, shape, surface });
+  return out;
+}
+
+const variantName = (st: ReliefStyle) => `${st.lines}-${st.shape}-${st.surface}`;
+const lineLabel = (st: ReliefStyle) => RELIEF_LINES.find((l) => l.key === st.lines)?.label ?? st.lines;
+
+interface PlanItem {
+  key: string;
+  label: string;
+  relief?: ReliefStyle;
+  shot: string;
+}
+
 async function run(): Promise<void> {
-  const q = new URLSearchParams(location.search);
+  const q = QS;
   const only = q.get("scenes")?.split(",").filter(Boolean);
   const wantFull = q.has("full");
   const shots = q.has("shots");
+  const reliefQ = q.get("relief");
+  const reliefPlan: ReliefStyle[] | null =
+    reliefQ === "all"
+      ? reliefVariants()
+      : reliefQ
+        ? (() => {
+            const [lines, shape, surface] = reliefQ.split(",");
+            return [sanitizeReliefStyle({ lines, shape, surface })];
+          })()
+        : null;
 
   // Registro do bench: o do app + variantes em resolução cheia (?full).
   const registry: Record<string, SceneDef> = { ...SCENES };
-  const plan: Array<{ key: string; label: string }> = [];
+  const plan: PlanItem[] = [];
   for (const k of SCENE_KEYS) {
     if (only && !only.includes(k)) continue;
-    plan.push({ key: k, label: SCENE_LABELS[k] });
+    if (k === "relief" && reliefPlan) {
+      for (const st of reliefPlan) {
+        plan.push({
+          key: k,
+          label: `${SCENE_LABELS[k]} · ${lineLabel(st)} · ${st.shape} · ${st.surface}`,
+          relief: st,
+          shot: `relief-${variantName(st)}.png`,
+        });
+      }
+    } else {
+      plan.push({ key: k, label: SCENE_LABELS[k], shot: `${k}.png` });
+    }
     if (wantFull && SCENES[k].maxRows) {
       const fk = `${k}@full`;
       registry[fk] = { ...SCENES[k], maxRows: undefined, key: k };
-      plan.push({ key: fk, label: `${SCENE_LABELS[k]} (resolução cheia)` });
+      plan.push({ key: fk, label: `${SCENE_LABELS[k]} (resolução cheia)`, shot: `${k}-full.png` });
     }
   }
 
@@ -130,7 +217,7 @@ async function run(): Promise<void> {
     engine = new GlEngine(canvas, { scenes: registry });
   } catch (e) {
     out.error = e instanceof Error ? e.message : String(e);
-    document.title = "BENCH " + JSON.stringify(out);
+    await finish(out);
     return;
   }
   const gl = engine.gl;
@@ -140,11 +227,15 @@ async function run(): Promise<void> {
   const one = new Uint8Array(4);
   const full = new Uint8Array(W * H * 4);
 
-  for (const { key, label } of plan) {
+  for (const { key, label, relief, shot } of plan) {
     const r: SceneResult = { key, label, ms: null, min: null, max: null, out: "", lit: null, glError: 0, error: null };
+    if (relief) r.variant = variantName(relief);
     out.results.push(r);
     log(`medindo ${label}…`);
     await tick();
+    // A cena lê o estilo a cada quadro: o override vale já no aquecimento
+    // (que absorve a compilação da variante nova).
+    setGlReliefOverride(relief ?? null);
     try {
       engine.setScene(key as SceneKey);
     } catch (e) {
@@ -175,20 +266,26 @@ async function run(): Promise<void> {
       r.ms = +times[Math.floor(BATCHES / 2)].toFixed(3);
       r.min = +times[0].toFixed(3);
       r.max = +times[BATCHES - 1].toFixed(3);
-      step();
+      // Quadro do shot: sinal recomeçado e avançado até SHOT_T SEM desenhar,
+      // e então UM quadro. O Relevo depende só do sinal, então o shot dele
+      // é o mesmo em toda rodada; cena com estado próprio integrado segue
+      // de onde a medição parou.
+      const shotSim = createSim();
+      const shotSig = createGlSignal();
+      for (let t = 0; t < SHOT_T; t += DT) stepGlSignal(shotSig, DT, true, stepSim(shotSim, DT), DEFAULT_GL_CFG);
+      engine.frame(shotSig, DT);
       r.glError = gl.getError();
       r.lit = +litFraction(gl, full).toFixed(4);
-      if (shots) await postShot(`${key.replace("@", "-")}.png`, full);
+      if (shots) await postShot(shot, full);
       log(`  ${r.ms} ms (min ${r.min}, max ${r.max}) · saída ${r.out} · acesos ${(r.lit * 100).toFixed(1)}%`);
     } catch (e) {
       r.error = e instanceof Error ? e.message : String(e);
       log(`  ERRO: ${r.error}`);
     }
   }
+  setGlReliefOverride(null);
   engine.dispose();
-  document.title = "BENCH " + JSON.stringify(out);
+  await finish(out);
 }
 
-run().catch((e) => {
-  document.title = "BENCH " + JSON.stringify({ error: e instanceof Error ? e.message : String(e), results: [] });
-});
+run().catch((e) => finish({ error: e instanceof Error ? e.message : String(e), results: [] }));
