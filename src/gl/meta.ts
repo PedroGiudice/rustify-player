@@ -36,6 +36,11 @@ export const SCENE_META = [
     label: "Nébula",
     hint: "Fluido de ruído num shader só, sem geometria — custo todo em fillrate",
   },
+  {
+    key: "bokeh",
+    label: "Palco",
+    hint: "Luzes de palco fora de foco em três planos: graves acendem, o bumbo estoura clarões, agudos cintilam na treliça",
+  },
 ] as const;
 
 export type SceneKey = (typeof SCENE_META)[number]["key"];

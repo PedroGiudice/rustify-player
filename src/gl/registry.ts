@@ -17,10 +17,12 @@ import { dust } from "./scenes/dust";
 import { relief } from "./scenes/relief";
 import { orbits } from "./scenes/orbits";
 import { nebula } from "./scenes/nebula";
+import { bokeh } from "./scenes/bokeh";
 
 export const SCENES: Readonly<Record<SceneKey, SceneDef>> = {
   dust,
   relief,
   orbits,
   nebula,
+  bokeh,
 };
