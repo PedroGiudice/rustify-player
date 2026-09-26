@@ -217,12 +217,22 @@ as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
   o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
   motor chama `resetGlStatus()`.
 - DPR fixo em 1 e o fps medido no app aparece no Tweaks — é o gate da
-  feature na cmr-auto (UHD 620 @ 1366x768), não enfeite. Custo MEDIDO
-  em 25/09 no WebKitGTK 2.52.6 da cmr-auto (cena sozinha, 1366x768,
-  sincronizando com a GPU): a **Nébula atual custa 23-24 ms por
-  quadro**, mais que um quadro inteiro de 60 fps. A mesma cena com
-  buffer de 256 linhas (⅓ da resolução) + upscale + dither custa
-  3,6 ms. O custo está na resolução, não na lib. Lab v2 (seis cenas
+  feature, não enfeite. **Resolução real (medida pela ponte em 26/09):
+  o CEO usa monitor externo 1920x1080 e o zoom do Tweaks em 1,15, então
+  o canvas do fundo tem 1857x1048 (~1,95 MP), quase o DOBRO dos
+  1366x768 da tela do notebook** que as medições antigas supunham. Medir
+  sempre na resolução real. A CPU da cmr-auto roda a 97-98 °C sob uso
+  (throttling possível): separar custo de cena de engasgo térmico.
+  Critério do CEO (26/09): 60 fps MEDIDOS NO APP, média >= 58 e no
+  máximo 2% dos quadros acima de 20 ms — média sozinha esconde o
+  engasgo (Relevo: 57,6 fps de média e 23% acima de 20 ms). Custos
+  medidos no WebKitGTK 2.52.6 da cmr-auto: a **Nébula original custa
+  23-24 ms por quadro a 1366x768 e 46-48 ms a 1857x1048**; com buffer de
+  256 linhas custa 3,6-7 ms mas foi REPROVADA pelo CEO (esticada 4x na
+  tela real fica borrada, "péssimo"). Ruído de textura em resolução
+  cheia com 3/5 oitavas custa ~7 ms a 1857x1048 (bench em
+  `docs/design-refs/fundo-lab-v2/nebula-bench.html`, comparação visual
+  ainda não feita). O custo está no algoritmo e na resolução, não na lib. Lab v2 (seis cenas
   candidatas em WebGL2 puro, sem three) e método de medição em
   `docs/design-refs/fundo-lab-v2/`: `wk_bench.py` roda o lab num
   `Gtk.OffscreenWindow` com `GDK_BACKEND=x11 DISPLAY=:0

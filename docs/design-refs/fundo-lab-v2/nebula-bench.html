@@ -1,0 +1,148 @@
+<!doctype html><html><head><meta charset="utf-8"><title>nebula bench</title>
+<style>body{margin:0;background:#000}canvas{display:block}</style></head><body>
+<script type="module">
+/* Variantes da Nébula medidas na resolução real da tela da cmr-auto (1857x1048).
+   #medir = mede custo; sem hash = desenha um quadro estático de cada variante,
+   empilhadas, para comparar qualidade 1:1. */
+const W = 1857, H = 1048;
+const HEAD = "#version 300 es\nprecision highp float;\nprecision highp int;\n";
+const UNI = "uniform vec2 uRes; uniform float uTime,uLow,uMid,uHigh,uBeat; uniform vec3 uCanvas,uInk,uInk2,uSoft; uniform sampler2D uNoise; out vec4 outColor;\n";
+const IGN = "float ign(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}\n";
+const VS = HEAD + "void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.0-1.0,0.0,1.0);}";
+const SIMPLEX = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec2 mod289(vec2 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec3 permute(vec3 x){return mod289(((x*34.0)+1.0)*x);}
+float sn(vec2 v){
+  const vec4 C=vec4(0.211324865405187,0.366025403784439,-0.577350269189626,0.024390243902439);
+  vec2 i=floor(v+dot(v,C.yy)); vec2 x0=v-i+dot(i,C.xx);
+  vec2 i1=(x0.x>x0.y)?vec2(1.0,0.0):vec2(0.0,1.0);
+  vec4 x12=x0.xyxy+C.xxzz; x12.xy-=i1; i=mod289(i);
+  vec3 p=permute(permute(i.y+vec3(0.0,i1.y,1.0))+i.x+vec3(0.0,i1.x,1.0));
+  vec3 m=max(0.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.0); m=m*m; m=m*m;
+  vec3 x=2.0*fract(p*C.www)-1.0; vec3 h=abs(x)-0.5; vec3 ox=floor(x+0.5); vec3 a0=x-ox;
+  m*=1.79284291400159-0.85373472095314*(a0*a0+h*h);
+  vec3 g; g.x=a0.x*x0.x+h.x*x0.y; g.yz=a0.yz*x12.xz+h.yz*x12.yw;
+  return 130.0*dot(m,g);
+}`;
+// ruído de textura: uma leitura, interpolação suavizada (truque do iq), faixa -1..1
+const TEXN = `
+float sn(vec2 x){ vec2 i=floor(x); vec2 f=fract(x); f=f*f*(3.0-2.0*f); return texture(uNoise,(i+f+0.5)/256.0).x*2.0-1.0; }`;
+const fbmN = (name, oct) => `float ${name}(vec2 p){float f=0.0,a=0.5;for(int i=0;i<${oct};i++){f+=a*sn(p);p=p*2.02+vec2(17.3,9.1);a*=0.5;}return f;}`;
+const BODY = (warpOct, finalOct) => fbmN("fw", warpOct) + "\n" + fbmN("ff", finalOct) + `
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes; vec2 p=(uv-0.5)*vec2(uRes.x/uRes.y,1.0)*1.6;
+  float t=uTime*0.06;
+  vec2 q=vec2(fw(p+t),fw(p+vec2(5.2,1.3)-t));
+  vec2 r=vec2(fw(p+1.7*q*(0.8+0.6*uLow)+vec2(1.7,9.2)+t*0.7),fw(p+1.7*q+vec2(8.3,2.8)-t*0.5));
+  float f=ff(p+2.0*r);
+  float body=smoothstep(0.15,0.95,f*0.5+0.5);
+  vec3 col=mix(uCanvas,uInk,body*(0.35+0.5*uLow+0.2*uBeat));
+  col=mix(col,uInk2,smoothstep(0.55,0.95,length(r))*uMid*0.5);
+  col+=uSoft*pow(max(0.0,f),3.0)*uHigh*0.35;
+  float vig=1.0-0.45*dot(uv-0.5,uv-0.5)*2.0;
+  outColor=vec4(col*vig,1.0);
+}`;
+const UP_BILINEAR = HEAD + "uniform vec2 uRes; uniform sampler2D uTex; out vec4 outColor;\n" + IGN + `
+void main(){ vec3 c=texture(uTex,gl_FragCoord.xy/uRes).rgb; outColor=vec4(c+(ign(gl_FragCoord.xy)-0.5)/255.0,1.0); }`;
+const UP_BICUBIC = HEAD + "uniform vec2 uRes; uniform vec2 uSrc; uniform sampler2D uTex; out vec4 outColor;\n" + IGN + `
+vec3 cr(vec2 uv){ vec2 sp=uv*uSrc; vec2 p1=floor(sp-0.5)+0.5; vec2 f=sp-p1;
+  vec2 w0=f*(-0.5+f*(1.0-0.5*f)), w1=1.0+f*f*(-2.5+1.5*f), w2=f*(0.5+f*(2.0-1.5*f)), w3=f*f*(-0.5+0.5*f);
+  vec2 w12=w1+w2, o12=w2/w12; vec2 t0=(p1-1.0)/uSrc, t3=(p1+2.0)/uSrc, t12=(p1+o12)/uSrc;
+  return texture(uTex,vec2(t0.x,t0.y)).rgb*w0.x*w0.y+texture(uTex,vec2(t12.x,t0.y)).rgb*w12.x*w0.y+texture(uTex,vec2(t3.x,t0.y)).rgb*w3.x*w0.y
+        +texture(uTex,vec2(t0.x,t12.y)).rgb*w0.x*w12.y+texture(uTex,vec2(t12.x,t12.y)).rgb*w12.x*w12.y+texture(uTex,vec2(t3.x,t12.y)).rgb*w3.x*w12.y
+        +texture(uTex,vec2(t0.x,t3.y)).rgb*w0.x*w3.y+texture(uTex,vec2(t12.x,t3.y)).rgb*w12.x*w3.y+texture(uTex,vec2(t3.x,t3.y)).rgb*w3.x*w3.y; }
+void main(){ vec3 c=max(cr(gl_FragCoord.xy/uRes),0.0); outColor=vec4(c+(ign(gl_FragCoord.xy)-0.5)/255.0,1.0); }`;
+
+const VARIANTS = [
+  { key: "N0", name: "original, resolução cheia (5/5 oitavas, simplex)", noise: SIMPLEX, warp: 5, fin: 5, scale: 1, up: null },
+  { key: "N1", name: "0.2.81: 256 linhas + bilinear", noise: SIMPLEX, warp: 5, fin: 5, rows: 256, up: "bilinear" },
+  { key: "N2", name: "simplex, meia resolução + bicúbica (5/5)", noise: SIMPLEX, warp: 5, fin: 5, scale: 0.5, up: "bicubic" },
+  { key: "N3", name: "simplex, meia resolução + bicúbica (3/5)", noise: SIMPLEX, warp: 3, fin: 5, scale: 0.5, up: "bicubic" },
+  { key: "N4", name: "ruído de textura, resolução cheia (5/5)", noise: TEXN, warp: 5, fin: 5, scale: 1, up: null },
+  { key: "N5", name: "ruído de textura, resolução cheia (3/5)", noise: TEXN, warp: 3, fin: 5, scale: 1, up: null },
+  { key: "N6", name: "ruído de textura, 0,75 + bicúbica (3/5)", noise: TEXN, warp: 3, fin: 5, scale: 0.75, up: "bicubic" },
+];
+
+function prog(gl, fs) {
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const L = {}; const loc = (n) => (n in L ? L[n] : (L[n] = gl.getUniformLocation(p, n)));
+  return { p, loc };
+}
+function noiseTex(gl) {
+  let s = 12345; const r = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const d = new Uint8Array(256 * 256 * 4); for (let i = 0; i < d.length; i++) d[i] = Math.floor(r() * 256);
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  return t;
+}
+const hex = (h) => { const v = parseInt(h.slice(1), 16); return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]; };
+const PAL = { canvas: [0, 0, 0], ink: hex("#c6633d"), ink2: hex("#d87a52"), soft: hex("#85827b") };
+
+function makeVariant(gl, v) {
+  const main = prog(gl, HEAD + UNI + IGN + v.noise + "\n" + BODY(v.warp, v.fin));
+  const vao = gl.createVertexArray(); const nt = noiseTex(gl);
+  let rt = null, up = null, bw = W, bh = H;
+  if (v.up) {
+    bh = v.rows ? Math.min(H, v.rows) : Math.round(H * v.scale); bw = Math.round(W * bh / H);
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, bw, bh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    rt = { tex, fb }; up = prog(gl, v.up === "bicubic" ? UP_BICUBIC : UP_BILINEAR);
+  }
+  return {
+    info: `${bw}x${bh}`,
+    frame(t, sig) {
+      gl.bindVertexArray(vao);
+      gl.useProgram(main.p);
+      gl.uniform2f(main.loc("uRes"), bw, bh); gl.uniform1f(main.loc("uTime"), t);
+      gl.uniform1f(main.loc("uLow"), sig.low); gl.uniform1f(main.loc("uMid"), sig.mid); gl.uniform1f(main.loc("uHigh"), sig.high); gl.uniform1f(main.loc("uBeat"), sig.beat);
+      gl.uniform3fv(main.loc("uCanvas"), PAL.canvas); gl.uniform3fv(main.loc("uInk"), PAL.ink); gl.uniform3fv(main.loc("uInk2"), PAL.ink2); gl.uniform3fv(main.loc("uSoft"), PAL.soft);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, nt); gl.uniform1i(main.loc("uNoise"), 1);
+      if (rt) { gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fb); gl.viewport(0, 0, bw, bh); }
+      else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); }
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (rt) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+        gl.useProgram(up.p); gl.uniform2f(up.loc("uRes"), W, H); gl.uniform2f(up.loc("uSrc"), bw, bh);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt.tex); gl.uniform1i(up.loc("uTex"), 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+    },
+  };
+}
+const ctxOpts = { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: "high-performance" };
+const SIG = { low: 0.5, mid: 0.4, high: 0.3, beat: 0.3 };
+
+if (location.hash === "#medir") {
+  (async () => {
+    const out = []; const px = new Uint8Array(4);
+    for (const v of VARIANTS) {
+      const c = document.createElement("canvas"); c.width = W; c.height = H;
+      const gl = c.getContext("webgl2", ctxOpts);
+      try {
+        const s = makeVariant(gl, v); let t = 30;
+        for (let i = 0; i < 15; i++) { s.frame(t += 1 / 60, SIG); } gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        const times = [];
+        for (let b = 0; b < 5; b++) { const t0 = performance.now(); for (let i = 0; i < 12; i++) s.frame(t += 1 / 60, SIG); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); times.push((performance.now() - t0) / 12); await new Promise((r) => setTimeout(r, 0)); }
+        times.sort((a, b) => a - b);
+        out.push({ key: v.key, name: v.name, buf: s.info, ms: +times[2].toFixed(2), min: +times[0].toFixed(2) });
+      } catch (e) { out.push({ key: v.key, err: String(e).slice(0, 300) }); }
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    }
+    document.title = "BENCH " + JSON.stringify(out);
+  })();
+} else {
+  for (const v of VARIANTS) {
+    const c = document.createElement("canvas"); c.width = W; c.height = H; document.body.appendChild(c);
+    const gl = c.getContext("webgl2", { ...ctxOpts, preserveDrawingBuffer: true });
+    try { makeVariant(gl, v).frame(37.0, SIG); } catch (e) { console.error(v.key, e); }
+  }
+}
+</script></body></html>
