@@ -27,7 +27,7 @@
    "mesh": a malha e os índices do original, brilho único.
 
    "ridges" / "contours" / "weave" são DESENHADAS POR PIXEL: a
-   superfície vira triângulos preenchidos numa malha densa (240x176)
+   superfície vira triângulos preenchidos numa malha densa (360x264)
    e o fragment shader traça linhas antialiasadas com derivadas de
    tela (fwidth), de espessura constante (~1,2 px) e que esmaecem
    quando ficam mais juntas que ~3 px (sem moiré no horizonte).
@@ -38,8 +38,9 @@
                frequência: células que não são quadrados nem losangos.
    Superfície "open": blending alfa, só a linha pinta (morro vazado).
    Superfície "solid": sem blending, cada fragmento pinta o canvas
-   com a linha por cima; os índices vão em ordem de pintor (do fundo
-   para a frente, gl/geometry.ts surfaceIndices), então o morro da
+   com a linha por cima; os índices vão em ordem de pintor (linhas da
+   grade do fundo para a frente e, dentro de cada uma, das bordas para
+   o x da câmera — gl/geometry.ts surfaceIndices), então o morro da
    frente esconde o de trás sem depth buffer (o contexto não tem).
 
    Recursos: programas (um por variante x forma, no máximo 9) e as duas
@@ -58,16 +59,20 @@ import type { GlSignal } from "../signal";
 
 export const RELIEF_GRID = { width: 150, height: 110, gx: 120, gy: 88 } as const;
 
-/** Malha das variantes desenhadas por pixel: a mesma área com o dobro
-    de divisões por eixo (célula de 0,625 u). A linha é traçada no
-    fragmento sobre valores interpolados entre vértices, então a curva
-    é poligonal na escala da célula: a 20 u da câmera (o primeiro plano
-    visível) 1 u ~ 56 px na tela de 1048 linhas, e a célula de 0,625 u
-    faz segmentos de ~35 px com quebra de ângulo pequena (o fbm3 é
-    liso nessa escala). 241x177 = 42.657 vértices cabem em índice de
-    16 bits; o VS com fbm de 5 oitavas nesse volume é custo desprezível
-    diante do fragment. */
-export const RELIEF_SURFACE_GRID = { width: 150, height: 110, gx: 240, gy: 176 } as const;
+/** Malha das variantes desenhadas por pixel: a mesma área com 3x as
+    divisões por eixo do wireframe (célula de 0,417 u). A linha é traçada
+    no fragmento sobre valores interpolados entre vértices, então a curva
+    é poligonal na escala da célula — e quebra de ângulo visível é
+    justamente o "angular" que o CEO pediu para tirar. Medido no
+    WebKitGTK da cmr-auto a 1857x1048 (bench relief=all, app aberto):
+      240x176 (0,625 u): 2,2-4,3 ms; quebras de ~20-30 px no primeiro
+                         plano, visíveis nos shots;
+      360x264 (0,417 u): 3,4-7,2 ms; curvas lisas no recorte ampliado;
+      480x352 (0,313 u): 5,0-10,4 ms; sem ganho visível sobre 360.
+    O custo cresce com os vértices (o fbm no VS domina: cada snoise a
+    mais custa ~0,55 ms a 95 mil vértices), não com o fragment. 361x265
+    = 95.665 vértices passam de 16 bits: índice Uint32. */
+export const RELIEF_SURFACE_GRID = { width: 150, height: 110, gx: 360, gy: 264 } as const;
 
 const TARGET = [0, -2, -20] as const;
 
@@ -120,9 +125,10 @@ export const RELIEF_MESH_ALPHA = 0.15;
 /** Alfa da linha nas variantes por pixel. Elas desenham MENOS linha que
     a malha (sem diagonais nem arestas repetidas, uma família só, exceto
     a rede), então cada linha precisa ser mais forte para o quadro não
-    ficar ralo; 0,55 é o brilho que o original dava às cristas
-    (0,10 + 0,55·vH com vH ~ 0,8). */
-export const RELIEF_LINE_ALPHA = 0.55;
+    ficar ralo. Com 0,55 (o brilho das cristas no original) os shots a
+    1857x1048 saíram apagados perto do original; 0,8 deixa a linha
+    fina (1,2 px) legível e ainda abaixo da tinta cheia. */
+export const RELIEF_LINE_ALPHA = 0.8;
 
 /** Espessura da linha na tela, em px (antialiasada: ~1 px de núcleo
     com meia rampa de cada lado). */

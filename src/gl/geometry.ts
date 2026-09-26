@@ -62,30 +62,42 @@ export function wireframeIndices(gx: number, gy: number): Uint16Array | Uint32Ar
 }
 
 /**
- * Índices de TRIÂNGULOS do plano de planeGridXZ, em ORDEM DE PINTOR:
- * linha da grade por linha, da mais distante (iy = 0, z = -height/2)
- * para a mais próxima da câmera do Relevo (que fica em z > 0 olhando
- * para -z). Sem depth buffer, é essa ordem que deixa a superfície opaca
- * do Relevo esconder o que está atrás: o morro da frente é pintado por
- * último. Mesma divisão de célula do three: (a,b,d) e (b,c,d).
+ * Índices de TRIÂNGULOS do plano de planeGridXZ, em ORDEM DE PINTOR
+ * para uma câmera com z maior que o de todas as linhas da grade,
+ * olhando para -z (a do Relevo, em z = 42 sobre um plano que vai até
+ * 55 — as linhas atrás dela não aparecem):
+ *   1. linha da grade por linha, da mais distante (iy = 0,
+ *      z = -height/2) para a mais próxima;
+ *   2. dentro da linha, das duas bordas para a coluna da câmera
+ *      (centerCol; x = 0 é a coluna gx/2), esquerda primeiro.
+ * Para campo de altura isso é exato: o que fica entre a câmera e uma
+ * célula está numa linha mais próxima, ou na mesma linha mais perto
+ * do x da câmera — e é pintado depois. Sem depth buffer, é essa ordem
+ * que deixa a superfície opaca esconder o que está atrás. Só a ordem
+ * dentro da linha erra, por no máximo o balanço da câmera em x (o
+ * Relevo oscila ±4 u, ~10 colunas de 0,42 u perto do centro).
+ * Mesma divisão de célula do three: (a,b,d) e (b,c,d).
  * Uint32 quando os vértices não cabem em 16 bits (WebGL2 aceita
  * UNSIGNED_INT sem extensão).
  */
-export function surfaceIndices(gx: number, gy: number): Uint16Array | Uint32Array {
+export function surfaceIndices(gx: number, gy: number, centerCol = Math.floor(gx / 2)): Uint16Array | Uint32Array {
   const verts = (gx + 1) * (gy + 1);
   const n = gx * gy * 6;
   const out = verts > 65535 ? new Uint32Array(n) : new Uint16Array(n);
   const row = gx + 1;
+  const mid = Math.max(0, Math.min(gx, centerCol));
   let o = 0;
+  const cell = (ix: number, iy: number) => {
+    const a = ix + row * iy;
+    const b = ix + row * (iy + 1);
+    const c = ix + 1 + row * (iy + 1);
+    const d = ix + 1 + row * iy;
+    out[o++] = a; out[o++] = b; out[o++] = d;
+    out[o++] = b; out[o++] = c; out[o++] = d;
+  };
   for (let iy = 0; iy < gy; iy++) {
-    for (let ix = 0; ix < gx; ix++) {
-      const a = ix + row * iy;
-      const b = ix + row * (iy + 1);
-      const c = ix + 1 + row * (iy + 1);
-      const d = ix + 1 + row * iy;
-      out[o++] = a; out[o++] = b; out[o++] = d;
-      out[o++] = b; out[o++] = c; out[o++] = d;
-    }
+    for (let ix = 0; ix < mid; ix++) cell(ix, iy);
+    for (let ix = gx - 1; ix >= mid; ix--) cell(ix, iy);
   }
   return out;
 }

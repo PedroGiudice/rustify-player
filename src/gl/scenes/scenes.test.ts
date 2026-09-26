@@ -260,7 +260,8 @@ describe("Relevo: variantes de estilo", () => {
       setGlReliefOverride({ lines, shape: "smooth", surface: "solid" });
       let n = fake.calls.length;
       s.frame(sig(), PAL, 1 / 60, 800, 450);
-      expect(lastDraw(fake)).toEqual([fake.gl.TRIANGLES, gx * gy * 6, fake.gl.UNSIGNED_SHORT, 0]);
+      // 361x265 vértices passam de 16 bits: UNSIGNED_INT.
+      expect(lastDraw(fake)).toEqual([fake.gl.TRIANGLES, gx * gy * 6, fake.gl.UNSIGNED_INT, 0]);
       expect(blendOn(n)).toBe(false);
       expect(uniform1f(fake, "uSolid")![1][1]).toBe(1);
 

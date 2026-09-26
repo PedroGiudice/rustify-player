@@ -58,19 +58,20 @@ describe("surfaceIndices (triângulos do Relevo desenhado por pixel)", () => {
     expect(Array.from(idx.slice(0, 6))).toEqual([0, 3, 1, 3, 4, 1]);
   });
 
-  it("contagem da malha densa do Relevo e índice de 16 bits", () => {
+  it("contagem da malha densa do Relevo: passa de 16 bits, índice Uint32", () => {
     const { gx, gy } = RELIEF_SURFACE_GRID;
     const idx = surfaceIndices(gx, gy);
     expect(idx.length).toBe(gx * gy * 6);
-    expect((gx + 1) * (gy + 1)).toBeLessThanOrEqual(65535);
-    expect(idx).toBeInstanceOf(Uint16Array);
+    expect((gx + 1) * (gy + 1)).toBeGreaterThan(65535);
+    expect(idx).toBeInstanceOf(Uint32Array);
     expect(Array.from(idx).reduce((m, v) => (v > m ? v : m), 0)).toBe((gx + 1) * (gy + 1) - 1);
   });
 
-  it("acima de 65535 vértices usa Uint32 e não trunca índice", () => {
+  it("até 65535 vértices fica em Uint16; acima, Uint32 sem truncar", () => {
+    expect(surfaceIndices(240, 176)).toBeInstanceOf(Uint16Array); // 42.657 vértices
     const idx = surfaceIndices(300, 300);
     expect(idx).toBeInstanceOf(Uint32Array);
-    expect(idx[idx.length - 2]).toBe(301 * 301 - 1); // vértice c da última célula
+    expect(Array.from(idx).reduce((m, v) => (v > m ? v : m), 0)).toBe(301 * 301 - 1);
   });
 
   it("ordem de pintor: linha da grade mais distante (z = -55) primeiro", () => {
@@ -91,6 +92,24 @@ describe("surfaceIndices (triângulos do Relevo desenhado por pixel)", () => {
     expect(z[idx[0] * 3 + 2]).toBe(-55);
     expect(z[idx[idx.length - 1] * 3 + 2] + z[idx[idx.length - 2] * 3 + 2]).toBeGreaterThan(0);
     expect(lastRow).toBe(gy - 1);
+  });
+
+  it("dentro da linha: das bordas para a coluna da câmera (x = 0), esquerda primeiro", () => {
+    for (const [gx, center] of [[8, undefined], [7, undefined], [8, 2]] as const) {
+      const gy = 3, row = gx + 1;
+      const mid = center ?? Math.floor(gx / 2);
+      const idx = surfaceIndices(gx, gy, center);
+      for (let iy = 0; iy < gy; iy++) {
+        // Coluna de cada célula (a = ix + row*iy é o 1º índice de cada 6).
+        const cols: number[] = [];
+        for (let k = 0; k < gx; k++) cols.push(idx[(iy * gx + k) * 6] - row * iy);
+        const left = Array.from({ length: mid }, (_, i) => i);
+        const right = Array.from({ length: gx - mid }, (_, i) => gx - 1 - i);
+        expect(cols).toEqual([...left, ...right]);
+        // Distância em colunas até a câmera nunca cresce dentro de cada lado.
+        for (let k = 1; k < mid; k++) expect(mid - cols[k]).toBeLessThanOrEqual(mid - cols[k - 1]);
+      }
+    }
   });
 });
 
