@@ -28,6 +28,18 @@
      shots        envia um PNG de cada cena/variante ao runner
                   (POST /shot?name=<chave>.png; Relevo com variante:
                   relief-<linhas>-<forma>-<superfície>.png)
+     replay=fft-real-2609
+                  troca o sim.ts pelo sinal REAL gravado no app
+                  (src/gl/__fixtures__/fft-real-2609.json), evento a
+                  evento com o dt gravado. Com shots, em vez do SHOT_T
+                  fixo, fotografa os 2 PIORES instantes da reação antiga
+                  do Relevo (maior F do original, a 5 s ou mais um do
+                  outro): replay<n>-<chave ou relief-variante>.png. Sem
+                  relief=, o Relevo sai em original (reação antiga),
+                  ridges,smooth,solid e mesh,detailed,open (reação nova).
+     cfg=ceo|default
+                  cfg do sinal no replay: ceo (padrão, a que o CEO usa)
+                  ou os defaults do app. Sem replay, sempre os defaults.
 
    O shot e a fração de pixels acesos saem de um quadro num instante
    FIXO do sinal simulado (SHOT_T), igual para todas as cenas e
@@ -49,7 +61,16 @@ import {
   type ReliefStyle,
   type SceneKey,
 } from "../../src/gl/meta";
-import { DEFAULT_GL_CFG, createGlSignal, stepGlSignal } from "../../src/gl/signal";
+import { DEFAULT_GL_CFG, createGlSignal, stepGlSignal, type GlCfg, type GlSignal } from "../../src/gl/signal";
+import {
+  CEO_GL_CFG,
+  decodeFixture,
+  titleAt,
+  worstInstants,
+  type FftFixture,
+  type FftReplay,
+} from "../../src/gl/fftReplay";
+import { reliefAmpFactor, reliefOriginalFactor } from "../../src/gl/reliefReaction";
 import type { GlPalette } from "../../src/gl/palette";
 import type { SceneDef } from "../../src/gl/scene";
 import { createSim, stepSim } from "./sim";
@@ -67,6 +88,15 @@ const H = dim("h", 768);
     ~0,1 s depois de um bumbo (tempo 24 a 92 BPM = 15,65 s) — graves e
     batida altos, terreno com relevo bem visível. */
 const SHOT_T = 15.75;
+/** Gravações disponíveis para ?replay= (import dinâmico: sem replay, a
+    página não carrega os 234 KB da fixture). */
+const REPLAYS: Record<string, () => Promise<FftFixture>> = {
+  "fft-real-2609": () =>
+    import("../../src/gl/__fixtures__/fft-real-2609.json").then((m) => m.default as unknown as FftFixture),
+};
+/** Instantes fotografados no replay e a distância mínima entre eles (s). */
+const REPLAY_SHOTS = 2;
+const REPLAY_GAP_S = 5;
 const WARM = 20;
 const BATCHES = 5;
 const PER_BATCH = 24;
@@ -160,6 +190,17 @@ async function run(): Promise<void> {
   const wantFull = q.has("full");
   const shots = q.has("shots");
   const reliefQ = q.get("relief");
+  const replayQ = q.get("replay");
+  let replay: FftReplay | null = null;
+  if (replayQ) {
+    const load = REPLAYS[replayQ];
+    if (!load) {
+      await finish({ error: `replay desconhecido: ${replayQ} (há: ${Object.keys(REPLAYS).join(", ")})`, results: [] });
+      return;
+    }
+    replay = decodeFixture(await load());
+  }
+  const cfg: GlCfg = replay && q.get("cfg") !== "default" ? CEO_GL_CFG : DEFAULT_GL_CFG;
   const reliefPlan: ReliefStyle[] | null =
     reliefQ === "all"
       ? reliefVariants()
@@ -168,7 +209,39 @@ async function run(): Promise<void> {
             const [lines, shape, surface] = reliefQ.split(",");
             return [sanitizeReliefStyle({ lines, shape, surface })];
           })()
-        : null;
+        : replay && shots
+          ? [
+              { lines: "original", shape: "detailed", surface: "open" },
+              { lines: "ridges", shape: "smooth", surface: "solid" },
+              { lines: "mesh", shape: "detailed", surface: "open" },
+            ]
+          : null;
+
+  // Replay: o sinal de cada instante a fotografar, calculado uma vez
+  // (a cadeia do app desde o 1º evento até o instante, dt gravado).
+  const instants: { name: string; t: number; title: string; oldF: number; newF: number; sig: GlSignal }[] = [];
+  if (replay) {
+    const worst = worstInstants(replay, cfg, reliefOriginalFactor, REPLAY_SHOTS, REPLAY_GAP_S);
+    worst.forEach((w, n) => {
+      const sig = createGlSignal();
+      const raw = { low: 0, mid: 0, high: 0 };
+      for (let i = 0; i <= w.index; i++) {
+        raw.low = replay.v[3 * i];
+        raw.mid = replay.v[3 * i + 1];
+        raw.high = replay.v[3 * i + 2];
+        stepGlSignal(sig, replay.dt[i], true, raw, cfg);
+      }
+      instants.push({
+        name: `replay${n + 1}`,
+        t: +w.t.toFixed(2),
+        title: titleAt(replay, w.index),
+        oldF: +reliefOriginalFactor(sig).toFixed(3),
+        newF: +reliefAmpFactor(sig).toFixed(3),
+        sig,
+      });
+    });
+    for (const x of instants) log(`${x.name}: ${x.title} @ ${x.t} s · F antigo ${x.oldF} · F novo ${x.newF}`);
+  }
 
   // Registro do bench: o do app + variantes em resolução cheia (?full).
   const registry: Record<string, SceneDef> = { ...SCENES };
@@ -200,6 +273,7 @@ async function run(): Promise<void> {
     size: string;
     method: string;
     results: SceneResult[];
+    replay?: { name: string; cfg: string; instants: { name: string; t: number; title: string; oldF: number; newF: number }[] };
     error?: string;
   } = {
     ua: navigator.userAgent,
@@ -208,6 +282,12 @@ async function run(): Promise<void> {
     method: `${WARM} de aquecimento + ${BATCHES}x${PER_BATCH} quadros, readPixels por lote; ms = mediana dos lotes`,
     results: [],
   };
+  if (replay)
+    out.replay = {
+      name: replayQ!,
+      cfg: cfg === CEO_GL_CFG ? "ceo" : "default",
+      instants: instants.map(({ sig: _s, ...rest }) => rest),
+    };
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
@@ -247,8 +327,18 @@ async function run(): Promise<void> {
     r.out = `${o.w}x${o.h}`;
     const sim = createSim();
     const sig = createGlSignal();
+    // Replay: um evento gravado por quadro, em laço, com o dt gravado.
+    let cursor = 0;
+    const raw = { low: 0, mid: 0, high: 0 };
     const step = () => {
-      stepGlSignal(sig, DT, true, stepSim(sim, DT), DEFAULT_GL_CFG);
+      if (replay) {
+        const i = cursor;
+        cursor = (cursor + 1) % replay.n;
+        raw.low = replay.v[3 * i];
+        raw.mid = replay.v[3 * i + 1];
+        raw.high = replay.v[3 * i + 2];
+        stepGlSignal(sig, replay.dt[i], true, raw, cfg);
+      } else stepGlSignal(sig, DT, true, stepSim(sim, DT), cfg);
       engine.frame(sig, DT);
     };
     try {
@@ -270,13 +360,24 @@ async function run(): Promise<void> {
       // e então UM quadro. O Relevo depende só do sinal, então o shot dele
       // é o mesmo em toda rodada; cena com estado próprio integrado segue
       // de onde a medição parou.
-      const shotSim = createSim();
-      const shotSig = createGlSignal();
-      for (let t = 0; t < SHOT_T; t += DT) stepGlSignal(shotSig, DT, true, stepSim(shotSim, DT), DEFAULT_GL_CFG);
-      engine.frame(shotSig, DT);
-      r.glError = gl.getError();
-      r.lit = +litFraction(gl, full).toFixed(4);
-      if (shots) await postShot(shot, full);
+      if (replay) {
+        // Um quadro por instante pior; cópia do sinal (o frame não o
+        // altera, mas a cena lê o objeto: cópia deixa o de referência limpo).
+        for (const x of instants) {
+          engine.frame({ ...x.sig }, DT);
+          r.glError = r.glError || gl.getError();
+          r.lit = +litFraction(gl, full).toFixed(4);
+          if (shots) await postShot(`${x.name}-${shot}`, full);
+        }
+      } else {
+        const shotSim = createSim();
+        const shotSig = createGlSignal();
+        for (let t = 0; t < SHOT_T; t += DT) stepGlSignal(shotSig, DT, true, stepSim(shotSim, DT), DEFAULT_GL_CFG);
+        engine.frame(shotSig, DT);
+        r.glError = gl.getError();
+        r.lit = +litFraction(gl, full).toFixed(4);
+        if (shots) await postShot(shot, full);
+      }
       log(`  ${r.ms} ms (min ${r.min}, max ${r.max}) · saída ${r.out} · acesos ${(r.lit * 100).toFixed(1)}%`);
     } catch (e) {
       r.error = e instanceof Error ? e.message : String(e);

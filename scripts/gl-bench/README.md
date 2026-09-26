@@ -43,6 +43,8 @@ python3 run_bench.py gl-bench-build --query 'w=1857&h=1048'
 python3 run_bench.py gl-bench-build --query 'w=1857&h=1048&scenes=relief&relief=all&shots' --shots-dir ./shots
 # Relevo: uma variante só (linhas,forma,superfície)
 python3 run_bench.py gl-bench-build --query 'scenes=relief&relief=ridges,smooth,solid'
+# Relevo no sinal REAL gravado no app, nos 2 piores instantes da reação antiga
+python3 run_bench.py gl-bench-build --query 'w=1857&h=1048&scenes=relief&replay=fft-real-2609&shots' --shots-dir ./shots-replay
 rm -rf /tmp/gl-bench                                # no fim
 ```
 
@@ -59,6 +61,8 @@ Parâmetros da página (`--query`):
 | `relief=L,F,S` | força o estilo do Relevo: linhas (`original`, `mesh`, `ridges`, `contours`, `weave`), forma (`detailed`, `smooth`), superfície (`open`, `solid`); campo inválido cai no padrão, como no app |
 | `relief=all` | o Relevo em todas as variantes: original, mesh x 2 formas, ridges/contours/weave x 2 formas x 2 superfícies (15) |
 | `shots` | um PNG por cena/variante: `<cena>.png`, `relief-<linhas>-<forma>-<superfície>.png` |
+| `replay=fft-real-2609` | troca o `sim.ts` pelo sinal real gravado no app (`src/gl/__fixtures__/fft-real-2609.json`, decodificado por `src/gl/fftReplay.ts`), um evento por quadro com o dt gravado. Com `shots`, fotografa os 2 piores instantes da reação ANTIGA do Relevo (ver abaixo) |
+| `cfg=ceo` / `cfg=default` | cfg do sinal no replay: `ceo` (padrão; Bass 0,30, Mid 0,15, Treble 0,10, smoothing 1,0, pulse, depth 1,0) ou os defaults do app. Sem replay, sempre os defaults |
 
 O shot (e a fração de pixels acesos) sai de UM quadro num instante
 fixo do sinal simulado, `SHOT_T` = 15,75 s em `bench.ts`: pico de
@@ -67,6 +71,28 @@ com relevo bem visível, e o mesmo instante para todas as variantes, que
 ficam comparáveis lado a lado. O resultado chega ao runner por POST
 `/result` (o título da página trunca em ~1000 caracteres e a rodada
 `relief=all` passa disso).
+
+## Replay do sinal real (calibração do Relevo, 26/09)
+
+Com `replay=fft-real-2609&shots`, o bench roda a cadeia do app
+(`stepGlSignal`) sobre a gravação inteira e escolhe os 2 instantes de
+maior F da reação antiga, F = (5,5 + 5·uLow + 3·uBeat) / 5,5, a pelo
+menos 5 s um do outro (`worstInstants` em `fftReplay.ts`, com teste).
+Em cada instante sai um PNG por variante, `replay<n>-relief-<variante>.png`.
+Sem `relief=`, as variantes são `original` (reação antiga, a referência
+intacta), `ridges,smooth,solid` e `mesh,detailed,open` (reação nova,
+`gl/reliefReaction.ts`). O log e o JSON (`replay.instants`) trazem faixa,
+tempo, F antigo e F novo de cada instante. Medido em 26/09 a 1857x1048:
+
+| cfg | instante | F antigo | F novo |
+|---|---|---|---|
+| ceo | Crazy People (Captain Hook Remix) @ 78,6 s | 1,74 | 1,30 |
+| ceo | Antidote @ 655,6 s | 1,74 | 1,15 |
+| default | Crazy People (Captain Hook Remix) @ 77,8 s | 2,25 | 1,38 |
+| default | Skin do Kof (Remix) @ 515,0 s | 2,25 | 1,28 |
+
+As metas da calibração ficam travadas por faixa em
+`src/gl/reliefReaction.test.ts` (o mesmo replay, no vitest).
 
 ## Ler o resultado
 
