@@ -1,5 +1,5 @@
 /* ============================================================
-   gl/budget.ts — orçamento de resolução das cenas, SEM three.
+   gl/budget.ts — orçamento de resolução das cenas, sem GL.
 
    A Nébula desenha 25 ruídos simplex por pixel. Em resolução cheia
    custava 23-24 ms por quadro na cmr-auto (UHD 620, 1366x768), mais

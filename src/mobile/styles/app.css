@@ -676,6 +676,10 @@
   background: var(--accent-c);
   color: var(--on-accent-c);
 }
+/* Seletor de cena do fundo WebGL: três por linha em vez de espremer
+   todas as cenas numa linha só. */
+.seg--wrap { flex-wrap: wrap; }
+.seg--wrap button { flex: 1 1 30%; }
 .selbtn {
   background: var(--s-high);
   border: 1px solid var(--div-subtle);

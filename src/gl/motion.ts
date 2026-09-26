@@ -1,12 +1,12 @@
 /* ============================================================
-   gl/motion.ts — integração de movimento das cenas, SEM three.
+   gl/motion.ts — integração de movimento das cenas, sem GL.
 
    Regra (CMR-267): o sinal de áudio muda a VELOCIDADE, e a posição
    é integrada aqui na CPU e entra no shader como uniform. Nunca
    `uTime * (a + b*sinal)`: com o sinal oscilando, a velocidade
    aparente vira `v + t·dv/dt` e cresce com o tempo de sessão.
 
-   Puro e sem three para ser testável e barato de importar.
+   Puro e sem GL para ser testável e barato de importar.
    ============================================================ */
 
 /** Profundidade do volume da Poeira (u). O shader faz mod(…, DUST_DEPTH). */

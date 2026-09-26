@@ -139,7 +139,7 @@ export function Settings() {
               <div class="setrow__label">Cena</div>
               <div class="setrow__hint">{SCENE_HINTS[bgScene()]}</div>
             </div>
-            <div class="seg">
+            <div class="seg seg--wrap">
               <For each={SCENE_KEYS}>
                 {(k) => (
                   <button
@@ -159,7 +159,7 @@ export function Settings() {
                 <div class="setrow__hint">
                   <Show
                     when={glStatus().ok === true}
-                    fallback={`WebGL indisponível (${glStatus().error}) — o fundo 2D assumiu.`}
+                    fallback={`Fundo WebGL fora do ar (${glStatus().error}) — o 2D assumiu.`}
                   >
                     {glStatus().renderer} · {glStatus().fps} fps
                   </Show>

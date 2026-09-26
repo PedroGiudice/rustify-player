@@ -101,7 +101,7 @@ export interface TweaksState {
   // ── Motor do background ─────────────────────────────────────
   /** Quem desenha o fundo animado:
       - "2d": SpectrumCanvas (Canvas 2D, 18 shapes x 5 renderers). DEFAULT.
-      - "webgl": as quatro cenas de gl/scenes.ts na GPU.
+      - "webgl": as cenas de gl/registry.ts no motor WebGL2 (gl/engine.ts).
       Os dois nunca rodam juntos — App.tsx monta um OU outro. Se o
       contexto WebGL falhar, o app volta pro 2D sozinho e o motivo
       aparece aqui no painel (glStatus). */
