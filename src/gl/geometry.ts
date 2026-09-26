@@ -61,6 +61,35 @@ export function wireframeIndices(gx: number, gy: number): Uint16Array | Uint32Ar
   return out;
 }
 
+/**
+ * Índices de TRIÂNGULOS do plano de planeGridXZ, em ORDEM DE PINTOR:
+ * linha da grade por linha, da mais distante (iy = 0, z = -height/2)
+ * para a mais próxima da câmera do Relevo (que fica em z > 0 olhando
+ * para -z). Sem depth buffer, é essa ordem que deixa a superfície opaca
+ * do Relevo esconder o que está atrás: o morro da frente é pintado por
+ * último. Mesma divisão de célula do three: (a,b,d) e (b,c,d).
+ * Uint32 quando os vértices não cabem em 16 bits (WebGL2 aceita
+ * UNSIGNED_INT sem extensão).
+ */
+export function surfaceIndices(gx: number, gy: number): Uint16Array | Uint32Array {
+  const verts = (gx + 1) * (gy + 1);
+  const n = gx * gy * 6;
+  const out = verts > 65535 ? new Uint32Array(n) : new Uint16Array(n);
+  const row = gx + 1;
+  let o = 0;
+  for (let iy = 0; iy < gy; iy++) {
+    for (let ix = 0; ix < gx; ix++) {
+      const a = ix + row * iy;
+      const b = ix + row * (iy + 1);
+      const c = ix + 1 + row * (iy + 1);
+      const d = ix + 1 + row * iy;
+      out[o++] = a; out[o++] = b; out[o++] = d;
+      out[o++] = b; out[o++] = c; out[o++] = d;
+    }
+  }
+  return out;
+}
+
 /** Círculo unitário no plano XY como line strip fechado: seg+1 pontos
     (o último repete o primeiro). */
 export function circleStrip(seg: number): Float32Array {

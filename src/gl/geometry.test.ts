@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { circleStrip, planeGridXZ, wireframeIndices } from "./geometry";
-import { RELIEF_GRID } from "./scenes/relief";
+import { circleStrip, planeGridXZ, surfaceIndices, wireframeIndices } from "./geometry";
+import { RELIEF_GRID, RELIEF_SURFACE_GRID } from "./scenes/relief";
 
 describe("planeGridXZ (PlaneGeometry do three deitado com rotateX(-π/2))", () => {
   it("mesma contagem e mesmos cantos da Relevo", () => {
@@ -47,6 +47,50 @@ describe("wireframeIndices (o índice de wireframe do three)", () => {
   it("Relevo cabe em índice de 16 bits; malha grande usa 32", () => {
     expect(wireframeIndices(RELIEF_GRID.gx, RELIEF_GRID.gy)).toBeInstanceOf(Uint16Array);
     expect(wireframeIndices(300, 300)).toBeInstanceOf(Uint32Array);
+  });
+});
+
+describe("surfaceIndices (triângulos do Relevo desenhado por pixel)", () => {
+  it("dois triângulos por célula, com a divisão do three", () => {
+    const idx = surfaceIndices(2, 1);
+    expect(idx.length).toBe(2 * 1 * 6);
+    // Célula 0: a=0, b=3, c=4, d=1 -> (a,b,d) e (b,c,d).
+    expect(Array.from(idx.slice(0, 6))).toEqual([0, 3, 1, 3, 4, 1]);
+  });
+
+  it("contagem da malha densa do Relevo e índice de 16 bits", () => {
+    const { gx, gy } = RELIEF_SURFACE_GRID;
+    const idx = surfaceIndices(gx, gy);
+    expect(idx.length).toBe(gx * gy * 6);
+    expect((gx + 1) * (gy + 1)).toBeLessThanOrEqual(65535);
+    expect(idx).toBeInstanceOf(Uint16Array);
+    expect(Array.from(idx).reduce((m, v) => (v > m ? v : m), 0)).toBe((gx + 1) * (gy + 1) - 1);
+  });
+
+  it("acima de 65535 vértices usa Uint32 e não trunca índice", () => {
+    const idx = surfaceIndices(300, 300);
+    expect(idx).toBeInstanceOf(Uint32Array);
+    expect(idx[idx.length - 2]).toBe(301 * 301 - 1); // vértice c da última célula
+  });
+
+  it("ordem de pintor: linha da grade mais distante (z = -55) primeiro", () => {
+    const gx = 6, gy = 5, row = gx + 1;
+    const idx = surfaceIndices(gx, gy);
+    const z = planeGridXZ(150, 110, gx, gy);
+    let lastRow = -1;
+    for (let t = 0; t < idx.length; t += 3) {
+      const rows = [idx[t], idx[t + 1], idx[t + 2]].map((v) => Math.floor(v / row));
+      const cellRow = Math.min(...rows);
+      // Todo triângulo fica entre duas linhas vizinhas...
+      expect(Math.max(...rows) - cellRow).toBe(1);
+      // ...e a linha da célula nunca volta para trás.
+      expect(cellRow).toBeGreaterThanOrEqual(lastRow);
+      lastRow = cellRow;
+    }
+    // Primeiro triângulo toca z = -55 (o fundo); o último, z = +55.
+    expect(z[idx[0] * 3 + 2]).toBe(-55);
+    expect(z[idx[idx.length - 1] * 3 + 2] + z[idx[idx.length - 2] * 3 + 2]).toBeGreaterThan(0);
+    expect(lastRow).toBe(gy - 1);
   });
 });
 
