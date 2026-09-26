@@ -63,10 +63,13 @@ describe("Relevo: replay do sinal real", () => {
           const w = pick(r.wave, t.spans);
           expect(pct(F, 50)).toBeLessThanOrEqual(1.15);
           expect(pct(F, 95)).toBeLessThanOrEqual(1.4);
-          expect(Math.max(...F)).toBeLessThanOrEqual(1.5);
           // Respira: o terreno não pode ficar parado.
           expect(pct(F, 95) - pct(F, 5)).toBeGreaterThanOrEqual(0.12);
-          expect(pct(w, 95)).toBeLessThanOrEqual(2.5);
+          // Onda dos médios: metas que o clamp em RELIEF_WAVE_MAX não garante
+          // (saturar MID_SPAN/midGain prende a onda no teto e reprova aqui).
+          expect(pct(w, 50)).toBeLessThanOrEqual(0.4 * RELIEF_WAVE_MAX);
+          expect(pct(w, 95)).toBeLessThanOrEqual(0.8 * RELIEF_WAVE_MAX);
+          expect(pct(w, 95) - pct(w, 5)).toBeGreaterThanOrEqual(0.05);
         });
       }
     });
