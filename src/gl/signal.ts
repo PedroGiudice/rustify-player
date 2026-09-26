@@ -169,7 +169,19 @@ export interface FftBands {
   high: number;
 }
 
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+// NaN cai em 0 (e Infinity no teto): um valor inválido no raw ou num
+// knob nunca entra no estado, que é integrado e não se recupera sozinho.
+const clamp01 = (v: number) => (v > 0 ? (v < 1 ? v : 1) : 0);
+/** Ganho/knob não negativo e finito; o resto vale 0. */
+const gain = (v: number) => (v > 0 && v < Infinity ? v : 0);
+/** Amostra do FFT finita; o resto vale 0. */
+const finite = (v: number) => (Number.isFinite(v) ? v : 0);
+
+/** Soma low+mid abaixo disto = silêncio com o stream vivo (mudo, volume 0,
+    gap entre faixas: o FFT é medido depois do volume). Conta como pausa
+    para a reação relativa — senão as médias desceriam a zero e a volta do
+    som viraria transiente cheio. 5 degraus do raw quantizado em 8 bits. */
+export const SILENCE_FLOOR = 0.02;
 
 /**
  * Avança o sinal um frame.
@@ -184,14 +196,18 @@ export function stepGlSignal(
   raw: FftBands,
   cfg: GlCfg,
 ): void {
-  const dt = Math.max(0, Math.min(DT_MAX, dtRaw));
+  const dt = dtRaw > 0 ? Math.min(DT_MAX, dtRaw) : 0;
+  if (dt === 0) return;
+  const rl = finite(raw.low);
+  const rm = finite(raw.mid);
+  const rh = finite(raw.high);
 
   const tau = ENV_TAU_MIN + clamp01(cfg.smoothing) * (ENV_TAU_MAX - ENV_TAU_MIN);
   const k = 1 - Math.exp(-dt / tau);
 
-  const tLow = fresh ? clamp01(raw.low * cfg.bassGain) : 0;
-  const tMid = fresh ? clamp01(raw.mid * cfg.midGain) : 0;
-  const tHigh = fresh ? clamp01(raw.high * cfg.trebleGain) : 0;
+  const tLow = fresh ? clamp01(rl * gain(cfg.bassGain)) : 0;
+  const tMid = fresh ? clamp01(rm * gain(cfg.midGain)) : 0;
+  const tHigh = fresh ? clamp01(rh * gain(cfg.trebleGain)) : 0;
 
   s.low += (tLow - s.low) * k;
   s.mid += (tMid - s.mid) * k;
@@ -199,15 +215,15 @@ export function stepGlSignal(
 
   // Beat: envelope rápido sobre o kick expandido pra faixa real.
   const beatOn = cfg.beatMode !== "off";
-  const tBeat = fresh && beatOn ? expandKick(raw.low) : 0;
+  const tBeat = fresh && beatOn ? clamp01(expandKick(rl)) : 0;
   s.beat += (tBeat - s.beat) * (1 - Math.exp(-dt / BEAT_TAU));
   if (!beatOn) s.beat = 0;
 
-  stepRelative(s, dt, tau, fresh, raw, cfg, beatOn);
+  stepRelative(s, dt, tau, fresh && rl + rm > SILENCE_FLOOR, rl, rm, cfg, beatOn);
 
   // Relógio: só o modo speed mexe na derivada.
-  const boost = cfg.beatMode === "speed" ? speedBoostGain(cfg.beatDepth) * s.beat : 0;
-  s.clock += dt * Math.max(0, cfg.speed) * (1 + boost);
+  const boost = cfg.beatMode === "speed" ? speedBoostGain(gain(cfg.beatDepth)) * s.beat : 0;
+  s.clock += dt * gain(cfg.speed) * (1 + boost);
 }
 
 const ema = (v: number, target: number, dt: number, tau: number) => v + (target - v) * (1 - Math.exp(-dt / tau));
@@ -217,13 +233,15 @@ function stepRelative(
   s: GlSignal,
   dt: number,
   tau: number,
-  fresh: boolean,
-  raw: FftBands,
+  live: boolean,
+  rawLow: number,
+  rawMid: number,
   cfg: GlCfg,
   beatOn: boolean,
 ): void {
-  if (!fresh) {
-    // Saídas e envelopes decaem; médias e dispersões congelam.
+  if (!live) {
+    // Stream parado ou silêncio: saídas e envelopes decaem; médias e
+    // dispersões congelam.
     s.lowEnv = ema(s.lowEnv, 0, dt, tau);
     s.midEnv = ema(s.midEnv, 0, dt, tau);
     s.swell = ema(s.swell, 0, dt, tau);
@@ -233,8 +251,8 @@ function stepRelative(
     if (!beatOn) s.pulse = 0;
     return;
   }
-  const lo = clamp01(raw.low);
-  const mi = clamp01(raw.mid);
+  const lo = clamp01(rawLow);
+  const mi = clamp01(rawMid);
   // Tau efetivo = idade (média acumulada) até saturar no tau nominal.
   // Com dt = idade no 1º quadro o peso da 1ª amostra é 1 - e^-1; o
   // piso REL_AGE_MIN evita tau 0 e divisões degeneradas.
@@ -257,9 +275,9 @@ function stepRelative(
 
   s.lowEnv = ema(s.lowEnv, lo, dt, tau);
   s.midEnv = ema(s.midEnv, mi, dt, tau);
-  const bass = Math.max(0, cfg.bassGain);
+  const bass = gain(cfg.bassGain);
   s.swell = clamp01((bass * (s.lowEnv - s.lowAvg)) / (SWELL_SPAN * lowSd));
-  s.midLift = clamp01((Math.max(0, cfg.midGain) * (s.midEnv - s.midAvg)) / (MID_SPAN * midSd));
+  s.midLift = clamp01((gain(cfg.midGain) * (s.midEnv - s.midAvg)) / (MID_SPAN * midSd));
   s.level = ema(s.level, clamp01(bass) * s.lowAvg, dt, tau);
 
   const kick = beatOn ? clamp01((lo - s.lowAvg - PULSE_GATE * lowSd) / (PULSE_SPAN * lowSd)) : 0;

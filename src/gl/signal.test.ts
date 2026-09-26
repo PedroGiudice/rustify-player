@@ -156,6 +156,45 @@ describe("reação relativa (swell / pulse / midLift / level)", () => {
     expect(maxPulse).toBeLessThan(0.05);
   });
 
+  it("silêncio com o stream vivo (mudo, volume 0, gap entre faixas) congela as médias como a pausa", () => {
+    // O FFT é medido depois do volume: mudo chega como zeros com fresh=true.
+    const s = createGlSignal();
+    for (let i = 0; i < 60 * 20; i++)
+      stepGlSignal(s, 1 / 60, true, { low: i % 30 < 4 ? 0.9 : 0.6, mid: 0.5, high: 0.1 }, pulseCfg);
+    const avg = s.lowAvg;
+    const dev = s.lowDev;
+    run(s, 60 * 20, 0, 0, pulseCfg, true);
+    for (const k of ["swell", "pulse", "midLift", "level"] as const) expect(s[k]).toBeLessThan(0.01);
+    expect(s.lowAvg).toBe(avg);
+    expect(s.lowDev).toBe(dev);
+    let maxSwell = 0;
+    let maxPulse = 0;
+    for (let i = 0; i < 60; i++) {
+      stepGlSignal(s, 1 / 60, true, { low: avg, mid: 0.5, high: 0.1 }, pulseCfg);
+      maxSwell = Math.max(maxSwell, s.swell);
+      maxPulse = Math.max(maxPulse, s.pulse);
+    }
+    expect(maxSwell).toBeLessThan(0.05);
+    expect(maxPulse).toBeLessThan(0.05);
+  });
+
+  it("NaN/Infinity no raw, nos ganhos ou no dt não contaminam o estado", () => {
+    const s = createGlSignal();
+    run(s, 60 * 5, 0.5, 0.3, pulseCfg);
+    for (let i = 0; i < 10; i++) stepGlSignal(s, 1 / 60, true, { low: NaN, mid: Infinity, high: -Infinity }, pulseCfg);
+    for (let i = 0; i < 10; i++)
+      stepGlSignal(s, 1 / 60, true, { low: 0.5, mid: 0.3, high: 0 }, cfg({ ...pulseCfg, bassGain: NaN, midGain: Infinity, beatDepth: NaN, smoothing: NaN }));
+    stepGlSignal(s, NaN, true, { low: 0.5, mid: 0.3, high: 0 }, pulseCfg);
+    run(s, 60 * 5, 0.5, 0.3, pulseCfg);
+    for (const k of ["low", "mid", "high", "beat", "clock", "swell", "pulse", "midLift", "level", "lowAvg", "lowDev", "midAvg", "midDev"] as const) {
+      expect(Number.isFinite(s[k]), k).toBe(true);
+    }
+    for (const k of ["low", "mid", "high", "beat", "swell", "pulse", "midLift", "level"] as const) {
+      expect(s[k], k).toBeGreaterThanOrEqual(0);
+      expect(s[k], k).toBeLessThanOrEqual(1);
+    }
+  });
+
   it("partida: a 1ª amostra alta não deixa a faixa inteira 'abaixo da média'", () => {
     const s = createGlSignal();
     stepGlSignal(s, 1 / 60, true, { low: 0.9, mid: 0, high: 0 }, pulseCfg);
