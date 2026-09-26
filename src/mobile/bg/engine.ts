@@ -6,7 +6,8 @@
    mesmo padrão de beatSetting.ts e das preferências de shape).
 
    "2d"    = o canvas de sempre (bg/spectrum.ts)
-   "webgl" = as quatro cenas de gl/scenes.ts, as mesmas do desktop
+   "webgl" = as cenas de gl/registry.ts no motor WebGL2 (gl/engine.ts),
+             as mesmas do desktop
 
    Os dois nunca rodam juntos: MobileApp monta um OU outro.
    ============================================================ */

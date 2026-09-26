@@ -52,8 +52,9 @@ import { is2dActive } from "./bg/engine";
 import { onFft } from "./ipc";
 import { bootUpdater } from "./updater";
 
-// three.js só é baixado do disco se o motor WebGL estiver ligado —
-// o APK carrega o chunk sob demanda, o boot do fundo 2D não muda.
+// O motor WebGL2 (gl/engine.ts + cenas) só é carregado se o fundo WebGL
+// estiver ligado — o APK carrega o chunk sob demanda, o boot do fundo 2D
+// não muda.
 const GlBg = lazy(async () => ({ default: (await import("./bg/GlBg")).GlBg }));
 
 /* Chamada como expressão no JSX (`{screen()}`), NÃO como <screen />:

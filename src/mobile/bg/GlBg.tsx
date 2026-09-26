@@ -1,8 +1,9 @@
 /* ============================================================
    bg/GlBg.tsx — fundo WebGL do aparelho.
 
-   As cenas são EXATAMENTE as do desktop (src/gl/scenes.ts): o
-   que muda de lado é só de onde vêm o sinal e a paleta.
+   O motor e as cenas são EXATAMENTE os do desktop (gl/engine.ts +
+   gl/registry.ts, laço em gl/host.ts): o que muda de lado é só de
+   onde vêm o sinal e a paleta.
 
      sinal  ← bg/spectrum.ts (SpectrumTap real, com o gerador
               sintético cobrindo até o primeiro quadro)
@@ -17,17 +18,13 @@
    ============================================================ */
 
 import { onCleanup, onMount } from "solid-js";
-import { GlStage } from "../../gl/scenes";
-import { setGlStatus } from "../../gl/meta";
-import { MOBILE_VARS, readGlPalette, type GlPalette, type Rgb } from "../../gl/palette";
-import { createGlSignal, stepGlSignal, type BeatMode, type GlCfg } from "../../gl/signal";
-import { stepRgbLerp } from "../../lib/rgbLerp";
+import { startGlHost } from "../../gl/host";
+import { MOBILE_VARS, readGlPalette } from "../../gl/palette";
+import type { BeatMode, GlCfg } from "../../gl/signal";
 import { bgScene } from "./engine";
 import { pumpMockFft, readFft } from "./spectrum";
 
 const FFT_STALE_MS = 250;
-const INK_TAU = 0.35;
-const VAR_SAMPLE_EVERY = 20;
 
 /** O mobile não tem painel de gains; os pesos por banda são os defaults
     do desktop. O que o usuário controla (Beat sync) chega pelas CSS vars
@@ -56,90 +53,32 @@ export function GlBg() {
 
   onMount(() => {
     if (!canvas) return;
-    let stage: GlStage;
-    try {
-      stage = new GlStage(canvas, bgScene());
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setGlStatus({ ok: false, renderer: "", error: msg, fps: 0 });
-      console.error("[mobile/gl] contexto WebGL indisponível:", e);
-      return;
-    }
-    setGlStatus({ ok: true, renderer: stage.rendererName(), error: "", fps: 0 });
-
     // Uma chamada de getComputedStyle por amostragem serve paleta E cfg.
-    let tgt: GlPalette = readGlPalette(
-      (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(),
-      MOBILE_VARS,
-    );
     let cfg: GlCfg = cfgFrom(getComputedStyle(document.documentElement));
-    const sample = () => {
-      const cs = getComputedStyle(document.documentElement);
-      tgt = readGlPalette((n) => cs.getPropertyValue(n).trim(), MOBILE_VARS);
-      cfg = cfgFrom(cs);
-    };
+    const bands = { low: 0, mid: 0, high: 0, fresh: false };
 
-    const cur: GlPalette = {
-      canvas: { ...tgt.canvas },
-      ink: { ...tgt.ink },
-      ink2: { ...tgt.ink2 },
-      soft: { ...tgt.soft },
-    };
-    stage.setPalette(cur);
-
-    const el = canvas;
-    const ro = new ResizeObserver(() => {
-      const r = el.getBoundingClientRect();
-      stage.resize(Math.round(r.width), Math.round(r.height), 1);
-    });
-    ro.observe(el);
-    const r0 = el.getBoundingClientRect();
-    stage.resize(Math.round(r0.width), Math.round(r0.height), 1);
-
-    const sig = createGlSignal();
-    let lastMs = performance.now();
-    let tick = 0;
-    let frames = 0;
-    let acc = 0;
-    let raf = requestAnimationFrame(function frame() {
-      raf = requestAnimationFrame(frame);
-      if (document.hidden || !el.isConnected) return;
-
-      pumpMockFft();
-
-      const nowMs = performance.now();
-      const dt = Math.max(0, Math.min(0.1, (nowMs - lastMs) * 0.001));
-      lastMs = nowMs;
-
-      if (++tick % VAR_SAMPLE_EVERY === 0) sample();
-      stepRgbLerp(cur.canvas as Rgb, tgt.canvas, dt, INK_TAU);
-      stepRgbLerp(cur.ink as Rgb, tgt.ink, dt, INK_TAU);
-      stepRgbLerp(cur.ink2 as Rgb, tgt.ink2, dt, INK_TAU);
-      stepRgbLerp(cur.soft as Rgb, tgt.soft, dt, INK_TAU);
-      stage.setPalette(cur);
-
-      const f = readFft();
-      const fresh = f.at !== 0 && nowMs - f.at < FFT_STALE_MS;
-      stepGlSignal(sig, dt, fresh, f, cfg);
-
-      stage.setScene(bgScene());
-      stage.frame(sig, dt);
-
-      frames++;
-      acc += dt;
-      if (acc >= 1) {
-        const fps = Math.round(frames / acc);
-        frames = 0;
-        acc = 0;
-        setGlStatus((s) => (s.fps === fps ? s : { ...s, fps }));
-      }
+    const stop = startGlHost({
+      canvas,
+      tag: "[mobile/gl]",
+      scene: bgScene,
+      palette: () => {
+        const cs = getComputedStyle(document.documentElement);
+        cfg = cfgFrom(cs);
+        return readGlPalette((n) => cs.getPropertyValue(n).trim(), MOBILE_VARS);
+      },
+      cfg: () => cfg,
+      bands: (nowMs) => {
+        const f = readFft();
+        bands.low = f.low;
+        bands.mid = f.mid;
+        bands.high = f.high;
+        bands.fresh = f.at !== 0 && nowMs - f.at < FFT_STALE_MS;
+        return bands;
+      },
+      beforeFrame: pumpMockFft,
     });
 
-    onCleanup(() => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      stage.dispose();
-    });
+    onCleanup(stop);
   });
 
   return <canvas class="app-bg__canvas" ref={canvas} />;

@@ -16,7 +16,7 @@ import { CoverArt } from "../components/CoverArt";
 import { useRenderer, useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
 import { tweaks, setTweaksOpen } from "../store/tweaks";
-import { glStatus } from "../gl/meta";
+import { glEngineWanted, glStatus } from "../gl/meta";
 import { GL_CANVAS } from "../gl/palette";
 import { cssColorToRgb } from "../lib/color";
 import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
@@ -31,7 +31,7 @@ export default function NowPlaying() {
   // (mesma condição do App.tsx), os seletores e os atalhos [ ] , . mudariam
   // índices que ninguém lê — a cena WebGL se escolhe no Tweaks. Memo: o
   // glStatus muda 1x/s (fps) e só o booleano interessa aqui.
-  const glActive = createMemo(() => tweaks().bgEngine === "webgl" && glStatus().ok !== false);
+  const glActive = createMemo(() => glEngineWanted(tweaks().bgEngine) && glStatus().ok !== false);
 
   // Botão de ajustes do fundo: abre o Tweaks já na seção "Fundo" (motor e
   // cena), marcada com data-tweaks-section em Tweaks.tsx. O painel fica em

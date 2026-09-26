@@ -30,14 +30,15 @@ import { Tweaks } from "./views/Tweaks";
 // pra evitar flash; o componente <Tweaks/> renderiza via Portal e
 // reage ao evento "toggle-tweaks" disparado pela sidebar.
 import { loadTweaks, tweaks } from "./store/tweaks";
-import { glStatus } from "./gl/meta";
+import { glEngineWanted, glStatus } from "./gl/meta";
 import { isTypingContext } from "./lib/keyboard";
 import { hasEscLayer } from "./lib/escLayers";
 
-// three.js só entra no processo se o usuário ligar o motor WebGL no
-// Tweaks — dynamic import mantém o boot do fundo 2D do tamanho que
-// sempre foi. O chunk fica no disco (app local), então a primeira
-// troca não depende de rede.
+// O motor WebGL2 (gl/engine.ts + cenas) só entra no processo se o
+// usuário ligar o fundo WebGL no Tweaks (ou a medição de cenas rodar) —
+// dynamic import mantém o boot do fundo 2D do tamanho que sempre foi. O
+// chunk fica no disco (app local), então a primeira troca não depende
+// de rede.
 const GlBackground = lazy(async () => ({
   default: (await import("./components/GlBackground")).GlBackground,
 }));
@@ -108,7 +109,7 @@ export default function App() {
           false e o 2D reassume sem o usuário ficar no escuro. */}
       <div class="app-bg" data-mode={bgMode()} aria-hidden="true">
         <Show
-          when={tweaks().bgEngine === "webgl" && glStatus().ok !== false}
+          when={glEngineWanted(tweaks().bgEngine) && glStatus().ok !== false}
           fallback={<SpectrumCanvas />}
         >
           <Suspense fallback={<SpectrumCanvas />}>
