@@ -15,6 +15,9 @@ FIX = pathlib.Path(__file__).resolve().parents[2] / "src/gl/__fixtures__/fft-rea
 ENV_TAU_MIN, ENV_TAU_MAX, DT_MAX = 0.1, 0.8, 0.1
 KICK_FLOOR, KICK_CEIL, BEAT_TAU = 0.1, 0.6, 0.09
 
+MIN_SEG_S = 15.0
+SCREENS = {"Playlists", "Rap & Hip-Hop", "Library", "Albums", "Artists", "Search", "Crate", "Signal", "Settings", "Home", "Stations", "Tweaks"}
+
 CFGS = {
     "ref-CEO": dict(bass=0.30, mid=0.15, treble=0.10, smoothing=1.0, beat="pulse"),
     "defaults": dict(bass=1.0, mid=1.0, treble=0.8, smoothing=0.3, beat="speed"),
@@ -52,18 +55,26 @@ def pct(x, ps=(5, 50, 95)):
 def main():
     raw, dt, marks = load()
     n = len(dt)
-    segs = [(marks[i][0], marks[i + 1][0] if i + 1 < len(marks) else n, marks[i][1]) for i in range(len(marks))]
+    # marks vêm do <h1>: nomes de tela/playlist não são faixa => continuação
+    tracks = [(i, t) for i, t in marks if t not in SCREENS]
+    segs = [(tracks[j][0], tracks[j + 1][0] if j + 1 < len(tracks) else n, tracks[j][1]) for j in range(len(tracks))]
     sims = {k: simulate(raw, dt, c) for k, c in CFGS.items()}
-    print(f"eventos {n}, duração {dt.sum():.1f}s, taxa média {n / dt.sum():.1f} Hz, segmentos {len(segs)}")
+    print(f"eventos {n}, duração {dt.sum():.1f}s, taxa média {n / dt.sum():.1f} Hz, marks {len(marks)}, segmentos {len(segs)}")
+    print("marks ignorados (tela):", sorted({t for _, t in marks if t in SCREENS}))
+    by = {}
     for a, b, title in segs:
-        if b - a < 30:  # troca rápida de faixa (< ~0,5 s): pula
+        if dt[a:b].sum() < MIN_SEG_S:  # pulo rápido: fica na fixture, fora da estatística
             continue
-        r = raw[a:b]
-        print(f"\n== {title}  [{a}:{b}] {dt[a:b].sum():.1f}s")
+        by.setdefault(title, []).append(np.arange(a, b))
+    print(f"faixas com >= {MIN_SEG_S:.0f}s: {len(by)}")
+    for title, idx in by.items():
+        ix = np.concatenate(idx)
+        r = raw[ix]
+        print(f"\n== {title}  ({len(idx)} seg) {dt[ix].sum():.1f}s")
         for j, nm in enumerate(("low", "mid", "high")):
             print(f"  raw {nm:4s} p5/p50/p95: {pct(r[:, j])}")
         for k, s in sims.items():
-            s = s[a:b]
+            s = s[ix]
             F = (5.5 + 5 * s[:, 0] + 3 * s[:, 2]) / 5.5
             w = np.abs(6 * s[:, 1])
             print(f"  [{k:8s}] F p5/p50/p95: {pct(F)} | |6*uMid| p50 {np.percentile(w, 50):.2f} p95 {np.percentile(w, 95):.2f}")
