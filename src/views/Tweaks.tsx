@@ -33,6 +33,8 @@ import {
   SCENE_KEYS,
   SCENE_LABELS,
 } from "../gl/meta";
+import { GL_BENCH_EVENT, glBenchProgress, glBenchResult, runGlBench } from "../gl/bench";
+import type { BenchResult } from "../gl/benchStats";
 
 // ── Subcomponentes locais ────────────────────────────────────
 
@@ -161,20 +163,25 @@ function EngineRow() {
 }
 
 /** Seleção da cena + o que o motor está entregando de fato (driver e
-    fps medidos no app). O fps é o gate da feature: se a cena escolhida
-    não sustenta ~30 na máquina, está na cara aqui. */
+    fps medidos no app). O fps é o gate da feature: o critério é 60 na
+    cmr-auto, e "Medir cenas" mede todas de uma vez. */
 function GlSection() {
   return (
     <>
       <div class="tweaks__row">
         <span class="tweaks__label">Cena</span>
-        <div class="segmented">
+        <div class="segmented segmented--wrap">
           <For each={SCENE_KEYS}>
             {(k) => (
               <button
                 class="segmented__btn"
                 classList={{ "is-active": tweaks().bgScene === k }}
-                onClick={() => updateTweak("bgScene", k)}
+                onClick={() => {
+                  // Cena que não compilou derrubou o motor pro 2D; escolher
+                  // outra é tentar de novo, como religar o WebGL.
+                  if (glStatus().ok === false) resetGlStatus();
+                  updateTweak("bgScene", k);
+                }}
               >
                 {SCENE_LABELS[k]}
               </button>
@@ -190,10 +197,115 @@ function GlSection() {
       </Show>
       <Show when={glStatus().ok === false}>
         <div class="tweaks__hint">
-          WebGL indisponível ({glStatus().error}) — o fundo 2D assumiu.
+          Fundo WebGL fora do ar ({glStatus().error}) — o 2D assumiu.
         </div>
       </Show>
     </>
+  );
+}
+
+/* ── Medição de cenas ──────────────────────────────────────── */
+
+/** Abre o painel já rolado até a seção "Fundo" (mesmo gesto do botão
+    de ajustes do Now Playing: o painel fechado é display:none, então a
+    posição só existe no quadro seguinte). */
+function openTweaksAtFundo() {
+  setTweaksOpen(true);
+  requestAnimationFrame(() => {
+    const sec = document.querySelector<HTMLElement>('[data-tweaks-section="fundo"]');
+    const body = sec?.closest<HTMLElement>(".tweaks__body");
+    if (!sec || !body) return;
+    body.scrollTop += sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  });
+}
+
+function startGlBench() {
+  void runGlBench({
+    onStart: () => setTweaksOpen(false),
+    onFinish: () => openTweaksAtFundo(),
+  });
+}
+
+const fmtInt = (v: number) => String(Math.round(v));
+const fmtPct = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
+
+function benchWhen(r: BenchResult): string {
+  const d = new Date(r.at);
+  if (Number.isNaN(d.getTime())) return r.at;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Veredito agrupado, com o texto do critério (a cor da linha sozinha
+    não basta para quem não distingue as cores). */
+function benchGroups(r: BenchResult): Array<{ title: string; names: string; cls: "ok" | "low" | "err" }> {
+  const pick = (f: (s: BenchResult["scenes"][number]) => boolean) =>
+    r.scenes.filter(f).map((s) => s.label).join(", ");
+  return [
+    { title: "60 fps ok", names: pick((s) => !s.error && s.ok), cls: "ok" as const },
+    { title: "abaixo de 60", names: pick((s) => !s.error && !s.ok), cls: "low" as const },
+    { title: "não mediu", names: pick((s) => !!s.error), cls: "err" as const },
+  ].filter((g) => g.names);
+}
+
+function BenchTable(props: { r: BenchResult }) {
+  return (
+    <div class="tweaks__bench">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Cena</th>
+            <th scope="col" title="fps médio">Média</th>
+            <th scope="col" title="fps do 1% pior quadro (p99 do intervalo)">1% pior</th>
+            <th scope="col" title="quadros acima de 20 ms">&gt;20 ms</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.r.scenes}>
+            {(s) => (
+              <tr classList={{ "is-ok": s.ok && !s.error, "is-low": !s.ok || !!s.error }}>
+                <th scope="row">{s.label}</th>
+                <Show
+                  when={!s.error}
+                  fallback={<td colSpan={3} class="tweaks__bench-err" title={s.error}>erro: {s.error}</td>}
+                >
+                  <td>{fmtInt(s.fpsAvg)}</td>
+                  <td>{fmtInt(s.fpsLow1)}</td>
+                  <td>{fmtPct(s.slowPct)}</td>
+                </Show>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+      <For each={benchGroups(props.r)}>
+        {(g) => (
+          <div class="tweaks__bench-verdict" classList={{ "is-ok": g.cls === "ok", "is-low": g.cls !== "ok" }}>
+            <b>{g.title}:</b> {g.names}
+          </div>
+        )}
+      </For>
+      <div class="tweaks__hint">
+        {benchWhen(props.r)} · v{props.r.version} · {props.r.route}
+      </div>
+    </div>
+  );
+}
+
+/** Botão + última tabela. Fica fora do <Show webgl>: medir liga o WebGL
+    durante a medição mesmo com o 2D escolhido, e restaura depois. */
+function BenchSection() {
+  return (
+    <div class="tweaks__row">
+      <span class="tweaks__label">Desempenho</span>
+      <button class="tweaks__reset" disabled={glBenchProgress() !== null} onClick={startGlBench}>
+        Medir cenas
+      </button>
+      <div class="tweaks__hint">
+        10 s por cena (2 de aquecimento, 8 medindo) no motor WebGL, com esta tela aberta. Esc cancela.
+      </div>
+      <Show when={glBenchResult()}>{(r) => <BenchTable r={r()} />}</Show>
+    </div>
   );
 }
 
@@ -205,7 +317,12 @@ export function Tweaks() {
   onMount(() => {
     const onToggle = () => setTweaksOpen(!tweaksOpen());
     window.addEventListener("toggle-tweaks", onToggle);
-    onCleanup(() => window.removeEventListener("toggle-tweaks", onToggle));
+    // Medição remota (ponte MCP): o mesmo fluxo do botão.
+    window.addEventListener(GL_BENCH_EVENT, startGlBench);
+    onCleanup(() => {
+      window.removeEventListener("toggle-tweaks", onToggle);
+      window.removeEventListener(GL_BENCH_EVENT, startGlBench);
+    });
   });
 
   // Esc fecha o painel aberto quando ele é a camada de cima (lib/escLayers).
@@ -332,6 +449,7 @@ export function Tweaks() {
               painel rolado até aqui. */}
           <div class="tweaks__divider" data-tweaks-section="fundo"><span>Fundo</span></div>
           <EngineRow />
+          <BenchSection />
           <Show when={tweaks().bgEngine === "webgl"}>
             <GlSection />
           </Show>
@@ -420,6 +538,14 @@ export function Tweaks() {
           </button>
         </div>
       </aside>
+      <Show when={glBenchProgress()}>
+        {(p) => (
+          <div class="gl-bench-badge" role="status" aria-live="polite">
+            Medindo {p().label} {p().index}/{p().total}
+            <span class="gl-bench-badge__hint">Esc cancela</span>
+          </div>
+        )}
+      </Show>
     </Portal>
   );
 }
