@@ -5,7 +5,8 @@
    Shape/renderer state via useShape()/useRenderer() (SpectrumCanvas).
    Seletores empilhados no canto inferior-direito: renderer em cima,
    shape embaixo. Atalhos: [ ] shape, , . renderer. Só existem com o
-   fundo 2D; com o WebGL a cena se escolhe no Tweaks (botão de ajustes).
+   fundo 2D; com o WebGL a cena se escolhe no Tweaks (botão de ajustes),
+   e na cena Relevo , . ciclam o estilo de linhas (reliefLines).
    ============================================================ */
 
 import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
@@ -15,8 +16,8 @@ import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { useRenderer, useShape } from "../components/SpectrumCanvas";
 import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
-import { tweaks, setTweaksOpen } from "../store/tweaks";
-import { glEngineWanted, glStatus } from "../gl/meta";
+import { tweaks, setTweaksOpen, updateTweak } from "../store/tweaks";
+import { RELIEF_LINE_KEYS, glEngineWanted, glStatus } from "../gl/meta";
 import { GL_CANVAS } from "../gl/palette";
 import { cssColorToRgb } from "../lib/color";
 import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
@@ -322,16 +323,26 @@ export default function NowPlaying() {
     onCleanup(() => cancelAnimationFrame(raf));
   });
 
-  // Keyboard: [ ] cicla shape, , . cicla renderer, F cinema mode.
+  // Keyboard: [ ] cicla shape e , . cicla renderer (fundo 2D); com o
+  // WebGL na cena Relevo, , . ciclam o estilo de linhas (com volta);
+  // F cinema mode em qualquer motor.
+  function cycleReliefLines(step: 1 | -1) {
+    const keys = RELIEF_LINE_KEYS;
+    const i = keys.indexOf(tweaks().reliefLines);
+    updateTweak("reliefLines", keys[(i + step + keys.length) % keys.length]);
+  }
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingContext(e)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const bg2d = !glActive();
+      const relief = !bg2d && tweaks().bgScene === "relief";
       if (bg2d && e.key === "[") { e.preventDefault(); shape.prev(); }
       else if (bg2d && e.key === "]") { e.preventDefault(); shape.next(); }
       else if (bg2d && e.key === ",") { e.preventDefault(); renderer.prev(); }
       else if (bg2d && e.key === ".") { e.preventDefault(); renderer.next(); }
+      else if (relief && e.key === ",") { e.preventDefault(); cycleReliefLines(-1); }
+      else if (relief && e.key === ".") { e.preventDefault(); cycleReliefLines(1); }
       else if (e.key.toLowerCase() === "f") { e.preventDefault(); toggleCinema(); }
     };
     window.addEventListener("keydown", onKey);

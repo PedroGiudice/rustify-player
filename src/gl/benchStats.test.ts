@@ -95,3 +95,25 @@ describe("persistência (kv-gl-bench)", () => {
     expect(r?.scenes.map((s) => s.key)).toEqual(["dust", "nebula"]);
   });
 });
+
+describe("parseBenchResult: variantes do Relevo", () => {
+  it("resultado antigo, sem variante, carrega sem erro", () => {
+    const r = parseBenchResult({
+      at: "2026-09-20T10:00:00Z",
+      scenes: [{ key: "relief", label: "Relevo", frames: 400, fpsAvg: 60, fpsLow1: 55, slowPct: 0, ok: true }],
+    });
+    expect(r!.scenes).toHaveLength(1);
+    expect(r!.scenes[0]).not.toHaveProperty("variant");
+  });
+
+  it("preserva a variante válida e descarta variante aposentada", () => {
+    const r = parseBenchResult({
+      at: "2026-09-26T10:00:00Z",
+      scenes: [
+        { key: "relief", variant: "ridges", label: "Relevo · Cristas", frames: 1, fpsAvg: 60, fpsLow1: 60, slowPct: 0, ok: true },
+        { key: "relief", variant: "sumiu", label: "Relevo · X", frames: 1, fpsAvg: 60, fpsLow1: 60, slowPct: 0, ok: true },
+      ],
+    });
+    expect(r!.scenes.map((s) => s.variant)).toEqual(["ridges"]);
+  });
+});

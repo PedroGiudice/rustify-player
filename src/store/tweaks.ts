@@ -8,7 +8,16 @@
 import { createSignal, createEffect } from "solid-js";
 import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
 import { ensureInkContrast } from "../lib/color";
-import { isSceneKey, type SceneKey } from "../gl/meta";
+import {
+  isSceneKey,
+  RELIEF_DEFAULT,
+  sanitizeReliefStyle,
+  setGlReliefStyle,
+  type ReliefLines,
+  type ReliefShape,
+  type ReliefSurface,
+  type SceneKey,
+} from "../gl/meta";
 
 const { invoke } = window.__TAURI__.core;
 
@@ -108,6 +117,12 @@ export interface TweaksState {
   bgEngine: "2d" | "webgl";
   /** Cena ativa quando bgEngine === "webgl". */
   bgScene: SceneKey;
+  /** Estilo do Relevo (variantes em avaliação, gl/meta.ts): desenho
+      das linhas, forma do terreno e superfície. Espelhado em
+      setGlReliefStyle — a cena lê de lá. */
+  reliefLines: ReliefLines;
+  reliefShape: ReliefShape;
+  reliefSurface: ReliefSurface;
 
   /** Accent adaptativo: --primary e família (container, on-primary,
       blue-fg/bg/ring — chips, halos, botões) seguem o hue da capa da
@@ -142,6 +157,9 @@ export const DEFAULTS: TweaksState = {
   adaptiveAccent: true,
   bgEngine: "2d",
   bgScene: "dust",
+  reliefLines: RELIEF_DEFAULT.lines,
+  reliefShape: RELIEF_DEFAULT.shape,
+  reliefSurface: RELIEF_DEFAULT.surface,
 };
 
 // ── Dirty tracking ────────────────────────────────────────────
@@ -552,6 +570,14 @@ export function loadTweaks() {
     // seria um canvas preto sem mensagem nenhuma.
     if (!isSceneKey(next.bgScene)) next.bgScene = DEFAULTS.bgScene;
     if (next.bgEngine !== "2d" && next.bgEngine !== "webgl") next.bgEngine = DEFAULTS.bgEngine;
+    const relief = sanitizeReliefStyle({
+      lines: next.reliefLines,
+      shape: next.reliefShape,
+      surface: next.reliefSurface,
+    });
+    next.reliefLines = relief.lines;
+    next.reliefShape = relief.shape;
+    next.reliefSurface = relief.surface;
 
     // Migracao: sidebar "collapsed"/"expanded" -> "icons"/"labels"
     if (saved.sidebar === "collapsed") next.sidebar = "icons";
@@ -628,6 +654,16 @@ export function flushTweaks() {
 }
 
 window.addEventListener("beforeunload", flushTweaks);
+
+// Espelho do estilo do Relevo no signal do gl/meta. Roda também antes
+// do load (inofensivo: só escreve signal, nunca localStorage) e de novo
+// quando o load troca o estado.
+createEffect(() => {
+  const s = state();
+  setGlReliefStyle(
+    sanitizeReliefStyle({ lines: s.reliefLines, shape: s.reliefShape, surface: s.reliefSurface }),
+  );
+});
 
 createEffect(() => {
   state();

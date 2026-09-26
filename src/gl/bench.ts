@@ -8,11 +8,15 @@
    amostragem dos intervalos de requestAnimationFrame
    (estatística em gl/benchStats.ts).
 
+   Depois das cenas, o Relevo é medido uma vez por variante de linhas
+   (RELIEF_LINES), forçada por glReliefOverride com a forma e a
+   superfície que o usuário escolheu — as variantes custam diferente.
+
    Nada disso toca as preferências salvas: a cena medida entra por
    glSceneOverride (gl/meta.ts), que também liga o motor WebGL se o
    usuário estiver no 2D. Terminar, cancelar (Esc) ou esconder a
    janela só limpa o override e o app volta sozinho ao motor e à
-   cena de antes.
+   cena de antes (e o override do Relevo é limpo pelo mesmo caminho).
 
    Disparo: botão no Tweaks (seção Fundo) ou, remoto pela ponte MCP,
    window.dispatchEvent(new CustomEvent("rustify:gl-bench")).
@@ -24,12 +28,17 @@
 import { createSignal } from "solid-js";
 import { pushEscLayer } from "../lib/escLayers";
 import {
+  RELIEF_LINES,
+  RELIEF_LINE_KEYS,
   SCENE_KEYS,
   SCENE_LABELS,
   glActiveScene,
+  glReliefStyle,
   glStatus,
   resetGlStatus,
+  setGlReliefOverride,
   setGlSceneOverride,
+  type ReliefLines,
   type SceneKey,
 } from "./meta";
 import {
@@ -53,6 +62,8 @@ export const BENCH_TIMING: BenchTiming = { mountTimeoutMs: 8000, warmupMs: 2000,
 
 export interface BenchProgress {
   key: SceneKey;
+  /** Variante do Relevo em medição (só nas medições por variante). */
+  variant?: ReliefLines;
   label: string;
   index: number;
   total: number;
@@ -178,6 +189,18 @@ export interface BenchHooks {
   onFinish?: (r: BenchResult | null) => void;
   timing?: Partial<BenchTiming>;
   keys?: readonly SceneKey[];
+  /** Variantes do Relevo medidas depois das cenas ([] = nenhuma). */
+  reliefVariants?: readonly ReliefLines[];
+}
+
+interface BenchJob {
+  key: SceneKey;
+  variant?: ReliefLines;
+  label: string;
+}
+
+function reliefLabel(v: ReliefLines): string {
+  return `${SCENE_LABELS.relief} · ${RELIEF_LINES.find((m) => m.key === v)?.label ?? v}`;
 }
 
 /**
@@ -189,7 +212,14 @@ export async function runGlBench(hooks: BenchHooks = {}): Promise<BenchResult | 
   const token: Token = { cancelled: false, reason: "", wake: [] };
   active = token;
   const timing = { ...BENCH_TIMING, ...hooks.timing };
-  const keys = hooks.keys ?? SCENE_KEYS;
+  const jobs: BenchJob[] = [
+    ...(hooks.keys ?? SCENE_KEYS).map((key) => ({ key, label: SCENE_LABELS[key] })),
+    ...(hooks.reliefVariants ?? RELIEF_LINE_KEYS).map((variant) => ({
+      key: "relief" as const,
+      variant,
+      label: reliefLabel(variant),
+    })),
+  ];
   const scenes: BenchSceneResult[] = [];
   const route = (location.hash || "").replace(/^#/, "") || "/home";
   let renderer = "";
@@ -205,13 +235,17 @@ export async function runGlBench(hooks: BenchHooks = {}): Promise<BenchResult | 
   let version = "—";
   try {
     version = await appVersion();
-    for (let i = 0; i < keys.length && !token.cancelled; i++) {
-      const key = keys[i];
-      const label = SCENE_LABELS[key];
-      const base = { key, label, index: i + 1, total: keys.length };
+    for (let i = 0; i < jobs.length && !token.cancelled; i++) {
+      const { key, variant, label } = jobs[i];
+      const tag = variant ? { variant } : {};
+      const base = { key, ...tag, label, index: i + 1, total: jobs.length };
       setProgress({ ...base, phase: "carregando" });
       // Falha da cena anterior tirou o motor do ar; religa para esta.
       if (glStatus().ok === false) resetGlStatus();
+      // Variante forçada com a forma/superfície da preferência, lida
+      // agora (sem gravar nada nela).
+      const pref = glReliefStyle();
+      setGlReliefOverride(variant ? { lines: variant, shape: pref.shape, surface: pref.surface } : null);
       setGlSceneOverride(key);
 
       const mounted = await waitUntil(
@@ -221,7 +255,7 @@ export async function runGlBench(hooks: BenchHooks = {}): Promise<BenchResult | 
       );
       if (token.cancelled) break;
       if (!mounted || glStatus().ok === false) {
-        scenes.push(failed(key, label, glStatus().error || "o motor WebGL não montou a cena a tempo"));
+        scenes.push(failed(key, label, glStatus().error || "o motor WebGL não montou a cena a tempo", variant));
         continue;
       }
       renderer ||= glStatus().renderer;
@@ -234,14 +268,15 @@ export async function runGlBench(hooks: BenchHooks = {}): Promise<BenchResult | 
       const intervals = await sampleRaf(timing.sampleMs, token);
       if (token.cancelled) break;
       if (glStatus().ok === false || glActiveScene() !== key) {
-        scenes.push(failed(key, label, glStatus().error || "a cena saiu do ar durante a medição"));
+        scenes.push(failed(key, label, glStatus().error || "a cena saiu do ar durante a medição", variant));
         continue;
       }
-      scenes.push({ key, label, ...computeBenchStats(intervals) });
+      scenes.push({ key, ...tag, label, ...computeBenchStats(intervals) });
       expose({ status: "running", route, version, renderer, scenes });
     }
   } finally {
     setGlSceneOverride(null);
+    setGlReliefOverride(null);
     // A última cena pode ter falhado: sem isto o motor do usuário (se
     // ele usa o WebGL) ficaria no 2D de castigo pela cena medida.
     if (glStatus().ok === false) resetGlStatus();
@@ -264,6 +299,6 @@ export async function runGlBench(hooks: BenchHooks = {}): Promise<BenchResult | 
   return res;
 }
 
-function failed(key: SceneKey, label: string, error: string): BenchSceneResult {
-  return { key, label, frames: 0, fpsAvg: 0, fpsLow1: 0, slowPct: 0, ok: false, error };
+function failed(key: SceneKey, label: string, error: string, variant?: ReliefLines): BenchSceneResult {
+  return { key, ...(variant ? { variant } : {}), label, frames: 0, fpsAvg: 0, fpsLow1: 0, slowPct: 0, ok: false, error };
 }

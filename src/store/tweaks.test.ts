@@ -426,3 +426,21 @@ describe("arrasto de slider (cfg-15)", () => {
     flushTweaks();
   });
 });
+
+describe("estilo do Relevo", () => {
+  it("estado salvo inválido cai no padrão campo a campo e espelha no gl/meta", async () => {
+    const { RELIEF_DEFAULT, glReliefStyle } = await import("../gl/meta");
+    localStorage.setItem(
+      "kv-tweaks",
+      JSON.stringify({ reliefLines: "grade", reliefShape: "smooth", reliefSurface: 42 }),
+    );
+    loadTweaks();
+    expect(tweaks().reliefLines).toBe(RELIEF_DEFAULT.lines);
+    expect(tweaks().reliefShape).toBe("smooth");
+    expect(tweaks().reliefSurface).toBe(RELIEF_DEFAULT.surface);
+    expect(glReliefStyle()).toEqual({ lines: RELIEF_DEFAULT.lines, shape: "smooth", surface: RELIEF_DEFAULT.surface });
+    updateTweak("reliefLines", "ridges");
+    expect(glReliefStyle().lines).toBe("ridges");
+    resetTweaks();
+  });
+});
