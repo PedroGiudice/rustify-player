@@ -15,7 +15,7 @@
    ============================================================ */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup, fireEvent } from "@solidjs/testing-library";
+import { render, cleanup, fireEvent, screen } from "@solidjs/testing-library";
 
 vi.mock("../components/PlayerBar", () => ({
   playTrack: vi.fn(),
@@ -38,6 +38,8 @@ import { TrackContextMenu } from "../components/TrackContextMenu";
 import { openTrackMenu, trackMenu, closeTrackMenu } from "../store/contextMenu";
 import { Fader } from "../components/dsp/Fader";
 import type { Track } from "../tauri";
+import { GL_BENCH_EVENT, cancelGlBench, glBenchProgress } from "../gl/bench";
+import { glSceneOverride } from "../gl/meta";
 
 afterEach(() => {
   cleanup();
@@ -129,5 +131,36 @@ describe("Tweaks: overlays por cima ficam com o Esc", () => {
     expect(container.querySelector("input.fader__input")).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
     expect(tweaksOpen()).toBe(true);
+  });
+});
+
+/* Medição de cenas (gl/bench.ts): o painel sai da frente enquanto mede,
+   um selo mostra a cena, e o fim (ou o Esc) devolve o painel. O motor
+   de verdade não monta no jsdom — aqui só o fluxo da UI importa. */
+describe("Tweaks: Medir cenas", () => {
+  afterEach(() => cancelGlBench());
+
+  it("o botão fecha o painel e mostra o selo; Esc cancela, restaura e reabre", async () => {
+    render(() => <Tweaks />);
+    setTweaksOpen(true);
+    fireEvent.click(screen.getByRole("button", { name: "Medir cenas" }));
+    expect(tweaksOpen()).toBe(false);
+    await vi.waitFor(() =>
+      expect(document.querySelector(".gl-bench-badge")?.textContent).toMatch(/Medindo Poeira 1\/\d+/),
+    );
+    expect(glSceneOverride()).toBe("dust");
+
+    esc();
+    await vi.waitFor(() => expect(tweaksOpen()).toBe(true));
+    expect(document.querySelector(".gl-bench-badge")).toBeNull();
+    expect(glSceneOverride()).toBeNull();
+  });
+
+  it("o evento rustify:gl-bench (ponte MCP) dispara a mesma medição", async () => {
+    render(() => <Tweaks />);
+    window.dispatchEvent(new CustomEvent(GL_BENCH_EVENT));
+    await vi.waitFor(() => expect(glBenchProgress()?.key).toBe("dust"));
+    cancelGlBench();
+    await vi.waitFor(() => expect(glBenchProgress()).toBeNull());
   });
 });
