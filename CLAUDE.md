@@ -187,19 +187,33 @@ persistidos em localStorage), seletores empilhados no NowPlaying e teclas
 design_handoff_persistent_background/` (HTML = fonte da verdade dos
 numeros).
 
-**Motor WebGL do bg (4 cenas, v0.2.78)**: o fundo tem DOIS motores e o
+**Motor WebGL do bg (6 cenas, WebGL2 puro desde a branch
+`feat/gl-webgl2-engine`)**: o fundo tem DOIS motores e o
 Tweaks (secao "Fundo", `bgEngine`) escolhe qual monta — nunca os dois
 juntos, entao segue existindo UM rAF e UM contexto GL. `2d` = o
 SpectrumCanvas de sempre (18 shapes x 5 renderers, intocado); `webgl` =
-as quatro cenas de `src/gl/scenes.ts` (Poeira/Relevo/Orbitas/Nebula,
-`bgScene`), porte fiel do lab aprovado em 12/09.
+`src/gl/engine.ts` (sem three) com as cenas de `src/gl/scenes/<chave>.ts`
+(`bgScene`): Poeira, Relevo, Orbitas, Nebula, Tinta (`paint`) e Riso.
+Contrato de cena em `src/gl/scene.ts`; cena nova entra em DOIS registros,
+`gl/meta.ts` (SCENE_META: rotulo e dica do Tweaks) e `gl/registry.ts`
+(nao compila se faltar um). Custo por cena no WebKitGTK real:
+`scripts/gl-bench` (README la; a 1857x1048 em 11/10: Relevo 1,1 ms,
+Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
 
-- `src/gl/meta.ts` NAO importa three (nomes das cenas + `glStatus`); e o
-  que store e Tweaks consomem. O componente pesado
-  (`components/GlBackground.tsx`) entra por `lazy()` no App — three fica
-  num chunk proprio de ~543 KB e quem roda 2D nao paga nada no boot.
-  Nao importar `gl/scenes.ts` a partir do store/painel: arrastaria a lib
-  inteira pro bundle de boot.
+- Tinta e Riso (11/10) nasceram como esboco no Fizzle (live coding de
+  visuais no navegador): `docs/design-refs/fundo-fizzle/` tem os esbocos,
+  o que foi reprovado e `fizzle_link.py` (gera o link; NUNCA redigitar o
+  link a mao, a copia corrompe). Esboco = desenho inteiro dentro do
+  `glsl(...)`, sem efeitos prontos do Fizzle, para o porte ser direto. No
+  porte, a reacao ao som vira RELATIVA (`swell`/`pulse`/`midLift`) e as
+  cores vem da paleta do app. Gosto do CEO: nada de textura fina repetida
+  (moire = "hipnotico", reticula = "tripofobia"), nada generico (fitas).
+- `src/gl/meta.ts` NAO importa codigo de GL (nomes das cenas +
+  `glStatus`); e o que store e Tweaks consomem. O componente pesado
+  (`components/GlBackground.tsx`) entra por `lazy()` no App e quem roda
+  2D nao paga nada no boot. Nao importar `gl/registry.ts` nem
+  `gl/scenes/*` a partir do store/painel: arrastaria as cenas pro bundle
+  de boot.
 - Sinal em `src/gl/signal.ts` (puro, testado): mesma cadeia do 2D (gains
   por banda, smoothing, bgSpeed no relogio virtual, beat-sync speed x
   pulse), com UMA diferenca deliberada — as cenas consomem as TRES
