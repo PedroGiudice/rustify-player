@@ -214,9 +214,16 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   (verde-limao) pintava 93% do fundo com luminancia 0,6-0,8; agora a media
   fica em ~0,11. Escuras no tom de ink, claras no de ink2 (ou giradas 20°
   para o creme quando ink2 = ink). Zonas por camada: escuro se espalha com
-  o grave, meio sobe com os medios, claro cresce/brilha com os agudos
-  (`highLift`, novo no sinal, ganho = Treble); o kick incha tudo, ~40% de
-  uma camada no beat depth padrao.
+  o grave, meio sobe com os medios, claro cresce/brilha com os agudos; o
+  kick incha tudo, ~40% de uma camada no beat depth padrao.
+- Zonas da Tinta (0.2.86) usam o desvio COM SINAL de cada banda
+  (`lowRel`/`midRel`/`highRel` em `gl/signal.ts`, -1..1, com o ganho do
+  Tweaks): vaivem, a zona expande acima da media e encolhe abaixo. Na
+  0.2.85 so a parte positiva movia e as zonas ficavam paradas 73-99% do
+  tempo. Amplitude = joelho tanh (`ZONE_SENS` 4, teto `ZONE_CAP` 0,8
+  camada), metas travadas no replay do sinal real com os ajustes do CEO
+  de 11/10 (Bass 0,30 / Mid 0,10 / Treble 0,60 / suavizacao 1,0) e com
+  os padrao (`paintRiso.test.ts`). Mid 0,10 limita a zona do meio.
 - `src/gl/meta.ts` NAO importa codigo de GL (nomes das cenas +
   `glStatus`); e o que store e Tweaks consomem. O componente pesado
   (`components/GlBackground.tsx`) entra por `lazy()` no App e quem roda

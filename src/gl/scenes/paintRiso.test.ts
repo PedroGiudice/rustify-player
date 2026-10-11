@@ -15,7 +15,10 @@ import { describe, it, expect } from "vitest";
 import { createGlSignal, type GlSignal } from "../signal";
 import type { SceneCtx, ScenePalette } from "../scene";
 import { makeFakeGl, type FakeGl } from "../__fixtures__/fakeGl";
-import { paint, paintReaction } from "./paint";
+import { paint, paintReaction, zoneShift, ZONE_CAP } from "./paint";
+import fx from "../__fixtures__/fft-real-2609.json";
+import { decodeFixture } from "../fftReplay";
+import { stepGlSignal, DEFAULT_GL_CFG, type GlCfg } from "../signal";
 import { riso, risoReaction, stepKickCount, type KickCount } from "./riso";
 import { SCENE_KEYS } from "../meta";
 import { SCENES } from "../registry";
@@ -30,12 +33,12 @@ describe("Tinta: reação", () => {
   });
 
   it("zonas: grave move o escuro, médios o meio, agudos o claro; kick incha tudo, levanta o relevo e acende o reflexo", () => {
-    const r = paintReaction(sig({ swell: 1, pulse: 1, midLift: 1, highLift: 1 }));
+    const r = paintReaction(sig({ swell: 1, pulse: 1, midLift: 1, highLift: 1, lowRel: 1, midRel: 1, highRel: 1 }));
     expect(r.stir).toBeCloseTo(1.3);
     expect(r.pump).toBeCloseTo(0.12);
-    expect(r.zoneLow).toBeCloseTo(0.08);
-    expect(r.zoneMid).toBeCloseTo(0.07);
-    expect(r.zoneHigh).toBeCloseTo(0.06);
+    expect(r.zoneLow).toBeCloseTo(zoneShift(1));
+    expect(r.zoneMid).toBeCloseTo(zoneShift(1));
+    expect(r.zoneHigh).toBeCloseTo(zoneShift(1));
     expect(r.sparkle).toBeCloseTo(1);
     expect(r.lift).toBeCloseTo(2.2);
     expect(r.flash).toBeCloseTo(1);
@@ -47,7 +50,9 @@ describe("Tinta: reação", () => {
   });
 
   it("sinal fora de 0..1 é limitado", () => {
-    expect(paintReaction(sig({ swell: 5, pulse: -2, midLift: 9, highLift: 3 }))).toEqual(paintReaction(sig({ swell: 1, midLift: 1, highLift: 1 })));
+    expect(paintReaction(sig({ swell: 5, pulse: -2, midLift: 9, highLift: 3, lowRel: 7, midRel: -4, highRel: 2 }))).toEqual(
+      paintReaction(sig({ swell: 1, midLift: 1, highLift: 1, lowRel: 1, midRel: -1, highRel: 1 })),
+    );
   });
 });
 
@@ -117,11 +122,63 @@ describe("Tinta: cada banda mexe só a sua zona", () => {
   it("grave só zoneLow, médios só zoneMid, agudos só zoneHigh", () => {
     const only = (o: Partial<GlSignal>) => {
       const r = paintReaction(sig(o));
-      return [r.zoneLow > 0, r.zoneMid > 0, r.zoneHigh > 0];
+      return [r.zoneLow !== 0, r.zoneMid !== 0, r.zoneHigh !== 0];
     };
-    expect(only({ swell: 1 })).toEqual([true, false, false]);
-    expect(only({ midLift: 1 })).toEqual([false, true, false]);
-    expect(only({ highLift: 1 })).toEqual([false, false, true]);
+    expect(only({ lowRel: 0.5 })).toEqual([true, false, false]);
+    expect(only({ midRel: 0.5 })).toEqual([false, true, false]);
+    expect(only({ highRel: 0.5 })).toEqual([false, false, true]);
     expect(only({ pulse: 1 })).toEqual([false, false, false]);
+  });
+
+  it("vaivém: abaixo da média a zona encolhe (sinal oposto), com o mesmo tamanho", () => {
+    expect(zoneShift(-0.3)).toBeCloseTo(-zoneShift(0.3));
+    expect(zoneShift(-0.3)).toBeLessThan(0);
+  });
+
+  it("teto suave: nunca passa de ZONE_CAP camada, nem com o desvio no máximo", () => {
+    expect(Math.abs(zoneShift(1)) * 6).toBeLessThan(ZONE_CAP);
+    expect(Math.abs(zoneShift(-1)) * 6).toBeLessThan(ZONE_CAP);
+  });
+});
+
+/* Calibração no sinal REAL gravado no app (fft-real-2609, 12 min). Antes
+   (0.2.85, só a parte positiva e coeficientes fixos), com os ajustes do
+   CEO de 11/10, as zonas andavam 6% / 1,4% / 6% de camada no p95 e
+   ficavam paradas 73% / 99% / 75% do tempo — "as zonas não funcionaram". */
+describe("Tinta: zonas no sinal real", () => {
+  const CEO_1110: GlCfg = { bassGain: 0.3, midGain: 0.1, trebleGain: 0.6, smoothing: 1, speed: 1, beatMode: "pulse", beatDepth: 0.1 };
+  const q = (a: number[], p: number) => [...a].sort((x, y) => x - y)[Math.floor(p * (a.length - 1))];
+  const run = (cfg: GlCfg) => {
+    const r = decodeFixture(fx as never);
+    const s = createGlSignal();
+    const z = { grave: [] as number[], medio: [] as number[], agudo: [] as number[] };
+    for (let i = 0; i < r.n; i++) {
+      stepGlSignal(s, r.dt[i], true, { low: r.v[i * 3], mid: r.v[i * 3 + 1], high: r.v[i * 3 + 2] }, cfg);
+      if (i < 600) continue; // 10 s de partida
+      const pr = paintReaction(s);
+      z.grave.push(Math.abs(pr.zoneLow) * 6);
+      z.medio.push(Math.abs(pr.zoneMid) * 6);
+      z.agudo.push(Math.abs(pr.zoneHigh) * 6);
+    }
+    return z;
+  };
+
+  it("ajustes do CEO: grave e agudo andam ~meia camada no p95 e quase nunca param", () => {
+    const z = run(CEO_1110);
+    for (const k of ["grave", "agudo"] as const) {
+      expect(q(z[k], 0.95), k).toBeGreaterThan(0.35);
+      expect(q(z[k], 0.5), k).toBeGreaterThan(0.1);
+      expect(z[k].filter((v) => v < 0.02).length / z[k].length, k).toBeLessThan(0.15);
+    }
+    // Mid 0,10 limita o meio, mas ele não fica morto.
+    expect(q(z.medio, 0.95)).toBeGreaterThan(0.1);
+  });
+
+  it("ajustes padrão: as três zonas vivas e todas abaixo do teto", () => {
+    const z = run(DEFAULT_GL_CFG);
+    for (const k of ["grave", "medio", "agudo"] as const) {
+      expect(q(z[k], 0.5), k).toBeGreaterThan(0.2);
+      expect(Math.max(...z[k]), k).toBeLessThan(ZONE_CAP);
+    }
   });
 });

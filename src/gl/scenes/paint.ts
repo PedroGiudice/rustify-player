@@ -115,8 +115,9 @@ export interface PaintReaction {
   stir: number;
   /** Kick: soma na altura do campo inteiro, todas as camadas incham. */
   pump: number;
-  /** Zonas (11/10): quanto cada faixa de altura se move com a sua banda.
-      Grave espalha o escuro, médios sobem o meio, agudos crescem o claro. */
+  /** Zonas (11/10): quanto cada faixa de altura se move com a sua banda,
+      COM SINAL (vaivém): banda acima da média expande a zona, abaixo
+      encolhe. Grave = escuro, médios = meio, agudos = claro. */
   zoneLow: number;
   zoneMid: number;
   zoneHigh: number;
@@ -132,6 +133,23 @@ export interface PaintReaction {
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+/** Teto do deslocamento de uma zona, em larguras de camada (joelho tanh:
+    nunca chega lá, sem degrau). */
+export const ZONE_CAP = 0.8;
+/** Larguras de camada por unidade de desvio, no trecho linear. Calibrado
+    no replay do sinal real (fft-real-2609) com os ajustes do CEO de 11/10
+    (Bass 0,30, Mid 0,10, Treble 0,60, suavização 1,0): grave e agudo
+    andam ~meia camada no p95. Ver paintRiso.test.ts. */
+export const ZONE_SENS = 4;
+
+/** Deslocamento de uma zona em unidades de altura do campo (1 camada =
+    1/PAINT_LAYERS), com sinal: banda acima da média expande a zona,
+    abaixo encolhe. */
+export function zoneShift(rel: number): number {
+  const r = rel > 0 ? (rel < 1 ? rel : 1) : rel < 0 ? (rel > -1 ? rel : -1) : 0;
+  return (ZONE_CAP * Math.tanh((ZONE_SENS * r) / ZONE_CAP)) / PAINT_LAYERS;
+}
+
 /** Números que o shader usa, calculados uma vez por quadro. Só lê a
     reação relativa à faixa: grave alto e parado não move nada. */
 export function paintReaction(sig: GlSignal): PaintReaction {
@@ -146,9 +164,9 @@ export function paintReaction(sig: GlSignal): PaintReaction {
   return {
     stir: 1 + 0.3 * swell,
     pump: 0.12 * pulse,
-    zoneLow: 0.08 * swell,
-    zoneMid: 0.07 * mid,
-    zoneHigh: 0.06 * high,
+    zoneLow: zoneShift(sig.lowRel),
+    zoneMid: zoneShift(sig.midRel),
+    zoneHigh: zoneShift(sig.highRel),
     sparkle: high,
     lift: 1 + 1.2 * pulse,
     vein: 1 + mid,
