@@ -74,6 +74,9 @@ respondendo = túnel de pé):
 # Probes MCP no app real:
 ssh -f -N -o ExitOnForwardFailure=yes -L 9223:localhost:9223 cmr-auto@100.102.249.9
 # driver_session: host=127.0.0.1 port=9223
+# Se a 9223 ainda estava presa quando o app reabriu (dpkg -i + reabrir
+# rápido), o bridge sobe na 9224: conferir com `ss -tlnp | grep rustify`
+# na cmr-auto e tunelar a porta que aparecer (aconteceu em 11/10).
 
 # Qdrant (curator, scripts de classificação):
 ssh -f -N -o ExitOnForwardFailure=yes -L 16333:localhost:6333 cmr-auto@100.102.249.9
