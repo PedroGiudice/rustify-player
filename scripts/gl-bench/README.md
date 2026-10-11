@@ -62,6 +62,7 @@ Parâmetros da página (`--query`):
 | `relief=all` | o Relevo em todas as variantes: original, mesh x 2 formas, ridges/contours/weave x 2 formas x 2 superfícies (15) |
 | `shots` | um PNG por cena/variante: `<cena>.png`, `relief-<linhas>-<forma>-<superfície>.png` |
 | `replay=fft-real-2609` | troca o `sim.ts` pelo sinal real gravado no app (`src/gl/__fixtures__/fft-real-2609.json`, decodificado por `src/gl/fftReplay.ts`), um evento por quadro com o dt gravado. Com `shots`, fotografa os 2 piores instantes da reação ANTIGA do Relevo (ver abaixo) |
+| `pal=RRGGBB,RRGGBB` | paleta (ink,ink2) no lugar do Copper: a cena com a cor de uma capa real (ex.: `pal=9af425,9af920`, a capa verde-limão de 11/10) |
 | `cfg=ceo` / `cfg=default` | cfg do sinal no replay: `ceo` (padrão; Bass 0,30, Mid 0,15, Treble 0,10, smoothing 1,0, pulse, depth 1,0) ou os defaults do app. Sem replay, sempre os defaults |
 
 O shot (e a fração de pixels acesos) sai de UM quadro num instante

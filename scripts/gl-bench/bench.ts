@@ -110,6 +110,21 @@ const COPPER: GlPalette = {
   soft: { r: 0x85, g: 0x82, b: 0x7b },
 };
 
+/** `pal=RRGGBB,RRGGBB` (ink,ink2) troca a paleta: ver a cena com a cor
+    de uma capa real. Inválido ou ausente = Copper. */
+function paletteFromQuery(v: string | null): GlPalette {
+  const hex = (h: string) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h.trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  };
+  const [a, b] = (v ?? "").split(",");
+  const ink = a ? hex(a) : null;
+  const ink2 = b ? hex(b) : null;
+  return ink ? { ...COPPER, ink, ink2: ink2 ?? ink } : COPPER;
+}
+
 interface SceneResult {
   key: string;
   label: string;
@@ -303,7 +318,7 @@ async function run(): Promise<void> {
   const gl = engine.gl;
   out.renderer = engine.rendererName();
   engine.resize(W, H);
-  engine.setPalette(COPPER);
+  engine.setPalette(paletteFromQuery(q.get("pal")));
   const one = new Uint8Array(4);
   const full = new Uint8Array(W * H * 4);
 

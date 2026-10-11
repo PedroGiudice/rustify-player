@@ -205,9 +205,18 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   o que foi reprovado e `fizzle_link.py` (gera o link; NUNCA redigitar o
   link a mao, a copia corrompe). Esboco = desenho inteiro dentro do
   `glsl(...)`, sem efeitos prontos do Fizzle, para o porte ser direto. No
-  porte, a reacao ao som vira RELATIVA (`swell`/`pulse`/`midLift`) e as
-  cores vem da paleta do app. Gosto do CEO: nada de textura fina repetida
-  (moire = "hipnotico", reticula = "tripofobia"), nada generico (fitas).
+  porte, a reacao ao som vira RELATIVA (`swell`/`pulse`/`midLift`/
+  `highLift`) e as cores vem da paleta do app. Gosto do CEO: nada de
+  textura fina repetida (moire = "hipnotico", reticula = "tripofobia"),
+  nada generico (fitas).
+- Tinta (0.2.85): as 6 camadas tem BRILHO FIXO (degraus de L do OKLab,
+  `gl/paintPalette.ts`) e a capa decide so o tom — capa clara de um tom so
+  (verde-limao) pintava 93% do fundo com luminancia 0,6-0,8; agora a media
+  fica em ~0,11. Escuras no tom de ink, claras no de ink2 (ou giradas 20°
+  para o creme quando ink2 = ink). Zonas por camada: escuro se espalha com
+  o grave, meio sobe com os medios, claro cresce/brilha com os agudos
+  (`highLift`, novo no sinal, ganho = Treble); o kick incha tudo, ~40% de
+  uma camada no beat depth padrao.
 - `src/gl/meta.ts` NAO importa codigo de GL (nomes das cenas +
   `glStatus`); e o que store e Tweaks consomem. O componente pesado
   (`components/GlBackground.tsx`) entra por `lazy()` no App e quem roda
