@@ -26,23 +26,28 @@ const sig = (o: Partial<GlSignal> = {}): GlSignal => ({ ...createGlSignal(), clo
 
 describe("Tinta: reação", () => {
   it("repouso é neutro: sem mexer a mais, sem inchar, relevo e veios no tamanho de base", () => {
-    expect(paintReaction(sig())).toEqual({ stir: 1, swell: 0, lift: 1, vein: 1 });
+    expect(paintReaction(sig())).toEqual({ stir: 1, pump: 0, zoneLow: 0, zoneMid: 0, zoneHigh: 0, sparkle: 0, lift: 1, vein: 1, flash: 0 });
   });
 
-  it("graves mexem e incham, kick levanta o relevo, médios engrossam os veios", () => {
-    const r = paintReaction(sig({ swell: 1, pulse: 1, midLift: 1 }));
+  it("zonas: grave move o escuro, médios o meio, agudos o claro; kick incha tudo, levanta o relevo e acende o reflexo", () => {
+    const r = paintReaction(sig({ swell: 1, pulse: 1, midLift: 1, highLift: 1 }));
     expect(r.stir).toBeCloseTo(1.3);
-    expect(r.swell).toBeCloseTo(0.09);
-    expect(r.lift).toBeCloseTo(1.8);
+    expect(r.pump).toBeCloseTo(0.12);
+    expect(r.zoneLow).toBeCloseTo(0.08);
+    expect(r.zoneMid).toBeCloseTo(0.07);
+    expect(r.zoneHigh).toBeCloseTo(0.06);
+    expect(r.sparkle).toBeCloseTo(1);
+    expect(r.lift).toBeCloseTo(2.2);
+    expect(r.flash).toBeCloseTo(1);
     expect(r.vein).toBeCloseTo(2);
   });
 
   it("lê só o relativo: grave absoluto alto e parado não move nada", () => {
-    expect(paintReaction(sig({ low: 1, mid: 1, beat: 1, level: 1 }))).toEqual({ stir: 1, swell: 0, lift: 1, vein: 1 });
+    expect(paintReaction(sig({ low: 1, mid: 1, high: 1, beat: 1, level: 1 }))).toEqual({ stir: 1, pump: 0, zoneLow: 0, zoneMid: 0, zoneHigh: 0, sparkle: 0, lift: 1, vein: 1, flash: 0 });
   });
 
   it("sinal fora de 0..1 é limitado", () => {
-    expect(paintReaction(sig({ swell: 5, pulse: -2, midLift: 9 }))).toEqual(paintReaction(sig({ swell: 1, midLift: 1 })));
+    expect(paintReaction(sig({ swell: 5, pulse: -2, midLift: 9, highLift: 3 }))).toEqual(paintReaction(sig({ swell: 1, midLift: 1, highLift: 1 })));
   });
 });
 
@@ -106,4 +111,17 @@ describe("Tinta e Riso: registro e ciclo de vida", () => {
       expect([...fake.live]).toEqual([]);
     });
   }
+});
+
+describe("Tinta: cada banda mexe só a sua zona", () => {
+  it("grave só zoneLow, médios só zoneMid, agudos só zoneHigh", () => {
+    const only = (o: Partial<GlSignal>) => {
+      const r = paintReaction(sig(o));
+      return [r.zoneLow > 0, r.zoneMid > 0, r.zoneHigh > 0];
+    };
+    expect(only({ swell: 1 })).toEqual([true, false, false]);
+    expect(only({ midLift: 1 })).toEqual([false, true, false]);
+    expect(only({ highLift: 1 })).toEqual([false, false, true]);
+    expect(only({ pulse: 1 })).toEqual([false, false, false]);
+  });
 });
