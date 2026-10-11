@@ -36,6 +36,16 @@ export const SCENE_META = [
     label: "Nébula",
     hint: "Fluido de ruído num shader só, sem geometria — custo todo em fillrate",
   },
+  {
+    key: "paint",
+    label: "Tinta",
+    hint: "Camadas de tinta grossa se misturando: graves mexem a tinta, o kick levanta o relevo",
+  },
+  {
+    key: "riso",
+    label: "Riso",
+    hint: "Manchas impressas em duas cores: graves crescem as manchas, o kick desalinha a segunda cor",
+  },
 ] as const;
 
 export type SceneKey = (typeof SCENE_META)[number]["key"];
