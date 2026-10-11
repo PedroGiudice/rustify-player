@@ -104,6 +104,24 @@ describe("reação relativa (swell / pulse / midLift / level)", () => {
     expect(s.midLift).toBeLessThan(0.05);
   });
 
+  it("agudos (11/10, zonas da Tinta): subida acima da média vira highLift; nível constante não; Treble multiplica", () => {
+    const step = (st: ReturnType<typeof createGlSignal>, n: number, high: number, c: GlCfg) => {
+      for (let i = 0; i < n; i++) stepGlSignal(st, 1 / 60, true, { low: 0.4, mid: 0.3, high }, c);
+    };
+    const s = createGlSignal();
+    step(s, 60 * 30, 0.6, pulseCfg);
+    expect(s.highLift).toBeLessThan(0.01);
+    step(s, 60 * 1, 0.9, pulseCfg);
+    expect(s.highLift).toBeGreaterThan(0.5);
+    step(s, 60 * 40, 0.9, pulseCfg);
+    expect(s.highLift).toBeLessThan(0.05);
+    // Treble 0 zera; o ganho entra no lift, não no raw.
+    const mute = createGlSignal();
+    step(mute, 60 * 20, 0.2, cfg({ ...pulseCfg, trebleGain: 0 }));
+    step(mute, 60 * 1, 0.8, cfg({ ...pulseCfg, trebleGain: 0 }));
+    expect(mute.highLift).toBe(0);
+  });
+
   it("relativo de verdade: o mesmo desenho em nível alto e baixo dá a mesma reação", () => {
     // Kicks a 120 BPM sobre um grave sustentado, em duas escalas.
     const pattern = (scale: number) => {
@@ -141,7 +159,7 @@ describe("reação relativa (swell / pulse / midLift / level)", () => {
     const avg = s.lowAvg;
     const dev = s.lowDev;
     run(s, 60 * 10, 0, 0, pulseCfg, false);
-    for (const k of ["swell", "pulse", "midLift", "level"] as const) expect(s[k]).toBeLessThan(0.01);
+    for (const k of ["swell", "pulse", "midLift", "highLift", "level"] as const) expect(s[k]).toBeLessThan(0.01);
     expect(s.lowAvg).toBe(avg);
     expect(s.lowDev).toBe(dev);
     // Volta no nível médio de sempre: nada de swell/pulse gigante.
@@ -164,7 +182,7 @@ describe("reação relativa (swell / pulse / midLift / level)", () => {
     const avg = s.lowAvg;
     const dev = s.lowDev;
     run(s, 60 * 20, 0, 0, pulseCfg, true);
-    for (const k of ["swell", "pulse", "midLift", "level"] as const) expect(s[k]).toBeLessThan(0.01);
+    for (const k of ["swell", "pulse", "midLift", "highLift", "level"] as const) expect(s[k]).toBeLessThan(0.01);
     expect(s.lowAvg).toBe(avg);
     expect(s.lowDev).toBe(dev);
     let maxSwell = 0;
@@ -186,10 +204,10 @@ describe("reação relativa (swell / pulse / midLift / level)", () => {
       stepGlSignal(s, 1 / 60, true, { low: 0.5, mid: 0.3, high: 0 }, cfg({ ...pulseCfg, bassGain: NaN, midGain: Infinity, beatDepth: NaN, smoothing: NaN }));
     stepGlSignal(s, NaN, true, { low: 0.5, mid: 0.3, high: 0 }, pulseCfg);
     run(s, 60 * 5, 0.5, 0.3, pulseCfg);
-    for (const k of ["low", "mid", "high", "beat", "clock", "swell", "pulse", "midLift", "level", "lowAvg", "lowDev", "midAvg", "midDev"] as const) {
+    for (const k of ["low", "mid", "high", "beat", "clock", "swell", "pulse", "midLift", "highLift", "level", "lowAvg", "lowDev", "midAvg", "midDev", "highAvg", "highDev"] as const) {
       expect(Number.isFinite(s[k]), k).toBe(true);
     }
-    for (const k of ["low", "mid", "high", "beat", "swell", "pulse", "midLift", "level"] as const) {
+    for (const k of ["low", "mid", "high", "beat", "swell", "pulse", "midLift", "highLift", "level"] as const) {
       expect(s[k], k).toBeGreaterThanOrEqual(0);
       expect(s[k], k).toBeLessThanOrEqual(1);
     }

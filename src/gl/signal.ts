@@ -104,6 +104,9 @@ export interface GlSignal {
   pulse: number;
   /** Médios acima da média recente. */
   midLift: number;
+  /** Agudos acima da média recente (11/10: zonas da Tinta, as camadas
+      claras cintilam com eles). Ganho = Treble do Tweaks. */
+  highLift: number;
   /** Nível absoluto lento dos graves (0..1). Só pode somar pouco
       (ver gl/reliefReaction.ts); decai a zero com o stream parado. */
   level: number;
@@ -112,11 +115,14 @@ export interface GlSignal {
   /** Envelopes dos raws SEM ganho (o ganho entra no lift). */
   lowEnv: number;
   midEnv: number;
+  highEnv: number;
   /** Médias e dispersões (desvio absoluto médio) de longo prazo. */
   lowAvg: number;
   lowDev: number;
   midAvg: number;
   midDev: number;
+  highAvg: number;
+  highDev: number;
   /** Segundos de stream vivo já vistos pelas médias (satura em
       REL_AVG_TAU): no começo a média é praticamente a acumulada. */
   relAge: number;
@@ -125,8 +131,8 @@ export interface GlSignal {
 export function createGlSignal(): GlSignal {
   return {
     low: 0, mid: 0, high: 0, beat: 0, clock: 0,
-    swell: 0, pulse: 0, midLift: 0, level: 0,
-    lowEnv: 0, midEnv: 0, lowAvg: 0, lowDev: 0, midAvg: 0, midDev: 0,
+    swell: 0, pulse: 0, midLift: 0, highLift: 0, level: 0,
+    lowEnv: 0, midEnv: 0, highEnv: 0, lowAvg: 0, lowDev: 0, midAvg: 0, midDev: 0, highAvg: 0, highDev: 0,
     relAge: 0,
   };
 }
@@ -151,6 +157,7 @@ export const REL_DEV_FLOOR = 0.04;
 /** Dispersões acima da média para o lift chegar a 1. */
 export const SWELL_SPAN = 2.5;
 export const MID_SPAN = 2.5;
+export const HIGH_SPAN = 2.5;
 /** Pulso: o raw.low precisa passar média + PULSE_GATE·dispersão para
     contar como kick, e chega a 1 em + (GATE + SPAN)·dispersão. O gate
     tira o "zumbido" do grave sustentado (que fica em torno da média)
@@ -219,7 +226,7 @@ export function stepGlSignal(
   s.beat += (tBeat - s.beat) * (1 - Math.exp(-dt / BEAT_TAU));
   if (!beatOn) s.beat = 0;
 
-  stepRelative(s, dt, tau, fresh && rl + rm > SILENCE_FLOOR, rl, rm, cfg, beatOn);
+  stepRelative(s, dt, tau, fresh && rl + rm > SILENCE_FLOOR, rl, rm, rh, cfg, beatOn);
 
   // Relógio: só o modo speed mexe na derivada.
   const boost = cfg.beatMode === "speed" ? speedBoostGain(gain(cfg.beatDepth)) * s.beat : 0;
@@ -228,7 +235,7 @@ export function stepGlSignal(
 
 const ema = (v: number, target: number, dt: number, tau: number) => v + (target - v) * (1 - Math.exp(-dt / tau));
 
-/** Reação relativa à faixa (swell / pulse / midLift / level). */
+/** Reação relativa à faixa (swell / pulse / midLift / highLift / level). */
 function stepRelative(
   s: GlSignal,
   dt: number,
@@ -236,6 +243,7 @@ function stepRelative(
   live: boolean,
   rawLow: number,
   rawMid: number,
+  rawHigh: number,
   cfg: GlCfg,
   beatOn: boolean,
 ): void {
@@ -244,8 +252,10 @@ function stepRelative(
     // dispersões congelam.
     s.lowEnv = ema(s.lowEnv, 0, dt, tau);
     s.midEnv = ema(s.midEnv, 0, dt, tau);
+    s.highEnv = ema(s.highEnv, 0, dt, tau);
     s.swell = ema(s.swell, 0, dt, tau);
     s.midLift = ema(s.midLift, 0, dt, tau);
+    s.highLift = ema(s.highLift, 0, dt, tau);
     s.pulse = ema(s.pulse, 0, dt, PULSE_RELEASE);
     s.level = ema(s.level, 0, dt, tau);
     if (!beatOn) s.pulse = 0;
@@ -253,6 +263,7 @@ function stepRelative(
   }
   const lo = clamp01(rawLow);
   const mi = clamp01(rawMid);
+  const hi = clamp01(rawHigh);
   // Tau efetivo = idade (média acumulada) até saturar no tau nominal.
   // Com dt = idade no 1º quadro o peso da 1ª amostra é 1 - e^-1; o
   // piso REL_AGE_MIN evita tau 0 e divisões degeneradas.
@@ -263,21 +274,28 @@ function stepRelative(
     // Primeira amostra viva: média nela, dispersão no piso.
     s.lowAvg = lo;
     s.midAvg = mi;
+    s.highAvg = hi;
     s.lowDev = REL_DEV_FLOOR;
     s.midDev = REL_DEV_FLOOR;
+    s.highDev = REL_DEV_FLOOR;
   }
   s.lowAvg = ema(s.lowAvg, lo, dt, avgTau);
   s.midAvg = ema(s.midAvg, mi, dt, avgTau);
+  s.highAvg = ema(s.highAvg, hi, dt, avgTau);
   s.lowDev = ema(s.lowDev, Math.abs(lo - s.lowAvg), dt, devTau);
   s.midDev = ema(s.midDev, Math.abs(mi - s.midAvg), dt, devTau);
+  s.highDev = ema(s.highDev, Math.abs(hi - s.highAvg), dt, devTau);
   const lowSd = Math.max(REL_DEV_FLOOR, s.lowDev);
   const midSd = Math.max(REL_DEV_FLOOR, s.midDev);
+  const highSd = Math.max(REL_DEV_FLOOR, s.highDev);
 
   s.lowEnv = ema(s.lowEnv, lo, dt, tau);
   s.midEnv = ema(s.midEnv, mi, dt, tau);
+  s.highEnv = ema(s.highEnv, hi, dt, tau);
   const bass = gain(cfg.bassGain);
   s.swell = clamp01((bass * (s.lowEnv - s.lowAvg)) / (SWELL_SPAN * lowSd));
   s.midLift = clamp01((gain(cfg.midGain) * (s.midEnv - s.midAvg)) / (MID_SPAN * midSd));
+  s.highLift = clamp01((gain(cfg.trebleGain) * (s.highEnv - s.highAvg)) / (HIGH_SPAN * highSd));
   s.level = ema(s.level, clamp01(bass) * s.lowAvg, dt, tau);
 
   const kick = beatOn ? clamp01((lo - s.lowAvg - PULSE_GATE * lowSd) / (PULSE_SPAN * lowSd)) : 0;
