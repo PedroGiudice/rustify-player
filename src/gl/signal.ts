@@ -107,6 +107,13 @@ export interface GlSignal {
   /** Agudos acima da média recente (11/10: zonas da Tinta, as camadas
       claras cintilam com eles). Ganho = Treble do Tweaks. */
   highLift: number;
+  /** Desvio COM SINAL de cada banda em relação à média recente, -1..1,
+      com o ganho do Tweaks (11/10, zonas da Tinta). Positivo = acima da
+      média (o lift correspondente é exatamente a parte positiva);
+      negativo = abaixo. Decai a zero com o stream parado. */
+  lowRel: number;
+  midRel: number;
+  highRel: number;
   /** Nível absoluto lento dos graves (0..1). Só pode somar pouco
       (ver gl/reliefReaction.ts); decai a zero com o stream parado. */
   level: number;
@@ -131,7 +138,7 @@ export interface GlSignal {
 export function createGlSignal(): GlSignal {
   return {
     low: 0, mid: 0, high: 0, beat: 0, clock: 0,
-    swell: 0, pulse: 0, midLift: 0, highLift: 0, level: 0,
+    swell: 0, pulse: 0, midLift: 0, highLift: 0, lowRel: 0, midRel: 0, highRel: 0, level: 0,
     lowEnv: 0, midEnv: 0, highEnv: 0, lowAvg: 0, lowDev: 0, midAvg: 0, midDev: 0, highAvg: 0, highDev: 0,
     relAge: 0,
   };
@@ -179,6 +186,8 @@ export interface FftBands {
 // NaN cai em 0 (e Infinity no teto): um valor inválido no raw ou num
 // knob nunca entra no estado, que é integrado e não se recupera sozinho.
 const clamp01 = (v: number) => (v > 0 ? (v < 1 ? v : 1) : 0);
+/** -1..1; NaN cai em 0, ±Infinity nos tetos. */
+const clampSigned = (v: number) => (v > 0 ? (v < 1 ? v : 1) : v < 0 ? (v > -1 ? v : -1) : 0);
 /** Ganho/knob não negativo e finito; o resto vale 0. */
 const gain = (v: number) => (v > 0 && v < Infinity ? v : 0);
 /** Amostra do FFT finita; o resto vale 0. */
@@ -256,6 +265,9 @@ function stepRelative(
     s.swell = ema(s.swell, 0, dt, tau);
     s.midLift = ema(s.midLift, 0, dt, tau);
     s.highLift = ema(s.highLift, 0, dt, tau);
+    s.lowRel = ema(s.lowRel, 0, dt, tau);
+    s.midRel = ema(s.midRel, 0, dt, tau);
+    s.highRel = ema(s.highRel, 0, dt, tau);
     s.pulse = ema(s.pulse, 0, dt, PULSE_RELEASE);
     s.level = ema(s.level, 0, dt, tau);
     if (!beatOn) s.pulse = 0;
@@ -293,9 +305,15 @@ function stepRelative(
   s.midEnv = ema(s.midEnv, mi, dt, tau);
   s.highEnv = ema(s.highEnv, hi, dt, tau);
   const bass = gain(cfg.bassGain);
-  s.swell = clamp01((bass * (s.lowEnv - s.lowAvg)) / (SWELL_SPAN * lowSd));
-  s.midLift = clamp01((gain(cfg.midGain) * (s.midEnv - s.midAvg)) / (MID_SPAN * midSd));
-  s.highLift = clamp01((gain(cfg.trebleGain) * (s.highEnv - s.highAvg)) / (HIGH_SPAN * highSd));
+  const lowDelta = (bass * (s.lowEnv - s.lowAvg)) / (SWELL_SPAN * lowSd);
+  const midDelta = (gain(cfg.midGain) * (s.midEnv - s.midAvg)) / (MID_SPAN * midSd);
+  const highDelta = (gain(cfg.trebleGain) * (s.highEnv - s.highAvg)) / (HIGH_SPAN * highSd);
+  s.swell = clamp01(lowDelta);
+  s.midLift = clamp01(midDelta);
+  s.highLift = clamp01(highDelta);
+  s.lowRel = clampSigned(lowDelta);
+  s.midRel = clampSigned(midDelta);
+  s.highRel = clampSigned(highDelta);
   s.level = ema(s.level, clamp01(bass) * s.lowAvg, dt, tau);
 
   const kick = beatOn ? clamp01((lo - s.lowAvg - PULSE_GATE * lowSd) / (PULSE_SPAN * lowSd)) : 0;
