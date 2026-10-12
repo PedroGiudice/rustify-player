@@ -378,7 +378,7 @@ token não exige reiniciar. O app avisa se a permissão do arquivo for mais
 aberta que 0600. Nenhum valor entra em log; `Debug` dos structs redige.
 
 `crate_sources_status -> {soundcloud: TokenOk|NoToken|ApiDown, ffmpeg: bool,
-uv: bool, bandcamp: IdentityOk|NoIdentity}`. A checagem do token é um `GET
+uv: bool, bandcamp_identity: bool}` (na implementação o Bandcamp é o booleano `bandcamp_identity`). A checagem do token é um `GET
 /me` com cache de 10 min.
 
 A CSP não muda: todo tráfego externo sai do Rust ou do helper. A capa do card
