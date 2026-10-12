@@ -1,0 +1,247 @@
+{
+  "13852861400725988188": {
+    "energy": 0.7,
+    "valence": 0.3,
+    "mood_tags": [
+      "dark",
+      "anxious",
+      "raw",
+      "driving"
+    ],
+    "activity_tags": [
+      "party",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "6627795286779399417": {
+    "energy": 0.9,
+    "valence": 0.4,
+    "mood_tags": [
+      "raw",
+      "dark",
+      "playful",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "high"
+  },
+  "6354567151905047866": {
+    "energy": 0.8,
+    "valence": 0.2,
+    "mood_tags": [
+      "dark",
+      "anxious",
+      "intense",
+      "raw"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "7572560307466949083": {
+    "energy": 0.9,
+    "valence": 0.4,
+    "mood_tags": [
+      "aggressive",
+      "confident",
+      "driving",
+      "rebellious"
+    ],
+    "activity_tags": [
+      "party",
+      "driving",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "15232579661465500839": {
+    "energy": 0.8,
+    "valence": 0.5,
+    "mood_tags": [
+      "groovy",
+      "playful",
+      "sensual",
+      "raw"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "8548008086935509698": {
+    "energy": 0.7,
+    "valence": 0.4,
+    "mood_tags": [
+      "ethereal",
+      "dark",
+      "sensual",
+      "groovy"
+    ],
+    "activity_tags": [
+      "party",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "10279985878193399537": {
+    "energy": 1.0,
+    "valence": 0.2,
+    "mood_tags": [
+      "aggressive",
+      "intense",
+      "dark",
+      "rebellious"
+    ],
+    "activity_tags": [
+      "workout",
+      "party"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "high"
+  },
+  "2288801189389037641": {
+    "energy": 0.8,
+    "valence": 0.5,
+    "mood_tags": [
+      "playful",
+      "groovy",
+      "sensual",
+      "confident"
+    ],
+    "activity_tags": [
+      "party",
+      "social",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "high"
+  },
+  "8147726643779579706": {
+    "energy": 1.0,
+    "valence": 0.4,
+    "mood_tags": [
+      "intense",
+      "anxious",
+      "confident",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "workout",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "high"
+  },
+  "1704615256429530056": {
+    "energy": 0.8,
+    "valence": 0.4,
+    "mood_tags": [
+      "playful",
+      "raw",
+      "rebellious",
+      "groovy"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "10750812071049122721": {
+    "energy": 0.8,
+    "valence": 0.6,
+    "mood_tags": [
+      "playful",
+      "nostalgic",
+      "groovy",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "high"
+  },
+  "11988706185126284237": {
+    "energy": 0.9,
+    "valence": 0.3,
+    "mood_tags": [
+      "dark",
+      "driving",
+      "intense",
+      "playful"
+    ],
+    "activity_tags": [
+      "party",
+      "workout",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "high"
+  },
+  "87728346192009673": {
+    "energy": 0.9,
+    "valence": 0.3,
+    "mood_tags": [
+      "aggressive",
+      "driving",
+      "raw",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "driving",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "13616214638716771481": {
+    "energy": 0.9,
+    "valence": 0.3,
+    "mood_tags": [
+      "anxious",
+      "raw",
+      "energetic",
+      "rebellious"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  },
+  "3305473395565552450": {
+    "energy": 0.8,
+    "valence": 0.4,
+    "mood_tags": [
+      "playful",
+      "dark",
+      "sensual",
+      "rebellious"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12c",
+    "annotation_confidence": "medium"
+  }
+}
