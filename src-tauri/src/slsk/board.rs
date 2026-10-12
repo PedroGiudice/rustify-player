@@ -97,16 +97,6 @@ impl Source {
         }
     }
 
-    /// Texto curto para a UI (subtítulo da fila): peer ou link.
-    #[allow(dead_code)] // consumido pela fila da UI (tasks seguintes do plano Crate fase 1)
-    pub fn label(&self) -> String {
-        match self {
-            Source::Soulseek { username, .. } => username.clone(),
-            Source::SoundCloud { permalink_url, .. } => permalink_url.clone(),
-            Source::Bandcamp { url, .. } => url.clone(),
-        }
-    }
-
     /// Chave de identidade (sem `size`: a mesma faixa com tamanho novo é o
     /// mesmo job). A do Soulseek é exatamente a string antiga
     /// `"{username}\u{1}{remote_filename}"`, sem prefixo de origem: jobs já
@@ -153,16 +143,6 @@ pub enum FormatIn {
 impl FormatIn {
     pub fn is_lossy(self) -> bool {
         matches!(self, FormatIn::Mp3_320)
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            FormatIn::Flac => "FLAC",
-            FormatIn::Wav24 => "WAV 24 bit",
-            FormatIn::Wav16 => "WAV",
-            FormatIn::Aiff => "AIFF",
-            FormatIn::Mp3_320 => "MP3 320",
-        }
     }
 }
 

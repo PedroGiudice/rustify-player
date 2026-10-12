@@ -18,6 +18,7 @@ mod sc_worker;
 mod sources;
 mod stage;
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -120,8 +121,16 @@ pub struct Slsk {
 const ME_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 /// Validade do `OwnedIndex` usado no `suggested_dest` dos resultados.
 const OWNED_CACHE_TTL: Duration = Duration::from_secs(60);
-/// Resultados pedidos à busca do SoundCloud.
-const SC_SEARCH_LIMIT: u32 = 30;
+/// Resultados pedidos à busca do SoundCloud (spec §3.1/§5.1: até 10).
+const SC_SEARCH_LIMIT: u32 = 10;
+/// Pacer do SoundCloud (spec §2.4): intervalo mínimo entre chamadas e teto
+/// por hora de busca/resolução, sem período de "frio".
+const SC_MIN_INTERVAL: Duration = Duration::from_secs(1);
+const SC_MAX_PER_HOUR: usize = 120;
+const SC_WINDOW: Duration = Duration::from_secs(3600);
+/// Código estável de "sem token" devolvido por `crate_sc_probe` (arquivo
+/// ilegível ou token recusado pela API); a UI compara com ele.
+const NO_TOKEN: &str = "no_token";
 /// Teto da capa baixada para o card e lado máximo do JPEG devolvido.
 const ARTWORK_MAX_BYTES: usize = 8 * 1024 * 1024;
 const ARTWORK_CARD_SIDE: u32 = 500;
@@ -130,9 +139,8 @@ const ARTWORK_CARD_SIDE: u32 = 500;
 struct External {
     sc_api: Arc<dyn SoundCloudApi>,
     sources: Arc<SourcesConfig>,
-    /// `(quando, hash do token, veredito)`: o hash (nunca o token) faz um
-    /// token trocado no arquivo invalidar o cache na hora.
-    me_cache: Mutex<Option<(Instant, u64, TokenStatus)>>,
+    me_cache: Mutex<MeCache>,
+    sc_pacer: Mutex<ScPacer>,
     indexer: IndexerHandle,
     music_root: PathBuf,
     owned_cache: Mutex<Option<(Instant, Arc<OwnedIndex>)>>,
@@ -143,45 +151,94 @@ impl External {
     /// cada 30 s; o SoundCloud não precisa ouvir isso).
     fn sources_status(&self) -> SourcesStatus {
         compute_with(&self.sources, |token| {
-            let key = token_hash(token);
-            let mut g = self.me_cache.lock().unwrap_or_else(|p| p.into_inner());
-            if let Some((at, k, st)) = g.as_ref() {
-                if *k == key && at.elapsed() < ME_CACHE_TTL {
-                    return st.clone();
-                }
-            }
-            let st = me_verdict(self.sc_api.me(token));
-            *g = (!matches!(st, TokenStatus::ApiDown)).then(|| (Instant::now(), key, st.clone()));
-            st
+            cached_me(&self.me_cache, token, Instant::now(), |t| me_verdict(self.sc_api.me(t)))
         })
     }
 
-    /// Pasta do acervo onde o artista já mora (`suggested_dest`). Falha do
-    /// Qdrant vira `None`: a sugestão é conveniência, não pré-requisito.
-    fn suggest_dest(&self, artist: &str) -> Option<String> {
-        let idx = {
-            let mut g = self.owned_cache.lock().unwrap_or_else(|p| p.into_inner());
-            match g.as_ref() {
-                Some((at, idx)) if at.elapsed() < OWNED_CACHE_TTL => idx.clone(),
-                _ => match OwnedIndex::build(self.indexer.client(), &self.music_root) {
-                    Ok(idx) => {
-                        let idx = Arc::new(idx);
-                        *g = Some((Instant::now(), idx.clone()));
-                        idx
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "crate: OwnedIndex indisponível para suggested_dest");
-                        return None;
-                    }
-                },
-            }
-        };
-        idx.folder_for_artist(artist).map(str::to_string)
+    /// Consulta o pacer do SoundCloud antes de busca/resolução. Estourado,
+    /// devolve erro na hora (nunca dorme na thread).
+    fn pace(&self) -> Result<(), String> {
+        self.sc_pacer.lock().unwrap_or_else(|p| p.into_inner()).admit(Instant::now())
     }
 
-    fn to_result(&self, t: ScTrack) -> ScResult {
-        let suggested_dest = self.suggest_dest(&t.user_name);
-        ScResult::from_track(t, suggested_dest)
+    /// `OwnedIndex` do `suggested_dest`, montado no máximo uma vez por
+    /// comando. Falha do Qdrant vira `None`: a sugestão é conveniência, não
+    /// pré-requisito.
+    fn owned_index(&self) -> Option<Arc<OwnedIndex>> {
+        let mut g = self.owned_cache.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, idx)) = g.as_ref() {
+            if at.elapsed() < OWNED_CACHE_TTL {
+                return Some(idx.clone());
+            }
+        }
+        match OwnedIndex::build(self.indexer.client(), &self.music_root) {
+            Ok(idx) => {
+                let idx = Arc::new(idx);
+                *g = Some((Instant::now(), idx.clone()));
+                Some(idx)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "crate: OwnedIndex indisponível para suggested_dest");
+                None
+            }
+        }
+    }
+}
+
+fn to_result(owned: Option<&OwnedIndex>, t: ScTrack) -> ScResult {
+    let suggested_dest = owned.and_then(|idx| idx.folder_for_artist(&t.user_name)).map(str::to_string);
+    ScResult::from_track(t, suggested_dest)
+}
+
+/// Veredito do `me` em cache: `(quando, hash do token, veredito)`. O hash
+/// (nunca o token) faz um token trocado no arquivo invalidar na hora.
+#[derive(Default)]
+struct MeCache {
+    entry: Option<(Instant, u64, TokenStatus)>,
+}
+
+/// Lê o cache, solta o lock, chama `check` (rede) e só então grava: um `me`
+/// lento não prende os polls seguintes no mutex. `ApiDown` nunca é guardado.
+fn cached_me(cache: &Mutex<MeCache>, token: &str, now: Instant, check: impl FnOnce(&str) -> TokenStatus) -> TokenStatus {
+    let key = token_hash(token);
+    {
+        let g = cache.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, k, st)) = g.entry.as_ref() {
+            if *k == key && now.saturating_duration_since(*at) < ME_CACHE_TTL {
+                return st.clone();
+            }
+        }
+    }
+    let st = check(token);
+    if !matches!(st, TokenStatus::ApiDown) {
+        cache.lock().unwrap_or_else(|p| p.into_inner()).entry = Some((now, key, st.clone()));
+    }
+    st
+}
+
+/// Pacer do SoundCloud (spec §2.4). Relógio injetado em `admit` para teste.
+#[derive(Default)]
+struct ScPacer {
+    last: Option<Instant>,
+    window: VecDeque<Instant>,
+}
+
+impl ScPacer {
+    fn admit(&mut self, now: Instant) -> Result<(), String> {
+        while let Some(&first) = self.window.front() {
+            if now.saturating_duration_since(first) >= SC_WINDOW {
+                self.window.pop_front();
+            } else {
+                break;
+            }
+        }
+        let cedo = self.last.is_some_and(|l| now.saturating_duration_since(l) < SC_MIN_INTERVAL);
+        if cedo || self.window.len() >= SC_MAX_PER_HOUR {
+            return Err("SoundCloud: aguarde alguns segundos".to_string());
+        }
+        self.last = Some(now);
+        self.window.push_back(now);
+        Ok(())
     }
 }
 
@@ -198,17 +255,6 @@ fn me_verdict(r: Result<(), ScError>) -> TokenStatus {
         Err(ScError::NoToken) => TokenStatus::NoToken,
         Err(_) => TokenStatus::ApiDown,
     }
-}
-
-/// Status das fontes (spec §5.4). `sc = None` não chama a rede: com o
-/// arquivo de token legível o SoundCloud fica `TokenOk`. Em produção o
-/// status sai de `External::sources_status`, que põe o `me` em cache.
-#[cfg(test)]
-pub(crate) fn compute_sources_status(cfg: &SourcesConfig, sc: Option<&dyn SoundCloudApi>) -> SourcesStatus {
-    compute_with(cfg, |token| match sc {
-        Some(api) => me_verdict(api.me(token)),
-        None => TokenStatus::TokenOk,
-    })
 }
 
 /// Núcleo do status: ferramentas, identidade do Bandcamp e o token do
@@ -281,8 +327,8 @@ fn probe_verdict(ext: &str, size: Option<u64>, kbps_est: Option<u32>) -> ScProbe
     let e = ext.to_ascii_lowercase();
     let (format_label, allowed, reason) = match e.as_str() {
         "flac" => ("FLAC".to_string(), true, None),
-        "wav" => ("WAV".to_string(), true, None),
-        "aiff" | "aif" => ("AIFF".to_string(), true, None),
+        "wav" | "wave" => ("WAV".to_string(), true, None),
+        "aiff" | "aif" | "aifc" => ("AIFF".to_string(), true, None),
         "mp3" => match kbps_est {
             Some(k) if k < sc_worker::MIN_MP3_KBPS => {
                 (format!("MP3 {k}"), false, Some(format!("MP3 {k}, não entra (abaixo de 320)")))
@@ -291,7 +337,10 @@ fn probe_verdict(ext: &str, size: Option<u64>, kbps_est: Option<u32>) -> ScProbe
             // Sem tamanho não há estimativa: o ffprobe decide depois de baixar.
             None => ("MP3".to_string(), true, None),
         },
-        "" => ("?".to_string(), false, Some("formato do original desconhecido".to_string())),
+        // A URL assinada do CDN não tem extensão e o `ext` vem só dos
+        // headers: sem ele, quem decide é o ffprobe do arquivo baixado,
+        // como faz o worker.
+        "" => ("formato a confirmar".to_string(), true, None),
         other => (other.to_ascii_uppercase(), false, Some(format!("formato não suportado ({other})"))),
     };
     ScProbe { ext: e, size, kbps_est, format_label, allowed, reason }
@@ -302,6 +351,15 @@ fn sc_err(e: ScError) -> String {
     match e {
         ScError::NoToken => "token do SoundCloud recusado".to_string(),
         other => other.to_string(),
+    }
+}
+
+/// Erro de `crate_sc_probe`: token ausente ou recusado vira o código
+/// estável `NO_TOKEN`; o resto segue como texto.
+fn probe_err(e: ScError) -> String {
+    match e {
+        ScError::NoToken => NO_TOKEN.to_string(),
+        other => sc_err(other),
     }
 }
 
@@ -354,7 +412,8 @@ impl Slsk {
         let ext = Arc::new(External {
             sc_api,
             sources,
-            me_cache: Mutex::new(None),
+            me_cache: Mutex::new(MeCache::default()),
+            sc_pacer: Mutex::new(ScPacer::default()),
             indexer: indexer.clone(),
             music_root: cfg.music_root.clone(),
             owned_cache: Mutex::new(None),
@@ -489,8 +548,10 @@ pub(crate) fn slsk_clear_finished(sl: State<Slsk>) -> u32 {
 pub(crate) async fn crate_sc_search(sl: State<'_, Slsk>, query: String) -> Result<Vec<ScResult>, String> {
     let ext = sl.ext.clone();
     blocking(move || {
+        ext.pace()?;
         let tracks = ext.sc_api.search(query.trim(), SC_SEARCH_LIMIT).map_err(sc_err)?;
-        Ok(tracks.into_iter().map(|t| ext.to_result(t)).collect())
+        let owned = ext.owned_index();
+        Ok(tracks.into_iter().map(|t| to_result(owned.as_deref(), t)).collect())
     })
     .await
 }
@@ -499,8 +560,9 @@ pub(crate) async fn crate_sc_search(sl: State<'_, Slsk>, query: String) -> Resul
 pub(crate) async fn crate_sc_resolve(sl: State<'_, Slsk>, url: String) -> Result<ScResult, String> {
     let ext = sl.ext.clone();
     blocking(move || {
+        ext.pace()?;
         let t = ext.sc_api.resolve(url.trim()).map_err(sc_err)?;
-        Ok(ext.to_result(t))
+        Ok(to_result(ext.owned_index().as_deref(), t))
     })
     .await
 }
@@ -510,8 +572,8 @@ pub(crate) async fn crate_sc_probe(sl: State<'_, Slsk>, track_id: u64, duration_
     let ext = sl.ext.clone();
     blocking(move || {
         // Lido agora, só em memória: nunca em log nem na resposta.
-        let token = ext.sources.read_sc_token().map_err(|_| "sem token do SoundCloud".to_string())?;
-        let orig = ext.sc_api.probe_original(track_id, &token, duration_ms).map_err(sc_err)?;
+        let token = ext.sources.read_sc_token().map_err(|_| NO_TOKEN.to_string())?;
+        let orig = ext.sc_api.probe_original(track_id, &token, duration_ms).map_err(probe_err)?;
         Ok(probe_verdict(&orig.ext, orig.size, orig.kbps_est))
     })
     .await
@@ -545,8 +607,10 @@ pub(crate) fn crate_download(
     dest_playlist: String,
     artwork_url: Option<String>,
 ) -> Result<String, String> {
-    if !matches!(source, Source::SoundCloud { .. }) {
-        return Err("fonte ainda não suportada".to_string());
+    match source {
+        Source::SoundCloud { .. } => {}
+        Source::Soulseek { .. } => return Err("origem não aceita por este caminho (Soulseek usa slsk_download)".to_string()),
+        Source::Bandcamp { .. } => return Err("fonte ainda não suportada".to_string()),
     }
     sl.send_and_wait(|reply| SlskTask::DownloadExternal { source, meta, artwork_url, dest: dest_playlist, reply })
 }
@@ -609,26 +673,132 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sources_status_sem_token_e_sem_ffmpeg_inexistente() {
+    fn sources_status_sem_token_nao_consulta_o_me() {
         let tmp = tempfile::tempdir().unwrap();
         let mut cfg = sources::SourcesConfig::load_with(tmp.path(), |_| None);
         cfg.sc_token_file = tmp.path().join("nao.txt");
         cfg.ffmpeg = "/caminho/inexistente/ffmpeg".into();
-        let st = compute_sources_status(&cfg, None); // None = sem cliente (não chama a rede)
+        let st = compute_with(&cfg, |_| panic!("sem token não pode ir à rede"));
         assert!(matches!(st.soundcloud, sources::TokenStatus::NoToken));
         assert!(!st.ffmpeg);
     }
 
     #[test]
-    fn sources_status_com_token_sem_cliente_e_token_ok() {
+    fn sources_status_com_token_usa_o_veredito_do_me() {
         let tmp = tempfile::tempdir().unwrap();
         let mut cfg = sources::SourcesConfig::load_with(tmp.path(), |_| None);
         cfg.sc_token_file = tmp.path().join("sc.txt");
         std::fs::write(&cfg.sc_token_file, "2-abc\n").unwrap();
         cfg.bc_identity_file = tmp.path().join("bc.txt");
-        let st = compute_sources_status(&cfg, None);
-        assert!(matches!(st.soundcloud, sources::TokenStatus::TokenOk));
+        let mut visto = None;
+        let st = compute_with(&cfg, |t| {
+            visto = Some(t.to_string());
+            TokenStatus::ApiDown
+        });
+        assert_eq!(visto.as_deref(), Some("2-abc"));
+        assert!(matches!(st.soundcloud, sources::TokenStatus::ApiDown));
         assert!(!st.bandcamp_identity, "arquivo de identidade ausente");
+    }
+
+    /// Conta as chamadas a `check` através de `cached_me`, o caminho de produção.
+    fn me_contado(cache: &Mutex<MeCache>, token: &str, now: Instant, st: TokenStatus, n: &mut u32) -> TokenStatus {
+        cached_me(cache, token, now, |_| {
+            *n += 1;
+            st.clone()
+        })
+    }
+
+    #[test]
+    fn me_cache_acerta_dentro_do_ttl() {
+        let cache = Mutex::new(MeCache::default());
+        let t0 = Instant::now();
+        let mut n = 0;
+        me_contado(&cache, "a", t0, TokenStatus::TokenOk, &mut n);
+        let st = me_contado(&cache, "a", t0 + Duration::from_secs(60), TokenStatus::NoToken, &mut n);
+        assert_eq!(n, 1);
+        assert!(matches!(st, TokenStatus::TokenOk), "veio do cache");
+    }
+
+    #[test]
+    fn me_cache_expira_depois_do_ttl() {
+        let cache = Mutex::new(MeCache::default());
+        let t0 = Instant::now();
+        let mut n = 0;
+        me_contado(&cache, "a", t0, TokenStatus::TokenOk, &mut n);
+        me_contado(&cache, "a", t0 + ME_CACHE_TTL + Duration::from_secs(1), TokenStatus::TokenOk, &mut n);
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn me_cache_invalida_com_token_trocado() {
+        let cache = Mutex::new(MeCache::default());
+        let t0 = Instant::now();
+        let mut n = 0;
+        me_contado(&cache, "a", t0, TokenStatus::NoToken, &mut n);
+        let st = me_contado(&cache, "b", t0 + Duration::from_secs(1), TokenStatus::TokenOk, &mut n);
+        assert_eq!(n, 2);
+        assert!(matches!(st, TokenStatus::TokenOk));
+    }
+
+    #[test]
+    fn me_cache_nunca_guarda_api_down() {
+        let cache = Mutex::new(MeCache::default());
+        let t0 = Instant::now();
+        let mut n = 0;
+        for i in 0..3 {
+            me_contado(&cache, "a", t0 + Duration::from_secs(i), TokenStatus::ApiDown, &mut n);
+        }
+        assert_eq!(n, 3);
+    }
+
+    #[test]
+    fn me_cache_solta_o_lock_durante_a_verificacao() {
+        let cache = Mutex::new(MeCache::default());
+        cached_me(&cache, "a", Instant::now(), |_| {
+            assert!(cache.try_lock().is_ok(), "lock preso durante a chamada de rede");
+            TokenStatus::TokenOk
+        });
+    }
+
+    #[test]
+    fn sc_pacer_exige_um_segundo_entre_chamadas() {
+        let mut p = ScPacer::default();
+        let t0 = Instant::now();
+        assert!(p.admit(t0).is_ok());
+        let e = p.admit(t0 + Duration::from_millis(500)).unwrap_err();
+        assert!(e.contains("aguarde"), "{e}");
+        assert!(p.admit(t0 + Duration::from_millis(1000)).is_ok());
+    }
+
+    #[test]
+    fn sc_pacer_teto_de_120_por_hora_sem_frio() {
+        let mut p = ScPacer::default();
+        let t0 = Instant::now();
+        for i in 0..SC_MAX_PER_HOUR as u64 {
+            assert!(p.admit(t0 + Duration::from_secs(i * 2)).is_ok(), "chamada {i}");
+        }
+        let cheio = t0 + Duration::from_secs(SC_MAX_PER_HOUR as u64 * 2);
+        assert!(p.admit(cheio).is_err(), "121ª dentro da hora");
+        // A primeira sai da janela de 1 h: volta a aceitar, sem período de frio.
+        assert!(p.admit(t0 + Duration::from_secs(3600) + Duration::from_millis(1)).is_ok());
+    }
+
+    #[test]
+    fn sc_pacer_recusa_nao_conta_na_janela() {
+        let mut p = ScPacer::default();
+        let t0 = Instant::now();
+        p.admit(t0).unwrap();
+        for i in 1..10 {
+            let _ = p.admit(t0 + Duration::from_millis(i * 50));
+        }
+        assert_eq!(p.window.len(), 1);
+    }
+
+    #[test]
+    fn probe_sem_token_devolve_codigo_estavel() {
+        assert_eq!(probe_err(ScError::NoToken), NO_TOKEN);
+        assert_eq!(NO_TOKEN, "no_token");
+        assert_ne!(probe_err(ScError::Http(503)), NO_TOKEN);
     }
 
     #[test]
@@ -651,6 +821,10 @@ mod tests {
         assert!(probe_verdict("mp3", None, None).allowed, "sem estimativa o ffprobe decide");
         let m4a = probe_verdict("m4a", Some(1), Some(256));
         assert!(!m4a.allowed && m4a.reason.as_deref() == Some("formato não suportado (m4a)"));
-        assert!(!probe_verdict("", None, None).allowed);
+        let vazio = probe_verdict("", None, None);
+        assert!(vazio.allowed, "sem extensão o ffprobe decide");
+        assert_eq!(vazio.format_label, "formato a confirmar");
+        assert!(probe_verdict("wave", None, None).allowed);
+        assert_eq!(probe_verdict("aifc", None, None).format_label, "AIFF");
     }
 }

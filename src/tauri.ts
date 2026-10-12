@@ -697,6 +697,11 @@ export const crateScSearch = (query: string) => invoke<ScResult[]>("crate_sc_sea
 
 export const crateScResolve = (url: string) => invoke<ScResult>("crate_sc_resolve", { url });
 
+/**
+ * Sondagem do original. Rejeita com a string exata `"no_token"` quando o
+ * token do SoundCloud falta ou é recusado pela API (a UI mostra o link para
+ * o status das fontes); demais erros chegam como texto livre em PT-BR.
+ */
 export const crateScProbe = (trackId: number, durationMs: number) =>
   invoke<ScProbe>("crate_sc_probe", { trackId, durationMs });
 
