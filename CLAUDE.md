@@ -561,6 +561,16 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   em `mix_<id>.json`, touch nos novos no fim (race do watcher). Álbum único:
   `tidal_dl_spike.py` + `tidal_ingest.sh` (caminho do spike, via normalize_release).
   Link de mix/álbum vem da aba do Chrome (Compartilhar > Copiar link).
+- **Rodar NA VM (preferido desde 12/10, não depende da cmr-auto ligada)**: a mesma
+  sessão PKCE copiada para `~/.secrets/tidal-pkce.json` da VM (o refresh NÃO rotaciona
+  o token, as duas cópias convivem; testado). `TIDAL_MUSIC_ROOT=~/tidal-out
+  TIDAL_QDRANT=http://127.0.0.1:16333 uv run --with tidalapi --with mutagen python3
+  ~/tidal-out/tidal_mix_dl.py <id> --playlist <pasta> --push cmr-auto@100.102.249.9:Music`
+  (túnel 16333 de pé): baixa no staging da VM (~3,5 MB/s), faz rsync por faixa (+ capa)
+  para `~/Music` da cmr-auto e `touch` remoto no fim. Dedup contra o Qdrant da cmr-auto
+  pelo túnel. Limpar `~/tidal-out/<pasta>` depois. Gotcha pago: `pgrep -f` num laço de
+  fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
+  `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
 - **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em
   batch, e conferir que o share do slskd NÃO cresceu).
 
