@@ -21,6 +21,13 @@ Regras:
 - Número de faixa: lido do nome do arquivo (padrões Bandcamp
   "Artista - Álbum - 01 Título", "01 Título", "01 - Título", "01. Título");
   sem número, segue a ordem alfabética e numera a partir de 1.
+- Artista por faixa: se o arquivo traz ARTIST próprio (sem cara de URL), ele é
+  preservado em ARTIST; ALBUMARTIST recebe sempre o --artist. Serve para EP de
+  vários artistas (Funk na Caixa) sem perder o crédito. --flat-artist desliga.
+- Título com o artista repetido no fim ("Igrejinha - Buarky feat. X") perde o
+  sufixo quando ele é o próprio artista da faixa.
+- Capa convertida para JPEG de até 1500 px antes de embutir (PNG de 8 MB em
+  cada faixa é desperdício) e salva como cover.jpg.
 - Nunca grava valor com aparência de URL em campo nenhum.
 
 Uso (na VM; mutagen via uv):
@@ -83,12 +90,42 @@ def parse_track_filename(stem: str, artist: str = "", release: str = "") -> tupl
     return None, s
 
 
+_LOOSE = re.compile(r"[^a-z0-9]+")
+
+
+def loose(s: str) -> str:
+    """Comparação frouxa de créditos: caixa, pontuação e '&' vs 'e' não contam."""
+    return _LOOSE.sub("", (s or "").lower().replace("&", " e ").replace(" and ", " e "))
+
+
+def strip_artist_suffix(title: str, track_artist: str | None) -> str:
+    """'Igrejinha - Buarky feat. X' com artista 'Buarky feat. X' -> 'Igrejinha'."""
+    if not track_artist or " - " not in title:
+        return title
+    head, _, tail = title.rpartition(" - ")
+    return head.strip() if head and loose(tail) == loose(track_artist) else title
+
+
+def read_track_artist(path: Path) -> str | None:
+    """ARTIST gravado no arquivo, quando existe e não parece URL (só FLAC; o resto vira None)."""
+    if path.suffix.lower() != ".flac":
+        return None
+    try:
+        from mutagen.flac import FLAC
+        v = (FLAC(path).tags or {}).get("artist") or []
+    except Exception:
+        return None
+    a = (v[0] if v else "").strip()
+    return a if a and not looks_like_url(a) else None
+
+
 @dataclass
 class Item:
     src: Path
     track_no: int
     title: str
     lossy_source: str | None  # ex.: "mp3" quando convertido de lossy
+    track_artist: str | None = None  # crédito por faixa; None = usa o albumartist
 
     @property
     def dest_name(self) -> str:
@@ -116,7 +153,9 @@ def find_cover(src: Path, explicit: Path | None) -> Path | None:
 
 def build_plan(src: Path, out: Path, *, artist: str, release: str, year: int | None,
                label: str | None, genre: str, allow_lossy: bool,
-               cover: Path | None = None) -> Plan:
+               cover: Path | None = None, flat_artist: bool = False,
+               track_artists: dict[str, str] | None = None) -> Plan:
+    """track_artists: {nome do arquivo: ARTIST} já lido (os testes injetam; o CLI lê das tags)."""
     for v in (artist, release, label or ""):
         if looks_like_url(v):
             raise ValueError(f"valor com aparência de URL recusado: {v!r}")
@@ -134,8 +173,14 @@ def build_plan(src: Path, out: Path, *, artist: str, release: str, year: int | N
     items = []
     for i, (p, n, title) in enumerate(parsed, start=1):
         ext = p.suffix.lower()
+        ta = None
+        if not flat_artist:
+            ta = (track_artists or {}).get(p.name) if track_artists is not None else read_track_artist(p)
+            if ta and (loose(ta) == loose(artist) or looks_like_url(ta)):
+                ta = None
+        title = strip_artist_suffix(title, ta or artist)
         items.append(Item(src=p, track_no=n if numbered else i, title=title,
-                          lossy_source=ext.lstrip(".") if ext in LOSSY else None))
+                          lossy_source=ext.lstrip(".") if ext in LOSSY else None, track_artist=ta))
     items.sort(key=lambda it: it.track_no)
     tags = {
         "ARTIST": artist, "ALBUMARTIST": artist, "ALBUM": release, "GENRE": genre,
@@ -154,7 +199,8 @@ def describe(plan: Plan) -> str:
     lines = [f"-> {plan.dest_dir}  ({len(plan.items)} faixas; capa: {plan.cover.name if plan.cover else 'nenhuma'})"]
     for it in plan.items:
         flag = f"  [lossy:{it.lossy_source}]" if it.lossy_source else ""
-        lines.append(f"   {it.dest_name}  <- {it.src.name}{flag}")
+        who = f"  (artist: {it.track_artist})" if it.track_artist else ""
+        lines.append(f"   {it.dest_name}{who}  <- {it.src.name}{flag}")
     return "\n".join(lines)
 
 
@@ -170,6 +216,20 @@ def _to_flac(src: Path, dest: Path) -> None:
     )
 
 
+def _prepare_cover(cover: Path | None, workdir: Path) -> Path | None:
+    """JPEG q2 de até 1500 px no lado maior; PNG/JPEG grandes não vão inteiros para cada faixa."""
+    if not cover:
+        return None
+    out = workdir / ".cover-normalized.jpg"
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(cover),
+         "-vf", "scale='min(1500,iw)':'min(1500,ih)':force_original_aspect_ratio=decrease",
+         "-frames:v", "1", "-q:v", "2", str(out)],
+        check=True,
+    )
+    return out
+
+
 def _write_tags(path: Path, tags: dict[str, str], cover: Path | None) -> None:
     from mutagen.flac import FLAC, Picture  # import tardio: só o apply precisa do mutagen
 
@@ -181,7 +241,7 @@ def _write_tags(path: Path, tags: dict[str, str], cover: Path | None) -> None:
     if cover:
         pic = Picture()
         pic.type = 3
-        pic.mime = "image/png" if cover.suffix.lower() == ".png" else "image/jpeg"
+        pic.mime = "image/jpeg"
         pic.data = cover.read_bytes()
         f.add_picture(pic)
     f.save()
@@ -189,15 +249,18 @@ def _write_tags(path: Path, tags: dict[str, str], cover: Path | None) -> None:
 
 def apply(plan: Plan) -> None:
     plan.dest_dir.mkdir(parents=True, exist_ok=True)
+    cover = _prepare_cover(plan.cover, plan.dest_dir)
     for it in plan.items:
         dest = plan.dest_dir / it.dest_name
         _to_flac(it.src, dest)
         tags = dict(plan.tags, TITLE=it.title, TRACKNUMBER=str(it.track_no))
+        if it.track_artist:
+            tags["ARTIST"] = it.track_artist
         if it.lossy_source:
             tags["COMMENT"] = f"source: lossy {it.lossy_source}"
-        _write_tags(dest, tags, plan.cover)
-    if plan.cover:
-        shutil.copy2(plan.cover, plan.dest_dir / "cover.jpg")
+        _write_tags(dest, tags, cover)
+    if cover:
+        cover.replace(plan.dest_dir / "cover.jpg")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -211,11 +274,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--genre", default="Funk Brasileiro")
     ap.add_argument("--cover", type=Path)
     ap.add_argument("--allow-lossy", action="store_true")
+    ap.add_argument("--flat-artist", action="store_true", help="ignora o ARTIST por faixa dos arquivos")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     try:
         plan = build_plan(a.src, a.out, artist=a.artist, release=a.release, year=a.year,
-                          label=a.label, genre=a.genre, allow_lossy=a.allow_lossy, cover=a.cover)
+                          label=a.label, genre=a.genre, allow_lossy=a.allow_lossy, cover=a.cover,
+                          flat_artist=a.flat_artist)
     except ValueError as e:
         print(f"erro: {e}", file=sys.stderr)
         return 2

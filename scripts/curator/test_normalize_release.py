@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from normalize_release import build_plan, looks_like_url, parse_track_filename, safe_name  # noqa: E402
+from normalize_release import build_plan, loose, looks_like_url, parse_track_filename, safe_name, strip_artist_suffix  # noqa: E402
 
 
 def test_safe_name():
@@ -37,6 +37,36 @@ def test_parse_track_filename():
     assert parse_track_filename("DJ K - 150 BPM PESADÃO", "DJ K", "") == (None, "150 BPM PESADÃO")
 
 
+def test_strip_artist_suffix():
+    assert strip_artist_suffix("Igrejinha - Buarky feat. PE$TE e Edge Flow", "Buarky feat. Pe$te & Edge Flow") == "Igrejinha"
+    assert strip_artist_suffix("Toma de Graça - Mu540, DJ Turano e MC Larisson", "Mu540, DJ Turano & MC Larisson") == "Toma de Graça"
+    # sufixo que NÃO é o artista fica
+    assert strip_artist_suffix("Curtição 420 - Bad Sista feat. Lei Di Dai", "BadSista") == "Curtição 420 - Bad Sista feat. Lei Di Dai"
+    assert strip_artist_suffix("Stars - Remix", None) == "Stars - Remix"
+    assert loose("Pe$te & Edge") == loose("PE$TE e Edge")
+
+
+def test_build_plan_track_artists():
+    with tempfile.TemporaryDirectory() as td:
+        src, out = Path(td) / "src", Path(td) / "out"
+        src.mkdir()
+        names = ["Kioma - FUNK RAVE EP - 02 Aquecida - Kioma.flac", "kLap - FUNK RAVE EP - 04 Prime - kLap.flac"]
+        _touch(src, names)
+        plan = build_plan(src, out, artist="Kioma, Buarky, kLap e Mu540", release="Funk Rave EP", year=2020,
+                          label="Funk na Caixa", genre="Funk Brasileiro", allow_lossy=False,
+                          track_artists={names[0]: "Kioma", names[1]: "kLap"})
+        assert [(it.track_no, it.title, it.track_artist) for it in plan.items] == [(2, "Aquecida", "Kioma"), (4, "Prime", "kLap")]
+        assert plan.tags["ALBUMARTIST"] == "Kioma, Buarky, kLap e Mu540"
+        # ARTIST do arquivo igual ao albumartist não vira crédito por faixa; URL é ignorada
+        plan2 = build_plan(src, out, artist="Kioma", release="X", year=None, label=None, genre="G", allow_lossy=False,
+                           track_artists={names[0]: "KIOMA", names[1]: "www.ripper.com"})
+        assert [it.track_artist for it in plan2.items] == [None, None]
+        # --flat-artist ignora tudo
+        plan3 = build_plan(src, out, artist="Z", release="X", year=None, label=None, genre="G", allow_lossy=False,
+                           flat_artist=True, track_artists={names[0]: "Kioma"})
+        assert plan3.items[0].track_artist is None
+
+
 def _touch(d: Path, names):
     for n in names:
         (d / n).write_bytes(b"x")
@@ -48,7 +78,7 @@ def test_build_plan_bandcamp_layout():
         src.mkdir()
         _touch(src, ["OO RUBINHO - HARDFUNK - 02 COMBAL.flac", "OO RUBINHO - HARDFUNK - 01 VILÃO.flac", "cover.jpg"])
         plan = build_plan(src, out, artist="OO Rubinho", release="HARDFUNK", year=2022,
-                          label="Business Casual", genre="Funk Brasileiro", allow_lossy=False)
+                          label="Business Casual", genre="Funk Brasileiro", allow_lossy=False, track_artists={})
         assert plan.dest_dir == out / "Funk Brasileiro" / "OO Rubinho" / "HARDFUNK"
         assert [it.dest_name for it in plan.items] == ["01 VILÃO.flac", "02 COMBAL.flac"]
         assert plan.cover and plan.cover.name == "cover.jpg"
