@@ -3,9 +3,11 @@
 ~/Music/<playlist>/<Artista do álbum>/<Álbum> [tidal]/NN Título.flac, com tags da Tidal e capa.
 A marca " [tidal]" no nome da pasta é o que mantém tudo isso fora do share do slskd.
 
-Roda NA cmr-auto:
-  ~/.local/bin/uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <mix_id> --list
-  ~/.local/bin/uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <mix_id> [--playlist "Funk Brasileiro"]
+Roda NA cmr-auto (acervo local) ou NA VM (staging + --push para a cmr-auto):
+  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <mix_id> --list
+  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <mix_id> [--playlist "Funk Brasileiro"] [--genre G]
+  # na VM: TIDAL_MUSIC_ROOT=~/tidal-out TIDAL_QDRANT=http://127.0.0.1:16333 ... --push cmr-auto@100.102.249.9:Music
+A sessão PKCE (~/.secrets/tidal-pkce.json) é a mesma nas duas máquinas; o refresh não rotaciona o token.
 """
 import argparse
 import json
@@ -23,9 +25,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from normalize_release import _prepare_cover, _write_tags, loose, safe_name  # noqa: E402
 
 SECRET = os.path.expanduser("~/.secrets/tidal-pkce.json")
-MUSIC = Path(os.path.expanduser("~/Music"))
+MUSIC = Path(os.path.expanduser(os.environ.get("TIDAL_MUSIC_ROOT", "~/Music")))
 WORK = Path(os.path.expanduser("~/.cache/tidal-spike/mixwork"))
-QDRANT = "http://127.0.0.1:6333"
+QDRANT = os.environ.get("TIDAL_QDRANT", "http://127.0.0.1:6333")
 GENRE = "Funk Brasileiro"
 PAUSE_S = 2
 
@@ -128,6 +130,21 @@ def download_flac(t, dest: Path) -> dict:
     return info
 
 
+def push_one(dest: Path, push: str) -> None:
+    """rsync da faixa e da capa da pasta para a cmr-auto, mantendo o caminho relativo ao acervo."""
+    host, _, remote_dir = push.partition(":")
+    rel = dest.relative_to(MUSIC)
+    items = [str(rel)]
+    cov = dest.parent / "cover.jpg"
+    if cov.exists():
+        items.append(str(cov.relative_to(MUSIC)))
+    listing = WORK / "push-one.txt"
+    listing.write_text("".join(i + "\n" for i in items))
+    rc = subprocess.run(["rsync", "-a", "--ignore-existing", "--files-from", str(listing), str(MUSIC) + "/", f"{host}:{remote_dir}/"]).returncode
+    if rc != 0:
+        print(f"    rsync falhou (rc={rc}) para {rel}", flush=True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("mix_id")
@@ -135,6 +152,8 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="só lista o mix, não baixa")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--genre", default=None, help="tag GENRE (padrão: o nome da playlist)")
+    ap.add_argument("--push", default=None, help="destino rsync (ex.: cmr-auto@100.102.249.9:Music) quando se baixa fora da cmr-auto; "
+                                                 "copia só o que não existe lá e dá touch nos novos (race do watcher)")
     args = ap.parse_args()
 
     WORK.mkdir(parents=True, exist_ok=True)
@@ -229,6 +248,8 @@ def main() -> int:
                 tags["COPYRIGHT"] = alb.copyright
             _write_tags(dest, {k: v for k, v in tags.items() if v}, covers.get(alb.id))
             new_files.append(dest)
+            if args.push:
+                push_one(dest, args.push)
             report["new"].append({"i": i, "title": title, "artists": arts, "album": alb.name, "album_artist": album_artist,
                                   "year": year, "path": str(dest), **info})
             print(f"{i:3d} {title[:45]:45s} | {', '.join(arts)[:30]:30s} | {info['quality']} {info['bits']}/{info['sr']} "
@@ -243,7 +264,19 @@ def main() -> int:
     out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{args.mix_id}.json"))
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | relatório {out}", flush=True)
-    if new_files:
+    if new_files and args.push:
+        rels = [str(p.relative_to(MUSIC)) for p in new_files]
+        listing = WORK / "push-list.txt"
+        listing.write_text("".join(r + "\n" for r in rels) + "".join(d + "/cover.jpg\n" for d in sorted({str(Path(r).parent) for r in rels}) if (MUSIC / d / "cover.jpg").exists()))
+        host, _, remote_dir = args.push.partition(":")
+        rc = subprocess.run(["rsync", "-a", "--ignore-existing", "--files-from", str(listing), str(MUSIC) + "/", f"{host}:{remote_dir}/"]).returncode
+        print(f"rsync final para {args.push}: rc={rc}, {len(rels)} faixas", flush=True)
+        if rc == 0:
+            time.sleep(10)
+            quoted = " ".join("'" + (remote_dir.rstrip("/") + "/" + r).replace("'", "'\\''") + "'" for r in rels)
+            subprocess.run(["ssh", host, f"touch {quoted}"])
+            print(f"touch remoto em {len(rels)} arquivos (race do watcher)", flush=True)
+    elif new_files:
         time.sleep(10)
         for p in new_files:
             p.touch()
