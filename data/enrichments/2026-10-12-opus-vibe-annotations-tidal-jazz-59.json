@@ -1,0 +1,961 @@
+{
+ "5475579976222020261": {
+  "energy": 0.5,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "confident",
+   "playful",
+   "groovy"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "1090674111501331259": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "driving",
+   "confident",
+   "dark",
+   "intense"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "2949610013873832200": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "playful",
+   "energetic",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "287885299348957458": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "confident",
+   "chill"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "7877369320585772131": {
+  "energy": 0.3,
+  "valence": 0.6,
+  "mood_tags": [
+   "peaceful",
+   "dreamy",
+   "nostalgic",
+   "playful"
+  ],
+  "activity_tags": [
+   "study",
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "16903399220175718528": {
+  "energy": 0.2,
+  "valence": 0.2,
+  "mood_tags": [
+   "melancholic",
+   "bittersweet",
+   "romantic",
+   "raw"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "7433846124620021847": {
+  "energy": 0.3,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "romantic",
+   "peaceful",
+   "focus"
+  ],
+  "activity_tags": [
+   "study",
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "4104235582910403358": {
+  "energy": 0.5,
+  "valence": 0.5,
+  "mood_tags": [
+   "sensual",
+   "dark",
+   "chill",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus",
+   "social"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "14038737216330071553": {
+  "energy": 0.4,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "confident",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "7510233318277705092": {
+  "energy": 0.3,
+  "valence": 0.5,
+  "mood_tags": [
+   "dreamy",
+   "melancholic",
+   "romantic",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "2757164989159215622": {
+  "energy": 0.2,
+  "valence": 0.5,
+  "mood_tags": [
+   "melancholic",
+   "romantic",
+   "chill",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "sleep"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "7400703196766450652": {
+  "energy": 0.7,
+  "valence": 0.8,
+  "mood_tags": [
+   "energetic",
+   "playful",
+   "uplifting",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "commute",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "8006906444688070237": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "confident",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "commute",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "10771251093837513121": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "sensual",
+   "groovy",
+   "nostalgic",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "14936467039052676238": {
+  "energy": 0.4,
+  "valence": 0.7,
+  "mood_tags": [
+   "chill",
+   "focus",
+   "playful",
+   "confident"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "6637383097267543194": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "playful",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "1589492982432890706": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "groovy",
+   "ethereal",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "meditation",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "16856102816763880211": {
+  "energy": 0.4,
+  "valence": 0.4,
+  "mood_tags": [
+   "melancholic",
+   "groovy",
+   "nostalgic",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "15338942299455853428": {
+  "energy": 0.9,
+  "valence": 0.8,
+  "mood_tags": [
+   "intense",
+   "energetic",
+   "triumphant",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "16518265088147320433": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "confident",
+   "driving"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "5865131176451549172": {
+  "energy": 0.2,
+  "valence": 0.7,
+  "mood_tags": [
+   "romantic",
+   "dreamy",
+   "peaceful",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "romance",
+   "chill",
+   "sleep"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "9677037238640587687": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "playful",
+   "confident"
+  ],
+  "activity_tags": [
+   "commute",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "9584044966320839615": {
+  "energy": 0.7,
+  "valence": 0.4,
+  "mood_tags": [
+   "intense",
+   "rebellious",
+   "anxious",
+   "playful"
+  ],
+  "activity_tags": [
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "7956485169682197581": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "energetic",
+   "driving"
+  ],
+  "activity_tags": [
+   "commute",
+   "cooking",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "1921379646342687098": {
+  "energy": 0.5,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "ethereal",
+   "uplifting",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "2831945972881164708": {
+  "energy": 0.8,
+  "valence": 0.8,
+  "mood_tags": [
+   "energetic",
+   "triumphant",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "16546124398570140643": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "playful",
+   "driving",
+   "confident"
+  ],
+  "activity_tags": [
+   "commute",
+   "focus",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "16284963117526987114": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "uplifting",
+   "playful"
+  ],
+  "activity_tags": [
+   "cooking",
+   "focus",
+   "social"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "1316460122372654116": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "sensual",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "focus",
+   "romance"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "16608506858995532947": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "nostalgic",
+   "bittersweet",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "16121466375381503833": {
+  "energy": 0.8,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "energetic",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "8406065504478835530": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "romantic",
+   "playful",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "study",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "18283857611426361040": {
+  "energy": 0.8,
+  "valence": 0.4,
+  "mood_tags": [
+   "intense",
+   "ethereal",
+   "dark",
+   "raw"
+  ],
+  "activity_tags": [
+   "meditation",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "10604067754458993379": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "confident",
+   "dark",
+   "driving",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "6810187774423056202": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "nostalgic",
+   "playful",
+   "chill"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "5532827739324293106": {
+  "energy": 0.3,
+  "valence": 0.7,
+  "mood_tags": [
+   "romantic",
+   "sensual",
+   "peaceful",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "study"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "2909104377028076956": {
+  "energy": 0.4,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "romantic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "2072876937190559967": {
+  "energy": 0.7,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "energetic",
+   "social"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "cleaning"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "1697166674287255469": {
+  "energy": 0.2,
+  "valence": 0.5,
+  "mood_tags": [
+   "dreamy",
+   "melancholic",
+   "peaceful",
+   "ethereal"
+  ],
+  "activity_tags": [
+   "sleep",
+   "study",
+   "meditation"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "8849507067300729781": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "driving",
+   "raw",
+   "playful",
+   "focus"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "9478336153333302320": {
+  "energy": 0.4,
+  "valence": 0.7,
+  "mood_tags": [
+   "chill",
+   "playful",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "social"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "16268589144110260329": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "confident"
+  ],
+  "activity_tags": [
+   "commute",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "8127828103418074207": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "nostalgic",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking",
+   "study"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "17672835591928787391": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "intense",
+   "energetic",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "5938802300587000388": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "cooking",
+   "chill",
+   "focus"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "17459304889174393810": {
+  "energy": 0.3,
+  "valence": 0.5,
+  "mood_tags": [
+   "peaceful",
+   "dreamy",
+   "bittersweet"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "meditation"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "4766673353586146884": {
+  "energy": 0.6,
+  "valence": 0.8,
+  "mood_tags": [
+   "playful",
+   "uplifting",
+   "groovy"
+  ],
+  "activity_tags": [
+   "cooking",
+   "social",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "17258318976725932695": {
+  "energy": 0.2,
+  "valence": 0.5,
+  "mood_tags": [
+   "dreamy",
+   "ethereal",
+   "peaceful",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "sleep",
+   "study",
+   "meditation"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "5770281215488761613": {
+  "energy": 0.3,
+  "valence": 0.4,
+  "mood_tags": [
+   "bittersweet",
+   "sensual",
+   "melancholic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "4774512675405437597": {
+  "energy": 0.7,
+  "valence": 0.8,
+  "mood_tags": [
+   "groovy",
+   "uplifting",
+   "sensual",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "cooking",
+   "party"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "8105564240253429727": {
+  "energy": 0.3,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "romantic",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "16221772047092645073": {
+  "energy": 0.5,
+  "valence": 0.7,
+  "mood_tags": [
+   "groovy",
+   "romantic",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "cooking",
+   "chill",
+   "social"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "6455234221327985566": {
+  "energy": 0.5,
+  "valence": 0.8,
+  "mood_tags": [
+   "playful",
+   "confident",
+   "uplifting"
+  ],
+  "activity_tags": [
+   "focus",
+   "cooking",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "3972289435459303065": {
+  "energy": 0.5,
+  "valence": 0.4,
+  "mood_tags": [
+   "groovy",
+   "dark",
+   "rebellious",
+   "raw"
+  ],
+  "activity_tags": [
+   "focus",
+   "chill"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "8603834053030852533": {
+  "energy": 0.4,
+  "valence": 0.5,
+  "mood_tags": [
+   "playful",
+   "focus",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "focus",
+   "study",
+   "chill"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "241531795057058653": {
+  "energy": 0.5,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "playful",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "cooking"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "low"
+ },
+ "11193876045991621095": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "energetic",
+   "playful",
+   "driving"
+  ],
+  "activity_tags": [
+   "focus",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ },
+ "16959265886354889110": {
+  "energy": 0.5,
+  "valence": 0.4,
+  "mood_tags": [
+   "dark",
+   "dreamy",
+   "intense"
+  ],
+  "activity_tags": [
+   "focus",
+   "study"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "high"
+ },
+ "5619938750881717680": {
+  "energy": 0.3,
+  "valence": 0.5,
+  "mood_tags": [
+   "romantic",
+   "bittersweet",
+   "chill"
+  ],
+  "activity_tags": [
+   "chill",
+   "romance",
+   "study"
+  ],
+  "annotated_by": "opus-batch-2026-10-12f",
+  "annotation_confidence": "medium"
+ }
+}
