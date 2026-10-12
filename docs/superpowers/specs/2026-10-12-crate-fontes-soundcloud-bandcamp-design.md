@@ -208,9 +208,12 @@ coordinator, porque só ele sabe a pasta final).
 
 ### 4.3 Ordem no worker
 
-Baixar para `.rustify-incoming/<job_id>.<ext>` → sondar bitrate real (MP3) →
-converter para `.rustify-incoming/<job_id>.flac` (ou renomear, se FLAC) →
-escrever tags e capa → `Done{flac_path}`. O coordinator então faz o
+Baixar para `.rustify-incoming/<job_id>.a<tentativa>.<ext>` → sondar bitrate
+real (MP3) → converter para `.rustify-incoming/<job_id>.a<tentativa>.flac` (ou
+renomear, se FLAC) → escrever tags e capa → `Done{flac_path}`. A tentativa
+(`DownloadJob::attempt`) muda a cada criação do job e volta em todo evento do
+worker: cancelar e baixar de novo a mesma faixa não deixa a tarefa antiga
+mexer na nova, nem no arquivo dela. O coordinator então faz o
 `stage_and_ingest` de hoje. Como as tags já estão certas, a pasta canônica sai
 certa e o dedup compara o que o CEO confirmou.
 

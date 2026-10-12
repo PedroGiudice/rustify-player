@@ -233,12 +233,10 @@ fn move_to_quarantine(music_root: &Path, file: &Path, reason: &str) -> PathBuf {
     dest
 }
 
-/// Move um arquivo rejeitado pra quarentena. Chamada externa (pré-move) —
-/// mantida pública pro caso de o coordinator precisar quarentenar algo por
-/// fora do fluxo de [`stage_file`] (hoje `stage_file` já cuida disso
-/// internamente pra todo `Rejected` que produz — por isso não tem chamador
-/// em código de produção agora, só nos testes deste módulo).
-#[allow(dead_code)]
+/// Move um arquivo rejeitado pra quarentena. Chamada externa (pré-move):
+/// o coordinator usa para o arquivo que o worker de fonte externa rejeitou
+/// (`FetchEvent::Rejected { quarantine: Some(..) }`); os `Rejected` do
+/// [`stage_file`] já são quarentenados por dentro.
 pub fn quarantine(music_root: &Path, local: &Path, reason: &str) -> PathBuf {
     move_to_quarantine(music_root, local, reason)
 }
@@ -392,8 +390,7 @@ pub(crate) mod test_support {
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
-                let mut buf = [0u8; 4096];
-                let _ = stream.read(&mut buf);
+                read_whole_request(&mut stream);
                 let body: &[u8] = br#"{"result":{"points":[],"next_page_offset":null}}"#;
                 let head = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -406,6 +403,34 @@ pub(crate) mod test_support {
         });
         let client = QdrantClient::new(format!("http://{addr}"));
         OwnedIndex::build(&client, Path::new("/music")).expect("build contra fake qdrant")
+    }
+
+    /// Lê a requisição INTEIRA (cabeçalho + `Content-Length` de corpo) antes
+    /// de responder. Um único `read` pegava às vezes só o cabeçalho; fechar o
+    /// socket com o corpo ainda no buffer de recepção faz o kernel mandar
+    /// RST, e o cliente via "Connection reset by peer" (teste intermitente
+    /// sob carga paralela).
+    fn read_whole_request(stream: &mut std::net::TcpStream) {
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+        let mut data = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            if let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&data[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| l.strip_prefix("content-length:"))
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+                    .unwrap_or(0);
+                if data.len() >= end + 4 + len {
+                    return;
+                }
+            }
+            match stream.read(&mut buf) {
+                Ok(0) | Err(_) => return,
+                Ok(n) => data.extend_from_slice(&buf[..n]),
+            }
+        }
     }
 }
 

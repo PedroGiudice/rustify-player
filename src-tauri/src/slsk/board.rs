@@ -334,6 +334,14 @@ pub struct DownloadJob {
     pub alternates: Vec<Candidate>,
     pub tried_source_ids: Vec<String>,
     pub created_at: i64,
+    /// Tentativa a que o job pertence. Muda toda vez que o coordinator cria
+    /// ou recria o job (contador monotônico do coordinator, nunca reusado
+    /// na mesma sessão, nem depois de o job sair do board). O worker de
+    /// fonte externa recebe o valor no `FetchTask` e o devolve em todo
+    /// `FetchEvent`; evento com tentativa diferente da atual é descartado.
+    /// Sem isso, cancelar e baixar de novo a mesma faixa (mesmo `job_id`)
+    /// deixava os eventos da tarefa antiga caírem na nova.
+    pub attempt: u32,
 }
 
 impl DownloadJob {
@@ -466,12 +474,18 @@ impl JobBoard {
             .count()
     }
 
-    /// `true` quando o job foi cancelado. O worker de fonte externa consulta
-    /// antes de cada etapa (via `Arc<JobBoard>`) para abandonar o trabalho.
+    /// `true` quando a tentativa `attempt` do job não deve continuar: o job
+    /// foi cancelado, foi recriado (outra tentativa) ou saiu do board
+    /// ("Limpar concluídos" remove os cancelados). O worker de fonte externa
+    /// consulta antes de cada etapa (via `Arc<JobBoard>`) para abandonar o
+    /// trabalho e não gastar banda com um resultado que seria descartado.
     #[allow(dead_code)] // consumido pelo sc-worker (Task 6 do plano)
-    pub(crate) fn is_canceled(&self, id: &str) -> bool {
+    pub(crate) fn is_canceled(&self, id: &str, attempt: u32) -> bool {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
-        guard.get(id).map(|j| matches!(j.state, JobState::Canceled)).unwrap_or(false)
+        guard
+            .get(id)
+            .map(|j| j.attempt != attempt || matches!(j.state, JobState::Canceled))
+            .unwrap_or(true)
     }
 
     /// Mantém só os `cap` terminais mais recentes (FIFO por `created_at`) —
@@ -526,6 +540,7 @@ mod tests {
             alternates: Vec::new(),
             tried_source_ids: Vec::new(),
             created_at: 0,
+            attempt: 0,
         }
     }
 
@@ -610,9 +625,25 @@ mod tests {
         assert_eq!(board.in_flight_count_for("soulseek"), 1);
         assert_eq!(board.in_flight_count_for("sound_cloud"), 1);
         assert_eq!(board.in_flight_count_for("bandcamp"), 0);
-        assert!(!board.is_canceled("c1"));
+        assert!(!board.is_canceled("c1", 0));
         assert!(board.transition("c1", JobState::Canceled));
-        assert!(board.is_canceled("c1"));
+        assert!(board.is_canceled("c1", 0));
+    }
+
+    #[test]
+    fn is_canceled_cobre_tentativa_trocada_e_job_ausente() {
+        let board = JobBoard::new();
+        let mut j = job("c2", JobState::Downloading { pct: 1.0, bps: 1, eta_s: None });
+        j.attempt = 7;
+        board.upsert(j);
+        assert!(!board.is_canceled("c2", 7));
+        // O job foi recriado (outra tentativa): o worker da tentativa velha para.
+        assert!(board.is_canceled("c2", 6));
+        // Job removido ("Limpar concluídos"): o worker também para.
+        assert!(board.is_canceled("fantasma", 0));
+        assert!(board.transition("c2", JobState::Canceled));
+        assert_eq!(board.clear_finished(), 1);
+        assert!(board.is_canceled("c2", 7));
     }
 
     #[test]

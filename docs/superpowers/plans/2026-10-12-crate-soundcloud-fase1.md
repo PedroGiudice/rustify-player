@@ -606,6 +606,16 @@ git add src-tauri/src/slsk/board.rs src-tauri/src/slsk/coordinator.rs src-tauri/
 git commit -m "feat(crate): coordinator roteia por origem, tarefa DownloadExternal e canal de eventos do worker"
 ```
 
+**Ajustes pós-review (commit `fix(crate): ...` das Tasks 1 e 2) — valem sobre o texto acima e sobre as Tasks 6 e 7:**
+
+- `DownloadJob.attempt: u32` (persistido): toda criação ou recriação de job ganha uma tentativa nova, de um contador monotônico do coordinator. `FetchTask.attempt` carrega o valor e **todo** `FetchEvent` o devolve (`Started { job_id, attempt }`, `Progress { job_id, attempt, .. }`, `Done { job_id, attempt, .. }`, `Rejected { job_id, attempt, .. }`, `Failed { job_id, attempt, .. }`). `drain_fetch_events` descarta evento de outra tentativa (e apaga o arquivo que ele trazia).
+- `JobBoard::is_canceled(job_id, attempt)`: `true` se o job foi cancelado, recriado ou saiu do board.
+- O worker grava `<task.file_stem()>.<ext>` e `<task.file_stem()>.flac` no incoming (`file_stem() = "<job_id>.a<attempt>"`), nunca `<job_id>.<ext>`: duas tentativas não dividem arquivo.
+- `FetchEvent::Rejected { quarantine: Some(path) }` = arquivo que o coordinator move para `.rustify-quarentena`; `None` = nada a guardar.
+- Um worker por origem: `Coordinator::with_fetch_worker(kind, tx)` + `with_fetch_events(rx)`; `spawn_coordinator(..., fetch: Option<FetchWiring>)` com `FetchWiring { workers: vec![("sound_cloud", ftx)], events: erx }`. Origem sem worker vira `Failed{"fonte ainda não suportada"}`; `DownloadExternal` com origem Soulseek é recusado.
+- `poll_active_transfers_once` só consulta o slskd com job Soulseek em `Queued`/`Enqueued`/`Downloading`/`Stalled`.
+- Job em `Indexing` persiste `indexing_path`; o boot retoma o ingest em vez de baixar de novo.
+
 ---
 
 ### Task 3: Crate `soundcloud-client` (puro)
@@ -1229,7 +1239,7 @@ mod tests {
 
     fn task(tmp: &tempfile::TempDir) -> FetchTask {
         let incoming = tmp.path().join(".rustify-incoming"); std::fs::create_dir_all(&incoming).unwrap();
-        FetchTask { job_id: "j1".into(), source: Source::SoundCloud { track_id: 1, permalink_url: "https://soundcloud.com/a/b".into() },
+        FetchTask { job_id: "j1".into(), attempt: 0, source: Source::SoundCloud { track_id: 1, permalink_url: "https://soundcloud.com/a/b".into() },
             meta: ConfirmedMeta { artist: "DJ Arana".into(), title: "Festa".into(), album: "Festa".into(), year: Some(2024), label: None },
             playlist: "Funk Brasileiro".into(), incoming_dir: incoming }
     }
@@ -1258,7 +1268,7 @@ mod tests {
         let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "128k"], false);
         let evs = run_one(api, cfg, board, task(&tmp));
         assert!(matches!(evs.last(), Some(FetchEvent::Rejected { reason: RejectReason::LowBitrate { .. }, .. })), "{evs:?}");
-        assert!(!tmp.path().join(".rustify-incoming/j1.mp3").exists(), "original rejeitado sai do incoming");
+        assert!(!tmp.path().join(".rustify-incoming/j1.a0.mp3").exists(), "original rejeitado sai do incoming");
     }
 
     #[test]
@@ -1341,7 +1351,7 @@ pub fn spawn_sc_worker(rx: Receiver<FetchTask>, tx: Sender<FetchEvent>, api: Arc
     std::thread::Builder::new().name("sc-worker".into()).spawn(move || {
         for task in rx.iter() {
             let ev = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_task(&task, api.as_ref(), &cfg, &board, &tx)))
-                .unwrap_or_else(|_| FetchEvent::Failed { job_id: task.job_id.clone(), reason: "panic no sc-worker".into(), retryable: false });
+                .unwrap_or_else(|_| FetchEvent::Failed { job_id: task.job_id.clone(), attempt: task.attempt, reason: "panic no sc-worker".into(), retryable: false });
             let _ = tx.send(ev);
         }
     }).expect("spawn sc-worker")
@@ -1349,10 +1359,11 @@ pub fn spawn_sc_worker(rx: Receiver<FetchTask>, tx: Sender<FetchEvent>, api: Arc
 
 fn run_task(t: &FetchTask, api: &dyn SoundCloudApi, cfg: &SourcesConfig, board: &JobBoard, tx: &Sender<FetchEvent>) -> FetchEvent {
     let job_id = t.job_id.clone();
-    let fail = |reason: String, retryable: bool| FetchEvent::Failed { job_id: job_id.clone(), reason, retryable };
+    let attempt = t.attempt;
+    let fail = |reason: String, retryable: bool| FetchEvent::Failed { job_id: job_id.clone(), attempt, reason, retryable };
     let Source::SoundCloud { track_id, .. } = &t.source else { return fail("worker do SoundCloud recebeu outra origem".into(), false) };
     let token = match cfg.read_sc_token() { Ok(tk) => tk, Err(e) => return fail(format!("sem token do SoundCloud: {e}"), false) };
-    if board.is_canceled(&job_id) { return FetchEvent::Failed { job_id, reason: "cancelado".into(), retryable: false }; }
+    if board.is_canceled(&job_id, attempt) { return FetchEvent::Failed { job_id, attempt, reason: "cancelado".into(), retryable: false }; }
     // 1) sondagem do original
     let orig = match api.probe_original(*track_id, &token, 0) {
         Ok(o) => o,
@@ -1361,8 +1372,8 @@ fn run_task(t: &FetchTask, api: &dyn SoundCloudApi, cfg: &SourcesConfig, board: 
         Err(e) => return fail(format!("SoundCloud: {e}"), true),
     };
     // 2) download para o incoming
-    let raw = t.incoming_dir.join(format!("{}.{}", t.job_id, orig.ext));
-    let _ = tx.send(FetchEvent::Started { job_id: job_id.clone() });
+    let raw = t.incoming_dir.join(format!("{}.{}", t.file_stem(), orig.ext));
+    let _ = tx.send(FetchEvent::Started { job_id: job_id.clone(), attempt });
     let started = Instant::now();
     let mut last = Instant::now();
     let mut cb = |done: u64, total: Option<u64>| {
@@ -1372,21 +1383,21 @@ fn run_task(t: &FetchTask, api: &dyn SoundCloudApi, cfg: &SourcesConfig, board: 
         let bps = (done as f64 / secs) as u64;
         let pct = total.map(|tt| if tt > 0 { done as f32 * 100.0 / tt as f32 } else { 0.0 }).unwrap_or(0.0);
         let eta = total.filter(|tt| bps > 0 && *tt > done).map(|tt| ((tt - done) / bps.max(1)) as u32);
-        let _ = tx.send(FetchEvent::Progress { job_id: job_id.clone(), pct, bps, eta_s: eta });
+        let _ = tx.send(FetchEvent::Progress { job_id: job_id.clone(), attempt, pct, bps, eta_s: eta });
     };
     if let Err(e) = api.download(&orig.url, &raw, &mut cb) {
         let _ = std::fs::remove_file(&raw);
         return match e { ScError::NoToken | ScError::Http(401) | ScError::Http(403) => fail("token do SoundCloud recusado no download".into(), false), e => fail(format!("download: {e}"), true) };
     }
-    if board.is_canceled(&job_id) { let _ = std::fs::remove_file(&raw); return FetchEvent::Failed { job_id, reason: "cancelado".into(), retryable: false }; }
+    if board.is_canceled(&job_id, attempt) { let _ = std::fs::remove_file(&raw); return FetchEvent::Failed { job_id, attempt, reason: "cancelado".into(), retryable: false }; }
     // 3) sondagem real e classificação
     let probe = match transcode::probe_media(&raw) { Ok(p) => p, Err(e) => { let _ = std::fs::remove_file(&raw); return fail(format!("arquivo baixado nao e audio: {e}"), false); } };
     let format_in = match classify_original(&orig.ext, &probe) {
         Ok(f) => f,
-        Err(reason) => { let _ = std::fs::remove_file(&raw); return FetchEvent::Rejected { job_id, reason, quarantine: None }; }
+        Err(reason) => { let _ = std::fs::remove_file(&raw); return FetchEvent::Rejected { job_id, attempt, reason, quarantine: None }; }
     };
     // 4) FLAC no incoming
-    let flac = t.incoming_dir.join(format!("{}.flac", t.job_id));
+    let flac = t.incoming_dir.join(format!("{}.flac", t.file_stem()));
     let conv = if format_in == FormatIn::Flac { std::fs::rename(&raw, &flac).map_err(|e| e.to_string()) } else { transcode::to_flac(&raw, &flac).map(|_| { let _ = std::fs::remove_file(&raw); }) };
     if let Err(e) = conv { let _ = std::fs::remove_file(&raw); let _ = std::fs::remove_file(&flac); return fail(e, false); }
     // 5) capa (melhor esforço) e tags
@@ -1394,13 +1405,13 @@ fn run_task(t: &FetchTask, api: &dyn SoundCloudApi, cfg: &SourcesConfig, board: 
     let comment = if format_in.is_lossy() { Some("source: lossy mp3") } else { None };
     let tags = TagSet { artist: &t.meta.artist, album_artist: &t.meta.artist, album: &t.meta.album, title: &t.meta.title, year: t.meta.year, track_no: 1, track_total: 1, genre: &t.playlist, label: t.meta.label.as_deref(), comment };
     if let Err(e) = write_tags(&flac, &tags, cover.as_deref()) { let _ = std::fs::remove_file(&flac); return fail(format!("tags: {e}"), false); }
-    FetchEvent::Done { job_id, flac_path: flac, format_in }
+    FetchEvent::Done { job_id, attempt, flac_path: flac, format_in }
 }
 ```
 
 `FetchTask` ganha `artwork_url: Option<String>` (o coordinator o copia de `Source`/`meta`; acrescentar `pub artwork_url: Option<String>` em `ConfirmedMeta`? Não: manter o `ConfirmedMeta` limpo e colocar `artwork_url: Option<String>` em `FetchTask`, preenchido pelo comando `crate_download` que recebe `artwork_url` do frontend — ajustar a Task 2: `SlskTask::DownloadExternal` ganha `artwork_url: Option<String>` e `DownloadJob` guarda `artwork_url` para o reboot). Trocar `t.meta_cover_url()` por `t.artwork_url.clone()`.
 
-`JobBoard::is_canceled(&self, id) -> bool` em `board.rs` (`matches!(state, Canceled)`).
+`JobBoard::is_canceled(&self, id, attempt) -> bool` já existe em `board.rs` (Task 2, ajuste pós-review).
 
 `stage_file` recebe o FLAC do incoming como `local`; ele move para `.rustify-incoming/<job_id>.flac` (mesmo caminho: `move_file` com `rename` para o mesmo path é um no-op em Linux; se a implementação falhar com "mesmo arquivo", tratar em `stage_file`: `if local == incoming_path { skip }`). A capa `cover.jpg` na pasta final: no coordinator, após `Staged { final_path }` de um job com `format_in.is_some()`, extrair a PICTURE do próprio FLAC (`parse_flac(final_path).pictures[0]`) e gravar `cover.jpg` ao lado se não existir (função `stage::write_folder_cover(final_path)`), com teste em `stage.rs`.
 
@@ -1475,7 +1486,7 @@ Expected: `compute_sources_status` não existe.
 
 - [ ] **Step 3: Implementar**
 
-`Slsk` ganha `sc_api: Arc<dyn SoundCloudApi>`, `sources: Arc<SourcesConfig>`, `status_cache: Mutex<Option<(Instant, SourcesStatus)>>` (TTL 10 min para `me`), e `Slsk::new` cria `HttpSoundCloud::new(data_dir.join("soundcloud_client_id.json"), user_agent)`, os canais `bounded::<FetchTask>(16)` / `unbounded::<FetchEvent>()`, chama `sc_worker::spawn_sc_worker(frx, etx, sc_api.clone(), sources.clone(), board.clone())` e passa `Some((ftx, erx))` ao `spawn_coordinator`.
+`Slsk` ganha `sc_api: Arc<dyn SoundCloudApi>`, `sources: Arc<SourcesConfig>`, `status_cache: Mutex<Option<(Instant, SourcesStatus)>>` (TTL 10 min para `me`), e `Slsk::new` cria `HttpSoundCloud::new(data_dir.join("soundcloud_client_id.json"), user_agent)`, os canais `bounded::<FetchTask>(16)` / `unbounded::<FetchEvent>()`, chama `sc_worker::spawn_sc_worker(frx, etx, sc_api.clone(), sources.clone(), board.clone())` e passa `Some(FetchWiring { workers: vec![("sound_cloud", ftx)], events: erx })` ao `spawn_coordinator`.
 
 `compute_sources_status(cfg, sc: Option<(&dyn SoundCloudApi, &str)>)`: `ffmpeg`/`uv` por `tools_status`; `bandcamp_identity` = arquivo existe e não vazio; `soundcloud` = `NoToken` se `read_sc_token` falha; senão, com cliente, `me(token)` → `TokenOk`, `Err(NoToken)` → `NoToken`, outro erro → `ApiDown`; sem cliente, `TokenOk` se o arquivo existe (só nos testes).
 
