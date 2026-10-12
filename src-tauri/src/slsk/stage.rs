@@ -335,10 +335,7 @@ pub fn stage_file(
     if let Some(dir) = incoming_path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    // O worker de fonte externa pode já entregar o arquivo no staging.
-    if local != incoming_path {
-        move_file(local, &incoming_path)?;
-    }
+    move_file(local, &incoming_path)?;
 
     place_at_destination(music_root, &incoming_path, &dest)
 }
@@ -808,49 +805,33 @@ mod tests {
         assert!(!incoming.join("abc123.flac").exists(), "job_id nao bate, deve ser removido");
     }
 
-    #[test]
-    fn stage_file_aceita_local_que_ja_e_o_incoming() {
-        // O worker de fonte externa pode entregar o FLAC já no caminho de
-        // staging (`.rustify-incoming/<job_id>.flac`): o move vira no-op.
-        let tmp = tempfile::tempdir().unwrap();
-        let music_root = tmp.path().join("Music");
-        let local = incoming_path(&music_root, "job-mesmo");
-        fs::create_dir_all(local.parent().unwrap()).unwrap();
-        fs::copy(flac_fixture(), &local).unwrap();
-
-        let owned = empty_owned_index();
-        match stage_file(&music_root, "Trance", &local, &owned, "job-mesmo").unwrap() {
-            StageOutcome::Staged { final_path } => {
-                assert!(final_path.starts_with(music_root.join("Trance")));
-                assert!(final_path.is_file());
-            }
-            other => panic!("esperava Staged, veio {other:?}"),
-        }
-        assert!(!local.exists(), "staging esvaziado depois do destino final");
-    }
-
     /// FLAC com capa JPEG embutida, gerado pelo ffmpeg (`None` sem ffmpeg).
     fn flac_com_capa(dir: &Path) -> Option<PathBuf> {
+        flac_gerado(dir, true)
+    }
+
+    /// FLAC de 1 s gerado pelo ffmpeg, com ou sem capa JPEG embutida
+    /// (`None` sem ffmpeg).
+    fn flac_gerado(dir: &Path, com_capa: bool) -> Option<PathBuf> {
         use library_indexer::transcode::{ffmpeg_available, Tools};
         if !ffmpeg_available(&Tools::default()) {
             eprintln!("sem ffmpeg: teste pulado");
             return None;
         }
-        let jpg = dir.join("capa.jpg");
-        let st = std::process::Command::new("ffmpeg")
-            .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=32x32", "-frames:v", "1"])
-            .arg(&jpg)
-            .status()
-            .unwrap();
-        assert!(st.success());
         let flac = dir.join("faixa.flac");
-        let st = std::process::Command::new("ffmpeg")
-            .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-i"])
-            .arg(&jpg)
-            .args(["-map", "0:a", "-map", "1:v", "-c:a", "flac", "-c:v", "copy", "-disposition:v", "attached_pic"])
-            .arg(&flac)
-            .status()
-            .unwrap();
+        let mut cmd = std::process::Command::new("ffmpeg");
+        cmd.args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1"]);
+        if com_capa {
+            let jpg = dir.join("capa.jpg");
+            let st = std::process::Command::new("ffmpeg")
+                .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=32x32", "-frames:v", "1"])
+                .arg(&jpg)
+                .status()
+                .unwrap();
+            assert!(st.success());
+            cmd.arg("-i").arg(&jpg).args(["-map", "0:a", "-map", "1:v", "-c:v", "copy", "-disposition:v", "attached_pic"]);
+        }
+        let st = cmd.args(["-c:a", "flac"]).arg(&flac).status().unwrap();
         assert!(st.success());
         Some(flac)
     }
@@ -874,11 +855,8 @@ mod tests {
     #[test]
     fn write_folder_cover_sem_capa_embutida_nao_grava() {
         let tmp = tempfile::tempdir().unwrap();
-        let flac = tmp.path().join("t.flac");
-        fs::copy(flac_fixture(), &flac).unwrap();
-        if !library_indexer::parse_flac(&flac).unwrap().pictures.is_empty() {
-            return; // fixture com capa: o caso já é coberto acima
-        }
+        let Some(flac) = flac_gerado(tmp.path(), false) else { return };
+        assert!(library_indexer::parse_flac(&flac).unwrap().pictures.is_empty(), "pré-condição: FLAC sem capa");
         assert_eq!(write_folder_cover(&flac), Ok(false));
         assert!(!tmp.path().join("cover.jpg").exists());
     }

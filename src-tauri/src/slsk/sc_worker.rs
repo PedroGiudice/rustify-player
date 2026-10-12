@@ -68,16 +68,32 @@ pub fn spawn_sc_worker(
                 let ev = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     run_task(&task, api.as_ref(), &cfg, &board, &tx)
                 }))
-                .unwrap_or_else(|_| FetchEvent::Failed {
-                    job_id: task.job_id.clone(),
-                    attempt: task.attempt,
-                    reason: "falha interna no download do SoundCloud".into(),
-                    retryable: false,
+                .unwrap_or_else(|_| {
+                    // O panic pode ter deixado original, FLAC ou `.part`.
+                    clean_task_files(&task);
+                    FetchEvent::Failed {
+                        job_id: task.job_id.clone(),
+                        attempt: task.attempt,
+                        reason: "falha interna no download do SoundCloud".into(),
+                        retryable: false,
+                    }
                 });
                 let _ = tx.send(ev);
             }
         })
         .expect("spawn sc-worker")
+}
+
+/// Apaga `<incoming_dir>/<file_stem>.*` (original, FLAC e `.part`) da
+/// tentativa. Melhor esforço: pasta ausente não é erro.
+fn clean_task_files(t: &FetchTask) {
+    let prefix = format!("{}.", t.file_stem());
+    let Ok(rd) = std::fs::read_dir(&t.incoming_dir) else { return };
+    for entry in rd.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 fn run_task(
@@ -100,8 +116,19 @@ fn run_task(
         Ok(tk) => tk,
         Err(e) => return fail(format!("sem token do SoundCloud: {e}"), false),
     };
+    // Sem ffmpeg/ffprobe nada do que baixar vira FLAC: falha antes de gastar
+    // a banda do original (spec §4.1).
+    let tools = Tools::from_ffmpeg(&cfg.ffmpeg);
+    if !transcode::ffmpeg_available(&tools) {
+        return fail("ffmpeg ausente".into(), false);
+    }
     if board.is_canceled(&job_id, attempt) {
         return canceled();
+    }
+    // Instalação nova (ou pasta oculta apagada) não tem `.rustify-incoming`:
+    // nada antes do worker a cria, e o download daria ENOENT.
+    if let Err(e) = std::fs::create_dir_all(&t.incoming_dir) {
+        return fail(format!("pasta de entrada: {e}"), false);
     }
 
     // 1) sondagem do original
@@ -111,7 +138,12 @@ fn run_task(
         Err(ScError::RateLimited) => {
             return fail("SoundCloud limitou as chamadas; tente em alguns minutos".into(), true)
         }
-        Err(e) => return fail(format!("SoundCloud: {e}"), true),
+        // Com token, 403/404 em `/download` = original indisponível para este
+        // cliente: determinístico, tentar de novo não muda nada.
+        Err(ScError::Http(403 | 404)) => {
+            return FetchEvent::Rejected { job_id, attempt, reason: RejectReason::NoDownload, quarantine: None }
+        }
+        Err(e) => return fail(e.to_string(), true),
     };
 
     // 2) download para o incoming
@@ -136,7 +168,7 @@ fn run_task(
         let _ = tx.send(FetchEvent::Progress { job_id: job_id.clone(), attempt, pct, bps, eta_s });
     };
     if let Err(e) = api.download(&orig.url, &raw, &mut cb) {
-        let _ = std::fs::remove_file(&raw);
+        clean_task_files(t);
         return match e {
             ScError::NoToken | ScError::Http(401) | ScError::Http(403) => {
                 fail("token do SoundCloud recusado no download".into(), false)
@@ -151,7 +183,6 @@ fn run_task(
     }
 
     // 3) sondagem real e classificação (a extensão pode mentir)
-    let tools = Tools::from_ffmpeg(&cfg.ffmpeg);
     let probe = match transcode::probe_media(&tools, &raw) {
         Ok(p) => p,
         Err(e) => {
@@ -234,18 +265,47 @@ mod tests {
         assert_eq!(classify_original("m4a", &p("aac", Some(256), None)), Err(RejectReason::NoDownload));
     }
 
-    struct FakeSc { src: std::path::PathBuf, ext: &'static str, fail_401: bool, log: Mutex<Vec<String>> }
+    /// Modos do `FakeSc`: cada um simula um jeito de a fonte responder.
+    #[derive(Default)]
+    struct Modo {
+        /// `probe_original` devolve `NoToken` (token recusado na sondagem).
+        probe_401: bool,
+        /// `probe_original` devolve este status HTTP.
+        probe_http: Option<u16>,
+        /// `download` começa, deixa um `.part` e devolve `Http(401)`.
+        download_401: bool,
+        /// `download` copia o original e entra em panic.
+        download_panic: bool,
+        /// Bytes devolvidos por `fetch_bytes` (capa); `None` = 404.
+        capa: Option<Vec<u8>>,
+    }
+
+    struct FakeSc { src: std::path::PathBuf, ext: &'static str, modo: Modo, log: Mutex<Vec<String>> }
     impl SoundCloudApi for FakeSc {
         fn search(&self, _: &str, _: u32) -> Result<Vec<ScTrack>, ScError> { unimplemented!() }
         fn resolve(&self, _: &str) -> Result<ScTrack, ScError> { unimplemented!() }
         fn probe_original(&self, _: u64, _: &str, _: u64) -> Result<Original, ScError> {
-            if self.fail_401 { return Err(ScError::NoToken); }
+            if self.modo.probe_401 { return Err(ScError::NoToken); }
+            if let Some(code) = self.modo.probe_http { return Err(ScError::Http(code)); }
             Ok(Original { url: "fake://orig".into(), ext: self.ext.into(), size: Some(std::fs::metadata(&self.src).unwrap().len()), kbps_est: None })
         }
         fn download(&self, _: &str, dest: &std::path::Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), ScError> {
-            std::fs::copy(&self.src, dest).unwrap(); progress(10, Some(10)); self.log.lock().unwrap().push("download".into()); Ok(())
+            self.log.lock().unwrap().push("download".into());
+            if self.modo.download_401 {
+                let mut part = dest.as_os_str().to_owned(); part.push(".part");
+                std::fs::write(&part, b"metade").unwrap();
+                progress(6, Some(10));
+                return Err(ScError::Http(401));
+            }
+            std::fs::copy(&self.src, dest).unwrap();
+            if self.modo.download_panic { panic!("panic simulado no download"); }
+            progress(10, Some(10));
+            Ok(())
         }
-        fn fetch_bytes(&self, _: &str, _: usize) -> Result<Vec<u8>, ScError> { Err(ScError::Http(404)) }
+        fn fetch_bytes(&self, url: &str, _: usize) -> Result<Vec<u8>, ScError> {
+            self.log.lock().unwrap().push(format!("fetch {url}"));
+            self.modo.capa.clone().ok_or(ScError::Http(404))
+        }
         fn me(&self, _: &str) -> Result<(), ScError> { Ok(()) }
     }
 
@@ -278,21 +338,33 @@ mod tests {
         Arc::new(board)
     }
 
-    fn setup(ext: &'static str, extra: &[&str], fail_401: bool) -> (tempfile::TempDir, Arc<FakeSc>, Arc<SourcesConfig>, Arc<JobBoard>) {
+    fn setup_modo(ext: &'static str, extra: &[&str], modo: Modo) -> (tempfile::TempDir, Arc<FakeSc>, Arc<SourcesConfig>, Arc<JobBoard>) {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join(format!("orig.{ext}"));
         let st = std::process::Command::new("ffmpeg").args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-ac", "2"]).args(extra).arg(&src).status().unwrap();
         assert!(st.success());
         let token = tmp.path().join("tok.txt"); std::fs::write(&token, "2-x-y-z").unwrap();
         let mut cfg = SourcesConfig::load_with(tmp.path(), |_| None); cfg.sc_token_file = token;
-        (tmp, Arc::new(FakeSc { src, ext, fail_401, log: Mutex::new(vec![]) }), Arc::new(cfg), board_com_job())
+        (tmp, Arc::new(FakeSc { src, ext, modo, log: Mutex::new(vec![]) }), Arc::new(cfg), board_com_job())
     }
 
+    fn setup(ext: &'static str, extra: &[&str]) -> (tempfile::TempDir, Arc<FakeSc>, Arc<SourcesConfig>, Arc<JobBoard>) {
+        setup_modo(ext, extra, Modo::default())
+    }
+
+    /// Tarefa com `incoming_dir` que AINDA NÃO existe: criar a pasta é
+    /// responsabilidade do worker (instalação nova não tem `.rustify-incoming`).
     fn task(tmp: &tempfile::TempDir) -> FetchTask {
-        let incoming = tmp.path().join(".rustify-incoming"); std::fs::create_dir_all(&incoming).unwrap();
+        let incoming = tmp.path().join(".rustify-incoming");
         FetchTask { job_id: "j1".into(), attempt: 0, source: Source::SoundCloud { track_id: 1, permalink_url: "https://soundcloud.com/a/b".into() },
             meta: ConfirmedMeta { artist: "DJ Arana".into(), title: "Festa".into(), album: "Festa".into(), year: Some(2024), label: None },
             artwork_url: None, playlist: "Funk Brasileiro".into(), incoming_dir: incoming }
+    }
+
+    /// Nomes dos arquivos `j1.a0.*` que sobraram no incoming.
+    fn sobras(tmp: &tempfile::TempDir) -> Vec<String> {
+        let Ok(rd) = std::fs::read_dir(tmp.path().join(".rustify-incoming")) else { return Vec::new() };
+        rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with("j1.a0.")).collect()
     }
 
     fn run_one(api: Arc<FakeSc>, cfg: Arc<SourcesConfig>, board: Arc<JobBoard>, t: FetchTask) -> Vec<FetchEvent> {
@@ -301,12 +373,16 @@ mod tests {
         erx.try_iter().collect()
     }
 
+    fn done_de(evs: &[FetchEvent]) -> Option<(std::path::PathBuf, FormatIn)> {
+        evs.iter().find_map(|e| if let FetchEvent::Done { flac_path, format_in, .. } = e { Some((flac_path.clone(), *format_in)) } else { None })
+    }
+
     #[test]
     fn wav_vira_flac_com_tags_e_done() {
         if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, board) = setup("wav", &["-c:a", "pcm_s24le"], false);
+        let (tmp, api, cfg, board) = setup("wav", &["-c:a", "pcm_s24le"]);
         let evs = run_one(api, cfg, board, task(&tmp));
-        let done = evs.iter().find_map(|e| if let FetchEvent::Done { flac_path, format_in, .. } = e { Some((flac_path.clone(), *format_in)) } else { None }).expect("Done");
+        let done = done_de(&evs).expect("Done");
         assert_eq!(done.1, FormatIn::Wav24);
         let md = library_indexer::parse_flac(&done.0).unwrap();
         assert_eq!(md.artist.as_deref(), Some("DJ Arana")); assert_eq!(md.genre_raw.as_deref(), Some("Funk Brasileiro"));
@@ -315,9 +391,38 @@ mod tests {
     }
 
     #[test]
+    fn incoming_inexistente_e_criado_pelo_worker() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup("wav", &[]);
+        let t = task(&tmp);
+        assert!(!t.incoming_dir.exists(), "pré-condição: pasta ainda não existe");
+        let evs = run_one(api, cfg, board, t);
+        assert!(done_de(&evs).is_some(), "{evs:?}");
+    }
+
+    #[test]
+    fn wav_com_capa_embute_picture_500() {
+        if !ffmpeg_ok() { return; }
+        let tmp_capa = tempfile::tempdir().unwrap();
+        let jpg = tmp_capa.path().join("capa.jpg");
+        let st = std::process::Command::new("ffmpeg").args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1"]).arg(&jpg).status().unwrap();
+        assert!(st.success());
+        let modo = Modo { capa: Some(std::fs::read(&jpg).unwrap()), ..Modo::default() };
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], modo);
+        let mut t = task(&tmp);
+        t.artwork_url = Some("https://i1.sndcdn.com/x-large.jpg".into());
+        let evs = run_one(api.clone(), cfg, board, t);
+        let (path, _) = done_de(&evs).expect("Done");
+        let pics = library_indexer::parse_flac(&path).unwrap().pictures;
+        assert_eq!(pics.len(), 1, "capa embutida");
+        assert_eq!(pics[0].mime, "image/jpeg");
+        assert!(api.log.lock().unwrap().iter().any(|l| l == "fetch https://i1.sndcdn.com/x-t500x500.jpg"), "{:?}", api.log.lock().unwrap());
+    }
+
+    #[test]
     fn mp3_abaixo_de_300_rejeita_low_bitrate() {
         if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "128k"], false);
+        let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "128k"]);
         let evs = run_one(api, cfg, board, task(&tmp));
         assert!(matches!(evs.last(), Some(FetchEvent::Rejected { reason: RejectReason::LowBitrate { .. }, .. })), "{evs:?}");
         assert!(!tmp.path().join(".rustify-incoming/j1.a0.mp3").exists(), "original rejeitado sai do incoming");
@@ -326,9 +431,9 @@ mod tests {
     #[test]
     fn mp3_320_entra_com_comment_de_origem() {
         if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "320k"], false);
+        let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "320k"]);
         let evs = run_one(api, cfg, board, task(&tmp));
-        let (path, fmt) = evs.iter().find_map(|e| if let FetchEvent::Done { flac_path, format_in, .. } = e { Some((flac_path.clone(), *format_in)) } else { None }).unwrap();
+        let (path, fmt) = done_de(&evs).unwrap();
         assert_eq!(fmt, FormatIn::Mp3_320);
         let tagged = lofty::read_from_path(&path).unwrap();
         use lofty::prelude::*; let c = tagged.primary_tag().and_then(|t| t.comment().map(|s| s.to_string()));
@@ -336,27 +441,87 @@ mod tests {
     }
 
     #[test]
+    fn sondagem_401_falha_sem_retry() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { probe_401: true, ..Modo::default() });
+        let evs = run_one(api.clone(), cfg, board, task(&tmp));
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("token")), "{evs:?}");
+        assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
+    }
+
+    #[test]
     fn fake_sc_download_401_falha_sem_retry() {
         if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, board) = setup("wav", &[], true);
-        let evs = run_one(api, cfg, board, task(&tmp));
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { download_401: true, ..Modo::default() });
+        let evs = run_one(api.clone(), cfg, board, task(&tmp));
+        assert_eq!(api.log.lock().unwrap().as_slice(), ["download"], "o download começou");
         assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("token")), "{evs:?}");
+        assert!(sobras(&tmp).is_empty(), "nada de j1.a0.* no incoming: {:?}", sobras(&tmp));
+    }
+
+    #[test]
+    fn original_indisponivel_403_404_rejeita_sem_download() {
+        if !ffmpeg_ok() { return; }
+        for code in [403u16, 404] {
+            let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { probe_http: Some(code), ..Modo::default() });
+            let evs = run_one(api.clone(), cfg, board, task(&tmp));
+            assert!(matches!(evs.last(), Some(FetchEvent::Rejected { reason: RejectReason::NoDownload, .. })), "{code}: {evs:?}");
+            assert!(api.log.lock().unwrap().is_empty(), "{code}: não baixou nada");
+        }
+    }
+
+    #[test]
+    fn sondagem_com_erro_de_rede_nao_repete_o_prefixo() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { probe_http: Some(500), ..Modo::default() });
+        let evs = run_one(api, cfg, board, task(&tmp));
+        match evs.last() {
+            Some(FetchEvent::Failed { retryable: true, reason, .. }) => {
+                assert_eq!(reason.matches("SoundCloud").count(), 1, "{reason}");
+            }
+            other => panic!("esperava Failed retentável, veio {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sem_ffmpeg_falha_sem_baixar() {
+        let (tmp, api, cfg, board) = (|| {
+            let tmp = tempfile::tempdir().unwrap();
+            let src = tmp.path().join("orig.wav"); std::fs::write(&src, b"RIFF").unwrap();
+            let token = tmp.path().join("tok.txt"); std::fs::write(&token, "2-x-y-z").unwrap();
+            let mut cfg = SourcesConfig::load_with(tmp.path(), |_| None);
+            cfg.sc_token_file = token;
+            cfg.ffmpeg = "/caminho/inexistente/ffmpeg".into();
+            (tmp, Arc::new(FakeSc { src, ext: "wav", modo: Modo::default(), log: Mutex::new(vec![]) }), Arc::new(cfg), board_com_job())
+        })();
+        let evs = run_one(api.clone(), cfg, board, task(&tmp));
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason == "ffmpeg ausente"), "{evs:?}");
+        assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
+    }
+
+    #[test]
+    fn panic_no_meio_limpa_o_incoming() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { download_panic: true, ..Modo::default() });
+        let evs = run_one(api, cfg, board, task(&tmp));
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, .. })), "{evs:?}");
+        assert!(sobras(&tmp).is_empty(), "panic não deixa original no incoming: {:?}", sobras(&tmp));
     }
 
     #[test]
     fn sem_arquivo_de_token_falha_antes_de_baixar() {
         if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, board) = setup("wav", &[], false);
+        let (tmp, api, cfg, board) = setup("wav", &[]);
         let mut cfg2 = (*cfg).clone(); cfg2.sc_token_file = tmp.path().join("inexistente.txt");
         let evs = run_one(api.clone(), Arc::new(cfg2), board, task(&tmp));
         assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, .. })));
-        assert!(api.log.lock().unwrap().is_empty(), "nao baixou nada");
+        assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
     }
 
     #[test]
     fn job_cancelado_nao_baixa() {
         if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, _) = setup("wav", &[], false);
+        let (tmp, api, cfg, _) = setup("wav", &[]);
         let evs = run_one(api.clone(), cfg, Arc::new(JobBoard::new()), task(&tmp));
         assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, .. })), "{evs:?}");
         assert!(api.log.lock().unwrap().is_empty(), "job fora do board não baixa");
