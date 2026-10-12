@@ -325,6 +325,11 @@ struct PersistedJob {
     /// §2.3); os demais são reconstruídos pela reconciliação.
     #[serde(default)]
     waiting: Option<(WaitReason, String)>,
+    /// Instante (unix) em que o job entrou em `Waiting`: o boot recalcula
+    /// `since_secs` a partir dele, e a idade da espera (teto de 24 h da
+    /// compra, spec §6.2) não recomeça a cada reinício.
+    #[serde(default)]
+    waiting_since_unix: Option<i64>,
     /// Arquivo já colocado em `~/Music` de um job em `Indexing`: o boot
     /// retoma o ingest dele em vez de baixar de novo.
     #[serde(default)]
@@ -634,6 +639,12 @@ impl Coordinator {
                     JobState::Waiting { reason, url, .. } => Some((*reason, url.clone())),
                     _ => None,
                 },
+                waiting_since_unix: match &j.state {
+                    JobState::Waiting { since_secs, .. } => {
+                        Some(unix_now() - i64::try_from(*since_secs).unwrap_or(0))
+                    }
+                    _ => None,
+                },
                 indexing_path: match j.state {
                     JobState::Indexing => indexing_paths.get(&j.job_id).cloned(),
                     _ => None,
@@ -750,7 +761,13 @@ impl Coordinator {
                 base.soulseek().map(|(u, f, _)| (u.to_string(), f.to_string()))
             else {
                 let state = match pj.waiting {
-                    Some((reason, url)) => JobState::Waiting { reason, url, since_secs: 0 },
+                    Some((reason, url)) => {
+                        let since_secs = pj
+                            .waiting_since_unix
+                            .map(|t| u64::try_from(now_unix - t).unwrap_or(0))
+                            .unwrap_or(0);
+                        JobState::Waiting { reason, url, since_secs }
+                    }
                     None => JobState::Queued,
                 };
                 self.board.upsert(DownloadJob { state, ..base });
@@ -1402,8 +1419,12 @@ impl Coordinator {
                     if self.board.transition(&job_id, JobState::Rejected { reason }) {
                         changed = true;
                         if let Some(path) = quarantine {
-                            let dest = stage::quarantine(&self.cfg.music_root, &path, slug);
-                            tracing::info!(job_id, path = %dest.display(), "slsk-coord: rejeitado pelo worker, arquivo na quarentena");
+                            if self.is_in_incoming(&path) {
+                                let dest = stage::quarantine(&self.cfg.music_root, &path, slug);
+                                tracing::info!(job_id, path = %dest.display(), "slsk-coord: rejeitado pelo worker, arquivo na quarentena");
+                            } else {
+                                tracing::warn!(job_id, path = %path.display(), "slsk-coord: arquivo rejeitado fora do incoming, não movido");
+                            }
                         }
                     } else if let Some(path) = quarantine {
                         self.discard_fetched(&path);
@@ -1424,12 +1445,22 @@ impl Coordinator {
         }
     }
 
+    /// `true` só para um arquivo dentro de `.rustify-incoming`. `starts_with`
+    /// é léxico e não resolve `..` (`<incoming>/../P/x.flac` passaria), então
+    /// caminho com componente que não seja nome comum é recusado.
+    fn is_in_incoming(&self, path: &std::path::Path) -> bool {
+        let incoming = self.cfg.music_root.join(stage::INCOMING_DIR_NAME);
+        path.strip_prefix(&incoming).is_ok_and(|rest| {
+            rest.components().next().is_some()
+                && rest.components().all(|c| matches!(c, std::path::Component::Normal(_)))
+        })
+    }
+
     /// Apaga um arquivo que o worker produziu e que nenhum job vai usar. Só
     /// mexe dentro de `.rustify-incoming` (o worker nunca grava fora dele);
     /// qualquer outro caminho fica como está, com log.
     fn discard_fetched(&self, path: &std::path::Path) {
-        let incoming = self.cfg.music_root.join(stage::INCOMING_DIR_NAME);
-        if path.starts_with(&incoming) {
+        if self.is_in_incoming(path) {
             let _ = std::fs::remove_file(path);
         } else {
             tracing::warn!(path = %path.display(), "slsk-coord: arquivo do worker fora do incoming, não apagado");
@@ -1849,6 +1880,11 @@ impl Coordinator {
     /// Valida (dedup via `OwnedIndex`) e move (`stage::stage_file`, que já
     /// cuida de quarentena internamente em qualquer `Rejected` — review
     /// IM-2). Sucesso -> `Indexing` + `try_ingest`.
+    ///
+    /// Falha antes de mover, em job de origem externa: o arquivo está no
+    /// `.rustify-incoming` (no Soulseek ele fica em `downloads_dir`, que é do
+    /// slskd) e é apagado. Cada nova tentativa baixa um arquivo próprio, então
+    /// guardá-lo só acumularia lixo no acervo oculto até o próximo boot.
     fn stage_and_ingest(&self, job: &DownloadJob, local: PathBuf) {
         let owned = match self.owned_index_safe() {
             Some(idx) => idx,
@@ -1856,10 +1892,11 @@ impl Coordinator {
                 self.board.transition(
                     &job.job_id,
                     JobState::Failed {
-                        reason: "Qdrant indisponivel para checagem de dedup".to_string(),
+                        reason: "Qdrant indisponível para checagem de dedup".to_string(),
                         retryable: true,
                     },
                 );
+                self.discard_external_leftover(job, &local);
                 self.mark_dirty();
                 return;
             }
@@ -1883,8 +1920,17 @@ impl Coordinator {
             }
             Err(e) => {
                 self.board.transition(&job.job_id, JobState::Failed { reason: e, retryable: true });
+                self.discard_external_leftover(job, &local);
                 self.mark_dirty();
             }
+        }
+    }
+
+    /// Ver [`Self::stage_and_ingest`]: só origem externa, só se o arquivo
+    /// ainda estiver no incoming.
+    fn discard_external_leftover(&self, job: &DownloadJob, local: &std::path::Path) {
+        if job.soulseek().is_none() && local.is_file() {
+            self.discard_fetched(local);
         }
     }
 
@@ -2537,7 +2583,7 @@ mod tests {
     fn promote_queued_after_slot_frees_up() {
         // CR-2: promover um Queued precisa reduzir a contagem de in-flight
         // de verdade — sem isso a fila trava permanentemente acima de
-        // MAX_ACTIVE_TRANSFERS.
+        // MAX_ACTIVE_SOULSEEK.
         let tmp = tempfile::tempdir().unwrap();
         let fake = Arc::new(FakeSlskd::new());
         for _ in 0..3 {
@@ -2670,6 +2716,7 @@ mod tests {
             alternates: vec![],
             quality_label: "FLAC 16/44".to_string(),
             waiting: None,
+            waiting_since_unix: None,
             indexing_path: None,
             attempt: 0,
             created_at: unix_now(),
@@ -3758,5 +3805,171 @@ mod tests {
         let raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(tmp.path().join("slsk_jobs.json")).unwrap()).unwrap();
         assert_eq!(raw[0]["username"], "peer1");
         assert_eq!(raw[0]["remote_filename"], "A\\T.flac");
+    }
+
+    // ── Correções do segundo review das Tasks 1 e 2 ────────────────────
+
+    #[test]
+    fn poll_promove_queued_soulseek_mesmo_sem_job_em_voo_no_slskd() {
+        // Desvio 3: só há job Soulseek `Queued` (os 3 que estavam em voo
+        // saíram do slskd). Sem consultar o slskd, `promote_queued` nunca
+        // roda e a fila trava para sempre.
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        for _ in 0..MAX_ACTIVE_SOULSEEK {
+            fake.push_enqueue(Ok(()));
+        }
+        let coord = make_coordinator(tmp.path(), fake.clone());
+        let now = Instant::now();
+        let em_voo: Vec<String> = (0..MAX_ACTIVE_SOULSEEK)
+            .map(|i| coord.start_download(&candidate(&format!("peer{i}"), &format!("A\\T{i}.flac"), 1000), vec![], "P", now).unwrap())
+            .collect();
+        let fila = coord.start_download(&candidate("peer_q", "A\\Fila.flac", 1000), vec![], "P", now).unwrap();
+        assert_eq!(coord.board.get(&fila).unwrap().state, JobState::Queued);
+
+        // Dois terminam e um vai para Indexing: nenhum Soulseek fica em
+        // Enqueued/Downloading/Stalled.
+        for (i, id) in em_voo.iter().enumerate() {
+            let job = coord.board.get(id).unwrap();
+            let state = if i == 0 { JobState::Indexing } else { JobState::Ready { track_id: "1".into() } };
+            coord.board.upsert(DownloadJob { state, ..job });
+        }
+        fake.push_enqueue(Ok(()));
+        coord.poll_active_transfers_once(now);
+
+        assert_eq!(coord.board.get(&fila).unwrap().state, JobState::Enqueued { queue_position: None });
+        assert_eq!(fake.enqueue_calls.lock().unwrap().len(), MAX_ACTIVE_SOULSEEK + 1);
+    }
+
+    #[test]
+    fn boot_avanca_o_contador_alem_das_tentativas_persistidas() {
+        let (c, tmp) = test_coordinator();
+        let src = sc_source(70);
+        let id = super::super::board::job_id(&src);
+        c.board.upsert(DownloadJob {
+            job_id: id.clone(),
+            source: src.clone(),
+            meta: meta("A", "T"),
+            format_in: None,
+            tracks: 1,
+            display: "A - T".into(),
+            dest_playlist: "P".into(),
+            state: JobState::Enqueued { queue_position: None },
+            quality_label: String::new(),
+            alternates: vec![],
+            tried_source_ids: vec![],
+            created_at: unix_now(),
+            attempt: 5,
+        });
+        c.save_jobs();
+
+        let (c2, _) = test_coordinator_at(tmp.path());
+        let (ftx2, frx2) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_e2, erx2) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c2 = c2.with_fetch_worker("sound_cloud", ftx2).with_fetch_events(erx2);
+        c2.reconcile_boot(unix_now());
+        let restaurada = frx2.try_recv().expect("re-despachado no boot");
+        assert_eq!(restaurada.attempt, 5, "o boot mantém a tentativa persistida");
+
+        // Job novo criado depois do boot: tentativa acima da persistida.
+        let outro = external(&c2, sc_source(71), meta("B", "U"), "P").unwrap();
+        assert!(att(&c2, &outro) > 5, "tentativa nova {} repete uma persistida", att(&c2, &outro));
+        frx2.try_iter().count();
+
+        // Cancelar e baixar de novo o job restaurado: nunca a tentativa 5.
+        c2.handle_task(SlskTask::CancelJob { job_id: id.clone() });
+        external(&c2, src, meta("A", "T"), "P").unwrap();
+        let recriada = frx2.try_recv().expect("FetchTask da recriação");
+        assert_ne!(recriada.attempt, 5);
+        assert!(recriada.attempt > 5);
+        assert_ne!(recriada.file_stem(), restaurada.file_stem(), "a tarefa velha e a nova não dividem arquivo");
+    }
+
+    #[test]
+    fn falha_de_dedup_em_job_externo_apaga_o_arquivo_do_incoming() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ingest, _calls) = recording_ingest();
+        let c = Coordinator::new(
+            test_cfg(tmp.path()),
+            Arc::new(FakeSlskd::new()),
+            Arc::new(JobBoard::new()),
+            Arc::new(RwLock::new(SearchStore::default())),
+            ingest,
+            Box::new(|| Err("qdrant fora".to_string())),
+            tmp.path().join("slsk_jobs.json"),
+        );
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
+        let id = external(&c, sc_source(72), meta("A", "T"), "P").unwrap();
+        let task = frx.try_recv().unwrap();
+        let flac = fetched_flac(&c, &task);
+        etx.send(FetchEvent::Done { job_id: id.clone(), attempt: task.attempt, flac_path: flac.clone(), format_in: FormatIn::Wav16 }).unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert_eq!(
+            c.board.get(&id).unwrap().state,
+            JobState::Failed { reason: "Qdrant indisponível para checagem de dedup".into(), retryable: true }
+        );
+        assert!(!flac.exists(), "o FLAC da tentativa que falhou não fica no incoming");
+    }
+
+    #[test]
+    fn discard_fetched_recusa_caminho_que_sai_do_incoming() {
+        let (c, tmp, frx, etx) = wired(16);
+        let acervo = tmp.path().join("Music").join("P");
+        std::fs::create_dir_all(&acervo).unwrap();
+        let faixa = acervo.join("x.flac");
+        std::fs::copy(fixture_flac(), &faixa).unwrap();
+        let incoming = c.cfg.music_root.join(stage::INCOMING_DIR_NAME);
+        std::fs::create_dir_all(&incoming).unwrap();
+        let escapando = incoming.join("..").join("P").join("x.flac");
+        c.discard_fetched(&escapando);
+        assert!(faixa.exists(), "`..` não pode tirar a exclusão de dentro do incoming");
+
+        // Quarentena também só aceita arquivo de dentro do incoming.
+        let id = external(&c, sc_source(73), meta("A", "T"), "P").unwrap();
+        let task = frx.try_recv().unwrap();
+        etx.send(FetchEvent::Rejected {
+            job_id: id.clone(),
+            attempt: task.attempt,
+            reason: RejectReason::LowBitrate { kbps: 128 },
+            quarantine: Some(escapando),
+        })
+        .unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LowBitrate { kbps: 128 } });
+        assert!(faixa.exists(), "arquivo do acervo não vai para a quarentena");
+    }
+
+    #[test]
+    fn waiting_preserva_a_idade_entre_reinicios() {
+        let (c, tmp) = test_coordinator();
+        let src = Source::Bandcamp { item_type: "a".into(), item_id: 11, url: "https://x.bandcamp.com/album/z".into() };
+        let id = super::super::board::job_id(&src);
+        c.board.upsert(DownloadJob {
+            job_id: id.clone(),
+            source: src,
+            meta: meta("A", "Z"),
+            format_in: None,
+            tracks: 1,
+            display: "A - Z".into(),
+            dest_playlist: "P".into(),
+            state: JobState::Waiting { reason: WaitReason::Purchase, url: "https://x.bandcamp.com/album/z".into(), since_secs: 50 },
+            quality_label: String::new(),
+            alternates: vec![],
+            tried_source_ids: vec![],
+            created_at: unix_now(),
+            attempt: 0,
+        });
+        c.save_jobs();
+        let (c2, _) = test_coordinator_at(tmp.path());
+        c2.reconcile_boot(unix_now() + 100);
+        match c2.board.get(&id).unwrap().state {
+            JobState::Waiting { since_secs, .. } => assert!(
+                (150..=152).contains(&since_secs),
+                "idade da espera recomeçou no boot: {since_secs}"
+            ),
+            other => panic!("estado: {other:?}"),
+        }
     }
 }

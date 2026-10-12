@@ -615,6 +615,11 @@ git commit -m "feat(crate): coordinator roteia por origem, tarefa DownloadExtern
 - Um worker por origem: `Coordinator::with_fetch_worker(kind, tx)` + `with_fetch_events(rx)`; `spawn_coordinator(..., fetch: Option<FetchWiring>)` com `FetchWiring { workers: vec![("sound_cloud", ftx)], events: erx }`. Origem sem worker vira `Failed{"fonte ainda não suportada"}`; `DownloadExternal` com origem Soulseek é recusado.
 - `poll_active_transfers_once` só consulta o slskd com job Soulseek em `Queued`/`Enqueued`/`Downloading`/`Stalled`.
 - Job em `Indexing` persiste `indexing_path`; o boot retoma o ingest em vez de baixar de novo.
+- Identidade das origens externas com prefixo `\u{0}` (`\u{0}sound_cloud\u{1}{track_id}`, `\u{0}bandcamp\u{1}...`); a do Soulseek segue sem prefixo, por compatibilidade com o `slsk_jobs.json`.
+- `Waiting` persiste `waiting_since_unix`; o boot recalcula `since_secs` a partir dele.
+- Falha antes de mover em job externo (Qdrant fora no dedup, `Err` do `stage_file`) apaga o arquivo do worker no incoming. `discard_fetched` e a quarentena do `Rejected` recusam caminho com componente que não seja nome comum (`..`).
+- **Task 6:** o `artwork_url` que entra em `DownloadExternal`/`DownloadJob` entra já persistido no `PersistedJob` (o boot redespacha o job com a capa). E a Task 6 acrescenta o teste de latência da spec §8: worker falso emitindo `Progress` em rajada e um `Done`, com um `ClearFinished`/`DownloadExternal` enviado no meio respondendo em menos de 2 s (o `stage_and_ingest` roda síncrono na `slsk-coord`).
+- **Nenhum `release.sh` desta branch antes da Task 7.** O contrato IPC do `slsk-jobs` já mudou (`username`/`remote_filename`/`size` saíram do topo do job; entraram `source`, `meta`, `format_in`, `tracks`, `attempt`) e o `Crate.tsx` ainda lê os campos antigos: a fila sairia com subtítulo vazio e "NaN MB". A branch recebe commits fora do Crate (ex.: curador Tidal), então a restrição vale para qualquer release, não só o do Crate.
 
 ---
 

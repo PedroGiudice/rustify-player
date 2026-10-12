@@ -55,20 +55,42 @@ enum Source {
 }
 ```
 
-Campos hoje soltos no job (`username`, `remote_filename`, `size`, `alternates`,
-`tried_source_ids`) migram para a variante Soulseek. `job_id` continua um hash
-determinístico: `"{kind}\u{1}{identificador}"`, onde o identificador é
-`username\u{1}remote_filename`, `track_id` ou `item_type\u{1}item_id`. O mesmo
-clique nunca cria dois jobs.
+Os campos que eram soltos no job e descrevem a fonte em uso (`username`,
+`remote_filename`, `size`) migram para a variante Soulseek. `alternates` e
+`tried_source_ids` ficam no topo do `DownloadJob` (vazios fora do Soulseek): são
+o histórico de troca de fonte do job, não a fonte atual, e o `[Trocar fonte]`
+reescreve o `source` inteiro a cada troca.
+
+`job_id` continua um hash determinístico (`DefaultHasher`) da identidade da
+origem, sem o `size`:
+
+- Soulseek: `"{username}\u{1}{remote_filename}"`, a string de antes, **sem
+  prefixo de origem**. Assim os jobs já persistidos em `slsk_jobs.json` mantêm o
+  mesmo id depois da atualização.
+- SoundCloud: `"\u{0}sound_cloud\u{1}{track_id}"`.
+- Bandcamp: `"\u{0}bandcamp\u{1}{item_type}\u{1}{item_id}"`.
+
+O `\u{0}` inicial separa os espaços: username do Soulseek não contém NUL, então
+um peer chamado `sound_cloud` nunca produz o id de uma faixa do SoundCloud. O
+mesmo clique nunca cria dois jobs.
 
 Campos novos comuns a todo job: `meta: ConfirmedMeta` (o que o CEO confirmou no
-card: artist, title, album, year, playlist, label opcional), `format_in` (o
-formato de origem detectado: `flac`, `wav24`, `wav16`, `aiff`, `mp3_320`) e
-`tracks: u16` (1 para single; n para release do Bandcamp).
+card: artist, title, album, year e label opcional; a playlist de destino
+continua no campo `dest_playlist` do job), `format_in` (o formato de origem
+detectado: `flac`, `wav24`, `wav16`, `aiff`, `mp3_320`), `tracks: u16` (1 para
+single; n para release do Bandcamp) e `attempt: u32` (número da tentativa, de um
+contador monotônico do coordinator; todo evento do worker o devolve e evento de
+outra tentativa é descartado).
+
+O contrato IPC (`slsk-jobs` / `slsk_jobs`) muda junto: `username`,
+`remote_filename` e `size` saem do topo do job e entram `source`, `meta`,
+`format_in`, `tracks` e `attempt`. O frontend só acompanha na Task 7 do plano da
+fase 1; até lá nenhum release sai da branch.
 
 ### 2.2 Estados
 
-Os onze estados e as transições de `board.rs` valem para todas as origens.
+Os estados e as transições de `board.rs` (onze, mais o `Waiting` abaixo) valem
+para todas as origens.
 `Enqueued` passa a significar "aceito pela fonte, aguardando início";
 `Processing` cobre localizar, converter, escrever tags e validar. Acréscimos:
 
@@ -89,7 +111,12 @@ Os onze estados e as transições de `board.rs` valem para todas as origens.
 - Soulseek: cruzado com `/transfers/downloads` como hoje.
 - SoundCloud e Bandcamp em `Enqueued`, `Downloading`, `Stalled` ou `Processing`
   voltam para `Queued` e recomeçam; o download HTTP recomeça do zero e o
-  incoming órfão é limpo como hoje. `Waiting` é restaurado como está.
+  incoming órfão é limpo como hoje. `Waiting` é restaurado como está, com a
+  idade recalculada a partir do instante de entrada persistido
+  (`waiting_since_unix`): o teto de 24 h da compra não recomeça a cada boot.
+- Qualquer origem em `Indexing` com o arquivo já em `~/Music` (`indexing_path`
+  persistido) retoma o ingest em vez de baixar de novo.
+- O contador de tentativas avança além da maior `attempt` persistida.
 
 ### 2.4 Workers
 

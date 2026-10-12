@@ -109,15 +109,17 @@ impl Source {
     /// Chave de identidade (sem `size`: a mesma faixa com tamanho novo é o
     /// mesmo job). A do Soulseek é exatamente a string antiga
     /// `"{username}\u{1}{remote_filename}"`, sem prefixo de origem: jobs já
-    /// persistidos em `slsk_jobs.json` mantêm o mesmo `job_id`.
+    /// persistidos em `slsk_jobs.json` mantêm o mesmo `job_id`. As externas
+    /// começam com `\u{0}`, que não aparece em username do Soulseek: um peer
+    /// chamado "sound_cloud" nunca gera o id de uma faixa do SoundCloud.
     fn identity(&self) -> String {
         match self {
             Source::Soulseek { username, remote_filename, .. } => {
                 format!("{username}\u{1}{remote_filename}")
             }
-            Source::SoundCloud { track_id, .. } => format!("sound_cloud\u{1}{track_id}"),
+            Source::SoundCloud { track_id, .. } => format!("\u{0}sound_cloud\u{1}{track_id}"),
             Source::Bandcamp { item_type, item_id, .. } => {
-                format!("bandcamp\u{1}{item_type}\u{1}{item_id}")
+                format!("\u{0}bandcamp\u{1}{item_type}\u{1}{item_id}")
             }
         }
     }
@@ -171,7 +173,8 @@ pub enum WaitReason {
     EmailLink,
 }
 
-/// Estado de um job — 11 variantes (spec §3.5). `tag = "kind"` no wire:
+/// Estado de um job — 12 variantes (spec §3.5 e §2.2 da spec do Crate com
+/// fontes). `tag = "kind"` no wire:
 /// `{"kind":"downloading","pct":34.0,"bps":...}`. Terminais (sem transição
 /// de saída, ver [`can_transition`]): `Ready`, `Rejected`, `Manual`,
 /// `Failed`, `Canceled`.
@@ -584,6 +587,19 @@ mod tests {
     }
 
     #[test]
+    fn identidade_externa_nao_colide_com_peer_soulseek() {
+        // Peer chamado "sound_cloud" com arquivo "42" na raiz: a identidade
+        // Soulseek (sem prefixo, por compatibilidade) não pode bater com a
+        // da faixa 42 do SoundCloud, nem com um álbum do Bandcamp.
+        let peer = Source::Soulseek { username: "sound_cloud".into(), remote_filename: "42".into(), size: 1 };
+        let sc = Source::SoundCloud { track_id: 42, permalink_url: "https://soundcloud.com/x/y".into() };
+        assert_ne!(job_id(&peer), job_id(&sc));
+        let peer_bc = Source::Soulseek { username: "bandcamp".into(), remote_filename: "a\u{1}9".into(), size: 1 };
+        let bc = Source::Bandcamp { item_type: "a".into(), item_id: 9, url: "https://x.bandcamp.com/album/y".into() };
+        assert_ne!(job_id(&peer_bc), job_id(&bc));
+    }
+
+    #[test]
     fn waiting_entra_de_queued_enqueued_downloading_e_sai_para_enqueued() {
         let w = JobState::Waiting { reason: WaitReason::Purchase, url: "https://x".into(), since_secs: 0 };
         assert!(can_transition(&JobState::Queued, &w));
@@ -768,7 +784,7 @@ mod tests {
     fn in_flight_count_excludes_queued_and_terminals() {
         // CR-2: Queued NAO conta como in-flight — sem isso, promover um
         // Queued nunca reduzia a contagem de "nao-terminal" e a fila
-        // travava permanentemente acima de MAX_ACTIVE_TRANSFERS.
+        // travava permanentemente acima do teto de transferências da origem.
         let board = JobBoard::new();
         board.upsert(job("q1", JobState::Queued));
         board.upsert(job("q2", JobState::Queued));
