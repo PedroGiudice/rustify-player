@@ -1,0 +1,14 @@
+[package]
+name = "soundcloud-client"
+version = "0.1.0"
+description = "Cliente puro da API v2 do SoundCloud: busca, resolve, sondagem e download do original. Sem Tauri."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ureq = { workspace = true }

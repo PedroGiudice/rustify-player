@@ -1,0 +1,1 @@
+tps://secure.soundcloud.com/",artists_host:"https://artists.soundcloud.com",repost_host:"https://repost.soundcloud.com",web_errors_host:"https://web-errors.soundcloud.com",client_application_id:46941,client_id:"vI5BsvpTIlavDLl7RDbbcFAPg8kls8Bg",client_is_expiring:!1,env:"production",eventlogge

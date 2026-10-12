@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/audio-engine", "crates/library-indexer", "crates/slskd-client", "crates/tauri-plugin-rustify-audio"]
+members = [".", "crates/audio-engine", "crates/library-indexer", "crates/slskd-client", "crates/soundcloud-client", "crates/tauri-plugin-rustify-audio"]
 resolver = "2"
 
 [workspace.package]
