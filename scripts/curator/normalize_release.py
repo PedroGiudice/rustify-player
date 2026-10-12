@@ -154,8 +154,10 @@ def find_cover(src: Path, explicit: Path | None) -> Path | None:
 def build_plan(src: Path, out: Path, *, artist: str, release: str, year: int | None,
                label: str | None, genre: str, allow_lossy: bool,
                cover: Path | None = None, flat_artist: bool = False,
-               track_artists: dict[str, str] | None = None) -> Plan:
-    """track_artists: {nome do arquivo: ARTIST} já lido (os testes injetam; o CLI lê das tags)."""
+               track_artists: dict[str, str] | None = None, title: str | None = None) -> Plan:
+    """track_artists: {nome do arquivo: ARTIST} já lido (os testes injetam; o CLI lê das tags).
+    title: título explícito, só para release de UMA faixa (single do SoundCloud: o nome do
+    upload vem em caixa alta e com o artista repetido)."""
     for v in (artist, release, label or ""):
         if looks_like_url(v):
             raise ValueError(f"valor com aparência de URL recusado: {v!r}")
@@ -168,7 +170,11 @@ def build_plan(src: Path, out: Path, *, artist: str, release: str, year: int | N
             f"{len(lossy)} arquivo(s) lossy ({', '.join(sorted({p.suffix for p in lossy}))}); "
             "passe --allow-lossy para converter com COMMENT de origem"
         )
+    if title and len(audio) != 1:
+        raise ValueError(f"--title só vale para release de 1 faixa (há {len(audio)})")
     parsed = [(p, *parse_track_filename(p.stem, artist, release)) for p in audio]
+    if title:
+        parsed = [(audio[0], 1, title)]
     numbered = all(n is not None for _, n, _ in parsed) and len({n for _, n, _ in parsed}) == len(parsed)
     items = []
     for i, (p, n, title) in enumerate(parsed, start=1):
@@ -275,12 +281,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cover", type=Path)
     ap.add_argument("--allow-lossy", action="store_true")
     ap.add_argument("--flat-artist", action="store_true", help="ignora o ARTIST por faixa dos arquivos")
+    ap.add_argument("--title", help="título da faixa (só para release de 1 faixa)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     try:
         plan = build_plan(a.src, a.out, artist=a.artist, release=a.release, year=a.year,
                           label=a.label, genre=a.genre, allow_lossy=a.allow_lossy, cover=a.cover,
-                          flat_artist=a.flat_artist)
+                          flat_artist=a.flat_artist, title=a.title)
     except ValueError as e:
         print(f"erro: {e}", file=sys.stderr)
         return 2

@@ -112,6 +112,24 @@ def test_build_plan_lossy_guard():
         assert plan.items[0].lossy_source == "mp3"
 
 
+def test_build_plan_single_with_title():
+    with tempfile.TemporaryDirectory() as td:
+        src, out = Path(td) / "src", Path(td) / "out"
+        src.mkdir()
+        _touch(src, ["FESTA DO PENTE RALA - DJ ARANA.mp3"])
+        plan = build_plan(src, out, artist="DJ Arana", release="Festa do Pente Rala", year=2024, label=None,
+                          genre="Funk Brasileiro", allow_lossy=True, track_artists={}, title="Festa do Pente Rala")
+        assert [it.dest_name for it in plan.items] == ["01 Festa do Pente Rala.flac"]
+        assert plan.items[0].lossy_source == "mp3"
+        _touch(src, ["outra.mp3"])
+        try:
+            build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G", allow_lossy=True,
+                       track_artists={}, title="Z")
+            assert False
+        except ValueError as e:
+            assert "1 faixa" in str(e)
+
+
 def test_build_plan_rejects_url_artist():
     with tempfile.TemporaryDirectory() as td:
         src, out = Path(td) / "src", Path(td) / "out"
