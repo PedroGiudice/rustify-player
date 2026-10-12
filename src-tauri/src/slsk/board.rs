@@ -328,6 +328,11 @@ pub struct DownloadJob {
     pub source: Source,
     /// O que o CEO confirmou no card (fontes externas); vazio no Soulseek.
     pub meta: ConfirmedMeta,
+    /// Capa da faixa na fonte (SoundCloud: `artwork_url` da API, `-large`),
+    /// vinda do card. O worker baixa a versão 500x500 e embute no FLAC;
+    /// persistida para o boot redespachar o job com a mesma capa. `None`
+    /// no Soulseek (a capa vem do arquivo do peer).
+    pub artwork_url: Option<String>,
     /// Formato de origem detectado; `None` até o arquivo ser sondado (e
     /// sempre no Soulseek, onde só FLAC entra).
     pub format_in: Option<FormatIn>,
@@ -563,7 +568,6 @@ impl JobBoard {
     /// ("Limpar concluídos" remove os cancelados). O worker de fonte externa
     /// consulta antes de cada etapa (via `Arc<JobBoard>`) para abandonar o
     /// trabalho e não gastar banda com um resultado que seria descartado.
-    #[allow(dead_code)] // consumido pelo sc-worker (Task 6 do plano)
     pub(crate) fn is_canceled(&self, id: &str, attempt: u32) -> bool {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
         guard
@@ -615,6 +619,7 @@ mod tests {
                 size: 1,
             },
             meta: ConfirmedMeta::default(),
+            artwork_url: None,
             format_in: None,
             tracks: 1,
             display: id.to_string(),

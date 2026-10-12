@@ -115,13 +115,14 @@ pub enum SlskTask {
     DownloadExternal {
         source: Source,
         meta: ConfirmedMeta,
+        /// Capa da faixa na fonte (vem do card); ver `DownloadJob::artwork_url`.
+        artwork_url: Option<String>,
         dest: String,
         reply: Sender<Result<String, String>>,
     },
 }
 
 /// Enviado ao worker de uma fonte externa (spec §2.4).
-#[allow(dead_code)] // lido pelo sc-worker (tasks seguintes do plano Crate fase 1)
 #[derive(Debug, Clone)]
 pub struct FetchTask {
     pub job_id: String,
@@ -130,13 +131,14 @@ pub struct FetchTask {
     pub attempt: u32,
     pub source: Source,
     pub meta: ConfirmedMeta,
+    /// Capa da faixa na fonte, copiada de `DownloadJob::artwork_url`.
+    pub artwork_url: Option<String>,
     pub playlist: String,
     /// `<music_root>/.rustify-incoming` — o worker grava
     /// `<file_stem>.<ext>` e `<file_stem>.flac` aqui (ver [`Self::file_stem`]).
     pub incoming_dir: PathBuf,
 }
 
-#[allow(dead_code)] // usado pelo sc-worker (Task 6 do plano Crate fase 1)
 impl FetchTask {
     /// Nome-base dos arquivos desta tentativa no incoming:
     /// `<job_id>.a<attempt>`. Duas tentativas do mesmo job nunca dividem
@@ -150,7 +152,6 @@ impl FetchTask {
 }
 
 /// Devolvido pelo worker; o coordinator drena a cada tick e aplica no board.
-#[allow(dead_code)] // construído pelo sc-worker (tasks seguintes do plano Crate fase 1)
 #[derive(Debug, Clone)]
 /// Todo evento carrega a tentativa do `FetchTask` que o gerou.
 pub enum FetchEvent {
@@ -312,6 +313,9 @@ struct PersistedJob {
     remote_filename: String,
     #[serde(default)]
     meta: ConfirmedMeta,
+    /// `default` = arquivo anterior ao campo: o job volta sem capa.
+    #[serde(default)]
+    artwork_url: Option<String>,
     #[serde(default = "one")]
     tracks: u16,
     dest_playlist: String,
@@ -659,6 +663,7 @@ impl Coordinator {
                 job_id: j.job_id,
                 source: j.source,
                 meta: j.meta,
+                artwork_url: j.artwork_url,
                 tracks: j.tracks,
                 dest_playlist: j.dest_playlist,
                 alternates: j.alternates,
@@ -728,6 +733,7 @@ impl Coordinator {
                 job_id: pj.job_id.clone(),
                 source: pj.source.clone(),
                 meta: pj.meta.clone(),
+                artwork_url: pj.artwork_url.clone(),
                 format_in: pj.format_in,
                 tracks: pj.tracks,
                 display: String::new(), // preenchido abaixo, por origem
@@ -1140,6 +1146,7 @@ impl Coordinator {
         &self,
         source: Source,
         meta: ConfirmedMeta,
+        artwork_url: Option<String>,
         display: String,
         quality_label: String,
         alternates: Vec<Candidate>,
@@ -1155,6 +1162,7 @@ impl Coordinator {
             job_id: job_id.clone(),
             source,
             meta,
+            artwork_url,
             format_in: None,
             tracks: 1,
             display,
@@ -1188,6 +1196,7 @@ impl Coordinator {
                 size: candidate.size,
             },
             ConfirmedMeta::default(),
+            None,
             display,
             slskd_client::rank::quality_label(candidate.bit_depth, candidate.sample_rate),
             alternates.iter().map(Candidate::from).collect(),
@@ -1285,6 +1294,7 @@ impl Coordinator {
         &self,
         source: Source,
         meta: ConfirmedMeta,
+        artwork_url: Option<String>,
         dest: &str,
         reply: Sender<Result<String, String>>,
     ) {
@@ -1302,7 +1312,7 @@ impl Coordinator {
         }
         let kind = source.kind();
         let display = format!("{} - {}", meta.artist, meta.title);
-        let (job_id, is_new) = self.create_or_get_job(source, meta, display, String::new(), Vec::new(), dest);
+        let (job_id, is_new) = self.create_or_get_job(source, meta, artwork_url, display, String::new(), Vec::new(), dest);
         let _ = reply.send(Ok(job_id));
         if !is_new {
             return;
@@ -1349,6 +1359,7 @@ impl Coordinator {
             attempt: job.attempt,
             source: job.source.clone(),
             meta: job.meta.clone(),
+            artwork_url: job.artwork_url.clone(),
             playlist: job.dest_playlist.clone(),
             incoming_dir: self.cfg.music_root.join(stage::INCOMING_DIR_NAME),
         };
@@ -1924,6 +1935,14 @@ impl Coordinator {
 
         match stage::stage_file(&self.cfg.music_root, &job.dest_playlist, &local, &owned, &job.job_id) {
             Ok(stage::StageOutcome::Staged { final_path }) => {
+                // Fonte externa (`format_in` detectado): o worker embutiu a
+                // capa no FLAC; a pasta do álbum ganha o `cover.jpg` dela.
+                // Melhor esforço: falha aqui não segura o ingest.
+                if job.format_in.is_some() {
+                    if let Err(e) = stage::write_folder_cover(&final_path) {
+                        tracing::warn!(job_id = %job.job_id, error = %e, "slsk-coord: cover.jpg da pasta não gravado");
+                    }
+                }
                 self.board.transition(&job.job_id, JobState::Indexing);
                 // Registra o arquivo ANTES de persistir: se o app morrer no
                 // meio do ingest, o boot retoma daqui (`indexing_path`).
@@ -2113,8 +2132,8 @@ impl Coordinator {
             SlskTask::ClearFinished { reply } => {
                 let _ = reply.send(self.clear_finished());
             }
-            SlskTask::DownloadExternal { source, meta, dest, reply } => {
-                self.handle_task_download_external(source, meta, &dest, reply);
+            SlskTask::DownloadExternal { source, meta, artwork_url, dest, reply } => {
+                self.handle_task_download_external(source, meta, artwork_url, &dest, reply);
             }
         }
     }
@@ -2296,6 +2315,7 @@ mod tests {
                 size,
             },
             meta: Default::default(),
+            artwork_url: None,
             format_in: None,
             tracks: 1,
             display: id.to_string(),
@@ -2731,6 +2751,7 @@ mod tests {
             username: String::new(),
             remote_filename: String::new(),
             meta: ConfirmedMeta::default(),
+            artwork_url: None,
             tracks: 1,
             dest_playlist: "Trance".to_string(),
             alternates: vec![],
@@ -3357,10 +3378,10 @@ mod tests {
         let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r1, rx1) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(7), meta: meta("DJ Arana", "Festa"), dest: "Funk Brasileiro".into(), reply: r1 });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(7), meta: meta("DJ Arana", "Festa"), artwork_url: None, dest: "Funk Brasileiro".into(), reply: r1 });
         let id1 = rx1.recv().unwrap().unwrap();
         let (r2, rx2) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(7), meta: meta("DJ Arana", "Festa"), dest: "Funk Brasileiro".into(), reply: r2 });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(7), meta: meta("DJ Arana", "Festa"), artwork_url: None, dest: "Funk Brasileiro".into(), reply: r2 });
         let id2 = rx2.recv().unwrap().unwrap();
         assert_eq!(id1, id2);
         assert_eq!(frx.try_iter().count(), 1, "um único FetchTask para o worker");
@@ -3376,10 +3397,10 @@ mod tests {
         let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(8), meta: meta("A", "T"), dest: "../x".into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(8), meta: meta("A", "T"), artwork_url: None, dest: "../x".into(), reply: r });
         assert!(rx.recv().unwrap().is_err());
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(8), meta: meta("  ", "T"), dest: "P".into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(8), meta: meta("  ", "T"), artwork_url: None, dest: "P".into(), reply: r });
         assert!(rx.recv().unwrap().is_err());
         assert_eq!(frx.try_iter().count(), 0);
         assert!(c.board.snapshot().is_empty());
@@ -3392,7 +3413,7 @@ mod tests {
         let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(1), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(1), meta: meta("A", "T"), artwork_url: None, dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
         etx.send(FetchEvent::Progress { job_id: id.clone(), attempt: att(&c, &id), pct: 40.0, bps: 1000, eta_s: Some(3) }).unwrap();
         c.drain_fetch_events(Instant::now());
@@ -3416,7 +3437,7 @@ mod tests {
         let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(4), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(4), meta: meta("A", "T"), artwork_url: None, dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
         c.handle_task(SlskTask::CancelJob { job_id: id.clone() });
         assert_eq!(c.board.get(&id).unwrap().state, JobState::Canceled);
@@ -3435,7 +3456,7 @@ mod tests {
         let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(2), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(2), meta: meta("A", "T"), artwork_url: None, dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
         etx.send(FetchEvent::Rejected { job_id: id.clone(), attempt: att(&c, &id), reason: RejectReason::LowBitrate { kbps: 128 }, quarantine: None }).unwrap();
         c.drain_fetch_events(Instant::now());
@@ -3450,7 +3471,7 @@ mod tests {
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         for i in 0..4u64 {
             let (r, rx) = crossbeam_channel::bounded(1);
-            c.handle_task(SlskTask::DownloadExternal { source: sc_source(10 + i), meta: meta("A", &format!("T{i}")), dest: "P".into(), reply: r });
+            c.handle_task(SlskTask::DownloadExternal { source: sc_source(10 + i), meta: meta("A", &format!("T{i}")), artwork_url: None, dest: "P".into(), reply: r });
             rx.recv().unwrap().unwrap();
         }
         assert_eq!(frx.try_iter().count(), MAX_ACTIVE_SOUNDCLOUD, "só 2 vão para o worker; os outros ficam Queued");
@@ -3468,7 +3489,7 @@ mod tests {
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         for i in 0..2u64 {
             let (r, rx) = crossbeam_channel::bounded(1);
-            c.handle_task(SlskTask::DownloadExternal { source: sc_source(20 + i), meta: meta("A", &format!("T{i}")), dest: "P".into(), reply: r });
+            c.handle_task(SlskTask::DownloadExternal { source: sc_source(20 + i), meta: meta("A", &format!("T{i}")), artwork_url: None, dest: "P".into(), reply: r });
             rx.recv().unwrap().unwrap();
         }
         let states: Vec<JobState> = c.board.snapshot().into_iter().map(|j| j.state).collect();
@@ -3485,7 +3506,7 @@ mod tests {
         let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(3), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(3), meta: meta("A", "T"), artwork_url: None, dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
         c.fail_network_dependent_jobs("slskd inalcancavel");
         assert_eq!(c.board.get(&id).unwrap().state, JobState::Enqueued { queue_position: None });
@@ -3498,9 +3519,11 @@ mod tests {
         let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source: sc_source(5), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        let capa = Some("https://i1.sndcdn.com/artworks-abc-large.jpg".to_string());
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(5), meta: meta("A", "T"), artwork_url: capa.clone(), dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
-        frx.try_iter().count();
+        let tasks: Vec<FetchTask> = frx.try_iter().collect();
+        assert_eq!(tasks[0].artwork_url, capa, "a capa do card chega ao worker");
         c.board.transition(&id, JobState::Downloading { pct: 10.0, bps: 1, eta_s: None });
         c.save_jobs();
         // segundo coordinator lendo o mesmo jobs_path
@@ -3512,7 +3535,10 @@ mod tests {
         let job = c2.board.get(&id).expect("job restaurado");
         assert_eq!(job.meta.artist, "A");
         assert!(matches!(job.state, JobState::Queued | JobState::Enqueued { .. }));
-        assert_eq!(frx2.try_iter().count(), 1, "re-despachado ao worker no boot");
+        assert_eq!(job.artwork_url, capa, "a capa sobrevive ao reinício");
+        let tasks2: Vec<FetchTask> = frx2.try_iter().collect();
+        assert_eq!(tasks2.len(), 1, "re-despachado ao worker no boot");
+        assert_eq!(tasks2[0].artwork_url, capa);
     }
 
     #[test]
@@ -3524,6 +3550,7 @@ mod tests {
             job_id: id.clone(),
             source: src,
             meta: meta("A", "Y"),
+            artwork_url: None,
             format_in: None,
             tracks: 3,
             display: "A - Y".into(),
@@ -3563,7 +3590,7 @@ mod tests {
 
     fn external(c: &Coordinator, source: Source, m: ConfirmedMeta, dest: &str) -> Result<String, String> {
         let (r, rx) = crossbeam_channel::bounded(1);
-        c.handle_task(SlskTask::DownloadExternal { source, meta: m, dest: dest.into(), reply: r });
+        c.handle_task(SlskTask::DownloadExternal { source, meta: m, artwork_url: None, dest: dest.into(), reply: r });
         rx.recv().unwrap()
     }
 
@@ -3874,6 +3901,7 @@ mod tests {
             job_id: id.clone(),
             source: src.clone(),
             meta: meta("A", "T"),
+            artwork_url: None,
             format_in: None,
             tracks: 1,
             display: "A - T".into(),
@@ -3975,6 +4003,7 @@ mod tests {
             job_id: id.clone(),
             source: src,
             meta: meta("A", "Z"),
+            artwork_url: None,
             format_in: None,
             tracks: 1,
             display: "A - Z".into(),
@@ -4016,6 +4045,7 @@ mod tests {
             job_id: id.clone(),
             source: src,
             meta: meta("A", "T"),
+            artwork_url: None,
             format_in: Some(FormatIn::Mp3_320),
             tracks: 1,
             display: "A - T".into(),

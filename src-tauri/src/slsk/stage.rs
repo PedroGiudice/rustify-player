@@ -335,9 +335,36 @@ pub fn stage_file(
     if let Some(dir) = incoming_path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    move_file(local, &incoming_path)?;
+    // O worker de fonte externa pode já entregar o arquivo no staging.
+    if local != incoming_path {
+        move_file(local, &incoming_path)?;
+    }
 
     place_at_destination(music_root, &incoming_path, &dest)
+}
+
+/// Grava `cover.jpg` ao lado de `final_path` com a primeira capa JPEG
+/// embutida no FLAC (a que o worker de fonte externa pôs, spec §4.3).
+/// `Ok(false)` quando já existe `cover.jpg` na pasta (nunca sobrescreve) ou o
+/// FLAC não tem capa JPEG. Escreve em `.part` e renomeia: o scanner nunca
+/// vê um JPEG pela metade.
+pub(crate) fn write_folder_cover(final_path: &Path) -> Result<bool, String> {
+    let dir = final_path.parent().ok_or("caminho sem pasta")?;
+    let cover = dir.join("cover.jpg");
+    if cover.exists() {
+        return Ok(false);
+    }
+    let md = library_indexer::parse_flac(final_path).map_err(|e| format!("parse_flac: {e}"))?;
+    let Some(pic) = md.pictures.iter().find(|p| p.mime == "image/jpeg") else {
+        return Ok(false);
+    };
+    let tmp = dir.join("cover.jpg.part");
+    fs::write(&tmp, &pic.data).map_err(|e| format!("cover.jpg: {e}"))?;
+    fs::rename(&tmp, &cover).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("cover.jpg: {e}")
+    })?;
+    Ok(true)
 }
 
 /// `.rustify-incoming/<job_id>.flac`: onde [`stage_file`] deixa o arquivo
@@ -779,5 +806,80 @@ mod tests {
 
         clean_orphan_incoming(music_root, &["outro-job".to_string()]);
         assert!(!incoming.join("abc123.flac").exists(), "job_id nao bate, deve ser removido");
+    }
+
+    #[test]
+    fn stage_file_aceita_local_que_ja_e_o_incoming() {
+        // O worker de fonte externa pode entregar o FLAC já no caminho de
+        // staging (`.rustify-incoming/<job_id>.flac`): o move vira no-op.
+        let tmp = tempfile::tempdir().unwrap();
+        let music_root = tmp.path().join("Music");
+        let local = incoming_path(&music_root, "job-mesmo");
+        fs::create_dir_all(local.parent().unwrap()).unwrap();
+        fs::copy(flac_fixture(), &local).unwrap();
+
+        let owned = empty_owned_index();
+        match stage_file(&music_root, "Trance", &local, &owned, "job-mesmo").unwrap() {
+            StageOutcome::Staged { final_path } => {
+                assert!(final_path.starts_with(music_root.join("Trance")));
+                assert!(final_path.is_file());
+            }
+            other => panic!("esperava Staged, veio {other:?}"),
+        }
+        assert!(!local.exists(), "staging esvaziado depois do destino final");
+    }
+
+    /// FLAC com capa JPEG embutida, gerado pelo ffmpeg (`None` sem ffmpeg).
+    fn flac_com_capa(dir: &Path) -> Option<PathBuf> {
+        use library_indexer::transcode::{ffmpeg_available, Tools};
+        if !ffmpeg_available(&Tools::default()) {
+            eprintln!("sem ffmpeg: teste pulado");
+            return None;
+        }
+        let jpg = dir.join("capa.jpg");
+        let st = std::process::Command::new("ffmpeg")
+            .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=32x32", "-frames:v", "1"])
+            .arg(&jpg)
+            .status()
+            .unwrap();
+        assert!(st.success());
+        let flac = dir.join("faixa.flac");
+        let st = std::process::Command::new("ffmpeg")
+            .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-i"])
+            .arg(&jpg)
+            .args(["-map", "0:a", "-map", "1:v", "-c:a", "flac", "-c:v", "copy", "-disposition:v", "attached_pic"])
+            .arg(&flac)
+            .status()
+            .unwrap();
+        assert!(st.success());
+        Some(flac)
+    }
+
+    #[test]
+    fn write_folder_cover_grava_a_capa_embutida_sem_sobrescrever() {
+        let tmp = tempfile::tempdir().unwrap();
+        let Some(flac) = flac_com_capa(tmp.path()) else { return };
+        let embutida = library_indexer::parse_flac(&flac).unwrap().pictures[0].data.clone();
+
+        assert_eq!(write_folder_cover(&flac), Ok(true));
+        let cover = tmp.path().join("cover.jpg");
+        assert_eq!(fs::read(&cover).unwrap(), embutida);
+
+        // Já existe: não sobrescreve (capa escolhida pelo usuário fica).
+        fs::write(&cover, b"do usuario").unwrap();
+        assert_eq!(write_folder_cover(&flac), Ok(false));
+        assert_eq!(fs::read(&cover).unwrap(), b"do usuario");
+    }
+
+    #[test]
+    fn write_folder_cover_sem_capa_embutida_nao_grava() {
+        let tmp = tempfile::tempdir().unwrap();
+        let flac = tmp.path().join("t.flac");
+        fs::copy(flac_fixture(), &flac).unwrap();
+        if !library_indexer::parse_flac(&flac).unwrap().pictures.is_empty() {
+            return; // fixture com capa: o caso já é coberto acima
+        }
+        assert_eq!(write_folder_cover(&flac), Ok(false));
+        assert!(!tmp.path().join("cover.jpg").exists());
     }
 }

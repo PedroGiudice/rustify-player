@@ -14,6 +14,7 @@
 mod board;
 mod config;
 mod coordinator;
+mod sc_worker;
 mod sources;
 mod stage;
 
