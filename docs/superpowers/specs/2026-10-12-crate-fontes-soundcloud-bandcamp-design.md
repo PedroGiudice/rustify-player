@@ -99,7 +99,13 @@ para todas as origens.
   `{queued, enqueued, downloading} -> waiting` (compra: logo após a sondagem;
   e-mail: depois do POST que o helper faz), `waiting -> {enqueued, canceled,
   failed}`. Não é terminal e não conta como in-flight para o teto de
-  transferências.
+  transferências. A idade (`since_secs`) é derivada: o board guarda o
+  instante de entrada e recalcula a idade a cada leitura.
+- `Stalled` não se aplica a origem externa. O coordinator não tem como medir
+  progresso fora do slskd; quem garante que um job externo não fica preso em
+  `Enqueued`/`Downloading`/`Processing` é o worker, com timeout em toda
+  leitura HTTP e na execução do ffmpeg, e a falha volta como
+  `Failed { retryable: true }`.
 - `RejectReason::LowBitrate { kbps: u32 }` e `RejectReason::NoDownload`.
 - `Ready { track_id }` continua; para release com n faixas o `track_id` é o da
   primeira e `tracks` diz quantas entraram.
@@ -114,6 +120,9 @@ para todas as origens.
   incoming órfão é limpo como hoje. `Waiting` é restaurado como está, com a
   idade recalculada a partir do instante de entrada persistido
   (`waiting_since_unix`): o teto de 24 h da compra não recomeça a cada boot.
+  Fase 2: como é o worker que consulta a `collection` durante a espera, o boot
+  (ou um tick do coordinator) precisa reentregar a ele os jobs em `Waiting`;
+  na fase 1 nada entra em `Waiting` e o boot não os despacha.
 - Qualquer origem em `Indexing` com o arquivo já em `~/Music` (`indexing_path`
   persistido) retoma o ingest em vez de baixar de novo.
 - O contador de tentativas avança além da maior `attempt` persistida.

@@ -7,7 +7,8 @@
 //! (`JobState` de 11 estados + `RejectReason`).
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
@@ -194,6 +195,10 @@ pub enum JobState {
     Canceled,
     /// Espera algo de fora do app (compra no Bandcamp, link do e-mail).
     /// Não é terminal e não ocupa vaga de transferência (spec §2.2).
+    /// `since_secs` é derivado: o board guarda o instante (unix) de entrada
+    /// e recalcula a idade em toda leitura (`snapshot`/`get`). Na escrita,
+    /// o valor informado só serve para ancorar uma espera que já vinha de
+    /// antes (boot: âncora = agora - `since_secs`).
     Waiting { reason: WaitReason, url: String, since_secs: u64 },
 }
 
@@ -225,7 +230,7 @@ const TERMINALS: &[&str] = &["ready", "rejected", "manual", "failed", "canceled"
 /// `is_terminal()` não muda, então `retain_recent_terminals`/contagem de
 /// in-flight seguem tratando os dois como "em repouso, podável". A janela
 /// de corrida (job podado do board antes do clique) resolve em `Err("job
-/// nao encontrado")`, não em pânico. `Manual`/`Canceled` NÃO ganham essa
+/// não encontrado")`, não em pânico. `Manual`/`Canceled` NÃO ganham essa
 /// aresta: `manual` usa `[Abrir pasta]`, `canceled` foi decisão do usuário.
 ///
 /// Não-terminal -> mesmo `tag` é sempre legal (atualização de progresso:
@@ -298,8 +303,10 @@ pub fn is_terminal(s: &JobState) -> bool {
 
 const IN_FLIGHT: &[&str] = &["enqueued", "downloading", "stalled", "processing", "indexing"];
 
-/// `true` quando o job tem (ou teve recentíssimo) um transfer vivo no
-/// slskd — usado pro gate dos tetos por origem (`MAX_ACTIVE_SOULSEEK` etc.) (review CR-2: contar
+/// `true` quando o job ocupa vaga de transferência da sua origem: transfer
+/// vivo no slskd (Soulseek) ou tarefa entregue ao worker (fontes externas),
+/// incluindo o pós-download (`Processing`/`Indexing`). Usado pro gate dos
+/// tetos por origem (`MAX_ACTIVE_SOULSEEK` etc.) (review CR-2: contar
 /// `Queued` ali causava starvation permanente acima do limite, porque
 /// promover um `Queued` não reduzia a contagem de "não-terminal").
 /// `Queued` (esperando vaga local, nunca chamou `enqueue`) e os terminais
@@ -376,6 +383,46 @@ pub fn job_id(source: &Source) -> String {
 #[derive(Default)]
 pub struct JobBoard {
     jobs: RwLock<HashMap<String, DownloadJob>>,
+    /// Instante (unix) em que cada job em `Waiting` entrou nesse estado.
+    /// Fonte da idade da espera (`since_secs`) e do `waiting_since_unix`
+    /// persistido: o teto de 24 h da compra (spec §2.3, §6.2) conta a
+    /// partir daqui, sem recomeçar a cada gravação ou boot. Só existe
+    /// entrada para job em `Waiting`. Ordem de locks: `jobs`, depois este.
+    waiting_since: Mutex<HashMap<String, i64>>,
+}
+
+/// Relógio de parede em segundos unix.
+pub(crate) fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Mantém a âncora do `Waiting` coerente com o estado novo do job: entra em
+/// `Waiting` → ancora em `now_unix - since_secs` (se já estava esperando,
+/// a âncora antiga fica); qualquer outro estado → some.
+fn anchor_waiting(waiting: &mut HashMap<String, i64>, id: &str, state: &JobState, now_unix: i64) {
+    match state {
+        JobState::Waiting { since_secs, .. } => {
+            waiting
+                .entry(id.to_string())
+                .or_insert(now_unix - i64::try_from(*since_secs).unwrap_or(0));
+        }
+        _ => {
+            waiting.remove(id);
+        }
+    }
+}
+
+/// Recalcula `since_secs` do `Waiting` a partir da âncora.
+fn with_live_age(mut j: DownloadJob, waiting: &HashMap<String, i64>, now_unix: i64) -> DownloadJob {
+    if let JobState::Waiting { since_secs, .. } = &mut j.state {
+        if let Some(t) = waiting.get(&j.job_id) {
+            *since_secs = u64::try_from(now_unix - t).unwrap_or(0);
+        }
+    }
+    j
 }
 
 impl JobBoard {
@@ -387,15 +434,36 @@ impl JobBoard {
     /// não depende da ordem de iteração do `HashMap`. Usado pelo evento
     /// `slsk-jobs` (board inteiro, não diffs — spec §3.5) e por `slsk_jobs`.
     pub fn snapshot(&self) -> Vec<DownloadJob> {
+        self.snapshot_at(unix_now())
+    }
+
+    /// [`Self::snapshot`] com o relógio injetado (idade do `Waiting`).
+    pub(crate) fn snapshot_at(&self, now_unix: i64) -> Vec<DownloadJob> {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
-        let mut v: Vec<DownloadJob> = guard.values().cloned().collect();
+        let waiting = self.waiting_since.lock().unwrap_or_else(|p| p.into_inner());
+        let mut v: Vec<DownloadJob> =
+            guard.values().map(|j| with_live_age(j.clone(), &waiting, now_unix)).collect();
         v.sort_by_key(|j| j.created_at);
         v
     }
 
     pub(crate) fn upsert(&self, j: DownloadJob) {
+        self.upsert_at(j, unix_now());
+    }
+
+    /// [`Self::upsert`] com o relógio injetado: o boot restaura um `Waiting`
+    /// com a idade calculada para o mesmo `now_unix`, e a âncora volta
+    /// exatamente ao instante persistido.
+    pub(crate) fn upsert_at(&self, j: DownloadJob, now_unix: i64) {
         let mut guard = self.jobs.write().unwrap_or_else(|p| p.into_inner());
+        let mut waiting = self.waiting_since.lock().unwrap_or_else(|p| p.into_inner());
+        anchor_waiting(&mut waiting, &j.job_id, &j.state, now_unix);
         guard.insert(j.job_id.clone(), j);
+    }
+
+    /// Instante (unix) em que o job entrou em `Waiting`; `None` fora dele.
+    pub(crate) fn waiting_since_unix(&self, id: &str) -> Option<i64> {
+        self.waiting_since.lock().unwrap_or_else(|p| p.into_inner()).get(id).copied()
     }
 
     /// Aplica a transição SE for legal (ver [`can_transition`]). Devolve
@@ -403,9 +471,16 @@ impl JobBoard {
     /// ilegal — nunca panica, o coordinator decide o que fazer com `false`
     /// (tipicamente: log + ignora, o board não é fonte de verdade de erro).
     pub(crate) fn transition(&self, id: &str, s: JobState) -> bool {
+        self.transition_at(id, s, unix_now())
+    }
+
+    /// [`Self::transition`] com o relógio injetado (âncora do `Waiting`).
+    pub(crate) fn transition_at(&self, id: &str, s: JobState, now_unix: i64) -> bool {
         let mut guard = self.jobs.write().unwrap_or_else(|p| p.into_inner());
         match guard.get_mut(id) {
             Some(job) if can_transition(&job.state, &s) => {
+                let mut waiting = self.waiting_since.lock().unwrap_or_else(|p| p.into_inner());
+                anchor_waiting(&mut waiting, id, &s, now_unix);
                 job.state = s;
                 true
             }
@@ -414,8 +489,14 @@ impl JobBoard {
     }
 
     pub(crate) fn get(&self, id: &str) -> Option<DownloadJob> {
+        self.get_at(id, unix_now())
+    }
+
+    /// [`Self::get`] com o relógio injetado (idade do `Waiting`).
+    pub(crate) fn get_at(&self, id: &str, now_unix: i64) -> Option<DownloadJob> {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
-        guard.get(id).cloned()
+        let waiting = self.waiting_since.lock().unwrap_or_else(|p| p.into_inner());
+        guard.get(id).map(|j| with_live_age(j.clone(), &waiting, now_unix))
     }
 
     /// Sem chamador de produção desde o fix round 2 (NB-1): `create_or_get_job`
@@ -444,8 +525,8 @@ impl JobBoard {
         guard.values().filter(|j| !is_terminal(&j.state)).count()
     }
 
-    /// Jobs com transfer vivo no slskd (`is_in_flight` — exclui `Queued` e
-    /// terminais). Sem chamador de produção desde o fix round 2 (NB-2):
+    /// Jobs que ocupam vaga de transferência da sua origem (`is_in_flight`,
+    /// todas as origens — exclui `Queued`, `Waiting` e terminais). Sem chamador de produção desde o fix round 2 (NB-2):
     /// `fail_network_dependent_jobs` precisa de um conjunto MAIS ESTREITO
     /// (só `Enqueued`/`Downloading`/`Stalled`, não `Processing`/`Indexing`)
     /// e filtra direto por `state`.
@@ -611,6 +692,37 @@ mod tests {
         assert!(!can_transition(&w, &JobState::Ready { track_id: "1".into() }));
         assert!(!is_terminal(&w));
         assert!(!is_in_flight(&w), "waiting não ocupa vaga de transferência");
+    }
+
+    #[test]
+    fn waiting_guarda_o_instante_de_entrada_e_a_idade_e_calculada_na_leitura() {
+        let board = JobBoard::new();
+        board.upsert(job("w", JobState::Queued));
+        let t0 = 1_000_000;
+        let w = JobState::Waiting { reason: WaitReason::Purchase, url: "https://x".into(), since_secs: 0 };
+        assert!(board.transition_at("w", w, t0));
+        assert_eq!(board.waiting_since_unix("w"), Some(t0));
+        let idade = |now| match board.get_at("w", now).unwrap().state {
+            JobState::Waiting { since_secs, .. } => since_secs,
+            other => panic!("estado: {other:?}"),
+        };
+        assert_eq!(idade(t0 + 90), 90, "a idade anda com o relógio, não fica congelada");
+        match &board.snapshot_at(t0 + 120)[0].state {
+            JobState::Waiting { since_secs, .. } => assert_eq!(*since_secs, 120),
+            other => panic!("estado: {other:?}"),
+        }
+        // Regravar o job sem sair de `Waiting` não reinicia a espera.
+        let mesmo = board.get_at("w", t0 + 200).unwrap();
+        board.upsert_at(mesmo, t0 + 200);
+        assert_eq!(board.waiting_since_unix("w"), Some(t0));
+        // Restaurado com idade conhecida: âncora = agora - idade.
+        let fresco = JobBoard::new();
+        let r = job("r", JobState::Waiting { reason: WaitReason::Purchase, url: "https://x".into(), since_secs: 300 });
+        fresco.upsert_at(r, t0);
+        assert_eq!(fresco.waiting_since_unix("r"), Some(t0 - 300));
+        // Sair de `Waiting` apaga a âncora.
+        assert!(board.transition_at("w", JobState::Canceled, t0 + 300));
+        assert_eq!(board.waiting_since_unix("w"), None);
     }
 
     #[test]

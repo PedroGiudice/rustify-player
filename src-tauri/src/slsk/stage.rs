@@ -331,13 +331,21 @@ pub fn stage_file(
     );
     let dest = canonical_dest(music_root, playlist, &track_meta, &fallback_basename);
 
-    let incoming_dir = music_root.join(INCOMING_DIR_NAME);
-    fs::create_dir_all(&incoming_dir).map_err(|e| e.to_string())?;
-    let incoming_stem = sanitize_component(job_id);
-    let incoming_path = incoming_dir.join(format!("{incoming_stem}.flac"));
+    let incoming_path = incoming_path(music_root, job_id);
+    if let Some(dir) = incoming_path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
     move_file(local, &incoming_path)?;
 
     place_at_destination(music_root, &incoming_path, &dest)
+}
+
+/// `.rustify-incoming/<job_id>.flac`: onde [`stage_file`] deixa o arquivo
+/// entre a validação e o destino final.
+pub(crate) fn incoming_path(music_root: &Path, job_id: &str) -> PathBuf {
+    music_root
+        .join(INCOMING_DIR_NAME)
+        .join(format!("{}.flac", sanitize_component(job_id)))
 }
 
 /// No boot, `.rustify-incoming/` é varrida. Órfão = arquivo cujo nome

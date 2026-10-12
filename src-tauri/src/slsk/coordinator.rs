@@ -33,8 +33,8 @@ use slskd_client::{SearchGuard, SlskdApi};
 use tauri::{AppHandle, Emitter};
 
 use super::board::{
-    can_transition, Candidate, ConfirmedMeta, DownloadJob, FormatIn, JobBoard, JobState, RejectReason, Source,
-    WaitReason,
+    can_transition, unix_now, Candidate, ConfirmedMeta, DownloadJob, FormatIn, JobBoard, JobState, RejectReason,
+    Source, WaitReason,
 };
 use super::config::SlskConfig;
 use super::stage;
@@ -325,11 +325,16 @@ struct PersistedJob {
     /// §2.3); os demais são reconstruídos pela reconciliação.
     #[serde(default)]
     waiting: Option<(WaitReason, String)>,
-    /// Instante (unix) em que o job entrou em `Waiting`: o boot recalcula
-    /// `since_secs` a partir dele, e a idade da espera (teto de 24 h da
-    /// compra, spec §6.2) não recomeça a cada reinício.
+    /// Instante (unix) em que o job entrou em `Waiting`, lido da âncora do
+    /// board (`JobBoard::waiting_since_unix`), nunca derivado do
+    /// `since_secs`: a idade da espera (teto de 24 h da compra, spec §6.2)
+    /// não recomeça a cada gravação nem a cada reinício.
     #[serde(default)]
     waiting_since_unix: Option<i64>,
+    /// Formato de origem já detectado (rótulo WAV/MP3 320 na fila). Só
+    /// importa para job que volta em `Indexing`; os outros baixam de novo.
+    #[serde(default)]
+    format_in: Option<FormatIn>,
     /// Arquivo já colocado em `~/Music` de um job em `Indexing`: o boot
     /// retoma o ingest dele em vez de baixar de novo.
     #[serde(default)]
@@ -640,11 +645,10 @@ impl Coordinator {
                     _ => None,
                 },
                 waiting_since_unix: match &j.state {
-                    JobState::Waiting { since_secs, .. } => {
-                        Some(unix_now() - i64::try_from(*since_secs).unwrap_or(0))
-                    }
+                    JobState::Waiting { .. } => self.board.waiting_since_unix(&j.job_id),
                     _ => None,
                 },
+                format_in: j.format_in,
                 indexing_path: match j.state {
                     JobState::Indexing => indexing_paths.get(&j.job_id).cloned(),
                     _ => None,
@@ -724,7 +728,7 @@ impl Coordinator {
                 job_id: pj.job_id.clone(),
                 source: pj.source.clone(),
                 meta: pj.meta.clone(),
-                format_in: None,
+                format_in: pj.format_in,
                 tracks: pj.tracks,
                 display: String::new(), // preenchido abaixo, por origem
                 dest_playlist: pj.dest_playlist,
@@ -755,8 +759,12 @@ impl Coordinator {
             }
 
             // Fonte externa (spec §2.3): nada a cruzar com o slskd. `Waiting`
-            // volta como está; o resto recomeça do zero como `Queued` e é
-            // despachado ao worker no fim, respeitando o teto da origem.
+            // volta como está, com a âncora do instante de entrada (o
+            // `upsert_at` com o mesmo `now_unix` a restaura exata); o resto
+            // recomeça do zero como `Queued` e é despachado ao worker no
+            // fim, respeitando o teto da origem. Na fase 2 (Bandcamp) o boot
+            // também terá de reentregar os `Waiting` ao worker, que é quem
+            // consulta a `collection` durante a espera.
             let Some((username, remote_filename)) =
                 base.soulseek().map(|(u, f, _)| (u.to_string(), f.to_string()))
             else {
@@ -770,7 +778,7 @@ impl Coordinator {
                     }
                     None => JobState::Queued,
                 };
-                self.board.upsert(DownloadJob { state, ..base });
+                self.board.upsert_at(DownloadJob { state, format_in: None, ..base }, now_unix);
                 continue;
             };
             // `size` vem do `source` persistido (0 em arquivo legado). Só
@@ -1222,11 +1230,11 @@ impl Coordinator {
         let group = entry
             .raw_groups
             .get(group_key)
-            .ok_or_else(|| "grupo nao encontrado nessa busca".to_string())?;
+            .ok_or_else(|| "grupo não encontrado nessa busca".to_string())?;
         let candidate = std::iter::once(&group.best)
             .chain(group.alternates.iter())
             .find(|c| c.id == source_id)
-            .ok_or_else(|| "fonte nao encontrada nesse grupo".to_string())?
+            .ok_or_else(|| "fonte não encontrada nesse grupo".to_string())?
             .clone();
         let alternates: Vec<_> = std::iter::once(&group.best)
             .chain(group.alternates.iter())
@@ -1249,7 +1257,7 @@ impl Coordinator {
         reply: Sender<Result<String, String>>,
     ) {
         if !is_valid_playlist_name(dest) {
-            let _ = reply.send(Err("destino de playlist invalido".to_string()));
+            let _ = reply.send(Err("destino de playlist inválido".to_string()));
             return;
         }
         let (candidate, alternates) = match self.resolve_download_candidate(search_id, group_key, source_id) {
@@ -1398,7 +1406,19 @@ impl Coordinator {
                     changed |= self.board.transition(&job_id, JobState::Downloading { pct, bps, eta_s });
                 }
                 FetchEvent::Done { job_id, flac_path, format_in, .. } => {
-                    if self.board.transition(&job_id, JobState::Processing) {
+                    if !self.is_in_incoming(&flac_path) {
+                        // O worker só grava no incoming. Um caminho fora dele
+                        // (p. ex. uma faixa que já está no acervo) iria para
+                        // o staging e, num `AlreadyOwned`, para a quarentena.
+                        tracing::warn!(job_id, path = %flac_path.display(), "slsk-coord: Done com arquivo fora do incoming, recusado");
+                        changed |= self.board.transition(
+                            &job_id,
+                            JobState::Failed {
+                                reason: "arquivo baixado fora da pasta de entrada".to_string(),
+                                retryable: false,
+                            },
+                        );
+                    } else if self.board.transition(&job_id, JobState::Processing) {
                         changed = true;
                         if let Some(mut job) = self.board.get(&job_id) {
                             job.format_in = Some(format_in);
@@ -1477,16 +1497,16 @@ impl Coordinator {
     /// porque a aresta `{failed,rejected}->queued` (CR-3) precisa valer
     /// aqui mesmo sem ir por `board.transition` duas vezes.
     fn try_other_source_sync(&self, job_id: &str) -> Result<Candidate, String> {
-        let job = self.board.get(job_id).ok_or_else(|| "job nao encontrado".to_string())?;
+        let job = self.board.get(job_id).ok_or_else(|| "job não encontrado".to_string())?;
         let next = job
             .alternates
             .iter()
             .find(|c| !job.tried_source_ids.contains(&c.id))
             .cloned()
-            .ok_or_else(|| "sem outras fontes disponiveis".to_string())?;
+            .ok_or_else(|| "sem outras fontes disponíveis".to_string())?;
 
         if !can_transition(&job.state, &JobState::Queued) {
-            return Err("job em estado que nao aceita troca de fonte agora".to_string());
+            return Err("job em estado que não aceita troca de fonte agora".to_string());
         }
 
         let mut tried = job.tried_source_ids.clone();
@@ -1868,7 +1888,7 @@ impl Coordinator {
                     &job.job_id,
                     JobState::Manual {
                         path: self.cfg.downloads_dir.display().to_string(),
-                        why: "baixou, mas nao achei o arquivo em downloads_dir".to_string(),
+                        why: "baixou, mas não achei o arquivo em downloads_dir".to_string(),
                     },
                 );
                 self.mark_dirty();
@@ -1926,11 +1946,18 @@ impl Coordinator {
         }
     }
 
-    /// Ver [`Self::stage_and_ingest`]: só origem externa, só se o arquivo
-    /// ainda estiver no incoming.
+    /// Ver [`Self::stage_and_ingest`]: só origem externa. Apaga o arquivo da
+    /// tentativa e também o `<incoming>/<job_id>.flac` em que o `stage_file`
+    /// o renomeia antes de colocar no destino: um erro depois desse rename
+    /// (`create_dir_all`, `metadata`, `move_file`) deixaria a cópia lá.
     fn discard_external_leftover(&self, job: &DownloadJob, local: &std::path::Path) {
-        if job.soulseek().is_none() && local.is_file() {
-            self.discard_fetched(local);
+        if job.soulseek().is_some() {
+            return;
+        }
+        for path in [local.to_path_buf(), stage::incoming_path(&self.cfg.music_root, &job.job_id)] {
+            if path.is_file() {
+                self.discard_fetched(&path);
+            }
         }
     }
 
@@ -1954,7 +1981,7 @@ impl Coordinator {
                     job,
                     final_path,
                     now,
-                    "ingest nao retornou outcome para o path staged".to_string(),
+                    "ingest não retornou outcome para o path staged".to_string(),
                 );
             }
         }
@@ -2091,13 +2118,6 @@ impl Coordinator {
             }
         }
     }
-}
-
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 fn job_state_from_outcome(
@@ -2717,6 +2737,7 @@ mod tests {
             quality_label: "FLAC 16/44".to_string(),
             waiting: None,
             waiting_since_unix: None,
+            format_in: None,
             indexing_path: None,
             attempt: 0,
             created_at: unix_now(),
@@ -3367,7 +3388,7 @@ mod tests {
     #[test]
     fn eventos_do_worker_movem_o_job() {
         let (c, tmp) = test_coordinator();
-        let (ftx, _frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
         let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = c.with_fetch_worker("sound_cloud", ftx).with_fetch_events(erx);
         let (r, rx) = crossbeam_channel::bounded(1);
@@ -3377,8 +3398,7 @@ mod tests {
         c.drain_fetch_events(Instant::now());
         assert!(matches!(c.board.get(&id).unwrap().state, JobState::Downloading { pct, .. } if (pct - 40.0).abs() < 0.01));
         // Done com um FLAC real de fixture → stage_and_ingest → Indexing/Ready pelo ingest falso
-        let flac = tmp.path().join("in.flac");
-        std::fs::copy(fixture_flac(), &flac).unwrap();
+        let flac = fetched_flac(&c, &frx.try_recv().unwrap());
         etx.send(FetchEvent::Done { job_id: id.clone(), attempt: att(&c, &id), flac_path: flac, format_in: FormatIn::Wav16 }).unwrap();
         c.drain_fetch_events(Instant::now());
         let job = c.board.get(&id).unwrap();
@@ -3524,7 +3544,11 @@ mod tests {
         let job = c2.board.get(&id).expect("job restaurado");
         assert!(matches!(job.state, JobState::Waiting { reason: WaitReason::Purchase, .. }), "estado: {:?}", job.state);
         assert_eq!(job.tracks, 3);
-        assert_eq!(frx2.try_iter().count(), 0, "waiting não vai para o worker no boot");
+        // Sem asserção sobre o worker de propósito: na fase 2 (Bandcamp,
+        // spec §6.2) quem consulta a `collection` durante a espera é o
+        // worker, e o boot (ou um tick do coordinator) vai precisar
+        // reentregar a ele os jobs em `Waiting`. Hoje nada é despachado.
+        let _ = frx2;
     }
 
     // ── Correções do review das Tasks 1 e 2 ────────────────────────────
@@ -3946,6 +3970,7 @@ mod tests {
         let (c, tmp) = test_coordinator();
         let src = Source::Bandcamp { item_type: "a".into(), item_id: 11, url: "https://x.bandcamp.com/album/z".into() };
         let id = super::super::board::job_id(&src);
+        let t = unix_now();
         c.board.upsert(DownloadJob {
             job_id: id.clone(),
             source: src,
@@ -3954,22 +3979,103 @@ mod tests {
             tracks: 1,
             display: "A - Z".into(),
             dest_playlist: "P".into(),
-            state: JobState::Waiting { reason: WaitReason::Purchase, url: "https://x.bandcamp.com/album/z".into(), since_secs: 50 },
+            state: JobState::Queued,
+            quality_label: String::new(),
+            alternates: vec![],
+            tried_source_ids: vec![],
+            created_at: t,
+            attempt: 0,
+        });
+        // Entrou em `Waiting` 150 s antes da gravação: a idade acumulada até
+        // o `save_jobs` não pode se perder.
+        let w = JobState::Waiting { reason: WaitReason::Purchase, url: "https://x.bandcamp.com/album/z".into(), since_secs: 0 };
+        assert!(c.board.transition_at(&id, w, t - 150));
+        c.save_jobs();
+        c.save_jobs(); // gravações repetidas não empurram a âncora
+        let (c2, _) = test_coordinator_at(tmp.path());
+        c2.reconcile_boot(t + 3600);
+        assert_eq!(c2.board.waiting_since_unix(&id), Some(t - 150), "âncora restaurada como estava");
+        match c2.board.get_at(&id, t + 3600).unwrap().state {
+            JobState::Waiting { since_secs, .. } => {
+                assert_eq!(since_secs, 3750, "idade = antes da gravação + desligado + depois do boot")
+            }
+            other => panic!("estado: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn format_in_de_job_externo_sobrevive_ao_boot() {
+        let (c, tmp) = test_coordinator();
+        let src = sc_source(80);
+        let id = super::super::board::job_id(&src);
+        let music = tmp.path().join("Music").join("P");
+        std::fs::create_dir_all(&music).unwrap();
+        let faixa = music.join("t.flac");
+        std::fs::copy(fixture_flac(), &faixa).unwrap();
+        c.board.upsert(DownloadJob {
+            job_id: id.clone(),
+            source: src,
+            meta: meta("A", "T"),
+            format_in: Some(FormatIn::Mp3_320),
+            tracks: 1,
+            display: "A - T".into(),
+            dest_playlist: "P".into(),
+            state: JobState::Indexing,
             quality_label: String::new(),
             alternates: vec![],
             tried_source_ids: vec![],
             created_at: unix_now(),
             attempt: 0,
         });
+        c.indexing_retry
+            .lock()
+            .unwrap()
+            .insert(id.clone(), (0, Instant::now(), faixa.clone()));
         c.save_jobs();
         let (c2, _) = test_coordinator_at(tmp.path());
-        c2.reconcile_boot(unix_now() + 100);
-        match c2.board.get(&id).unwrap().state {
-            JobState::Waiting { since_secs, .. } => assert!(
-                (150..=152).contains(&since_secs),
-                "idade da espera recomeçou no boot: {since_secs}"
-            ),
-            other => panic!("estado: {other:?}"),
-        }
+        c2.reconcile_boot(unix_now());
+        assert_eq!(c2.board.get(&id).unwrap().format_in, Some(FormatIn::Mp3_320));
+    }
+
+    #[test]
+    fn done_com_arquivo_fora_do_incoming_falha_sem_tocar_no_arquivo() {
+        let (c, tmp, frx, etx) = wired(16);
+        let acervo = tmp.path().join("Music").join("P");
+        std::fs::create_dir_all(&acervo).unwrap();
+        let faixa = acervo.join("x.flac");
+        std::fs::copy(fixture_flac(), &faixa).unwrap();
+        let id = external(&c, sc_source(81), meta("A", "T"), "Q").unwrap();
+        let task = frx.try_recv().unwrap();
+        etx.send(FetchEvent::Done { job_id: id.clone(), attempt: task.attempt, flac_path: faixa.clone(), format_in: FormatIn::Flac })
+            .unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert!(
+            matches!(c.board.get(&id).unwrap().state, JobState::Failed { retryable: false, .. }),
+            "estado: {:?}",
+            c.board.get(&id).unwrap().state
+        );
+        assert!(faixa.exists(), "arquivo fora do incoming não é movido");
+        assert!(!tmp.path().join("Music").join("Q").exists(), "nada entra no acervo");
+    }
+
+    #[test]
+    fn falha_depois_do_staging_apaga_o_arquivo_renomeado_no_incoming() {
+        let (c, tmp, frx, etx) = wired(16);
+        // `Music/P` como ARQUIVO: o `create_dir_all` do destino falha
+        // depois que o `stage_file` já renomeou para `<incoming>/<job_id>.flac`.
+        std::fs::create_dir_all(tmp.path().join("Music")).unwrap();
+        std::fs::write(tmp.path().join("Music").join("P"), b"x").unwrap();
+        let id = external(&c, sc_source(82), meta("A", "T"), "P").unwrap();
+        let task = frx.try_recv().unwrap();
+        let flac = fetched_flac(&c, &task);
+        etx.send(FetchEvent::Done { job_id: id.clone(), attempt: task.attempt, flac_path: flac.clone(), format_in: FormatIn::Flac })
+            .unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert!(matches!(c.board.get(&id).unwrap().state, JobState::Failed { retryable: true, .. }));
+        assert!(!flac.exists());
+        assert!(
+            !stage::incoming_path(&c.cfg.music_root, &id).exists(),
+            "o arquivo renomeado pelo staging não fica no incoming"
+        );
     }
 }

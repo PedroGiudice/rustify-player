@@ -77,18 +77,18 @@ function hasUntriedSource(job: DownloadJob): boolean {
   return job.alternates.some((c) => !job.tried_source_ids.includes(c.id));
 }
 
-/** Respostas de erro do coordinator (strings fixas do backend, sem
-    acento) → texto de tela. Desconhecido passa cru. */
+/** Respostas de erro do coordinator (strings fixas do backend) → texto
+    de tela. Desconhecido passa cru. */
 const BACKEND_ERRORS: Record<string, string> = {
-  "coordinator nao respondeu a tempo": "o serviço de downloads não respondeu a tempo",
-  "coordinator indisponivel": "o serviço de downloads está indisponível",
+  "coordinator não respondeu a tempo": "o serviço de downloads não respondeu a tempo",
+  "coordinator indisponível": "o serviço de downloads está indisponível",
   "busca desconhecida ou expirada": "a busca expirou, busque de novo",
-  "grupo nao encontrado nessa busca": "a faixa não está mais nessa busca, busque de novo",
-  "fonte nao encontrada nesse grupo": "essa fonte não está mais disponível, busque de novo",
-  "destino de playlist invalido": "nome de playlist inválido",
-  "job nao encontrado": "o download não existe mais",
-  "sem outras fontes disponiveis": "não há outras fontes para tentar",
-  "job em estado que nao aceita troca de fonte agora": "o download está num estado que não aceita troca de fonte agora",
+  "grupo não encontrado nessa busca": "a faixa não está mais nessa busca, busque de novo",
+  "fonte não encontrada nesse grupo": "essa fonte não está mais disponível, busque de novo",
+  "destino de playlist inválido": "nome de playlist inválido",
+  "job não encontrado": "o download não existe mais",
+  "sem outras fontes disponíveis": "não há outras fontes para tentar",
+  "job em estado que não aceita troca de fonte agora": "o download está num estado que não aceita troca de fonte agora",
 };
 
 function errorText(e: unknown): string {

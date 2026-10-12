@@ -329,12 +329,12 @@ describe("Crate — erros aparecem na tela (crate-6)", () => {
   });
 
   it("busca que falha por timeout do coordinator mostra o motivo em português", async () => {
-    const { container } = await searchWithRejection("coordinator nao respondeu a tempo");
+    const { container } = await searchWithRejection("coordinator não respondeu a tempo");
     expect(alertText(container)).toContain("não respondeu a tempo");
   });
 
   it("falha ao baixar aparece na tela, e Fechar some com o aviso", async () => {
-    vi.mocked(tauriApi.slskDownload).mockRejectedValueOnce("destino de playlist invalido");
+    vi.mocked(tauriApi.slskDownload).mockRejectedValueOnce("destino de playlist inválido");
     const { container, getByText } = await searchAndRender([group({ suggested_dest: "Rap & Hip-Hop" })]);
     const baixar = Array.from(container.querySelectorAll(".crate-row button")).find((b) =>
       (b.textContent ?? "").includes("Baixar"),
@@ -382,7 +382,7 @@ describe("Crate — erros aparecem na tela (crate-6)", () => {
 
   it("'Trocar fonte' com fonte disponível chama o backend e mostra o erro se ele recusar", async () => {
     vi.mocked(tauriApi.slskTryOtherSource).mockRejectedValueOnce(
-      "job em estado que nao aceita troca de fonte agora",
+      "job em estado que não aceita troca de fonte agora",
     );
     const { container } = await searchWithFailedJob({
       alternates: [candidate({ id: "cand2", username: "peer_b" })],

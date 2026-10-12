@@ -147,10 +147,10 @@ impl Slsk {
         let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
         self.cmd_tx
             .send(build(reply_tx))
-            .map_err(|_| "coordinator indisponivel".to_string())?;
+            .map_err(|_| "coordinator indisponível".to_string())?;
         match reply_rx.recv_timeout(SEND_AND_WAIT_TIMEOUT) {
             Ok(inner) => inner,
-            Err(_) => Err("coordinator nao respondeu a tempo".to_string()),
+            Err(_) => Err("coordinator não respondeu a tempo".to_string()),
         }
     }
 }
@@ -192,7 +192,7 @@ pub(crate) fn slsk_results(sl: State<Slsk>, search_id: String) -> SearchSnapshot
 pub(crate) fn slsk_cancel_search(sl: State<Slsk>, search_id: String) -> Result<(), String> {
     sl.cmd_tx
         .send(SlskTask::CancelSearch { search_id })
-        .map_err(|_| "coordinator indisponivel".to_string())
+        .map_err(|_| "coordinator indisponível".to_string())
 }
 
 /// Camada 1 de dedup (confiável, spec §5.1): reusa `query::search` (via
@@ -238,7 +238,7 @@ pub(crate) fn slsk_try_other_source(sl: State<Slsk>, job_id: String) -> Result<S
 pub(crate) fn slsk_cancel(sl: State<Slsk>, job_id: String) -> Result<(), String> {
     sl.cmd_tx
         .send(SlskTask::CancelJob { job_id })
-        .map_err(|_| "coordinator indisponivel".to_string())
+        .map_err(|_| "coordinator indisponível".to_string())
 }
 
 #[tauri::command]
