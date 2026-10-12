@@ -1471,5 +1471,69 @@
   ],
   "annotated_by": "opus-batch-2026-10-12d",
   "annotation_confidence": "high"
+ },
+ "18091239271735204962": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "playful",
+   "social",
+   "groovy"
+  ],
+  "activity_tags": [
+   "party",
+   "social",
+   "cleaning"
+  ],
+  "annotated_by": "opus-batch-2026-10-12d",
+  "annotation_confidence": "high"
+ },
+ "3448866270053766258": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "rebellious",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "commute"
+  ],
+  "annotated_by": "opus-batch-2026-10-12d",
+  "annotation_confidence": "high"
+ },
+ "8409833873587525146": {
+  "energy": 0.8,
+  "valence": 0.4,
+  "mood_tags": [
+   "confident",
+   "rebellious",
+   "aggressive",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "workout",
+   "driving"
+  ],
+  "annotated_by": "opus-batch-2026-10-12d",
+  "annotation_confidence": "high"
+ },
+ "7845587294052462925": {
+  "energy": 0.7,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "groovy",
+   "dark"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "opus-batch-2026-10-12d",
+  "annotation_confidence": "medium"
  }
 }
