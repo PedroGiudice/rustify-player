@@ -296,7 +296,7 @@ pub fn is_terminal(s: &JobState) -> bool {
 const IN_FLIGHT: &[&str] = &["enqueued", "downloading", "stalled", "processing", "indexing"];
 
 /// `true` quando o job tem (ou teve recentíssimo) um transfer vivo no
-/// slskd — usado pro gate de `MAX_ACTIVE_TRANSFERS` (review CR-2: contar
+/// slskd — usado pro gate dos tetos por origem (`MAX_ACTIVE_SOULSEEK` etc.) (review CR-2: contar
 /// `Queued` ali causava starvation permanente acima do limite, porque
 /// promover um `Queued` não reduzia a contagem de "não-terminal").
 /// `Queued` (esperando vaga local, nunca chamou `enqueue`) e os terminais
@@ -416,7 +416,7 @@ impl JobBoard {
         guard.contains_key(id)
     }
 
-    /// Jobs em estado NÃO-terminal — usado pra gatear `MAX_ACTIVE_TRANSFERS`
+    /// Jobs em estado NÃO-terminal — usado pra gatear os tetos de transferências
     /// e pra montar `alive_job_ids` da limpeza de `.rustify-incoming` no
     /// boot.
     pub(crate) fn active_ids(&self) -> Vec<String> {
@@ -448,9 +448,30 @@ impl JobBoard {
             .collect()
     }
 
+    /// Contagem global (todas as origens). Sem chamador de produção desde
+    /// os tetos por origem ([`Self::in_flight_count_for`]); fica para os testes.
+    #[allow(dead_code)]
     pub(crate) fn in_flight_count(&self) -> usize {
         let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
         guard.values().filter(|j| is_in_flight(&j.state)).count()
+    }
+
+    /// `in_flight_count` restrito a uma origem (`Source::kind`): cada fonte
+    /// tem o seu teto e uma não ocupa vaga da outra (spec §2.4).
+    pub(crate) fn in_flight_count_for(&self, kind: &str) -> usize {
+        let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
+        guard
+            .values()
+            .filter(|j| is_in_flight(&j.state) && j.source.kind() == kind)
+            .count()
+    }
+
+    /// `true` quando o job foi cancelado. O worker de fonte externa consulta
+    /// antes de cada etapa (via `Arc<JobBoard>`) para abandonar o trabalho.
+    #[allow(dead_code)] // consumido pelo sc-worker (Task 6 do plano)
+    pub(crate) fn is_canceled(&self, id: &str) -> bool {
+        let guard = self.jobs.read().unwrap_or_else(|p| p.into_inner());
+        guard.get(id).map(|j| matches!(j.state, JobState::Canceled)).unwrap_or(false)
     }
 
     /// Mantém só os `cap` terminais mais recentes (FIFO por `created_at`) —
@@ -577,6 +598,21 @@ mod tests {
         let back: Source = serde_json::from_value(v).unwrap();
         assert_eq!(back, s);
         assert_eq!(s.kind(), "sound_cloud");
+    }
+
+    #[test]
+    fn in_flight_count_for_separa_origens() {
+        let board = JobBoard::new();
+        board.upsert(job("s1", JobState::Downloading { pct: 1.0, bps: 1, eta_s: None }));
+        let mut sc = job("c1", JobState::Enqueued { queue_position: None });
+        sc.source = Source::SoundCloud { track_id: 1, permalink_url: "https://soundcloud.com/a/1".into() };
+        board.upsert(sc);
+        assert_eq!(board.in_flight_count_for("soulseek"), 1);
+        assert_eq!(board.in_flight_count_for("sound_cloud"), 1);
+        assert_eq!(board.in_flight_count_for("bandcamp"), 0);
+        assert!(!board.is_canceled("c1"));
+        assert!(board.transition("c1", JobState::Canceled));
+        assert!(board.is_canceled("c1"));
     }
 
     #[test]

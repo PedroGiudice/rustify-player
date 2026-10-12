@@ -32,7 +32,10 @@ use slskd_client::wire::ApiTransferUser;
 use slskd_client::{SearchGuard, SlskdApi};
 use tauri::{AppHandle, Emitter};
 
-use super::board::{can_transition, Candidate, DownloadJob, JobBoard, JobState};
+use super::board::{
+    can_transition, Candidate, ConfirmedMeta, DownloadJob, FormatIn, JobBoard, JobState, RejectReason, Source,
+    WaitReason,
+};
 use super::config::SlskConfig;
 use super::stage;
 
@@ -43,7 +46,6 @@ const POLL_ACTIVE: Duration = Duration::from_millis(1_000);
 const POLL_IDLE: Duration = Duration::from_secs(5);
 const STALL_BYTES_SECS: u64 = 120;
 const STALL_ENQUEUED_SECS: u64 = 300;
-const MAX_ACTIVE_TRANSFERS: usize = 3;
 const JOBS_RETAINED: usize = 50;
 const SWEEP_MAX_KEEP: usize = 50;
 const SWEEP_MAX_AGE_SECS: i64 = 60 * 60;
@@ -60,8 +62,23 @@ const INGEST_MAX_RETRIES: u8 = 5;
 const INGEST_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 const JOBS_FILE_NAME: &str = "slsk_jobs.json";
 
+/// Tetos de transferências simultâneas POR ORIGEM (spec §2.4): uma fonte
+/// não ocupa vaga da outra.
+pub const MAX_ACTIVE_SOULSEEK: usize = 3;
+pub const MAX_ACTIVE_SOUNDCLOUD: usize = 2;
+pub const MAX_ACTIVE_BANDCAMP: usize = 1;
+
+fn max_active_for(kind: &str) -> usize {
+    match kind {
+        "soulseek" => MAX_ACTIVE_SOULSEEK,
+        "sound_cloud" => MAX_ACTIVE_SOUNDCLOUD,
+        _ => MAX_ACTIVE_BANDCAMP,
+    }
+}
+
 // ── Tarefas que o app manda pro coordinator ────────────────────────────
 
+#[allow(dead_code)] // `DownloadExternal` ganha o comando Tauri nas tasks seguintes do plano
 pub enum SlskTask {
     Search {
         query: String,
@@ -88,6 +105,38 @@ pub enum SlskTask {
     ClearFinished {
         reply: Sender<u32>,
     },
+    /// Download de fonte externa (SoundCloud, Bandcamp) com o metadado que o
+    /// CEO confirmou no card. Responde o `job_id` sem I/O; o trabalho pesado
+    /// é do worker da fonte.
+    DownloadExternal {
+        source: Source,
+        meta: ConfirmedMeta,
+        dest: String,
+        reply: Sender<Result<String, String>>,
+    },
+}
+
+/// Enviado ao worker de uma fonte externa (spec §2.4).
+#[allow(dead_code)] // lido pelo sc-worker (tasks seguintes do plano Crate fase 1)
+#[derive(Debug, Clone)]
+pub struct FetchTask {
+    pub job_id: String,
+    pub source: Source,
+    pub meta: ConfirmedMeta,
+    pub playlist: String,
+    /// `<music_root>/.rustify-incoming` — o worker grava `<job_id>.<ext>` e `<job_id>.flac` aqui.
+    pub incoming_dir: PathBuf,
+}
+
+/// Devolvido pelo worker; o coordinator drena a cada tick e aplica no board.
+#[allow(dead_code)] // construído pelo sc-worker (tasks seguintes do plano Crate fase 1)
+#[derive(Debug, Clone)]
+pub enum FetchEvent {
+    Started { job_id: String },
+    Progress { job_id: String, pct: f32, bps: u64, eta_s: Option<u32> },
+    Done { job_id: String, flac_path: PathBuf, format_in: FormatIn },
+    Rejected { job_id: String, reason: RejectReason, quarantine: Option<PathBuf> },
+    Failed { job_id: String, reason: String, retryable: bool },
 }
 
 // ── Wire de busca (IPC) ────────────────────────────────────────────────
@@ -206,8 +255,21 @@ struct ActiveSearch {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PersistedJob {
     job_id: String,
+    /// `default` = arquivo gravado antes de existir origem por job: o
+    /// `load_persisted_jobs` reconstrói a variante Soulseek a partir de
+    /// `username`/`remote_filename` soltos.
+    #[serde(default = "legacy_source_placeholder")]
+    source: Source,
+    /// Compatibilidade com o `slsk_jobs.json` anterior (campos soltos).
+    /// `save_jobs` grava vazio.
+    #[serde(default)]
     username: String,
+    #[serde(default)]
     remote_filename: String,
+    #[serde(default)]
+    meta: ConfirmedMeta,
+    #[serde(default = "one")]
+    tracks: u16,
     dest_playlist: String,
     #[serde(default)]
     alternates: Vec<Candidate>,
@@ -215,7 +277,19 @@ struct PersistedJob {
     /// rótulo vazio e o frontend cai no tamanho.
     #[serde(default)]
     quality_label: String,
+    /// Único estado persistido: `Waiting` volta como está no boot (spec
+    /// §2.3); os demais são reconstruídos pela reconciliação.
+    #[serde(default)]
+    waiting: Option<(WaitReason, String)>,
     created_at: i64,
+}
+
+fn one() -> u16 {
+    1
+}
+
+fn legacy_source_placeholder() -> Source {
+    Source::Soulseek { username: String::new(), remote_filename: String::new(), size: 0 }
 }
 
 /// Classificação por substring dos estados reais de `/transfers/downloads`
@@ -357,6 +431,11 @@ pub struct Coordinator {
     /// enriquecimento best-effort, nunca backpressure no pipeline).
     /// `None` nos testes que não exercitam letras.
     lyrics_tx: Option<Sender<LyricsJob>>,
+    /// Canais do worker das fontes externas (spec §2.4): `FetchTask` sai
+    /// por `try_send` (bounded), `FetchEvent` volta e é drenado a cada tick.
+    /// `None` = sem worker ligado; job externo vira `Failed{retryable}`.
+    fetch_tx: Option<Sender<FetchTask>>,
+    fetch_rx: Option<Receiver<FetchEvent>>,
     dirty: Mutex<bool>,
     last_emit: Mutex<Option<Instant>>,
 }
@@ -392,6 +471,8 @@ impl Coordinator {
             downloads_fail_streak: AtomicU32::new(0),
             jobs_path,
             lyrics_tx: None,
+            fetch_tx: None,
+            fetch_rx: None,
             dirty: Mutex::new(false),
             last_emit: Mutex::new(None),
         }
@@ -401,6 +482,14 @@ impl Coordinator {
     /// `spawn_coordinator`; testes que não exercitam letras ficam com `None`.
     fn with_lyrics_tx(mut self, tx: Sender<LyricsJob>) -> Self {
         self.lyrics_tx = Some(tx);
+        self
+    }
+
+    /// Liga os canais do worker das fontes externas. Encadeado por
+    /// `spawn_coordinator`; testes de Soulseek ficam com `None`.
+    fn with_fetch_channels(mut self, tx: Sender<FetchTask>, rx: Receiver<FetchEvent>) -> Self {
+        self.fetch_tx = Some(tx);
+        self.fetch_rx = Some(rx);
         self
     }
 
@@ -459,9 +548,16 @@ impl Coordinator {
             .into_iter()
             .filter(|j| !super::board::is_terminal(&j.state))
             .map(|j| PersistedJob {
+                waiting: match &j.state {
+                    JobState::Waiting { reason, url, .. } => Some((*reason, url.clone())),
+                    _ => None,
+                },
                 job_id: j.job_id,
-                username: j.username,
-                remote_filename: j.remote_filename,
+                source: j.source,
+                username: String::new(),
+                remote_filename: String::new(),
+                meta: j.meta,
+                tracks: j.tracks,
                 dest_playlist: j.dest_playlist,
                 alternates: j.alternates,
                 quality_label: j.quality_label,
@@ -487,7 +583,20 @@ impl Coordinator {
             Err(_) => return Vec::new(),
         };
         match serde_json::from_str::<Vec<PersistedJob>>(&raw) {
-            Ok(v) => v,
+            Ok(mut v) => {
+                for pj in &mut v {
+                    let placeholder =
+                        matches!(&pj.source, Source::Soulseek { username, .. } if username.is_empty());
+                    if placeholder && !pj.username.is_empty() {
+                        pj.source = Source::Soulseek {
+                            username: std::mem::take(&mut pj.username),
+                            remote_filename: std::mem::take(&mut pj.remote_filename),
+                            size: 0,
+                        };
+                    }
+                }
+                v
+            }
             Err(e) => {
                 tracing::warn!(?e, "slsk-coord: slsk_jobs.json malformado, ignorando (nunca panic)");
                 Vec::new()
@@ -513,24 +622,40 @@ impl Coordinator {
             }
             let base = DownloadJob {
                 job_id: pj.job_id.clone(),
-                username: pj.username.clone(),
-                remote_filename: pj.remote_filename.clone(),
-                display: pj.remote_filename.clone(),
+                source: pj.source.clone(),
+                meta: pj.meta.clone(),
+                format_in: None,
+                tracks: pj.tracks,
+                display: String::new(), // preenchido abaixo, por origem
                 dest_playlist: pj.dest_playlist,
                 state: JobState::Queued, // placeholder, sobrescrito abaixo
-                // Não persistido — só importa pra `promote_queued` de jobs
-                // criados na MESMA sessão (`start_download` grava o size
-                // real); jobs reconciliados nunca voltam a ficar `Queued`
-                // localmente antes de um novo `try_other_source`, que já
-                // grava o `size` certo da alternativa escolhida.
-                size: 0,
                 quality_label: pj.quality_label.clone(),
                 alternates: pj.alternates,
                 tried_source_ids: Vec::new(),
                 created_at: pj.created_at,
             };
 
-            match find_transfer(&downloads, &pj.username, &pj.remote_filename) {
+            // Fonte externa (spec §2.3): nada a cruzar com o slskd. `Waiting`
+            // volta como está; o resto recomeça do zero como `Queued` e é
+            // despachado ao worker no fim, respeitando o teto da origem.
+            let Some((username, remote_filename)) =
+                base.soulseek().map(|(u, f, _)| (u.to_string(), f.to_string()))
+            else {
+                let state = match pj.waiting {
+                    Some((reason, url)) => JobState::Waiting { reason, url, since_secs: 0 },
+                    None => JobState::Queued,
+                };
+                let display = format!("{} - {}", base.meta.artist, base.meta.title);
+                self.board.upsert(DownloadJob { state, display, ..base });
+                continue;
+            };
+            // `size` vem do `source` persistido (0 em arquivo legado). Só
+            // importa pra `promote_queued`, e jobs reconciliados nunca voltam
+            // a ficar `Queued` localmente antes de um novo `try_other_source`,
+            // que já grava o `size` certo da alternativa escolhida.
+            let base = DownloadJob { display: remote_filename.clone(), ..base };
+
+            match find_transfer(&downloads, &username, &remote_filename) {
                 Some(file) => {
                     let outcome = classify_transfer_state(&file.state);
                     if outcome == TransferOutcome::Succeeded {
@@ -563,6 +688,9 @@ impl Coordinator {
         }
         self.board.retain_recent_terminals(JOBS_RETAINED);
         stage::clean_orphan_incoming(&self.cfg.music_root, &self.board.active_ids());
+        for kind in ["sound_cloud", "bandcamp"] {
+            self.promote_external(kind);
+        }
     }
 
     // ── Busca (spec §3.4, §6.1-§6.3) ───────────────────────────────────
@@ -844,8 +972,8 @@ impl Coordinator {
         dest_playlist: &str,
         now: Instant,
     ) -> Result<String, String> {
-        let (job_id, needs_enqueue) = self.create_or_get_job(candidate, alternates, dest_playlist);
-        if !needs_enqueue || self.board.in_flight_count() >= MAX_ACTIVE_TRANSFERS {
+        let (job_id, needs_enqueue) = self.create_or_get_soulseek_job(candidate, alternates, dest_playlist);
+        if !needs_enqueue || self.board.in_flight_count_for("soulseek") >= max_active_for("soulseek") {
             return Ok(job_id);
         }
         self.enqueue_job(&job_id, &candidate.username, &candidate.filename, candidate.size, now);
@@ -874,40 +1002,63 @@ impl Coordinator {
     /// `state: Queued`), `needs_enqueue=true` — clicar `[Baixar]` de novo
     /// num job terminado é uma intenção explícita de tentar de novo, não
     /// um duplicado a ignorar.
+    #[allow(clippy::too_many_arguments)]
     fn create_or_get_job(
         &self,
-        candidate: &slskd_client::rank::Candidate,
-        alternates: Vec<slskd_client::rank::Candidate>,
+        source: Source,
+        meta: ConfirmedMeta,
+        display: String,
+        quality_label: String,
+        alternates: Vec<Candidate>,
         dest_playlist: &str,
     ) -> (String, bool) {
-        let job_id = super::board::job_id(&candidate.username, &candidate.filename);
+        let job_id = super::board::job_id(&source);
         if let Some(existing) = self.board.get(&job_id) {
             if !super::board::is_terminal(&existing.state) {
                 return (job_id, false);
             }
         }
-        let display = slskd_client::rank::guess_artist_title(&candidate.filename)
-            .map(|(a, t)| format!("{a} - {t}"))
-            .unwrap_or_else(|| slskd_client::rank::remote_basename(&candidate.filename).to_string());
-
         self.board.upsert(DownloadJob {
             job_id: job_id.clone(),
-            username: candidate.username.clone(),
-            remote_filename: candidate.filename.clone(),
+            source,
+            meta,
+            format_in: None,
+            tracks: 1,
             display,
             dest_playlist: dest_playlist.to_string(),
             state: JobState::Queued,
-            size: candidate.size,
-            quality_label: slskd_client::rank::quality_label(
-                candidate.bit_depth,
-                candidate.sample_rate,
-            ),
-            alternates: alternates.iter().map(Candidate::from).collect(),
+            quality_label,
+            alternates,
             tried_source_ids: Vec::new(),
             created_at: unix_now(),
         });
         self.mark_dirty();
         (job_id, true)
+    }
+
+    /// Chamador Soulseek de [`Self::create_or_get_job`]: monta a origem, o
+    /// `display` e o rótulo de qualidade a partir do candidato.
+    fn create_or_get_soulseek_job(
+        &self,
+        candidate: &slskd_client::rank::Candidate,
+        alternates: Vec<slskd_client::rank::Candidate>,
+        dest_playlist: &str,
+    ) -> (String, bool) {
+        let display = slskd_client::rank::guess_artist_title(&candidate.filename)
+            .map(|(a, t)| format!("{a} - {t}"))
+            .unwrap_or_else(|| slskd_client::rank::remote_basename(&candidate.filename).to_string());
+        self.create_or_get_job(
+            Source::Soulseek {
+                username: candidate.username.clone(),
+                remote_filename: candidate.filename.clone(),
+                size: candidate.size,
+            },
+            ConfirmedMeta::default(),
+            display,
+            slskd_client::rank::quality_label(candidate.bit_depth, candidate.sample_rate),
+            alternates.iter().map(Candidate::from).collect(),
+            dest_playlist,
+        )
     }
 
     fn enqueue_job(&self, job_id: &str, username: &str, filename: &str, size: u64, now: Instant) {
@@ -983,13 +1134,141 @@ impl Coordinator {
             }
         };
 
-        let (job_id, needs_enqueue) = self.create_or_get_job(&candidate, alternates, dest);
+        let (job_id, needs_enqueue) = self.create_or_get_soulseek_job(&candidate, alternates, dest);
         let _ = reply.send(Ok(job_id.clone()));
 
-        if !needs_enqueue || self.board.in_flight_count() >= MAX_ACTIVE_TRANSFERS {
+        if !needs_enqueue || self.board.in_flight_count_for("soulseek") >= max_active_for("soulseek") {
             return;
         }
         self.enqueue_job(&job_id, &candidate.username, &candidate.filename, candidate.size, now);
+    }
+
+    /// Handler de `SlskTask::DownloadExternal`. Valida, cria (ou devolve) o
+    /// job em memória e responde o `job_id` antes de qualquer outra coisa;
+    /// o despacho ao worker é um `try_send`, sem I/O. Idempotente: a mesma
+    /// faixa em voo devolve o job existente sem segundo download.
+    fn handle_task_download_external(
+        &self,
+        source: Source,
+        meta: ConfirmedMeta,
+        dest: &str,
+        reply: Sender<Result<String, String>>,
+    ) {
+        if !is_valid_playlist_name(dest) {
+            let _ = reply.send(Err("destino de playlist inválido".to_string()));
+            return;
+        }
+        if meta.artist.trim().is_empty() || meta.title.trim().is_empty() {
+            let _ = reply.send(Err("artista e título são obrigatórios".to_string()));
+            return;
+        }
+        let kind = source.kind();
+        let display = format!("{} - {}", meta.artist, meta.title);
+        let (job_id, is_new) = self.create_or_get_job(source, meta, display, String::new(), Vec::new(), dest);
+        let _ = reply.send(Ok(job_id));
+        if !is_new {
+            return;
+        }
+        self.promote_external(kind);
+    }
+
+    /// Despacha jobs `Queued` da origem `kind` ao worker enquanto houver vaga.
+    /// Para no primeiro despacho que não sai (fila do worker cheia): o job
+    /// fica `Queued` e o próximo tick tenta de novo.
+    fn promote_external(&self, kind: &str) {
+        while self.board.in_flight_count_for(kind) < max_active_for(kind) {
+            let next = self
+                .board
+                .snapshot()
+                .into_iter()
+                .find(|j| j.state == JobState::Queued && j.source.kind() == kind);
+            let Some(job) = next else { break };
+            if !self.dispatch_fetch(&job) {
+                break;
+            }
+        }
+    }
+
+    /// Manda o job ao worker. `true` quando o job saiu de `Queued` (foi
+    /// aceito pelo worker, ou falhou por não haver worker); `false` quando
+    /// continua `Queued` (fila cheia).
+    fn dispatch_fetch(&self, job: &DownloadJob) -> bool {
+        let Some(tx) = &self.fetch_tx else {
+            self.board.transition(
+                &job.job_id,
+                JobState::Failed { reason: "fonte externa indisponível".to_string(), retryable: true },
+            );
+            self.mark_dirty();
+            return true;
+        };
+        let task = FetchTask {
+            job_id: job.job_id.clone(),
+            source: job.source.clone(),
+            meta: job.meta.clone(),
+            playlist: job.dest_playlist.clone(),
+            incoming_dir: self.cfg.music_root.join(stage::INCOMING_DIR_NAME),
+        };
+        match tx.try_send(task) {
+            Ok(()) => {
+                self.board.transition(&job.job_id, JobState::Enqueued { queue_position: None });
+                self.mark_dirty();
+                true
+            }
+            Err(crossbeam_channel::TrySendError::Full(_)) => false,
+            Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                self.board.transition(
+                    &job.job_id,
+                    JobState::Failed { reason: "worker da fonte externa parou".to_string(), retryable: true },
+                );
+                self.mark_dirty();
+                true
+            }
+        }
+    }
+
+    /// Aplica no board o que o worker devolveu. Chamado a cada tick do loop.
+    /// `Done` de um job que não aceita mais `Processing` (cancelado no meio)
+    /// descarta o FLAC pronto: nada entra no acervo sem job acompanhando.
+    fn drain_fetch_events(&self, _now: Instant) {
+        let Some(rx) = &self.fetch_rx else { return };
+        for ev in rx.try_iter().collect::<Vec<_>>() {
+            match ev {
+                FetchEvent::Started { job_id } => {
+                    self.board.transition(&job_id, JobState::Downloading { pct: 0.0, bps: 0, eta_s: None });
+                }
+                FetchEvent::Progress { job_id, pct, bps, eta_s } => {
+                    self.board.transition(&job_id, JobState::Downloading { pct, bps, eta_s });
+                }
+                FetchEvent::Done { job_id, flac_path, format_in } => {
+                    if self.board.transition(&job_id, JobState::Processing) {
+                        if let Some(mut job) = self.board.get(&job_id) {
+                            job.format_in = Some(format_in);
+                            self.board.upsert(job.clone());
+                            self.stage_and_ingest(&job, flac_path);
+                        }
+                    } else {
+                        let _ = std::fs::remove_file(&flac_path);
+                    }
+                }
+                FetchEvent::Rejected { job_id, reason, .. } => {
+                    // A matriz só aceita `rejected` a partir de `processing`
+                    // (é o veredito da validação): o worker rejeita durante a
+                    // sondagem/conversão, que é exatamente o `Processing`. Job
+                    // cancelado recusa as duas transições e fica como está.
+                    self.board.transition(&job_id, JobState::Processing);
+                    self.board.transition(&job_id, JobState::Rejected { reason });
+                }
+                FetchEvent::Failed { job_id, reason, retryable } => {
+                    self.board.transition(&job_id, JobState::Failed { reason, retryable });
+                }
+            }
+            self.mark_dirty();
+        }
+        // Vagas abertas por terminais (e fila do worker que esvaziou):
+        // promover a fila externa.
+        for kind in ["sound_cloud", "bandcamp"] {
+            self.promote_external(kind);
+        }
     }
 
     /// Parte síncrona (memory-only) do `[Trocar fonte]`: valida, escolhe a
@@ -1017,11 +1296,13 @@ impl Coordinator {
         let mut tried = job.tried_source_ids.clone();
         tried.push(next.id.clone());
         self.board.upsert(DownloadJob {
-            username: next.username.clone(),
-            remote_filename: next.filename.clone(),
+            source: Source::Soulseek {
+                username: next.username.clone(),
+                remote_filename: next.filename.clone(),
+                size: next.size,
+            },
             tried_source_ids: tried,
             state: JobState::Queued,
-            size: next.size,
             quality_label: slskd_client::rank::quality_label(next.bit_depth, next.sample_rate),
             ..job
         });
@@ -1066,9 +1347,12 @@ impl Coordinator {
             return;
         }
         self.mark_dirty();
+        // Origem externa: só a transição local — o worker consulta
+        // `JobBoard::is_canceled` antes de cada etapa e abandona o trabalho.
+        let Some((username, remote_filename, _)) = job.soulseek() else { return };
         if let Ok(downloads) = self.api.downloads() {
-            if let Some(file) = find_transfer(&downloads, &job.username, &job.remote_filename) {
-                let _ = self.api.cancel_download(&job.username, &file.id);
+            if let Some(file) = find_transfer(&downloads, username, remote_filename) {
+                let _ = self.api.cancel_download(username, &file.id);
             }
         }
     }
@@ -1121,6 +1405,11 @@ impl Coordinator {
             let Some(job) = self.board.get(&job_id) else { continue };
             match &job.state {
                 JobState::Enqueued { .. } | JobState::Downloading { .. } | JobState::Stalled { .. } => {
+                    // Origem externa: o progresso chega pelo canal do
+                    // worker (`drain_fetch_events`), não pelo slskd.
+                    if job.soulseek().is_none() {
+                        continue;
+                    }
                     if let Some(downloads) = downloads.as_deref() {
                         self.poll_one_transfer(&job, downloads, now);
                     }
@@ -1152,10 +1441,12 @@ impl Coordinator {
     /// só esperando o Qdrant voltar).
     fn fail_network_dependent_jobs(&self, reason: &str) {
         for job in self.board.snapshot() {
-            if matches!(
-                job.state,
-                JobState::Enqueued { .. } | JobState::Downloading { .. } | JobState::Stalled { .. }
-            ) && self.board.transition(&job.job_id, JobState::Failed { reason: reason.to_string(), retryable: true })
+            if job.soulseek().is_some()
+                && matches!(
+                    job.state,
+                    JobState::Enqueued { .. } | JobState::Downloading { .. } | JobState::Stalled { .. }
+                )
+                && self.board.transition(&job.job_id, JobState::Failed { reason: reason.to_string(), retryable: true })
             {
                 self.mark_dirty();
             }
@@ -1165,22 +1456,24 @@ impl Coordinator {
     /// Promove jobs `Queued` enquanto houver vaga — usa `in_flight_count`
     /// (review CR-2: `active_count` antigo contava `Queued` também, então
     /// promover um job nunca reduzia a contagem de "não-terminal" e a fila
-    /// travava permanentemente com ≥`MAX_ACTIVE_TRANSFERS+1` jobs). Usa
+    /// travava permanentemente com ≥`MAX_ACTIVE_SOULSEEK+1` jobs). Usa
     /// `job.size` real (review IM-7: antes ia com `size:0` fixo).
     fn promote_queued(&self, now: Instant) {
-        while self.board.in_flight_count() < MAX_ACTIVE_TRANSFERS {
+        while self.board.in_flight_count_for("soulseek") < max_active_for("soulseek") {
             let queued = self
                 .board
                 .snapshot()
                 .into_iter()
-                .find(|j| j.state == JobState::Queued);
+                .find(|j| j.state == JobState::Queued && j.soulseek().is_some());
             let Some(job) = queued else { break };
-            self.enqueue_job(&job.job_id, &job.username, &job.remote_filename, job.size, now);
+            let Some((username, remote_filename, size)) = job.soulseek() else { break };
+            self.enqueue_job(&job.job_id, username, remote_filename, size, now);
         }
     }
 
     fn poll_one_transfer(&self, job: &DownloadJob, downloads: &[ApiTransferUser], now: Instant) {
-        let Some(file) = find_transfer(downloads, &job.username, &job.remote_filename) else {
+        let Some((username, remote_filename, _)) = job.soulseek() else { return };
+        let Some(file) = find_transfer(downloads, username, remote_filename) else {
             self.handle_missing_transfer(job, now);
             return;
         };
@@ -1295,11 +1588,13 @@ impl Coordinator {
                 let mut tried = job.tried_source_ids.clone();
                 tried.push(alt.id.clone());
                 self.board.upsert(DownloadJob {
-                    username: alt.username.clone(),
-                    remote_filename: alt.filename.clone(),
+                    source: Source::Soulseek {
+                        username: alt.username.clone(),
+                        remote_filename: alt.filename.clone(),
+                        size: alt.size,
+                    },
                     tried_source_ids: tried,
                     state: JobState::Queued,
-                    size: alt.size,
                     ..job.clone()
                 });
                 self.mark_dirty();
@@ -1323,8 +1618,9 @@ impl Coordinator {
     /// (`continue_locate`). Nunca dá `sleep` — troca o loop bloqueante
     /// antigo pelo cadenciamento normal de poll (1s ativo / 5s idle).
     fn begin_locate(&self, job: &DownloadJob, now: Instant) {
+        let Some((_, remote_filename, _)) = job.soulseek() else { return };
         let started_at = job_created_at_as_systemtime(job.created_at);
-        match stage::locate_downloaded(&self.cfg.downloads_dir, &job.remote_filename, started_at) {
+        match stage::locate_downloaded(&self.cfg.downloads_dir, remote_filename, started_at) {
             Some(local) => {
                 self.locating.lock().unwrap_or_else(|p| p.into_inner()).remove(&job.job_id);
                 self.stage_and_ingest(job, local);
@@ -1344,8 +1640,9 @@ impl Coordinator {
             locating.get(&job.job_id).copied()
         };
         let Some(deadline) = deadline else { return };
+        let Some((_, remote_filename, _)) = job.soulseek() else { return };
         let started_at = job_created_at_as_systemtime(job.created_at);
-        match stage::locate_downloaded(&self.cfg.downloads_dir, &job.remote_filename, started_at) {
+        match stage::locate_downloaded(&self.cfg.downloads_dir, remote_filename, started_at) {
             Some(local) => {
                 self.locating.lock().unwrap_or_else(|p| p.into_inner()).remove(&job.job_id);
                 self.stage_and_ingest(job, local);
@@ -1531,6 +1828,7 @@ impl Coordinator {
 
             let now = Instant::now();
             self.poll_active_search_once(now);
+            self.drain_fetch_events(now);
             if has_active_jobs {
                 self.poll_active_transfers_once(now);
                 self.board.retain_recent_terminals(JOBS_RETAINED);
@@ -1551,6 +1849,9 @@ impl Coordinator {
             SlskTask::CancelJob { job_id } => self.cancel_job(&job_id),
             SlskTask::ClearFinished { reply } => {
                 let _ = reply.send(self.clear_finished());
+            }
+            SlskTask::DownloadExternal { source, meta, dest, reply } => {
+                self.handle_task_download_external(source, meta, &dest, reply);
             }
         }
     }
@@ -1597,6 +1898,7 @@ pub fn spawn_coordinator(
     indexer: IndexerHandle,
     app: AppHandle,
     cmd_rx: Receiver<SlskTask>,
+    fetch: Option<(Sender<FetchTask>, Receiver<FetchEvent>)>,
 ) -> JoinHandle<()> {
     let ingest_indexer = indexer.clone();
     let ingest: Box<dyn Fn(Vec<PathBuf>) -> Vec<IngestOutcome> + Send + Sync> =
@@ -1630,9 +1932,12 @@ pub fn spawn_coordinator(
     std::thread::Builder::new()
         .name("slsk-coord".to_string())
         .spawn(move || {
-            let coordinator =
+            let mut coordinator =
                 Coordinator::new(cfg, api, board, searches, ingest, owned_index_provider, jobs_path)
                     .with_lyrics_tx(lyrics_tx);
+            if let Some((fetch_tx, fetch_rx)) = fetch {
+                coordinator = coordinator.with_fetch_channels(fetch_tx, fetch_rx);
+            }
             coordinator.reconcile_boot(unix_now());
             coordinator.run_loop(&app, &cmd_rx);
         })
@@ -1718,6 +2023,29 @@ mod tests {
             queue_length: 0,
             score: 0,
             warn: None,
+        }
+    }
+
+    /// Job Soulseek montado à mão (setup de testes que não passam por
+    /// `start_download`).
+    fn mk_job(id: &str, username: &str, remote_filename: &str, size: u64, state: JobState) -> DownloadJob {
+        DownloadJob {
+            job_id: id.to_string(),
+            source: Source::Soulseek {
+                username: username.to_string(),
+                remote_filename: remote_filename.to_string(),
+                size,
+            },
+            meta: Default::default(),
+            format_in: None,
+            tracks: 1,
+            display: id.to_string(),
+            dest_playlist: "P".to_string(),
+            state,
+            quality_label: "FLAC 16/44".to_string(),
+            alternates: vec![],
+            tried_source_ids: vec![],
+            created_at: 0,
         }
     }
 
@@ -1915,7 +2243,7 @@ mod tests {
         )]));
         coord.poll_active_transfers_once(t0 + Duration::from_secs(1));
         let job = coord.board.get(&job_id).unwrap();
-        assert_eq!(job.username, "peer2", "deveria ter trocado pra fonte alternativa");
+        assert_eq!(job.soulseek().unwrap().0, "peer2", "deveria ter trocado pra fonte alternativa");
         assert!(!matches!(job.state, JobState::Failed { .. }));
 
         // 2a falha (mesma fonte alternativa, sem mais alternates): Failed visivel.
@@ -2060,19 +2388,13 @@ mod tests {
         let now = Instant::now();
 
         for i in 0..3 {
-            coord.board.upsert(DownloadJob {
-                job_id: format!("busy{i}"),
-                username: format!("busy_peer{i}"),
-                remote_filename: format!("Busy{i}.flac"),
-                display: "busy".to_string(),
-                quality_label: "FLAC 16/44".to_string(),
-                dest_playlist: "P".to_string(),
-                state: JobState::Downloading { pct: 1.0, bps: 1, eta_s: None },
-                size: 1,
-                alternates: vec![],
-                tried_source_ids: vec![],
-                created_at: 0,
-            });
+            coord.board.upsert(mk_job(
+                &format!("busy{i}"),
+                &format!("busy_peer{i}"),
+                &format!("Busy{i}.flac"),
+                1,
+                JobState::Downloading { pct: 1.0, bps: 1, eta_s: None },
+            ));
         }
 
         let cand = candidate("peer_queued", "Artist\\Track.flac", 987_654);
@@ -2094,16 +2416,18 @@ mod tests {
     fn boot_reconciliation_restores_dest_playlist() {
         let tmp = tempfile::tempdir().unwrap();
         let jobs_path = tmp.path().join("slsk_jobs.json");
-        let persisted = vec![PersistedJob {
-            job_id: "abc123".to_string(),
-            username: "peer1".to_string(),
-            remote_filename: "Artist\\Title.flac".to_string(),
-            dest_playlist: "Trance".to_string(),
-            alternates: vec![],
-            quality_label: "FLAC 16/44".to_string(),
-            created_at: unix_now(),
-        }];
-        std::fs::write(&jobs_path, serde_json::to_string(&persisted).unwrap()).unwrap();
+        // Formato LEGADO do slsk_jobs.json (username/remote_filename soltos,
+        // sem `source`): o boot reconstrói a origem Soulseek.
+        let legacy = serde_json::json!([{
+            "job_id": "abc123",
+            "username": "peer1",
+            "remote_filename": "Artist\\Title.flac",
+            "dest_playlist": "Trance",
+            "alternates": [],
+            "quality_label": "FLAC 16/44",
+            "created_at": unix_now(),
+        }]);
+        std::fs::write(&jobs_path, legacy.to_string()).unwrap();
 
         let fake = Arc::new(FakeSlskd::new());
         fake.downloads_script.lock().unwrap().push_back(Ok(vec![transfer_user(
@@ -2127,6 +2451,7 @@ mod tests {
         coord.reconcile_boot(unix_now());
         let job = coord.board.get("abc123").expect("job deveria ter sido restaurado");
         assert_eq!(job.dest_playlist, "Trance");
+        assert_eq!(job.soulseek(), Some(("peer1", "Artist\\Title.flac", 0)));
         assert!(matches!(job.state, JobState::Downloading { .. }));
     }
 
@@ -2138,11 +2463,19 @@ mod tests {
         let jobs_path = tmp.path().join("slsk_jobs.json");
         let persisted = vec![PersistedJob {
             job_id: "resumed1".to_string(),
-            username: "peer1".to_string(),
-            remote_filename: "Artist\\Album\\01 - Title.flac".to_string(),
+            source: Source::Soulseek {
+                username: "peer1".to_string(),
+                remote_filename: "Artist\\Album\\01 - Title.flac".to_string(),
+                size: 1000,
+            },
+            username: String::new(),
+            remote_filename: String::new(),
+            meta: ConfirmedMeta::default(),
+            tracks: 1,
             dest_playlist: "Trance".to_string(),
             alternates: vec![],
             quality_label: "FLAC 16/44".to_string(),
+            waiting: None,
             created_at: unix_now(),
         }];
         std::fs::write(&jobs_path, serde_json::to_string(&persisted).unwrap()).unwrap();
@@ -2251,17 +2584,8 @@ mod tests {
         let now = Instant::now();
 
         coord.board.upsert(DownloadJob {
-            job_id: "indexing1".to_string(),
-            username: "peer1".to_string(),
-            remote_filename: "Artist\\Title.flac".to_string(),
-            display: "Artist - Title".to_string(),
-            dest_playlist: "Rap & Hip-Hop".to_string(),
-            state: JobState::Indexing,
-            size: 1000,
-            quality_label: "FLAC 16/44".to_string(),
-            alternates: vec![],
-            tried_source_ids: vec![],
             created_at: unix_now(),
+            ..mk_job("indexing1", "peer1", "Artist\\Title.flac", 1000, JobState::Indexing)
         });
 
         for i in 0..(DOWNLOADS_FAIL_THRESHOLD + 2) {
@@ -2388,7 +2712,7 @@ mod tests {
         let result = coord.try_other_source(&job_id, now + Duration::from_secs(1));
         assert!(result.is_ok());
         let job = coord.board.get(&job_id).unwrap();
-        assert_eq!(job.username, "peer2");
+        assert_eq!(job.soulseek().unwrap().0, "peer2");
         assert_eq!(job.tried_source_ids.len(), 1);
         assert_eq!(job.quality_label, "FLAC 24/96");
         // IM-6: o state precisa refletir a troca (Enqueued da nova fonte),
@@ -2409,7 +2733,7 @@ mod tests {
 
         let alt = candidate("peer2", "Artist\\Title.flac", 1000);
         let cand = candidate("peer1", "Artist\\Title.flac", 1000);
-        let (job_id, _) = coord.create_or_get_job(&cand, vec![alt], "Rap & Hip-Hop");
+        let (job_id, _) = coord.create_or_get_soulseek_job(&cand, vec![alt], "Rap & Hip-Hop");
         coord.board.upsert(DownloadJob {
             state: JobState::Failed { reason: "x".to_string(), retryable: false },
             ..coord.board.get(&job_id).unwrap()
@@ -2417,7 +2741,7 @@ mod tests {
 
         let result = coord.try_other_source(&job_id, now);
         assert!(result.is_ok(), "deveria funcionar a partir de Failed: {result:?}");
-        assert_eq!(coord.board.get(&job_id).unwrap().username, "peer2");
+        assert_eq!(coord.board.get(&job_id).unwrap().soulseek().unwrap().0, "peer2");
     }
 
     #[test]
@@ -2425,19 +2749,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let fake = Arc::new(FakeSlskd::new());
         let coord = make_coordinator(tmp.path(), fake);
-        coord.board.upsert(DownloadJob {
-            job_id: "j1".to_string(),
-            username: "u".to_string(),
-            remote_filename: "f".to_string(),
-            display: "f".to_string(),
-            dest_playlist: "P".to_string(),
-            state: JobState::Ready { track_id: "1".to_string() },
-            size: 0,
-            quality_label: "FLAC 16/44".to_string(),
-            alternates: vec![],
-            tried_source_ids: vec![],
-            created_at: 0,
-        });
+        coord.board.upsert(mk_job("j1", "u", "f", 0, JobState::Ready { track_id: "1".to_string() }));
         assert_eq!(coord.clear_finished(), 1);
         assert!(coord.board.snapshot().is_empty());
     }
@@ -2742,5 +3054,225 @@ mod tests {
             "started_at deveria ser carimbado apos o sweep (que levou ~300ms), elapsed_ms={}",
             snapshot.elapsed_ms
         );
+    }
+
+    // ── Fontes externas (plano Crate fase 1, Task 2) ───────────────────
+
+    fn test_coordinator() -> (Coordinator, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = make_coordinator(tmp.path(), Arc::new(FakeSlskd::new()));
+        (c, tmp)
+    }
+
+    /// Segundo coordinator sobre o MESMO diretório (mesmo `slsk_jobs.json`).
+    fn test_coordinator_at(dir: &Path) -> (Coordinator, ()) {
+        (make_coordinator(dir, Arc::new(FakeSlskd::new())), ())
+    }
+
+    fn fixture_flac() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/audio-engine/tests/fixtures/track_01.flac")
+    }
+
+    fn sc_source(id: u64) -> Source {
+        Source::SoundCloud { track_id: id, permalink_url: format!("https://soundcloud.com/a/{id}") }
+    }
+
+    fn meta(artist: &str, title: &str) -> ConfirmedMeta {
+        ConfirmedMeta { artist: artist.into(), title: title.into(), album: title.into(), year: Some(2024), label: None }
+    }
+
+    #[test]
+    fn download_external_e_idempotente() {
+        let (c, _tmp) = test_coordinator();
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r1, rx1) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(7), meta: meta("DJ Arana", "Festa"), dest: "Funk Brasileiro".into(), reply: r1 });
+        let id1 = rx1.recv().unwrap().unwrap();
+        let (r2, rx2) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(7), meta: meta("DJ Arana", "Festa"), dest: "Funk Brasileiro".into(), reply: r2 });
+        let id2 = rx2.recv().unwrap().unwrap();
+        assert_eq!(id1, id2);
+        assert_eq!(frx.try_iter().count(), 1, "um único FetchTask para o worker");
+        let job = c.board.get(&id1).unwrap();
+        assert_eq!(job.state, JobState::Enqueued { queue_position: None });
+        assert_eq!(job.meta.artist, "DJ Arana");
+    }
+
+    #[test]
+    fn download_external_valida_destino_e_meta() {
+        let (c, _tmp) = test_coordinator();
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(8), meta: meta("A", "T"), dest: "../x".into(), reply: r });
+        assert!(rx.recv().unwrap().is_err());
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(8), meta: meta("  ", "T"), dest: "P".into(), reply: r });
+        assert!(rx.recv().unwrap().is_err());
+        assert_eq!(frx.try_iter().count(), 0);
+        assert!(c.board.snapshot().is_empty());
+    }
+
+    #[test]
+    fn eventos_do_worker_movem_o_job() {
+        let (c, tmp) = test_coordinator();
+        let (ftx, _frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(1), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        let id = rx.recv().unwrap().unwrap();
+        etx.send(FetchEvent::Progress { job_id: id.clone(), pct: 40.0, bps: 1000, eta_s: Some(3) }).unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert!(matches!(c.board.get(&id).unwrap().state, JobState::Downloading { pct, .. } if (pct - 40.0).abs() < 0.01));
+        // Done com um FLAC real de fixture → stage_and_ingest → Indexing/Ready pelo ingest falso
+        let flac = tmp.path().join("in.flac");
+        std::fs::copy(fixture_flac(), &flac).unwrap();
+        etx.send(FetchEvent::Done { job_id: id.clone(), flac_path: flac, format_in: FormatIn::Wav16 }).unwrap();
+        c.drain_fetch_events(Instant::now());
+        let job = c.board.get(&id).unwrap();
+        assert!(matches!(job.state, JobState::Ready { .. } | JobState::Indexing), "estado: {:?}", job.state);
+        assert_eq!(job.format_in, Some(FormatIn::Wav16));
+    }
+
+    #[test]
+    fn done_de_job_cancelado_nao_entra_no_acervo() {
+        let (c, tmp) = test_coordinator();
+        let (ftx, _frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(4), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        let id = rx.recv().unwrap().unwrap();
+        c.handle_task(SlskTask::CancelJob { job_id: id.clone() });
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Canceled);
+        let flac = tmp.path().join("in.flac");
+        std::fs::copy(fixture_flac(), &flac).unwrap();
+        etx.send(FetchEvent::Done { job_id: id.clone(), flac_path: flac.clone(), format_in: FormatIn::Flac }).unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Canceled);
+        assert!(!flac.exists(), "o FLAC pronto de job cancelado é descartado");
+        assert!(!tmp.path().join("Music").join("P").exists(), "nada entra no acervo");
+    }
+
+    #[test]
+    fn rejected_do_worker_vira_rejected_no_board() {
+        let (c, _tmp) = test_coordinator();
+        let (ftx, _frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(2), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        let id = rx.recv().unwrap().unwrap();
+        etx.send(FetchEvent::Rejected { job_id: id.clone(), reason: RejectReason::LowBitrate { kbps: 128 }, quarantine: None }).unwrap();
+        c.drain_fetch_events(Instant::now());
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LowBitrate { kbps: 128 } });
+    }
+
+    #[test]
+    fn teto_por_origem_nao_mistura_fontes() {
+        let (c, _tmp) = test_coordinator();
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        for i in 0..4u64 {
+            let (r, rx) = crossbeam_channel::bounded(1);
+            c.handle_task(SlskTask::DownloadExternal { source: sc_source(10 + i), meta: meta("A", &format!("T{i}")), dest: "P".into(), reply: r });
+            rx.recv().unwrap().unwrap();
+        }
+        assert_eq!(frx.try_iter().count(), MAX_ACTIVE_SOUNDCLOUD, "só 2 vão para o worker; os outros ficam Queued");
+        let queued = c.board.snapshot().into_iter().filter(|j| j.state == JobState::Queued).count();
+        assert_eq!(queued, 2);
+    }
+
+    #[test]
+    fn fila_do_worker_cheia_deixa_queued_sem_travar() {
+        // try_send falhando (fila cheia) não pode prender o promote num loop:
+        // o job fica Queued e o próximo tick tenta de novo.
+        let (c, _tmp) = test_coordinator();
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(1);
+        let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        for i in 0..2u64 {
+            let (r, rx) = crossbeam_channel::bounded(1);
+            c.handle_task(SlskTask::DownloadExternal { source: sc_source(20 + i), meta: meta("A", &format!("T{i}")), dest: "P".into(), reply: r });
+            rx.recv().unwrap().unwrap();
+        }
+        let states: Vec<JobState> = c.board.snapshot().into_iter().map(|j| j.state).collect();
+        assert_eq!(states.iter().filter(|s| **s == JobState::Queued).count(), 1);
+        assert_eq!(frx.try_iter().count(), 1);
+        c.drain_fetch_events(Instant::now());
+        assert_eq!(frx.try_iter().count(), 1, "vaga na fila do worker: o Queued é despachado no tick");
+    }
+
+    #[test]
+    fn slskd_fora_do_ar_nao_falha_job_externo() {
+        let (c, _tmp) = test_coordinator();
+        let (ftx, _frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(3), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        let id = rx.recv().unwrap().unwrap();
+        c.fail_network_dependent_jobs("slskd inalcancavel");
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Enqueued { queue_position: None });
+    }
+
+    #[test]
+    fn persisted_job_externo_volta_queued_no_boot() {
+        let (c, tmp) = test_coordinator();
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = c.with_fetch_channels(ftx, erx);
+        let (r, rx) = crossbeam_channel::bounded(1);
+        c.handle_task(SlskTask::DownloadExternal { source: sc_source(5), meta: meta("A", "T"), dest: "P".into(), reply: r });
+        let id = rx.recv().unwrap().unwrap();
+        frx.try_iter().count();
+        c.board.transition(&id, JobState::Downloading { pct: 10.0, bps: 1, eta_s: None });
+        c.save_jobs();
+        // segundo coordinator lendo o mesmo jobs_path
+        let (c2, _) = test_coordinator_at(tmp.path());
+        let (ftx2, frx2) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_e2, erx2) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c2 = c2.with_fetch_channels(ftx2, erx2);
+        c2.reconcile_boot(unix_now());
+        let job = c2.board.get(&id).expect("job restaurado");
+        assert_eq!(job.meta.artist, "A");
+        assert!(matches!(job.state, JobState::Queued | JobState::Enqueued { .. }));
+        assert_eq!(frx2.try_iter().count(), 1, "re-despachado ao worker no boot");
+    }
+
+    #[test]
+    fn persisted_waiting_e_restaurado_como_esta() {
+        let (c, tmp) = test_coordinator();
+        let src = Source::Bandcamp { item_type: "a".into(), item_id: 9, url: "https://x.bandcamp.com/album/y".into() };
+        let id = super::super::board::job_id(&src);
+        c.board.upsert(DownloadJob {
+            job_id: id.clone(),
+            source: src,
+            meta: meta("A", "Y"),
+            format_in: None,
+            tracks: 3,
+            display: "A - Y".into(),
+            dest_playlist: "P".into(),
+            state: JobState::Waiting { reason: WaitReason::Purchase, url: "https://x.bandcamp.com/album/y".into(), since_secs: 5 },
+            quality_label: String::new(),
+            alternates: vec![],
+            tried_source_ids: vec![],
+            created_at: unix_now(),
+        });
+        c.save_jobs();
+        let (c2, _) = test_coordinator_at(tmp.path());
+        let (ftx2, frx2) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (_e2, erx2) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c2 = c2.with_fetch_channels(ftx2, erx2);
+        c2.reconcile_boot(unix_now());
+        let job = c2.board.get(&id).expect("job restaurado");
+        assert!(matches!(job.state, JobState::Waiting { reason: WaitReason::Purchase, .. }), "estado: {:?}", job.state);
+        assert_eq!(job.tracks, 3);
+        assert_eq!(frx2.try_iter().count(), 0, "waiting não vai para o worker no boot");
     }
 }

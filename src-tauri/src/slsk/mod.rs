@@ -127,7 +127,9 @@ impl Slsk {
         let status = Arc::new(Mutex::new(SlskStatus::unknown()));
         spawn_status_poller(api.clone(), status.clone());
 
-        coordinator::spawn_coordinator(cfg, api, board.clone(), searches.clone(), indexer, app, cmd_rx);
+        // Worker das fontes externas ainda não ligado: `None` (job externo
+        // vira `Failed{retryable}` até o sc-worker entrar).
+        coordinator::spawn_coordinator(cfg, api, board.clone(), searches.clone(), indexer, app, cmd_rx, None);
 
         Slsk { board, searches, status, cmd_tx }
     }

@@ -21,7 +21,7 @@ use slskd_client::stage_plan::{canonical_dest, sanitize_component, TrackMeta};
 
 use super::board::RejectReason;
 
-const INCOMING_DIR_NAME: &str = ".rustify-incoming";
+pub(crate) const INCOMING_DIR_NAME: &str = ".rustify-incoming";
 const QUARANTINE_DIR_NAME: &str = ".rustify-quarentena";
 
 #[derive(Debug, Clone, PartialEq)]
