@@ -1,0 +1,570 @@
+{
+  "1759557993168450154": {
+    "energy": 0.7,
+    "valence": 0.6,
+    "mood_tags": [
+      "groovy",
+      "social",
+      "confident"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "13905471960226186179": {
+    "energy": 0.8,
+    "valence": 0.4,
+    "mood_tags": [
+      "driving",
+      "dark",
+      "groovy",
+      "intense"
+    ],
+    "activity_tags": [
+      "party",
+      "driving",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "1783596929385588978": {
+    "energy": 0.9,
+    "valence": 0.6,
+    "mood_tags": [
+      "energetic",
+      "social",
+      "playful",
+      "confident"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "212875400663365214": {
+    "energy": 0.8,
+    "valence": 0.6,
+    "mood_tags": [
+      "groovy",
+      "sensual",
+      "playful",
+      "social"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "1605885544095741436": {
+    "energy": 0.8,
+    "valence": 0.5,
+    "mood_tags": [
+      "groovy",
+      "raw",
+      "driving"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "17314474787074077726": {
+    "energy": 0.9,
+    "valence": 0.3,
+    "mood_tags": [
+      "aggressive",
+      "raw",
+      "dark",
+      "intense"
+    ],
+    "activity_tags": [
+      "workout",
+      "party",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "3827659545654374930": {
+    "energy": 0.8,
+    "valence": 0.6,
+    "mood_tags": [
+      "playful",
+      "raw",
+      "sensual",
+      "social"
+    ],
+    "activity_tags": [
+      "party"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "16394668169713482619": {
+    "energy": 0.7,
+    "valence": 0.6,
+    "mood_tags": [
+      "sensual",
+      "groovy",
+      "confident"
+    ],
+    "activity_tags": [
+      "party",
+      "romance"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "15533614469774715904": {
+    "energy": 0.9,
+    "valence": 0.7,
+    "mood_tags": [
+      "energetic",
+      "uplifting",
+      "social",
+      "playful"
+    ],
+    "activity_tags": [
+      "party",
+      "workout",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "15917065558711713892": {
+    "energy": 0.8,
+    "valence": 0.7,
+    "mood_tags": [
+      "triumphant",
+      "social",
+      "groovy",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "15855806388718970285": {
+    "energy": 0.8,
+    "valence": 0.5,
+    "mood_tags": [
+      "sensual",
+      "raw",
+      "driving",
+      "groovy"
+    ],
+    "activity_tags": [
+      "party",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "7739643406285639975": {
+    "energy": 0.8,
+    "valence": 0.5,
+    "mood_tags": [
+      "confident",
+      "rebellious",
+      "playful",
+      "dark"
+    ],
+    "activity_tags": [
+      "party",
+      "commute",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "4395317984357469692": {
+    "energy": 0.7,
+    "valence": 0.6,
+    "mood_tags": [
+      "confident",
+      "playful",
+      "groovy",
+      "rebellious"
+    ],
+    "activity_tags": [
+      "party",
+      "social",
+      "chill"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "15228386841778514313": {
+    "energy": 0.8,
+    "valence": 0.7,
+    "mood_tags": [
+      "playful",
+      "groovy",
+      "social",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "10583067479602001790": {
+    "energy": 0.9,
+    "valence": 0.6,
+    "mood_tags": [
+      "energetic",
+      "social",
+      "intense",
+      "raw"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "783558567069642802": {
+    "energy": 0.8,
+    "valence": 0.5,
+    "mood_tags": [
+      "groovy",
+      "raw",
+      "driving",
+      "social"
+    ],
+    "activity_tags": [
+      "party",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "6079481956969790204": {
+    "energy": 0.7,
+    "valence": 0.5,
+    "mood_tags": [
+      "confident",
+      "dark",
+      "groovy",
+      "sensual"
+    ],
+    "activity_tags": [
+      "party",
+      "commute"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "4903666020242661686": {
+    "energy": 0.8,
+    "valence": 0.7,
+    "mood_tags": [
+      "triumphant",
+      "playful",
+      "social",
+      "groovy"
+    ],
+    "activity_tags": [
+      "party",
+      "social",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "8758247693782066440": {
+    "energy": 0.9,
+    "valence": 0.3,
+    "mood_tags": [
+      "intense",
+      "driving",
+      "dark",
+      "energetic"
+    ],
+    "activity_tags": [
+      "workout",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "14943378983308174810": {
+    "energy": 0.9,
+    "valence": 0.3,
+    "mood_tags": [
+      "dark",
+      "ethereal",
+      "intense",
+      "anxious"
+    ],
+    "activity_tags": [
+      "gaming",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "8041442319187722998": {
+    "energy": 0.9,
+    "valence": 0.4,
+    "mood_tags": [
+      "playful",
+      "driving",
+      "intense",
+      "energetic"
+    ],
+    "activity_tags": [
+      "gaming",
+      "workout",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "9672751671225795594": {
+    "energy": 1.0,
+    "valence": 0.2,
+    "mood_tags": [
+      "dark",
+      "anxious",
+      "raw",
+      "intense"
+    ],
+    "activity_tags": [
+      "gaming",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "15817902829187354280": {
+    "energy": 1.0,
+    "valence": 0.4,
+    "mood_tags": [
+      "energetic",
+      "aggressive",
+      "playful",
+      "driving"
+    ],
+    "activity_tags": [
+      "workout",
+      "party",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "3151313061348685322": {
+    "energy": 0.8,
+    "valence": 0.3,
+    "mood_tags": [
+      "ethereal",
+      "dark",
+      "dreamy",
+      "driving"
+    ],
+    "activity_tags": [
+      "gaming",
+      "driving",
+      "focus"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "15703571654136260104": {
+    "energy": 1.0,
+    "valence": 0.2,
+    "mood_tags": [
+      "aggressive",
+      "raw",
+      "dark",
+      "intense"
+    ],
+    "activity_tags": [
+      "workout",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "879191846491101710": {
+    "energy": 0.9,
+    "valence": 0.4,
+    "mood_tags": [
+      "raw",
+      "rebellious",
+      "intense",
+      "driving"
+    ],
+    "activity_tags": [
+      "party",
+      "workout",
+      "commute"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "14478127763640556172": {
+    "energy": 0.8,
+    "valence": 0.7,
+    "mood_tags": [
+      "playful",
+      "social",
+      "groovy",
+      "sensual"
+    ],
+    "activity_tags": [
+      "party",
+      "social"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "10975711779485503750": {
+    "energy": 0.8,
+    "valence": 0.6,
+    "mood_tags": [
+      "groovy",
+      "uplifting",
+      "driving",
+      "dreamy"
+    ],
+    "activity_tags": [
+      "party",
+      "driving",
+      "commute"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "10129258184304627126": {
+    "energy": 0.8,
+    "valence": 0.6,
+    "mood_tags": [
+      "groovy",
+      "driving",
+      "social",
+      "confident"
+    ],
+    "activity_tags": [
+      "party",
+      "workout",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  },
+  "5683555347154975872": {
+    "energy": 0.8,
+    "valence": 0.6,
+    "mood_tags": [
+      "playful",
+      "groovy",
+      "energetic"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "8645574176251340807": {
+    "energy": 1.0,
+    "valence": 0.5,
+    "mood_tags": [
+      "energetic",
+      "intense",
+      "social",
+      "raw"
+    ],
+    "activity_tags": [
+      "party",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "6780899808993441687": {
+    "energy": 0.9,
+    "valence": 0.5,
+    "mood_tags": [
+      "playful",
+      "raw",
+      "intense"
+    ],
+    "activity_tags": [
+      "party",
+      "gaming"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "5712507800326035732": {
+    "energy": 0.9,
+    "valence": 0.4,
+    "mood_tags": [
+      "intense",
+      "driving",
+      "dark"
+    ],
+    "activity_tags": [
+      "gaming",
+      "workout",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "13488566486345249517": {
+    "energy": 0.8,
+    "valence": 0.4,
+    "mood_tags": [
+      "raw",
+      "rebellious",
+      "confident",
+      "groovy"
+    ],
+    "activity_tags": [
+      "party",
+      "commute",
+      "driving"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "low"
+  },
+  "3562492201287552221": {
+    "energy": 0.8,
+    "valence": 0.3,
+    "mood_tags": [
+      "dark",
+      "driving",
+      "intense",
+      "raw"
+    ],
+    "activity_tags": [
+      "party",
+      "driving",
+      "workout"
+    ],
+    "annotated_by": "opus-batch-2026-10-12",
+    "annotation_confidence": "medium"
+  }
+}
