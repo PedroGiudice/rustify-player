@@ -62,13 +62,113 @@ impl From<&slskd_client::rank::Candidate> for Candidate {
 /// Motivo de rejeição pós-download — decisão, não erro (spec §3.5). Nunca
 /// oferecer retry automático pra estes: `AlreadyOwned`/`Bit32Unsupported`
 /// nunca vão passar numa segunda tentativa da MESMA fonte.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RejectReason {
     AlreadyOwned { track_id: String },
     Bit32Unsupported,
     NotFlac,
     Corrupt,
+    /// MP3 original abaixo de 300 kbps (estimado na sondagem ou medido no
+    /// arquivo baixado) — não entra no acervo (spec §3, política de lossy).
+    LowBitrate { kbps: u32 },
+    /// A faixa não tem download nativo (ou a cota acabou) — nada a baixar.
+    NoDownload,
+}
+
+/// Origem de um job. `tag = "kind"` no wire: `{"kind":"sound_cloud","track_id":...}`.
+/// Só a variante Soulseek carrega o que o slskd precisa; as outras carregam
+/// o identificador estável da fonte. Ver spec §2.1.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Source {
+    Soulseek { username: String, remote_filename: String, size: u64 },
+    SoundCloud { track_id: u64, permalink_url: String },
+    Bandcamp { item_type: String, item_id: u64, url: String },
+}
+
+impl Source {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Source::Soulseek { .. } => "soulseek",
+            Source::SoundCloud { .. } => "sound_cloud",
+            Source::Bandcamp { .. } => "bandcamp",
+        }
+    }
+
+    /// Texto curto para a UI (subtítulo da fila): peer ou link.
+    #[allow(dead_code)] // consumido pela fila da UI (tasks seguintes do plano Crate fase 1)
+    pub fn label(&self) -> String {
+        match self {
+            Source::Soulseek { username, .. } => username.clone(),
+            Source::SoundCloud { permalink_url, .. } => permalink_url.clone(),
+            Source::Bandcamp { url, .. } => url.clone(),
+        }
+    }
+
+    /// Chave de identidade (sem `size`: a mesma faixa com tamanho novo é o
+    /// mesmo job). A do Soulseek é exatamente a string antiga
+    /// `"{username}\u{1}{remote_filename}"`, sem prefixo de origem: jobs já
+    /// persistidos em `slsk_jobs.json` mantêm o mesmo `job_id`.
+    fn identity(&self) -> String {
+        match self {
+            Source::Soulseek { username, remote_filename, .. } => {
+                format!("{username}\u{1}{remote_filename}")
+            }
+            Source::SoundCloud { track_id, .. } => format!("sound_cloud\u{1}{track_id}"),
+            Source::Bandcamp { item_type, item_id, .. } => {
+                format!("bandcamp\u{1}{item_type}\u{1}{item_id}")
+            }
+        }
+    }
+}
+
+/// O que o CEO confirmou no card antes do download (spec §2.1). Vazio para
+/// jobs Soulseek: as tags vêm do arquivo do peer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct ConfirmedMeta {
+    pub artist: String,
+    pub title: String,
+    pub album: String,
+    pub year: Option<u32>,
+    pub label: Option<String>,
+}
+
+/// Formato de origem detectado no arquivo baixado (spec §2.1).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FormatIn {
+    Flac,
+    Wav24,
+    Wav16,
+    Aiff,
+    Mp3_320,
+}
+
+#[allow(dead_code)] // consumido pelo sc-worker e pela UI (tasks seguintes do plano Crate fase 1)
+impl FormatIn {
+    pub fn is_lossy(self) -> bool {
+        matches!(self, FormatIn::Mp3_320)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FormatIn::Flac => "FLAC",
+            FormatIn::Wav24 => "WAV 24 bit",
+            FormatIn::Wav16 => "WAV",
+            FormatIn::Aiff => "AIFF",
+            FormatIn::Mp3_320 => "MP3 320",
+        }
+    }
+}
+
+/// Por que um job está em `Waiting` (só Bandcamp, spec §2.2).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WaitReason {
+    Purchase,
+    EmailLink,
 }
 
 /// Estado de um job — 11 variantes (spec §3.5). `tag = "kind"` no wire:
@@ -89,6 +189,9 @@ pub enum JobState {
     Manual { path: String, why: String },
     Failed { reason: String, retryable: bool },
     Canceled,
+    /// Espera algo de fora do app (compra no Bandcamp, link do e-mail).
+    /// Não é terminal e não ocupa vaga de transferência (spec §2.2).
+    Waiting { reason: WaitReason, url: String, since_secs: u64 },
 }
 
 fn tag(s: &JobState) -> &'static str {
@@ -104,6 +207,7 @@ fn tag(s: &JobState) -> &'static str {
         JobState::Manual { .. } => "manual",
         JobState::Failed { .. } => "failed",
         JobState::Canceled => "canceled",
+        JobState::Waiting { .. } => "waiting",
     }
 }
 
@@ -172,6 +276,15 @@ pub fn can_transition(from: &JobState, to: &JobState) -> bool {
             | ("processing", "failed")
             | ("indexing", "ready")
             | ("indexing", "failed")
+            // Waiting (só Bandcamp, spec §2.2): compra entra logo após a
+            // sondagem, e-mail depois do POST do helper; sai quando o item
+            // aparece (enqueued), pelo usuário (canceled) ou por erro.
+            | ("queued", "waiting")
+            | ("enqueued", "waiting")
+            | ("downloading", "waiting")
+            | ("waiting", "enqueued")
+            | ("waiting", "canceled")
+            | ("waiting", "failed")
     )
 }
 
@@ -197,35 +310,53 @@ pub fn is_in_flight(s: &JobState) -> bool {
 #[serde(rename_all = "snake_case")]
 pub struct DownloadJob {
     pub job_id: String,
-    pub username: String,
-    pub remote_filename: String,
+    /// Origem ATUAL do job. Para Soulseek carrega `username`/
+    /// `remote_filename`/`size` da fonte em uso — `size` é necessário pro
+    /// corpo de `POST /transfers/downloads/{user}` quando `promote_queued`
+    /// reenfileira depois de uma vaga abrir (review IM-7: sem isso o
+    /// enqueue ia com `size:0`). Trocado inteiro sempre que a fonte troca.
+    pub source: Source,
+    /// O que o CEO confirmou no card (fontes externas); vazio no Soulseek.
+    pub meta: ConfirmedMeta,
+    /// Formato de origem detectado; `None` até o arquivo ser sondado (e
+    /// sempre no Soulseek, onde só FLAC entra).
+    pub format_in: Option<FormatIn>,
+    /// Faixas do job: 1 para single, n para release do Bandcamp.
+    pub tracks: u16,
     pub display: String,
     pub dest_playlist: String,
     pub state: JobState,
-    /// Tamanho em bytes da fonte ATUAL (`username`/`remote_filename`) —
-    /// necessário pro corpo de `POST /transfers/downloads/{user}` quando
-    /// `promote_queued` reenfileira depois de uma vaga abrir (review IM-7:
-    /// sem isso o enqueue ia com `size:0`). Atualizado junto com
-    /// `username`/`remote_filename` sempre que a fonte troca.
-    pub size: u64,
     /// Rótulo "FLAC 16/44" da fonte ATUAL — atualizado junto com
-    /// `username`/`remote_filename` na troca de fonte. Vazio em jobs
-    /// reconciliados de um `slsk_jobs.json` anterior a este campo
-    /// (o frontend cai no tamanho do arquivo nesse caso).
+    /// `source` na troca de fonte. Vazio em jobs reconciliados de um
+    /// `slsk_jobs.json` anterior a este campo (o frontend cai no tamanho
+    /// do arquivo nesse caso).
     pub quality_label: String,
     pub alternates: Vec<Candidate>,
     pub tried_source_ids: Vec<String>,
     pub created_at: i64,
 }
 
-/// `DefaultHasher` hex sobre `"{username}\u{1}{remote_filename}"` — mesma
-/// filosofia de `library_indexer::types::path_to_id` e
+impl DownloadJob {
+    /// (username, remote_filename, size) quando a origem é Soulseek.
+    pub fn soulseek(&self) -> Option<(&str, &str, u64)> {
+        match &self.source {
+            Source::Soulseek { username, remote_filename, size } => {
+                Some((username.as_str(), remote_filename.as_str(), *size))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// `DefaultHasher` hex sobre a identidade da origem ([`Source::identity`]) —
+/// mesma filosofia de `library_indexer::types::path_to_id` e
 /// `slskd_client::rank`'s `candidate_id` (spec §3.4). Enfileirar o mesmo
-/// arquivo do mesmo peer duas vezes é idempotente: mesmo `job_id`.
-pub fn job_id(username: &str, remote_filename: &str) -> String {
+/// arquivo do mesmo peer (ou a mesma faixa do SoundCloud) duas vezes é
+/// idempotente: mesmo `job_id`.
+pub fn job_id(source: &Source) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{username}\u{1}{remote_filename}").hash(&mut hasher);
+    source.identity().hash(&mut hasher);
     format!("{:x}", hasher.finish())
 }
 
@@ -359,30 +490,93 @@ mod tests {
     fn job(id: &str, state: JobState) -> DownloadJob {
         DownloadJob {
             job_id: id.to_string(),
-            username: "peer".to_string(),
-            remote_filename: "Artist - Title.flac".to_string(),
-            display: "Artist - Title".to_string(),
-            dest_playlist: "Rap & Hip-Hop".to_string(),
+            source: Source::Soulseek {
+                username: "peer".into(),
+                remote_filename: format!("{id}.flac"),
+                size: 1,
+            },
+            meta: ConfirmedMeta::default(),
+            format_in: None,
+            tracks: 1,
+            display: id.to_string(),
+            dest_playlist: "Rap & Hip-Hop".into(),
             state,
-            size: 1_000,
-            quality_label: "FLAC 16/44".to_string(),
+            quality_label: String::new(),
             alternates: Vec::new(),
             tried_source_ids: Vec::new(),
             created_at: 0,
         }
     }
 
+    /// Cópia da implementação antiga de `job_id(username, remote_filename)`:
+    /// prova que jobs Soulseek já persistidos mantêm o mesmo id.
+    fn legacy_job_id(username: &str, remote_filename: &str) -> String {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        format!("{username}\u{1}{remote_filename}").hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    }
+
+    fn slsk(username: &str, remote_filename: &str) -> Source {
+        Source::Soulseek { username: username.into(), remote_filename: remote_filename.into(), size: 1_000 }
+    }
+
     #[test]
     fn job_id_is_deterministic() {
-        let a = job_id("peer_a", "Artist - Title.flac");
-        let b = job_id("peer_a", "Artist - Title.flac");
+        let a = job_id(&slsk("peer_a", "Artist - Title.flac"));
+        let b = job_id(&slsk("peer_a", "Artist - Title.flac"));
         assert_eq!(a, b);
 
-        let different_user = job_id("peer_b", "Artist - Title.flac");
+        let different_user = job_id(&slsk("peer_b", "Artist - Title.flac"));
         assert_ne!(a, different_user);
 
-        let different_file = job_id("peer_a", "Other - Track.flac");
+        let different_file = job_id(&slsk("peer_a", "Other - Track.flac"));
         assert_ne!(a, different_file);
+    }
+
+    #[test]
+    fn job_id_e_determinista_por_origem() {
+        let a = Source::Soulseek { username: "u".into(), remote_filename: "f.flac".into(), size: 1 };
+        let b = Source::SoundCloud { track_id: 42, permalink_url: "https://soundcloud.com/x/y".into() };
+        assert_eq!(job_id(&a), job_id(&a));
+        assert_ne!(job_id(&a), job_id(&b));
+        // size não participa da identidade: a mesma faixa com size diferente é o mesmo job
+        let a2 = Source::Soulseek { username: "u".into(), remote_filename: "f.flac".into(), size: 9 };
+        assert_eq!(job_id(&a), job_id(&a2));
+        // compatibilidade: o hash do Soulseek continua o de "{username}\u{1}{remote_filename}"
+        assert_eq!(job_id(&a), legacy_job_id("u", "f.flac"));
+    }
+
+    #[test]
+    fn waiting_entra_de_queued_enqueued_downloading_e_sai_para_enqueued() {
+        let w = JobState::Waiting { reason: WaitReason::Purchase, url: "https://x".into(), since_secs: 0 };
+        assert!(can_transition(&JobState::Queued, &w));
+        assert!(can_transition(&JobState::Enqueued { queue_position: None }, &w));
+        assert!(can_transition(&JobState::Downloading { pct: 1.0, bps: 1, eta_s: None }, &w));
+        assert!(can_transition(&w, &JobState::Enqueued { queue_position: None }));
+        assert!(can_transition(&w, &JobState::Canceled));
+        assert!(can_transition(&w, &JobState::Failed { reason: "x".into(), retryable: false }));
+        assert!(!can_transition(&w, &JobState::Ready { track_id: "1".into() }));
+        assert!(!is_terminal(&w));
+        assert!(!is_in_flight(&w), "waiting não ocupa vaga de transferência");
+    }
+
+    #[test]
+    fn reject_reasons_novos_serializam_snake_case() {
+        let v = serde_json::to_value(RejectReason::LowBitrate { kbps: 128 }).unwrap();
+        assert_eq!(v, serde_json::json!({ "low_bitrate": { "kbps": 128 } }));
+        let v = serde_json::to_value(RejectReason::NoDownload).unwrap();
+        assert_eq!(v, serde_json::json!("no_download"));
+    }
+
+    #[test]
+    fn source_serializa_com_kind_e_round_trip() {
+        let s = Source::SoundCloud { track_id: 7, permalink_url: "https://soundcloud.com/a/b".into() };
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["kind"], "sound_cloud");
+        let back: Source = serde_json::from_value(v).unwrap();
+        assert_eq!(back, s);
+        assert_eq!(s.kind(), "sound_cloud");
     }
 
     #[test]
