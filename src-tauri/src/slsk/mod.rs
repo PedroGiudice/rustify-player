@@ -14,6 +14,7 @@
 mod board;
 mod config;
 mod coordinator;
+mod sources;
 mod stage;
 
 use std::path::{Path, PathBuf};

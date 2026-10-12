@@ -69,12 +69,18 @@ fn non_empty(s: Option<&str>) -> Option<&str> {
 }
 
 /// Remove `/`, `\` e `\0` (substituídos por espaço, depois colapsados —
-/// evita colar palavras como "AC/DC" -> "ACDC"), trim, colapsa espaços,
+/// evita colar palavras como "AC/DC" -> "ACDC"), troca `: " * ? < > |` por
+/// `_` (o storage do Android recusa esses caracteres; o
+/// `phone_sync_encode.py::safe_rel` faz o mesmo), trim, colapsa espaços,
 /// capa em 120 bytes respeitando fronteira UTF-8.
 pub fn sanitize_component(s: &str) -> String {
     let replaced: String = s
         .chars()
-        .map(|c| if matches!(c, '/' | '\\' | '\0') { ' ' } else { c })
+        .map(|c| match c {
+            '/' | '\\' | '\0' => ' ',
+            ':' | '"' | '*' | '?' | '<' | '>' | '|' => '_',
+            c => c,
+        })
         .collect();
     let collapsed = replaced.split_whitespace().collect::<Vec<_>>().join(" ");
     cap_utf8_bytes(&collapsed, 120)
@@ -169,5 +175,13 @@ mod tests {
         let capped_unicode = sanitize_component(&long_unicode);
         assert!(capped_unicode.len() <= 120);
         assert!(std::str::from_utf8(capped_unicode.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn sanitize_component_android_safe() {
+        assert_eq!(sanitize_component("Remix: vol. 2?"), "Remix_ vol. 2_");
+        assert_eq!(sanitize_component("TABOO | TA13OO"), "TABOO _ TA13OO");
+        assert_eq!(sanitize_component("AC/DC"), "AC DC");
+        assert_eq!(sanitize_component("a\"b*c<d>e"), "a_b_c_d_e");
     }
 }
