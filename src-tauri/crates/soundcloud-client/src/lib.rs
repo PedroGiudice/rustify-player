@@ -212,6 +212,29 @@ pub fn total_from_content_range(cr: &str) -> Option<u64> {
 /// Troca a miniatura `-large` (100 px) pela variante de 500 px.
 pub fn artwork_500(url: &str) -> String { url.replace("-large.", "-t500x500.") }
 
+/// Link curto de compartilhamento (`https://on.soundcloud.com/<id>`, o que o
+/// app do celular gera). O `/resolve` da API devolve 404 para ele: é preciso
+/// seguir o redirect antes.
+pub fn is_short_link(url: &str) -> bool {
+    let u = url.trim();
+    let rest = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")).unwrap_or("");
+    rest.len() > "on.soundcloud.com/".len() && rest.to_ascii_lowercase().starts_with("on.soundcloud.com/")
+}
+
+/// Destino do redirect de um link curto, só se for página do próprio
+/// SoundCloud (outro host seria seguir para fora). Sem query nem fragmento:
+/// o `?si=...&utm_*` do compartilhamento não serve ao `/resolve`.
+pub fn short_link_target(location: &str) -> Option<String> {
+    let loc = location.trim();
+    let rest = loc.strip_prefix("https://")?;
+    let lower = rest.to_ascii_lowercase();
+    if !["soundcloud.com/", "www.soundcloud.com/", "m.soundcloud.com/"].iter().any(|h| lower.starts_with(h)) {
+        return None;
+    }
+    let clean = loc.split(['?', '#']).next().unwrap_or(loc);
+    Some(clean.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +247,21 @@ mod tests {
         let t = &tracks[0];
         assert!(t.id > 0 && !t.title.is_empty() && t.permalink_url.starts_with("https://soundcloud.com/"));
         assert!(t.duration_ms > 0);
+    }
+
+    #[test]
+    fn link_curto_e_destino_do_redirect() {
+        assert!(is_short_link("https://on.soundcloud.com/7XQb1"));
+        assert!(is_short_link(" http://ON.soundcloud.com/abc "));
+        assert!(!is_short_link("https://on.soundcloud.com/"));
+        assert!(!is_short_link("https://soundcloud.com/dj/festa"));
+        assert_eq!(
+            short_link_target("https://soundcloud.com/jason/faixa?si=ab1&utm_source=twitter").as_deref(),
+            Some("https://soundcloud.com/jason/faixa"),
+        );
+        assert_eq!(short_link_target("https://m.soundcloud.com/a/b#x").as_deref(), Some("https://m.soundcloud.com/a/b"));
+        assert_eq!(short_link_target("https://evil.example/soundcloud.com/a"), None);
+        assert_eq!(short_link_target("http://soundcloud.com/a/b"), None);
     }
 
     #[test]

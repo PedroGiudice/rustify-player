@@ -1257,3 +1257,183 @@ describe("Crate: SoundCloud", () => {
     expect(screen.getByText(/sem download nativo/)).toBeInTheDocument();
   });
 });
+
+// ── Correções da revisão da Task 9 ───────────────────────────────
+describe("Crate: SoundCloud, correções da revisão", () => {
+  const scSource = { kind: "sound_cloud" as const, track_id: 7, permalink_url: "https://soundcloud.com/dj/festa" };
+  const scMeta = { artist: "DJ Arana", title: "Festa", album: "Festa", year: 2024, label: null };
+
+  function scJob(state: DownloadJob["state"], extra: Partial<DownloadJob> = {}): DownloadJob {
+    return job({
+      job_id: "sc-7",
+      source: scSource,
+      meta: scMeta,
+      artwork_url: "https://i1.sndcdn.com/artworks-y-large.jpg",
+      display: "DJ Arana - Festa",
+      dest_playlist: "Funk Brasileiro",
+      quality_label: "",
+      format_in: null,
+      state,
+      ...extra,
+    });
+  }
+
+  it("job do SoundCloud em falha oferece 'Tentar de novo' na busca e na Fila, que recria o job com o mesmo metadado", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      scJob({ kind: "failed", reason: "o SoundCloud recusou o link do original (expirado ou bloqueado); tente de novo", retryable: true }),
+    ]);
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 7, title: "Festa", availability: { kind: "native" } })]);
+    render(() => <Crate />);
+    await typeAndEnter("festa");
+    const sec = await screen.findByRole("group", { name: /SoundCloud/ });
+    await userEvent.click(await within(sec).findByRole("button", { name: /Tentar de novo/ }));
+    await waitFor(() => expect(mocks.crateDownload).toHaveBeenCalledWith(
+      scSource, scMeta, "Funk Brasileiro", "https://i1.sndcdn.com/artworks-y-large.jpg",
+    ));
+    mocks.crateDownload.mockClear();
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Tentar de novo/ }));
+    await waitFor(() => expect(mocks.crateDownload).toHaveBeenCalledWith(
+      scSource, scMeta, "Funk Brasileiro", "https://i1.sndcdn.com/artworks-y-large.jpg",
+    ));
+  });
+
+  it("rejeição por bitrate baixo ou posse não oferece 'Tentar de novo'; rejeição por arquivo inválido oferece", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      scJob({ kind: "rejected", reason: { low_bitrate: { kbps: 128 } } }, { job_id: "a" }),
+      scJob({ kind: "rejected", reason: { already_owned: { track_id: "9" } } }, { job_id: "b", source: { ...scSource, track_id: 8 } }),
+      scJob({ kind: "rejected", reason: "corrupt" }, { job_id: "c", source: { ...scSource, track_id: 9 } }),
+    ]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await screen.findByText(/MP3 128: abaixo de 320/);
+    expect(screen.getAllByRole("button", { name: /Tentar de novo/ })).toHaveLength(1);
+  });
+
+  it("job Soulseek em falha não ganha 'Tentar de novo' (a troca é pelo [Trocar fonte])", async () => {
+    mocks.slskJobs.mockResolvedValue([job({ job_id: "s", state: { kind: "failed", reason: "x", retryable: true } })]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await screen.findByText("falhou");
+    expect(screen.queryByRole("button", { name: /Tentar de novo/ })).toBeNull();
+  });
+
+  it("na Fila, o formato do job do SoundCloud vem do format_in, nunca '0.0 MB'", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      scJob({ kind: "downloading", pct: 40, bps: 1000, eta_s: 3 }),
+      scJob({ kind: "ready", track_id: "1" }, { job_id: "sc-8", source: { ...scSource, track_id: 8 }, format_in: "wav24" }),
+    ]);
+    const { container } = render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect(await screen.findByText("WAV 24 bit")).toBeInTheDocument();
+    expect(container.textContent).not.toContain("0.0 MB");
+  });
+
+  it("formato que não entra mostra o motivo uma vez só, com a string real do backend", async () => {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "A", user_name: "B", availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
+    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 3672064, kbps_est: 128, format_label: "MP3 128", allowed: false, reason: "abaixo de 320 kbps" });
+    const { container } = render(() => <Crate />);
+    await typeAndEnter("a");
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    await screen.findByText(/não entra/);
+    expect(container.querySelector(".crate-fmt")!.textContent).toBe("MP3 128 · não entra (abaixo de 320 kbps)");
+  });
+
+  it("o que o CEO edita no card (artista, título, ano) é o que vai para o crate_download; Esc fecha o card", async () => {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "FESTA DO PENTE RALA - DJ ARANA", user_name: "DJ ARANA OFICIAL", availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
+    mocks.crateScProbe.mockResolvedValue({ ext: "wav", size: 30_000_000, kbps_est: 1411, format_label: "WAV", allowed: true, reason: null });
+    render(() => <Crate />);
+    await typeAndEnter("festa");
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    let card = await screen.findByRole("form", { name: /Confirmar faixa/ });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("form", { name: /Confirmar faixa/ })).toBeNull());
+
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    card = await screen.findByRole("form", { name: /Confirmar faixa/ });
+    await within(card).findByText(/WAV/);
+    await userEvent.clear(within(card).getByLabelText("Artista"));
+    await userEvent.type(within(card).getByLabelText("Artista"), "DJ Arana Oficial");
+    await userEvent.clear(within(card).getByLabelText("Título"));
+    await userEvent.type(within(card).getByLabelText("Título"), "Festa do Pente");
+    await userEvent.clear(within(card).getByLabelText("Ano"));
+    await userEvent.type(within(card).getByLabelText("Ano"), "2023{enter}");
+    await waitFor(() => expect(mocks.crateDownload).toHaveBeenCalledWith(
+      { kind: "sound_cloud", track_id: 1, permalink_url: expect.any(String) },
+      { artist: "DJ Arana Oficial", title: "Festa do Pente", album: "Festa do Pente", year: 2023, label: null },
+      "Funk Brasileiro",
+      expect.anything(),
+    ));
+  });
+
+  it("o aviso de duplicata do card é reconsultado com os campos corrigidos", async () => {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "FESTA DO PENTE RALA - DJ ARANA", user_name: "DJ ARANA OFICIAL", availability: { kind: "native" } })]);
+    mocks.crateScProbe.mockResolvedValue({ ext: "flac", size: 1, kbps_est: 900, format_label: "FLAC", allowed: true, reason: null });
+    render(() => <Crate />);
+    await typeAndEnter("festa");
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    const card = await screen.findByRole("form", { name: /Confirmar faixa/ });
+    await waitFor(() => expect(mocks.slskDedupProbe).toHaveBeenCalledWith("DJ Arana Festa do Pente Rala"));
+    await userEvent.clear(within(card).getByLabelText("Título"));
+    await userEvent.type(within(card).getByLabelText("Título"), "Baile");
+    await waitFor(() => expect(mocks.slskDedupProbe).toHaveBeenCalledWith("DJ Arana Baile"), { timeout: 2000 });
+  });
+
+  it("a linha do SoundCloud mostra reproduções em português", async () => {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, playback_count: 12_345 })]);
+    const { container } = render(() => <Crate />);
+    await typeAndEnter("x");
+    await screen.findByRole("group", { name: /SoundCloud/ });
+    await waitFor(() => expect(container.textContent).toContain("12.345 reproduções"));
+    expect(container.textContent).not.toMatch(/\bplays\b/);
+  });
+
+  it("Enter durante o cooldown do Soulseek só troca o SoundCloud se o pacer aceitar a busca", async () => {
+    mocks.slskSearch.mockRejectedValueOnce("cooldown:4").mockRejectedValueOnce("cooldown:3");
+    const { container } = render(() => <Crate />);
+    await typeAndEnter("primeira");
+    expect(mocks.crateScSearch).toHaveBeenCalledWith("primeira");
+    const btn = container.querySelector(".crate-btn-search") as HTMLButtonElement;
+    await waitFor(() => expect(btn.getAttribute("data-cooldown")).toBe("true"));
+    // Recusada pelo pacer: as duas seções seguem na busca anterior.
+    await typeAndEnter("segunda");
+    await waitFor(() => expect(mocks.slskSearch).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mocks.crateScSearch).toHaveBeenCalledTimes(1);
+    // Aceita (o backend é quem decide): o SoundCloud acompanha.
+    await typeAndEnter("terceira");
+    await waitFor(() => expect(mocks.crateScSearch).toHaveBeenCalledWith("terceira"));
+    expect(mocks.crateScSearch).toHaveBeenCalledTimes(2);
+  });
+
+  it("'Buscar mesmo assim' com a busca editada refaz também o SoundCloud", async () => {
+    mocks.slskSearch.mockRejectedValueOnce("cold:540");
+    const { container } = render(() => <Crate />);
+    await typeAndEnter("primeira");
+    await waitFor(() => expect(container.querySelector(".crate-banner")).toBeTruthy());
+    const input = container.querySelector(".coll-search input") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "segunda" } });
+    fireEvent.click(screen.getByText(/Buscar mesmo assim/));
+    await waitFor(() => expect(mocks.slskSearch).toHaveBeenCalledWith("segunda", true));
+    expect(mocks.crateScSearch).toHaveBeenCalledWith("segunda");
+  });
+
+  it("link curto on.soundcloud.com vai para o resolve", async () => {
+    mocks.crateScResolve.mockResolvedValue(scResult({ id: 3 }));
+    render(() => <Crate />);
+    await typeAndEnter("https://on.soundcloud.com/AbC123");
+    await waitFor(() => expect(mocks.crateScResolve).toHaveBeenCalledWith("https://on.soundcloud.com/AbC123"));
+    expect(mocks.slskSearch).not.toHaveBeenCalled();
+  });
+
+  it("linha do Soulseek na busca ganha o badge de origem; status das fontes separa SoundCloud e ffmpeg", async () => {
+    mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "token_ok", ffmpeg: false, uv: true, bandcamp_identity: false });
+    const { container } = await searchAndRender([group()]);
+    expect(within(container.querySelector(".crate-row") as HTMLElement).getByText("Soulseek", { selector: ".crate-origin" })).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelectorAll(".crate-src-status")).toHaveLength(2));
+    const [sc, ff] = Array.from(container.querySelectorAll(".crate-src-status"));
+    expect(sc.getAttribute("data-on")).toBe("true");
+    expect(ff.getAttribute("data-on")).toBe("false");
+    expect(ff.textContent).toContain("ffmpeg: ausente");
+  });
+});

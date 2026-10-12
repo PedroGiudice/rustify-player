@@ -331,7 +331,8 @@ fn probe_verdict(ext: &str, size: Option<u64>, kbps_est: Option<u32>) -> ScProbe
         "aiff" | "aif" | "aifc" => ("AIFF".to_string(), true, None),
         "mp3" => match kbps_est {
             Some(k) if k < sc_worker::MIN_MP3_KBPS => {
-                (format!("MP3 {k}"), false, Some(format!("MP3 {k}, não entra (abaixo de 320)")))
+                // Só o motivo: o card já mostra "MP3 {k} · não entra".
+                (format!("MP3 {k}"), false, Some("abaixo de 320 kbps".to_string()))
             }
             Some(_) => ("MP3 320".to_string(), true, None),
             // Sem tamanho não há estimativa: o ffprobe decide depois de baixar.
@@ -341,7 +342,7 @@ fn probe_verdict(ext: &str, size: Option<u64>, kbps_est: Option<u32>) -> ScProbe
         // headers: sem ele, quem decide é o ffprobe do arquivo baixado,
         // como faz o worker.
         "" => ("formato a confirmar".to_string(), true, None),
-        other => (other.to_ascii_uppercase(), false, Some(format!("formato não suportado ({other})"))),
+        other => (other.to_ascii_uppercase(), false, Some("formato não suportado".to_string())),
     };
     ScProbe { ext: e, size, kbps_est, format_label, allowed, reason }
 }
@@ -818,9 +819,10 @@ mod tests {
         let baixo = probe_verdict("mp3", Some(3_000_000), Some(129));
         assert!(!baixo.allowed);
         assert_eq!(baixo.format_label, "MP3 129");
+        assert_eq!(baixo.reason.as_deref(), Some("abaixo de 320 kbps"), "o rótulo não se repete no motivo");
         assert!(probe_verdict("mp3", None, None).allowed, "sem estimativa o ffprobe decide");
         let m4a = probe_verdict("m4a", Some(1), Some(256));
-        assert!(!m4a.allowed && m4a.reason.as_deref() == Some("formato não suportado (m4a)"));
+        assert!(!m4a.allowed && m4a.reason.as_deref() == Some("formato não suportado"));
         let vazio = probe_verdict("", None, None);
         assert!(vazio.allowed, "sem extensão o ffprobe decide");
         assert_eq!(vazio.format_label, "formato a confirmar");

@@ -11,8 +11,8 @@ use std::time::Duration;
 use crate::client_id::{bundle_urls, drop_cache, extract_client_id, read_cache, write_cache};
 use crate::wire::RawDownload;
 use crate::{
-    bitrate_estimate_kbps, ext_from_headers, ext_from_url, parse_search, parse_track,
-    total_from_content_range, Original, ScError, ScTrack, SoundCloudApi,
+    bitrate_estimate_kbps, ext_from_headers, ext_from_url, is_short_link, parse_search, parse_track,
+    short_link_target, total_from_content_range, Original, ScError, ScTrack, SoundCloudApi,
 };
 
 const API: &str = "https://api-v2.soundcloud.com";
@@ -22,6 +22,9 @@ const CHUNK: usize = 256 * 1024;
 
 pub struct HttpSoundCloud {
     agent: ureq::Agent,
+    /// Mesmo agente sem seguir redirect: lê o `Location` do link curto sem
+    /// baixar a página de destino.
+    agent_no_redirect: ureq::Agent,
     cache_path: PathBuf,
     client_id: Mutex<Option<String>>,
 }
@@ -30,13 +33,16 @@ impl HttpSoundCloud {
     /// `cache_path`: arquivo JSON do `client_id` (ex.:
     /// `<data_dir>/soundcloud_client_id.json`).
     pub fn new(cache_path: PathBuf, user_agent: String) -> Self {
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(TIMEOUT)
-            .timeout_read(TIMEOUT)
-            .timeout_write(TIMEOUT)
-            .user_agent(&user_agent)
-            .build();
-        Self { agent, cache_path, client_id: Mutex::new(None) }
+        let builder = || {
+            ureq::AgentBuilder::new()
+                .timeout_connect(TIMEOUT)
+                .timeout_read(TIMEOUT)
+                .timeout_write(TIMEOUT)
+                .user_agent(&user_agent)
+        };
+        let agent = builder().build();
+        let agent_no_redirect = builder().redirects(0).build();
+        Self { agent, agent_no_redirect, cache_path, client_id: Mutex::new(None) }
     }
 
     /// `client_id` em memória, senão do cache em disco, senão extraído da home
@@ -66,6 +72,15 @@ impl HttpSoundCloud {
     fn invalidate_client_id(&self) {
         *self.client_id.lock().unwrap_or_else(|p| p.into_inner()) = None;
         drop_cache(&self.cache_path);
+    }
+
+    /// `on.soundcloud.com/<id>` responde 302 para a página da faixa; o
+    /// `/resolve` só aceita a página.
+    fn expand_short_link(&self, url: &str) -> Result<String, ScError> {
+        let resp = self.agent_no_redirect.get(url.trim()).call().map_err(map_err)?;
+        resp.header("location")
+            .and_then(short_link_target)
+            .ok_or_else(|| ScError::Parse("o link curto não levou a uma faixa do SoundCloud".into()))
     }
 
     fn get_text(&self, url: &str) -> Result<String, ScError> {
@@ -258,6 +273,13 @@ impl SoundCloudApi for HttpSoundCloud {
     }
 
     fn resolve(&self, url: &str) -> Result<ScTrack, ScError> {
+        let expanded;
+        let url = if is_short_link(url) {
+            expanded = self.expand_short_link(url)?;
+            expanded.as_str()
+        } else {
+            url
+        };
         let body = self.api_get(&format!("/resolve?url={}", urlenc(url)), None)?;
         parse_track(&body)
     }

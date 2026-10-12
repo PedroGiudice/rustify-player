@@ -35,7 +35,7 @@ import {
   crateScSearch, crateScResolve, crateScProbe, crateScArtwork, crateDownload, crateSourcesStatus,
   type SlskStatus, type SearchSnapshot, type ResultGroup, type Candidate,
   type DownloadJob, type FolderPlaylist, type Track, type RejectReason, type Source,
-  type ScResult, type ScProbe, type SourcesStatus, type ConfirmedMeta,
+  type ScResult, type ScProbe, type SourcesStatus, type ConfirmedMeta, type FormatIn,
 } from "../tauri";
 import { guessFromSoundCloud, cleanTitle, type MetaGuess } from "../lib/trackMetaGuess";
 import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from "../store/crate";
@@ -59,8 +59,10 @@ const SEARCH_WINDOW_MS = 25_000;
 /** Status das fontes (token do SoundCloud, ffmpeg): spec §5.4. */
 const SOURCES_POLL_MS = 30_000;
 
-/** Link colado do SoundCloud vai para o resolve, não para a busca. */
-const SC_LINK = /^https?:\/\/(www\.|m\.)?soundcloud\.com\//i;
+/** Link colado do SoundCloud vai para o resolve, não para a busca.
+    Inclui o curto `on.soundcloud.com/<id>` do app do celular (o backend
+    segue o redirect antes do /resolve). */
+const SC_LINK = /^https?:\/\/(www\.|m\.|on\.)?soundcloud\.com\//i;
 /** Link do Bandcamp: sondagem só na fase 2. */
 const BC_LINK = /^https?:\/\/([a-z0-9-]+\.)*bandcamp\.com(\/|$)/i;
 
@@ -229,6 +231,38 @@ function sourceName(src: Source): string {
   }
 }
 
+/** Formato de origem detectado pelo worker (FormatIn do board.rs). */
+const FORMAT_IN_LABEL: Record<FormatIn, string> = {
+  flac: "FLAC",
+  wav24: "WAV 24 bit",
+  wav16: "WAV 16 bit",
+  aiff: "AIFF",
+  mp3_320: "MP3 320",
+};
+
+/** Badge de formato na Fila. Soulseek: rótulo da fonte (ou o tamanho, em
+    job antigo sem rótulo). Origem externa: o `format_in` que o worker
+    preenche; antes disso não há o que mostrar (o backend cria esses jobs
+    com `quality_label` vazio e não há tamanho). */
+function jobFormatLabel(job: DownloadJob): string | null {
+  if (job.source.kind === "soulseek") return job.quality_label || formatSize(job.source.size);
+  return job.format_in ? FORMAT_IN_LABEL[job.format_in] : null;
+}
+
+/** Job de origem externa (SoundCloud, Bandcamp) que pode ser refeito. Lá
+    não há [Trocar fonte] (não existem alternativas), e o job_id fixo por
+    faixa deixaria a linha presa em `failed` para sempre, inclusive entre
+    sessões. O backend recria job terminal com `attempt` novo. Bitrate
+    baixo e posse não mudam ao refazer: ficam de fora. */
+function canRetryExternal(job: DownloadJob): boolean {
+  if (job.source.kind === "soulseek") return false;
+  const st = job.state;
+  if (st.kind === "failed") return true;
+  if (st.kind !== "rejected") return false;
+  const r = st.reason;
+  return !isAlreadyOwnedReason(r) && !(typeof r === "object" && r !== null && "low_bitrate" in r);
+}
+
 /** Badge da origem (à esquerda do formato). */
 function OriginBadge(props: { name: string }) {
   return <span class="crate-origin">{props.name}</span>;
@@ -243,13 +277,6 @@ function formatMb(bytes: number): string {
 function scYear(r: ScResult): number | null {
   const m = /^(\d{4})/.exec(r.release_date ?? r.created_at ?? "");
   return m ? parseInt(m[1], 10) : null;
-}
-
-/** Texto do erro de IPC; `"no_token"` chega cru do `crate_sc_probe`. */
-function rawError(e: unknown): string {
-  if (typeof e === "string") return e;
-  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
-  return String(e ?? "");
 }
 
 /** Rótulo de qualidade por candidato (o group.quality_label é o do
@@ -609,6 +636,7 @@ function CrateRow(props: {
             {props.group.display_artist ?? "—"}
             {props.group.album_hint ? ` · ${props.group.album_hint}` : ""}
           </div>
+          <OriginBadge name="Soulseek" />
         </div>
 
         <span class="crate-badge">{props.group.quality_label}</span>
@@ -761,7 +789,12 @@ function CrateRow(props: {
 }
 
 // ── Linha da fila (Job) — mesmo grid da row de resultado ─────────
-function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySource: () => void }) {
+function CrateJobRow(props: {
+  job: DownloadJob;
+  onCancel: () => void;
+  onTrySource: () => void;
+  onRetry: () => void;
+}) {
   const kind = () => props.job.state.kind;
   const state = () => (kind() === "canceled" ? "idle" : (kind() as RowState));
 
@@ -774,11 +807,9 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
           <OriginBadge name={sourceName(props.job.source)} />
         </div>
 
-        {/* Rótulo da fonte atual; vazio só em job reconciliado de um
-            slsk_jobs.json anterior ao campo — aí cai no tamanho. */}
-        <span class="crate-badge">
-          {props.job.quality_label || formatSize(props.job.source.kind === "soulseek" ? props.job.source.size : 0)}
-        </span>
+        <Show when={jobFormatLabel(props.job)} fallback={<span />}>
+          {(label) => <span class="crate-badge">{label()}</span>}
+        </Show>
 
         {/* Troca de fonte só existe no Soulseek; nas outras origens a
             coluna fica vazia. */}
@@ -804,6 +835,11 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
           <Show when={(kind() === "stalled" || kind() === "failed") && hasUntriedSource(props.job)}>
             <button type="button" class="crate-btn" onClick={props.onTrySource}>
               <Icon name={ICONS.refresh} size={12} /> Trocar fonte
+            </button>
+          </Show>
+          <Show when={canRetryExternal(props.job)}>
+            <button type="button" class="crate-btn" onClick={props.onRetry}>
+              <Icon name={ICONS.refresh} size={12} /> Tentar de novo
             </button>
           </Show>
           <Show when={props.job.state.kind === "ready"}>
@@ -883,6 +919,7 @@ function ScRow(props: {
   cardOpen: boolean;
   onDownload: () => void;
   onCancel: (jobId: string) => void;
+  onRetry: (job: DownloadJob) => void;
   children?: JSX.Element;
 }) {
   const kind = () => props.r.availability.kind;
@@ -902,7 +939,7 @@ function ScRow(props: {
         <span class="crate-avail" data-kind={kind()}>{AVAIL_LABEL[kind()]}</span>
 
         <div class="crate-r-meta">
-          {props.r.playback_count.toLocaleString("pt-BR")} plays
+          {props.r.playback_count.toLocaleString("pt-BR")} reproduções
         </div>
 
         <div class="crate-r-meta">
@@ -954,6 +991,18 @@ function ScRow(props: {
             >
               <Icon name={ICONS.close} size={12} /> Cancelar
             </button>
+          </Show>
+          <Show when={props.job && canRetryExternal(props.job) ? props.job : null}>
+            {(job) => (
+              <button
+                type="button"
+                class="crate-btn"
+                title="Baixa de novo com o metadado já confirmado"
+                onClick={(e) => { e.stopPropagation(); props.onRetry(job()); }}
+              >
+                <Icon name={ICONS.refresh} size={12} /> Tentar de novo
+              </button>
+            )}
           </Show>
         </div>
 
@@ -1077,7 +1126,7 @@ function ConfirmCard(props: {
                   <>
                     {p().format_label} · não entra
                     <Show when={p().reason}>
-                      <span class="crate-fmt__why">({p().reason})</span>
+                      {" "}<span class="crate-fmt__why">({p().reason})</span>
                     </Show>
                   </>
                 }
@@ -1182,6 +1231,9 @@ export default function Crate(props: { param?: string | null }) {
       uma busca ou de um card anterior é descartada). */
   let scSeq = 0;
   let cardSeq = 0;
+  /** Última busca de texto mandada ao SoundCloud: o "Buscar mesmo assim"
+      com a busca editada refaz também essa seção. */
+  let lastScQuery: string | null = null;
 
   const groups = () => results.groups;
   const responsesSeen = () => snapshot()?.responses_seen ?? 0;
@@ -1232,6 +1284,7 @@ export default function Crate(props: { param?: string | null }) {
       pacer do Soulseek: o backend tem o pacer próprio do SoundCloud. */
   async function scSearch(q: string, isLink: boolean) {
     const seq = ++scSeq;
+    lastScQuery = isLink ? null : q;
     closeCard();
     setScError(null);
     setScResults([]);
@@ -1275,19 +1328,36 @@ export default function Crate(props: { param?: string | null }) {
     const live = () => seq === cardSeq && card.c != null;
     crateScProbe(r.id, r.duration_ms)
       .then((p) => { if (live()) setCard("c", "probe", p); })
-      .catch((e) => { if (live()) setCard("c", "probeErr", rawError(e) || "erro desconhecido"); });
+      .catch((e) => { if (live()) setCard("c", "probeErr", errorText(e) || "erro desconhecido"); });
     if (r.artwork_url) {
       crateScArtwork(r.artwork_url)
         .then((url) => { if (live()) setCard("c", "cover", url); })
         .catch(() => {}); // capa é melhor esforço
     }
-    const q = `${meta.artist} ${meta.title}`.trim();
-    if (q) {
-      slskDedupProbe(q)
-        .then((tracks) => { if (live()) setCard("c", "dedup", dedupMatch(q, tracks)); })
-        .catch(() => {});
-    }
   }
+
+  // Aviso de duplicata do card com os campos CONFIRMADOS (spec §5.2): na
+  // abertura consulta na hora; a cada correção de artista ou título,
+  // depois de 300 ms sem digitar. Resposta de um texto ou card que já
+  // mudou é descartada.
+  const DEDUP_DEBOUNCE_MS = 300;
+  const dedupQuery = createMemo(() => {
+    const c = card.c;
+    return c ? { id: c.r.id, q: `${c.meta.artist} ${c.meta.title}`.trim() } : null;
+  }, null, { equals: (a, b) => a?.id === b?.id && a?.q === b?.q });
+  let dedupSeq = 0;
+  createEffect(on(dedupQuery, (cur, prev) => {
+    const seq = ++dedupSeq;
+    if (!cur || !cur.q) return;
+    const run = () => {
+      slskDedupProbe(cur.q)
+        .then((tracks) => { if (seq === dedupSeq && card.c) setCard("c", "dedup", dedupMatch(cur.q, tracks)); })
+        .catch(() => {});
+    };
+    if (!prev || prev.id !== cur.id) { run(); return; }
+    const t = setTimeout(run, DEDUP_DEBOUNCE_MS);
+    onCleanup(() => clearTimeout(t));
+  }));
 
   async function submitCard() {
     const c = card.c;
@@ -1397,9 +1467,13 @@ export default function Crate(props: { param?: string | null }) {
       void scSearch(q, true);
       return;
     }
-    // "Buscar mesmo assim" (force) é só da rede fria do Soulseek: a seção
-    // do SoundCloud dessa busca já veio.
-    if (!force) void scSearch(q, false);
+    // As duas seções mostram sempre a mesma busca. Com o cooldown do
+    // Soulseek correndo, quem decide é o pacer do backend (crate-8): o
+    // SoundCloud espera o aceite, senão uma busca recusada trocaria só a
+    // seção dele. "Buscar mesmo assim" (force) é da rede fria do Soulseek:
+    // a seção do SoundCloud dessa busca já veio, a não ser que a busca
+    // tenha sido editada antes do clique.
+    if (cooldownLeft() === 0 && (!force || q !== lastScQuery)) void scSearch(q, false);
     const seq = ++searchSeq;
     const prevId = searchId();
     setColdSeconds(null);
@@ -1412,6 +1486,7 @@ export default function Crate(props: { param?: string | null }) {
       // cancelar antes fazia uma busca recusada pelo pacer (cooldown)
       // matar a que estava em voo, congelando os resultados (crate-8).
       if (prevId && prevId !== id) slskCancelSearch(prevId).catch(() => {});
+      if (lastScQuery !== q) void scSearch(q, false);
       setSearchId(id);
       applySnapshot(null);
       setSelectedKey(null);
@@ -1462,6 +1537,18 @@ export default function Crate(props: { param?: string | null }) {
     } catch (e) {
       console.error("[crate] slskCancel falhou:", e);
       setNotice(`Não deu pra cancelar o download: ${errorText(e)}.`);
+    }
+  }
+
+  /** Refaz um job de origem externa que terminou em falha, com a mesma
+      origem, o metadado já confirmado, o destino e a capa. */
+  async function handleRetry(job: DownloadJob) {
+    setNotice(null);
+    try {
+      await crateDownload(job.source, job.meta, job.dest_playlist, job.artwork_url);
+    } catch (e) {
+      console.error("[crate] crateDownload (tentar de novo) falhou:", e);
+      setNotice(`Não deu pra tentar de novo "${job.display}": ${errorText(e)}.`);
     }
   }
 
@@ -1698,16 +1785,21 @@ export default function Crate(props: { param?: string | null }) {
               {status() ? (status()!.network_connected ? "rede ok" : "fora da rede") : "verificando…"}
             </span>
 
-            {/* Status das fontes novas (spec §5.4); alvo do "ver status"
-                do card quando falta o token. */}
+            {/* Status das fontes novas (spec §5.4), um indicador por
+                dependência; o do SoundCloud é o alvo do "ver status" do
+                card quando falta o token. */}
             <span
               id="crate-sources"
               class="crate-net-status crate-src-status"
               tabindex="-1"
-              data-on={sourcesStatus()?.soundcloud === "token_ok" && sourcesStatus()?.ffmpeg ? "true" : "false"}
+              data-on={sourcesStatus()?.soundcloud === "token_ok" ? "true" : "false"}
             >
               <span class="crate-net-status__dot" />
-              SoundCloud: {scStatusLabel()} · ffmpeg: {sourcesStatus() ? (sourcesStatus()!.ffmpeg ? "ok" : "ausente") : "…"}
+              SoundCloud: {scStatusLabel()}
+            </span>
+            <span class="crate-net-status crate-src-status" data-on={sourcesStatus()?.ffmpeg ? "true" : "false"}>
+              <span class="crate-net-status__dot" />
+              ffmpeg: {sourcesStatus() ? (sourcesStatus()!.ffmpeg ? "ok" : "ausente") : "…"}
             </span>
 
             <DestChip
@@ -1796,6 +1888,7 @@ export default function Crate(props: { param?: string | null }) {
                           cardOpen={card.c?.r.id === r.id}
                           onDownload={() => openCard(r)}
                           onCancel={handleCancel}
+                          onRetry={(j) => void handleRetry(j)}
                         >
                           <Show when={card.c && card.c.r.id === r.id ? card.c : null}>
                             {(c) => (
@@ -1937,6 +2030,7 @@ export default function Crate(props: { param?: string | null }) {
                       job={j}
                       onCancel={() => handleCancel(j.job_id)}
                       onTrySource={() => handleTrySource(j.job_id)}
+                      onRetry={() => void handleRetry(j)}
                     />
                   )}
                 </For>
@@ -1958,6 +2052,7 @@ export default function Crate(props: { param?: string | null }) {
                         job={j}
                         onCancel={() => handleCancel(j.job_id)}
                         onTrySource={() => handleTrySource(j.job_id)}
+                        onRetry={() => void handleRetry(j)}
                       />
                     </Show>
                   )}
