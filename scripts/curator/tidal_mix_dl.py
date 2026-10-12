@@ -134,6 +134,7 @@ def main() -> int:
     ap.add_argument("--playlist", default=GENRE, help="pasta de 1º nível em ~/Music")
     ap.add_argument("--list", action="store_true", help="só lista o mix, não baixa")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--genre", default=None, help="tag GENRE (padrão: o nome da playlist)")
     args = ap.parse_args()
 
     WORK.mkdir(parents=True, exist_ok=True)
@@ -169,6 +170,7 @@ def main() -> int:
     lib = library_keys()
     print(f"acervo: {len(lib)} chaves título/artista", flush=True)
     dest_root = MUSIC / safe_name(args.playlist)
+    genre = args.genre or args.playlist
     report = {"mix": args.mix_id, "title": mix_title, "new": [], "skipped": [], "failed": []}
     new_files: list[Path] = []
     covers: dict[int, Path | None] = {}
@@ -213,7 +215,7 @@ def main() -> int:
             info = download_flac(t, dest)
             tags = {
                 "ARTIST": ", ".join(arts), "ALBUMARTIST": album_artist, "ALBUM": alb.name, "TITLE": title,
-                "TRACKNUMBER": str(t.track_num or i), "TRACKTOTAL": str(alb.num_tracks or ""), "GENRE": GENRE,
+                "TRACKNUMBER": str(t.track_num or i), "TRACKTOTAL": str(alb.num_tracks or ""), "GENRE": genre,
                 "COMMENT": f"source: tidal {info['quality'].lower()}; mix {args.mix_id}",
             }
             if year:
