@@ -49,10 +49,15 @@ pub fn classify_original(ext: &str, p: &MediaProbe) -> Result<FormatIn, RejectRe
     }
 }
 
-/// Sobe a thread `sc-worker`. Uma tarefa por vez, na ordem do canal; cada
+/// Sobe UMA thread `sc-worker`. Uma tarefa por vez, na ordem do canal; cada
 /// tarefa termina em exatamente um evento final (`Done`, `Rejected` ou
 /// `Failed`), mesmo em panic. A thread acaba quando o `Sender` das tarefas
 /// é derrubado.
+///
+/// O teto do SoundCloud (`MAX_ACTIVE_SOUNDCLOUD`, spec §2.4) é de downloads
+/// simultâneos: o wiring sobe essa quantidade de instâncias sobre o MESMO
+/// `Receiver` (o canal do crossbeam é MPMC). Uma instância só deixaria o
+/// segundo job aceito parado em `Enqueued` até o primeiro terminar.
 #[allow(dead_code)] // ligado ao coordinator na Task 7 do plano Crate fase 1
 pub fn spawn_sc_worker(
     rx: Receiver<FetchTask>,
@@ -170,9 +175,13 @@ fn run_task(
     if let Err(e) = api.download(&orig.url, &raw, &mut cb) {
         clean_task_files(t);
         return match e {
-            ScError::NoToken | ScError::Http(401) | ScError::Http(403) => {
-                fail("token do SoundCloud recusado no download".into(), false)
-            }
+            // O download vai para a URL assinada do CDN, sem token: 401/403
+            // aqui é link expirado ou bloqueio, nunca o token (esse é julgado
+            // na sondagem). Repetir faz nova sondagem e gera outro link.
+            ScError::Http(401 | 403) => fail(
+                "o SoundCloud recusou o link do original (expirado ou bloqueado); tente de novo".into(),
+                true,
+            ),
             ScError::RateLimited => fail("SoundCloud limitou as chamadas; tente em alguns minutos".into(), true),
             e => fail(format!("download: {e}"), true),
         };
@@ -213,10 +222,6 @@ fn run_task(
         let _ = std::fs::remove_file(&flac);
         return fail(reason, retryable);
     }
-    if board.is_canceled(&job_id, attempt) {
-        let _ = std::fs::remove_file(&flac);
-        return canceled();
-    }
 
     // 5) capa (melhor esforço) e tags confirmadas no card
     let cover = t
@@ -224,6 +229,12 @@ fn run_task(
         .as_deref()
         .and_then(|u| api.fetch_bytes(&artwork_500(u), COVER_MAX_BYTES).ok())
         .and_then(|b| library_indexer::resize_cover_jpeg(&b, COVER_MAX_SIDE).ok());
+    // Depois da capa (outra chamada de rede) cobre o cancelamento durante a
+    // conversão e durante a busca da capa.
+    if board.is_canceled(&job_id, attempt) {
+        let _ = std::fs::remove_file(&flac);
+        return canceled();
+    }
     let comment = if format_in.is_lossy() { Some("source: lossy mp3") } else { None };
     let tags = TagSet {
         artist: &t.meta.artist,
@@ -278,9 +289,24 @@ mod tests {
         download_panic: bool,
         /// Bytes devolvidos por `fetch_bytes` (capa); `None` = 404.
         capa: Option<Vec<u8>>,
+        /// `download` copia o original e cancela o job "j1" no board (o
+        /// usuário cancelou com o download em curso).
+        cancelar_no_download: bool,
+        /// `fetch_bytes` cancela o job "j1" (cancelado na conversão ou na capa).
+        cancelar_na_capa: bool,
+        /// `download` só segue quando outro download estiver em curso ao
+        /// mesmo tempo (até 5 s); sozinho falha. Prova downloads simultâneos.
+        esperar_par: bool,
     }
 
-    struct FakeSc { src: std::path::PathBuf, ext: &'static str, modo: Modo, log: Mutex<Vec<String>> }
+    struct FakeSc {
+        src: std::path::PathBuf,
+        ext: &'static str,
+        modo: Modo,
+        log: Mutex<Vec<String>>,
+        board: Arc<JobBoard>,
+        em_download: std::sync::atomic::AtomicU32,
+    }
     impl SoundCloudApi for FakeSc {
         fn search(&self, _: &str, _: u32) -> Result<Vec<ScTrack>, ScError> { unimplemented!() }
         fn resolve(&self, _: &str) -> Result<ScTrack, ScError> { unimplemented!() }
@@ -297,13 +323,24 @@ mod tests {
                 progress(6, Some(10));
                 return Err(ScError::Http(401));
             }
+            if self.modo.esperar_par {
+                use std::sync::atomic::Ordering;
+                self.em_download.fetch_add(1, Ordering::SeqCst);
+                let fim = Instant::now() + std::time::Duration::from_secs(5);
+                while self.em_download.load(Ordering::SeqCst) < 2 {
+                    if Instant::now() > fim { return Err(ScError::Transport("nenhum download em paralelo".into())); }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
             std::fs::copy(&self.src, dest).unwrap();
             if self.modo.download_panic { panic!("panic simulado no download"); }
+            if self.modo.cancelar_no_download { assert!(self.board.transition("j1", JobState::Canceled)); }
             progress(10, Some(10));
             Ok(())
         }
         fn fetch_bytes(&self, url: &str, _: usize) -> Result<Vec<u8>, ScError> {
             self.log.lock().unwrap().push(format!("fetch {url}"));
+            if self.modo.cancelar_na_capa { assert!(self.board.transition("j1", JobState::Canceled)); }
             self.modo.capa.clone().ok_or(ScError::Http(404))
         }
         fn me(&self, _: &str) -> Result<(), ScError> { Ok(()) }
@@ -318,9 +355,14 @@ mod tests {
     /// Job "j1" tentativa 0 no board: sem ele `is_canceled` é `true` (job
     /// ausente) e o worker abandonaria a tarefa antes de baixar.
     fn board_com_job() -> Arc<JobBoard> {
+        board_com_jobs(&["j1"])
+    }
+
+    fn board_com_jobs(ids: &[&str]) -> Arc<JobBoard> {
         let board = JobBoard::new();
+        for id in ids {
         board.upsert(DownloadJob {
-            job_id: "j1".into(),
+            job_id: (*id).into(),
             source: Source::SoundCloud { track_id: 1, permalink_url: "https://soundcloud.com/a/b".into() },
             meta: ConfirmedMeta::default(),
             artwork_url: None,
@@ -335,6 +377,7 @@ mod tests {
             created_at: 0,
             attempt: 0,
         });
+        }
         Arc::new(board)
     }
 
@@ -345,7 +388,9 @@ mod tests {
         assert!(st.success());
         let token = tmp.path().join("tok.txt"); std::fs::write(&token, "2-x-y-z").unwrap();
         let mut cfg = SourcesConfig::load_with(tmp.path(), |_| None); cfg.sc_token_file = token;
-        (tmp, Arc::new(FakeSc { src, ext, modo, log: Mutex::new(vec![]) }), Arc::new(cfg), board_com_job())
+        let board = board_com_jobs(&["j1", "j2"]);
+        let api = FakeSc { src, ext, modo, log: Mutex::new(vec![]), board: board.clone(), em_download: Default::default() };
+        (tmp, Arc::new(api), Arc::new(cfg), board)
     }
 
     fn setup(ext: &'static str, extra: &[&str]) -> (tempfile::TempDir, Arc<FakeSc>, Arc<SourcesConfig>, Arc<JobBoard>) {
@@ -449,13 +494,19 @@ mod tests {
         assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
     }
 
+    /// O download vai para a URL assinada do CDN, SEM token: 401/403 ali é
+    /// link expirado ou bloqueio, não token. Uma nova sondagem gera outro
+    /// link, então o job pode ser repetido e o texto não culpa o token.
     #[test]
-    fn fake_sc_download_401_falha_sem_retry() {
+    fn download_401_do_cdn_falha_com_retry_sem_culpar_o_token() {
         if !ffmpeg_ok() { return; }
         let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { download_401: true, ..Modo::default() });
         let evs = run_one(api.clone(), cfg, board, task(&tmp));
         assert_eq!(api.log.lock().unwrap().as_slice(), ["download"], "o download começou");
-        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("token")), "{evs:?}");
+        assert!(
+            matches!(evs.last(), Some(FetchEvent::Failed { retryable: true, reason, .. }) if reason.contains("link do original") && !reason.contains("token")),
+            "{evs:?}"
+        );
         assert!(sobras(&tmp).is_empty(), "nada de j1.a0.* no incoming: {:?}", sobras(&tmp));
     }
 
@@ -492,7 +543,9 @@ mod tests {
             let mut cfg = SourcesConfig::load_with(tmp.path(), |_| None);
             cfg.sc_token_file = token;
             cfg.ffmpeg = "/caminho/inexistente/ffmpeg".into();
-            (tmp, Arc::new(FakeSc { src, ext: "wav", modo: Modo::default(), log: Mutex::new(vec![]) }), Arc::new(cfg), board_com_job())
+            let board = board_com_job();
+            let api = FakeSc { src, ext: "wav", modo: Modo::default(), log: Mutex::new(vec![]), board: board.clone(), em_download: Default::default() };
+            (tmp, Arc::new(api), Arc::new(cfg), board)
         })();
         let evs = run_one(api.clone(), cfg, board, task(&tmp));
         assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason == "ffmpeg ausente"), "{evs:?}");
@@ -514,7 +567,7 @@ mod tests {
         let (tmp, api, cfg, board) = setup("wav", &[]);
         let mut cfg2 = (*cfg).clone(); cfg2.sc_token_file = tmp.path().join("inexistente.txt");
         let evs = run_one(api.clone(), Arc::new(cfg2), board, task(&tmp));
-        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, .. })));
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("token")), "{evs:?}");
         assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
     }
 
@@ -523,7 +576,81 @@ mod tests {
         if !ffmpeg_ok() { return; }
         let (tmp, api, cfg, _) = setup("wav", &[]);
         let evs = run_one(api.clone(), cfg, Arc::new(JobBoard::new()), task(&tmp));
-        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, .. })), "{evs:?}");
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason == "cancelado"), "{evs:?}");
         assert!(api.log.lock().unwrap().is_empty(), "job fora do board não baixa");
+    }
+
+    fn cancelado_sem_sobras(evs: &[FetchEvent], tmp: &tempfile::TempDir) {
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason == "cancelado"), "{evs:?}");
+        assert!(done_de(evs).is_none(), "{evs:?}");
+        assert!(sobras(tmp).is_empty(), "cancelado não deixa original nem FLAC: {:?}", sobras(tmp));
+    }
+
+    #[test]
+    fn cancelado_durante_o_download_apaga_o_original() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { cancelar_no_download: true, ..Modo::default() });
+        let evs = run_one(api, cfg, board, task(&tmp));
+        cancelado_sem_sobras(&evs, &tmp);
+    }
+
+    #[test]
+    fn cancelado_depois_da_conversao_apaga_o_flac() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { cancelar_na_capa: true, ..Modo::default() });
+        let mut t = task(&tmp);
+        t.artwork_url = Some("https://i1.sndcdn.com/x-large.jpg".into());
+        let evs = run_one(api.clone(), cfg, board, t);
+        assert!(api.log.lock().unwrap().iter().any(|l| l.starts_with("fetch ")), "chegou à capa, depois da conversão");
+        cancelado_sem_sobras(&evs, &tmp);
+    }
+
+    /// Original FLAC: vira o arquivo entregue por rename, sem ffmpeg. Com a
+    /// extensão "flac" o original e o entregue são o mesmo caminho; com outra
+    /// extensão (a sondagem manda) o original some depois do rename.
+    #[test]
+    fn original_flac_entra_por_rename_com_tags() {
+        if !ffmpeg_ok() { return; }
+        for ext in ["flac", "wav"] {
+            let (tmp, api, cfg, board) = setup(ext, &["-c:a", "flac", "-f", "flac"]);
+            let evs = run_one(api, cfg, board, task(&tmp));
+            let (path, fmt) = done_de(&evs).unwrap_or_else(|| panic!("{ext}: {evs:?}"));
+            assert_eq!(fmt, FormatIn::Flac, "{ext}");
+            assert_eq!(path, tmp.path().join(".rustify-incoming/j1.a0.flac"), "{ext}");
+            let md = library_indexer::parse_flac(&path).unwrap();
+            assert_eq!(md.artist.as_deref(), Some("DJ Arana"), "{ext}");
+            assert_eq!(md.title.as_deref(), Some("Festa"), "{ext}");
+            assert_eq!(sobras(&tmp), vec!["j1.a0.flac".to_string()], "{ext}");
+        }
+    }
+
+    /// O teto do SoundCloud é de 2 downloads simultâneos (spec §2.4): duas
+    /// instâncias do worker sobre o MESMO canal baixam em paralelo e cada
+    /// tarefa grava só os arquivos da sua tentativa.
+    #[test]
+    fn duas_instancias_baixam_em_paralelo() {
+        if !ffmpeg_ok() { return; }
+        let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { esperar_par: true, ..Modo::default() });
+        let (ftx, frx) = crossbeam_channel::bounded(2);
+        let (etx, erx) = crossbeam_channel::unbounded();
+        let api_dyn: Arc<dyn SoundCloudApi> = api;
+        let hs: Vec<_> = (0..2)
+            .map(|_| spawn_sc_worker(frx.clone(), etx.clone(), api_dyn.clone(), cfg.clone(), board.clone()))
+            .collect();
+        let t1 = task(&tmp);
+        let mut t2 = task(&tmp);
+        t2.job_id = "j2".into();
+        ftx.send(t1).unwrap();
+        ftx.send(t2).unwrap();
+        drop(ftx);
+        for h in hs { h.join().unwrap(); }
+        drop(etx);
+        let evs: Vec<FetchEvent> = erx.try_iter().collect();
+        let mut done: Vec<String> = evs
+            .iter()
+            .filter_map(|e| if let FetchEvent::Done { flac_path, .. } = e { Some(flac_path.file_name().unwrap().to_string_lossy().into_owned()) } else { None })
+            .collect();
+        done.sort();
+        assert_eq!(done, ["j1.a0.flac", "j2.a0.flac"], "{evs:?}");
     }
 }

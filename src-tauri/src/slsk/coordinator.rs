@@ -2061,7 +2061,7 @@ impl Coordinator {
 
     // ── Emissão de estado (spec §3.5) ──────────────────────────────────
 
-    fn emit_if_dirty(&self, app: &AppHandle, now: Instant) {
+    fn emit_if_dirty(&self, now: Instant, emit: &dyn Fn(Vec<DownloadJob>)) {
         let mut dirty = self.dirty.lock().unwrap_or_else(|p| p.into_inner());
         if !*dirty {
             return;
@@ -2076,47 +2076,58 @@ impl Coordinator {
         *last = Some(now);
         drop(dirty);
         drop(last);
-        let _ = app.emit("slsk-jobs", self.board.snapshot());
+        emit(self.board.snapshot());
     }
 
     // ── Loop real (produção) ───────────────────────────────────────────
 
     fn run_loop(&self, app: &AppHandle, cmd_rx: &Receiver<SlskTask>) {
-        loop {
-            let has_active_search = self
-                .active_search
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .is_some();
-            let has_active_jobs = self.board.active_count() > 0;
+        let emit = |jobs: Vec<DownloadJob>| {
+            let _ = app.emit("slsk-jobs", jobs);
+        };
+        while self.tick(cmd_rx, &emit) {}
+    }
 
-            let timeout = if has_active_search {
-                SEARCH_POLL
-            } else if has_active_jobs {
-                POLL_ACTIVE
-            } else {
-                POLL_IDLE
-            };
+    /// Uma volta do loop: espera um comando (com o teto do modo atual) e
+    /// atende, faz o poll da busca, drena os eventos dos workers, consulta os
+    /// transfers e emite o board. Devolve `false` quando o canal de comandos
+    /// fecha. Separada do `run_loop` para os testes rodarem o loop real sem
+    /// `AppHandle` (latência dos comandos, spec §8).
+    fn tick(&self, cmd_rx: &Receiver<SlskTask>, emit: &dyn Fn(Vec<DownloadJob>)) -> bool {
+        let has_active_search = self
+            .active_search
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_some();
+        let has_active_jobs = self.board.active_count() > 0;
 
-            match cmd_rx.recv_timeout(timeout) {
-                Ok(task) => self.handle_task(task),
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    self.shutdown_active_search();
-                    tracing::info!("slsk-coord: canal de comandos fechado, encerrando thread");
-                    return;
-                }
+        let timeout = if has_active_search {
+            SEARCH_POLL
+        } else if has_active_jobs {
+            POLL_ACTIVE
+        } else {
+            POLL_IDLE
+        };
+
+        match cmd_rx.recv_timeout(timeout) {
+            Ok(task) => self.handle_task(task),
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                self.shutdown_active_search();
+                tracing::info!("slsk-coord: canal de comandos fechado, encerrando thread");
+                return false;
             }
-
-            let now = Instant::now();
-            self.poll_active_search_once(now);
-            self.drain_fetch_events(now);
-            if has_active_jobs {
-                self.poll_active_transfers_once(now);
-                self.board.retain_recent_terminals(JOBS_RETAINED);
-            }
-            self.emit_if_dirty(app, now);
         }
+
+        let now = Instant::now();
+        self.poll_active_search_once(now);
+        self.drain_fetch_events(now);
+        if has_active_jobs {
+            self.poll_active_transfers_once(now);
+            self.board.retain_recent_terminals(JOBS_RETAINED);
+        }
+        self.emit_if_dirty(now, emit);
+        true
     }
 
     fn handle_task(&self, task: SlskTask) {
@@ -4107,5 +4118,127 @@ mod tests {
             !stage::incoming_path(&c.cfg.music_root, &id).exists(),
             "o arquivo renomeado pelo staging não fica no incoming"
         );
+    }
+
+    /// Spec §8: comandos com resposta seguem abaixo de 2 s durante um download
+    /// externo. O `stage_and_ingest` roda síncrono na `slsk-coord`, então o
+    /// pior caso é a volta que drena os `Done`: o ingest falso leva 500 ms por
+    /// chamada (o real é parse + capa + upsert no Qdrant) e chegam dois `Done`
+    /// (teto do SoundCloud) no meio de uma rajada de `Progress`. Os comandos
+    /// passam pelo canal real e pelo mesmo `tick` da produção.
+    #[test]
+    fn comandos_respondem_em_menos_de_2s_durante_download_externo() {
+        const INGEST_LENTO: Duration = Duration::from_millis(500);
+        const TETO: Duration = Duration::from_secs(2);
+        let tmp = tempfile::tempdir().unwrap();
+        let ingeridos = Arc::new(AtomicU32::new(0));
+        let (ingest_tx, ingest_rx) = crossbeam_channel::unbounded::<()>();
+        let ingeridos2 = ingeridos.clone();
+        let ingest: Box<dyn Fn(Vec<PathBuf>) -> Vec<IngestOutcome> + Send + Sync> = Box::new(move |paths| {
+            let _ = ingest_tx.send(());
+            std::thread::sleep(INGEST_LENTO);
+            ingeridos2.fetch_add(1, Ordering::SeqCst);
+            paths.into_iter().map(|path| IngestOutcome { path, result: Ok(42) }).collect()
+        });
+        let owned: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync> = Box::new(|| Ok(empty_owned_index()));
+        let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
+        let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
+        let c = Arc::new(
+            Coordinator::new(
+                test_cfg(tmp.path()),
+                Arc::new(FakeSlskd::new()),
+                Arc::new(JobBoard::new()),
+                Arc::new(RwLock::new(SearchStore::default())),
+                ingest,
+                owned,
+                tmp.path().join("slsk_jobs.json"),
+            )
+            .with_fetch_worker("sound_cloud", ftx)
+            .with_fetch_events(erx),
+        );
+        let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<SlskTask>();
+        let loop_c = c.clone();
+        let coord = std::thread::spawn(move || {
+            let emit = |_: Vec<DownloadJob>| {};
+            while loop_c.tick(&cmd_rx, &emit) {}
+        });
+
+        let pedir_externo = |id: u64| -> (Result<String, String>, Duration) {
+            let (r, rx) = crossbeam_channel::bounded(1);
+            let t0 = Instant::now();
+            cmd_tx
+                .send(SlskTask::DownloadExternal {
+                    source: sc_source(id),
+                    meta: meta("A", &format!("T{id}")),
+                    artwork_url: None,
+                    dest: "P".into(),
+                    reply: r,
+                })
+                .unwrap();
+            let res = rx.recv_timeout(TETO).expect("DownloadExternal sem resposta em 2 s");
+            (res, t0.elapsed())
+        };
+        pedir_externo(1).0.unwrap();
+        pedir_externo(2).0.unwrap();
+        let tarefas: Vec<FetchTask> = (0..2).map(|_| frx.recv_timeout(TETO).expect("tarefa no worker")).collect();
+        // Faixas diferentes (track_01 e track_02): a mesma nos dois jobs
+        // cairia no dedup do staging e só uma chegaria ao ingest.
+        let flacs: Vec<PathBuf> = tarefas
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let p = fetched_flac(&c, t);
+                if i == 1 {
+                    std::fs::copy(fixture_flac().with_file_name("track_02.flac"), &p).unwrap();
+                }
+                p
+            })
+            .collect();
+
+        // Worker falso: rajada de Progress das duas tarefas e um Done de cada.
+        let worker = std::thread::spawn(move || {
+            for i in 0..2_000u32 {
+                for t in &tarefas {
+                    let _ = etx.send(FetchEvent::Progress {
+                        job_id: t.job_id.clone(),
+                        attempt: t.attempt,
+                        pct: (i % 100) as f32,
+                        bps: 1_000,
+                        eta_s: Some(1),
+                    });
+                }
+            }
+            for (t, flac) in tarefas.iter().zip(flacs) {
+                let _ = etx.send(FetchEvent::Done {
+                    job_id: t.job_id.clone(),
+                    attempt: t.attempt,
+                    flac_path: flac,
+                    format_in: FormatIn::Wav16,
+                });
+            }
+            etx
+        });
+
+        // Os comandos saem com o ingest JÁ em curso na slsk-coord.
+        ingest_rx.recv_timeout(Duration::from_secs(10)).expect("o Done chegou ao ingest");
+        let (r, rx) = crossbeam_channel::bounded(1);
+        let t0 = Instant::now();
+        cmd_tx.send(SlskTask::ClearFinished { reply: r }).unwrap();
+        rx.recv_timeout(TETO).expect("ClearFinished sem resposta em 2 s durante o ingest");
+        let limpar = t0.elapsed();
+        let (res, externo) = pedir_externo(3);
+        res.unwrap();
+        assert!(limpar < TETO, "ClearFinished levou {limpar:?}");
+        assert!(externo < TETO, "DownloadExternal levou {externo:?}");
+
+        // Os dois downloads terminam o ingest (nada ficou preso).
+        let fim = Instant::now() + Duration::from_secs(10);
+        while ingeridos.load(Ordering::SeqCst) < 2 && Instant::now() < fim {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(ingeridos.load(Ordering::SeqCst), 2, "os dois Done chegaram ao ingest: {:?}", c.board.snapshot().iter().map(|j| j.state.clone()).collect::<Vec<_>>());
+        let _etx = worker.join().unwrap();
+        drop(cmd_tx);
+        coord.join().unwrap();
     }
 }
