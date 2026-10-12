@@ -503,7 +503,8 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
   descartavel `auto`); o POST passa, a ferramenta quebra na leitura da caixa
   (`'NoneType'... get_email_list`, esperado), o link chega no Gmail em ~20 s e se
   baixa com `BCFreeDownloader._download_file(url, "FLAC")`.
-- **SoundCloud**: o arquivo original (WAV/MP3 320 do produtor) so sai LOGADO:
+- **SoundCloud (desde a v0.2.87 é in-app pelo Crate, fase 1; os comandos abaixo
+  ficam para leva grande por script)**: o arquivo original (WAV/MP3 320 do produtor) so sai LOGADO:
   `uvx scdl -l <url> --path <dir> --only-original --original-name --auth-token
   "$(cat ~/.secrets/soundcloud-oauth.txt)"` NA cmr-auto. Sem token toda ferramenta
   entrega stream transcodificado (AAC 160/MP3 128), inutil. Filtrar pela API v2
@@ -698,8 +699,31 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   log ou disco do app. CSP nao ganha `:5030` (o HTTP e feito no Rust).
 - **Opener**: capability restrita a `opener:allow-reveal-item-in-dir`
   (estado `manual` abre o gerenciador de arquivos). Nao alargar.
+- **Fontes por job (fase 1, v0.2.87, spec
+  `docs/superpowers/specs/2026-10-12-crate-fontes-soundcloud-bandcamp-design.md`,
+  plano `docs/superpowers/plans/2026-10-12-crate-soundcloud-fase1.md`)**: o job
+  carrega `Source` (`Soulseek{username,remote_filename,size}` |
+  `SoundCloud{track_id,permalink_url}` | `Bandcamp{...}`, fase 2), meta confirmada
+  pelo CEO no card (artista, título, ano, playlist) e o estado `waiting` (compra ou
+  link por e-mail, fase 2). O coordinator roteia por origem: Soulseek segue no slskd;
+  fontes externas vão a um worker próprio (`sc_worker.rs`, teto 2 por vez, pacer),
+  que baixa o ORIGINAL do SoundCloud (API v2 em `crates/soundcloud-client`, token de
+  `~/.secrets/soundcloud-oauth.txt` lido sob demanda, nunca em log/Debug/evento),
+  converte para FLAC (`library-indexer/src/transcode.rs`, ffmpeg com teto de tempo),
+  escreve tags (`tagwrite.rs`, lofty) e capa JPEG <=1500 px, e entrega ao mesmo
+  staging/ingest do Soulseek. Política: WAV/FLAC/AIFF entram; MP3 >=320 entra com
+  COMMENT `source: lossy mp3`; abaixo é recusado antes do download (`probe_verdict`).
+  Config em `sources.json` no data dir (só CAMINHOS de segredo) ou env `RUSTIFY_*`
+  (`sources.rs`); status das fontes no topo do Crate (`crate_sources_status`).
+  Comandos: `crate_sc_search/resolve/probe/artwork`, `crate_download`,
+  `crate_sources_status`; sugestão de artista/título/ano em `src/lib/trackMetaGuess.ts`.
+  `canonical_dest` troca `" * : < > ? \ |` por `_` (storage do Android). Desvio
+  declarado da spec §5.1/5.3: links externos no Crate são "Copiar link", não "Abrir"
+  (capability do opener restrita; abrir URL exige `opener:allow-open-url` com
+  allowlist, decisão para a fase 2). Faixa `[tidal]` nunca entra na fila do Soulseek.
 - **v1.1 pendente**: handoff visual do claude design (usuario itera a tela);
-  popovers fechando em clique fora; Fase 2 = album inteiro.
+  popovers fechando em clique fora; Fase 2 = album inteiro e Bandcamp por link
+  (spec §6: NYP/free por `bcdl-free`, pago abre a página e espera a compra).
 
 ## Android (v0 — tocar + registrar, 2026-08-13)
 

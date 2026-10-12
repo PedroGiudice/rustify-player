@@ -124,9 +124,56 @@ rede Soulseek real, o slskd real da cmr-auto (`cmr-auto-rp`) e o acervo real em
 - Conferir a Library: a leva inteira apareceu, sem duplicata, sem faixa
   "sumida" (comparar contagem antes/depois com o número de sucessos).
 
+## Casos da fase 1: SoundCloud in-app (v0.2.87)
+
+Pré-requisitos extras na cmr-auto: `~/.secrets/soundcloud-oauth.txt` (token do
+Chrome, 0600), `ffmpeg` no PATH. O status das fontes aparece no topo do Crate
+(SoundCloud: token ok / sem token / API fora; ffmpeg; uv).
+
+### SC-1. Busca com seção SoundCloud
+
+- Buscar "mandelão". Confirmar: a seção SoundCloud responde em até 2 s, com
+  chips de formato (WAV / FLAC / MP3 320 / MP3 128) e o Soulseek vai
+  preenchendo embaixo, sem bloquear.
+
+### SC-2. Download de original WAV até tocar
+
+- DJ WIN "Vou Voltar Nada" (WAV, ~24 MB). Clicar Baixar: card pré-preenchido
+  (artista, título, ano, playlist sugerida) com "WAV · 23 MB". Confirmar.
+- Confirmar: progresso, `Processing` (conversão para FLAC + tags + capa),
+  `Ready`, a faixa toca. Arquivo em `~/Music/<playlist>/DJ WIN/<ano> - Vou
+  Voltar Nada (MC Braz e Rick)/01 - Vou Voltar Nada (MC Braz e Rick).flac` com
+  tags e `cover.jpg` na pasta; no Qdrant, `embedding_status: done` em até 2 min.
+
+### SC-3. MP3 128 recusado
+
+- DJ Piu "Bumbum na Nuca" (MP3 128). Confirmar: chip "MP3 128 · não entra",
+  Baixar desabilitado, texto do motivo sem duplicação. MP3 320 entra, marcado
+  `source: lossy mp3` no COMMENT.
+
+### SC-4. Sem token
+
+- Renomear `~/.secrets/soundcloud-oauth.txt` temporariamente e reabrir o Crate.
+  Confirmar: status "sem token", card explica, nada baixa. Restaurar o arquivo;
+  o status volta sem reiniciar o app.
+
+### SC-5. Comandos durante download
+
+- Enquanto SC-2 baixa, pela ponte MCP: `slsk_jobs` responde em menos de 2 s
+  (o coordinator não bloqueia no worker externo).
+
+### SC-6. Duplo clique e falha recuperável
+
+- Duplo clique em Baixar: um job só na Fila.
+- Derrubar a rede no meio de um download: o job vai a `Failed` e "Tentar de
+  novo" aparece na linha; ao clicar, o job volta a `Queued`.
+
+Nunca: `[tidal]` na fila do Soulseek; token do SoundCloud em log ou na UI
+(`read_logs` pela ponte sem o valor); portas do app fora de 127.0.0.1.
+
 ## Registro
 
 Depois de rodar, anotar no PR/commit ou em comentário do issue Linear (CMR-XX
-correspondente): quais dos 7 casos passaram, o que falhou, e se algo exigiu
+correspondente): quais dos 7 casos (e dos 6 SC) passaram, o que falhou, e se algo exigiu
 `dpkg -i` de novo no meio do teste (indicaria mudança de contrato Rust não
 coberta pelo `.deb` já instalado).
