@@ -486,6 +486,51 @@ Gotchas:
   do artista. Fonte A (co-listening) e hit-pesada; a fonte B (cauda) tem cota
   reservada (`SOURCE_B_SHARE`) pra nao ser soterrada.
 
+## Aquisicao Bandcamp + SoundCloud (piloto funk BR, 12/10/2026)
+
+Funk BR quase nao existe no Soulseek (e o que ha vem com artista = URL do ripper).
+A fonte legitima e Bandcamp (lossless de origem) + SoundCloud (arquivo original do
+produtor). Tudo que entra em `~/Music` e ofertado a rede pelo slskd, que compartilha
+`/music` — "gerar conteudo pro Soulseek" = montar o acervo limpo. Relatorio e 121
+candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.json`.
+
+- **Bandcamp**: `bandcamp.com` serve um "Client Challenge" (Fastly) a qualquer HTTP
+  client sem impressao TLS de navegador. yt-dlp/bandcamp-dl/campdown so pegam o
+  stream MP3 128. O que funciona: `uvx --python 3.12 --from free-bandcamp-downloader
+  bcdl-free -d <dir> -f FLAC -c Brazil -z 01000 <url>` (NYP/free em FLAC; pago da
+  conta do CEO com `--identity "$(cat ~/.secrets/bandcamp-identity.txt)"` na
+  cmr-auto). Gate de e-mail: `-e pedrogr1707@gmail.com` (decisao do CEO, nunca o
+  descartavel `auto`); o POST passa, a ferramenta quebra na leitura da caixa
+  (`'NoneType'... get_email_list`, esperado), o link chega no Gmail em ~20 s e se
+  baixa com `BCFreeDownloader._download_file(url, "FLAC")`.
+- **SoundCloud**: o arquivo original (WAV/MP3 320 do produtor) so sai LOGADO:
+  `uvx scdl -l <url> --path <dir> --only-original --original-name --auth-token
+  "$(cat ~/.secrets/soundcloud-oauth.txt)"` NA cmr-auto. Sem token toda ferramenta
+  entrega stream transcodificado (AAC 160/MP3 128), inutil. Filtrar pela API v2
+  (`downloadable`/`has_downloads_left`/`purchase_url`), nao pelo titulo "FREE
+  DOWNLOAD": metade e gate Hypeddit/ToneDen. Politica: MP3 320 original entra
+  convertido com COMMENT `source: lossy mp3`; MP3 128 fica fora.
+- **Cookies** (`~/.secrets/*.txt`, 0600, so na cmr-auto): extraidos do Chrome com
+  `uvx --with secretstorage yt-dlp --cookies-from-browser chrome+gnomekeyring
+  --cookies <jar> --skip-download <url>` (precisa de
+  `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus`; o yt-dlp do apt cai
+  em BASICTEXT e nao decifra v11). Nunca imprimir o valor (a cmdline do scdl o expoe:
+  nao `pgrep -a` enquanto roda).
+- **Higienizacao** (obrigatoria antes de entrar em `~/Music`):
+  `uv run --with mutagen scripts/curator/normalize_release.py --src <pasta> --out
+  <staging> --artist --release --year [--label] [--title (single)] [--allow-lossy]`
+  — tags da PAGINA do release (nao do arquivo), WAV->FLAC, artista por faixa
+  preservado, titulo sem o artista repetido, capa JPEG <=1500 px embutida +
+  cover.jpg, nomes sem `: " * ? < > | \ /`. Testes:
+  `python3 scripts/curator/test_normalize_release.py`.
+- **Depois de mover pra `~/Music`**: `touch` nos FLAC (race do watcher), conferir
+  no Qdrant (total, `embedding_status`), rodar o batch de vibe (subagente Opus,
+  formato de `data/enrichments/*.json`, upsert com merge em `track_enrichments`)
+  e reescanear o slskd (`c.shares.start_scan()` via `slskd_api`; o PUT direto da
+  401). O MERT e alcancado pelo app em `https://extractlab.cormorant-alpha.ts.net:8448`
+  (nome fixo em `desktop.rs`): se o no da tailnet mudar de nome, tudo que entrar
+  fica `failed` em silencio (aconteceu 18/09 a 12/10; divida: apontar pelo IP).
+
 ## Motor de inteligencia — sinal v3 (v0.2.66, 2026-08-12)
 
 Vistoria completa + redesign do sinal em

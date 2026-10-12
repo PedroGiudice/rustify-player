@@ -4,13 +4,19 @@ Relatório gerado pelo workflow de curadoria (5 varreduras + verificação por U
 síntese; 29 agentes). Dados brutos em `12102026-piloto-funk-br-candidatos.json`
 (121 aprovados com URL, 6 em dúvida, diagnóstico de ferramentas).
 
-Execução até aqui: os 6 releases NYP do Bandcamp (35 FLAC) foram baixados com
-`bcdl-free`, normalizados com `scripts/curator/normalize_release.py`, entraram em
-`~/Music/Funk Brasileiro` na cmr-auto, foram indexados (1821 pontos), embeddados
-pelo MERT e anotados com vibe (`data/enrichments/2026-10-12-opus-vibe-annotations-piloto-funk-35.json`).
-O slskd reescaneou os shares (2917 -> 3318 arquivos ofertados). Pendentes: os 17
-itens do SoundCloud (exigem cookie oauth_token de conta logada) e os 6 pagos
-(compra na conta do CEO + cookie identity).
+Execução (fechada em 12/10, exceto os pagos):
+- Bandcamp NYP: 6 releases, 35 FLAC via `bcdl-free`, normalizados com
+  `scripts/curator/normalize_release.py`, em `~/Music/Funk Brasileiro` na cmr-auto.
+- SoundCloud: 15 de 17 singles baixados do ARQUIVO ORIGINAL com `scdl --auth-token`
+  (cookie `oauth_token` extraído do Chrome da cmr-auto para `~/.secrets`): 9 WAV
+  (2 em 24 bit) e 6 MP3 320 convertidos para FLAC com COMMENT `source: lossy mp3`.
+  Fora: DJ Piu "Bumbum na Nuca" (original MP3 128) e DJ John Saucer (gate externo).
+- Tudo indexado (1851 pontos), MERT 1851/1851, vibe 1851/1851
+  (`2026-10-12-opus-vibe-annotations-piloto-funk-35.json` e `-lote2-30.json`, este
+  com 15 do Black Alien que o CEO adicionou no mesmo dia). slskd reescaneado
+  (`shares.start_scan`): 2917 -> 3363 arquivos ofertados.
+- Pendente: 6 releases pagos (~US$ 27) aguardando compra do CEO; cookie `identity`
+  do Bandcamp já em `~/.secrets/bandcamp-identity.txt` para o `bcdl-free --identity`.
 
 ---
 
