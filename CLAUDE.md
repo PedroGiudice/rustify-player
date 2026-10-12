@@ -531,6 +531,39 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
   (nome fixo em `desktop.rs`): se o no da tailnet mudar de nome, tudo que entrar
   fica `failed` em silencio (aconteceu 18/09 a 12/10; divida: apontar pelo IP).
 
+## Aquisicao Tidal (assinatura do CEO desde 12/10/2026)
+
+A Tidal entra como fonte lossless do que Bandcamp/SoundCloud não têm (54 dos 121
+candidatos do piloto estão lá; medido por `scripts/curator/tidal_coverage.py`).
+Regra do CEO: **nada da Tidal vai pro Soulseek**. O mecanismo é a marca ` [tidal]`
+no nome da pasta do álbum (`~/Music/<playlist>/<Artista>/<Álbum> [tidal]/NN Título.flac`)
++ `shares.filters: ['\[tidal\]']` em `~/slskd_dados/slskd.yml` (verificado pela API:
+pasta com a marca não aparece no share). O app lê as tags, a marca não aparece na UI.
+Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
+
+- **Login = PKCE, não device code.** O OAuth por device code (`login_oauth`) devolve
+  `HIGH` (AAC 320) pra toda faixa sem `HIRES_LOSSLESS` em `media_metadata_tags`
+  (python-tidal #404); só o PKCE entrega `LOSSLESS` 16/44,1 e `HI_RES_LOSSLESS`, ambos
+  em DASH/FLAC. `scripts/curator/tidal_login_pkce.py` NA cmr-auto, em tmux: imprime a
+  URL, abre no Chrome logado (Claude in Chrome), "Sim, continuar", a Tidal redireciona
+  pra `tidal.com/android/login/auth?code=...` ("Página não encontrada" é o esperado).
+  A ponte redige o `code` das URLs: pegar do histórico do Chrome (copiar
+  `~/.config/google-chrome/Default/History` e consultar o SQLite) e entregar por
+  `tmux send-keys`, sem imprimir. Sessão em `~/.secrets/tidal-pkce.json` (formato do
+  tidalapi, 0600, renova sozinha). `tidal-session.json` (OAuth) serve só pra busca.
+  streamrip não serve (403 HTML no token).
+- **Download**: `scripts/curator/tidal_mix_dl.py <id de mix ou playlist> [--list]`
+  (cópia em `~/.cache/tidal-spike/` na cmr-auto, `uv run --with tidalapi --with mutagen`).
+  Baixa o mix inteiro: pula o que já está no acervo (título+artista soltos, Qdrant local)
+  ou no disco, DASH -> `ffmpeg -c:a copy` (sem recodificar), tags da Tidal (ARTIST por
+  faixa, ALBUMARTIST, TRACKNUMBER/TOTAL, DATE, ISRC, COMMENT `source: tidal <tier>; mix
+  <id>`), capa 1280 embutida + cover.jpg, 2 s entre faixas (~15-20 s/faixa), relatório
+  em `mix_<id>.json`, touch nos novos no fim (race do watcher). Álbum único:
+  `tidal_dl_spike.py` + `tidal_ingest.sh` (caminho do spike, via normalize_release).
+  Link de mix/álbum vem da aba do Chrome (Compartilhar > Copiar link).
+- **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em
+  batch, e conferir que o share do slskd NÃO cresceu).
+
 ## Motor de inteligencia — sinal v3 (v0.2.66, 2026-08-12)
 
 Vistoria completa + redesign do sinal em
