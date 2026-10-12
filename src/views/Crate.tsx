@@ -253,13 +253,15 @@ function jobFormatLabel(job: DownloadJob): string | null {
     não há [Trocar fonte] (não existem alternativas), e o job_id fixo por
     faixa deixaria a linha presa em `failed` para sempre, inclusive entre
     sessões. O backend recria job terminal com `attempt` novo. Bitrate
-    baixo e posse não mudam ao refazer: ficam de fora. */
+    baixo, formato do original sem download (spec §3.2) e posse não
+    mudam ao refazer: ficam de fora. */
 function canRetryExternal(job: DownloadJob): boolean {
   if (job.source.kind === "soulseek") return false;
   const st = job.state;
   if (st.kind === "failed") return true;
   if (st.kind !== "rejected") return false;
   const r = st.reason;
+  if (r === "no_download") return false;
   return !isAlreadyOwnedReason(r) && !(typeof r === "object" && r !== null && "low_bitrate" in r);
 }
 
@@ -310,6 +312,48 @@ async function openManualPath(path: string) {
     console.warn("[crate] revealItemInDir falhou, copiando caminho:", e);
     try { await navigator.clipboard?.writeText(path); } catch {}
   }
+}
+
+/** Link externo (página do SoundCloud, gate de terceiros, compra no
+    Bandcamp). O app não abre URL: a capability do opener concede só o
+    reveal-item-in-dir (CLAUDE.md, "não alargar"), e um <a target=_blank>
+    cai no `open_url` do plugin, negado — o clique morria sem fazer nada.
+    O botão copia o link para colar no navegador; sem clipboard, a URL
+    aparece selecionável no lugar do botão. Abrir direto no Chrome
+    depende de o CEO liberar `opener:allow-open-url` com escopo. */
+function CopyLinkButton(props: { url: string; label: string; hint: string; quiet?: boolean }) {
+  const [st, setSt] = createSignal<"idle" | "ok" | "err">("idle");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  async function copy(e: MouseEvent) {
+    e.stopPropagation();
+    try {
+      if (!navigator.clipboard) throw new Error("sem clipboard");
+      await navigator.clipboard.writeText(props.url);
+      setSt("ok");
+      clearTimeout(timer);
+      timer = setTimeout(() => setSt("idle"), 2500);
+    } catch (err) {
+      console.warn("[crate] não deu pra copiar o link:", err);
+      setSt("err");
+    }
+  }
+  return (
+    <Show
+      when={st() !== "err"}
+      fallback={<span class="crate-link-url" title="Copie e cole no navegador">{props.url}</span>}
+    >
+      <button
+        type="button"
+        class={`crate-btn${props.quiet ? " crate-btn--quiet" : ""}`}
+        title={`${props.hint} · ${props.url}`}
+        onClick={copy}
+      >
+        <Icon name={st() === "ok" ? ICONS.check : ICONS.externalLink} size={12} />
+        {st() === "ok" ? "Link copiado" : props.label}
+      </button>
+    </Show>
+  );
 }
 
 // ── Destino: chip "DESTINO → <playlist> ▾" com popover de pastas ──
@@ -390,6 +434,11 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
           <span class="crate-pill crate-pill--warn">na fila</span>
           {(() => {
             const job = j();
+            // Origem externa: aceito pela fonte, aguardando início (spec
+            // §2.2). Não há peer nem fila de peer fora do Soulseek.
+            if (job && job.source.kind !== "soulseek") {
+              return <span class="crate-st-dim">aguardando início</span>;
+            }
             const pos = job && job.state.kind === "enqueued" ? job.state.queue_position : null;
             return (
               <>
@@ -854,9 +903,7 @@ function CrateJobRow(props: {
           {/* "Verificar agora" e "Continuar" chegam com o Bandcamp (fase 2). */}
           <Show when={props.job.state.kind === "waiting" ? props.job.state.url : null}>
             {(url) => (
-              <a class="crate-btn" href={url()} target="_blank" rel="noopener">
-                <Icon name={ICONS.externalLink} size={12} /> Abrir
-              </a>
+              <CopyLinkButton url={url()} label="Copiar link" hint="Copia o link para abrir no navegador" />
             )}
           </Show>
         </div>
@@ -928,7 +975,7 @@ function ScRow(props: {
   );
   const year = () => scYear(props.r);
   return (
-    <div class="crate-row-wrap">
+    <div class="crate-row-wrap" data-sc-id={props.r.id}>
       <div class="crate-row crate-row--sc" data-state={state()} data-avail={kind()}>
         <div class="crate-r-main">
           <div class="crate-r-title">{cleanTitle(props.r.title) || props.r.title}</div>
@@ -958,21 +1005,22 @@ function ScRow(props: {
               <Icon name={ICONS.download} size={12} /> Baixar
             </button>
           </Show>
-          <Show when={kind() === "external_gate" && props.r.availability.kind === "external_gate"}>
-            <a
-              class="crate-btn"
-              href={(props.r.availability as { url: string }).url}
-              target="_blank"
-              rel="noopener"
-              title="Download por página de terceiros: fica fora do app"
-            >
-              <Icon name={ICONS.externalLink} size={12} /> Abrir
-            </a>
+          <Show when={props.r.availability.kind === "external_gate" ? props.r.availability.url : null}>
+            {(url) => (
+              <CopyLinkButton
+                url={url()}
+                label="Copiar link"
+                hint="Download por página de terceiros, fica fora do app: copia o link para abrir no navegador"
+              />
+            )}
           </Show>
           <Show when={kind() === "none" || kind() === "quota_exhausted"}>
-            <a class="crate-btn crate-btn--quiet" href={props.r.permalink_url} target="_blank" rel="noopener">
-              <Icon name={ICONS.externalLink} size={12} /> Ver página
-            </a>
+            <CopyLinkButton
+              url={props.r.permalink_url}
+              label="Copiar página"
+              hint="Copia o link da faixa para abrir no navegador"
+              quiet
+            />
           </Show>
           <Show when={state() === "ready"}>
             <button
@@ -1039,6 +1087,18 @@ function ConfirmCard(props: {
   };
   const submit = () => { if (canSubmit()) props.onSubmit(); };
 
+  // O Baixar da linha, que tinha o foco, some quando o card abre: sem
+  // isto o foco caía no body e o Enter (Baixar) não chegava ao form.
+  // Vai para o primeiro campo obrigatório vazio, senão para o Artista.
+  let artistEl: HTMLInputElement | undefined;
+  let titleEl: HTMLInputElement | undefined;
+  onMount(() => {
+    queueMicrotask(() => {
+      const target = props.c.meta.artist.trim() === "" || props.c.meta.title.trim() !== "" ? artistEl : titleEl;
+      target?.focus();
+    });
+  });
+
   return (
     <form
       class="crate-card"
@@ -1063,6 +1123,7 @@ function ConfirmCard(props: {
           <label class="crate-card__field">
             <span>Artista</span>
             <input
+              ref={artistEl}
               value={props.c.meta.artist}
               spellcheck={false}
               placeholder="obrigatório"
@@ -1072,6 +1133,7 @@ function ConfirmCard(props: {
           <label class="crate-card__field crate-card__field--wide">
             <span>Título</span>
             <input
+              ref={titleEl}
               value={props.c.meta.title}
               spellcheck={false}
               placeholder="obrigatório"
@@ -1302,10 +1364,22 @@ export default function Crate(props: { param?: string | null }) {
   }
 
   function closeCard() {
+    const id = card.c?.r.id;
+    // Foco dentro do card que vai sumir volta para a linha (o Baixar
+    // reaparece quando a faixa segue idle; senão, a primeira ação dela).
+    // Card fechado por uma busca nova não rouba o foco do campo.
+    const hadFocus = !!(document.activeElement as HTMLElement | null)?.closest?.(".crate-card");
     cardSeq++;
     setCardSubmitting(false);
     setOpenDest((k) => (k != null && k.startsWith("sc:") ? null : k));
     setCard("c", null);
+    if (hadFocus && id != null) {
+      queueMicrotask(() => {
+        document
+          .querySelector<HTMLElement>(`.crate-row-wrap[data-sc-id="${id}"] .crate-r-act button`)
+          ?.focus();
+      });
+    }
   }
 
   /** Abre o card na linha: pré-preenche pelo guessFromSoundCloud e
@@ -1426,11 +1500,13 @@ export default function Crate(props: { param?: string | null }) {
   });
 
   // Card aberto = camada de Esc (cancela). Depende só de QUAL card está
-  // aberto: reempilhar a cada tecla passaria o card por cima do seletor
-  // de playlist aberto dentro dele.
+  // aberto (reempilhar a cada tecla passaria o card por cima do seletor
+  // de playlist aberto dentro dele) e de a aba Buscar estar à vista: na
+  // Fila o card fica escondido, e o Esc seria consumido sem efeito
+  // visível. O card sobrevive à troca de aba com o que já foi editado.
   const cardOpenId = createMemo(() => card.c?.r.id ?? null);
-  createEffect(on(cardOpenId, (id) => {
-    if (id == null) return;
+  createEffect(on([cardOpenId, tab], ([id, t]) => {
+    if (id == null || t !== "search") return;
     onCleanup(pushEscLayer(closeCard));
   }));
 
@@ -1467,12 +1543,18 @@ export default function Crate(props: { param?: string | null }) {
       void scSearch(q, true);
       return;
     }
-    // As duas seções mostram sempre a mesma busca. Com o cooldown do
-    // Soulseek correndo, quem decide é o pacer do backend (crate-8): o
-    // SoundCloud espera o aceite, senão uma busca recusada trocaria só a
-    // seção dele. "Buscar mesmo assim" (force) é da rede fria do Soulseek:
-    // a seção do SoundCloud dessa busca já veio, a não ser que a busca
-    // tenha sido editada antes do clique.
+    // O SoundCloud é independente do pacer do Soulseek (tem o pacer
+    // próprio no backend) e sai em paralelo, sem esperar a resposta do
+    // slsk_search (com o slskd fora do ar ela só volta no timeout). A
+    // exceção é o cooldown que o front JÁ conhece: com ele correndo, o
+    // SoundCloud espera o aceite do pacer (crate-8), para uma recusa
+    // previsível não trocar só a seção dele. Recusa que o front não
+    // previa (a primeira de um cooldown, por exemplo ⌘K duas vezes em
+    // menos de 4 s, ou o limite de 40/h) deixa as seções em buscas
+    // diferentes: o SoundCloud já foi para a nova e o Soulseek fica na
+    // anterior, com o aviso da recusa. "Buscar mesmo assim" (force) é da
+    // rede fria do Soulseek: a seção do SoundCloud dessa busca já veio,
+    // a não ser que a busca tenha sido editada antes do clique.
     if (cooldownLeft() === 0 && (!force || q !== lastScQuery)) void scSearch(q, false);
     const seq = ++searchSeq;
     const prevId = searchId();

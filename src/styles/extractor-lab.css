@@ -3753,7 +3753,17 @@ html { --glow: 0; }
   overflow: hidden; text-overflow: ellipsis;
 }
 .crate-row--sc { cursor: default; }
-.crate-row--sc a.crate-btn { text-decoration: none; }
+
+/* URL de link externo quando o clipboard falha: selecionável inteira
+   num clique, para copiar à mão. */
+.crate-link-url {
+  max-width: 220px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: all; -webkit-user-select: all;
+  cursor: text;
+}
 
 /* Chip de disponibilidade do original. Só "Original" leva a cor de
    sinal do tema; o resto fica neutro e a linha esmaece. */

@@ -1193,7 +1193,10 @@ describe("Crate: SoundCloud", () => {
     const sec = await screen.findByRole("group", { name: /SoundCloud/ });
     await waitFor(() => expect(within(sec).getAllByRole("button", { name: /Baixar/ })).toHaveLength(1));
     expect(within(sec).getByText("Sem download")).toBeInTheDocument();
-    expect(within(sec).getByRole("link", { name: /Abrir/ })).toHaveAttribute("href", "https://hypeddit.com/x");
+    // Link externo nunca vira <a target=_blank>: o opener negaria o open_url
+    // e o clique morreria. O botão copia o link.
+    expect(sec.querySelector("a[target=_blank]")).toBeNull();
+    expect(within(sec).getByRole("button", { name: /Copiar link/ })).toHaveAttribute("title", expect.stringContaining("https://hypeddit.com/x"));
   });
 
   it("Baixar abre o card pré-preenchido, sonda o formato e envia crate_download com o metadado confirmado", async () => {
@@ -1298,9 +1301,10 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     ));
   });
 
-  it("rejeição por bitrate baixo ou posse não oferece 'Tentar de novo'; rejeição por arquivo inválido oferece", async () => {
+  it("rejeição por bitrate baixo, formato sem download ou posse não oferece 'Tentar de novo'; rejeição por arquivo inválido oferece", async () => {
     mocks.slskJobs.mockResolvedValue([
       scJob({ kind: "rejected", reason: { low_bitrate: { kbps: 128 } } }, { job_id: "a" }),
+      scJob({ kind: "rejected", reason: "no_download" }, { job_id: "d", source: { ...scSource, track_id: 10 } }),
       scJob({ kind: "rejected", reason: { already_owned: { track_id: "9" } } }, { job_id: "b", source: { ...scSource, track_id: 8 } }),
       scJob({ kind: "rejected", reason: "corrupt" }, { job_id: "c", source: { ...scSource, track_id: 9 } }),
     ]);
@@ -1435,5 +1439,158 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     expect(sc.getAttribute("data-on")).toBe("true");
     expect(ff.getAttribute("data-on")).toBe("false");
     expect(ff.textContent).toContain("ffmpeg: ausente");
+  });
+});
+
+// ── Segunda revisão da Task 9 ────────────────────────────────────
+describe("Crate: SoundCloud, segunda revisão", () => {
+  function track(title: string, artist = "DJ Arana"): Track {
+    return {
+      id: `t-${title}`,
+      title,
+      artist_name: artist,
+      album_title: title,
+      album_cover_path: null,
+      album_year: 2024,
+      duration_ms: 180_000,
+      path: `/music/${title}.flac`,
+      lrc_path: null,
+    };
+  }
+
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  async function openFestaCard() {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "FESTA DO PENTE RALA - DJ ARANA", user_name: "DJ ARANA OFICIAL", availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
+    mocks.crateScProbe.mockResolvedValue({ ext: "flac", size: 1, kbps_est: 900, format_label: "FLAC", allowed: true, reason: null });
+    await typeAndEnter("festa");
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    return screen.findByRole("form", { name: /Confirmar faixa/ });
+  }
+
+  it("links externos copiam a URL em vez de virar âncora morta (gate, sem download, cota e Waiting)", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    mocks.crateScSearch.mockResolvedValue([
+      scResult({ id: 1, title: "Gate", availability: { kind: "external_gate", url: "https://hypeddit.com/x" } }),
+      scResult({ id: 2, title: "Sem", permalink_url: "https://soundcloud.com/p/sem", availability: { kind: "none" } }),
+      scResult({ id: 3, title: "Cota", permalink_url: "https://soundcloud.com/p/cota", availability: { kind: "quota_exhausted" } }),
+    ]);
+    mocks.slskJobs.mockResolvedValue([
+      job({ job_id: "w", source: { kind: "bandcamp", item_type: "album", item_id: 1, url: "https://x.bandcamp.com/album/y" }, state: { kind: "waiting", reason: "purchase", url: "https://x.bandcamp.com/album/y", since_secs: 10 } }),
+    ]);
+    const { container } = render(() => <Crate />);
+    await typeAndEnter("x");
+    const sec = await screen.findByRole("group", { name: /SoundCloud/ });
+    await waitFor(() => expect(within(sec).getAllByRole("button", { name: /Copiar/ })).toHaveLength(3));
+    expect(container.querySelector("a[target=_blank]")).toBeNull();
+
+    fireEvent.click(within(sec).getByRole("button", { name: /Copiar link/ }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://hypeddit.com/x"));
+    expect(await within(sec).findByText("Link copiado")).toBeInTheDocument();
+
+    const [semBtn, cotaBtn] = within(sec).getAllByRole("button", { name: /Copiar página/ });
+    fireEvent.click(semBtn);
+    fireEvent.click(cotaBtn);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://soundcloud.com/p/sem"));
+    expect(writeText).toHaveBeenCalledWith("https://soundcloud.com/p/cota");
+
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await screen.findByText(/Aguardando compra no Bandcamp/);
+    expect(container.querySelector("a[target=_blank]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Copiar link/ }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://x.bandcamp.com/album/y"));
+  });
+
+  it("sem clipboard, o botão de link mostra a URL para copiar à mão", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("negado")) } });
+    mocks.crateScSearch.mockResolvedValue([
+      scResult({ id: 1, title: "Gate", availability: { kind: "external_gate", url: "https://hypeddit.com/x" } }),
+    ]);
+    render(() => <Crate />);
+    await typeAndEnter("x");
+    const sec = await screen.findByRole("group", { name: /SoundCloud/ });
+    fireEvent.click(await within(sec).findByRole("button", { name: /Copiar link/ }));
+    expect(await within(sec).findByText("https://hypeddit.com/x")).toBeInTheDocument();
+  });
+
+  it("o card mostra 'Já no acervo' quando a sondagem de duplicata acha a faixa, e Baixar segue habilitado", async () => {
+    mocks.slskDedupProbe.mockImplementation(async (q: string) =>
+      q === "DJ Arana Festa do Pente Rala" ? [track("Outra"), track("Festa do Pente Rala")] : [],
+    );
+    render(() => <Crate />);
+    const card = await openFestaCard();
+    await within(card).findByText(/FLAC/);
+    expect(await within(card).findByText("Já no acervo: DJ Arana — Festa do Pente Rala")).toBeInTheDocument();
+    expect(card.querySelector(".crate-card__dedup")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: /Tocar/ })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /^Baixar$/ })).toBeEnabled();
+  });
+
+  it("resposta atrasada da sondagem de duplicata antiga não sobrescreve o aviso da atual", async () => {
+    const antiga = deferred<Track[]>();
+    const nova = deferred<Track[]>();
+    mocks.slskDedupProbe.mockImplementation((q: string) => {
+      if (q === "DJ Arana Festa do Pente Rala") return antiga.promise;
+      if (q === "DJ Arana Baile") return nova.promise;
+      return Promise.resolve([]);
+    });
+    render(() => <Crate />);
+    const card = await openFestaCard();
+    await waitFor(() => expect(mocks.slskDedupProbe).toHaveBeenCalledWith("DJ Arana Festa do Pente Rala"));
+    await userEvent.clear(within(card).getByLabelText("Título"));
+    await userEvent.type(within(card).getByLabelText("Título"), "Baile");
+    await waitFor(() => expect(mocks.slskDedupProbe).toHaveBeenCalledWith("DJ Arana Baile"), { timeout: 2000 });
+    nova.resolve([track("Baile")]);
+    expect(await within(card).findByText("Já no acervo: DJ Arana — Baile")).toBeInTheDocument();
+    antiga.resolve([track("Festa do Pente Rala")]);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(within(card).queryByText(/Festa do Pente Rala/)).toBeNull();
+    expect(within(card).getByText("Já no acervo: DJ Arana — Baile")).toBeInTheDocument();
+  });
+
+  it("job do SoundCloud na fila (enqueued) diz 'aguardando início', sem falar de peer", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      job({ job_id: "sc", source: { kind: "sound_cloud", track_id: 1, permalink_url: "https://soundcloud.com/a/b" }, state: { kind: "enqueued", queue_position: null } }),
+    ]);
+    const { container } = render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect(await screen.findByText("aguardando início")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/peer/);
+  });
+
+  it("abrir o card leva o foco ao campo Artista; Esc devolve o foco ao Baixar da linha", async () => {
+    render(() => <Crate />);
+    const card = await openFestaCard();
+    await waitFor(() => expect(document.activeElement).toBe(within(card).getByLabelText("Artista")));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("form", { name: /Confirmar faixa/ })).toBeNull());
+    const sec = screen.getByRole("group", { name: /SoundCloud/ });
+    await waitFor(() => expect(document.activeElement).toBe(within(sec).getByRole("button", { name: /Baixar/ })));
+  });
+
+  it("com o card aberto e a aba Fila ativa, o Esc não é consumido pelo card escondido", async () => {
+    render(() => <Crate />);
+    await openFestaCard();
+    let lower = 0;
+    // Camada aberta DEPOIS do card (fica por cima): fecha primeiro e sai.
+    const pop = pushEscLayer(() => { lower++; pop(); });
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(lower).toBe(1);
+    // Segundo Esc na Fila: sem camada do card, não é consumido.
+    const ev = new KeyboardEvent("keydown", { key: "Escape", cancelable: true, bubbles: true });
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    // De volta à busca, o card continua lá e o Esc o fecha.
+    await userEvent.click(screen.getByRole("tab", { name: /Buscar/ }));
+    expect(await screen.findByRole("form", { name: /Confirmar faixa/ })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("form", { name: /Confirmar faixa/ })).toBeNull());
   });
 });
