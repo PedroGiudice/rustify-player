@@ -16,6 +16,8 @@ import { slskJobs, onSlskJobs, type DownloadJob } from "../tauri";
 
 // Estados não-terminais (board.rs IN_FLIGHT + Queued — Queued ainda não
 // tem transfer no slskd mas conta como "em progresso" pro usuário/badge).
+// `waiting` (Bandcamp esperando compra ou link do e-mail) não ocupa vaga de
+// transferência no backend, mas para o usuário ainda está em andamento.
 const NON_TERMINAL_KINDS = new Set<DownloadJob["state"]["kind"]>([
   "queued",
   "enqueued",
@@ -23,6 +25,7 @@ const NON_TERMINAL_KINDS = new Set<DownloadJob["state"]["kind"]>([
   "stalled",
   "processing",
   "indexing",
+  "waiting",
 ]);
 
 // Store reconciliado por `job_id`: cada slsk-jobs traz o board inteiro em

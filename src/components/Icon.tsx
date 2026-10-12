@@ -76,4 +76,5 @@ export const ICONS = {
   folderOpen:   "lucide:folder-open",
   packageOpen:  "lucide:package-open",
   alert:        "lucide:triangle-alert",
+  externalLink: "lucide:external-link",
 } as const;

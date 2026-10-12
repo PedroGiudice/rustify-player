@@ -3648,12 +3648,14 @@ html { --glow: 0; }
 .crate-banner__act iconify-icon { width: 11px; height: 11px; color: var(--fg-2); }
 
 /* ── cabeçalho da lista ──────────────────────────────────────── */
-.crate-list-head {
+.crate-list-head,
+.crate-section__head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px;
   padding: 22px 40px 9px;
 }
-.crate-list-head h2 {
+.crate-list-head h2,
+.crate-section__head h2 {
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5); margin: 0; white-space: nowrap;
@@ -3723,6 +3725,127 @@ html { --glow: 0; }
   color: var(--fg-6); text-align: right; white-space: nowrap;
 }
 .crate-r-act { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* ── SoundCloud (fase 1): seção, origem, disponibilidade, card ──
+   A seção reaproveita a lista e o grid de 6 colunas do Soulseek. */
+.crate-section + .crate-list-head { padding-top: 14px; }
+.crate-section .crate-list { padding-bottom: 8px; }
+.crate-section__head { justify-content: flex-start; }
+.crate-section__note { font-size: 12px; color: var(--fg-6); white-space: nowrap; }
+.crate-section__note[data-tone="err"] { color: var(--rose-fg); }
+
+/* Badge da origem, à esquerda do formato: pequeno, sem caixa-alta. */
+.crate-origin {
+  display: inline-flex; align-items: center;
+  height: 18px; padding: 0 7px;
+  flex: none; margin-left: auto; align-self: center;
+  border-radius: var(--radius-xs);
+  background: var(--bg-tint);
+  font-size: 10.5px; font-weight: 600; line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--fg-3); white-space: nowrap;
+}
+
+.crate-r-meta {
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-5); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.crate-row--sc { cursor: default; }
+.crate-row--sc a.crate-btn { text-decoration: none; }
+
+/* Chip de disponibilidade do original. Só "Original" leva a cor de
+   sinal do tema; o resto fica neutro e a linha esmaece. */
+.crate-avail {
+  display: inline-flex; align-items: center; justify-self: start;
+  height: 20px; padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-2);
+  font-size: 10.5px; font-weight: 600; line-height: 1;
+  color: var(--fg-3); white-space: nowrap;
+}
+.crate-avail[data-kind="native"] {
+  color: var(--green-fg);
+  border-color: color-mix(in srgb, var(--green-ring) 30%, var(--bg-paper));
+  background: var(--green-bg);
+}
+.crate-row--sc[data-avail]:not([data-avail="native"]) .crate-r-main,
+.crate-row--sc[data-avail]:not([data-avail="native"]) .crate-avail,
+.crate-row--sc[data-avail]:not([data-avail="native"]) .crate-r-meta,
+.crate-row--sc[data-avail]:not([data-avail="native"]) .crate-r-dur { opacity: 0.6; }
+
+/* Card de confirmação: expande na própria linha, sem modal. */
+.crate-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  margin: 0 -12px;
+  padding: 14px 24px 16px;
+  background: var(--bg-soft);
+  border-top: 1px solid var(--line-2);
+}
+.crate-card__cover {
+  width: 72px; height: 72px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--bg-tint);
+  border: 1px solid var(--line-2);
+  overflow: hidden;
+  color: var(--fg-7);
+}
+.crate-card__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.crate-card__body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.crate-card__fields {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr) 84px auto;
+  gap: 10px;
+  align-items: end;
+}
+.crate-card__field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.crate-card__field > span {
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-6);
+}
+.crate-card__field input {
+  height: 30px; padding: 0 10px;
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-md);
+  outline: 0;
+  font-size: 12.5px; color: var(--fg-1);
+  letter-spacing: -0.005em;
+  min-width: 0;
+}
+.crate-card__field input::placeholder { color: var(--fg-6); }
+.crate-card__field input:focus { border-color: var(--fg-7); box-shadow: var(--ring-focus); }
+.crate-card__field--year input { font-variant-numeric: tabular-nums; }
+.crate-card__field .crate-dest { align-self: flex-start; }
+
+.crate-fmt {
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-5);
+}
+.crate-fmt[data-tone="ok"]  { color: var(--fg-2); }
+.crate-fmt[data-tone="err"] { color: var(--rose-fg); }
+.crate-fmt__why { color: var(--fg-6); }
+.crate-fmt__link {
+  font: inherit; color: var(--fg-3);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.crate-fmt__link:hover { color: var(--fg-1); }
+
+.crate-card__dedup {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--fg-3);
+}
+.crate-card__dedup iconify-icon { color: var(--green-fg); }
+.crate-card__acts { display: flex; gap: 6px; }
+
+.crate-src-status:focus { outline: none; box-shadow: var(--ring-focus); }
 
 .crate-badge {
   display: inline-flex; align-items: center; gap: 5px;

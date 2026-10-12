@@ -1,5 +1,5 @@
 /* ============================================================
-   views/Crate.tsx — busca e download da rede Soulseek in-app.
+   views/Crate.tsx — busca e download in-app: Soulseek e SoundCloud.
 
    Fluxo (spec §4): digitar → escolher a faixa → um clique → a
    linha vira `▸ Tocar`. Busca NUNCA dispara on-input (⏎ ou botão
@@ -9,6 +9,12 @@
    morto no onCleanup). A fila (jobs) é ciclo LONGO — vem do store
    global (store/crate.ts), que sobrevive a esta view desmontar
    (é o que alimenta o badge da sidebar).
+
+   SoundCloud (fase 1, spec 2026-10-12 §5): a mesma busca devolve a
+   seção SoundCloud em cima (chega em ~1 s) e a do Soulseek embaixo.
+   Baixar numa linha do SoundCloud abre o card de confirmação na
+   própria linha (sem modal): artista, título, ano e playlist que o
+   CEO confirma, mais o formato real sondado com o token.
 
    Camada visual = restyle v1.1, handoff
    docs/design-refs/design_handoff_crate/"Rustify Crate.html"
@@ -26,9 +32,12 @@ import {
   slskStatus, slskSearch, slskResults, slskCancelSearch, slskDedupProbe,
   slskDownload, slskTryOtherSource, slskCancel,
   parseSlskSearchError, libListFolders, libGetTracksByIds, formatDuration,
+  crateScSearch, crateScResolve, crateScProbe, crateScArtwork, crateDownload, crateSourcesStatus,
   type SlskStatus, type SearchSnapshot, type ResultGroup, type Candidate,
   type DownloadJob, type FolderPlaylist, type Track, type RejectReason, type Source,
+  type ScResult, type ScProbe, type SourcesStatus, type ConfirmedMeta,
 } from "../tauri";
+import { guessFromSoundCloud, cleanTitle, type MetaGuess } from "../lib/trackMetaGuess";
 import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from "../store/crate";
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
@@ -47,6 +56,14 @@ const STATUS_POLL_MS = 5000;
     barra de progresso da busca corre contra ela (spec §6.1). */
 const SEARCH_WINDOW_MS = 25_000;
 
+/** Status das fontes (token do SoundCloud, ffmpeg): spec §5.4. */
+const SOURCES_POLL_MS = 30_000;
+
+/** Link colado do SoundCloud vai para o resolve, não para a busca. */
+const SC_LINK = /^https?:\/\/(www\.|m\.)?soundcloud\.com\//i;
+/** Link do Bandcamp: sondagem só na fase 2. */
+const BC_LINK = /^https?:\/\/([a-z0-9-]+\.)*bandcamp\.com(\/|$)/i;
+
 /** Circunferência do anel de cooldown (r=6) — casa com o
     stroke-dasharray:37.7 do handoff. */
 const RING_LEN = 37.7;
@@ -56,12 +73,12 @@ const RING_LEN = 37.7;
 type RowState =
   | "idle" | "owned"
   | "queued" | "enqueued" | "downloading" | "stalled" | "processing" | "indexing"
-  | "ready" | "rejected" | "manual" | "failed";
+  | "ready" | "rejected" | "manual" | "failed" | "waiting";
 
 /** Estados não-terminais (mesma partição do store/crate.ts) — separa
     "Em voo" de "Terminadas" na aba Fila. */
 const IN_FLIGHT = new Set<DownloadJob["state"]["kind"]>([
-  "queued", "enqueued", "downloading", "stalled", "processing", "indexing",
+  "queued", "enqueued", "downloading", "stalled", "processing", "indexing", "waiting",
 ]);
 
 /** Estados em que a linha oferece [Cancelar] — o ⌫ do teclado cancela
@@ -159,6 +176,10 @@ function isAlreadyOwnedReason(r: RejectReason): r is { already_owned: { track_id
 
 function rejectReasonText(reason: RejectReason): string {
   if (isAlreadyOwnedReason(reason)) return "já tinhas — o arquivo ficou em downloads";
+  if (typeof reason === "object" && reason !== null && "low_bitrate" in reason) {
+    return `MP3 ${reason.low_bitrate.kbps}: abaixo de 320`;
+  }
+  if (reason === "no_download") return "sem download nativo";
   if (reason === "bit32_unsupported") return "FLAC 32-bit — o player não decodifica";
   if (reason === "corrupt") return "arquivo inválido (corrompido)";
   return "arquivo inválido";
@@ -183,17 +204,52 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-/** Subtítulo da fila: peer do Soulseek ou link da fonte (espelha
-    `Source::label` do board.rs). */
-function sourceLabel(src: Source): string {
+/** Subtítulo da fila: peer do Soulseek ou link da fonte sem o esquema
+    (espelha `Source::label` do board.rs). */
+function sourceSubtitle(src: Source): string {
   switch (src.kind) {
     case "soulseek":
       return src.username;
     case "sound_cloud":
-      return src.permalink_url;
+      return src.permalink_url.replace(/^https?:\/\/(www\.)?/i, "");
     case "bandcamp":
-      return src.url;
+      return src.url.replace(/^https?:\/\/(www\.)?/i, "");
   }
+}
+
+/** Nome da origem no badge da linha. */
+function sourceName(src: Source): string {
+  switch (src.kind) {
+    case "soulseek":
+      return "Soulseek";
+    case "sound_cloud":
+      return "SoundCloud";
+    case "bandcamp":
+      return "Bandcamp";
+  }
+}
+
+/** Badge da origem (à esquerda do formato). */
+function OriginBadge(props: { name: string }) {
+  return <span class="crate-origin">{props.name}</span>;
+}
+
+/** Tamanho no card de confirmação: MB binário com vírgula ("7,1 MB"). */
+function formatMb(bytes: number): string {
+  return `${(bytes / 1_048_576).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
+}
+
+/** Ano de lançamento do SoundCloud (release_date vence created_at). */
+function scYear(r: ScResult): number | null {
+  const m = /^(\d{4})/.exec(r.release_date ?? r.created_at ?? "");
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Texto do erro de IPC; `"no_token"` chega cru do `crate_sc_probe`. */
+function rawError(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
+  return String(e ?? "");
 }
 
 /** Rótulo de qualidade por candidato (o group.quality_label é o do
@@ -374,6 +430,20 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
           <Show when={j() && j()!.state.kind === "manual"}>
             <span class="crate-st-txt--warn">
               baixou, não achei o arquivo — está em {(j()!.state as { path: string }).path}
+            </span>
+          </Show>
+        </Show>
+
+        <Show when={props.state === "waiting"}>
+          <span class="crate-pill crate-pill--warn">aguardando</span>
+          <Show when={j() && j()!.state.kind === "waiting"}>
+            <span class="crate-st-txt--warn">
+              {(j()!.state as { reason: "purchase" | "email_link" }).reason === "purchase"
+                ? "Aguardando compra no Bandcamp"
+                : "Link enviado para o seu e-mail"}
+            </span>
+            <span class="crate-st-dim crate-st-mono">
+              há {formatAgo((j()!.state as { since_secs: number }).since_secs)}
             </span>
           </Show>
         </Show>
@@ -700,7 +770,8 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
       <div class="crate-job crate-row" data-state={kind()}>
         <div class="crate-r-main">
           <div class="crate-r-title">{props.job.display}</div>
-          <div class="crate-r-sub">{sourceLabel(props.job.source)}</div>
+          <div class="crate-r-sub">{sourceSubtitle(props.job.source)}</div>
+          <OriginBadge name={sourceName(props.job.source)} />
         </div>
 
         {/* Rótulo da fonte atual; vazio só em job reconciliado de um
@@ -709,9 +780,13 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
           {props.job.quality_label || formatSize(props.job.source.kind === "soulseek" ? props.job.source.size : 0)}
         </span>
 
-        <span class="crate-chip">
-          <span>{props.job.alternates.length + 1} fontes</span>
-        </span>
+        {/* Troca de fonte só existe no Soulseek; nas outras origens a
+            coluna fica vazia. */}
+        <Show when={props.job.source.kind === "soulseek"} fallback={<span />}>
+          <span class="crate-chip">
+            <span>{props.job.alternates.length + 1} fontes</span>
+          </span>
+        </Show>
 
         <span class="crate-chip crate-dest__btn">
           <span class="crate-dest__arrow">→</span>
@@ -739,6 +814,14 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
             >
               <Icon name={ICONS.play} size={12} /> Tocar
             </button>
+          </Show>
+          {/* "Verificar agora" e "Continuar" chegam com o Bandcamp (fase 2). */}
+          <Show when={props.job.state.kind === "waiting" ? props.job.state.url : null}>
+            {(url) => (
+              <a class="crate-btn" href={url()} target="_blank" rel="noopener">
+                <Icon name={ICONS.externalLink} size={12} /> Abrir
+              </a>
+            )}
           </Show>
         </div>
 
@@ -770,6 +853,263 @@ function CrateTerminalCard(props: { job: DownloadJob }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// ── SoundCloud: linha de resultado e card de confirmação ─────────
+
+/** Chip de disponibilidade do original (spec §5.1). */
+const AVAIL_LABEL: Record<ScResult["availability"]["kind"], string> = {
+  native: "Original",
+  quota_exhausted: "Cota esgotada",
+  external_gate: "Download externo",
+  none: "Sem download",
+};
+
+/** O que o card mostra e edita. `meta` nasce do guessFromSoundCloud. */
+interface CardState {
+  r: ScResult;
+  meta: MetaGuess;
+  probe: ScProbe | null;
+  probeErr: string | null;
+  cover: string | null;
+  dest: string | null;
+  dedup: Track | null;
+}
+
+function ScRow(props: {
+  r: ScResult;
+  job: DownloadJob | null;
+  cardOpen: boolean;
+  onDownload: () => void;
+  onCancel: (jobId: string) => void;
+  children?: JSX.Element;
+}) {
+  const kind = () => props.r.availability.kind;
+  const state = createMemo<RowState>(() =>
+    props.job && props.job.state.kind !== "canceled" ? (props.job.state.kind as RowState) : "idle",
+  );
+  const year = () => scYear(props.r);
+  return (
+    <div class="crate-row-wrap">
+      <div class="crate-row crate-row--sc" data-state={state()} data-avail={kind()}>
+        <div class="crate-r-main">
+          <div class="crate-r-title">{cleanTitle(props.r.title) || props.r.title}</div>
+          <div class="crate-r-sub">{props.r.user_name}</div>
+          <OriginBadge name="SoundCloud" />
+        </div>
+
+        <span class="crate-avail" data-kind={kind()}>{AVAIL_LABEL[kind()]}</span>
+
+        <div class="crate-r-meta">
+          {props.r.playback_count.toLocaleString("pt-BR")} plays
+        </div>
+
+        <div class="crate-r-meta">
+          <Show when={year() != null}>{year()}</Show>
+        </div>
+
+        <div class="crate-r-dur">{formatDuration(props.r.duration_ms / 1000)}</div>
+
+        <div class="crate-r-act">
+          <Show when={kind() === "native" && state() === "idle" && !props.cardOpen}>
+            <button
+              type="button"
+              class="crate-btn crate-btn--primary"
+              onClick={(e) => { e.stopPropagation(); props.onDownload(); }}
+            >
+              <Icon name={ICONS.download} size={12} /> Baixar
+            </button>
+          </Show>
+          <Show when={kind() === "external_gate" && props.r.availability.kind === "external_gate"}>
+            <a
+              class="crate-btn"
+              href={(props.r.availability as { url: string }).url}
+              target="_blank"
+              rel="noopener"
+              title="Download por página de terceiros: fica fora do app"
+            >
+              <Icon name={ICONS.externalLink} size={12} /> Abrir
+            </a>
+          </Show>
+          <Show when={kind() === "none" || kind() === "quota_exhausted"}>
+            <a class="crate-btn crate-btn--quiet" href={props.r.permalink_url} target="_blank" rel="noopener">
+              <Icon name={ICONS.externalLink} size={12} /> Ver página
+            </a>
+          </Show>
+          <Show when={state() === "ready"}>
+            <button
+              type="button"
+              class="crate-btn"
+              onClick={() => { if (props.job && props.job.state.kind === "ready") playById(props.job.state.track_id); }}
+            >
+              <Icon name={ICONS.play} size={12} /> Tocar
+            </button>
+          </Show>
+          <Show when={CANCELLABLE.has(state() as DownloadJob["state"]["kind"])}>
+            <button
+              type="button"
+              class="crate-btn crate-btn--quiet"
+              onClick={() => { if (props.job) props.onCancel(props.job.job_id); }}
+            >
+              <Icon name={ICONS.close} size={12} /> Cancelar
+            </button>
+          </Show>
+        </div>
+
+        <StateLine state={state()} job={props.job} owned={null} dest={props.job?.dest_playlist ?? null} />
+      </div>
+      {props.children}
+    </div>
+  );
+}
+
+function ConfirmCard(props: {
+  c: CardState;
+  folders: FolderPlaylist[];
+  destOpen: boolean;
+  submitting: boolean;
+  onDestToggle: () => void;
+  onPickDest: (dest: string) => void;
+  onField: (field: "artist" | "title", value: string) => void;
+  onYear: (year: number | null) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  onShowStatus: () => void;
+}) {
+  const canSubmit = () =>
+    !props.submitting
+    && !!props.c.probe?.allowed
+    && props.c.meta.artist.trim() !== ""
+    && props.c.meta.title.trim() !== ""
+    && !!props.c.dest;
+  const fmtTone = () => {
+    if (props.c.probeErr) return "err";
+    if (!props.c.probe) return "wait";
+    return props.c.probe.allowed ? "ok" : "err";
+  };
+  const submit = () => { if (canSubmit()) props.onSubmit(); };
+
+  return (
+    <form
+      class="crate-card"
+      role="form"
+      aria-label="Confirmar faixa"
+      onSubmit={(e) => { e.preventDefault(); submit(); }}
+      onKeyDown={(e) => {
+        // Enter num campo = Baixar, inclusive no teclado virtual e no
+        // campo de ano (o submit implícito do form não cobre todos).
+        const t = e.target as HTMLElement;
+        if (e.key === "Enter" && t.tagName === "INPUT") { e.preventDefault(); submit(); }
+      }}
+    >
+      <div class="crate-card__cover">
+        <Show when={props.c.cover} fallback={<Icon name={ICONS.music} size={20} />}>
+          {(src) => <img src={src()} alt="" />}
+        </Show>
+      </div>
+
+      <div class="crate-card__body">
+        <div class="crate-card__fields">
+          <label class="crate-card__field">
+            <span>Artista</span>
+            <input
+              value={props.c.meta.artist}
+              spellcheck={false}
+              placeholder="obrigatório"
+              onInput={(e) => props.onField("artist", e.currentTarget.value)}
+            />
+          </label>
+          <label class="crate-card__field crate-card__field--wide">
+            <span>Título</span>
+            <input
+              value={props.c.meta.title}
+              spellcheck={false}
+              placeholder="obrigatório"
+              onInput={(e) => props.onField("title", e.currentTarget.value)}
+            />
+          </label>
+          <label class="crate-card__field crate-card__field--year">
+            <span>Ano</span>
+            <input
+              type="number"
+              inputmode="numeric"
+              min="1900"
+              max="2100"
+              value={props.c.meta.year ?? ""}
+              onInput={(e) => {
+                const n = parseInt(e.currentTarget.value, 10);
+                props.onYear(Number.isFinite(n) ? n : null);
+              }}
+            />
+          </label>
+          <div class="crate-card__field">
+            <span>Playlist</span>
+            <DestChip
+              variant="row"
+              value={props.c.dest}
+              placeholder="escolher"
+              warn={!props.c.dest}
+              open={props.destOpen}
+              folders={props.folders}
+              onToggle={props.onDestToggle}
+              onPick={props.onPickDest}
+            />
+          </div>
+        </div>
+
+        <div class="crate-fmt" data-tone={fmtTone()}>
+          <Show when={!props.c.probe && !props.c.probeErr}>sondando formato…</Show>
+          <Show when={props.c.probeErr === "no_token"}>
+            sem token do SoundCloud
+            <button type="button" class="crate-fmt__link" onClick={props.onShowStatus}>
+              ver status das fontes
+            </button>
+          </Show>
+          <Show when={props.c.probeErr && props.c.probeErr !== "no_token"}>
+            não deu pra sondar o formato: {props.c.probeErr}
+          </Show>
+          <Show when={props.c.probe}>
+            {(p) => (
+              <Show
+                when={p().allowed}
+                fallback={
+                  <>
+                    {p().format_label} · não entra
+                    <Show when={p().reason}>
+                      <span class="crate-fmt__why">({p().reason})</span>
+                    </Show>
+                  </>
+                }
+              >
+                {p().format_label}{p().size != null ? ` · ${formatMb(p().size!)}` : ""}
+              </Show>
+            )}
+          </Show>
+        </div>
+
+        <Show when={props.c.dedup}>
+          {(t) => (
+            <div class="crate-card__dedup">
+              <Icon name={ICONS.check} size={12} />
+              <span>Já no acervo: {t().artist_name ?? "—"} — {t().title}</span>
+              <button type="button" class="crate-btn crate-btn--quiet" onClick={() => playTrack(t(), "crate")}>
+                <Icon name={ICONS.play} size={12} /> Tocar
+              </button>
+            </div>
+          )}
+        </Show>
+
+        <div class="crate-card__acts">
+          <button type="submit" class="crate-btn crate-btn--primary" disabled={!canSubmit()}>
+            <Icon name={ICONS.download} size={12} /> Baixar
+          </button>
+          <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onCancel}>
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }
 
@@ -814,6 +1154,15 @@ export default function Crate(props: { param?: string | null }) {
   const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>({});
   const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>({});
 
+  // SoundCloud (spec §5): busca própria, paralela à do Soulseek, e um card
+  // de confirmação aberto por vez.
+  const [scResults, setScResults] = createSignal<ScResult[]>([]);
+  const [scState, setScState] = createSignal<"idle" | "loading" | "done" | "empty" | "error">("idle");
+  const [scError, setScError] = createSignal<string | null>(null);
+  const [card, setCard] = createStore<{ c: CardState | null }>({ c: null });
+  const [cardSubmitting, setCardSubmitting] = createSignal(false);
+  const [sourcesStatus, setSourcesStatus] = createSignal<SourcesStatus | null>(null);
+
   // Grupos num store reconciliado por `group_key`: cada slsk_results chega
   // como objeto novo (o backend clona o snapshot), e o <For> por referência
   // recriava todas as linhas a cada poll — seletor de destino fechando
@@ -826,8 +1175,13 @@ export default function Crate(props: { param?: string | null }) {
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
+  let sourcesTimer: ReturnType<typeof setInterval> | undefined;
   /** Número da chamada de doSearch mais recente (só ela baixa o pending). */
   let searchSeq = 0;
+  /** Idem para a busca do SoundCloud e para o card (resposta atrasada de
+      uma busca ou de um card anterior é descartada). */
+  let scSeq = 0;
+  let cardSeq = 0;
 
   const groups = () => results.groups;
   const responsesSeen = () => snapshot()?.responses_seen ?? 0;
@@ -863,6 +1217,122 @@ export default function Crate(props: { param?: string | null }) {
     return jobs().find((j) => j.job_id === id) ?? null;
   }
 
+  /** Job da faixa do SoundCloud, pela origem: o job_id é determinístico
+      por track_id, então o board diz se a faixa já está baixando ou
+      pronta, inclusive de uma sessão anterior. */
+  function scJobFor(trackId: number): DownloadJob | null {
+    return (
+      jobs().find(
+        (j) => j.source.kind === "sound_cloud" && j.source.track_id === trackId && j.state.kind !== "canceled",
+      ) ?? null
+    );
+  }
+
+  /** Busca (ou resolve de link colado) no SoundCloud. Não passa pelo
+      pacer do Soulseek: o backend tem o pacer próprio do SoundCloud. */
+  async function scSearch(q: string, isLink: boolean) {
+    const seq = ++scSeq;
+    closeCard();
+    setScError(null);
+    setScResults([]);
+    setScState("loading");
+    try {
+      const res = isLink ? [await crateScResolve(q)] : await crateScSearch(q);
+      if (seq !== scSeq) return;
+      setScResults(res);
+      setScState(res.length > 0 ? "done" : "empty");
+    } catch (e) {
+      if (seq !== scSeq) return;
+      setScError(errorText(e));
+      setScState("error");
+    }
+  }
+
+  function closeCard() {
+    cardSeq++;
+    setCardSubmitting(false);
+    setOpenDest((k) => (k != null && k.startsWith("sc:") ? null : k));
+    setCard("c", null);
+  }
+
+  /** Abre o card na linha: pré-preenche pelo guessFromSoundCloud e
+      dispara sondagem, capa e dedup (spec §5.2). Destino na mesma
+      precedência do Soulseek (CLAUDE.md, spec §4.5): override da
+      toolbar > artista no acervo > último usado. */
+  function openCard(r: ScResult) {
+    const seq = ++cardSeq;
+    const meta = guessFromSoundCloud(r);
+    setCardSubmitting(false);
+    setCard("c", {
+      r,
+      meta,
+      probe: null,
+      probeErr: null,
+      cover: null,
+      dest: destOverride() ?? r.suggested_dest ?? loadLastDest(),
+      dedup: null,
+    });
+    const live = () => seq === cardSeq && card.c != null;
+    crateScProbe(r.id, r.duration_ms)
+      .then((p) => { if (live()) setCard("c", "probe", p); })
+      .catch((e) => { if (live()) setCard("c", "probeErr", rawError(e) || "erro desconhecido"); });
+    if (r.artwork_url) {
+      crateScArtwork(r.artwork_url)
+        .then((url) => { if (live()) setCard("c", "cover", url); })
+        .catch(() => {}); // capa é melhor esforço
+    }
+    const q = `${meta.artist} ${meta.title}`.trim();
+    if (q) {
+      slskDedupProbe(q)
+        .then((tracks) => { if (live()) setCard("c", "dedup", dedupMatch(q, tracks)); })
+        .catch(() => {});
+    }
+  }
+
+  async function submitCard() {
+    const c = card.c;
+    if (!c || !c.dest || cardSubmitting()) return;
+    const seq = cardSeq;
+    const title = c.meta.title.trim();
+    const meta: ConfirmedMeta = {
+      artist: c.meta.artist.trim(),
+      title,
+      // Single: o álbum é o próprio título (spec §3.3, item 5).
+      album: title,
+      year: c.meta.year,
+      label: null,
+    };
+    const dest = c.dest;
+    setCardSubmitting(true);
+    setNotice(null);
+    try {
+      await crateDownload(
+        { kind: "sound_cloud", track_id: c.r.id, permalink_url: c.r.permalink_url },
+        meta,
+        dest,
+        c.r.artwork_url,
+      );
+      saveLastDest(dest);
+      if (seq === cardSeq) closeCard();
+    } catch (e) {
+      console.error("[crate] crateDownload falhou:", e);
+      setNotice(`Não deu pra baixar "${title}": ${errorText(e)}.`);
+      if (seq === cardSeq) setCardSubmitting(false);
+    }
+  }
+
+  function showSourcesStatus() {
+    const el = document.getElementById("crate-sources");
+    el?.scrollIntoView?.({ block: "nearest" });
+    el?.focus();
+  }
+
+  const scStatusLabel = () => {
+    const st = sourcesStatus();
+    if (!st) return "verificando…";
+    return st.soundcloud === "token_ok" ? "token ok" : st.soundcloud === "no_token" ? "sem token" : "API indisponível";
+  };
+
   // Seletor de destino aberto = popover: fecha com clique fora de qualquer
   // `.crate-dest` e com Esc (crate-11, pendência v1.1 do CLAUDE.md).
   // Listeners só existem enquanto há um aberto. O Esc vem da pilha única
@@ -885,6 +1355,15 @@ export default function Crate(props: { param?: string | null }) {
     onCleanup(() => document.removeEventListener("mousedown", onDown, true));
   });
 
+  // Card aberto = camada de Esc (cancela). Depende só de QUAL card está
+  // aberto: reempilhar a cada tecla passaria o card por cima do seletor
+  // de playlist aberto dentro dele.
+  const cardOpenId = createMemo(() => card.c?.r.id ?? null);
+  createEffect(on(cardOpenId, (id) => {
+    if (id == null) return;
+    onCleanup(pushEscLayer(closeCard));
+  }));
+
   /** Countdown do min-interval. `force` NÃO passa por aqui — forçar não
       reseta nem zera o intervalo mínimo, só ignora o guard no backend. */
   function startCooldown(seconds: number) {
@@ -903,6 +1382,24 @@ export default function Crate(props: { param?: string | null }) {
   async function doSearch(force = false) {
     const q = query().trim();
     if (!q) return;
+    if (BC_LINK.test(q)) {
+      setNotice("Links do Bandcamp chegam na próxima versão.");
+      return;
+    }
+    if (SC_LINK.test(q)) {
+      // Link do SoundCloud: resolve direto, sem busca no Soulseek.
+      setNotice(null);
+      setDedupTrack(null);
+      const prev = searchId();
+      if (prev) slskCancelSearch(prev).catch(() => {});
+      setSearchId(null);
+      applySnapshot(null);
+      void scSearch(q, true);
+      return;
+    }
+    // "Buscar mesmo assim" (force) é só da rede fria do Soulseek: a seção
+    // do SoundCloud dessa busca já veio.
+    if (!force) void scSearch(q, false);
     const seq = ++searchSeq;
     const prevId = searchId();
     setColdSeconds(null);
@@ -1065,6 +1562,9 @@ export default function Crate(props: { param?: string | null }) {
     const refreshStatus = () => { slskStatus().then(setStatus).catch(() => {}); };
     refreshStatus();
     statusTimer = setInterval(refreshStatus, STATUS_POLL_MS);
+    const refreshSources = () => { crateSourcesStatus().then(setSourcesStatus).catch(() => {}); };
+    refreshSources();
+    sourcesTimer = setInterval(refreshSources, SOURCES_POLL_MS);
 
     // Só polla enquanto a busca ainda pode mudar: `running`, ou antes do
     // primeiro snapshot chegar. Estado terminal (done/empty/failed/
@@ -1083,6 +1583,7 @@ export default function Crate(props: { param?: string | null }) {
     onCleanup(() => {
       if (pollTimer) clearInterval(pollTimer);
       if (statusTimer) clearInterval(statusTimer);
+      if (sourcesTimer) clearInterval(sourcesTimer);
       if (cooldownTimer) clearInterval(cooldownTimer);
       const id = searchId();
       if (id) slskCancelSearch(id).catch(() => {});
@@ -1107,10 +1608,20 @@ export default function Crate(props: { param?: string | null }) {
       </header>
 
       <nav class="tabs" role="tablist">
-        <button class={`tab${tab() === "search" ? " active" : ""}`} onClick={() => setTab("search")}>
+        <button
+          role="tab"
+          aria-selected={tab() === "search"}
+          class={`tab${tab() === "search" ? " active" : ""}`}
+          onClick={() => setTab("search")}
+        >
           Buscar <Show when={groups().length > 0}><span class="tab__count">{groups().length}</span></Show>
         </button>
-        <button class={`tab${tab() === "queue" ? " active" : ""}`} onClick={() => setTab("queue")}>
+        <button
+          role="tab"
+          aria-selected={tab() === "queue"}
+          class={`tab${tab() === "queue" ? " active" : ""}`}
+          onClick={() => setTab("queue")}
+        >
           Fila <Show when={jobs().length > 0}><span class="tab__count">{jobs().length}</span></Show>
         </button>
       </nav>
@@ -1124,7 +1635,7 @@ export default function Crate(props: { param?: string | null }) {
                 ref={inputEl}
                 value={query()}
                 spellcheck={false}
-                placeholder="Buscar na rede Soulseek…"
+                placeholder="Buscar no Soulseek e SoundCloud, ou colar link do Bandcamp"
                 // Uma busca em voo por vez (spec §6.1, "campo desabilita"):
                 // somente leitura mantém o foco e o ↓ para a lista.
                 readOnly={searching()}
@@ -1187,6 +1698,18 @@ export default function Crate(props: { param?: string | null }) {
               {status() ? (status()!.network_connected ? "rede ok" : "fora da rede") : "verificando…"}
             </span>
 
+            {/* Status das fontes novas (spec §5.4); alvo do "ver status"
+                do card quando falta o token. */}
+            <span
+              id="crate-sources"
+              class="crate-net-status crate-src-status"
+              tabindex="-1"
+              data-on={sourcesStatus()?.soundcloud === "token_ok" && sourcesStatus()?.ffmpeg ? "true" : "false"}
+            >
+              <span class="crate-net-status__dot" />
+              SoundCloud: {scStatusLabel()} · ffmpeg: {sourcesStatus() ? (sourcesStatus()!.ffmpeg ? "ok" : "ausente") : "…"}
+            </span>
+
             <DestChip
               variant="toolbar"
               value={destOverride()}
@@ -1245,6 +1768,61 @@ export default function Crate(props: { param?: string | null }) {
             </div>
           </Show>
 
+          <Show when={scState() !== "idle"}>
+            <section class="crate-section" role="group" aria-label="SoundCloud">
+              <div class="crate-section__head">
+                <h2>
+                  SoundCloud
+                  <Show when={scState() === "done"}> · {scResults().length}</Show>
+                  <Show when={scState() === "loading"}> · Buscando…</Show>
+                </h2>
+                <Show when={scState() === "empty"}>
+                  <span class="crate-section__note">nada no SoundCloud</span>
+                </Show>
+                <Show when={scState() === "error"}>
+                  <span class="crate-section__note" data-tone="err">
+                    SoundCloud indisponível ({scError()})
+                  </span>
+                </Show>
+              </div>
+              <Show when={scResults().length > 0}>
+                <div class="crate-list">
+                  <div class="crate-list-inner">
+                    <For each={scResults()}>
+                      {(r) => (
+                        <ScRow
+                          r={r}
+                          job={scJobFor(r.id)}
+                          cardOpen={card.c?.r.id === r.id}
+                          onDownload={() => openCard(r)}
+                          onCancel={handleCancel}
+                        >
+                          <Show when={card.c && card.c.r.id === r.id ? card.c : null}>
+                            {(c) => (
+                              <ConfirmCard
+                                c={c()}
+                                folders={folders()}
+                                destOpen={openDest() === `sc:${r.id}`}
+                                submitting={cardSubmitting()}
+                                onDestToggle={() => setOpenDest((k) => (k === `sc:${r.id}` ? null : `sc:${r.id}`))}
+                                onPickDest={(f) => { setCard("c", "dest", f); setOpenDest(null); }}
+                                onField={(field, value) => setCard("c", "meta", field, value)}
+                                onYear={(y) => setCard("c", "meta", "year", y)}
+                                onSubmit={() => void submitCard()}
+                                onCancel={closeCard}
+                                onShowStatus={showSourcesStatus}
+                              />
+                            )}
+                          </Show>
+                        </ScRow>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+            </section>
+          </Show>
+
           <Show when={searchId()}>
             <div class="crate-list-head">
               {/* Durante a busca: respostas que já chegaram + barra contra a
@@ -1252,11 +1830,11 @@ export default function Crate(props: { param?: string | null }) {
                   faixas', que parece resultado final (crate-8). */}
               <Show
                 when={searching()}
-                fallback={<h2>Resultados · {groups().length}&nbsp;faixas</h2>}
+                fallback={<h2>Soulseek · {groups().length}&nbsp;faixas</h2>}
               >
                 <div class="crate-list-head__lead">
                   <h2>
-                    Buscando · {responsesSeen()}&nbsp;{responsesSeen() === 1 ? "resposta" : "respostas"}
+                    Soulseek · Buscando · {responsesSeen()}&nbsp;{responsesSeen() === 1 ? "resposta" : "respostas"}
                   </h2>
                   <div
                     class="crate-prog"
@@ -1326,7 +1904,7 @@ export default function Crate(props: { param?: string | null }) {
             </div>
           </Show>
 
-          <Show when={!searchId() && !searching()}>
+          <Show when={!searchId() && !searching() && scState() === "idle"}>
             <div class="crate-empty-wrap">
               <div class="crate-empty">
                 <Icon name={ICONS.packageOpen} size={26} />

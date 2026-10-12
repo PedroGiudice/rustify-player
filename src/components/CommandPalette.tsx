@@ -99,8 +99,8 @@ export function CommandPalette() {
     return !!r && (r.tracks.length + r.albums.length + r.artists.length) > 0;
   };
 
-  // ActionItem do Crate: sempre presente com query digitada (busca na rede
-  // Soulseek), promovido ao topo quando o acervo local não achou nada — é
+  // ActionItem do Crate: sempre presente com query digitada (busca no
+  // Soulseek e no SoundCloud), promovido ao topo quando o acervo local não achou nada — é
   // o gancho de descoberta inteiro (spec §4.1): o usuário procura, não
   // tem, e a saída está exatamente ali.
   const crateAction = (): ActionItem | null => {
@@ -108,7 +108,7 @@ export function CommandPalette() {
     if (!q) return null;
     return {
       kind: "action", id: "crate-search", icon: ICONS.packageOpen,
-      title: `Procurar "${q}" na rede →`, sub: "busca na rede Soulseek (Crate)",
+      title: `Procurar "${q}" na rede →`, sub: "busca no Soulseek e no SoundCloud (Crate)",
       run: () => { navigate(`/crate/${encodeURIComponent(q)}`); close(); },
     };
   };

@@ -10,8 +10,9 @@
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, fireEvent, waitFor } from "@solidjs/testing-library";
-import type { ResultGroup, SearchSnapshot, DownloadJob, Track, FolderPlaylist } from "../tauri";
+import "@testing-library/jest-dom/vitest";
+import { render, cleanup, fireEvent, waitFor, screen, within } from "@solidjs/testing-library";
+import type { ResultGroup, SearchSnapshot, DownloadJob, Track, FolderPlaylist, ScResult } from "../tauri";
 
 vi.mock("../components/PlayerBar", () => ({ playTrack: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => undefined) }));
@@ -38,6 +39,12 @@ vi.mock("../tauri", async (importOriginal) => {
     onSlskJobs: vi.fn(async (_cb: (jobs: DownloadJob[]) => void) => () => {}),
     libListFolders: vi.fn(async () => [] as FolderPlaylist[]),
     libGetTracksByIds: vi.fn(async () => [] as Track[]),
+    crateScSearch: vi.fn(async () => []),
+    crateScResolve: vi.fn(async () => undefined),
+    crateScProbe: vi.fn(async () => undefined),
+    crateScArtwork: vi.fn(async () => "data:image/jpeg;base64,AA=="),
+    crateDownload: vi.fn(async () => "job-sc"),
+    crateSourcesStatus: vi.fn(async () => ({ soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false })),
   };
 });
 
@@ -111,6 +118,13 @@ beforeEach(() => {
   vi.mocked(tauriApi.onSlskJobs).mockImplementation(async () => () => {});
   vi.mocked(tauriApi.libListFolders).mockResolvedValue([]);
   vi.mocked(opener.revealItemInDir).mockResolvedValue(undefined);
+  vi.mocked(tauriApi.crateScSearch).mockResolvedValue([]);
+  vi.mocked(tauriApi.crateScProbe).mockReset();
+  vi.mocked(tauriApi.crateScArtwork).mockResolvedValue("data:image/jpeg;base64,AA==");
+  vi.mocked(tauriApi.crateDownload).mockResolvedValue("job-sc");
+  vi.mocked(tauriApi.crateSourcesStatus).mockResolvedValue({
+    soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false,
+  });
   localStorage.clear();
   __resetForTests();
 });
@@ -1111,5 +1125,135 @@ describe("Crate — dica de atalho no estado vazio (shell-13)", () => {
     const line = container.querySelector(".crate-empty__hintline")!.textContent ?? "";
     expect(line).toContain("Ctrl+K");
     expect(line).not.toContain("⌘");
+  });
+});
+
+// ── SoundCloud (fase 1, Task 9) ──────────────────────────────────
+// Sem @testing-library/user-event no projeto: o `userEvent` abaixo é um
+// atalho sobre fireEvent com a mesma forma de uso (click, clear, type com
+// "{enter}").
+const mocks = vi.mocked(tauriApi);
+
+const userEvent = {
+  async click(el: Element) {
+    fireEvent.click(el);
+  },
+  async clear(el: Element) {
+    fireEvent.input(el, { target: { value: "" } });
+  },
+  async type(el: Element, text: string) {
+    const input = el as HTMLInputElement;
+    const enter = text.endsWith("{enter}");
+    const chars = enter ? text.slice(0, -"{enter}".length) : text;
+    if (chars) fireEvent.input(input, { target: { value: input.value + chars } });
+    if (enter) fireEvent.keyDown(input, { key: "Enter" });
+  },
+};
+
+function scResult(overrides: Partial<ScResult> = {}): ScResult {
+  return {
+    id: 1,
+    title: "Faixa",
+    permalink_url: "https://soundcloud.com/perfil/faixa",
+    user_name: "Perfil",
+    user_permalink: "perfil",
+    duration_ms: 180_000,
+    playback_count: 12_345,
+    created_at: "2024-12-26T10:00:00Z",
+    release_date: null,
+    genre: null,
+    artwork_url: "https://i1.sndcdn.com/artworks-x-large.jpg",
+    availability: { kind: "native" },
+    suggested_dest: null,
+    ...overrides,
+  };
+}
+
+function job(overrides: Partial<DownloadJob> = {}): DownloadJob {
+  return dlJob(overrides.job_id ?? "j", overrides.state ?? { kind: "queued" }, overrides);
+}
+
+async function typeAndEnter(text: string) {
+  const input = document.querySelector(".coll-search input") as HTMLInputElement;
+  fireEvent.input(input, { target: { value: text } });
+  fireEvent.keyDown(input, { key: "Enter" });
+}
+
+describe("Crate: SoundCloud", () => {
+  it("Enter dispara as duas buscas e renderiza a seção SoundCloud com chip de disponibilidade", async () => {
+    mocks.crateScSearch.mockResolvedValue([
+      scResult({ id: 1, title: "FESTA DO PENTE RALA - DJ ARANA", user_name: "DJ ARANA OFICIAL", availability: { kind: "native" } }),
+      scResult({ id: 2, title: "Faixa sem download", user_name: "X", availability: { kind: "none" } }),
+      scResult({ id: 3, title: "No gate", user_name: "Y", availability: { kind: "external_gate", url: "https://hypeddit.com/x" } }),
+    ]);
+    render(() => <Crate />);
+    await typeAndEnter("mandelão");
+    expect(mocks.slskSearch).toHaveBeenCalledWith("mandelão", false);
+    expect(mocks.crateScSearch).toHaveBeenCalledWith("mandelão");
+    const sec = await screen.findByRole("group", { name: /SoundCloud/ });
+    await waitFor(() => expect(within(sec).getAllByRole("button", { name: /Baixar/ })).toHaveLength(1));
+    expect(within(sec).getByText("Sem download")).toBeInTheDocument();
+    expect(within(sec).getByRole("link", { name: /Abrir/ })).toHaveAttribute("href", "https://hypeddit.com/x");
+  });
+
+  it("Baixar abre o card pré-preenchido, sonda o formato e envia crate_download com o metadado confirmado", async () => {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "FESTA DO PENTE RALA - DJ ARANA", user_name: "DJ ARANA OFICIAL", duration_ms: 183000, availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
+    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 7441408, kbps_est: 325, format_label: "MP3 320", allowed: true, reason: null });
+    mocks.crateDownload.mockResolvedValue("job-1");
+    render(() => <Crate />);
+    await typeAndEnter("festa");
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    const card = await screen.findByRole("form", { name: /Confirmar faixa/ });
+    expect(within(card).getByLabelText("Artista")).toHaveValue("DJ Arana");
+    expect(within(card).getByLabelText("Título")).toHaveValue("Festa do Pente Rala");
+    expect(within(card).getByLabelText("Ano")).toHaveValue(2024);
+    expect(await within(card).findByText(/MP3 320 · 7,1 MB/)).toBeInTheDocument();
+    expect(mocks.crateScProbe).toHaveBeenCalledWith(1, 183000);
+    await userEvent.clear(within(card).getByLabelText("Artista"));
+    await userEvent.type(within(card).getByLabelText("Artista"), "DJ Arana{enter}");
+    await waitFor(() => expect(mocks.crateDownload).toHaveBeenCalledWith(
+      { kind: "sound_cloud", track_id: 1, permalink_url: expect.any(String) },
+      { artist: "DJ Arana", title: "Festa do Pente Rala", album: "Festa do Pente Rala", year: 2024, label: null },
+      "Funk Brasileiro",
+      expect.anything(),
+    ));
+  });
+
+  it("MP3 128 mostra 'não entra' e desabilita Baixar; sem token explica", async () => {
+    mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "A", user_name: "B", availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
+    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 3672064, kbps_est: 129, format_label: "MP3 128", allowed: false, reason: "abaixo de 320 kbps" });
+    render(() => <Crate />);
+    await typeAndEnter("a");
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    const card = await screen.findByRole("form", { name: /Confirmar faixa/ });
+    expect(await within(card).findByText(/MP3 128 · não entra/)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /^Baixar$/ })).toBeDisabled();
+    mocks.crateScProbe.mockRejectedValue("no_token");
+    await userEvent.click(within(card).getByRole("button", { name: /Cancelar/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
+    expect(await screen.findByText(/sem token do SoundCloud/)).toBeInTheDocument();
+  });
+
+  it("status das fontes aparece no cabeçalho e a fila mostra a origem", async () => {
+    mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "no_token", ffmpeg: true, uv: false, bandcamp_identity: false });
+    mocks.slskJobs.mockResolvedValue([job({ job_id: "j", source: { kind: "sound_cloud", track_id: 1, permalink_url: "https://soundcloud.com/a/b" }, display: "DJ Arana - Festa", state: { kind: "downloading", pct: 40, bps: 1000, eta_s: 3 } })]);
+    render(() => <Crate />);
+    expect(await screen.findByText(/SoundCloud: sem token/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect(await screen.findByText("SoundCloud", { selector: ".crate-origin" })).toBeInTheDocument();
+    expect(screen.getByText("soundcloud.com/a/b")).toBeInTheDocument();
+  });
+
+  it("estado waiting e rejeições novas têm linha própria", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      job({ job_id: "w", source: { kind: "bandcamp", item_type: "album", item_id: 1, url: "https://x.bandcamp.com/album/y" }, state: { kind: "waiting", reason: "purchase", url: "https://x.bandcamp.com/album/y", since_secs: 10 } }),
+      job({ job_id: "r", state: { kind: "rejected", reason: { low_bitrate: { kbps: 128 } } } }),
+      job({ job_id: "n", state: { kind: "rejected", reason: "no_download" } }),
+    ]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect(await screen.findByText(/Aguardando compra no Bandcamp/)).toBeInTheDocument();
+    expect(screen.getByText(/MP3 128: abaixo de 320/)).toBeInTheDocument();
+    expect(screen.getByText(/sem download nativo/)).toBeInTheDocument();
   });
 });
