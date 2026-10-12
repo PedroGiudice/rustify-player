@@ -34,6 +34,12 @@ pub(crate) struct RawTrack {
     pub purchase_url: Option<String>,
 }
 
+/// Só o `kind` do objeto, lido antes do resto para recusar o que não é faixa.
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawKind {
+    pub kind: Option<String>,
+}
+
 /// Corpo de `GET /tracks/{id}/download`.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawDownload {

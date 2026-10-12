@@ -45,8 +45,9 @@ pub enum Availability {
     None,
 }
 
-/// Arquivo original sondado: URL assinada, extensão (da URL), tamanho do
-/// `HEAD` e bitrate estimado por tamanho/duração.
+/// Arquivo original sondado: URL assinada, extensão (dos headers do `HEAD`,
+/// com o caminho da URL como último recurso), tamanho e bitrate estimado por
+/// tamanho/duração.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Original {
     pub url: String,
@@ -91,6 +92,12 @@ pub fn parse_search(body: &str) -> Result<Vec<ScTrack>, ScError> {
 }
 
 pub fn parse_track(body: &str) -> Result<ScTrack, ScError> {
+    // O `/resolve` aceita link de perfil (`kind:user`) e de set
+    // (`kind:playlist`, que tem id/title/permalink_url e passaria como faixa).
+    let kind: wire::RawKind = serde_json::from_str(body).map_err(|e| ScError::Parse(e.to_string()))?;
+    if kind.kind.as_deref().is_some_and(|k| k != "track") {
+        return Err(ScError::Parse("o link não é de uma faixa".into()));
+    }
     let raw: wire::RawTrack = serde_json::from_str(body).map_err(|e| ScError::Parse(e.to_string()))?;
     Ok(raw.into())
 }
@@ -119,6 +126,87 @@ pub fn ext_from_url(url: &str) -> Option<String> {
     let (_, ext) = name.rsplit_once('.')?;
     if ext.is_empty() || ext.len() > 5 { return None; }
     Some(ext.to_ascii_lowercase())
+}
+
+/// Extensão do original a partir dos headers da URL assinada, na ordem dos
+/// clientes de referência (yt-dlp `urlhandle_detect_ext`, soundcloud.ts,
+/// scdl): `filename*`/`filename` do Content-Disposition, depois
+/// `x-amz-meta-file-type`, depois o Content-Type. A URL real do original não
+/// tem extensão no caminho (`cf-media.sndcdn.com/gp1vtDolJmrM?Policy=...`),
+/// então o caminho só entra como último recurso, fora daqui.
+pub fn ext_from_headers(
+    content_disposition: Option<&str>,
+    amz_file_type: Option<&str>,
+    content_type: Option<&str>,
+) -> Option<String> {
+    content_disposition
+        .and_then(filename_from_disposition)
+        .and_then(|name| name.rsplit_once('.').map(|(_, e)| e.to_string()))
+        .and_then(|e| clean_ext(&e))
+        .or_else(|| amz_file_type.and_then(clean_ext))
+        .or_else(|| content_type.and_then(ext_from_content_type))
+}
+
+fn clean_ext(e: &str) -> Option<String> {
+    let e = e.trim().trim_start_matches('.').to_ascii_lowercase();
+    (!e.is_empty() && e.len() <= 5 && e.chars().all(|c| c.is_ascii_alphanumeric())).then_some(e)
+}
+
+/// Nome do arquivo do Content-Disposition. `filename*` (RFC 5987,
+/// `UTF-8''nome%20codificado`) tem precedência sobre `filename`.
+fn filename_from_disposition(cd: &str) -> Option<String> {
+    let mut plain: Option<String> = None;
+    let mut extended: Option<String> = None;
+    for part in cd.split(';') {
+        let Some((k, v)) = part.split_once('=') else { continue };
+        let k = k.trim().to_ascii_lowercase();
+        let v = v.trim();
+        if k == "filename*" {
+            let raw = v.rsplit("''").next().unwrap_or(v).trim_matches('"');
+            extended = Some(pct_decode(raw));
+        } else if k == "filename" {
+            plain = Some(v.trim_matches('"').to_string());
+        }
+    }
+    extended.or(plain).filter(|n| !n.is_empty())
+}
+
+fn pct_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn ext_from_content_type(ct: &str) -> Option<String> {
+    let mime = ct.split(';').next()?.trim().to_ascii_lowercase();
+    let ext = match mime.as_str() {
+        "audio/wav" | "audio/x-wav" | "audio/wave" | "audio/vnd.wave" => "wav",
+        "audio/aiff" | "audio/x-aiff" => "aiff",
+        "audio/flac" | "audio/x-flac" => "flac",
+        "audio/mpeg" | "audio/mp3" => "mp3",
+        "audio/mp4" | "audio/aac" | "audio/x-m4a" => "m4a",
+        "audio/ogg" => "ogg",
+        _ => return None,
+    };
+    Some(ext.to_string())
+}
+
+/// Tamanho total de um `Content-Range: bytes 0-0/12345` (resposta 206 ao GET
+/// com `Range: bytes=0-0`, o plano B quando o HEAD falha).
+pub fn total_from_content_range(cr: &str) -> Option<u64> {
+    cr.rsplit('/').next()?.trim().parse().ok()
 }
 
 /// Troca a miniatura `-large` (100 px) pela variante de 500 px.
@@ -155,16 +243,64 @@ mod tests {
     fn client_id_sai_do_bundle_e_bundles_saem_da_home() {
         let urls = bundle_urls(&fx("home.html"));
         assert!(urls.iter().all(|u| u.starts_with("https://a-v2.sndcdn.com/assets/") && u.ends_with(".js")));
-        assert!(!urls.is_empty());
+        // Ordem do documento preservada: a varredura vai do último ao primeiro.
+        assert_eq!(urls.len(), 9);
+        assert_eq!(urls.first().map(String::as_str), Some("https://a-v2.sndcdn.com/assets/59-ac0a49ce.js"));
+        assert_eq!(urls.last().map(String::as_str), Some("https://a-v2.sndcdn.com/assets/55-f24f7f25.js"));
         let id = extract_client_id(&fx("app_bundle.js")).expect("client_id no bundle");
-        assert_eq!(id.len(), 32);
+        assert_eq!(id, "vI5BsvpTIlavDLl7RDbbcFAPg8kls8Bg");
+    }
+
+    #[test]
+    fn extract_client_id_pula_candidato_invalido() {
+        let js = r#"a={client_id:"curto"},b={client_id:"vI5BsvpTIlavDLl7RDbbcFAPg8kls8BgX"},c={client_id:"vI5BsvpTIlavDLl7RDbbcFAPg8kls8Bg"}"#;
+        assert_eq!(extract_client_id(js).as_deref(), Some("vI5BsvpTIlavDLl7RDbbcFAPg8kls8Bg"));
+        assert_eq!(extract_client_id(r#"client_id:"curto""#), None);
+    }
+
+    #[test]
+    fn ext_from_headers_segue_a_ordem_dos_clientes_de_referencia() {
+        // Content-Disposition (forma do CDN do SoundCloud).
+        assert_eq!(ext_from_headers(Some(r#"attachment;filename="Mandelão - Beat.wav""#), Some("mp3"), Some("audio/mpeg")).as_deref(), Some("wav"));
+        // filename* (RFC 5987) tem precedência sobre filename.
+        assert_eq!(ext_from_headers(Some(r#"attachment; filename="x.mp3"; filename*=UTF-8''Mandel%C3%A3o%20Beat.AIFF"#), None, None).as_deref(), Some("aiff"));
+        // Sem nome com extensão: x-amz-meta-file-type.
+        assert_eq!(ext_from_headers(Some("attachment"), Some("wav"), Some("audio/mpeg")).as_deref(), Some("wav"));
+        assert_eq!(ext_from_headers(Some(r#"attachment;filename="semextensao""#), Some(" FLAC "), None).as_deref(), Some("flac"));
+        // Só o Content-Type.
+        assert_eq!(ext_from_headers(None, None, Some("audio/x-wav")).as_deref(), Some("wav"));
+        assert_eq!(ext_from_headers(None, None, Some("audio/wav; charset=binary")).as_deref(), Some("wav"));
+        assert_eq!(ext_from_headers(None, None, Some("audio/x-aiff")).as_deref(), Some("aiff"));
+        assert_eq!(ext_from_headers(None, None, Some("audio/flac")).as_deref(), Some("flac"));
+        assert_eq!(ext_from_headers(None, None, Some("audio/mpeg")).as_deref(), Some("mp3"));
+        assert_eq!(ext_from_headers(None, None, Some("audio/mp4")).as_deref(), Some("m4a"));
+        assert_eq!(ext_from_headers(None, None, Some("audio/aac")).as_deref(), Some("m4a"));
+        // Nada útil.
+        assert_eq!(ext_from_headers(None, None, Some("application/octet-stream")), None);
+        assert_eq!(ext_from_headers(None, Some(""), None), None);
+    }
+
+    #[test]
+    fn total_do_content_range() {
+        assert_eq!(total_from_content_range("bytes 0-0/7441408"), Some(7_441_408));
+        assert_eq!(total_from_content_range("bytes 0-0/*"), None);
+    }
+
+    #[test]
+    fn parse_track_recusa_perfil_e_set() {
+        let user = r#"{"kind":"user","id":7,"username":"mc","permalink_url":"https://soundcloud.com/mc"}"#;
+        assert_eq!(parse_track(user), Err(ScError::Parse("o link não é de uma faixa".into())));
+        let set = r#"{"kind":"playlist","id":1246932139,"title":"Set","permalink_url":"https://soundcloud.com/mc/sets/x","duration":12060000}"#;
+        assert_eq!(parse_track(set), Err(ScError::Parse("o link não é de uma faixa".into())));
+        assert!(parse_track(&fx("track_native.json")).is_ok());
     }
 
     #[test]
     fn estimativa_de_bitrate_e_extensao() {
         assert_eq!(bitrate_estimate_kbps(7_267 * 1024, 183_000), 325);   // MP3 320 real do piloto
         assert_eq!(bitrate_estimate_kbps(3_586 * 1024, 228_000), 129);   // MP3 128 real do piloto
-        assert_eq!(ext_from_url("https://cf-media.sndcdn.com/abc.wav?Policy=x&Signature=y").as_deref(), Some("wav"));
+        // Forma real do original (yt-dlp#8435): sem extensão no caminho.
+        assert_eq!(ext_from_url("https://cf-media.sndcdn.com/gp1vtDolJmrM?Policy=x&Signature=y&Key-Pair-Id=z"), None);
         assert_eq!(ext_from_url("https://x/y/track.MP3").as_deref(), Some("mp3"));
         assert_eq!(ext_from_url("https://x/y/noext"), None);
     }
