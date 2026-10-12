@@ -319,6 +319,21 @@ fn fit_and_crop(img: DynamicImage, target: u32) -> DynamicImage {
     resized.crop_imm(x, y, target, target)
 }
 
+/// Decodifica qualquer formato suportado, reduz para no máximo `max_side`
+/// no maior lado (proporção mantida, nunca amplia) e devolve JPEG q90.
+pub fn resize_cover_jpeg(bytes: &[u8], max_side: u32) -> Result<Vec<u8>, String> {
+    let img = image::load_from_memory(bytes).map_err(|e| format!("capa inválida: {e}"))?;
+    let img = if img.width().max(img.height()) > max_side {
+        img.resize(max_side, max_side, FilterType::Lanczos3)
+    } else {
+        img
+    };
+    let mut out = std::io::Cursor::new(Vec::new());
+    let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90);
+    enc.encode_image(&img.to_rgb8()).map_err(|e| format!("jpeg: {e}"))?;
+    Ok(out.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,5 +653,16 @@ mod tests {
         let sq = DynamicImage::new_rgb8(TARGET_DIM, TARGET_DIM);
         let out = fit_and_crop(sq, TARGET_DIM);
         assert_eq!(out.dimensions(), (TARGET_DIM, TARGET_DIM));
+    }
+
+    #[test]
+    fn resize_cover_jpeg_reduz_ate_o_lado_maximo() {
+        let img = image::RgbImage::from_pixel(3000, 2000, image::Rgb([200, 10, 10]));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        let out = resize_cover_jpeg(&buf.into_inner(), 1500).unwrap();
+        let back = image::load_from_memory(&out).unwrap();
+        assert_eq!(back.width(), 1500); assert_eq!(back.height(), 1000);
+        assert!(image::guess_format(&out).unwrap() == image::ImageFormat::Jpeg);
     }
 }

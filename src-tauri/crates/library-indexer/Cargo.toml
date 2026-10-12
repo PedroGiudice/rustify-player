@@ -29,6 +29,7 @@ unicode-normalization = { workspace = true }
 strsim = { workspace = true }
 ureq = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
+lofty = "0.25"
 
 [dev-dependencies]
 tempfile = { workspace = true }
