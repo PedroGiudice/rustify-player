@@ -553,9 +553,11 @@ export type RejectReason =
   | { already_owned: { track_id: string } }
   | "bit32_unsupported"
   | "not_flac"
-  | "corrupt";
+  | "corrupt"
+  | { low_bitrate: { kbps: number } }
+  | "no_download";
 
-/** JobState — 11 estados, `#[serde(tag = "kind")]` (board.rs): internamente
+/** JobState — 12 estados, `#[serde(tag = "kind")]` (board.rs): internamente
     tagged, `kind` sempre presente. Terminais: ready/rejected/manual/failed/
     canceled (podem voltar a `queued` via [Trocar fonte] — CR-3 no backend). */
 export type JobState =
@@ -569,22 +571,86 @@ export type JobState =
   | { kind: "rejected"; reason: RejectReason }
   | { kind: "manual"; path: string; why: string }
   | { kind: "failed"; reason: string; retryable: boolean }
-  | { kind: "canceled" };
+  | { kind: "canceled" }
+  | { kind: "waiting"; reason: "purchase" | "email_link"; url: string; since_secs: number };
+
+/** Origem do job — `#[serde(tag = "kind")]` (board.rs `Source`). */
+export type Source =
+  | { kind: "soulseek"; username: string; remote_filename: string; size: number }
+  | { kind: "sound_cloud"; track_id: number; permalink_url: string }
+  | { kind: "bandcamp"; item_type: string; item_id: number; url: string };
+
+/** O que o CEO confirmou no card; vazio nos jobs Soulseek. */
+export interface ConfirmedMeta {
+  artist: string;
+  title: string;
+  album: string;
+  year: number | null;
+  label: string | null;
+}
+
+export type FormatIn = "flac" | "wav24" | "wav16" | "aiff" | "mp3_320";
 
 export interface DownloadJob {
   job_id: string;
-  username: string;
-  remote_filename: string;
+  source: Source;
+  meta: ConfirmedMeta;
+  /** Capa na fonte (SoundCloud, vinda do card); null no Soulseek. */
+  artwork_url: string | null;
+  /** Formato de origem detectado; null até a sondagem (e sempre no Soulseek). */
+  format_in: FormatIn | null;
+  tracks: number;
   display: string;
   dest_playlist: string;
   state: JobState;
-  size: number;
   /** "FLAC 16/44" da fonte atual; "" em job reconciliado de um
       slsk_jobs.json anterior ao campo (frontend cai no tamanho). */
   quality_label: string;
   alternates: Candidate[];
   tried_source_ids: string[];
   created_at: number;
+  attempt: number;
+}
+
+/** Disponibilidade do original no SoundCloud (`soundcloud-client`). */
+export type Availability =
+  | { kind: "native" }
+  | { kind: "quota_exhausted" }
+  | { kind: "external_gate"; url: string }
+  | { kind: "none" };
+
+/** Faixa do SoundCloud na busca do Crate (slsk/mod.rs `ScResult`). */
+export interface ScResult {
+  id: number;
+  title: string;
+  permalink_url: string;
+  user_name: string;
+  user_permalink: string;
+  duration_ms: number;
+  playback_count: number;
+  created_at: string;
+  release_date: string | null;
+  genre: string | null;
+  artwork_url: string | null;
+  availability: Availability;
+  suggested_dest: string | null;
+}
+
+/** Sondagem do original para o card; o ffprobe decide depois de baixar. */
+export interface ScProbe {
+  ext: string;
+  size: number | null;
+  kbps_est: number | null;
+  format_label: string;
+  allowed: boolean;
+  reason: string | null;
+}
+
+export interface SourcesStatus {
+  soundcloud: "token_ok" | "no_token" | "api_down";
+  ffmpeg: boolean;
+  uv: boolean;
+  bandcamp_identity: boolean;
 }
 
 export const slskStatus = () => invoke<SlskStatus>("slsk_status");
@@ -626,6 +692,25 @@ export const slskTryOtherSource = (jobId: string) =>
 export const slskCancel = (jobId: string) => invoke<void>("slsk_cancel", { jobId });
 
 export const slskClearFinished = () => invoke<number>("slsk_clear_finished");
+
+export const crateScSearch = (query: string) => invoke<ScResult[]>("crate_sc_search", { query });
+
+export const crateScResolve = (url: string) => invoke<ScResult>("crate_sc_resolve", { url });
+
+export const crateScProbe = (trackId: number, durationMs: number) =>
+  invoke<ScProbe>("crate_sc_probe", { trackId, durationMs });
+
+/** Capa do card como data URL JPEG (<= 500 px), baixada pelo Rust. */
+export const crateScArtwork = (url: string) => invoke<string>("crate_sc_artwork", { url });
+
+export const crateDownload = (
+  source: Source,
+  meta: ConfirmedMeta,
+  destPlaylist: string,
+  artworkUrl: string | null,
+) => invoke<string>("crate_download", { source, meta, destPlaylist, artworkUrl });
+
+export const crateSourcesStatus = () => invoke<SourcesStatus>("crate_sources_status");
 
 /** Board inteiro por evento (spec §3.5) — throttle 500ms no backend, só
     quando dirty. Nunca diffs incrementais. */

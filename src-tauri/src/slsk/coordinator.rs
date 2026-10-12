@@ -111,7 +111,6 @@ pub enum SlskTask {
     /// Download de fonte externa (SoundCloud, Bandcamp) com o metadado que o
     /// CEO confirmou no card. Responde o `job_id` sem I/O; o trabalho pesado
     /// é do worker da fonte.
-    #[allow(dead_code)] // ganha o comando Tauri na Task 7 do plano Crate fase 1
     DownloadExternal {
         source: Source,
         meta: ConfirmedMeta,

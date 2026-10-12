@@ -122,16 +122,24 @@ afterEach(() => {
 function dlJob(id: string, state: DownloadJob["state"], extra: Partial<DownloadJob> = {}): DownloadJob {
   return {
     job_id: id,
-    username: "peer_a",
-    remote_filename: "VARIETY\\Artist\\Album\\01 - Artist - Sicko Mode.flac",
+    source: {
+      kind: "soulseek",
+      username: "peer_a",
+      remote_filename: "VARIETY\\Artist\\Album\\01 - Artist - Sicko Mode.flac",
+      size: 30_000_000,
+    },
+    meta: { artist: "", title: "", album: "", year: null, label: null },
+    artwork_url: null,
+    format_in: null,
+    tracks: 1,
     display: "Sicko Mode",
     dest_playlist: "Rap & Hip-Hop",
     state,
-    size: 30_000_000,
     quality_label: "FLAC 16/44",
     alternates: [],
     tried_source_ids: [],
     created_at: 0,
+    attempt: 1,
     ...extra,
   };
 }
@@ -433,8 +441,7 @@ describe("Crate — fontes com download já existente (crate-16)", () => {
     const { container, srcRow } = await withJob(
       { kind: "downloading", pct: 30, bps: 1_000_000, eta_s: 20 },
       {
-        username: "peer_c",
-        remote_filename: "C\\01 - Sicko Mode.flac",
+        source: { kind: "soulseek", username: "peer_c", remote_filename: "C\\01 - Sicko Mode.flac", size: 30_000_000 },
         alternates: [cand2(), cand3()],
         tried_source_ids: ["cand2", "cand3"],
       },
@@ -453,7 +460,10 @@ describe("Crate — fontes com download já existente (crate-16)", () => {
   it("com o download terminado em falha, 'Usar' volta a funcionar e a fonte que falhou fica marcada", async () => {
     const { srcRow } = await withJob(
       { kind: "failed", reason: "peer recusou", retryable: true },
-      { username: "peer_a", remote_filename: "A\\01 - Sicko Mode.flac", alternates: [cand2(), cand3()] },
+      {
+        source: { kind: "soulseek", username: "peer_a", remote_filename: "A\\01 - Sicko Mode.flac", size: 30_000_000 },
+        alternates: [cand2(), cand3()],
+      },
     );
     expect(srcRow("peer_a").textContent).toContain("tentada");
     const use = srcRow("peer_b").querySelector(".crate-btn") as HTMLButtonElement;
@@ -531,16 +541,19 @@ describe("Crate — evento slsk-jobs", () => {
     emit!([
       {
         job_id: "job1",
-        username: "peer_a",
-        remote_filename: g.best.filename,
+        source: { kind: "soulseek", username: "peer_a", remote_filename: g.best.filename, size: g.best.size },
+        meta: { artist: "", title: "", album: "", year: null, label: null },
+        artwork_url: null,
+        format_in: null,
+        tracks: 1,
         display: "Sicko Mode",
         dest_playlist: "Rap & Hip-Hop",
         state: { kind: "ready", track_id: "999" },
-        size: g.best.size,
         quality_label: "FLAC 16/44",
         alternates: [],
         tried_source_ids: [],
         created_at: 0,
+        attempt: 1,
       },
     ]);
 
@@ -572,16 +585,19 @@ describe("Crate — Abrir pasta (estado manual, plugin-opener)", () => {
     emit!([
       {
         job_id: "job1",
-        username: "peer_a",
-        remote_filename: g.best.filename,
+        source: { kind: "soulseek", username: "peer_a", remote_filename: g.best.filename, size: g.best.size },
+        meta: { artist: "", title: "", album: "", year: null, label: null },
+        artwork_url: null,
+        format_in: null,
+        tracks: 1,
         display: "Sicko Mode",
         dest_playlist: "Rap & Hip-Hop",
         state: { kind: "manual", path: "/home/cmr-auto/slskd_dados/downloads", why: "basename não bateu" },
-        size: g.best.size,
         quality_label: "FLAC 16/44",
         alternates: [],
         tried_source_ids: [],
         created_at: 0,
+        attempt: 1,
       },
     ]);
     await waitFor(() => {

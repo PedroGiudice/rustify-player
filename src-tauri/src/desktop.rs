@@ -3506,6 +3506,12 @@ pub fn run() {
             slsk::slsk_try_other_source,
             slsk::slsk_cancel,
             slsk::slsk_clear_finished,
+            slsk::crate_sc_search,
+            slsk::crate_sc_resolve,
+            slsk::crate_sc_probe,
+            slsk::crate_sc_artwork,
+            slsk::crate_download,
+            slsk::crate_sources_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

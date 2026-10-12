@@ -6,8 +6,6 @@
 //! conteúdo é lido sob demanda por [`read_secret_file`] e jamais vai para
 //! log ou `Debug`.
 
-#![allow(dead_code)] // consumido pelo sc-worker e pelos comandos (Tasks 6 e 7); remover ao fim da Task 7
-
 use std::path::{Path, PathBuf};
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -297,9 +295,37 @@ fn runs_ok(bin: &str, arg: &str, teto: Duration) -> bool {
     }
 }
 
+/// Base64 padrão (RFC 4648, com `=`), para a capa do card virar data URL.
+/// Vinte linhas em vez de um crate novo: só codifica, nunca decodifica.
+pub fn base64_encode(bytes: &[u8]) -> String {
+    const ALFABETO: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for bloco in bytes.chunks(3) {
+        let b = [bloco[0], *bloco.get(1).unwrap_or(&0), *bloco.get(2).unwrap_or(&0)];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= bloco.len() {
+                out.push(ALFABETO[((n >> (18 - 6 * i)) & 0x3f) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn base64_encode_bate_com_a_rfc() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+        assert_eq!(base64_encode(&[0xff, 0xfe, 0xfd, 0x00]), "//79AA==");
+    }
     #[test]
     fn load_le_arquivo_e_env_sobrepoe() {
         let tmp = tempfile::tempdir().unwrap();

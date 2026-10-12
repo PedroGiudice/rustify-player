@@ -23,16 +23,19 @@ import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, __resetF
 function job(id: string, kind: DownloadJob["state"]["kind"], extra: Record<string, unknown> = {}): DownloadJob {
   return {
     job_id: id,
-    username: "peer",
-    remote_filename: "Artist - Title.flac",
+    source: { kind: "soulseek", username: "peer", remote_filename: "Artist - Title.flac", size: 1000 },
+    meta: { artist: "", title: "", album: "", year: null, label: null },
+    artwork_url: null,
+    format_in: null,
+    tracks: 1,
     display: "Artist - Title",
     dest_playlist: "Rap & Hip-Hop",
     state: { kind, ...extra } as DownloadJob["state"],
-    size: 1000,
     quality_label: "FLAC 16/44",
     alternates: [],
     tried_source_ids: [],
     created_at: 0,
+    attempt: 1,
   };
 }
 

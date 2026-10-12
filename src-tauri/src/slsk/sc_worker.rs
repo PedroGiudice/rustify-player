@@ -58,7 +58,6 @@ pub fn classify_original(ext: &str, p: &MediaProbe) -> Result<FormatIn, RejectRe
 /// simultâneos: o wiring sobe essa quantidade de instâncias sobre o MESMO
 /// `Receiver` (o canal do crossbeam é MPMC). Uma instância só deixaria o
 /// segundo job aceito parado em `Enqueued` até o primeiro terminar.
-#[allow(dead_code)] // ligado ao coordinator na Task 7 do plano Crate fase 1
 pub fn spawn_sc_worker(
     rx: Receiver<FetchTask>,
     tx: Sender<FetchEvent>,

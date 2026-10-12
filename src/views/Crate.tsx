@@ -27,7 +27,7 @@ import {
   slskDownload, slskTryOtherSource, slskCancel,
   parseSlskSearchError, libListFolders, libGetTracksByIds, formatDuration,
   type SlskStatus, type SearchSnapshot, type ResultGroup, type Candidate,
-  type DownloadJob, type FolderPlaylist, type Track, type RejectReason,
+  type DownloadJob, type FolderPlaylist, type Track, type RejectReason, type Source,
 } from "../tauri";
 import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from "../store/crate";
 import { playTrack } from "../components/PlayerBar";
@@ -181,6 +181,19 @@ function formatEta(secs: number): string {
 
 function formatSize(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+/** Subtítulo da fila: peer do Soulseek ou link da fonte (espelha
+    `Source::label` do board.rs). */
+function sourceLabel(src: Source): string {
+  switch (src.kind) {
+    case "soulseek":
+      return src.username;
+    case "sound_cloud":
+      return src.permalink_url;
+    case "bandcamp":
+      return src.url;
+  }
 }
 
 /** Rótulo de qualidade por candidato (o group.quality_label é o do
@@ -392,8 +405,10 @@ function SourcesPanel(props: {
   // (crate-16). Enquanto houver job em voo, 'Usar' fica desabilitado; a
   // troca é pelo [Trocar fonte] ou cancelando antes.
   const inFlight = () => props.job != null && IN_FLIGHT.has(props.job.state.kind);
-  const isCurrent = (c: Candidate) =>
-    props.job != null && c.username === props.job.username && c.filename === props.job.remote_filename;
+  const isCurrent = (c: Candidate) => {
+    const src = props.job?.source;
+    return src?.kind === "soulseek" && c.username === src.username && c.filename === src.remote_filename;
+  };
   const inUse = (c: Candidate) => inFlight() && isCurrent(c);
   /** Fonte já usada por este job e que não está servindo agora. A fonte
       original de um job que trocou de fonte não entra: o board não guarda
@@ -685,13 +700,13 @@ function CrateJobRow(props: { job: DownloadJob; onCancel: () => void; onTrySourc
       <div class="crate-job crate-row" data-state={kind()}>
         <div class="crate-r-main">
           <div class="crate-r-title">{props.job.display}</div>
-          <div class="crate-r-sub">{props.job.username}</div>
+          <div class="crate-r-sub">{sourceLabel(props.job.source)}</div>
         </div>
 
         {/* Rótulo da fonte atual; vazio só em job reconciliado de um
             slsk_jobs.json anterior ao campo — aí cai no tamanho. */}
         <span class="crate-badge">
-          {props.job.quality_label || formatSize(props.job.size)}
+          {props.job.quality_label || formatSize(props.job.source.kind === "soulseek" ? props.job.source.size : 0)}
         </span>
 
         <span class="crate-chip">
