@@ -1,0 +1,1877 @@
+{
+ "releases": [
+  {
+   "artist": "DJ BIEL BEATS",
+   "release": "MANDELAÇÃO 2.0",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "Iguana",
+   "release": "Escama",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 436271550,
+    "artist": "Iguana",
+    "title": "Escama",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "LUCAS KID, Rxfx",
+   "release": "RASGA!",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 543489424,
+    "artist": "Lucas Kid",
+    "title": "RASGA!",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 6
+   }
+  },
+  {
+   "artist": "DJ LL",
+   "release": "Só mais um Silva",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 524198323,
+    "artist": "DJ LL",
+    "title": "Só Mais Um Silva",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 15
+   }
+  },
+  {
+   "artist": "GIGA",
+   "release": "Pra Quando Você Entender.",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "DJ P7",
+   "release": "FUNK DELUXE 6",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 557612990,
+    "artist": "DJ P7",
+    "title": "Funk Deluxe 6",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 7
+   }
+  },
+  {
+   "artist": "NTS (Vários Artistas)",
+   "release": "funk.BR - São Paulo",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "SASKIAVIBES",
+   "release": "MANDELAO EXPERIMENTAL [NFB022]",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "VINÍ",
+   "release": "ADIANTE",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 263568085,
+    "artist": "Viní",
+    "title": "Adiante",
+    "year": 2022,
+    "quality": "LOSSLESS",
+    "tracks": 4
+   }
+  },
+  {
+   "artist": "DJ K",
+   "release": "PANICO NO SUBMUNDO",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 298588233,
+    "artist": "DJ K",
+    "title": "PANICO NO SUBMUNDO",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 15
+   }
+  },
+  {
+   "artist": "DJ K, MC BRENOX, MC DUCASA, MC DENI, MC CAFU, MC DANEVE, MC MAICO",
+   "release": "Favela project",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "DJ JEJEDAZS",
+   "release": "Bradock, Vol. 1",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 413624165,
+    "artist": "DJ JEJEDAZS",
+    "title": "Bradock, Vol. 1",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 10
+   }
+  },
+  {
+   "artist": "DJ Greg da ZL",
+   "release": "Preto Foda Quente Mixtape",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 517204949,
+    "artist": "DJ Greg da ZL",
+    "title": "Preto Foda Quente Mixtape",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 8
+   }
+  },
+  {
+   "artist": "NCCO",
+   "release": "<Club Noia>",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 476367061,
+    "artist": "NCCO",
+    "title": "Club Noia",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 12
+   }
+  },
+  {
+   "artist": "OO RUBINHO",
+   "release": "BRUXARIA CÓSMICA",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 273100010,
+    "artist": "OO RUBINHO",
+    "title": "BRUXARIA CÓSMICA",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 7
+   }
+  },
+  {
+   "artist": "DJ Cris Fontedofunk",
+   "release": "Funk Bruxaria: The New Baile Funk Sound of São Paulo Brazil",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "guijay",
+   "release": "BRUXARIA 2K",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Ariel",
+   "release": "SAGRADO COLAPSO",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 451290805,
+    "artist": "DJ Ariel",
+    "title": "Sagrado Colapso",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 11
+   }
+  },
+  {
+   "artist": "DJ Lp",
+   "release": "SUBMUNDO ON THE BAILE 2.0",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 539083957,
+    "artist": "DJ Lp",
+    "title": "SUBMUNDO ON THE BAILE 2.0",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "DJ Anderson do Paraíso",
+   "release": "Queridão",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 338893111,
+    "artist": "Dj Anderson do Paraiso",
+    "title": "Queridão",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 17
+   }
+  },
+  {
+   "artist": "Dj Anderson do Paraiso, Dj Lucas do Taquaril",
+   "release": "Mega das Comunidades de BH",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 407109277,
+    "artist": "Dj Anderson do Paraiso",
+    "title": "Mega das Comunidades de Bh",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "D.A.N.V, DJ Kingdom, VKKramer",
+   "release": "A Baile, Vol. 1",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Kingdom",
+   "release": "Feroz & Furiosa",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 475271076,
+    "artist": "DJ Kingdom",
+    "title": "Feroz & Furiosa",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "dj paran0ia",
+   "release": "NO FUTURO AINDA SOMOS BAILE 2",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 506244569,
+    "artist": "Dj Paranoia",
+    "title": "No Futuro Ainda Somos Baile 2",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 13
+   }
+  },
+  {
+   "artist": "FBC & VHOOR",
+   "release": "BAILE",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 204100941,
+    "artist": "FBC",
+    "title": "BAILE",
+    "year": 2021,
+    "quality": "LOSSLESS",
+    "tracks": 10
+   }
+  },
+  {
+   "artist": "DJ Ramon Sucesso",
+   "release": "Sexta dos Crias 2.0",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "DJ RaMeMes",
+   "release": "Sem Limites",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 292014324,
+    "artist": "DJ RaMeMes (O DESTRUIDOR DO FUNK)",
+    "title": "Sem Limites",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 8
+   }
+  },
+  {
+   "artist": "DJ Ramemes, DJ Silas do Juramento",
+   "release": "SEXO SOMBRIO",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 468542254,
+    "artist": "DJ RaMeMes (O DESTRUIDOR DO FUNK)",
+    "title": "SEXO SOMBRIO",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 10
+   }
+  },
+  {
+   "artist": "Various Artists",
+   "release": "Baile Funk Montagems",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Sandrinho",
+   "release": "BEATS DE BAILE FUNK VOL. 02",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "150 BPM",
+   "release": "150 BPM FUNK",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Johnny Souza",
+   "release": "Mundo Souza (2024)",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "DJ PS2 DESBLOQUEADO",
+   "release": "SELECTED HITS 24-25",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "JAUM, O GANG$TAR, BONDE DO TERROR",
+   "release": "JAUM APRESENTA: BONDE DO TERROR (DE LUXO)",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "NOAZE, MARCELO USB",
+   "release": "BALÕES TEL-EVI-SIONADOS IRÃO CAIR [EP]",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 545166347,
+    "artist": "Noaze",
+    "title": "BALÕES TEL-EVI-SIONADOS IRÃO CAIR",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 2
+   }
+  },
+  {
+   "artist": "LOFIHOUSEBOY",
+   "release": "ROCK DOIDO EXPERIMENTAL",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 455317544,
+    "artist": "Gaby Amarantos",
+    "title": "Rock Doido",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 22
+   }
+  },
+  {
+   "artist": "Kioma, Buarky, kLap e Mu540",
+   "release": "FUNK RAVE EP",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "Adame DJ",
+   "release": "Drive do Adame 4",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 280411796,
+    "artist": "Tiësto",
+    "title": "DRIVE",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 12
+   }
+  },
+  {
+   "artist": "Various Artists",
+   "release": "A Minha Vida é um Filme e Nele Eu Sou o Vilão: Carimbos e Vinhetas dos Paredões Brasileiros",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Ramon Sucesso",
+   "release": "Sexta dos Crias",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 413024109,
+    "artist": "Dj Ramon Sucesso",
+    "title": "Sexta dos Crias, Vol. 1",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 21
+   }
+  },
+  {
+   "artist": "Crizin da Z.O.",
+   "release": "ACELERO",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 336626866,
+    "artist": "Crizin da Z. O.",
+    "title": "Acelero",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 14
+   }
+  },
+  {
+   "artist": "cabezadenego, Leyblack e Mbé",
+   "release": "MIMOSA",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "FBC & VHOOR",
+   "release": "Dias Antes do Baile EP",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "dj paran0ia",
+   "release": "NO FUTURO AINDA SOMOS BAILE: RITMOFAGIA",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 539301794,
+    "artist": "Dj Paranoia",
+    "title": "No futuro ainda somos baile: Ritmofagia",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 9
+   }
+  },
+  {
+   "artist": "OO RUBINHO",
+   "release": "combinações",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 313098086,
+    "artist": "OO RUBINHO",
+    "title": "combinações",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 9
+   }
+  },
+  {
+   "artist": "Weird Baile",
+   "release": "Collected rips 2004-2024",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "Adame DJ",
+   "release": "ROLÊ",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 431259432,
+    "artist": "Adame DJ",
+    "title": "ROLÊ",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 4
+   }
+  },
+  {
+   "artist": "Adame",
+   "release": "Baile Parade",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 325859960,
+    "artist": "Adame DJ",
+    "title": "Baile Parade",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 6
+   }
+  },
+  {
+   "artist": "badsista",
+   "release": "HITS DE VERÃO (SUMMER HITS) vol. 2",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "BadSista",
+   "release": "BadSista EP",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "Funk na Caixa and Xão Productions",
+   "release": "Rasterinha EP",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Sandrinho",
+   "release": "Baile Funk Masters #1",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 478555425,
+    "artist": "DJ Sandrinho",
+    "title": "Baile Funk Masters #1",
+    "year": 2007,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "DJ Sany Pitbull",
+   "release": "Baile Funk Masters #2",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 478555433,
+    "artist": "DJ Sany Pitbull",
+    "title": "Baile Funk Masters #2",
+    "year": 2007,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "DJ Amazing Clay",
+   "release": "Baile Funk Masters #4",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 87989560,
+    "artist": "DJ Amazing Clay",
+    "title": "Baile Funk Masters #4",
+    "year": 2008,
+    "quality": "LOSSLESS",
+    "tracks": 7
+   }
+  },
+  {
+   "artist": "XXIII",
+   "release": "XXIII // 150",
+   "kind": "compilation",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Lp",
+   "release": "SUBMUNDO ON THE BAILE 4.0",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 492243909,
+    "artist": "DJ Lp",
+    "title": "SUBMUNDO ON THE BAILE 4.0",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 6
+   }
+  },
+  {
+   "artist": "Deekapz",
+   "release": "Super Funk",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 201963492,
+    "artist": "Deekapz",
+    "title": "Super Funk",
+    "year": 2021,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "DJ SANDRIINHO",
+   "release": "Movimento Funk Carioca",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "Terror Sound System + Gringo",
+   "release": "Se Liga na Pista EP",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "DJ ARANA (perfil 'DJ ARANA OFICIAL')",
+   "release": "FESTA DO PENTE RALA",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ ARANA Feat. DJ JEEH FDC",
+   "release": "NOITE DAS DANÇARINAS",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ ARANA",
+   "release": "UM CARA TRANQUILO",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Léo da 17",
+   "release": "PEGA MEU PIRU - MC MN (DJ Léo da 17 e DJ K)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Léo da 17",
+   "release": "PROJETO NOSTALGIA (DJ Léo da 17, DJ Teixeira, DJ K, DJ Digo Beat e DJ Blakes)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Léo da 17",
+   "release": "MONTAGEM BRUXARIA DO DIABO (DJ Léo da 17 e DJ Gh7)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Blakes",
+   "release": "MONTAGEM - IRAQUE - NETFLIX QUE NADA (DJ Blakes) MC Nem JM e MC MN 2020",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "CAIO PRINCE",
+   "release": "BRUXARIA, TUIM, ASSOBIOS & ROCK'n'ROLL - COISAS LEVES y TRANQUILAS",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ LA Beat & DJ K9",
+   "release": "DJ LA Beat & DJ K9 - CONVOCAÇÃO DA BRUXARIA",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 290269746,
+    "artist": "DJ La Beat",
+    "title": "CONVOCAÇÃO DA BRUXARIA",
+    "year": 2021,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "DJ GUI MARQUES",
+   "release": "MANDELÃO MC MR BIM - GUI MARQUES & VITN MPC",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ IANCO & MC LARISSA (uploader: IANCO)",
+   "release": "FAMOSO MACHUCA XOT4 VERSÃO BRUXARIA | DJ IANCO & MC LARISSA",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "MC GW E DJ Piu (uploader: DJ PIU)",
+   "release": "Bumbum Na Nuca 2020",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "petrus.wav, Kazais (uploader: DJ KAZAIS)",
+   "release": "Ritmada Slim Shady",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "MAC10TA",
+   "release": "BRUXARIA DO BECO DA MORTE",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 495492412,
+    "artist": "MC GW",
+    "title": "Bruxaria do Beco da Morte",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "sobraw (João Sobral)",
+   "release": "VTNC [sobraw's bruxaria flip]",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "CyberKills",
+   "release": "FKA TWIGS, CYBERKILLS - MANDELÃO DA TORANJA 160BPM",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ JOHN SAUCER",
+   "release": "YOU WILL SEE BEAT BOLHA - DJ JOHN SAUCER",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "Zero",
+   "release": "PIQUE RUGAL BEAT LASER DO BOLOLO X TAVA NO FLUXO MALIGNO DA BRUXARIA",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ RICARDO PAIVA",
+   "release": "BRUXARIA 8000 (PARARAPAPA)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "dj paran0ia",
+   "release": "gqom automotivo - free dl",
+   "kind": "single",
+   "tidal": null
+  },
+  {
+   "artist": "Adame DJ",
+   "release": "Chamber Of Voltmix (FREE DOWNLOAD)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "Adame DJ, Sykors, MC Menor GEEH",
+   "release": "Sinal do Rock",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 426817026,
+    "artist": "Adame DJ",
+    "title": "Sinal do Rock",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "Adame DJ",
+   "release": "Cumbia De Cria",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "Adame DJ",
+   "release": "Job",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Anderson do Paraíso feat. MC Pânico, Menor Thalis",
+   "release": "Manifestada",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Anderson do Paraíso",
+   "release": "Descendo em Câmera Lenta",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 536145033,
+    "artist": "Dj Anderson do Paraiso",
+    "title": "Descendo em camera lenta",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "DJ Lucas do Taquaril & DJ Anderson do Paraíso",
+   "release": "Mega das Comunidades da Zona Leste de BH 6.0",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 407109277,
+    "artist": "Dj Anderson do Paraiso",
+    "title": "Mega das Comunidades de Bh",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "DJ ANDERSON DO PARAÍSO",
+   "release": "ULTIMA BRUXARIA DO ANO = = [[DJ ANDERSON DO PARAISO]]",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 269526670,
+    "artist": "Dj Anderson do Paraiso",
+    "title": "Ultima Bruxaria do Ano",
+    "year": 2022,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "DJ JOAO DA INESTAN",
+   "release": "CACETADA CONCENTRADA - MC RODRIGO DO CN - DJ JOAO DA INESTAN DJ TG DA INESTAN ( BEAT BOLHA 2023 )",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ LV MDP",
+   "release": "MC VITIN LC MC GABZIN & MC GAROTO - VEM PRO MDP - DJ LV MDP & DJ MARCAO LC - 2K26",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ WIN",
+   "release": "MC BRAZ E RICK - VOU VOLTAR NADA - DJ WIN.wav",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ CAIO VIEIRA",
+   "release": "É SO UM PENTE TÁ? (MC SACI & MC PRETHACKO)",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 517743595,
+    "artist": "Dj Caio Vieira",
+    "title": "É SÓ UM PENTE TÁ?",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "DJ RAMON SUCESSO",
+   "release": "MC HENRY- EMPORIO ARMANI NO CORPO ( DJ RAMON SUCESSO )",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 320930563,
+    "artist": "Dj Ramon Sucesso",
+    "title": "Emporio Armani no Corpo",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "DJ RAMON SUCESSO / PERFIL 2",
+   "release": "15 MINUTOS DA SEXTA DOS CRIAS DISTORCENDO TUDO ( DJ RAMON SUCESSO )",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ RAMON SUCESSO / PERFIL 2",
+   "release": "KEVIN O CHRIS & CYCLOPE - AI TU DEU PROS IRMÃOZINHO VERSAO TIKTOK(DJ RAMON SUCESSO)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ RD DO MARTINS",
+   "release": "10 MINUTINHOS TAMBOR + GRAVE [ DJ RD DO MARTINS ] DUM DUM DUM",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ ROGERINHO DO QUERÔ",
+   "release": "- SEQUENCIA DO VAPO VAPO vs BREGA FUNK [ DJ ROGERINHO DO QUERÔ ]",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ LC DA ROÇA",
+   "release": "SOLTA CARTA X JOGA PRO COROA RELIKIA VIDIGAL (DJ LC DA ROÇA)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "MEGA FUNK 2026 (canal de DJ Fernando Souza, Curitiba)",
+   "release": "MEGA FUNK MENÓ NEUROSE, SE PREPARA 3 (FREE DOWNLOAD)",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "d.silvestre",
+   "release": "Oque as Mulheres Querem",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "d.silvestre",
+   "release": "ESPANTA GRINGO",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 302260015,
+    "artist": "d.silvestre",
+    "title": "ESPANTA GRINGO",
+    "year": 2023,
+    "quality": "LOSSLESS",
+    "tracks": 8
+   }
+  },
+  {
+   "artist": "d.silvestre",
+   "release": "D.SILVESTRE",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 374007136,
+    "artist": "d.silvestre",
+    "title": "D.Silvestre",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 10
+   }
+  },
+  {
+   "artist": "Wavezim",
+   "release": "KALOR",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "pipa",
+   "release": "FUNK É MATEMÁTICA",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 476949598,
+    "artist": "Pipa",
+    "title": "Funk É Matemática",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 8
+   }
+  },
+  {
+   "artist": "MAKHNO",
+   "release": "FETICHE",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 431587178,
+    "artist": "Makhno",
+    "title": "FETICHE",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 10
+   }
+  },
+  {
+   "artist": "DJ Caio Prince",
+   "release": "Botano Remixes",
+   "kind": "album",
+   "tidal": {
+    "tidal_id": 418502714,
+    "artist": "DJ Caio Prince",
+    "title": "Botano Remixes",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 15
+   }
+  },
+  {
+   "artist": "DJ Dayeh",
+   "release": "De Rolê na 011",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 391147863,
+    "artist": "Tropa do Bruxo",
+    "title": "De Rolê na 011 Mixtape",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 4
+   }
+  },
+  {
+   "artist": "Chediak & Crosstalk",
+   "release": "Cheditalk",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 346792554,
+    "artist": "Chediak",
+    "title": "Cheditalk",
+    "year": 2024,
+    "quality": "LOSSLESS",
+    "tracks": 4
+   }
+  },
+  {
+   "artist": "Pep Starling (feat. Ebony)",
+   "release": "BRASILEIRINHA",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "badsista",
+   "release": "HITS DE VERÃO (SUMMER HITS) vol. 1",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "KARAN!",
+   "release": "SANGURAL",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 496106334,
+    "artist": "KARAN!",
+    "title": "SANGURAL",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "Dj Anderson do Paraiso",
+   "release": "Pique da Favela (Dj Lucas do Taquaril)",
+   "kind": "album",
+   "tidal": null
+  },
+  {
+   "artist": "Dj Anderson do Paraiso",
+   "release": "Manifestada",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 493227836,
+    "artist": "Dj Anderson do Paraiso",
+    "title": "Manifestada",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "OO RUBINHO",
+   "release": "RIDDIMFUNK MIX",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "Adame DJ",
+   "release": "Machine + Remix",
+   "kind": "single",
+   "tidal": null
+  },
+  {
+   "artist": "DJ Caio Prince, MC Luanna, MU540 & DJ Thiago Martins",
+   "release": "Botano (Útero Baixo)",
+   "kind": "track",
+   "tidal": {
+    "tidal_id": 562042573,
+    "artist": "DJ Caio Prince",
+    "title": "Botano (Útero Baixo)",
+    "year": 2026,
+    "quality": "LOSSLESS",
+    "tracks": 1
+   }
+  },
+  {
+   "artist": "Humildes",
+   "release": "Mixagens e Assombrações",
+   "kind": "compilation",
+   "tidal": {
+    "tidal_id": 543489799,
+    "artist": "Humildes",
+    "title": "Mixagens e Assombrações",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 14
+   }
+  },
+  {
+   "artist": "Humildes",
+   "release": "Humildes Vol. 3 [Lado B]",
+   "kind": "compilation",
+   "tidal": {
+    "tidal_id": 543489985,
+    "artist": "Humildes",
+    "title": "Humildes Vol. 3 [Lado B]",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 23
+   }
+  },
+  {
+   "artist": "DJ LK DE ITAPÊ (feat. MC TH)",
+   "release": "MC TH - CHEI DE ODIAO NOS TA PRA CIMA (( DJ LK DE ITAPE ))",
+   "kind": "track",
+   "tidal": null
+  },
+  {
+   "artist": "DJ CARLOZS",
+   "release": "D:\\CARLOZS_USB\\VOL_1",
+   "kind": "ep",
+   "tidal": null
+  },
+  {
+   "artist": "TToten",
+   "release": "Maluko",
+   "kind": "ep",
+   "tidal": {
+    "tidal_id": 521375026,
+    "artist": "TToten",
+    "title": "Maluko",
+    "year": 2025,
+    "quality": "LOSSLESS",
+    "tracks": 5
+   }
+  },
+  {
+   "artist": "SPEEDTEST",
+   "release": "VOLT MIX: O Retorno (Lado A)",
+   "kind": "compilation",
+   "tidal": null
+  }
+ ],
+ "artistas": [
+  {
+   "query": "DJ Piu",
+   "match": "Dj Piu",
+   "tidal_artist_id": 15364872,
+   "albums": [
+    {
+     "id": 300850122,
+     "title": "Experience Rave",
+     "year": 2023,
+     "tracks": 6
+    },
+    {
+     "id": 296423506,
+     "title": "Bailão do Piu",
+     "year": 2020,
+     "tracks": 8
+    },
+    {
+     "id": 139541767,
+     "title": "O Mundo do Dj Piu",
+     "year": 2020,
+     "tracks": 10
+    },
+    {
+     "id": 296423553,
+     "title": "Baile de Tabacaria",
+     "year": 2019,
+     "tracks": 7
+    }
+   ]
+  },
+  {
+   "query": "DJ GB Faixa Preta",
+   "match": "DJ GB FAIXA PRETA",
+   "tidal_artist_id": 30547418,
+   "albums": [
+    {
+     "id": 224644540,
+     "title": "FININHA",
+     "year": 2022,
+     "tracks": 9
+    },
+    {
+     "id": 224372566,
+     "title": "FININHA",
+     "year": 2022,
+     "tracks": 9
+    }
+   ]
+  },
+  {
+   "query": "DJ Jeeh FDC",
+   "match": "DJ Jeeh FDC",
+   "tidal_artist_id": 24325338,
+   "albums": [
+    {
+     "id": 476695229,
+     "title": "Já ouviu falar de amor?",
+     "year": 2025,
+     "tracks": 12
+    },
+    {
+     "id": 524307811,
+     "title": "VBT - O Funk Além do Sexo",
+     "year": 2024,
+     "tracks": 15
+    },
+    {
+     "id": 322843934,
+     "title": "Alcateia",
+     "year": 2023,
+     "tracks": 7
+    },
+    {
+     "id": 264594764,
+     "title": "Som das Regiões",
+     "year": 2022,
+     "tracks": 9
+    },
+    {
+     "id": 235004070,
+     "title": "Ritmos",
+     "year": 2022,
+     "tracks": 9
+    },
+    {
+     "id": 251330866,
+     "title": "Ritmos",
+     "year": 2022,
+     "tracks": 9
+    },
+    {
+     "id": 362324996,
+     "title": "Ritmos",
+     "year": 2022,
+     "tracks": 9
+    }
+   ]
+  },
+  {
+   "query": "DJ GBR",
+   "match": "Dj Gbr",
+   "tidal_artist_id": 11969403,
+   "albums": [
+    {
+     "id": 271966703,
+     "title": "No Pique do GBR",
+     "year": 2023,
+     "tracks": 8
+    }
+   ]
+  },
+  {
+   "query": "MC Kevin o Chris",
+   "match": "MC Kevin o Chris",
+   "tidal_artist_id": 10235926,
+   "albums": [
+    {
+     "id": 545156924,
+     "title": "Eu e Kevin, DENNIS e Eu",
+     "year": 2026,
+     "tracks": 14
+    },
+    {
+     "id": 458792670,
+     "title": "Falando de Amor",
+     "year": 2025,
+     "tracks": 6
+    },
+    {
+     "id": 437034640,
+     "title": "Eu Sou o Rio, Vol.2 (Ao Vivo)",
+     "year": 2025,
+     "tracks": 7
+    },
+    {
+     "id": 424042687,
+     "title": "Eu Sou o Rio, Vol.1 (Ao Vivo)",
+     "year": 2025,
+     "tracks": 11
+    },
+    {
+     "id": 330585363,
+     "title": "Tamborzão Raiz: Vol. 3",
+     "year": 2023,
+     "tracks": 6
+    },
+    {
+     "id": 418056335,
+     "title": "Eu Amo Rio, Eu Amo SP",
+     "year": 2023,
+     "tracks": 6
+    },
+    {
+     "id": 315897435,
+     "title": "Tamborzão Raiz: Vol 2",
+     "year": 2023,
+     "tracks": 6
+    },
+    {
+     "id": 254060731,
+     "title": "Tamborzão Raiz",
+     "year": 2022,
+     "tracks": 8
+    },
+    {
+     "id": 265566198,
+     "title": "Tamborzão Raiz (Deluxe)",
+     "year": 2022,
+     "tracks": 9
+    },
+    {
+     "id": 241690463,
+     "title": "Sonho de Garoto (Deluxe)",
+     "year": 2022,
+     "tracks": 20
+    },
+    {
+     "id": 227714938,
+     "title": "Sonho de Garoto (Ao Vivo)",
+     "year": 2022,
+     "tracks": 13
+    },
+    {
+     "id": 222220096,
+     "title": "Deixa Se Envolver (Spring Love) [Remixes Pt. 2]",
+     "year": 2022,
+     "tracks": 6
+    },
+    {
+     "id": 222220089,
+     "title": "Deixa Se Envolver (Spring Love) [Remixes Pt. 1]",
+     "year": 2022,
+     "tracks": 6
+    },
+    {
+     "id": 222183240,
+     "title": "Dentro Do Carro",
+     "year": 2022,
+     "tracks": 14
+    },
+    {
+     "id": 232513457,
+     "title": "Dentro Do Carro",
+     "year": 2022,
+     "tracks": 15
+    },
+    {
+     "id": 177383657,
+     "title": "Todo Mundo Ama O Chris (Ao Vivo)",
+     "year": 2021,
+     "tracks": 23
+    },
+    {
+     "id": 130330564,
+     "title": "Evoluiu (ao Vivo)",
+     "year": 2020,
+     "tracks": 24
+    }
+   ]
+  },
+  {
+   "query": "Vitin do PC",
+   "match": "GORDÃO DO PC",
+   "tidal_artist_id": 18950076,
+   "albums": [
+    {
+     "id": 554286881,
+     "title": "Victor Era Meu Nome De Nerd (Vol.2)",
+     "year": 2026,
+     "tracks": 14
+    },
+    {
+     "id": 553592194,
+     "title": "Conexão Funk: SP x RJ x BH",
+     "year": 2026,
+     "tracks": 26
+    },
+    {
+     "id": 496564482,
+     "title": "Aquecimento Do Victor",
+     "year": 2026,
+     "tracks": 7
+    },
+    {
+     "id": 392255546,
+     "title": "Super Mtg Game",
+     "year": 2024,
+     "tracks": 12
+    },
+    {
+     "id": 305754831,
+     "title": "Victor Era Meu Nome de Nerd 1",
+     "year": 2023,
+     "tracks": 14
+    }
+   ]
+  },
+  {
+   "query": "Dudu Coupper",
+   "match": "Dudu Coupper",
+   "tidal_artist_id": 12033918,
+   "albums": []
+  },
+  {
+   "query": "L da Vinte",
+   "match": "L da Vinte",
+   "tidal_artist_id": 13221278,
+   "albums": []
+  },
+  {
+   "query": "Mu540",
+   "match": "MU540",
+   "tidal_artist_id": 8713751,
+   "albums": [
+    {
+     "id": 534373810,
+     "title": "BASE: Kilos de Rima",
+     "year": 2026,
+     "tracks": 5
+    },
+    {
+     "id": 521900782,
+     "title": "BASE: Barras da Leste Barras da Sul",
+     "year": 2026,
+     "tracks": 7
+    },
+    {
+     "id": 517579481,
+     "title": "BASE: Melodia$",
+     "year": 2026,
+     "tracks": 6
+    },
+    {
+     "id": 512663434,
+     "title": "BASE: Climinha",
+     "year": 2026,
+     "tracks": 6
+    },
+    {
+     "id": 477387730,
+     "title": "DOIS Quebrada Inteligente Pro Max",
+     "year": 2025,
+     "tracks": 13
+    },
+    {
+     "id": 436473758,
+     "title": "DOIS Quebrada Inteligente",
+     "year": 2025,
+     "tracks": 7
+    },
+    {
+     "id": 398306462,
+     "title": "4x4",
+     "year": 2024,
+     "tracks": 7
+    },
+    {
+     "id": 423811053,
+     "title": "Original",
+     "year": 2024,
+     "tracks": 6
+    },
+    {
+     "id": 421866424,
+     "title": "UM Quebrada Inteligente",
+     "year": 2023,
+     "tracks": 7
+    },
+    {
+     "id": 421720075,
+     "title": "Dias Antes de Mandrake",
+     "year": 2022,
+     "tracks": 11
+    },
+    {
+     "id": 224694892,
+     "title": "Vale Night: Trilha Sonora Original",
+     "year": 2022,
+     "tracks": 10
+    },
+    {
+     "id": 211735506,
+     "title": "Marenostrum",
+     "year": 2022,
+     "tracks": 7
+    },
+    {
+     "id": 214002804,
+     "title": "Marenostrum (Deluxe Edition)",
+     "year": 2022,
+     "tracks": 9
+    },
+    {
+     "id": 417671497,
+     "title": "Bandido Fi Di Crente",
+     "year": 2021,
+     "tracks": 8
+    }
+   ]
+  },
+  {
+   "query": "Halc DJ",
+   "match": "Halc DJ",
+   "tidal_artist_id": 22840966,
+   "albums": [
+    {
+     "id": 502524152,
+     "title": "O Ultimo Criativo",
+     "year": 2026,
+     "tracks": 20
+    },
+    {
+     "id": 419492973,
+     "title": "Bruxaria Não É Phonk",
+     "year": 2025,
+     "tracks": 14
+    }
+   ]
+  },
+  {
+   "query": "DJ Alexia",
+   "match": "DJ Alexia",
+   "tidal_artist_id": 3796223,
+   "albums": [
+    {
+     "id": 551641422,
+     "title": "GENÉRICA",
+     "year": 2026,
+     "tracks": 10
+    },
+    {
+     "id": 496700845,
+     "title": "FODA-SE",
+     "year": 2026,
+     "tracks": 21
+    },
+    {
+     "id": 524246185,
+     "title": "Apoteótica",
+     "year": 2025,
+     "tracks": 12
+    },
+    {
+     "id": 375470807,
+     "title": "Phonkverso",
+     "year": 2024,
+     "tracks": 9
+    },
+    {
+     "id": 488697634,
+     "title": "Dancin' Grooving",
+     "year": 2017,
+     "tracks": 12
+    }
+   ]
+  },
+  {
+   "query": "XABLAU",
+   "match": "Xablau",
+   "tidal_artist_id": 22447374,
+   "albums": []
+  },
+  {
+   "query": "RORO",
+   "match": "RoRo",
+   "tidal_artist_id": 5164663,
+   "albums": [
+    {
+     "id": 562083978,
+     "title": "Connented Until We Weren't",
+     "year": 2026,
+     "tracks": 7
+    },
+    {
+     "id": 512177453,
+     "title": "Sleepy Snowtown",
+     "year": 2026,
+     "tracks": 10
+    },
+    {
+     "id": 508248150,
+     "title": "Drift To Rest",
+     "year": 2026,
+     "tracks": 10
+    },
+    {
+     "id": 508247768,
+     "title": "Dream Still",
+     "year": 2026,
+     "tracks": 9
+    },
+    {
+     "id": 507800457,
+     "title": "Air Bloom",
+     "year": 2026,
+     "tracks": 9
+    },
+    {
+     "id": 506807009,
+     "title": "Moonlit Dreams",
+     "year": 2026,
+     "tracks": 9
+    },
+    {
+     "id": 505582835,
+     "title": "Breeze Over Hill",
+     "year": 2026,
+     "tracks": 8
+    },
+    {
+     "id": 500108637,
+     "title": "Evening Meadow",
+     "year": 2026,
+     "tracks": 9
+    },
+    {
+     "id": 491482287,
+     "title": "Dust In Golden Light",
+     "year": 2026,
+     "tracks": 8
+    },
+    {
+     "id": 488377409,
+     "title": "Resting Light",
+     "year": 2026,
+     "tracks": 7
+    },
+    {
+     "id": 484089412,
+     "title": "Fireplace Frost",
+     "year": 2025,
+     "tracks": 10
+    },
+    {
+     "id": 482426792,
+     "title": "Quiet Winter Magic",
+     "year": 2025,
+     "tracks": 9
+    },
+    {
+     "id": 480912763,
+     "title": "Candy Cane Calm",
+     "year": 2025,
+     "tracks": 10
+    },
+    {
+     "id": 478642097,
+     "title": "Moonsoft Breeze",
+     "year": 2025,
+     "tracks": 8
+    },
+    {
+     "id": 405505934,
+     "title": "Hot Hits",
+     "year": 2025,
+     "tracks": 7
+    },
+    {
+     "id": 354373427,
+     "title": "2 Heaven",
+     "year": 2024,
+     "tracks": 7
+    },
+    {
+     "id": 97647709,
+     "title": "I’m Feeling You",
+     "year": 2018,
+     "tracks": 1
+    }
+   ]
+  },
+  {
+   "query": "DJ Blakes",
+   "match": "DJ BLAKES",
+   "tidal_artist_id": 20112078,
+   "albums": [
+    {
+     "id": 524238482,
+     "title": "FUNK",
+     "year": 2025,
+     "tracks": 10
+    },
+    {
+     "id": 537135297,
+     "title": "Mandelãoworld",
+     "year": 2024,
+     "tracks": 11
+    },
+    {
+     "id": 325940602,
+     "title": "A Lenda",
+     "year": 2023,
+     "tracks": 6
+    }
+   ]
+  },
+  {
+   "query": "DJ Ramon Sucesso",
+   "match": "Dj Ramon Sucesso",
+   "tidal_artist_id": 22372654,
+   "albums": [
+    {
+     "id": 413024109,
+     "title": "Sexta dos Crias, Vol. 1",
+     "year": 2025,
+     "tracks": 21
+    }
+   ]
+  },
+  {
+   "query": "DJ Anderson do Paraíso",
+   "match": "DJ Anderson do Paraíso",
+   "tidal_artist_id": 9853987,
+   "albums": []
+  },
+  {
+   "query": "DJ Arana",
+   "match": "DJ Arana",
+   "tidal_artist_id": 24840232,
+   "albums": [
+    {
+     "id": 473509223,
+     "title": "O Último Anjo",
+     "year": 2025,
+     "tracks": 12
+    },
+    {
+     "id": 441568557,
+     "title": "M.B.D.T",
+     "year": 2025,
+     "tracks": 9
+    },
+    {
+     "id": 401355230,
+     "title": "Viva o Romano",
+     "year": 2024,
+     "tracks": 6
+    },
+    {
+     "id": 316516742,
+     "title": "Rock Pesado 2",
+     "year": 2023,
+     "tracks": 24
+    },
+    {
+     "id": 534143763,
+     "title": "Rock Pesado",
+     "year": 2022,
+     "tracks": 6
+    }
+   ]
+  },
+  {
+   "query": "DJ K",
+   "match": "DJ K",
+   "tidal_artist_id": 3560851,
+   "albums": [
+    {
+     "id": 441268754,
+     "title": "RADIO LIBERTADORA!",
+     "year": 2025,
+     "tracks": 12
+    },
+    {
+     "id": 298588233,
+     "title": "PANICO NO SUBMUNDO",
+     "year": 2023,
+     "tracks": 15
+    },
+    {
+     "id": 28478976,
+     "title": "Rainy Days",
+     "year": 2003,
+     "tracks": 6
+    }
+   ]
+  },
+  {
+   "query": "Adame DJ",
+   "match": "Adame DJ",
+   "tidal_artist_id": 17721345,
+   "albums": [
+    {
+     "id": 529788407,
+     "title": "Músicas para Ouvir no After",
+     "year": 2026,
+     "tracks": 15
+    },
+    {
+     "id": 463947078,
+     "title": "Eternal Frequencies",
+     "year": 2025,
+     "tracks": 10
+    },
+    {
+     "id": 383042461,
+     "title": "Músicas para ouvir antes do rolê",
+     "year": 2024,
+     "tracks": 9
+    },
+    {
+     "id": 456652020,
+     "title": "Shadows",
+     "year": 2024,
+     "tracks": 9
+    },
+    {
+     "id": 399593396,
+     "title": "Tools Guide",
+     "year": 2000,
+     "tracks": 22
+    }
+   ]
+  },
+  {
+   "query": "OO Rubinho",
+   "match": "OO RUBINHO",
+   "tidal_artist_id": 35816123,
+   "albums": [
+    {
+     "id": 313098086,
+     "title": "combinações",
+     "year": 2023,
+     "tracks": 9
+    },
+    {
+     "id": 262861199,
+     "title": "HARDFUNK",
+     "year": 2022,
+     "tracks": 13
+    }
+   ]
+  },
+  {
+   "query": "Iguana",
+   "match": "Iguana",
+   "tidal_artist_id": 4177319,
+   "albums": [
+    {
+     "id": 506086267,
+     "title": "live à Dudelange",
+     "year": 2026,
+     "tracks": 9
+    },
+    {
+     "id": 539027505,
+     "title": "Arco Iris De Cristal",
+     "year": 2024,
+     "tracks": 10
+    },
+    {
+     "id": 392021131,
+     "title": "Translational Symmetry",
+     "year": 2019,
+     "tracks": 9
+    },
+    {
+     "id": 88305719,
+     "title": "Get the City Love You",
+     "year": 2012,
+     "tracks": 10
+    },
+    {
+     "id": 10270638,
+     "title": "Iguana",
+     "year": 2006,
+     "tracks": 12
+    },
+    {
+     "id": 60154605,
+     "title": "The Winds of Alamar",
+     "year": 2001,
+     "tracks": 8
+    },
+    {
+     "id": 288996092,
+     "title": "Mysterious Planet",
+     "year": 1999,
+     "tracks": 9
+    },
+    {
+     "id": 147304658,
+     "title": "En estado puro",
+     "year": 1994,
+     "tracks": 13
+    },
+    {
+     "id": 16010978,
+     "title": "Iguana",
+     "year": 1972,
+     "tracks": 20
+    }
+   ]
+  },
+  {
+   "query": "Zero de Fato",
+   "match": "Zero de Fato",
+   "tidal_artist_id": 31928148,
+   "albums": []
+  },
+  {
+   "query": "DJ Ricardo Paiva",
+   "match": "DJ Ricardo Paiva",
+   "tidal_artist_id": 37901621,
+   "albums": []
+  }
+ ]
+}
