@@ -1,0 +1,1047 @@
+{
+ "mix": "0b716335-801e-47f3-a1b2-75efcdcd3708",
+ "title": "Jazz: Headphone Classics",
+ "new": [
+  {
+   "i": 2,
+   "title": "Long As You're Living",
+   "artists": [
+    "Abbey Lincoln"
+   ],
+   "album": "Abbey Is Blue",
+   "album_artist": "Abbey Lincoln",
+   "year": 1959,
+   "path": "/home/opc/tidal-out/Jazz/Abbey Lincoln/Abbey Is Blue [tidal]/10 Long As You're Living.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "152.679828",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 111023448
+  },
+  {
+   "i": 3,
+   "title": "Jean De Fleur",
+   "artists": [
+    "Grant Green"
+   ],
+   "album": "Idle Moments",
+   "album_artist": "Grant Green",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Grant Green/Idle Moments [tidal]/02 Jean De Fleur.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "409.770667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 287088008
+  },
+  {
+   "i": 4,
+   "title": "Anthropology",
+   "artists": [
+    "Elvin Jones"
+   ],
+   "album": "Dear John C.",
+   "album_artist": "Elvin Jones",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Elvin Jones/Dear John C [tidal]/05 Anthropology.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "249.241052",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 78177629
+  },
+  {
+   "i": 6,
+   "title": "Listen Here",
+   "artists": [
+    "Eddie Harris"
+   ],
+   "album": "The Electrifying Eddie Harris",
+   "album_artist": "Eddie Harris",
+   "year": 1968,
+   "path": "/home/opc/tidal-out/Jazz/Eddie Harris/The Electrifying Eddie Harris [tidal]/02 Listen Here.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "462.723792",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 329141967
+  },
+  {
+   "i": 7,
+   "title": "You Don't Know What Love Is",
+   "artists": [
+    "Billie Holiday"
+   ],
+   "album": "Lady In Satin: The Centennial Edition",
+   "album_artist": "Billie Holiday",
+   "year": 1958,
+   "path": "/home/opc/tidal-out/Jazz/Billie Holiday/Lady In Satin_ The Centennial Edition [tidal]/03 You Don't Know What Love Is.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "230.234750",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 86827955
+  },
+  {
+   "i": 8,
+   "title": "Don't Stop The Feeling",
+   "artists": [
+    "Roy Ayers"
+   ],
+   "album": "No Stranger To Love",
+   "album_artist": "Roy Ayers",
+   "year": 1980,
+   "path": "/home/opc/tidal-out/Jazz/Roy Ayers/No Stranger To Love [tidal]/01 Don't Stop The Feeling.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "493.336536",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 347127734
+  },
+  {
+   "i": 9,
+   "title": "Now or Never",
+   "artists": [
+    "Joanne Brackeen"
+   ],
+   "album": "Mythical Magic",
+   "album_artist": "Joanne Brackeen",
+   "year": 2016,
+   "path": "/home/opc/tidal-out/Jazz/Joanne Brackeen/Mythical Magic [tidal]/08 Now or Never.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "88200",
+   "dur": "280.880680",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 76983820
+  },
+  {
+   "i": 10,
+   "title": "Where Are We Going? (Remastered 2013)",
+   "artists": [
+    "Donald Byrd"
+   ],
+   "album": "Black Byrd",
+   "album_artist": "Donald Byrd",
+   "year": 1973,
+   "path": "/home/opc/tidal-out/Jazz/Donald Byrd/Black Byrd [tidal]/07 Where Are We Going_ (Remastered 2013).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "277.505333",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 93397092
+  },
+  {
+   "i": 11,
+   "title": "Red Clay",
+   "artists": [
+    "Freddie Hubbard"
+   ],
+   "album": "Red Clay",
+   "album_artist": "Freddie Hubbard",
+   "year": 1970,
+   "path": "/home/opc/tidal-out/Jazz/Freddie Hubbard/Red Clay [tidal]/01 Red Clay.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "44100",
+   "dur": "731.035828",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 139971689
+  },
+  {
+   "i": 12,
+   "title": "Ceora",
+   "artists": [
+    "Lee Morgan"
+   ],
+   "album": "Cornbread",
+   "album_artist": "Lee Morgan",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Lee Morgan/Cornbread [tidal]/03 Ceora.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "380.950667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 252804618
+  },
+  {
+   "i": 13,
+   "title": "Blue Train",
+   "artists": [
+    "John Coltrane"
+   ],
+   "album": "Blue Train: The Complete Masters",
+   "album_artist": "John Coltrane",
+   "year": 1958,
+   "path": "/home/opc/tidal-out/Jazz/John Coltrane/Blue Train_ The Complete Masters [tidal]/01 Blue Train.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "642.995375",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 267672180
+  },
+  {
+   "i": 14,
+   "title": "Sermonette",
+   "artists": [
+    "Milt Jackson"
+   ],
+   "album": "Plenty, Plenty Soul (Mono)",
+   "album_artist": "Milt Jackson",
+   "year": 1957,
+   "path": "/home/opc/tidal-out/Jazz/Milt Jackson/Plenty, Plenty Soul (Mono) [tidal]/04 Sermonette.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "328.520000",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 81394897
+  },
+  {
+   "i": 15,
+   "title": "Like Someone In Love",
+   "artists": [
+    "Ella Fitzgerald"
+   ],
+   "album": "Like Someone In Love",
+   "album_artist": "Ella Fitzgerald",
+   "year": 1957,
+   "path": "/home/opc/tidal-out/Jazz/Ella Fitzgerald/Like Someone In Love [tidal]/08 Like Someone In Love.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "191.912927",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 70757203
+  },
+  {
+   "i": 16,
+   "title": "Soul Intro / The Chicken (Live)",
+   "artists": [
+    "Jaco Pastorius"
+   ],
+   "album": "Truth, Liberty & Soul (Live in NYC) [The Complete 1982 NPR Jazz Alive! Recording]",
+   "album_artist": "Jaco Pastorius",
+   "year": 2017,
+   "path": "/home/opc/tidal-out/Jazz/Jaco Pastorius/Truth, Liberty & Soul (Live in NYC) [The Complete 1982 NPR Jazz Alive! Recording] [tidal]/02 Soul Intro _ The Chicken (Live).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "541.661135",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 219170061
+  },
+  {
+   "i": 17,
+   "title": "Butterfly",
+   "artists": [
+    "Herbie Hancock"
+   ],
+   "album": "Thrust",
+   "album_artist": "Herbie Hancock",
+   "year": 1974,
+   "path": "/home/opc/tidal-out/Jazz/Herbie Hancock/Thrust [tidal]/03 Butterfly.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "677.893531",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 225060905
+  },
+  {
+   "i": 18,
+   "title": "Afro Blue (Live at the Village Gate, NYC, NY - March 1967)",
+   "artists": [
+    "Mongo Santamaria"
+   ],
+   "album": "Explodes at the Village Gate",
+   "album_artist": "Mongo Santamaria",
+   "year": 1967,
+   "path": "/home/opc/tidal-out/Jazz/Mongo Santamaria/Explodes at the Village Gate [tidal]/04 Afro Blue (Live at the Village Gate, NYC, NY - March 1967).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "635.227792",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 334790752
+  },
+  {
+   "i": 19,
+   "title": "Off My Back Jack",
+   "artists": [
+    "Max Roach"
+   ],
+   "album": "The Max Roach Trio (feat. The Legendary Hasaan)",
+   "album_artist": "Max Roach",
+   "year": 2011,
+   "path": "/home/opc/tidal-out/Jazz/Max Roach/The Max Roach Trio (feat. The Legendary Hasaan) [tidal]/02 Off My Back Jack.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "316.758422",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 228594860
+  },
+  {
+   "i": 20,
+   "title": "Sideman",
+   "artists": [
+    "Lonnie Smith"
+   ],
+   "album": "Finger Lickin' Good",
+   "album_artist": "Lonnie Smith",
+   "year": 1967,
+   "path": "/home/opc/tidal-out/Jazz/Lonnie Smith/Finger Lickin' Good [tidal]/05 Sideman.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "286.903214",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 160475871
+  },
+  {
+   "i": 21,
+   "title": "Seven Steps to Heaven (2023 Remaster)",
+   "artists": [
+    "Miles Davis"
+   ],
+   "album": "Seven Steps To Heaven (2023 Remaster)",
+   "album_artist": "Miles Davis",
+   "year": 1963,
+   "path": "/home/opc/tidal-out/Jazz/Miles Davis/Seven Steps To Heaven (2023 Remaster) [tidal]/02 Seven Steps to Heaven (2023 Remaster).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "44100",
+   "dur": "385.554853",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 73914524
+  },
+  {
+   "i": 22,
+   "title": "Waltz For Debby (Take 2 / Live At The Village Vanguard / 1961)",
+   "artists": [
+    "Bill Evans Trio"
+   ],
+   "album": "Waltz For Debby (Live At The Village Vanguard / 1961)",
+   "album_artist": "Bill Evans Trio",
+   "year": 1962,
+   "path": "/home/opc/tidal-out/Jazz/Bill Evans Trio/Waltz For Debby (Live At The Village Vanguard _ 1961) [tidal]/02 Waltz For Debby (Take 2 _ Live At The Village Vanguard _ 1961).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "418.018854",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 301501000
+  },
+  {
+   "i": 23,
+   "title": "Hat And Beard",
+   "artists": [
+    "Eric Dolphy"
+   ],
+   "album": "Out To Lunch",
+   "album_artist": "Eric Dolphy",
+   "year": 1964,
+   "path": "/home/opc/tidal-out/Jazz/Eric Dolphy/Out To Lunch [tidal]/01 Hat And Beard.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "504.362667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 380970010
+  },
+  {
+   "i": 24,
+   "title": "Universal Mother",
+   "artists": [
+    "Don Cherry"
+   ],
+   "album": "Hear & Now",
+   "album_artist": "Don Cherry",
+   "year": 1976,
+   "path": "/home/opc/tidal-out/Jazz/Don Cherry/Hear & Now [tidal]/02 Universal Mother.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "405.923958",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 193408813
+  },
+  {
+   "i": 25,
+   "title": "Fire",
+   "artists": [
+    "Joe Henderson",
+    "Alice Coltrane"
+   ],
+   "album": "The Elements",
+   "album_artist": "Joe Henderson",
+   "year": 1973,
+   "path": "/home/opc/tidal-out/Jazz/Joe Henderson/The Elements [tidal]/01 Fire.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "667.695755",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 366844106
+  },
+  {
+   "i": 26,
+   "title": "Mon Petite",
+   "artists": [
+    "Jutta Hipp Quintet"
+   ],
+   "album": "New Faces - New Sounds From Germany",
+   "album_artist": "Jutta Hipp Quintet",
+   "year": 2015,
+   "path": "/home/opc/tidal-out/Jazz/Jutta Hipp Quintet/New Faces - New Sounds From Germany [tidal]/04 Mon Petite.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "206.494667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 60011594
+  },
+  {
+   "i": 27,
+   "title": "What's New?",
+   "artists": [
+    "Wes Montgomery",
+    "Wynton Kelly"
+   ],
+   "album": "Smokin' At The Half Note",
+   "album_artist": "Wes Montgomery",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Wes Montgomery/Smokin' At The Half Note [tidal]/05 What's New.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "376.871479",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 129723056
+  },
+  {
+   "i": 28,
+   "title": "Willow Weep For Me (Live At Mister Kelly's, Chicago / 1957)",
+   "artists": [
+    "Sarah Vaughan"
+   ],
+   "album": "Sarah Vaughan At Mister Kelly's (Remastered)",
+   "album_artist": "Sarah Vaughan",
+   "year": 1957,
+   "path": "/home/opc/tidal-out/Jazz/Sarah Vaughan/Sarah Vaughan At Mister Kelly's (Remastered) [tidal]/02 Willow Weep For Me (Live At Mister Kelly's, Chicago _ 1957).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "316.905406",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 148371861
+  },
+  {
+   "i": 29,
+   "title": "Song For My Father",
+   "artists": [
+    "Horace Silver"
+   ],
+   "album": "Song for My Father",
+   "album_artist": "Horace Silver",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Horace Silver/Song for My Father [tidal]/01 Song For My Father.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "437.671052",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 151313867
+  },
+  {
+   "i": 30,
+   "title": "This I Dig Of You",
+   "artists": [
+    "Hank Mobley"
+   ],
+   "album": "Soul Station",
+   "album_artist": "Hank Mobley",
+   "year": 1960,
+   "path": "/home/opc/tidal-out/Jazz/Hank Mobley/Soul Station [tidal]/02 This I Dig Of You.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "383.702667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 159489182
+  },
+  {
+   "i": 31,
+   "title": "Roots And Herbs",
+   "artists": [
+    "Art Blakey"
+   ],
+   "album": "Roots & Herbs",
+   "album_artist": "Art Blakey",
+   "year": 1961,
+   "path": "/home/opc/tidal-out/Jazz/Art Blakey/Roots & Herbs [tidal]/02 Roots And Herbs.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "365.974667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 146482634
+  },
+  {
+   "i": 32,
+   "title": "Misterioso (Live at Lincoln Center)",
+   "artists": [
+    "Thelonious Monk"
+   ],
+   "album": "Misterioso (Live)",
+   "album_artist": "Thelonious Monk",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Thelonious Monk/Misterioso (Live) [tidal]/02 Misterioso (Live at Lincoln Center).flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "584.486615",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 307030066
+  },
+  {
+   "i": 33,
+   "title": "Illusion",
+   "artists": [
+    "Marian McPartland"
+   ],
+   "album": "Interplay",
+   "album_artist": "Marian McPartland",
+   "year": 2017,
+   "path": "/home/opc/tidal-out/Jazz/Marian McPartland/Interplay [tidal]/08 Illusion.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "88200",
+   "dur": "279.905896",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 85111665
+  },
+  {
+   "i": 34,
+   "title": "Nuclear War",
+   "artists": [
+    "Sun Ra"
+   ],
+   "album": "A Fireside Chat With Lucifer",
+   "album_artist": "Sun Ra",
+   "year": 1983,
+   "path": "/home/opc/tidal-out/Jazz/Sun Ra/A Fireside Chat With Lucifer [tidal]/01 Nuclear War.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "44100",
+   "dur": "464.386667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 86497356
+  },
+  {
+   "i": 35,
+   "title": "(You Make Me Feel Like) A Natural Woman",
+   "artists": [
+    "Shirley Scott",
+    "The Soul Saxes"
+   ],
+   "album": "Shirley Scott & The Soul Saxes",
+   "album_artist": "Shirley Scott",
+   "year": 1969,
+   "path": "/home/opc/tidal-out/Jazz/Shirley Scott/Shirley Scott & The Soul Saxes [tidal]/02 (You Make Me Feel Like) A Natural Woman.flac",
+   "codec": "flac",
+   "bits": "16",
+   "sr": "44100",
+   "dur": "257.120000",
+   "quality": "LOSSLESS",
+   "bytes": 28559809
+  },
+  {
+   "i": 36,
+   "title": "Love For Sale",
+   "artists": [
+    "Cannonball Adderley"
+   ],
+   "album": "Somethin' Else",
+   "album_artist": "Cannonball Adderley",
+   "year": 1958,
+   "path": "/home/opc/tidal-out/Jazz/Cannonball Adderley/Somethin' Else [tidal]/02 Love For Sale.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "427.442708",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 138624645
+  },
+  {
+   "i": 37,
+   "title": "Let 'Em Roll",
+   "artists": [
+    "Big John Patton"
+   ],
+   "album": "Let ’Em Roll",
+   "album_artist": "Big John Patton",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Big John Patton/Let ’Em Roll [tidal]/01 Let 'Em Roll.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "407.893333",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 306453340
+  },
+  {
+   "i": 38,
+   "title": "Midwestern Nights Dream",
+   "artists": [
+    "Pat Metheny"
+   ],
+   "album": "Bright Size Life",
+   "album_artist": "Pat Metheny",
+   "year": 1976,
+   "path": "/home/opc/tidal-out/Jazz/Pat Metheny/Bright Size Life [tidal]/05 Midwestern Nights Dream.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "360.266667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 120863242
+  },
+  {
+   "i": 39,
+   "title": "Speak No Evil",
+   "artists": [
+    "Wayne Shorter"
+   ],
+   "album": "Speak No Evil",
+   "album_artist": "Wayne Shorter",
+   "year": 1966,
+   "path": "/home/opc/tidal-out/Jazz/Wayne Shorter/Speak No Evil [tidal]/04 Speak No Evil.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "500.404167",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 186740238
+  },
+  {
+   "i": 40,
+   "title": "Blues For Yolande",
+   "artists": [
+    "Coleman Hawkins",
+    "Ben Webster"
+   ],
+   "album": "Coleman Hawkins Encounters Ben Webster",
+   "album_artist": "Coleman Hawkins",
+   "year": 1957,
+   "path": "/home/opc/tidal-out/Jazz/Coleman Hawkins/Coleman Hawkins Encounters Ben Webster [tidal]/01 Blues For Yolande.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "407.858052",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 153389865
+  },
+  {
+   "i": 41,
+   "title": "Work Song",
+   "artists": [
+    "Nat Adderley",
+    "Bobby Timmons",
+    "Percy Heath",
+    "Sam Jones"
+   ],
+   "album": "Work Song",
+   "album_artist": "Nat Adderley",
+   "year": 2015,
+   "path": "/home/opc/tidal-out/Jazz/Nat Adderley/Work Song [tidal]/01 Work Song.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "255.184448",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 100287013
+  },
+  {
+   "i": 42,
+   "title": "Tight! / Mr. Gentleman",
+   "artists": [
+    "Betty Carter"
+   ],
+   "album": "The Music Never Stops",
+   "album_artist": "Betty Carter",
+   "year": 2019,
+   "path": "/home/opc/tidal-out/Jazz/Betty Carter/The Music Never Stops [tidal]/05 Tight! _ Mr. Gentleman.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "48000",
+   "dur": "271.972042",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 60972190
+  },
+  {
+   "i": 43,
+   "title": "Manteca",
+   "artists": [
+    "The Gil Evans Orchestra"
+   ],
+   "album": "New Bottle Old Wine",
+   "album_artist": "Gil Evans",
+   "year": 1958,
+   "path": "/home/opc/tidal-out/Jazz/Gil Evans/New Bottle Old Wine [tidal]/07 Manteca.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "314.586667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 116839144
+  },
+  {
+   "i": 44,
+   "title": "The Song of Love",
+   "artists": [
+    "Les McCann"
+   ],
+   "album": "Another Beginning",
+   "album_artist": "Les McCann",
+   "year": 1974,
+   "path": "/home/opc/tidal-out/Jazz/Les McCann/Another Beginning [tidal]/02 The Song of Love.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "198.556156",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 103131060
+  },
+  {
+   "i": 45,
+   "title": "Peace",
+   "artists": [
+    "Ornette Coleman"
+   ],
+   "album": "The Shape Of Jazz To Come",
+   "album_artist": "Ornette Coleman",
+   "year": 1958,
+   "path": "/home/opc/tidal-out/Jazz/Ornette Coleman/The Shape Of Jazz To Come [tidal]/03 Peace.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "545.466667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 324566572
+  },
+  {
+   "i": 46,
+   "title": "I Am Music",
+   "artists": [
+    "Carmen McRae"
+   ],
+   "album": "I Am Music",
+   "album_artist": "Carmen McRae",
+   "year": 1975,
+   "path": "/home/opc/tidal-out/Jazz/Carmen McRae/I Am Music [tidal]/10 I Am Music.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "259.480000",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 164191363
+  },
+  {
+   "i": 47,
+   "title": "Diminuendo and Crescendo in Blue",
+   "artists": [
+    "Duke Ellington",
+    "His Orchestra"
+   ],
+   "album": "Ellington At Newport: The Original Album",
+   "album_artist": "Duke Ellington",
+   "year": 2010,
+   "path": "/home/opc/tidal-out/Jazz/Duke Ellington/Ellington At Newport_ The Original Album [tidal]/06 Diminuendo and Crescendo in Blue.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "898.362938",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 146393205
+  },
+  {
+   "i": 48,
+   "title": "Summertime",
+   "artists": [
+    "Charlie Parker"
+   ],
+   "album": "April In Paris: The Genius Of Charlie Parker #2",
+   "album_artist": "Charlie Parker",
+   "year": 2000,
+   "path": "/home/opc/tidal-out/Jazz/Charlie Parker/April In Paris_ The Genius Of Charlie Parker #2 [tidal]/02 Summertime.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "167.121396",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 69971689
+  },
+  {
+   "i": 49,
+   "title": "Spain",
+   "artists": [
+    "Chick Corea",
+    "Return To Forever"
+   ],
+   "album": "Light As A Feather",
+   "album_artist": "Chick Corea",
+   "year": 1973,
+   "path": "/home/opc/tidal-out/Jazz/Chick Corea/Light As A Feather [tidal]/06 Spain.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "589.273646",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 208603923
+  },
+  {
+   "i": 50,
+   "title": "Almost Like Being In Love",
+   "artists": [
+    "Sonny Rollins",
+    "The Modern Jazz Quartet"
+   ],
+   "album": "Sonny Rollins With The Modern Jazz Quartet",
+   "album_artist": "Sonny Rollins",
+   "year": 1956,
+   "path": "/home/opc/tidal-out/Jazz/Sonny Rollins/Sonny Rollins With The Modern Jazz Quartet [tidal]/02 Almost Like Being In Love.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "206.285714",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 141755683
+  },
+  {
+   "i": 51,
+   "title": "It Ain't Necessarily So",
+   "artists": [
+    "Mary Lou Williams"
+   ],
+   "album": "Gilles Peterson - Magic Peterson Sunshine",
+   "album_artist": "Various Artists",
+   "year": 2016,
+   "path": "/home/opc/tidal-out/Jazz/Various Artists/Gilles Peterson - Magic Peterson Sunshine [tidal]/02 It Ain't Necessarily So.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "88200",
+   "dur": "280.480850",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 87275064
+  },
+  {
+   "i": 53,
+   "title": "Relaxing With Lee",
+   "artists": [
+    "Dizzy Gillespie",
+    "Charlie Parker",
+    "Thelonious Monk",
+    "Curly Russell",
+    "Buddy Rich"
+   ],
+   "album": "Motherless Brooklyn (Original Motion Picture Soundtrack)",
+   "album_artist": "Various Artists",
+   "year": 2019,
+   "path": "/home/opc/tidal-out/Jazz/Various Artists/Motherless Brooklyn (Original Motion Picture Soundtrack) [tidal]/03 Relaxing With Lee.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "48000",
+   "dur": "168.062417",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 27990483
+  },
+  {
+   "i": 54,
+   "title": "Take Five",
+   "artists": [
+    "Dave Brubeck"
+   ],
+   "album": "Time Outtakes",
+   "album_artist": "Dave Brubeck",
+   "year": 2020,
+   "path": "/home/opc/tidal-out/Jazz/Dave Brubeck/Time Outtakes [tidal]/03 Take Five.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "48000",
+   "dur": "348.573750",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 71434997
+  },
+  {
+   "i": 55,
+   "title": "Exactly Like You",
+   "artists": [
+    "Oscar Peterson",
+    "Herb Ellis"
+   ],
+   "album": "Hello Herbie",
+   "album_artist": "Oscar Peterson",
+   "year": 2014,
+   "path": "/home/opc/tidal-out/Jazz/Oscar Peterson/Hello Herbie [tidal]/02 Exactly Like You.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "88200",
+   "dur": "286.378163",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 87783335
+  },
+  {
+   "i": 56,
+   "title": "Trav'lin' Light",
+   "artists": [
+    "Chet Baker"
+   ],
+   "album": "Baker's Holiday",
+   "album_artist": "Chet Baker",
+   "year": 1965,
+   "path": "/home/opc/tidal-out/Jazz/Chet Baker/Baker's Holiday [tidal]/01 Trav'lin' Light.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "191.585391",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 133034897
+  },
+  {
+   "i": 57,
+   "title": "Satin Doll",
+   "artists": [
+    "McCoy Tyner"
+   ],
+   "album": "Nights Of Ballads & Blues",
+   "album_artist": "McCoy Tyner",
+   "year": 1963,
+   "path": "/home/opc/tidal-out/Jazz/McCoy Tyner/Nights Of Ballads & Blues [tidal]/01 Satin Doll.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "339.014385",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 105479643
+  },
+  {
+   "i": 58,
+   "title": "Scrapple From The Apple",
+   "artists": [
+    "Dexter Gordon",
+    "Bud Powell",
+    "Pierre Michelot",
+    "Kenny Clarke"
+   ],
+   "album": "Our Man In Paris",
+   "album_artist": "Dexter Gordon",
+   "year": 2013,
+   "path": "/home/opc/tidal-out/Jazz/Dexter Gordon/Our Man In Paris [tidal]/01 Scrapple From The Apple.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "441.514667",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 313790026
+  },
+  {
+   "i": 59,
+   "title": "Cherokee",
+   "artists": [
+    "Clifford Brown"
+   ],
+   "album": "Memorial Album",
+   "album_artist": "Clifford Brown",
+   "year": 1956,
+   "path": "/home/opc/tidal-out/Jazz/Clifford Brown/Memorial Album [tidal]/04 Cherokee.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "192000",
+   "dur": "204.853333",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 121350756
+  },
+  {
+   "i": 61,
+   "title": "Better Than I Imagined",
+   "artists": [
+    "Robert Glasper",
+    "H.E.R.",
+    "Meshell Ndegeocello"
+   ],
+   "album": "Better Than I Imagined",
+   "album_artist": "Robert Glasper",
+   "year": 2020,
+   "path": "/home/opc/tidal-out/Jazz/Robert Glasper/Better Than I Imagined [tidal]/01 Better Than I Imagined.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "96000",
+   "dur": "299.366896",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 93732608
+  },
+  {
+   "i": 62,
+   "title": "And I Love Her",
+   "artists": [
+    "Brad Mehldau"
+   ],
+   "album": "Blues and Ballads",
+   "album_artist": "Brad Mehldau",
+   "year": 2016,
+   "path": "/home/opc/tidal-out/Jazz/Brad Mehldau/Blues and Ballads [tidal]/06 And I Love Her.flac",
+   "codec": "flac",
+   "bits": "24",
+   "sr": "88200",
+   "dur": "569.893322",
+   "quality": "HI_RES_LOSSLESS",
+   "bytes": 158349874
+  }
+ ],
+ "skipped": [
+  {
+   "i": 1,
+   "title": "Celestial Blues",
+   "artists": [
+    "Gary Bartz Ntu Troop"
+   ],
+   "why": "acervo"
+  },
+  {
+   "i": 5,
+   "title": "Goodbye Pork Pie Hat",
+   "artists": [
+    "Charles Mingus"
+   ],
+   "why": "acervo"
+  },
+  {
+   "i": 52,
+   "title": "Feeling Good",
+   "artists": [
+    "NINA SIMONE"
+   ],
+   "why": "acervo"
+  },
+  {
+   "i": 60,
+   "title": "Clair de Lune",
+   "artists": [
+    "Kamasi Washington"
+   ],
+   "why": "acervo"
+  }
+ ],
+ "failed": []
+}

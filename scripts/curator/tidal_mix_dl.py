@@ -82,6 +82,35 @@ def library_keys() -> set[tuple[str, str]]:
     return keys
 
 
+def resolve_items(sess: tidalapi.Session, ref: str):
+    """Aceita link da Tidal (mix, playlist, álbum ou faixa) ou o id cru. Devolve (título, itens)."""
+    mt = re.search(r"tidal\.com/.*?/track/(\d+)", ref)  # "album/<a>/track/<t>" = compartilhar faixa: só a faixa
+    m = re.search(r"tidal\.com/(?:browse/)?(mix|playlist|album|track)/([A-Za-z0-9-]+)", ref)
+    if mt:
+        kind, ident = "track", mt.group(1)
+    elif m:
+        kind, ident = m.group(1), m.group(2)
+    elif re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", ref):
+        kind, ident = "playlist", ref
+    elif re.fullmatch(r"[0-9a-f]{20,40}", ref):
+        kind, ident = "mix", ref
+    elif re.fullmatch(r"[0-9]+", ref):
+        kind, ident = "album", ref
+    else:
+        raise SystemExit(f"referência não reconhecida: {ref}")
+    if kind == "mix":
+        mix = sess.mix(ident)
+        return getattr(mix, "title", ident), mix.items()
+    if kind == "playlist":
+        pl = sess.playlist(ident)
+        return pl.name, pl.tracks()
+    if kind == "album":
+        alb = sess.album(int(ident))
+        return f"{alb.artist.name} - {alb.name}", alb.tracks()
+    t = sess.track(int(ident))
+    return f"{t.artist.name} - {t.name}", [t]
+
+
 def track_title(t) -> str:
     name = t.name.strip()
     ver = (getattr(t, "version", None) or "").strip()
@@ -147,7 +176,7 @@ def push_one(dest: Path, push: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("mix_id")
+    ap.add_argument("mix_id", help="link da Tidal (mix, playlist, álbum ou faixa) ou id")
     ap.add_argument("--playlist", default=GENRE, help="pasta de 1º nível em ~/Music")
     ap.add_argument("--list", action="store_true", help="só lista o mix, não baixa")
     ap.add_argument("--limit", type=int, default=0)
@@ -158,14 +187,7 @@ def main() -> int:
 
     WORK.mkdir(parents=True, exist_ok=True)
     sess = load_session()
-    try:
-        mix = sess.mix(args.mix_id)
-        items = mix.items()
-        mix_title = getattr(mix, "title", args.mix_id)
-    except Exception:
-        pl = sess.playlist(args.mix_id)
-        items = pl.tracks()
-        mix_title = pl.name
+    mix_title, items = resolve_items(sess, args.mix_id)
     tracks = [i for i in items if isinstance(i, tidalapi.Track)]
     print(f"MIX: {mix_title} | {len(tracks)} faixas", flush=True)
 
@@ -261,7 +283,7 @@ def main() -> int:
                 p.unlink(missing_ok=True)
         time.sleep(PAUSE_S)
 
-    out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{args.mix_id}.json"))
+    out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{re.sub(r'[^A-Za-z0-9-]+', '_', args.mix_id)[-40:]}.json"))
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | relatório {out}", flush=True)
     if new_files and args.push:

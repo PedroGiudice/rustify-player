@@ -33,6 +33,18 @@ Bandcamp + SoundCloud" e "Aquisicao Tidal".
 - `~/.cache/tidal-spike/tidal_postcheck.py` (cmr-auto) — índice/MERT/vibe/share pós-download
 - `docs/soulseek/manual-qa.md` — roteiro de QA do Crate (atualizar com as fontes)
 
+## Atualização (fim da sessão)
+
+Passos 1 e 2 abaixo já foram feitos: workflow encerrado (9 tasks aprovadas), gates verdes, `0.2.87`
+publicada. Falta o QA no app (SC-1 a SC-6 de `docs/soulseek/manual-qa.md`) depois que o CEO instalar
+e reabrir; conferir pela ponte: screenshot do Crate com a seção SoundCloud, `read_logs` sem token,
+MERT da faixa baixada. O jazz (passo 3) também fechou. A página de telemetria agora tem a fila de
+downloads (`telemetria_fila.py`, ver adendo do contexto): ao desligar (passo 4), avisar o CEO, pois ele
+usa o formulário; alternativa é promover a serviço `systemd --user` com paths fixos. Vibe das 41 faixas
+novas: JSON em `data/enrichments/2026-10-12-sonnet-vibe-annotations-tidal-lote41.json` se o apply rodou;
+senão rodar `python3 scripts/curator/vibe_apply.py <tasks/wvnsj0x8y.output> <scratchpad/lote41_vibe_in.tsv> <json>`
+com o app aberto (precisa dos ids).
+
 ## Próximos passos (por prioridade)
 
 ### 1. Fechar a task 9 e o workflow

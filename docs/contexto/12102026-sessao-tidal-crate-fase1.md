@@ -116,6 +116,25 @@ df36532 08e2083 72767b5 75a6551 50957f9 0b65676 fac7842 0a11229` (+ o fix da tas
 | Fase 1 | 8 tasks aprovadas, 1 em correção; ~19 commits; 1 alto por task em média na 1ª revisão |
 | Régua (11/10) | skip autoplay 74 % (meta 55 %), n=1575; não tocada nesta sessão |
 
+## Adendo (fim da sessão, 12/10 ~13:00 VM)
+
+- **Fase 1 concluída e publicada**: task 9 aprovada na 3ª revisão (6 baixos); gates verdes (Rust 565
+  testes em 12 alvos, TS sem erro, vitest 955); `chore: bump 0.2.87` + `./scripts/release.sh` ->
+  `rustify-player_0.2.87_amd64.deb` na release `dev`. QA (SC-1 a SC-6 em `docs/soulseek/manual-qa.md`)
+  depende do CEO instalar; CLAUDE.md (seção Crate) atualizado.
+- **Jazz fechado**: 58 novas + 1 do teste, vibe de 59 aplicada (`...tidal-jazz-59.json`), staging da VM limpo.
+- **Página de telemetria virou fila de downloads**: `scratchpad/telemetria_fila.py` (tmux `telemetria`,
+  Funnel 10000): formulário "Baixar da Tidal" (link de mix/playlist/álbum/faixa + pasta), fila em
+  `~/tidal-out/fila.json`, worker único chamando `tidal_mix_dl.py --push`, logs em `~/tidal-out/logs/`,
+  limpeza do staging após rsync ok. `tidal_mix_dl.py` aceita link (inclusive `album/<a>/track/<t>`
+  = só a faixa). O CEO já usou: Ciça "tranquila & Calma" (Rap & Hip-Hop). Um teste meu reprocessou o mix
+  DJ Petroski e trouxe 40 novas (o rádio girou). Vibe dessas 41 anotada por Sonnet medium
+  (285 k tokens, 4 min; Opus high custava ~450 k por lote de 3) e aplicada quando o app indexar.
+- **Calibração nova de subagentes** (CEO): Sonnet é opção normal; effort por etapa (low mecânico,
+  medium anotação/implementação com brief, high só julgar/atacar). Memória atualizada.
+- Mudança de estado: o app ESTAVA FECHADO na cmr-auto ao fim (41 faixas fora do índice até reabrir);
+  dpkg ainda em 0.2.86.
+
 ## Pendências identificadas
 
 1. **Task 9 → fim do workflow** (alta): esperar `review:9` aprovar (ou 3ª rodada). Se o workflow
