@@ -201,8 +201,10 @@ year, album}`:
    `WAV`, `MP3` no fim, e espaços duplicados.
 2. Se o título tem ` - ` e a cauda, comparada frouxamente (caixa, pontuação,
    `&` igual a ` e `), bate com `user.username` ou com o começo dele, a cauda
-   vira artista e a cabeça vira título. Senão, se a cabeça bate, inverte.
-   Senão, artista = `user.username`.
+   vira artista e o resto vira título. Senão, se a primeira parte bate (ou
+   começa com `DJ`/`MC`, heurística para feat. de produtor), ela vira artista
+   e o resto vira título. Senão, artista = `user.username`. Artista com cara
+   de URL nunca é sugerido: cai no nome do perfil ou fica vazio.
 3. Caixa alta integral vira Title Case, preservando siglas conhecidas (`DJ`,
    `MC`, `MCs`, `BPM`, `SP`, `RJ`, `BH`) e tokens com dígitos.
 4. `year` = ano de `release_date` ou `created_at`.
