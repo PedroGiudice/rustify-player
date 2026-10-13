@@ -19,7 +19,7 @@
 use crate::lyrics::find_lrc_sidecar;
 use crate::qdrant_client::QdrantClient;
 use crate::types::path_to_id;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -33,6 +33,9 @@ pub enum MoveStatus {
     Moved,
     AlreadyThere,
     Failed,
+    /// O indexador não respondeu a tempo; o pedido segue na fila e o
+    /// resultado chega depois pelo evento `TracksMoved`.
+    Pending,
 }
 
 /// Uma linha do relatório. Ids como string: são u64 e passam de 2^53.
@@ -57,6 +60,7 @@ pub struct MoveReport {
     pub moved: usize,
     pub already_there: usize,
     pub failed: usize,
+    pub pending: usize,
     pub items: Vec<MoveItem>,
 }
 
@@ -68,6 +72,7 @@ impl MoveReport {
             moved: count(MoveStatus::Moved),
             already_there: count(MoveStatus::AlreadyThere),
             failed: count(MoveStatus::Failed),
+            pending: count(MoveStatus::Pending),
             items,
         }
     }
@@ -75,6 +80,15 @@ impl MoveReport {
     /// Relatório com todas as faixas falhando pelo mesmo motivo (destino
     /// inválido, Qdrant fora, indexador desligado).
     pub fn all_failed(dest_playlist: &str, ids: &[u64], reason: &str) -> Self {
+        Self::all_with(dest_playlist, ids, MoveStatus::Failed, reason)
+    }
+
+    /// Relatório de espera esgotada: as faixas seguem na fila do indexador.
+    pub fn all_pending(dest_playlist: &str, ids: &[u64]) -> Self {
+        Self::all_with(dest_playlist, ids, MoveStatus::Pending, "ainda em andamento")
+    }
+
+    fn all_with(dest_playlist: &str, ids: &[u64], status: MoveStatus, reason: &str) -> Self {
         let items = ids
             .iter()
             .map(|id| MoveItem {
@@ -83,7 +97,7 @@ impl MoveReport {
                 new_path: None,
                 new_lrc_path: None,
                 title: None,
-                status: MoveStatus::Failed,
+                status,
                 detail: Some(reason.to_string()),
             })
             .collect();
@@ -386,10 +400,199 @@ pub fn remove_empty_dirs(dir: &Path, stop: &Path) {
 }
 
 // ---------------------------------------------------------------------------
+// Histórico (enrichment, play_events, ponto antigo)
+// ---------------------------------------------------------------------------
+
+/// O que a migração de histórico precisa do Qdrant. Trait para o replay do
+/// registro de intenção ser testável sem servidor.
+pub trait HistoryStore {
+    fn enrichment(&self, id: u64) -> Result<Value, String>;
+    /// PUT completo: o payload do id novo vira exatamente `payload`.
+    fn replace_enrichment(&self, id: u64, payload: &Value) -> Result<(), String>;
+    fn delete_enrichment(&self, id: u64) -> Result<(), String>;
+    fn play_event_track_ids(&self) -> Result<Vec<(Value, u64)>, String>;
+    /// Quantos pontos (na ordem de `pids`) foram reapontados, e o erro que
+    /// interrompeu, se houve.
+    fn repoint_play_events(&self, pids: &[Value], new_id: u64) -> (usize, Option<String>);
+    fn delete_track(&self, id: u64) -> Result<(), String>;
+}
+
+impl HistoryStore for QdrantClient {
+    fn enrichment(&self, id: u64) -> Result<Value, String> {
+        self.get_enrichment(id).map_err(|e| e.to_string())
+    }
+    fn replace_enrichment(&self, id: u64, payload: &Value) -> Result<(), String> {
+        QdrantClient::replace_enrichment(self, id, payload).map_err(|e| e.to_string())
+    }
+    fn delete_enrichment(&self, id: u64) -> Result<(), String> {
+        QdrantClient::delete_enrichment(self, id).map_err(|e| e.to_string())
+    }
+    fn play_event_track_ids(&self) -> Result<Vec<(Value, u64)>, String> {
+        self.scroll_play_event_track_ids().map_err(|e| e.to_string())
+    }
+    fn repoint_play_events(&self, pids: &[Value], new_id: u64) -> (usize, Option<String>) {
+        let (n, err) = self.set_play_events_track_id(pids, new_id);
+        (n, err.map(|e| e.to_string()))
+    }
+    fn delete_track(&self, id: u64) -> Result<(), String> {
+        self.delete_points(&[id]).map_err(|e| e.to_string())
+    }
+}
+
+/// Leva o histórico de `old` para `new`. Idempotente: rodar de novo depois
+/// de uma queda só refaz o que faltou. Devolve avisos e os play_events que
+/// NÃO foram reapontados.
+pub fn migrate_history<S: HistoryStore>(store: &S, old: u64, new: u64, pids: Vec<Value>) -> (Vec<String>, Vec<Value>) {
+    let mut warnings = Vec::new();
+    match store.enrichment(old) {
+        Ok(enr) if enr.as_object().is_some_and(|m| !m.is_empty()) => match store.replace_enrichment(new, &enr) {
+            Ok(()) => {
+                if let Err(e) = store.delete_enrichment(old) {
+                    warnings.push(format!("enrichment antigo não foi apagado: {e}"));
+                }
+            }
+            Err(e) => warnings.push(format!("like/vibe não acompanharam: {e}")),
+        },
+        Ok(_) => {}
+        Err(e) => warnings.push(format!("like/vibe não acompanharam: {e}")),
+    }
+    let left = repoint(store, pids, new, &mut warnings);
+    // Por último: se falhar, o próximo scan apaga (o caminho sumiu do disco).
+    if let Err(e) = store.delete_track(old) {
+        warnings.push(format!("ponto antigo será limpo no próximo scan: {e}"));
+    }
+    (warnings, left)
+}
+
+fn repoint<S: HistoryStore>(store: &S, pids: Vec<Value>, new: u64, warnings: &mut Vec<String>) -> Vec<Value> {
+    if pids.is_empty() {
+        return pids;
+    }
+    let (n, err) = store.repoint_play_events(&pids, new);
+    if let Some(e) = err {
+        warnings.push(format!("histórico de plays: {n} de {} reapontados ({e})", pids.len()));
+    }
+    pids[n.min(pids.len())..].to_vec()
+}
+
+// ---------------------------------------------------------------------------
+// Registro de intenção (queda no meio do move)
+// ---------------------------------------------------------------------------
+
+/// Gravado ANTES do rename e apagado no fim. Se o app cair no meio, o
+/// coordinator reprocessa no boot, antes do primeiro scan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoveIntent {
+    pub old_id: u64,
+    pub new_id: u64,
+    pub src: PathBuf,
+    pub dst: PathBuf,
+    pub lrc_src: Option<PathBuf>,
+    pub lrc_dst: Option<PathBuf>,
+    /// O ponto novo já foi gravado: o replay completa o histórico em vez
+    /// de desfazer o rename.
+    pub upserted: bool,
+}
+
+/// Arquivo `move-journal.json` no data dir. `path: None` desliga (testes e
+/// CLI sem data dir).
+#[derive(Debug, Clone, Default)]
+pub struct Journal {
+    path: Option<PathBuf>,
+}
+
+impl Journal {
+    pub const FILE: &'static str = "move-journal.json";
+
+    pub fn in_dir(dir: &Path) -> Self {
+        Journal { path: Some(dir.join(Self::FILE)) }
+    }
+
+    pub fn disabled() -> Self {
+        Journal { path: None }
+    }
+
+    pub fn write(&self, intent: &MoveIntent) -> Result<(), String> {
+        let Some(path) = &self.path else { return Ok(()) };
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let tmp = path.with_extension("json.tmp");
+        let body = serde_json::to_vec(intent).map_err(|e| e.to_string())?;
+        fs::write(&tmp, body).map_err(|e| e.to_string())?;
+        fs::rename(&tmp, path).map_err(|e| e.to_string())
+    }
+
+    pub fn load(&self) -> Option<MoveIntent> {
+        let path = self.path.as_ref()?;
+        let bytes = fs::read(path).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    pub fn clear(&self) {
+        if let Some(path) = &self.path {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// Desfecho do replay de uma pendência.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplayOutcome {
+    /// O ponto novo não chegou a ser gravado: o arquivo voltou à origem.
+    Undone,
+    /// Histórico completado no id novo (avisos, se houve; o registro fica
+    /// para nova tentativa no próximo boot quando há aviso).
+    Completed(Vec<String>),
+}
+
+/// Reprocessa a pendência do registro, se houver. Idempotente.
+pub fn replay_pending<S: HistoryStore>(store: &S, journal: &Journal, music_root: &Path) -> Option<ReplayOutcome> {
+    let intent = journal.load()?;
+    warn!(target: "library_indexer::relocate", ?intent, "mover para playlist: pendência de uma queda, reprocessando");
+    if !intent.upserted {
+        let back = |from: &Path, to: &Path| {
+            if from.is_file() && !to.exists() {
+                if let Some(dir) = to.parent() {
+                    let _ = fs::create_dir_all(dir);
+                }
+                if let Err(e) = fs::rename(from, to) {
+                    warn!(target: "library_indexer::relocate", error = %e, "replay: não deu para devolver o arquivo");
+                }
+            }
+        };
+        back(&intent.dst, &intent.src);
+        if let (Some(ls), Some(ld)) = (&intent.lrc_src, &intent.lrc_dst) {
+            back(ld, ls);
+        }
+        if let Some(dir) = intent.dst.parent() {
+            remove_empty_dirs(dir, music_root);
+        }
+        journal.clear();
+        return Some(ReplayOutcome::Undone);
+    }
+    let pids = match store.play_event_track_ids() {
+        Ok(rows) => rows.into_iter().filter(|(_, t)| *t == intent.old_id).map(|(p, _)| p).collect(),
+        Err(e) => return Some(ReplayOutcome::Completed(vec![format!("play_events indisponível: {e}")])),
+    };
+    let (warnings, _) = migrate_history(store, intent.old_id, intent.new_id, pids);
+    if warnings.is_empty() {
+        journal.clear();
+    }
+    Some(ReplayOutcome::Completed(warnings))
+}
+
+// ---------------------------------------------------------------------------
 // Orquestração (roda na thread do coordinator)
 // ---------------------------------------------------------------------------
 
-pub fn move_tracks(client: &QdrantClient, music_root: &Path, ids: &[u64], dest_playlist: &str) -> MoveReport {
+pub fn move_tracks(
+    client: &QdrantClient,
+    music_root: &Path,
+    journal: &Journal,
+    ids: &[u64],
+    dest_playlist: &str,
+) -> MoveReport {
     if !is_valid_dest_playlist(dest_playlist) {
         return MoveReport::all_failed(dest_playlist, ids, "nome de playlist inválido");
     }
@@ -407,10 +610,18 @@ pub fn move_tracks(client: &QdrantClient, music_root: &Path, ids: &[u64], dest_p
         }
     }
 
-    let items = ids
+    let mut items: Vec<MoveItem> = ids
         .iter()
-        .map(|&id| move_one(client, music_root, id, dest_playlist, &mut events))
+        .map(|&id| {
+            let pids = events.remove(&id).unwrap_or_default();
+            move_one(client, music_root, journal, id, dest_playlist, pids)
+        })
         .collect();
+
+    // Segunda passada: plays gravados no id antigo DURANTE o lote (a faixa
+    // tocando terminou no meio) ou que falharam na primeira.
+    sweep_late_events(client, &mut items);
+
     let report = MoveReport::new(dest_playlist, items);
     info!(
         target: "library_indexer::relocate",
@@ -420,12 +631,59 @@ pub fn move_tracks(client: &QdrantClient, music_root: &Path, ids: &[u64], dest_p
     report
 }
 
+fn push_detail(item: &mut MoveItem, msg: String) {
+    item.detail = Some(match item.detail.take() {
+        Some(d) => format!("{d}; {msg}"),
+        None => msg,
+    });
+}
+
+/// Reaponta qualquer play_event ainda no id antigo de uma faixa movida.
+pub fn sweep_late_events<S: HistoryStore>(store: &S, items: &mut [MoveItem]) {
+    let moved: HashMap<u64, usize> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, i)| i.status == MoveStatus::Moved)
+        .filter_map(|(k, i)| i.track_id.parse::<u64>().ok().map(|old| (old, k)))
+        .collect();
+    if moved.is_empty() {
+        return;
+    }
+    let rows = match store.play_event_track_ids() {
+        Ok(r) => r,
+        Err(e) => {
+            for &k in moved.values() {
+                push_detail(&mut items[k], format!("conferência final de plays falhou: {e}"));
+            }
+            return;
+        }
+    };
+    let mut late: HashMap<u64, Vec<Value>> = HashMap::new();
+    for (pid, tid) in rows {
+        if moved.contains_key(&tid) {
+            late.entry(tid).or_default().push(pid);
+        }
+    }
+    for (old, pids) in late {
+        let k = moved[&old];
+        let Some(new) = items[k].new_track_id.as_deref().and_then(|s| s.parse::<u64>().ok()) else { continue };
+        let mut warnings = Vec::new();
+        let left = repoint(store, pids, new, &mut warnings);
+        if !left.is_empty() {
+            for w in warnings {
+                push_detail(&mut items[k], w);
+            }
+        }
+    }
+}
+
 fn move_one(
     client: &QdrantClient,
     music_root: &Path,
+    journal: &Journal,
     old_id: u64,
     dest: &str,
-    events: &mut HashMap<u64, Vec<Value>>,
+    pids: Vec<Value>,
 ) -> MoveItem {
     let mut item = MoveItem {
         track_id: old_id.to_string(),
@@ -458,52 +716,52 @@ fn move_one(
         }
         Err(PlanError::OutsideLibrary) => return fail(item, "arquivo fora de uma playlist do acervo".into()),
     };
+    let new_id = path_to_id(&dst);
+
+    let lrc_src = find_lrc_sidecar(&src);
+    let lrc_dst = lrc_src.as_ref().map(|_| dst.with_extension("lrc")).filter(|p| !p.exists());
+    let mut intent = MoveIntent {
+        old_id,
+        new_id,
+        src: src.clone(),
+        dst: dst.clone(),
+        lrc_src: lrc_dst.as_ref().and(lrc_src),
+        lrc_dst,
+        upserted: false,
+    };
+    if let Err(e) = journal.write(&intent) {
+        return fail(item, format!("registro de intenção: {e}"));
+    }
 
     let fs_out = match relocate_files(&src, &dst) {
         Ok(o) => o,
-        Err(e) => return fail(item, e),
+        Err(e) => {
+            journal.clear();
+            return fail(item, e);
+        }
     };
 
-    let new_id = path_to_id(&dst);
     let new_payload = relocated_payload(&payload, &dst, fs_out.new_lrc.as_deref(), dest);
     if let Err(e) = client.upsert_point_raw(new_id, &new_payload, &vector) {
         let undo = match rollback_files(&fs_out, dst.parent().unwrap_or(&dst)) {
-            Ok(()) => "arquivo devolvido à origem".to_string(),
+            Ok(()) => {
+                journal.clear();
+                "arquivo devolvido à origem".to_string()
+            }
+            // O registro fica: o replay do próximo boot tenta de novo.
             Err(r) => format!("e o rollback falhou, confira no disco: {r}"),
         };
         return fail(item, format!("gravar faixa no índice: {e} ({undo})"));
     }
-
+    intent.upserted = true;
     let mut warnings = fs_out.warnings.clone();
-    match client.get_enrichment(old_id) {
-        Ok(enr) if enr.as_object().is_some_and(|m| !m.is_empty()) => {
-            match client.set_enrichment(new_id, enr) {
-                Ok(()) => {
-                    if let Err(e) = client.delete_enrichment(old_id) {
-                        warnings.push(format!("enrichment antigo não foi apagado: {e}"));
-                    }
-                }
-                Err(e) => warnings.push(format!("like/vibe não acompanharam: {e}")),
-            }
-        }
-        Ok(_) => {}
-        Err(e) => warnings.push(format!("like/vibe não acompanharam: {e}")),
+    if let Err(e) = journal.write(&intent) {
+        warnings.push(format!("registro de intenção não atualizado: {e}"));
     }
-    if let Some(pids) = events.remove(&old_id) {
-        match client.set_play_events_track_id(&pids, new_id) {
-            Ok(()) => {
-                events.insert(new_id, pids);
-            }
-            Err(e) => {
-                warnings.push(format!("histórico de plays não acompanhou: {e}"));
-                events.insert(old_id, pids);
-            }
-        }
-    }
-    // Por último: se falhar, o próximo scan apaga (o caminho sumiu do disco).
-    if let Err(e) = client.delete_points(&[old_id]) {
-        warnings.push(format!("ponto antigo será limpo no próximo scan: {e}"));
-    }
+
+    let (hist_warnings, _) = migrate_history(client, old_id, new_id, pids);
+    warnings.extend(hist_warnings);
+    journal.clear();
 
     if let Some(src_dir) = src.parent() {
         if let Ok(rel) = src.strip_prefix(music_root) {
@@ -742,5 +1000,141 @@ mod tests {
         assert_eq!((r.moved, r.already_there, r.failed), (2, 1, 1));
         let s = serde_json::to_value(&r).unwrap();
         assert_eq!(s["items"][2]["status"], "already_there");
+    }
+
+    // ── Histórico e registro de intenção (fake do Qdrant) ──────────────
+
+    #[derive(Default)]
+    struct FakeStore {
+        enrich: std::cell::RefCell<HashMap<u64, Value>>,
+        events: std::cell::RefCell<Vec<(Value, u64)>>,
+        tracks: std::cell::RefCell<std::collections::HashSet<u64>>,
+        /// Quantos pontos o próximo repoint aplica antes de "cair".
+        fail_after: std::cell::Cell<Option<usize>>,
+    }
+
+    impl HistoryStore for FakeStore {
+        fn enrichment(&self, id: u64) -> Result<Value, String> {
+            Ok(self.enrich.borrow().get(&id).cloned().unwrap_or_else(|| json!({})))
+        }
+        fn replace_enrichment(&self, id: u64, payload: &Value) -> Result<(), String> {
+            self.enrich.borrow_mut().insert(id, payload.clone());
+            Ok(())
+        }
+        fn delete_enrichment(&self, id: u64) -> Result<(), String> {
+            self.enrich.borrow_mut().remove(&id);
+            Ok(())
+        }
+        fn play_event_track_ids(&self) -> Result<Vec<(Value, u64)>, String> {
+            Ok(self.events.borrow().clone())
+        }
+        fn repoint_play_events(&self, pids: &[Value], new_id: u64) -> (usize, Option<String>) {
+            let limit = self.fail_after.take().unwrap_or(usize::MAX);
+            let mut n = 0;
+            for pid in pids {
+                if n == limit {
+                    return (n, Some("caiu".into()));
+                }
+                for (p, t) in self.events.borrow_mut().iter_mut() {
+                    if p == pid {
+                        *t = new_id;
+                    }
+                }
+                n += 1;
+            }
+            (n, None)
+        }
+        fn delete_track(&self, id: u64) -> Result<(), String> {
+            self.tracks.borrow_mut().remove(&id);
+            Ok(())
+        }
+    }
+
+    fn store_with_history(old: u64) -> FakeStore {
+        let s = FakeStore::default();
+        s.enrich.borrow_mut().insert(old, json!({ "liked_at": 5, "play_count": 3 }));
+        s.events.borrow_mut().extend([(json!("a"), old), (json!("b"), old), (json!("c"), 99)]);
+        s.tracks.borrow_mut().insert(old);
+        s
+    }
+
+    #[test]
+    fn migracao_substitui_enrichment_e_reaponta_plays() {
+        let s = store_with_history(1);
+        s.enrich.borrow_mut().insert(2, json!({ "lixo": true }));
+        let (warn, left) = migrate_history(&s, 1, 2, vec![json!("a"), json!("b")]);
+        assert!(warn.is_empty() && left.is_empty());
+        assert_eq!(s.enrich.borrow()[&2], json!({ "liked_at": 5, "play_count": 3 }), "PUT completo, sem merge");
+        assert!(!s.enrich.borrow().contains_key(&1));
+        assert!(!s.tracks.borrow().contains(&1));
+        assert_eq!(s.events.borrow().iter().filter(|(_, t)| *t == 2).count(), 2);
+    }
+
+    #[test]
+    fn reaponte_parcial_devolve_o_resto_e_avisa() {
+        let s = store_with_history(1);
+        s.fail_after.set(Some(1));
+        let (warn, left) = migrate_history(&s, 1, 2, vec![json!("a"), json!("b")]);
+        assert_eq!(left, vec![json!("b")]);
+        assert!(warn[0].contains("1 de 2"), "{warn:?}");
+    }
+
+    #[test]
+    fn conferencia_final_pega_play_gravado_durante_o_lote() {
+        let s = store_with_history(1);
+        let mut items = vec![MoveItem {
+            track_id: "1".into(), new_track_id: Some("2".into()), new_path: None, new_lrc_path: None,
+            title: None, status: MoveStatus::Moved, detail: None,
+        }];
+        sweep_late_events(&s, &mut items);
+        assert_eq!(s.events.borrow().iter().filter(|(_, t)| *t == 1).count(), 0);
+        assert_eq!(s.events.borrow().iter().filter(|(_, t)| *t == 99).count(), 1, "outras faixas intactas");
+        assert!(items[0].detail.is_none());
+    }
+
+    #[test]
+    fn replay_sem_upsert_desfaz_o_rename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = tmp.path();
+        fs::create_dir_all(r.join("Nova/A/B")).unwrap();
+        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
+        fs::write(r.join("Nova/A/B/1.flac"), "1").unwrap();
+        fs::write(r.join("Nova/A/B/1.lrc"), "l").unwrap();
+        let journal = Journal::in_dir(&r.join(".data"));
+        journal
+            .write(&MoveIntent {
+                old_id: 1, new_id: 2,
+                src: r.join("Rap/A/B/1.flac"), dst: r.join("Nova/A/B/1.flac"),
+                lrc_src: Some(r.join("Rap/A/B/1.lrc")), lrc_dst: Some(r.join("Nova/A/B/1.lrc")),
+                upserted: false,
+            })
+            .unwrap();
+        let s = store_with_history(1);
+        assert_eq!(replay_pending(&s, &journal, r), Some(ReplayOutcome::Undone));
+        assert!(r.join("Rap/A/B/1.flac").is_file() && r.join("Rap/A/B/1.lrc").is_file());
+        assert!(!r.join("Nova").exists());
+        assert!(journal.load().is_none());
+        // Histórico intocado: o ponto antigo continua sendo o válido.
+        assert!(s.tracks.borrow().contains(&1));
+        assert_eq!(replay_pending(&s, &journal, r), None, "idempotente");
+    }
+
+    #[test]
+    fn replay_com_upsert_completa_o_historico() {
+        let tmp = tempfile::tempdir().unwrap();
+        let journal = Journal::in_dir(tmp.path());
+        let intent = MoveIntent {
+            old_id: 1, new_id: 2,
+            src: tmp.path().join("Rap/x.flac"), dst: tmp.path().join("Nova/x.flac"),
+            lrc_src: None, lrc_dst: None, upserted: true,
+        };
+        journal.write(&intent).unwrap();
+        assert_eq!(journal.load(), Some(intent));
+        let s = store_with_history(1);
+        assert_eq!(replay_pending(&s, &journal, tmp.path()), Some(ReplayOutcome::Completed(vec![])));
+        assert_eq!(s.enrich.borrow()[&2]["liked_at"], 5);
+        assert_eq!(s.events.borrow().iter().filter(|(_, t)| *t == 2).count(), 2);
+        assert!(!s.tracks.borrow().contains(&1));
+        assert!(journal.load().is_none());
     }
 }

@@ -222,6 +222,9 @@ pub enum IndexerEvent {
     EmbeddingDone {
         track_id: u64,
     },
+    /// Resultado de um `MoveTracks` (CMR-298), emitido sempre — inclusive
+    /// quando quem pediu já desistiu por timeout.
+    TracksMoved(crate::relocate::MoveReport),
     Error(String),
 }
 

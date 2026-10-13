@@ -1828,18 +1828,30 @@ impl QdrantClient {
         Ok(out)
     }
 
-    /// Reaponta play_events para outro `track_id` (realocação de faixa),
-    /// em lotes de 500 pontos.
-    pub fn set_play_events_track_id(&self, point_ids: &[Value], track_id: u64) -> Result<(), IndexerError> {
+    /// Reaponta play_events para outro `track_id`, em lotes de 500 pontos.
+    /// Devolve quantos pontos (na ordem) foram aplicados e o erro que
+    /// interrompeu, se houve — quem chama mantém só o resto para retentar.
+    pub fn set_play_events_track_id(&self, point_ids: &[Value], track_id: u64) -> (usize, Option<IndexerError>) {
         let url = format!("{}/collections/{PLAY_EVENTS_COLLECTION}/points/payload", self.base_url);
+        let mut done = 0;
         for chunk in point_ids.chunks(500) {
-            self.agent
+            if let Err(e) = self
+                .agent
                 .post(&url)
                 .query("wait", "true")
                 .send_json(&json!({ "payload": { "track_id": track_id }, "points": chunk }))
-                .map_err(|e| IndexerError::Embedding(format!("qdrant set play_events track_id: {e}")))?;
+            {
+                return (done, Some(IndexerError::Embedding(format!("qdrant set play_events track_id: {e}"))));
+            }
+            done += chunk.len();
         }
-        Ok(())
+        (done, None)
+    }
+
+    /// PUT do payload INTEIRO (substitui, não mescla) — realocação de faixa.
+    pub fn replace_enrichment(&self, track_id: u64, payload: &Value) -> Result<(), IndexerError> {
+        self.put_enrichment(track_id, json!({}), payload.clone())
+            .map_err(|e| IndexerError::Embedding(format!("qdrant replace enrichment: {e}")))
     }
 
     pub fn scroll_enrichments(

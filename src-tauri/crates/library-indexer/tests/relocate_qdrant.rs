@@ -1,4 +1,4 @@
-use library_indexer::relocate::{move_tracks, MoveStatus};
+use library_indexer::relocate::{move_tracks, Journal, MoveStatus};
 use library_indexer::types::path_to_id;
 use library_indexer::QdrantClient;
 use serde_json::json;
@@ -63,7 +63,7 @@ fn mover_leva_vetores_like_e_plays() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    let report = move_tracks(&client, root, &[old_id], "Favoritas");
+    let report = move_tracks(&client, root, &Journal::in_dir(&root.join(".data")), &[old_id], "Favoritas");
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
     assert_eq!(report.moved, 1, "{report:?}");
     assert!(report.items[0].detail.is_none(), "{report:?}");
@@ -82,6 +82,7 @@ fn mover_leva_vetores_like_e_plays() {
     assert_eq!(vector["mert"].as_array().unwrap().len(), 768);
     assert_eq!(vector["lyrics"].as_array().unwrap().len(), 1024);
     assert!(client.get_point_with_vectors(old_id).unwrap().is_none());
+    assert!(!root.join(".data").join(Journal::FILE).exists(), "registro de intenção apagado no fim");
 
     let enr = client.get_enrichment(new_id).unwrap();
     assert_eq!(enr["liked_at"], 123);
@@ -93,7 +94,7 @@ fn mover_leva_vetores_like_e_plays() {
     assert_eq!(events.iter().filter(|(_, t)| *t == old_id).count(), 0);
 
     // De novo para o mesmo lugar: "já estava lá", nada muda.
-    let again = move_tracks(&client, root, &[new_id], "Favoritas");
+    let again = move_tracks(&client, root, &Journal::disabled(), &[new_id], "Favoritas");
     assert_eq!(again.items[0].status, MoveStatus::AlreadyThere);
 
     // Limpeza do que o teste gravou.

@@ -2923,6 +2923,7 @@ pub fn run() {
                 lyrics_client: Some(library_indexer::LyricsEmbedClient::new(lyrics_url)),
                 device_id,
                 app_version,
+                data_dir: Some(data_dir.clone()),
             };
 
             // Spawn Qdrant sidecar BEFORE the health probe — otherwise the

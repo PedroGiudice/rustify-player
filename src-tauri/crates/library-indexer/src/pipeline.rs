@@ -75,6 +75,8 @@ pub(crate) struct PipelineConfig {
     /// Cliente de embedding de texto (cogmem BGE-M3) para os vetores `lyrics`.
     /// Quando presente, o coordinator roda o backfill de lyrics no startup.
     pub lyrics_client: Option<LyricsEmbedClient>,
+    /// Registro de intenção do "Mover para playlist…" (`relocate::Journal`).
+    pub move_journal: crate::relocate::Journal,
 }
 
 /// Start the coordinator + embed worker. Returns channels, shared state, and the client.
@@ -148,6 +150,12 @@ fn coordinator_loop(
     embed_result_rx: Receiver<EmbedResult>,
 ) {
     info!(target: "library_indexer::pipeline", "coordinator starting");
+    // Pendência de um "Mover para playlist…" interrompido por queda: resolve
+    // ANTES do primeiro scan, senão o scan apagaria o ponto antigo (caminho
+    // sumiu) ou indexaria o arquivo novo sem vetores.
+    if let Some(outcome) = crate::relocate::replay_pending(&client, &config.move_journal, &config.music_root) {
+        info!(target: "library_indexer::pipeline", ?outcome, "move journal replayed");
+    }
     state.refresh(&client);
 
     if let Err(e) = run_scan(&client, &config, &evt_tx, &state, &embed_job_tx) {
@@ -233,8 +241,13 @@ fn coordinator_loop(
                     let _ = reply.send(out);
                 }
                 Ok(IndexerCommand::MoveTracks { ids, dest_playlist, reply }) => {
-                    let report = crate::relocate::move_tracks(&client, &config.music_root, &ids, &dest_playlist);
+                    let report = crate::relocate::move_tracks(
+                        &client, &config.music_root, &config.move_journal, &ids, &dest_playlist,
+                    );
                     state.refresh(&client);
+                    // Evento independente da resposta: se quem pediu desistiu
+                    // por timeout, o app ainda fica sabendo do resultado.
+                    let _ = evt_tx.send(IndexerEvent::TracksMoved(report.clone()));
                     let _ = reply.send(report);
                 }
                 Ok(IndexerCommand::Shutdown) | Err(_) => break,

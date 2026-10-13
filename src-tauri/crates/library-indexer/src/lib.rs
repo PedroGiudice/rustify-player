@@ -71,6 +71,9 @@ pub struct IndexerConfig {
     pub device_id: String,
     /// Versão do app (autoridade: tauri.conf.json via `package_info()`).
     pub app_version: String,
+    /// Data dir do app: guarda o registro de intenção do "Mover para
+    /// playlist…". `None` desliga o registro (CLI, testes).
+    pub data_dir: Option<PathBuf>,
 }
 
 /// Entry point. Stateless; calling [`Indexer::open`] spawns threads.
@@ -93,6 +96,11 @@ impl Indexer {
             cache_dir: config.cache_dir.clone(),
             embed_client: config.embed_client.clone(),
             lyrics_client: config.lyrics_client.clone(),
+            move_journal: config
+                .data_dir
+                .as_deref()
+                .map(relocate::Journal::in_dir)
+                .unwrap_or_else(relocate::Journal::disabled),
         };
         let (cmd_tx, evt_rx, state, client, _handles) = pipeline::start(client, pipeline_cfg);
         Ok(IndexerHandle {
@@ -271,8 +279,10 @@ impl IndexerHandle {
 
     /// Move faixas para a playlist `dest_playlist` (pasta de 1º nível já
     /// sanitizada) levando vetores, letra externa, like/vibe e play_events
-    /// para o id novo. Bloqueia até o coordinator responder; o teto é largo
-    /// porque cópia entre sistemas de arquivos pode demorar.
+    /// para o id novo. Bloqueia até o coordinator responder (teto de 600 s,
+    /// largo para um lote grande atrás de um scan). Esgotado o teto, devolve
+    /// as faixas como `Pending`: o pedido segue na fila e o resultado chega
+    /// pelo evento `IndexerEvent::TracksMoved`.
     pub fn move_tracks(&self, ids: Vec<u64>, dest_playlist: String) -> relocate::MoveReport {
         let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
         let sent = self.inner.cmd_tx.send(IndexerCommand::MoveTracks {
@@ -285,9 +295,9 @@ impl IndexerHandle {
         }
         reply_rx
             .recv_timeout(std::time::Duration::from_secs(600))
-            .unwrap_or_else(|_| {
-                relocate::MoveReport::all_failed(&dest_playlist, &ids, "tempo esgotado aguardando o indexador")
-            })
+            // O pedido segue na fila do coordinator: não é falha. O resultado
+            // chega pelo evento `TracksMoved`.
+            .unwrap_or_else(|_| relocate::MoveReport::all_pending(&dest_playlist, &ids))
     }
 
     // --- Write operations -----------------------------------------------------
