@@ -1,5 +1,11 @@
 use crate::{device_identity, persistence, qdrant_process, slsk, sync_receiver};
 
+/// cogmem (BGE-M3) para os vetores `lyrics`. IP tailnet da VM dedicada (extractlab,
+/// desde 18/09/2026). O literal antigo apontava para a VPS desligada
+/// (100.123.73.128) e cada letra nova falhava em silêncio após 30 s de timeout
+/// (visto no log da cmr-auto em 13/10/2026). Override: RUSTIFY_LYRICS_EMBED_URL.
+const LYRICS_EMBED_DEFAULT: &str = "http://100.64.242.118:3939";
+
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
@@ -297,7 +303,7 @@ fn lib_semantic_search(
     // Mesmo endpoint/override do setup — o literal fixo aqui ignorava o
     // RUSTIFY_LYRICS_EMBED_URL documentado.
     let lyrics_url = std::env::var("RUSTIFY_LYRICS_EMBED_URL")
-        .unwrap_or_else(|_| "http://100.123.73.128:3939".to_string());
+        .unwrap_or_else(|_| LYRICS_EMBED_DEFAULT.to_string());
     let embedder = library_indexer::LyricsEmbedClient::new(lyrics_url);
     let vector = embedder.embed_text(&query).map_err(err)?;
     let results = client.semantic_search(&vector, limit.unwrap_or(10)).map_err(err)?;
@@ -2857,7 +2863,7 @@ pub fn run() {
             // cogmem BGE-M3 para os vetores `lyrics`. Mesmo endpoint usado pelo
             // lib_semantic_search; override via RUSTIFY_LYRICS_EMBED_URL.
             let lyrics_url = std::env::var("RUSTIFY_LYRICS_EMBED_URL")
-                .unwrap_or_else(|_| "http://100.123.73.128:3939".to_string());
+                .unwrap_or_else(|_| LYRICS_EMBED_DEFAULT.to_string());
 
             // Proveniência dos eventos (spec 2026-08-13): identidade estável
             // do dispositivo + versão do app (autoridade: tauri.conf.json).

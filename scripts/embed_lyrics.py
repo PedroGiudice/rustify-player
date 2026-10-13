@@ -8,7 +8,7 @@ match the Qdrant point id — using it produced silent no-op upserts.
 
 Usage:
     python3 scripts/embed_lyrics.py \
-        --cogmem-url http://100.123.73.128:3939 \
+        --cogmem-url http://100.64.242.118:3939 \
         --qdrant-url http://localhost:6333 [--force]
 """
 import argparse
@@ -115,7 +115,7 @@ def upsert_lyrics(qdrant_url: str, points: list[tuple[int, list[float]]]):
 
 def main():
     parser = argparse.ArgumentParser(description="Embed lyrics and upsert to Qdrant")
-    parser.add_argument("--cogmem-url", default="http://100.123.73.128:3939")
+    parser.add_argument("--cogmem-url", default="http://100.64.242.118:3939")
     parser.add_argument("--qdrant-url", default="http://localhost:6333")
     parser.add_argument("--force", action="store_true", help="Re-embed all, skip incremental check")
     args = parser.parse_args()
