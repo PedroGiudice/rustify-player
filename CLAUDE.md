@@ -774,24 +774,42 @@ antigo. NUNCA mover faixa à mão; usar "Mover para playlist…" (menu de contex
 da faixa, botão no cabeçalho de Álbum e Artista).
 
 - Backend: `lib_move_tracks(track_ids, dest_playlist)` + `lib_list_playlists`
-  (pastas no disco, sem `.`/`_`). O trabalho roda na thread do coordinator do
-  indexador (`IndexerCommand::MoveTracks`, `library-indexer/src/relocate.rs`),
+  (pastas no disco, sem `.`/`_`). Pasta que já existe vai como está; só pasta
+  nova passa pelo `sanitize_component` (o frontend mostra o nome final antes).
+  O trabalho roda na thread do coordinator do indexador
+  (`IndexerCommand::MoveTracks`, `library-indexer/src/relocate.rs`),
   serializado com o `run_scan`: move o FLAC (só troca a pasta de 1º nível;
-  artista, álbum e ` [tidal]` ficam), o `.lrc` de mesmo stem e a capa da pasta
-  (copia enquanto restam faixas, move na última), grava o ponto novo com o
-  payload e os vetores `mert`/`lyrics` do antigo (`path`, `filename`, `genre`,
-  `lrc_path` atualizados; `cover_path` é do cache e não muda), copia o
-  enrichment, reaponta os `play_events` (comparação do `track_id` no CLIENTE:
-  u64 > i64::MAX não filtra no índice integer) e só então apaga o ponto antigo.
-  O scan seguinte vê mtime/tamanho iguais e não reescreve; EXDEV copia
-  preservando o mtime. Falha ao gravar o ponto novo devolve o arquivo.
-- Evento `lib-tracks-moved` (um por lote de 10): o App troca os ids da fila em
-  memória e as views de Álbum/Artista/Playlist(s) recarregam por
-  `libraryRevision` (`src/store/moveDialog.ts`).
-- Fora do escopo, ficam com o id antigo até o próximo ciclo: `stations.json`,
-  manifest/vetores/taste do celular (reexportar), `state.json` da sessão e o
-  anel de recentes do localStorage. A pasta da playlist de origem fica mesmo
-  vazia (só artista/álbum vazios são removidos).
+  artista, álbum e ` [tidal]` ficam), o `.lrc` de mesmo stem (um `.lrc` que já
+  estava no destino não é adotado) e a capa da pasta (copia enquanto restam
+  faixas; na última, apaga a da origem só se a do destino for idêntica),
+  grava o ponto novo com o payload e os vetores `mert`/`lyrics` do antigo
+  (`path`, `filename`, `genre`, `lrc_path` atualizados; `cover_path` é do cache
+  e não muda), SUBSTITUI o enrichment do id novo pelo do antigo, reaponta os
+  `play_events` (comparação do `track_id` no CLIENTE: u64 > i64::MAX não
+  filtra no índice integer) e só então apaga o ponto antigo. No fim do lote,
+  uma segunda passada reaponta plays gravados no id antigo durante o move.
+  O scan seguinte vê mtime/tamanho iguais e não reescreve. Só `rename`:
+  destino em outro sistema de arquivos é recusado (o scanner anda com
+  `same_file_system`). Falha ao gravar o ponto novo devolve o arquivo.
+- Queda no meio: `move-journal.json` no data dir é gravado antes do rename e
+  apagado no fim; no boot o coordinator reprocessa ANTES do primeiro scan
+  (`replay_pending`): sem ponto novo gravado, desfaz o rename; com ele,
+  completa enrichment/plays/ponto antigo. Capa movida/copiada não é desfeita.
+- Evento: o coordinator emite `IndexerEvent::TracksMoved` sempre; a thread
+  `indexer-events` (desktop.rs) troca id e caminho no `PlayerSnapshot` (senão
+  o `flush_play_event` gravaria no id apagado) e repassa como
+  `lib-tracks-moved`. O frontend (`applyMovedReport`) remapeia a fila, refaz
+  o preload gapless se a próxima foi movida e recarrega as views por
+  `libraryRevision`. Timeout de 600 s no comando devolve `pending` ("ainda em
+  andamento"), não falha.
+- **Dívida (sem tabela de apelidos old_id -> new_id):** plays e likes que o S24
+  sincronizar com o id ANTIGO, e o que o celular calcula com
+  manifest/vetores/taste/`stations.json` exportados antes do move, ficam
+  presos ao id apagado PARA SEMPRE: o receiver grava no id que vier e nada os
+  reaponta depois. Reexportar o manifest logo após mover reduz a janela, mas
+  não recupera o que já foi sincronizado. Também ficam com o id antigo o
+  `state.json` da sessão e o anel de recentes do localStorage. A pasta da
+  playlist de origem fica mesmo vazia (só artista/álbum vazios saem).
 - Teste de integração contra Qdrant real (o da VM, nunca o da cmr-auto):
   `cargo test -p library-indexer --test relocate_qdrant -- --ignored`.
 
