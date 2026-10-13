@@ -651,6 +651,24 @@ export interface SourcesStatus {
   ffmpeg: boolean;
   uv: boolean;
   bandcamp_identity: boolean;
+  tidal: "token_ok" | "no_token" | "api_down";
+}
+
+/** Job da fila de downloads da Tidal (slsk/tidal_fila.rs `TidalJob`). */
+export interface TidalJob {
+  id: string;
+  url: string;
+  playlist: string;
+  status: "fila" | "baixando" | "ok" | "parcial" | "falhou";
+  added: string;
+  resumo: string;
+  inicio: string | null;
+  fim: string | null;
+}
+
+export interface TidalFilaSnapshot {
+  jobs: TidalJob[];
+  pastas: string[];
 }
 
 export const slskStatus = () => invoke<SlskStatus>("slsk_status");
@@ -716,6 +734,15 @@ export const crateDownload = (
 ) => invoke<string>("crate_download", { source, meta, destPlaylist, artworkUrl });
 
 export const crateSourcesStatus = () => invoke<SourcesStatus>("crate_sources_status");
+
+/** Snapshot da fila da Tidal (até 30 jobs, mais antigo primeiro). */
+export const crateTidalJobs = () => invoke<TidalFilaSnapshot>("crate_tidal_jobs");
+
+/** Enfileira um download da Tidal; `Ok(id)` ou rejeita com texto em PT-BR
+    pronto pra tela (link não reconhecido, pasta vazia, já na fila, fila
+    indisponível). */
+export const crateTidalEnqueue = (url: string, playlist: string) =>
+  invoke<string>("crate_tidal_enqueue", { url, playlist });
 
 /** Board inteiro por evento (spec §3.5) — throttle 500ms no backend, só
     quando dirty. Nunca diffs incrementais. */

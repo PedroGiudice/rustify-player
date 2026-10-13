@@ -33,11 +33,16 @@ import {
   slskDownload, slskTryOtherSource, slskCancel,
   parseSlskSearchError, libListFolders, libGetTracksByIds, formatDuration,
   crateScSearch, crateScResolve, crateScProbe, crateScArtwork, crateDownload, crateSourcesStatus,
+  crateTidalJobs, crateTidalEnqueue,
   type SlskStatus, type SearchSnapshot, type ResultGroup, type Candidate,
   type DownloadJob, type FolderPlaylist, type Track, type RejectReason, type Source,
   type ScResult, type ScProbe, type SourcesStatus, type ConfirmedMeta, type FormatIn,
+  type TidalJob,
 } from "../tauri";
 import { guessFromSoundCloud, cleanTitle, type MetaGuess } from "../lib/trackMetaGuess";
+import {
+  shortTidalLink, tidalStatusLabel, tidalStatusTone, loadLastTidalDest, saveLastTidalDest,
+} from "../lib/tidalFila";
 import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from "../store/crate";
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
@@ -58,6 +63,10 @@ const SEARCH_WINDOW_MS = 25_000;
 
 /** Status das fontes (token do SoundCloud, ffmpeg): spec §5.4. */
 const SOURCES_POLL_MS = 30_000;
+
+/** Poll da fila da Tidal — roda na VM, não reage a input local; 10 s
+    (brief da seção Tidal) é folgado o bastante pra não martelar a rede. */
+const TIDAL_POLL_MS = 10_000;
 
 /** Link colado do SoundCloud vai para o resolve, não para a busca.
     Inclui o curto `on.soundcloud.com/<id>` do app do celular (o backend
@@ -939,6 +948,31 @@ function CrateTerminalCard(props: { job: DownloadJob }) {
   );
 }
 
+// ── Tidal: linha de job da fila remota ────────────────────────────
+
+function TidalJobRow(props: { job: TidalJob }) {
+  const tone = () => tidalStatusTone(props.job.status);
+  const horario = () => props.job.fim ?? props.job.inicio ?? props.job.added;
+  return (
+    <div class="crate-row-wrap">
+      <div class="crate-tidal-row">
+        <span class={`crate-pill crate-pill--${tone()}`}>{tidalStatusLabel(props.job.status)}</span>
+        <span class="crate-chip crate-dest__btn">
+          <span class="crate-dest__arrow">→</span>
+          <span>{props.job.playlist}</span>
+        </span>
+        <div class="crate-tidal-row__main">
+          <CopyLinkButton url={props.job.url} label={shortTidalLink(props.job.url)} hint="Copia o link da Tidal" quiet />
+          <Show when={props.job.resumo}>
+            <p class="crate-tidal-row__resumo">{props.job.resumo}</p>
+          </Show>
+        </div>
+        <span class="crate-r-dur crate-tidal-row__time">{horario()}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── SoundCloud: linha de resultado e card de confirmação ─────────
 
 /** Chip de disponibilidade do original (spec §5.1). */
@@ -1226,7 +1260,7 @@ function ConfirmCard(props: {
 
 // ── View principal ─────────────────────────────────────────────
 export default function Crate(props: { param?: string | null }) {
-  const [tab, setTab] = createSignal<"search" | "queue">("search");
+  const [tab, setTab] = createSignal<"search" | "queue" | "tidal">("search");
   const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : "");
   const [searchId, setSearchId] = createSignal<string | null>(null);
   const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(null);
@@ -1274,6 +1308,19 @@ export default function Crate(props: { param?: string | null }) {
   const [cardSubmitting, setCardSubmitting] = createSignal(false);
   const [sourcesStatus, setSourcesStatus] = createSignal<SourcesStatus | null>(null);
 
+  // Tidal (seção do Crate, backend = fila remota na VM): estado da fila é
+  // ciclo próprio (poll de 10s), independente da busca Soulseek/SoundCloud.
+  const [tidalJobs, setTidalJobs] = createSignal<TidalJob[]>([]);
+  const [tidalPastas, setTidalPastas] = createSignal<string[]>([]);
+  const [tidalLoad, setTidalLoad] = createSignal<"loading" | "loaded" | "error">("loading");
+  const [tidalLoadError, setTidalLoadError] = createSignal<string | null>(null);
+  const [tidalUrl, setTidalUrl] = createSignal("");
+  const [tidalDest, setTidalDest] = createSignal(loadLastTidalDest() ?? "");
+  const [tidalCustomDest, setTidalCustomDest] = createSignal(false);
+  const [tidalCustomName, setTidalCustomName] = createSignal("");
+  const [tidalSubmitting, setTidalSubmitting] = createSignal(false);
+  const [tidalFormError, setTidalFormError] = createSignal<string | null>(null);
+
   // Grupos num store reconciliado por `group_key`: cada slsk_results chega
   // como objeto novo (o backend clona o snapshot), e o <For> por referência
   // recriava todas as linhas a cada poll — seletor de destino fechando
@@ -1287,6 +1334,7 @@ export default function Crate(props: { param?: string | null }) {
   let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
   let sourcesTimer: ReturnType<typeof setInterval> | undefined;
+  let tidalTimer: ReturnType<typeof setInterval> | undefined;
   /** Número da chamada de doSearch mais recente (só ela baixa o pending). */
   let searchSeq = 0;
   /** Idem para a busca do SoundCloud e para o card (resposta atrasada de
@@ -1476,6 +1524,55 @@ export default function Crate(props: { param?: string | null }) {
     if (!st) return "verificando…";
     return st.soundcloud === "token_ok" ? "token ok" : st.soundcloud === "no_token" ? "sem token" : "API indisponível";
   };
+
+  // ── Tidal ──────────────────────────────────────────────────────
+  function refreshTidal() {
+    crateTidalJobs().then((snap) => {
+      batch(() => {
+        setTidalJobs(snap.jobs);
+        setTidalPastas(snap.pastas);
+        setTidalLoad("loaded");
+        setTidalLoadError(null);
+      });
+    }).catch((e) => {
+      batch(() => {
+        setTidalLoad("error");
+        setTidalLoadError(errorText(e));
+      });
+    });
+  }
+
+  /** Pasta efetiva: campo de texto quando "outra pasta..." está selecionado,
+      senão o valor do <select> (que já nasce do último usado). */
+  const resolvedTidalDest = () => (tidalCustomDest() ? tidalCustomName().trim() : tidalDest());
+
+  async function submitTidal(e: Event) {
+    e.preventDefault();
+    const url = tidalUrl().trim();
+    const dest = resolvedTidalDest();
+    if (!url || !dest || tidalSubmitting()) return;
+    setTidalSubmitting(true);
+    setTidalFormError(null);
+    try {
+      await crateTidalEnqueue(url, dest);
+      batch(() => {
+        setTidalUrl("");
+        if (tidalCustomDest()) {
+          saveLastTidalDest(dest);
+          setTidalDest(dest);
+          setTidalCustomDest(false);
+          setTidalCustomName("");
+        } else {
+          saveLastTidalDest(dest);
+        }
+      });
+      refreshTidal();
+    } catch (err) {
+      setTidalFormError(errorText(err));
+    } finally {
+      setTidalSubmitting(false);
+    }
+  }
 
   // Seletor de destino aberto = popover: fecha com clique fora de qualquer
   // `.crate-dest` e com Esc (crate-11, pendência v1.1 do CLAUDE.md).
@@ -1735,6 +1832,9 @@ export default function Crate(props: { param?: string | null }) {
     refreshSources();
     sourcesTimer = setInterval(refreshSources, SOURCES_POLL_MS);
 
+    refreshTidal();
+    tidalTimer = setInterval(refreshTidal, TIDAL_POLL_MS);
+
     // Só polla enquanto a busca ainda pode mudar: `running`, ou antes do
     // primeiro snapshot chegar. Estado terminal (done/empty/failed/
     // canceled) não muda mais no backend — seguir pollando só recriava
@@ -1753,6 +1853,7 @@ export default function Crate(props: { param?: string | null }) {
       if (pollTimer) clearInterval(pollTimer);
       if (statusTimer) clearInterval(statusTimer);
       if (sourcesTimer) clearInterval(sourcesTimer);
+      if (tidalTimer) clearInterval(tidalTimer);
       if (cooldownTimer) clearInterval(cooldownTimer);
       const id = searchId();
       if (id) slskCancelSearch(id).catch(() => {});
@@ -1792,6 +1893,14 @@ export default function Crate(props: { param?: string | null }) {
           onClick={() => setTab("queue")}
         >
           Fila <Show when={jobs().length > 0}><span class="tab__count">{jobs().length}</span></Show>
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab() === "tidal"}
+          class={`tab${tab() === "tidal" ? " active" : ""}`}
+          onClick={() => setTab("tidal")}
+        >
+          Tidal <Show when={tidalJobs().length > 0}><span class="tab__count">{tidalJobs().length}</span></Show>
         </button>
       </nav>
 
@@ -2152,6 +2261,115 @@ export default function Crate(props: { param?: string | null }) {
               </div>
             </div>
           </Show>
+        </Show>
+
+        <Show when={tab() === "tidal"}>
+          <div class="crate-tidal">
+            <form class="crate-tidal-form" onSubmit={(e) => void submitTidal(e)}>
+              <div class="crate-tidal-form__row">
+                <input
+                  type="url"
+                  class="crate-tidal-input"
+                  placeholder="Cole o link da Tidal (mix, playlist, álbum ou faixa)"
+                  value={tidalUrl()}
+                  disabled={sourcesStatus()?.tidal === "no_token"}
+                  onInput={(e) => setTidalUrl(e.currentTarget.value)}
+                />
+                <select
+                  class="crate-tidal-select"
+                  value={tidalCustomDest() ? "__nova__" : tidalDest()}
+                  disabled={sourcesStatus()?.tidal === "no_token"}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    if (v === "__nova__") { setTidalCustomDest(true); return; }
+                    setTidalCustomDest(false);
+                    setTidalDest(v);
+                  }}
+                >
+                  {/* O destino lembrado (localStorage) pode não estar mais
+                      entre as pastas que a VM conhece agora — entra como
+                      opção própria pra não sumir do seletor sem aviso. */}
+                  <Show when={tidalDest() && !tidalPastas().includes(tidalDest())}>
+                    <option value={tidalDest()}>{tidalDest()}</option>
+                  </Show>
+                  <For each={tidalPastas()}>{(p) => <option value={p}>{p}</option>}</For>
+                  <option value="__nova__">outra pasta...</option>
+                </select>
+                <Show when={tidalCustomDest()}>
+                  <input
+                    type="text"
+                    class="crate-tidal-input crate-tidal-input--dest"
+                    placeholder="nome da pasta nova"
+                    value={tidalCustomName()}
+                    onInput={(e) => setTidalCustomName(e.currentTarget.value)}
+                  />
+                </Show>
+                <button
+                  type="submit"
+                  class="crate-btn crate-btn--primary"
+                  disabled={
+                    tidalSubmitting() || !tidalUrl().trim() || !resolvedTidalDest()
+                    || sourcesStatus()?.tidal === "no_token"
+                  }
+                >
+                  {tidalSubmitting() ? "Enviando…" : "Baixar"}
+                </button>
+              </div>
+              <Show when={tidalFormError()}>
+                {(err) => <p class="crate-tidal-form__err">{err()}</p>}
+              </Show>
+            </form>
+
+            <Show when={sourcesStatus()?.tidal === "no_token"}>
+              <div class="crate-banner" data-tone="amber">
+                <Icon name={ICONS.alert} size={15} />
+                <p>
+                  Sem token da fila: configure <code>~/.secrets/telemetria-token.txt</code>{" "}
+                  (ou <code>RUSTIFY_TIDAL_FILA_TOKEN_FILE</code> para outro caminho).
+                </p>
+              </div>
+            </Show>
+
+            <Show when={tidalLoad() === "error"}>
+              <div class="crate-banner" data-tone="amber">
+                <Icon name={ICONS.alert} size={15} />
+                <p>{tidalLoadError() ?? "fila indisponível (VM fora?)"}</p>
+                <span class="crate-banner__sp" />
+                <button type="button" class="crate-banner__act" onClick={refreshTidal}>
+                  Tentar de novo
+                </button>
+              </div>
+            </Show>
+
+            <Show when={tidalLoad() === "loading" && tidalJobs().length === 0}>
+              <div class="crate-empty-wrap">
+                <div class="crate-empty">
+                  <Icon name={ICONS.download} size={26} />
+                  <h3>Carregando…</h3>
+                </div>
+              </div>
+            </Show>
+
+            <Show when={tidalLoad() === "loaded" && tidalJobs().length === 0}>
+              <div class="crate-empty-wrap">
+                <div class="crate-empty">
+                  <Icon name={ICONS.download} size={26} />
+                  <h3>Nenhum download da Tidal ainda</h3>
+                  <p>Cole um link acima e escolha a pasta.</p>
+                </div>
+              </div>
+            </Show>
+
+            <Show when={tidalJobs().length > 0}>
+              <div class="crate-list crate-tidal-list">
+                <div class="crate-list-inner">
+                  <For each={[...tidalJobs()].reverse()}>
+                    {(j) => <TidalJobRow job={j} />}
+                  </For>
+                </div>
+              </div>
+            </Show>
+          </div>
         </Show>
       </div>
     </article>

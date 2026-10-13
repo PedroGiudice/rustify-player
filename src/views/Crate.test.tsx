@@ -44,7 +44,9 @@ vi.mock("../tauri", async (importOriginal) => {
     crateScProbe: vi.fn(async () => undefined),
     crateScArtwork: vi.fn(async () => "data:image/jpeg;base64,AA=="),
     crateDownload: vi.fn(async () => "job-sc"),
-    crateSourcesStatus: vi.fn(async () => ({ soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false })),
+    crateSourcesStatus: vi.fn(async () => ({ soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false, tidal: "token_ok" })),
+    crateTidalJobs: vi.fn(async () => ({ jobs: [], pastas: [] })),
+    crateTidalEnqueue: vi.fn(async () => "tidal-job-1"),
   };
 });
 
@@ -123,7 +125,7 @@ beforeEach(() => {
   vi.mocked(tauriApi.crateScArtwork).mockResolvedValue("data:image/jpeg;base64,AA==");
   vi.mocked(tauriApi.crateDownload).mockResolvedValue("job-sc");
   vi.mocked(tauriApi.crateSourcesStatus).mockResolvedValue({
-    soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false,
+    soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false, tidal: "token_ok",
   });
   localStorage.clear();
   __resetForTests();
@@ -1238,7 +1240,7 @@ describe("Crate: SoundCloud", () => {
   });
 
   it("status das fontes aparece no cabeçalho e a fila mostra a origem", async () => {
-    mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "no_token", ffmpeg: true, uv: false, bandcamp_identity: false });
+    mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "no_token", ffmpeg: true, uv: false, bandcamp_identity: false, tidal: "token_ok" });
     mocks.slskJobs.mockResolvedValue([job({ job_id: "j", source: { kind: "sound_cloud", track_id: 1, permalink_url: "https://soundcloud.com/a/b" }, display: "DJ Arana - Festa", state: { kind: "downloading", pct: 40, bps: 1000, eta_s: 3 } })]);
     render(() => <Crate />);
     expect(await screen.findByText(/SoundCloud: sem token/)).toBeInTheDocument();
@@ -1431,7 +1433,7 @@ describe("Crate: SoundCloud, correções da revisão", () => {
   });
 
   it("linha do Soulseek na busca ganha o badge de origem; status das fontes separa SoundCloud e ffmpeg", async () => {
-    mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "token_ok", ffmpeg: false, uv: true, bandcamp_identity: false });
+    mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "token_ok", ffmpeg: false, uv: true, bandcamp_identity: false, tidal: "token_ok" });
     const { container } = await searchAndRender([group()]);
     expect(within(container.querySelector(".crate-row") as HTMLElement).getByText("Soulseek", { selector: ".crate-origin" })).toBeInTheDocument();
     await waitFor(() => expect(container.querySelectorAll(".crate-src-status")).toHaveLength(2));

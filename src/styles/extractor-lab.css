@@ -4082,3 +4082,48 @@ html { --glow: 0; }
   color: var(--fg-4); margin-top: 3px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ── Tidal (fase 1): link + pasta + fila remota na VM ──────────── */
+.crate-tidal { padding: 16px 40px 56px; display: flex; flex-direction: column; gap: 14px; }
+.crate-tidal-form { display: flex; flex-direction: column; gap: 6px; }
+.crate-tidal-form__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.crate-tidal-input,
+.crate-tidal-select {
+  height: 34px; padding: 0 12px;
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-md);
+  outline: 0;
+  font-size: 12.5px; color: var(--fg-1);
+  letter-spacing: -0.005em;
+  min-width: 0;
+}
+.crate-tidal-input { flex: 1 1 360px; }
+.crate-tidal-input::placeholder { color: var(--fg-6); }
+.crate-tidal-input:focus,
+.crate-tidal-select:focus { border-color: var(--fg-7); box-shadow: var(--ring-focus); }
+.crate-tidal-input:disabled,
+.crate-tidal-select:disabled { opacity: 0.55; cursor: default; }
+.crate-tidal-select { flex: 0 1 200px; }
+.crate-tidal-input--dest { flex: 0 1 200px; }
+.crate-tidal-form__err { font-size: 12px; color: var(--rose-fg); margin: 0; }
+
+.crate-tidal-list { padding: 0; }
+.crate-tidal-row {
+  display: grid;
+  grid-template-columns: 96px 150px minmax(0, 1fr) 96px;
+  align-items: center;
+  column-gap: 14px;
+  min-height: 46px;
+  padding: 9px 12px;
+}
+.crate-tidal-row__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.crate-tidal-row__resumo {
+  margin: 0;
+  font-size: 11.5px; color: var(--fg-5);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.crate-tidal-row__time {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
