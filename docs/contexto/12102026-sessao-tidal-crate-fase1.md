@@ -172,3 +172,8 @@ lista do que não foi. Validado na VM: Ciça (já lá) pulou como `JÁ NA CMR-AU
 "Peace Piece" (Jazz, 33 MB) baixou, chegou com capa em 17 s e o staging ficou vazio. Cópia de
 trabalho `~/tidal-out/tidal_mix_dl.py` atualizada (a fila usa essa). App na cmr-auto seguia
 FECHADO e em 0.2.86; `vibe41` esperando (272/313).
+
+Fila da telemetria movida para o repo (`scripts/curator/tidal_fila.py`): sem as seções do workflow
+(morto), token lido de arquivo (não mais em argv), chama o `tidal_mix_dl.py` do repo sem flag, estado
+`parcial` para rc=2, resumo com "n na cmr-auto". Relançada no tmux `telemetria`; testado GET/404/POST e
+um job pela fila (Peace Piece: `ok`, 1 já no acervo). Cópias em `~/tidal-out` removidas.

@@ -566,7 +566,7 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   sessão PKCE copiada para `~/.secrets/tidal-pkce.json` da VM (o refresh NÃO rotaciona
   o token, as duas cópias convivem; testado). Na VM (hostname `extractlab`) o script
   reconhece a máquina e NÃO precisa de flag nem de variável: `uv run --with tidalapi
-  --with mutagen python3 ~/tidal-out/tidal_mix_dl.py <link> --playlist <pasta>` baixa no
+  --with mutagen python3 scripts/curator/tidal_mix_dl.py <link> --playlist <pasta>` baixa no
   staging `~/tidal-out` (~3,5 MB/s), abre o túnel 16333 sozinho se estiver caído, lista por
   SSH os FLAC `[tidal]` já na cmr-auto (cobre a janela app-fechado em que o Qdrant ainda
   não conhece a faixa) e ABORTA antes de baixar se a cmr-auto não responder. Cada faixa vai
@@ -577,8 +577,12 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   link reenvia (`JÁ BAIXADA, reenviando`). `TIDAL_PUSH=off`/`--no-push` desligam o envio,
   `TIDAL_PUSH=<host:dir>` troca o destino; `TIDAL_MUSIC_ROOT`/`TIDAL_QDRANT` seguem
   valendo por cima do padrão (lógica em `vm_defaults`, teste em `test_tidal_mix_dl.py`,
-  rodar via `uv run --with tidalapi --with mutagen`). A fila da telemetria passa `--push`
-  explícito e segue igual. Gotcha pago: `pgrep -f` num laço de
+  rodar via `uv run --with tidalapi --with mutagen`). A página do CEO (fila de links,
+  `scripts/curator/tidal_fila.py`, tmux `telemetria` na VM, Funnel :10000, token em
+  `~/.secrets/telemetria-token.txt`) chama ESSE script sem flag: cada link colado lá
+  termina em `~/Music` da cmr-auto; estado `parcial` = alguma faixa não chegou, colar o
+  link de novo reenvia. Única cópia do script é a do repo (as de `~/tidal-out` foram
+  removidas em 13/10). Gotcha pago: `pgrep -f` num laço de
   fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
   `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
 - **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em
