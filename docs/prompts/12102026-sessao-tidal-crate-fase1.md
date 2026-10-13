@@ -42,8 +42,10 @@ MERT da faixa baixada. O jazz (passo 3) também fechou. A página de telemetria 
 downloads (`telemetria_fila.py`, ver adendo do contexto): ao desligar (passo 4), avisar o CEO, pois ele
 usa o formulário; alternativa é promover a serviço `systemd --user` com paths fixos. Vibe das 41 faixas
 novas: JSON em `data/enrichments/2026-10-12-sonnet-vibe-annotations-tidal-lote41.json` se o apply rodou;
-senão rodar `python3 scripts/curator/vibe_apply.py <tasks/wvnsj0x8y.output> <scratchpad/lote41_vibe_in.tsv> <json>`
-com o app aberto (precisa dos ids).
+senão conferir o tmux `vibe41` na VM (`tail ~/tidal-out/logs/aplicar_vibe41.log`): ele aplica e commita
+sozinho quando o app reabrir e indexar; entradas em `~/tidal-out/vibe41_resultado.json` + `lote41_vibe_in.tsv`.
+Primeira ação da sessão nova: `tmux ls` na VM, `git log --oneline -3`, e `dpkg -l rustify-player` na
+cmr-auto para saber se a 0.2.87 foi instalada (QA SC-1 a SC-6 só depois disso).
 
 ## Próximos passos (por prioridade)
 

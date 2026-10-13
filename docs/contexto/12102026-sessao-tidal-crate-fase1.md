@@ -133,7 +133,12 @@ df36532 08e2083 72767b5 75a6551 50957f9 0b65676 fac7842 0a11229` (+ o fix da tas
 - **Calibração nova de subagentes** (CEO): Sonnet é opção normal; effort por etapa (low mecânico,
   medium anotação/implementação com brief, high só julgar/atacar). Memória atualizada.
 - Mudança de estado: o app ESTAVA FECHADO na cmr-auto ao fim (41 faixas fora do índice até reabrir);
-  dpkg ainda em 0.2.86.
+  dpkg ainda em 0.2.86. Para não depender da sessão, a VM tem o tmux `vibe41`
+  (`~/tidal-out/aplicar_vibe41.sh`, log em `~/tidal-out/logs/aplicar_vibe41.log`): espera o índice
+  chegar a 313 faixas `[tidal]` pelo túnel 16333, roda `vibe_apply.py` e commita sozinho. Se o túnel
+  cair, ele fica em 0 e espera; relançar o túnel basta.
+- Monitores de chat todos encerrados; serviços vivos na VM: tmux `telemetria` (fila, Funnel 10000) e
+  tmux `vibe41`. Na cmr-auto nenhum tmux.
 
 ## Pendências identificadas
 
