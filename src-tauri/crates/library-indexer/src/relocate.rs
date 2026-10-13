@@ -23,7 +23,6 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::io;
 use std::path::{Component, Path, PathBuf};
 use tracing::{info, warn};
 
@@ -43,6 +42,8 @@ pub struct MoveItem {
     pub new_track_id: Option<String>,
     /// Caminho novo do arquivo — o frontend atualiza a fila em memória.
     pub new_path: Option<String>,
+    /// Sidecar `.lrc` que acompanhou a faixa (None = sem letra sincronizada).
+    pub new_lrc_path: Option<String>,
     pub title: Option<String>,
     pub status: MoveStatus,
     /// Motivo da falha, ou avisos de uma migração parcial (o arquivo foi
@@ -80,6 +81,7 @@ impl MoveReport {
                 track_id: id.to_string(),
                 new_track_id: None,
                 new_path: None,
+                new_lrc_path: None,
                 title: None,
                 status: MoveStatus::Failed,
                 detail: Some(reason.to_string()),
@@ -204,28 +206,25 @@ enum FsOp {
 #[derive(Debug)]
 pub struct FsOutcome {
     ops: Vec<FsOp>,
+    /// Pasta mais alta criada para o destino (rollback a remove se vazia).
+    created_root: Option<PathBuf>,
     pub new_lrc: Option<PathBuf>,
     pub warnings: Vec<String>,
 }
 
-/// `rename`; entre sistemas de arquivos (EXDEV), copia preservando o mtime
-/// (o scan compara mtime/tamanho: sem preservar, reindexaria do zero) e
-/// remove a origem.
-fn move_file(from: &Path, to: &Path) -> io::Result<()> {
-    match fs::rename(from, to) {
-        Ok(()) => Ok(()),
-        Err(e) if e.raw_os_error() == Some(18) => {
-            copy_preserving_mtime(from, to)?;
-            fs::remove_file(from)
-        }
-        Err(e) => Err(e),
-    }
-}
+/// errno EXDEV: origem e destino em sistemas de arquivos diferentes.
+const EXDEV: i32 = 18;
 
-fn copy_preserving_mtime(from: &Path, to: &Path) -> io::Result<()> {
-    fs::copy(from, to)?;
-    let mtime = fs::metadata(from)?.modified()?;
-    fs::OpenOptions::new().write(true).open(to)?.set_modified(mtime)
+/// Só `rename`. Entre sistemas de arquivos recusa: o scanner anda com
+/// `same_file_system(true)` e apagaria do índice uma cópia fora dele.
+fn move_file(from: &Path, to: &Path) -> Result<(), String> {
+    fs::rename(from, to).map_err(|e| {
+        if e.raw_os_error() == Some(EXDEV) {
+            "destino em outro sistema de arquivos".to_string()
+        } else {
+            e.to_string()
+        }
+    })
 }
 
 fn count_flacs(dir: &Path) -> usize {
@@ -243,6 +242,33 @@ fn count_flacs(dir: &Path) -> usize {
         .unwrap_or(0)
 }
 
+/// Mesmo conteúdo: tamanho e SHA-256 iguais.
+fn same_content(a: &Path, b: &Path) -> bool {
+    use sha2::{Digest, Sha256};
+    let (Ok(ma), Ok(mb)) = (fs::metadata(a), fs::metadata(b)) else { return false };
+    if ma.len() != mb.len() {
+        return false;
+    }
+    match (fs::read(a), fs::read(b)) {
+        (Ok(x), Ok(y)) => Sha256::digest(&x) == Sha256::digest(&y),
+        _ => false,
+    }
+}
+
+/// Pasta ancestral mais alta de `dir` que ainda não existe.
+fn first_missing_ancestor(dir: &Path) -> Option<PathBuf> {
+    let mut missing = None;
+    let mut cur = Some(dir);
+    while let Some(c) = cur {
+        if c.exists() {
+            break;
+        }
+        missing = Some(c.to_path_buf());
+        cur = c.parent();
+    }
+    missing
+}
+
 /// Move o FLAC e o que o acompanha (sidecar `.lrc` de mesmo stem, capas de
 /// pasta). Falha no FLAC = erro (nada mudou). Falha num acompanhante vira
 /// aviso: a faixa já mudou de lugar e o histórico ainda vai junto.
@@ -257,11 +283,18 @@ pub fn relocate_files(src: &Path, dst: &Path) -> Result<FsOutcome, String> {
     let dst_dir = dst.parent().ok_or("caminho sem pasta")?.to_path_buf();
     let lrc_src = find_lrc_sidecar(src);
 
+    let created_root = first_missing_ancestor(&dst_dir);
     fs::create_dir_all(&dst_dir).map_err(|e| format!("criar pasta de destino: {e}"))?;
-    move_file(src, dst).map_err(|e| format!("mover arquivo: {e}"))?;
+    if let Err(e) = move_file(src, dst) {
+        if let Some(root) = &created_root {
+            remove_empty_dirs(&dst_dir, root.parent().unwrap_or(root));
+        }
+        return Err(format!("mover arquivo: {e}"));
+    }
 
     let mut out = FsOutcome {
         ops: vec![FsOp::Moved { from: src.to_path_buf(), to: dst.to_path_buf() }],
+        created_root,
         new_lrc: None,
         warnings: Vec::new(),
     };
@@ -269,8 +302,8 @@ pub fn relocate_files(src: &Path, dst: &Path) -> Result<FsOutcome, String> {
     if let Some(lrc) = lrc_src {
         let lrc_dst = dst.with_extension("lrc");
         if lrc_dst.exists() {
-            out.warnings.push("letra .lrc já existia no destino; a da origem ficou".into());
-            out.new_lrc = Some(lrc_dst);
+            // Não adota: o .lrc que já estava lá pode ser de outra gravação.
+            out.warnings.push("letra .lrc já existia no destino; nenhuma das duas foi associada".into());
         } else {
             match move_file(&lrc, &lrc_dst) {
                 Ok(()) => {
@@ -294,13 +327,18 @@ pub fn relocate_files(src: &Path, dst: &Path) -> Result<FsOutcome, String> {
     for cover in covers {
         let Some(name) = cover.file_name() else { continue };
         let cover_dst = dst_dir.join(name);
-        let result = match cover_action(cover_dst.exists(), left) {
+        let result: Result<(), String> = match cover_action(cover_dst.exists(), left) {
             CoverAction::Move => move_file(&cover, &cover_dst)
                 .map(|()| out.ops.push(FsOp::Moved { from: cover.clone(), to: cover_dst.clone() })),
             CoverAction::Copy => fs::copy(&cover, &cover_dst)
-                .map(|_| out.ops.push(FsOp::Copied { to: cover_dst.clone() })),
-            CoverAction::RemoveSource => fs::remove_file(&cover),
-            CoverAction::Keep => Ok(()),
+                .map(|_| out.ops.push(FsOp::Copied { to: cover_dst.clone() }))
+                .map_err(|e| e.to_string()),
+            // Só apaga a da origem se a do destino for a MESMA imagem; capa
+            // diferente fica (a pasta não some, mas nada se perde).
+            CoverAction::RemoveSource if same_content(&cover, &cover_dst) => {
+                fs::remove_file(&cover).map_err(|e| e.to_string())
+            }
+            CoverAction::RemoveSource | CoverAction::Keep => Ok(()),
         };
         if let Err(e) = result {
             out.warnings.push(format!("capa {} não acompanhou: {e}", name.to_string_lossy()));
@@ -310,18 +348,25 @@ pub fn relocate_files(src: &Path, dst: &Path) -> Result<FsOutcome, String> {
 }
 
 /// Desfaz a parte de disco (o índice recusou o ponto novo): o arquivo volta
-/// para onde estava e as cópias de capa somem. Capa já REMOVIDA da origem
-/// (destino tinha a mesma) não volta — o destino continua com ela.
-pub fn rollback_files(outcome: &FsOutcome) {
+/// para onde estava, as cópias de capa somem e as pastas criadas para o
+/// destino saem se ficarem vazias. Capa já REMOVIDA da origem (o destino
+/// tinha a mesma imagem) não volta. `Err` lista o que não deu para desfazer.
+pub fn rollback_files(outcome: &FsOutcome, dst_dir: &Path) -> Result<(), String> {
+    let mut failed = Vec::new();
     for op in outcome.ops.iter().rev() {
         let r = match op {
-            FsOp::Moved { from, to } => move_file(to, from),
-            FsOp::Copied { to } => fs::remove_file(to),
+            FsOp::Moved { from, to } => move_file(to, from).map_err(|e| format!("{}: {e}", to.display())),
+            FsOp::Copied { to } => fs::remove_file(to).map_err(|e| format!("{}: {e}", to.display())),
         };
         if let Err(e) = r {
             warn!(target: "library_indexer::relocate", ?op, error = %e, "rollback falhou");
+            failed.push(e);
         }
     }
+    if let Some(root) = &outcome.created_root {
+        remove_empty_dirs(dst_dir, root.parent().unwrap_or(root));
+    }
+    if failed.is_empty() { Ok(()) } else { Err(failed.join("; ")) }
 }
 
 /// Remove `dir` e os ancestrais que ficarem vazios, parando ANTES de `stop`
@@ -386,6 +431,7 @@ fn move_one(
         track_id: old_id.to_string(),
         new_track_id: None,
         new_path: None,
+        new_lrc_path: None,
         title: None,
         status: MoveStatus::Failed,
         detail: None,
@@ -421,11 +467,14 @@ fn move_one(
     let new_id = path_to_id(&dst);
     let new_payload = relocated_payload(&payload, &dst, fs_out.new_lrc.as_deref(), dest);
     if let Err(e) = client.upsert_point_raw(new_id, &new_payload, &vector) {
-        rollback_files(&fs_out);
-        return fail(item, format!("gravar faixa no índice: {e} (arquivo devolvido à origem)"));
+        let undo = match rollback_files(&fs_out, dst.parent().unwrap_or(&dst)) {
+            Ok(()) => "arquivo devolvido à origem".to_string(),
+            Err(r) => format!("e o rollback falhou, confira no disco: {r}"),
+        };
+        return fail(item, format!("gravar faixa no índice: {e} ({undo})"));
     }
 
-    let mut warnings = fs_out.warnings;
+    let mut warnings = fs_out.warnings.clone();
     match client.get_enrichment(old_id) {
         Ok(enr) if enr.as_object().is_some_and(|m| !m.is_empty()) => {
             match client.set_enrichment(new_id, enr) {
@@ -467,6 +516,7 @@ fn move_one(
     item.status = MoveStatus::Moved;
     item.new_track_id = Some(new_id.to_string());
     item.new_path = Some(dst.to_string_lossy().into_owned());
+    item.new_lrc_path = fs_out.new_lrc.as_ref().map(|p| p.to_string_lossy().into_owned());
     item.detail = (!warnings.is_empty()).then(|| warnings.join("; "));
     item
 }
@@ -633,15 +683,61 @@ mod tests {
         let src = album.join("1.flac");
         let dst = plan_destination(r, &src, "Nova").unwrap();
         let out = relocate_files(&src, &dst).unwrap();
-        rollback_files(&out);
+        rollback_files(&out, dst.parent().unwrap()).unwrap();
         assert!(src.is_file() && !dst.exists());
         assert!(!r.join("Nova/A/B/folder.jpg").exists());
         assert!(album.join("folder.jpg").is_file());
+        // As pastas criadas para o destino somem junto.
+        assert!(!r.join("Nova").exists());
+    }
+
+    #[test]
+    fn rollback_que_falha_e_relatado() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = tmp.path();
+        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
+        let src = r.join("Rap/A/B/1.flac");
+        fs::write(&src, "1").unwrap();
+        let dst = plan_destination(r, &src, "Nova").unwrap();
+        let out = relocate_files(&src, &dst).unwrap();
+        fs::remove_file(&dst).unwrap(); // some antes do rollback
+        assert!(rollback_files(&out, dst.parent().unwrap()).is_err());
+    }
+
+    #[test]
+    fn capa_diferente_no_destino_nao_apaga_a_da_origem() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = tmp.path();
+        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
+        fs::create_dir_all(r.join("Nova/A/B")).unwrap();
+        fs::write(r.join("Rap/A/B/1.flac"), "1").unwrap();
+        fs::write(r.join("Rap/A/B/cover.jpg"), "capa-velha").unwrap();
+        fs::write(r.join("Nova/A/B/cover.jpg"), "outra-capa").unwrap();
+        let src = r.join("Rap/A/B/1.flac");
+        relocate_files(&src, &plan_destination(r, &src, "Nova").unwrap()).unwrap();
+        assert_eq!(fs::read_to_string(r.join("Rap/A/B/cover.jpg")).unwrap(), "capa-velha");
+        assert_eq!(fs::read_to_string(r.join("Nova/A/B/cover.jpg")).unwrap(), "outra-capa");
+    }
+
+    #[test]
+    fn lrc_ja_existente_no_destino_nao_e_adotado() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = tmp.path();
+        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
+        fs::create_dir_all(r.join("Nova/A/B")).unwrap();
+        fs::write(r.join("Rap/A/B/1.flac"), "1").unwrap();
+        fs::write(r.join("Rap/A/B/1.lrc"), "minha").unwrap();
+        fs::write(r.join("Nova/A/B/1.lrc"), "alheia").unwrap();
+        let src = r.join("Rap/A/B/1.flac");
+        let out = relocate_files(&src, &plan_destination(r, &src, "Nova").unwrap()).unwrap();
+        assert!(out.new_lrc.is_none());
+        assert_eq!(out.warnings.len(), 1);
+        assert_eq!(fs::read_to_string(r.join("Rap/A/B/1.lrc")).unwrap(), "minha");
     }
 
     #[test]
     fn relatorio_conta_por_status() {
-        let mk = |s| MoveItem { track_id: "1".into(), new_track_id: None, new_path: None, title: None, status: s, detail: None };
+        let mk = |s| MoveItem { track_id: "1".into(), new_track_id: None, new_path: None, new_lrc_path: None, title: None, status: s, detail: None };
         let r = MoveReport::new("X", vec![mk(MoveStatus::Moved), mk(MoveStatus::Moved), mk(MoveStatus::AlreadyThere), mk(MoveStatus::Failed)]);
         assert_eq!((r.moved, r.already_there, r.failed), (2, 1, 1));
         let s = serde_json::to_value(&r).unwrap();
