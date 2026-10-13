@@ -734,6 +734,17 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   declarado da spec §5.1/5.3: links externos no Crate são "Copiar link", não "Abrir"
   (capability do opener restrita; abrir URL exige `opener:allow-open-url` com
   allowlist, decisão para a fase 2). Faixa `[tidal]` nunca entra na fila do Soulseek.
+- **Aba Tidal no Crate (v0.2.88, 13/10)**: terceira aba do Crate, "colar link + pasta +
+  Baixar". NÃO é cliente Tidal nativo: o app fala com a FILA DA VM (`scripts/curator/
+  tidal_fila.py`, API `GET/POST /<token>/api/fila` em `100.64.242.118:8470`) por `ureq` no
+  Rust (`src-tauri/src/slsk/tidal_fila.rs`, commands `crate_tidal_jobs`/`crate_tidal_enqueue`);
+  a VM baixa e envia para `~/Music` da cmr-auto (seção "Aquisicao Tidal"). Config em
+  `sources.rs`: `tidal_fila_url` (env `RUSTIFY_TIDAL_FILA_URL`) e `tidal_fila_token_file`
+  (default `~/.secrets/telemetria-token.txt`, só o caminho; o token nunca sai em log/erro,
+  `host_port` redige). Estados do job: na fila / baixando / na cmr-auto / parcial / falhou,
+  poll de 10 s enquanto a view está montada. Helpers puros em `src/lib/tidalFila.ts`.
+  Se a VM cair, a aba diz "fila indisponível"; a cmr-auto nunca baixa sozinha. Fase 3
+  (CMR-295) troca o motor por download nativo sem mudar a tela.
 - **v1.1 pendente**: handoff visual do claude design (usuario itera a tela);
   popovers fechando em clique fora; Fase 2 = album inteiro e Bandcamp por link
   (spec §6: NYP/free por `bcdl-free`, pago abre a página e espera a compra).
