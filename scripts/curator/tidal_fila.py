@@ -103,7 +103,10 @@ def resumo_do_log(path):
     total = next((l.split("|")[1].strip().split(" ")[0] for l in lines if l.startswith("MIX: ") and "|" in l), "?")
     env = next((l.split(" ")[1] for l in lines if l.startswith("ENVIADAS ")), None)
     nao = next((l.split(" ")[2] for l in lines if l.startswith("NÃO ENVIADAS ")), None)
+    letras = next((l.split("LETRAS ")[1].split(" ")[0] for l in lines if l.startswith("NOVAS") and "LETRAS " in l), None)
     txt = f"{titulo}: {n} novas, {s} já no acervo, {f} falhas de {total}"
+    if letras and letras != "0":
+        txt += f"; {letras} com letra"
     if env:
         txt += f"; {env} na cmr-auto"
     if nao:

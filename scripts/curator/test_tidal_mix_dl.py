@@ -5,7 +5,9 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from tidal_mix_dl import CMR_SSH, TUNNEL_PORT, vm_defaults  # noqa: E402
+from pathlib import Path
+
+from tidal_mix_dl import CMR_SSH, LRC_TS, TUNNEL_PORT, sidecar_for, vm_defaults  # noqa: E402
 
 
 class VmDefaults(unittest.TestCase):
@@ -30,6 +32,15 @@ class VmDefaults(unittest.TestCase):
     def test_tidal_push_off_desliga(self):
         for v in ("off", "OFF", "0", "no", "none"):
             self.assertEqual(vm_defaults("extractlab", {"TIDAL_PUSH": v})["push"], "", v)
+
+
+class Letra(unittest.TestCase):
+    def test_sidecar_ao_lado_do_flac(self):
+        self.assertEqual(sidecar_for(Path("/m/Jazz/A/B [tidal]/06 Peace Piece.flac")), Path("/m/Jazz/A/B [tidal]/06 Peace Piece.lrc"))
+
+    def test_so_letra_com_timestamp_conta_como_sincronizada(self):
+        self.assertTrue(LRC_TS.search("[00:12.30] primeira linha"))
+        self.assertFalse(LRC_TS.search("primeira linha sem tempo"))
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -225,6 +226,36 @@ def download_flac(t, dest: Path) -> dict:
     return info
 
 
+LRCLIB = "https://lrclib.net/api"
+LRC_TS = re.compile(r"\[\d{1,2}:\d{2}")
+
+
+def fetch_lrc(title: str, artist: str, album: str, dur_s: int) -> str | None:
+    """Letra SINCRONIZADA do lrclib para a faixa recem-baixada (mesma fonte do Crate). Devolve o
+    texto LRC ou None. Letra sem tempo NAO vira sidecar (a aba de letra depende dos timestamps);
+    essa fica para o sync_lyrics.py diario, que grava `lyrics_text` no payload."""
+    hdr = {"User-Agent": "RustifyPlayer/0.1.0 (https://github.com/PedroGiudice/rustify-player)"}
+    tries = [f"{LRCLIB}/get?" + urllib.parse.urlencode({"track_name": title, "artist_name": artist,
+                                                        "album_name": album, "duration": dur_s}),
+             f"{LRCLIB}/search?" + urllib.parse.urlencode({"q": f"{artist} {title}"})]
+    for url in tries:
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=12) as r:
+                data = json.loads(r.read())
+        except Exception:
+            continue
+        if isinstance(data, list):
+            data = data[0] if data else None
+        lrc = (data or {}).get("syncedLyrics") or ""
+        if lrc and LRC_TS.search(lrc):
+            return lrc
+    return None
+
+
+def sidecar_for(dest: Path) -> Path:
+    return dest.with_suffix(".lrc")
+
+
 def rsync_rels(rels: list[str], push: str) -> int:
     host, _, remote_dir = push.partition(":")
     listing = WORK / "push-list.txt"
@@ -242,6 +273,8 @@ def push_one(dest: Path, push: str) -> bool:
     cov = dest.parent / "cover.jpg"
     if cov.exists():
         items.append(str(cov.relative_to(MUSIC)))
+    if sidecar_for(dest).exists():
+        items.append(str(sidecar_for(dest).relative_to(MUSIC)))
     for n, wait in enumerate((0,) + PUSH_RETRY_S):
         if wait:
             print(f"    rsync tentativa {n + 1} em {wait}s para {rel}", flush=True)
@@ -264,6 +297,7 @@ def remote_touch(rels: list[str], push: str) -> None:
 def drop_local(dest: Path) -> None:
     """Apaga a cópia do staging depois que a faixa chegou; capa e pastas vazias saem junto quando sobra nada."""
     dest.unlink(missing_ok=True)
+    sidecar_for(dest).unlink(missing_ok=True)
     d = dest.parent
     if not any(q.suffix == ".flac" for q in d.iterdir() if q.is_file()):
         (d / "cover.jpg").unlink(missing_ok=True)
@@ -387,6 +421,11 @@ def main() -> int:
             if getattr(alb, "copyright", None):
                 tags["COPYRIGHT"] = alb.copyright
             _write_tags(dest, {k: v for k, v in tags.items() if v}, covers.get(alb.id))
+            lrc = fetch_lrc(title, ", ".join(arts), alb.name, int(float(info.get("dur") or 0)))
+            if lrc:
+                sidecar_for(dest).write_text(lrc, encoding="utf-8")
+                report.setdefault("lyrics", 0)
+                report["lyrics"] += 1
             new_files.append(dest)
             sent = push_one(dest, args.push) if args.push else False
             if sent:
@@ -396,7 +435,7 @@ def main() -> int:
             report["new"].append({"i": i, "title": title, "artists": arts, "album": alb.name, "album_artist": album_artist,
                                   "year": year, "path": str(dest), "pushed": sent, **info})
             print(f"{i:3d} {title[:45]:45s} | {', '.join(arts)[:30]:30s} | {info['quality']} {info['bits']}/{info['sr']} "
-                  f"{info['bytes'] / 1e6:.1f} MB em {time.time() - t0:.1f}s -> {dest.relative_to(MUSIC)}", flush=True)
+                  f"{info['bytes'] / 1e6:.1f} MB em {time.time() - t0:.1f}s{' +letra' if lrc else ''} -> {dest.relative_to(MUSIC)}", flush=True)
         except Exception as e:
             print(f"{i:3d} {title} FALHOU: {e!r}", flush=True)
             report["failed"].append({"i": i, "title": title, "artists": arts, "err": repr(e)})
@@ -406,14 +445,15 @@ def main() -> int:
 
     out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{re.sub(r'[^A-Za-z0-9-]+', '_', args.mix_id)[-40:]}.json"))
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
-    print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | relatório {out}", flush=True)
+    print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | LETRAS {report.get('lyrics', 0)} | relatório {out}", flush=True)
     if args.push:
         if unsent:  # última chance, em lote, para o que falhou no meio
             print(f"reenviando {len(unsent)} faixas que falharam...", flush=True)
             time.sleep(30)
             rels = [str(p.relative_to(MUSIC)) for p in unsent]
             covers_rel = [d + "/cover.jpg" for d in sorted({str(Path(r).parent) for r in rels}) if (MUSIC / d / "cover.jpg").exists()]
-            if rsync_rels(rels + covers_rel, args.push) == 0:
+            lrc_rel = [str(sidecar_for(p).relative_to(MUSIC)) for p in unsent if sidecar_for(p).exists()]
+            if rsync_rels(rels + covers_rel + lrc_rel, args.push) == 0:
                 pushed.extend(unsent)
                 unsent = []
         if pushed:
