@@ -161,3 +161,14 @@ df36532 08e2083 72767b5 75a6551 50957f9 0b65676 fac7842 0a11229` (+ o fix da tas
    fecha; a régua pode estar contando errado a cobertura de letra.
 8. **Bandcamp pago** (baixa): 6 releases (~US$ 27) aguardando compra do CEO; DJ K já veio da Tidal.
 9. **Chrome MCP**: tabs 1618757962 e 1618757982 do CEO na cmr-auto ficaram abertas (dele).
+
+## Adendo 13/10 (envio automático da Tidal, pedido do CEO)
+
+`tidal_mix_dl.py` na VM manda cada faixa para `cmr-auto:~/Music` sem flag: `vm_defaults`
+decide por hostname (staging `~/tidal-out`, Qdrant 16333, push para a cmr-auto), o túnel abre
+sozinho, a lista remota de FLAC `[tidal]` entra no dedup (app fechado não gera duplicata), rsync
+por faixa com 4 tentativas, staging apagado só do que chegou, `touch` remoto no fim, `rc=2` com
+lista do que não foi. Validado na VM: Ciça (já lá) pulou como `JÁ NA CMR-AUTO`; Bill Evans
+"Peace Piece" (Jazz, 33 MB) baixou, chegou com capa em 17 s e o staging ficou vazio. Cópia de
+trabalho `~/tidal-out/tidal_mix_dl.py` atualizada (a fila usa essa). App na cmr-auto seguia
+FECHADO e em 0.2.86; `vibe41` esperando (272/313).

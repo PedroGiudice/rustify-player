@@ -562,14 +562,23 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   em `mix_<id>.json`, touch nos novos no fim (race do watcher). Álbum único:
   `tidal_dl_spike.py` + `tidal_ingest.sh` (caminho do spike, via normalize_release).
   Link de mix/álbum vem da aba do Chrome (Compartilhar > Copiar link).
-- **Rodar NA VM (preferido desde 12/10, não depende da cmr-auto ligada)**: a mesma
+- **Rodar NA VM (preferido desde 12/10; envio automático desde 13/10)**: a mesma
   sessão PKCE copiada para `~/.secrets/tidal-pkce.json` da VM (o refresh NÃO rotaciona
-  o token, as duas cópias convivem; testado). `TIDAL_MUSIC_ROOT=~/tidal-out
-  TIDAL_QDRANT=http://127.0.0.1:16333 uv run --with tidalapi --with mutagen python3
-  ~/tidal-out/tidal_mix_dl.py <id> --playlist <pasta> --push cmr-auto@100.102.249.9:Music`
-  (túnel 16333 de pé): baixa no staging da VM (~3,5 MB/s), faz rsync por faixa (+ capa)
-  para `~/Music` da cmr-auto e `touch` remoto no fim. Dedup contra o Qdrant da cmr-auto
-  pelo túnel. Limpar `~/tidal-out/<pasta>` depois. Gotcha pago: `pgrep -f` num laço de
+  o token, as duas cópias convivem; testado). Na VM (hostname `extractlab`) o script
+  reconhece a máquina e NÃO precisa de flag nem de variável: `uv run --with tidalapi
+  --with mutagen python3 ~/tidal-out/tidal_mix_dl.py <link> --playlist <pasta>` baixa no
+  staging `~/tidal-out` (~3,5 MB/s), abre o túnel 16333 sozinho se estiver caído, lista por
+  SSH os FLAC `[tidal]` já na cmr-auto (cobre a janela app-fechado em que o Qdrant ainda
+  não conhece a faixa) e ABORTA antes de baixar se a cmr-auto não responder. Cada faixa vai
+  por rsync (+ capa) para `cmr-auto:~/Music` assim que fica pronta (até 4 tentativas,
+  5/20/60 s; o rsync renomeia no fim, o watcher nunca vê arquivo pela metade), a cópia
+  local é apagada depois que chegou, e no fim um `touch` remoto acorda o watcher. O que
+  não chegou fica no staging, sai como `NÃO ENVIADAS n` e `rc=2`; rodar de novo com o mesmo
+  link reenvia (`JÁ BAIXADA, reenviando`). `TIDAL_PUSH=off`/`--no-push` desligam o envio,
+  `TIDAL_PUSH=<host:dir>` troca o destino; `TIDAL_MUSIC_ROOT`/`TIDAL_QDRANT` seguem
+  valendo por cima do padrão (lógica em `vm_defaults`, teste em `test_tidal_mix_dl.py`,
+  rodar via `uv run --with tidalapi --with mutagen`). A fila da telemetria passa `--push`
+  explícito e segue igual. Gotcha pago: `pgrep -f` num laço de
   fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
   `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
 - **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em

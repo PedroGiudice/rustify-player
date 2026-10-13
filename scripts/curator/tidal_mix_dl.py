@@ -3,16 +3,22 @@
 ~/Music/<playlist>/<Artista do álbum>/<Álbum> [tidal]/NN Título.flac, com tags da Tidal e capa.
 A marca " [tidal]" no nome da pasta é o que mantém tudo isso fora do share do slskd.
 
-Roda NA cmr-auto (acervo local) ou NA VM (staging + --push para a cmr-auto):
-  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <mix_id> --list
-  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <mix_id> [--playlist "Funk Brasileiro"] [--genre G]
-  # na VM: TIDAL_MUSIC_ROOT=~/tidal-out TIDAL_QDRANT=http://127.0.0.1:16333 ... --push cmr-auto@100.102.249.9:Music
-A sessão PKCE (~/.secrets/tidal-pkce.json) é a mesma nas duas máquinas; o refresh não rotaciona o token.
+Roda NA cmr-auto (acervo local) ou NA VM (staging + envio para a cmr-auto):
+  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <link> --list
+  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <link> [--playlist "Funk Brasileiro"] [--genre G]
+Na VM (hostname extractlab) o envio é AUTOMÁTICO, sem flag: staging em ~/tidal-out, dedup pelo túnel
+16333 (aberto sozinho se estiver caído), cada faixa vai por rsync para cmr-auto:~/Music assim que fica
+pronta (3 tentativas), a cópia local é apagada depois que chegou, e no fim um `touch` remoto acorda o
+watcher. Se a cmr-auto não responder, o script aborta ANTES de baixar. TIDAL_PUSH=off ou --no-push
+desligam; TIDAL_PUSH=<host:dir> troca o destino. A sessão PKCE (~/.secrets/tidal-pkce.json) é a mesma
+nas duas máquinas; o refresh não rotaciona o token.
 """
 import argparse
 import json
 import os
 import re
+import shlex
+import socket
 import subprocess
 import sys
 import time
@@ -25,11 +31,33 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from normalize_release import _prepare_cover, _write_tags, loose, safe_name  # noqa: E402
 
 SECRET = os.path.expanduser("~/.secrets/tidal-pkce.json")
-MUSIC = Path(os.path.expanduser(os.environ.get("TIDAL_MUSIC_ROOT", "~/Music")))
 WORK = Path(os.path.expanduser("~/.cache/tidal-spike/mixwork"))
-QDRANT = os.environ.get("TIDAL_QDRANT", "http://127.0.0.1:6333")
 GENRE = "Funk Brasileiro"
 PAUSE_S = 2
+VM_HOSTNAME = "extractlab"
+CMR_SSH = "cmr-auto@100.102.249.9"
+TUNNEL_PORT = 16333
+PUSH_RETRY_S = (5, 20, 60)
+
+
+def vm_defaults(hostname: str, env: dict) -> dict:
+    """Decide onde é o acervo, qual Qdrant dedupa e para onde enviar. Pura, para teste.
+    Na VM o envio é o padrão: staging ~/tidal-out, Qdrant pelo túnel 16333, rsync para a cmr-auto.
+    Na cmr-auto (ou em qualquer outra máquina) o acervo é local e não há envio."""
+    on_vm = hostname == VM_HOSTNAME
+    music = env.get("TIDAL_MUSIC_ROOT") or ("~/tidal-out" if on_vm else "~/Music")
+    qdrant = env.get("TIDAL_QDRANT") or (f"http://127.0.0.1:{TUNNEL_PORT}" if on_vm else "http://127.0.0.1:6333")
+    push = env.get("TIDAL_PUSH")
+    if push is None:
+        push = f"{CMR_SSH}:Music" if on_vm else ""
+    if push.strip().lower() in ("off", "0", "no", "none"):
+        push = ""
+    return {"music": music, "qdrant": qdrant, "push": push, "on_vm": on_vm}
+
+
+_DEF = vm_defaults(socket.gethostname(), os.environ)
+MUSIC = Path(os.path.expanduser(_DEF["music"]))
+QDRANT = _DEF["qdrant"]
 
 
 def load_session() -> tidalapi.Session:
@@ -59,8 +87,46 @@ def split_artists(s: str) -> list[str]:
     return [loose(p) for p in parts if loose(p)]
 
 
+def qdrant_alive() -> bool:
+    try:
+        with urllib.request.urlopen(f"{QDRANT}/collections/rustify_tracks", timeout=5) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def ensure_tunnel() -> None:
+    """Na VM o Qdrant da cmr-auto só existe pelo túnel SSH (loopback-only desde o hardening 2026-07-17).
+    Idempotente: se a porta já responde, não faz nada; senão abre o túnel e espera ele responder."""
+    if qdrant_alive():
+        return
+    if not _DEF["on_vm"]:
+        raise SystemExit(f"Qdrant não responde em {QDRANT}; o app precisa estar aberto (sidecar) ou TIDAL_QDRANT errado")
+    print(f"túnel {TUNNEL_PORT} caído, abrindo para {CMR_SSH}...", flush=True)
+    subprocess.run(["ssh", "-f", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "ConnectTimeout=15",
+                    "-L", f"{TUNNEL_PORT}:localhost:6333", CMR_SSH])
+    for _ in range(10):
+        if qdrant_alive():
+            return
+        time.sleep(1)
+    raise SystemExit(f"Qdrant da cmr-auto não respondeu pelo túnel {TUNNEL_PORT}: a cmr-auto está ligada e o app aberto?")
+
+
+def remote_rels(push: str) -> set[str]:
+    """Caminhos relativos dos FLAC [tidal] já na cmr-auto: cobre a janela entre o rsync e a indexação
+    (app fechado = Qdrant ainda não conhece a faixa) e prova, antes de baixar, que a cmr-auto responde."""
+    host, _, remote_dir = push.partition(":")
+    cmd = f"cd {shlex.quote(remote_dir)} && find . -type f -name '*.flac' -path '*[[]tidal[]]*'"
+    out = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", host, cmd],
+                         capture_output=True, text=True, timeout=120)
+    if out.returncode != 0:
+        raise SystemExit(f"cmr-auto não respondeu ({host}, rc={out.returncode}): {out.stderr.strip()[:200]} -- nada baixado")
+    return {l[2:] if l.startswith("./") else l for l in out.stdout.splitlines() if l.strip()}
+
+
 def library_keys() -> set[tuple[str, str]]:
     """(título, artista) soltos de tudo que já está no acervo, para não baixar de novo."""
+    ensure_tunnel()
     keys: set[tuple[str, str]] = set()
     offset = None
     while True:
@@ -159,19 +225,53 @@ def download_flac(t, dest: Path) -> dict:
     return info
 
 
-def push_one(dest: Path, push: str) -> None:
-    """rsync da faixa e da capa da pasta para a cmr-auto, mantendo o caminho relativo ao acervo."""
+def rsync_rels(rels: list[str], push: str) -> int:
     host, _, remote_dir = push.partition(":")
-    rel = dest.relative_to(MUSIC)
-    items = [str(rel)]
+    listing = WORK / "push-list.txt"
+    listing.write_text("".join(r + "\n" for r in rels))
+    return subprocess.run(["rsync", "-a", "--ignore-existing", "--timeout=120", "--files-from", str(listing),
+                           str(MUSIC) + "/", f"{host}:{remote_dir}/"]).returncode
+
+
+def push_one(dest: Path, push: str) -> bool:
+    """rsync da faixa e da capa da pasta para a cmr-auto, mantendo o caminho relativo ao acervo.
+    Até len(PUSH_RETRY_S)+1 tentativas; o rsync grava em temporário e renomeia, então o watcher
+    da cmr-auto nunca vê arquivo pela metade. Devolve True se a faixa chegou."""
+    rel = str(dest.relative_to(MUSIC))
+    items = [rel]
     cov = dest.parent / "cover.jpg"
     if cov.exists():
         items.append(str(cov.relative_to(MUSIC)))
-    listing = WORK / "push-one.txt"
-    listing.write_text("".join(i + "\n" for i in items))
-    rc = subprocess.run(["rsync", "-a", "--ignore-existing", "--files-from", str(listing), str(MUSIC) + "/", f"{host}:{remote_dir}/"]).returncode
-    if rc != 0:
-        print(f"    rsync falhou (rc={rc}) para {rel}", flush=True)
+    for n, wait in enumerate((0,) + PUSH_RETRY_S):
+        if wait:
+            print(f"    rsync tentativa {n + 1} em {wait}s para {rel}", flush=True)
+            time.sleep(wait)
+        if rsync_rels(items, push) == 0:
+            return True
+    print(f"    rsync FALHOU em {len(PUSH_RETRY_S) + 1} tentativas para {rel}; fica no staging", flush=True)
+    return False
+
+
+def remote_touch(rels: list[str], push: str) -> None:
+    """Acorda o watcher da cmr-auto (race em subpasta nova). 10 s depois do último rsync."""
+    host, _, remote_dir = push.partition(":")
+    time.sleep(10)
+    quoted = " ".join(shlex.quote(remote_dir.rstrip("/") + "/" + r) for r in rels)
+    rc = subprocess.run(["ssh", "-o", "BatchMode=yes", host, f"touch {quoted}"]).returncode
+    print(f"touch remoto em {len(rels)} arquivos (race do watcher): rc={rc}", flush=True)
+
+
+def drop_local(dest: Path) -> None:
+    """Apaga a cópia do staging depois que a faixa chegou; capa e pastas vazias saem junto quando sobra nada."""
+    dest.unlink(missing_ok=True)
+    d = dest.parent
+    if not any(q.suffix == ".flac" for q in d.iterdir() if q.is_file()):
+        (d / "cover.jpg").unlink(missing_ok=True)
+        for x in (d, d.parent):
+            try:
+                x.rmdir()
+            except OSError:
+                break
 
 
 def main() -> int:
@@ -181,17 +281,27 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="só lista o mix, não baixa")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--genre", default=None, help="tag GENRE (padrão: o nome da playlist)")
-    ap.add_argument("--push", default=None, help="destino rsync (ex.: cmr-auto@100.102.249.9:Music) quando se baixa fora da cmr-auto; "
-                                                 "copia só o que não existe lá e dá touch nos novos (race do watcher)")
+    ap.add_argument("--push", default=_DEF["push"] or None,
+                    help="destino rsync (padrão na VM: %(default)s); copia cada faixa assim que fica pronta, "
+                         "apaga a cópia local e dá touch remoto no fim (race do watcher)")
+    ap.add_argument("--no-push", action="store_true", help="não enviar (fica no acervo/staging local)")
     args = ap.parse_args()
+    if args.no_push:
+        args.push = None
 
     WORK.mkdir(parents=True, exist_ok=True)
     sess = load_session()
     mix_title, items = resolve_items(sess, args.mix_id)
     tracks = [i for i in items if isinstance(i, tidalapi.Track)]
     print(f"MIX: {mix_title} | {len(tracks)} faixas", flush=True)
+    remote: set[str] = set()
+    if args.push and not args.list:
+        remote = remote_rels(args.push)
+        print(f"envio para {args.push}: {len(remote)} faixas [tidal] já lá", flush=True)
 
     albums: dict[int, tidalapi.Album] = {}
+    pushed: list[Path] = []
+    unsent: list[Path] = []
 
     def album_of(t):
         aid = t.album.id
@@ -237,8 +347,16 @@ def main() -> int:
             report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "acervo"})
             continue
         if dest.exists():
-            print(f"{i:3d} {title[:45]:45s} JÁ BAIXADA", flush=True)
+            if args.push and str(dest.relative_to(MUSIC)) not in remote:  # sobra de envio que falhou
+                print(f"{i:3d} {title[:45]:45s} JÁ BAIXADA, reenviando", flush=True)
+                (pushed if push_one(dest, args.push) else unsent).append(dest)
+            else:
+                print(f"{i:3d} {title[:45]:45s} JÁ BAIXADA", flush=True)
             report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "existe"})
+            continue
+        if str(dest.relative_to(MUSIC)) in remote:
+            print(f"{i:3d} {title[:45]:45s} JÁ NA CMR-AUTO (fora do índice)", flush=True)
+            report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "cmr-auto"})
             continue
         t0 = time.time()
         try:
@@ -270,10 +388,13 @@ def main() -> int:
                 tags["COPYRIGHT"] = alb.copyright
             _write_tags(dest, {k: v for k, v in tags.items() if v}, covers.get(alb.id))
             new_files.append(dest)
-            if args.push:
-                push_one(dest, args.push)
+            sent = push_one(dest, args.push) if args.push else False
+            if sent:
+                pushed.append(dest)
+            elif args.push:
+                unsent.append(dest)
             report["new"].append({"i": i, "title": title, "artists": arts, "album": alb.name, "album_artist": album_artist,
-                                  "year": year, "path": str(dest), **info})
+                                  "year": year, "path": str(dest), "pushed": sent, **info})
             print(f"{i:3d} {title[:45]:45s} | {', '.join(arts)[:30]:30s} | {info['quality']} {info['bits']}/{info['sr']} "
                   f"{info['bytes'] / 1e6:.1f} MB em {time.time() - t0:.1f}s -> {dest.relative_to(MUSIC)}", flush=True)
         except Exception as e:
@@ -286,25 +407,31 @@ def main() -> int:
     out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{re.sub(r'[^A-Za-z0-9-]+', '_', args.mix_id)[-40:]}.json"))
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | relatório {out}", flush=True)
-    if new_files and args.push:
-        rels = [str(p.relative_to(MUSIC)) for p in new_files]
-        listing = WORK / "push-list.txt"
-        listing.write_text("".join(r + "\n" for r in rels) + "".join(d + "/cover.jpg\n" for d in sorted({str(Path(r).parent) for r in rels}) if (MUSIC / d / "cover.jpg").exists()))
-        host, _, remote_dir = args.push.partition(":")
-        rc = subprocess.run(["rsync", "-a", "--ignore-existing", "--files-from", str(listing), str(MUSIC) + "/", f"{host}:{remote_dir}/"]).returncode
-        print(f"rsync final para {args.push}: rc={rc}, {len(rels)} faixas", flush=True)
-        if rc == 0:
-            time.sleep(10)
-            quoted = " ".join("'" + (remote_dir.rstrip("/") + "/" + r).replace("'", "'\\''") + "'" for r in rels)
-            subprocess.run(["ssh", host, f"touch {quoted}"])
-            print(f"touch remoto em {len(rels)} arquivos (race do watcher)", flush=True)
+    if args.push:
+        if unsent:  # última chance, em lote, para o que falhou no meio
+            print(f"reenviando {len(unsent)} faixas que falharam...", flush=True)
+            time.sleep(30)
+            rels = [str(p.relative_to(MUSIC)) for p in unsent]
+            covers_rel = [d + "/cover.jpg" for d in sorted({str(Path(r).parent) for r in rels}) if (MUSIC / d / "cover.jpg").exists()]
+            if rsync_rels(rels + covers_rel, args.push) == 0:
+                pushed.extend(unsent)
+                unsent = []
+        if pushed:
+            remote_touch([str(p.relative_to(MUSIC)) for p in pushed], args.push)
+            for p in pushed:
+                drop_local(p)
+            print(f"ENVIADAS {len(pushed)} para {args.push}; staging limpo", flush=True)
+        if unsent:
+            print(f"NÃO ENVIADAS {len(unsent)} (ficaram em {MUSIC}): rode de novo com o mesmo link para reenviar", flush=True)
+            for p in unsent:
+                print(f"    {p.relative_to(MUSIC)}", flush=True)
     elif new_files:
         time.sleep(10)
         for p in new_files:
             p.touch()
         print(f"touch em {len(new_files)} arquivos (race do watcher)", flush=True)
     print("FIM", flush=True)
-    return 0
+    return 2 if unsent else 0
 
 
 if __name__ == "__main__":
