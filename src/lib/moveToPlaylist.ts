@@ -29,10 +29,12 @@ export function isValidPlaylistName(name: string): boolean {
 export function sanitizePlaylistName(name: string): string {
   const replaced = name.replace(/[/\\\0]/g, " ").replace(/[:"*?<>|]/g, "_");
   const collapsed = replaced.split(/\s+/).filter(Boolean).join(" ");
+  // Corta por code point (Array.from), nunca no meio de um par surrogate
+  // (emoji, CJK estendido): slice por unidade UTF-16 deixaria meio caractere.
   const enc = new TextEncoder();
-  let out = collapsed;
-  while (enc.encode(out).length > 120) out = out.slice(0, -1);
-  return out;
+  const chars = Array.from(collapsed);
+  while (enc.encode(chars.join("")).length > 120) chars.pop();
+  return chars.join("");
 }
 
 export function filterPlaylists(names: string[], query: string): string[] {
@@ -49,8 +51,13 @@ export function newFolderCandidate(names: string[], query: string): string | nul
   if (names.includes(query.trim())) return null;
   const q = sanitizePlaylistName(query);
   if (!isValidPlaylistName(q)) return null;
+  // Mesma regra do backend (resolve_dest_playlist): nome novo que colide
+  // com uma existente só na caixa (ou na forma sanitizada) é recusado — o
+  // storage do Android é case-insensitive.
   const lower = q.toLowerCase();
-  return names.some((n) => n.toLowerCase() === lower) ? null : q;
+  return names.some((n) => n.toLowerCase() === lower || sanitizePlaylistName(n).toLowerCase() === lower)
+    ? null
+    : q;
 }
 
 export function plural(n: number, um: string, varios: string): string {

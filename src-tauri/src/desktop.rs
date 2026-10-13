@@ -733,13 +733,27 @@ fn list_playlist_dirs(music_root: &std::path::Path) -> std::io::Result<Vec<Strin
 /// Nome final da playlist de destino. Pasta que JÁ EXISTE é usada como
 /// está (sanitizar `Funk: BR` criaria `Funk_ BR`, uma duplicata, e a
 /// faixa deixaria de ser reconhecida como "já está lá"); só pasta nova
-/// passa pelo `sanitize_component` do Crate.
-fn resolve_dest_playlist(existing: &[String], requested: &str) -> String {
+/// passa pelo `sanitize_component` do Crate. Nome NOVO que só difere de uma
+/// pasta existente na caixa é recusado: o storage do Android é
+/// case-insensitive e as duas pastas virariam uma só no celular.
+fn resolve_dest_playlist(existing: &[String], requested: &str) -> Result<String, String> {
     if existing.iter().any(|n| n == requested) {
-        requested.to_string()
-    } else {
-        slskd_client::stage_plan::sanitize_component(requested)
+        return Ok(requested.to_string());
     }
+    let name = slskd_client::stage_plan::sanitize_component(requested);
+    if existing.iter().any(|n| *n == name) {
+        return Ok(name);
+    }
+    // Compara também a forma sanitizada da existente: o phone sync troca
+    // `:` por `_` do mesmo jeito, então "Funk: BR" e "FUNK_ br" colidem lá.
+    let key = name.to_lowercase();
+    let clash = |n: &String| {
+        n.to_lowercase() == key || slskd_client::stage_plan::sanitize_component(n).to_lowercase() == key
+    };
+    if let Some(n) = existing.iter().find(|n| clash(n)) {
+        return Err(format!("já existe a playlist \"{n}\" (mesmo nome com outra caixa)"));
+    }
+    Ok(name)
 }
 
 /// Playlists existentes no DISCO. Diferente de `lib_list_folders`, inclui
@@ -768,7 +782,7 @@ async fn lib_move_tracks(
         .map(|s| parse_id(s))
         .collect::<Result<Vec<u64>, String>>()?;
     let existing = list_playlist_dirs(&lib.music_root).map_err(err)?;
-    let dest = resolve_dest_playlist(&existing, &dest_playlist);
+    let dest = resolve_dest_playlist(&existing, &dest_playlist)?;
     let handle = lib.handle.clone();
     tauri::async_runtime::spawn_blocking(move || handle.move_tracks(ids, dest))
         .await
@@ -4217,9 +4231,18 @@ mod tests {
     #[test]
     fn destino_existente_e_usado_como_esta_e_novo_e_sanitizado() {
         let existing = vec!["Funk: BR".to_string(), "Rap".to_string()];
-        assert_eq!(resolve_dest_playlist(&existing, "Funk: BR"), "Funk: BR");
-        assert_eq!(resolve_dest_playlist(&existing, "Treino: pesado"), "Treino_ pesado");
-        assert_eq!(resolve_dest_playlist(&existing, "  Nova   pasta "), "Nova pasta");
+        assert_eq!(resolve_dest_playlist(&existing, "Funk: BR").unwrap(), "Funk: BR");
+        assert_eq!(resolve_dest_playlist(&existing, "Treino: pesado").unwrap(), "Treino_ pesado");
+        assert_eq!(resolve_dest_playlist(&existing, "  Nova   pasta ").unwrap(), "Nova pasta");
+    }
+
+    #[test]
+    fn destino_novo_que_so_muda_a_caixa_e_recusado() {
+        let existing = vec!["Funk: BR".to_string(), "Rap".to_string()];
+        assert!(resolve_dest_playlist(&existing, "rap").is_err());
+        assert!(resolve_dest_playlist(&existing, "FUNK: br").is_err());
+        // Sanitizado que bate EXATO com uma existente é ela mesma.
+        assert_eq!(resolve_dest_playlist(&["Treino_ pesado".to_string()], "Treino: pesado").unwrap(), "Treino_ pesado");
     }
 
     #[test]

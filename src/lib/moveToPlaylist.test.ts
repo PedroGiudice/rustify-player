@@ -36,12 +36,22 @@ describe("seletor de destino", () => {
   it("pasta nova sai com o nome FINAL, já sanitizado como no backend", () => {
     expect(sanitizePlaylistName("Treino: pesado")).toBe("Treino_ pesado");
     expect(sanitizePlaylistName("AC/DC  ao vivo")).toBe("AC DC ao vivo");
+    // Teto de 120 bytes cortado por code point: 59 bytes ASCII + emojis de
+    // 4 bytes. 59 + 15*4 = 119 cabe; o 16º passaria. Nada de surrogate solto.
+    const longo = sanitizePlaylistName("a".repeat(59) + "🎧".repeat(20));
+    expect(new TextEncoder().encode(longo).length).toBe(119);
+    expect(Array.from(longo).filter((c) => c === "🎧")).toHaveLength(15);
+    // 117 bytes + emoji (121): cortar uma unidade UTF-16 deixaria um
+    // surrogate solto que "cabe" (vira U+FFFD de 3 bytes = 120).
+    const borda = sanitizePlaylistName("a".repeat(117) + "🎧");
+    expect(borda).toBe("a".repeat(117));
     expect(newFolderCandidate(names, "Treino: pesado")).toBe("Treino_ pesado");
     // Vira algo inválido depois de limpar: recusado.
     expect(newFolderCandidate(names, "?lixo")).toBeNull();
     expect(newFolderCandidate(names, " / ")).toBeNull();
     // Nome existente escrito igual não é "pasta nova", mesmo com caractere proibido.
     expect(newFolderCandidate(["Funk: BR"], "Funk: BR")).toBeNull();
+    expect(newFolderCandidate(["Funk: BR"], "FUNK_ br")).toBeNull();
   });
 
   it("recusa pastas ocultas, de sistema e com barra", () => {
