@@ -531,6 +531,11 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
   401). O MERT e alcancado pelo app em `https://extractlab.cormorant-alpha.ts.net:8448`
   (nome fixo em `desktop.rs`): se o no da tailnet mudar de nome, tudo que entrar
   fica `failed` em silencio (aconteceu 18/09 a 12/10; divida: apontar pelo IP).
+  **Letra (cogmem BGE-M3) e por IP desde a 0.2.89**: `LYRICS_EMBED_DEFAULT` em
+  `desktop.rs` = `http://100.64.242.118:3939` (override `RUSTIFY_LYRICS_EMBED_URL`). Ate a
+  0.2.88 o default era o IP da VPS DESLIGADA (`100.123.73.128`) e toda letra nova falhava
+  em silencio com timeout de 30 s (`lyrics backfill: embed falhou` no log); o backfill do boot
+  refaz as pendentes depois do upgrade. Endpoints da VM sem alarme no app = CMR-296.
 
 ## Aquisicao Tidal (assinatura do CEO desde 12/10/2026)
 

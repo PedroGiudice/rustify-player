@@ -177,3 +177,17 @@ Fila da telemetria movida para o repo (`scripts/curator/tidal_fila.py`): sem as 
 (morto), token lido de arquivo (não mais em argv), chama o `tidal_mix_dl.py` do repo sem flag, estado
 `parcial` para rc=2, resumo com "n na cmr-auto". Relançada no tmux `telemetria`; testado GET/404/POST e
 um job pela fila (Peace Piece: `ok`, 1 já no acervo). Cópias em `~/tidal-out` removidas.
+
+## Adendo 13/10 (noite): aba Tidal no Crate (0.2.88), QA, e letras
+
+- **0.2.88 instalada e aprovada pelo CEO** ("funcionou"): aba Tidal do Crate (fila da VM por API,
+  `src-tauri/src/slsk/tidal_fila.rs`, `src/lib/tidalFila.ts`). Pela ponte (porta 9224): 7 jobs
+  listados como "na cmr-auto", `crate_sources_status` com `tidal: token_ok`; o CEO já baixou mixes
+  "MEGA FUNK MINIMAL" (33 novas) e "MEGA FUNK UNDERGROUND" pela aba. Índice `[tidal]`: 348/348 done;
+  `vibe41` aplicou e commitou (c940c52). Screenshot pela ponte indisponível (html2canvas ausente).
+- **Defeito achado no log**: embed de letra apontava para a VPS desligada (pendência 7 resolvida:
+  era isso, não o backfill). Corrigido na **0.2.89** (`LYRICS_EMBED_DEFAULT`), anotado em CMR-296.
+- Issues novas: CMR-297 (upgrade por qualidade, só detecção primeiro), CMR-298 (mover faixa no app
+  com migração de id, prioridade sobre CMR-295), CMR-299 (separar Funk Brasileiro em Funk /
+  Eletrofunk / Mega Funk / Techfunk; decisão do CEO). Telemetria pública segue ligada até o CEO
+  dispensar a página.
