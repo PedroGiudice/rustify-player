@@ -22,6 +22,12 @@ pub struct SourcesConfig {
     pub bc_email: String,
     pub ffmpeg: String,
     pub uv: String,
+    /// Base da fila de downloads da Tidal (`scripts/curator/tidal_fila.py`
+    /// na VM) — só esquema+host+porta, nunca o token. O token vai
+    /// concatenado no CAMINHO da URL na hora da chamada, lido sob demanda
+    /// de `tidal_fila_token_file`.
+    pub tidal_fila_url: String,
+    pub tidal_fila_token_file: PathBuf,
 }
 
 impl std::fmt::Debug for SourcesConfig {
@@ -33,6 +39,8 @@ impl std::fmt::Debug for SourcesConfig {
             .field("bc_email_set", &!self.bc_email.is_empty())
             .field("ffmpeg", &self.ffmpeg)
             .field("uv", &self.uv)
+            .field("tidal_fila_url", &self.tidal_fila_url)
+            .field("tidal_fila_token_file", &safe_path(&self.tidal_fila_token_file))
             .finish()
     }
 }
@@ -52,6 +60,10 @@ pub struct SourcesStatus {
     pub ffmpeg: bool,
     pub uv: bool,
     pub bandcamp_identity: bool,
+    /// Só `TokenOk`/`NoToken` (arquivo legível ou não) — a fila da Tidal
+    /// não é consultada aqui; o `ApiDown` da variante fica reservado para
+    /// o SoundCloud.
+    pub tidal: TokenStatus,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -62,6 +74,8 @@ struct FileConfig {
     bandcamp: Option<FileBandcamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tools: Option<FileTools>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tidal: Option<FileTidal>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -81,6 +95,12 @@ struct FileTools {
     uv: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct FileTidal {
+    fila_url: Option<String>,
+    token_file: Option<String>,
+}
+
 fn home_dir() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
@@ -98,6 +118,9 @@ fn expand_tilde(s: &str) -> PathBuf {
     }
 }
 
+/// Host:porta padrão da fila da Tidal na VM (tailnet) — `tidal_fila.py`.
+const DEFAULT_TIDAL_FILA_URL: &str = "http://100.64.242.118:8470";
+
 fn default_config() -> SourcesConfig {
     let home = home_dir();
     SourcesConfig {
@@ -106,6 +129,8 @@ fn default_config() -> SourcesConfig {
         bc_email: String::new(),
         ffmpeg: "ffmpeg".to_string(),
         uv: home.join(".local").join("bin").join("uv").to_string_lossy().into_owned(),
+        tidal_fila_url: DEFAULT_TIDAL_FILA_URL.to_string(),
+        tidal_fila_token_file: home.join(".secrets").join("telemetria-token.txt"),
     }
 }
 
@@ -121,6 +146,10 @@ fn default_file() -> FileConfig {
         tools: Some(FileTools {
             ffmpeg: Some("ffmpeg".into()),
             uv: Some("~/.local/bin/uv".into()),
+        }),
+        tidal: Some(FileTidal {
+            fila_url: Some(DEFAULT_TIDAL_FILA_URL.into()),
+            token_file: Some("~/.secrets/telemetria-token.txt".into()),
         }),
     }
 }
@@ -154,6 +183,10 @@ impl SourcesConfig {
 
     pub fn read_sc_token(&self) -> Result<String, String> {
         read_secret_file(&self.sc_token_file)
+    }
+
+    pub fn read_tidal_token(&self) -> Result<String, String> {
+        read_secret_file(&self.tidal_fila_token_file)
     }
 }
 
@@ -189,6 +222,14 @@ fn merge_file(mut cfg: SourcesConfig, file: FileConfig) -> SourcesConfig {
             cfg.uv = expand_tilde(&u).to_string_lossy().into_owned();
         }
     }
+    if let Some(t) = file.tidal {
+        if let Some(u) = t.fila_url {
+            cfg.tidal_fila_url = u;
+        }
+        if let Some(p) = t.token_file {
+            cfg.tidal_fila_token_file = expand_tilde(&p);
+        }
+    }
     cfg
 }
 
@@ -207,6 +248,12 @@ fn apply_env_overrides(mut cfg: SourcesConfig, env: &impl Fn(&str) -> Option<Str
     }
     if let Some(v) = env("RUSTIFY_UV") {
         cfg.uv = expand_tilde(&v).to_string_lossy().into_owned();
+    }
+    if let Some(v) = env("RUSTIFY_TIDAL_FILA_URL") {
+        cfg.tidal_fila_url = v;
+    }
+    if let Some(v) = env("RUSTIFY_TIDAL_FILA_TOKEN_FILE") {
+        cfg.tidal_fila_token_file = expand_tilde(&v);
     }
     cfg
 }
@@ -391,6 +438,41 @@ mod tests {
         assert_eq!(cfg.bc_email, "e@mail");
         assert_eq!(cfg.ffmpeg, "/e/ffmpeg");
         assert_eq!(cfg.uv, "/e/uv");
+    }
+    #[test]
+    fn tidal_defaults() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = SourcesConfig::load_with(tmp.path(), |_| None);
+        assert_eq!(cfg.tidal_fila_url, DEFAULT_TIDAL_FILA_URL);
+        assert!(cfg.tidal_fila_token_file.ends_with(".secrets/telemetria-token.txt"));
+        assert!(cfg.tidal_fila_token_file.is_absolute());
+        let raw = std::fs::read_to_string(tmp.path().join("sources.json")).unwrap();
+        assert!(raw.contains("~/.secrets/telemetria-token.txt"), "defaults gravados com ~: {raw}");
+    }
+    #[test]
+    fn tidal_arquivo_e_env_sobrepoem() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("sources.json"),
+            r#"{"tidal":{"fila_url":"http://1.2.3.4:9000","token_file":"~/x/tok.txt"}}"#,
+        )
+        .unwrap();
+        let cfg = SourcesConfig::load_with(tmp.path(), |_| None);
+        assert_eq!(cfg.tidal_fila_url, "http://1.2.3.4:9000");
+        assert_eq!(cfg.tidal_fila_token_file, home_dir().join("x/tok.txt"));
+
+        let cfg = SourcesConfig::load_with(tmp.path(), |k| match k {
+            "RUSTIFY_TIDAL_FILA_URL" => Some("http://5.6.7.8:1111".into()),
+            "RUSTIFY_TIDAL_FILA_TOKEN_FILE" => Some("/e/tok.txt".into()),
+            _ => None,
+        });
+        assert_eq!(cfg.tidal_fila_url, "http://5.6.7.8:1111");
+        assert_eq!(cfg.tidal_fila_token_file, PathBuf::from("/e/tok.txt"));
+    }
+    #[test]
+    fn tidal_token_file_nao_vaza_no_debug() {
+        let cfg = SourcesConfig { tidal_fila_token_file: PathBuf::from("2-SEGREDO-no-caminho"), ..default_config() };
+        assert!(!format!("{cfg:?}").contains("SEGREDO"));
     }
     #[test]
     fn segredo_colado_no_caminho_nao_vaza() {

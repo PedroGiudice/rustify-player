@@ -17,6 +17,7 @@ mod coordinator;
 mod sc_worker;
 mod sources;
 mod stage;
+mod tidal_fila;
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,7 @@ use board::{ConfirmedMeta, DownloadJob, Source};
 use config::SlskConfig;
 use coordinator::{FetchEvent, FetchTask, FetchWiring, SearchSnapshot, SearchState, SearchStore, SlskTask};
 use sources::{SourcesConfig, SourcesStatus, TokenStatus};
+use tidal_fila::FilaSnapshot;
 
 /// Três estados distinguíveis (spec §3.3) — colapsá-los gera ticket de
 /// suporte ("app não funciona" quando é só o slskd fora do ar).
@@ -266,7 +268,11 @@ fn compute_with(cfg: &SourcesConfig, check: impl FnOnce(&str) -> TokenStatus) ->
         Ok(token) => check(&token),
         Err(_) => TokenStatus::NoToken,
     };
-    SourcesStatus { soundcloud, ffmpeg, uv, bandcamp_identity }
+    let tidal = match cfg.read_tidal_token() {
+        Ok(_) => TokenStatus::TokenOk,
+        Err(_) => TokenStatus::NoToken,
+    };
+    SourcesStatus { soundcloud, ffmpeg, uv, bandcamp_identity, tidal }
 }
 
 /// Faixa do SoundCloud como a busca do Crate a mostra (spec §5.1).
@@ -620,6 +626,20 @@ pub(crate) fn crate_download(
 pub(crate) async fn crate_sources_status(sl: State<'_, Slsk>) -> Result<SourcesStatus, String> {
     let ext = sl.ext.clone();
     blocking(move || Ok(ext.sources_status())).await
+}
+
+// ── Fila da Tidal (worker remoto na VM; o app só consulta/enfileira) ──
+
+#[tauri::command]
+pub(crate) async fn crate_tidal_jobs(sl: State<'_, Slsk>) -> Result<FilaSnapshot, String> {
+    let ext = sl.ext.clone();
+    blocking(move || tidal_fila::list_jobs(&ext.sources)).await
+}
+
+#[tauri::command]
+pub(crate) async fn crate_tidal_enqueue(sl: State<'_, Slsk>, url: String, playlist: String) -> Result<String, String> {
+    let ext = sl.ext.clone();
+    blocking(move || tidal_fila::enqueue(&ext.sources, &url, &playlist)).await
 }
 
 #[cfg(test)]

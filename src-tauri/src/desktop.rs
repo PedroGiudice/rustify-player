@@ -3512,6 +3512,8 @@ pub fn run() {
             slsk::crate_sc_artwork,
             slsk::crate_download,
             slsk::crate_sources_status,
+            slsk::crate_tidal_jobs,
+            slsk::crate_tidal_enqueue,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
