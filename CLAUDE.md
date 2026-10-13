@@ -775,7 +775,9 @@ da faixa, botão no cabeçalho de Álbum e Artista).
 
 - Backend: `lib_move_tracks(track_ids, dest_playlist)` + `lib_list_playlists`
   (pastas no disco, sem `.`/`_`). Pasta que já existe vai como está; só pasta
-  nova passa pelo `sanitize_component` (o frontend mostra o nome final antes).
+  nova passa pelo `sanitize_component` (o frontend mostra o nome final antes),
+  e nome novo que colide com uma existente só na caixa é recusado (o storage
+  do Android é case-insensitive).
   O trabalho roda na thread do coordinator do indexador
   (`IndexerCommand::MoveTracks`, `library-indexer/src/relocate.rs`),
   serializado com o `run_scan`: move o FLAC (só troca a pasta de 1º nível;
@@ -791,10 +793,14 @@ da faixa, botão no cabeçalho de Álbum e Artista).
   O scan seguinte vê mtime/tamanho iguais e não reescreve. Só `rename`:
   destino em outro sistema de arquivos é recusado (o scanner anda com
   `same_file_system`). Falha ao gravar o ponto novo devolve o arquivo.
-- Queda no meio: `move-journal.json` no data dir é gravado antes do rename e
-  apagado no fim; no boot o coordinator reprocessa ANTES do primeiro scan
-  (`replay_pending`): sem ponto novo gravado, desfaz o rename; com ele,
-  completa enrichment/plays/ponto antigo. Capa movida/copiada não é desfeita.
+- Queda no meio: `move-journal.json` no data dir é uma LISTA de pendências
+  (uma por faixa, chave `old_id`), gravada antes do rename (tmp + `sync_all` +
+  rename) e fechada no fim. No boot o coordinator reprocessa todas ANTES do
+  primeiro scan (`replay_pending`): sem ponto novo gravado, desfaz as
+  operações de disco registradas (FLAC, `.lrc`, capas) e remove só as pastas
+  que o próprio move criou (playlist preexistente nunca sai); com ponto novo,
+  completa enrichment/plays/ponto antigo. Pendência com aviso fica para o
+  próximo boot, sem ser sobrescrita por moves novos.
 - Evento: o coordinator emite `IndexerEvent::TracksMoved` sempre; a thread
   `indexer-events` (desktop.rs) troca id e caminho no `PlayerSnapshot` (senão
   o `flush_play_event` gravaria no id apagado) e repassa como
