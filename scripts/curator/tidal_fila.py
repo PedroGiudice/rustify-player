@@ -5,6 +5,9 @@ Gera um HTML a cada 15 s e serve em 127.0.0.1:8470 sob um caminho secreto (token
 POST /<token>/fila com url+playlist enfileira um download na VM: o worker roda
 scripts/curator/tidal_mix_dl.py (um lote por vez), que na VM já envia cada faixa para
 cmr-auto:~/Music, apaga o staging e dá touch remoto; o progresso e o resultado aparecem na página.
+API JSON para o app (seção Tidal do Crate, pela tailnet em TAILNET_IP:8470, mesmo token):
+  GET  /<token>/api/fila                      -> {"jobs":[...], "pastas":[...]}
+  POST /<token>/api/fila  {"url","playlist"}  -> {"ok":true,"id":...} | {"error":"..."} (400)
 Rodar na VM:  tmux new -d -s telemetria 'python3 ~/rustify-player/scripts/curator/tidal_fila.py'
 """
 import html
@@ -26,6 +29,7 @@ CMR = "cmr-auto@100.102.249.9"
 QDRANT = "http://127.0.0.1:16333"
 TOKEN = Path(os.path.expanduser("~/.secrets/telemetria-token.txt")).read_text().strip()
 PORT = 8470
+TAILNET_IP = "100.64.242.118"  # o app na cmr-auto fala por aqui; o Funnel 10000 cobre o loopback
 OUT = Path(os.path.expanduser("~/tidal-out"))
 LOGS = OUT / "logs"
 FILA = OUT / "fila.json"
@@ -243,18 +247,47 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _json(self, obj, code=200):
+        data = json.dumps(obj, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         path = self.path.split("?")[0].rstrip("/")
+        if path == f"/{TOKEN}/api/fila":
+            with LOCK:
+                jobs = load_fila()
+            for j in jobs:
+                if j["status"] == "baixando" and not j.get("resumo"):
+                    j["resumo"] = resumo_do_log(j["log"])
+                j.pop("log", None)
+            return self._json({"jobs": jobs[-30:], "pastas": pastas()})
         if path != f"/{TOKEN}":
             return self._send(b"", 404)
         self._send(PAGE["html"].encode())
 
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n).decode("utf-8", "ignore")
+        if path == f"/{TOKEN}/api/fila":
+            try:
+                body = json.loads(raw or "{}")
+            except Exception:
+                return self._json({"error": "JSON inválido"}, 400)
+            err = enfileira(str(body.get("url") or ""), str(body.get("playlist") or ""))
+            if err:
+                return self._json({"error": err}, 400)
+            with LOCK:
+                jobs = load_fila()
+            return self._json({"ok": True, "id": jobs[-1]["id"]})
         if path != f"/{TOKEN}/fila":
             return self._send(b"", 404)
-        n = int(self.headers.get("Content-Length") or 0)
-        form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "ignore"))
+        form = urllib.parse.parse_qs(raw)
         url = (form.get("url") or [""])[0]
         playlist = (form.get("playlist") or [""])[0]
         if playlist == "__nova__":
@@ -271,4 +304,10 @@ if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=loop, daemon=True).start()
+    for ip in (TAILNET_IP,):
+        try:
+            srv = ThreadingHTTPServer((ip, PORT), H)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+        except OSError as e:
+            print(f"sem bind em {ip}:{PORT}: {e!r}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
