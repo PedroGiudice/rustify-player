@@ -1,0 +1,1094 @@
+[
+  {
+    "artist_dir": "DJ Anderson do Paraiso",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ Anderson do Paraíso"
+  },
+  {
+    "artist_dir": "DJ Anderson do Paraíso",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ Anderson do Paraíso"
+  },
+  {
+    "artist_dir": "Dj Gbr",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ GBR"
+  },
+  {
+    "artist_dir": "Dj GBR",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "DJ GBR"
+  },
+  {
+    "artist_dir": "DJ GBR",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ GBR"
+  },
+  {
+    "artist_dir": "Mc Jacare",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Mc Jacaré"
+  },
+  {
+    "artist_dir": "Mc Jacaré",
+    "album_dir": "Eletrofunk Raiz [tidal]",
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "Mc Jacaré"
+  },
+  {
+    "artist_dir": "Mc Jacaré",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Mc Jacaré"
+  },
+  {
+    "artist_dir": "DJ Arana",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Arana"
+  },
+  {
+    "artist_dir": "DJ Arana, Mc Larissa, Mc Lekão - Famoso Machuca Xota (2023)",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "DJ Arana"
+  },
+  {
+    "artist_dir": "DJ K",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "alta",
+    "canonical_artist": "DJ K"
+  },
+  {
+    "artist_dir": "DJ Blakes",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Blakes"
+  },
+  {
+    "artist_dir": "DJ LA Beat & DJ K9",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "DJ LA Beat & DJ K9"
+  },
+  {
+    "artist_dir": "GP DA ZL",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "GP DA ZL"
+  },
+  {
+    "artist_dir": "Jhow Dancer",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "Jhow Dancer"
+  },
+  {
+    "artist_dir": "MAC10TA",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "alta",
+    "canonical_artist": "MAC10TA"
+  },
+  {
+    "artist_dir": "OO Rubinho",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "alta",
+    "canonical_artist": "OO Rubinho"
+  },
+  {
+    "artist_dir": "Tropa do Bruxo",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "Tropa do Bruxo"
+  },
+  {
+    "artist_dir": "DJ Anderson do Paraiso",
+    "album_dir": "Última Bruxaria do Ano",
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "DJ Anderson do Paraíso"
+  },
+  {
+    "artist_dir": "[2025] Radio libertadora!",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "Vários (coletânea bruxaria/automotivo)"
+  },
+  {
+    "artist_dir": "MC Saci",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "baixa",
+    "canonical_artist": "MC Saci"
+  },
+  {
+    "artist_dir": "petrus.wav",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "baixa",
+    "canonical_artist": "petrus.wav"
+  },
+  {
+    "artist_dir": "Flux Zone",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "baixa",
+    "canonical_artist": "Flux Zone"
+  },
+  {
+    "artist_dir": "Astrophysics",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "baixa",
+    "canonical_artist": "Astrophysics"
+  },
+  {
+    "artist_dir": "DJ Petroski",
+    "album_dir": null,
+    "dest": "Mega Funk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Petroski"
+  },
+  {
+    "artist_dir": "TAIDigital",
+    "album_dir": null,
+    "dest": "Mega Funk",
+    "confidence": "alta",
+    "canonical_artist": "TAIDigital"
+  },
+  {
+    "artist_dir": "DJ Fernando Souza",
+    "album_dir": null,
+    "dest": "Mega Funk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Fernando Souza"
+  },
+  {
+    "artist_dir": "DJ Luan Mark",
+    "album_dir": null,
+    "dest": "Mega Funk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Luan Mark"
+  },
+  {
+    "artist_dir": "DJ Maninho",
+    "album_dir": null,
+    "dest": "Mega Funk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Maninho"
+  },
+  {
+    "artist_dir": "Dennis & Friends (2020)",
+    "album_dir": null,
+    "dest": "Mega Funk",
+    "confidence": "media",
+    "canonical_artist": "DENNIS"
+  },
+  {
+    "artist_dir": "DJ CARLOZS ((NORMAL))",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ CARLOZS"
+  },
+  {
+    "artist_dir": "Dubdogz",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "Dubdogz"
+  },
+  {
+    "artist_dir": "Vintage Culture",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "Vintage Culture"
+  },
+  {
+    "artist_dir": "KVSH",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "KVSH"
+  },
+  {
+    "artist_dir": "Illusionize",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "Illusionize"
+  },
+  {
+    "artist_dir": "Classmatic",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "Classmatic"
+  },
+  {
+    "artist_dir": "Alok, Mc Don Juan e DJ GBR",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "Alok, Mc Don Juan e DJ GBR"
+  },
+  {
+    "artist_dir": "MU540",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "MU540"
+  },
+  {
+    "artist_dir": "Kioma, Buarky, kLap e Mu540",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "Kioma, Buarky, kLap e Mu540"
+  },
+  {
+    "artist_dir": "FatSync",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "FatSync"
+  },
+  {
+    "artist_dir": "HUGEL",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "HUGEL"
+  },
+  {
+    "artist_dir": "Quarterhead",
+    "album_dir": null,
+    "dest": "Eletrônica",
+    "confidence": "media",
+    "canonical_artist": "Quarterhead"
+  },
+  {
+    "artist_dir": "OVEOUS",
+    "album_dir": null,
+    "dest": "Eletrônica",
+    "confidence": "media",
+    "canonical_artist": "OVEOUS"
+  },
+  {
+    "artist_dir": "Andruss",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "Andruss"
+  },
+  {
+    "artist_dir": "ATANA",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "ATANA"
+  },
+  {
+    "artist_dir": "Bellaire",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "Bellaire"
+  },
+  {
+    "artist_dir": "Beltran",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "Beltran (BR)"
+  },
+  {
+    "artist_dir": "CyberKills",
+    "album_dir": null,
+    "dest": "Techfunk",
+    "confidence": "media",
+    "canonical_artist": "CyberKills"
+  },
+  {
+    "artist_dir": "Meloko",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "Meloko"
+  },
+  {
+    "artist_dir": "Demm Deep",
+    "album_dir": null,
+    "dest": "Eletrônica",
+    "confidence": "media",
+    "canonical_artist": "Demm Deep"
+  },
+  {
+    "artist_dir": "ENNE (BR)",
+    "album_dir": null,
+    "dest": "Eletrônica",
+    "confidence": "baixa",
+    "canonical_artist": "ENNE (BR)"
+  },
+  {
+    "artist_dir": "AKALEX",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "baixa",
+    "canonical_artist": "AKALEX"
+  },
+  {
+    "artist_dir": "Bronka",
+    "album_dir": "Electric Baile [tidal]",
+    "dest": "Eletrofunk",
+    "confidence": "baixa",
+    "canonical_artist": "Bronka"
+  },
+  {
+    "artist_dir": "Bronka",
+    "album_dir": "BRONKA SUCKS [tidal]",
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Bronka"
+  },
+  {
+    "artist_dir": "CHAMOS",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "CHAMOS"
+  },
+  {
+    "artist_dir": "Freenzy Music",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "baixa",
+    "canonical_artist": "Freenzy Music"
+  },
+  {
+    "artist_dir": "Giu",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "baixa",
+    "canonical_artist": "Giu"
+  },
+  {
+    "artist_dir": "MC Th",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "MC Th"
+  },
+  {
+    "artist_dir": "DJ Guuga",
+    "album_dir": "MEGA ELETRO FUNK - Last Night [tidal]",
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "DJ Guuga"
+  },
+  {
+    "artist_dir": "DJ Guuga",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Guuga"
+  },
+  {
+    "artist_dir": "MC Kevin o Chris",
+    "album_dir": "2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]",
+    "dest": "Eletrofunk",
+    "confidence": "alta",
+    "canonical_artist": "MC Kevin o Chris"
+  },
+  {
+    "artist_dir": "MC Kevin o Chris",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "MC Kevin o Chris"
+  },
+  {
+    "artist_dir": "PinkPantheress",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "PinkPantheress"
+  },
+  {
+    "artist_dir": "PinkPantheress + DJ Caio Prince + Adame DJ",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "PinkPantheress"
+  },
+  {
+    "artist_dir": "Gal Costa",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "baixa",
+    "canonical_artist": "Gal Costa"
+  },
+  {
+    "artist_dir": "Adame DJ",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Adame DJ"
+  },
+  {
+    "artist_dir": "BadSista",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "BadSista"
+  },
+  {
+    "artist_dir": "D.A.N.V, DJ Kingdom, VKKramer",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "D.A.N.V, DJ Kingdom, VKKramer"
+  },
+  {
+    "artist_dir": "Dave Nunes",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Dave Nunes"
+  },
+  {
+    "artist_dir": "DENNIS",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DENNIS"
+  },
+  {
+    "artist_dir": "Dj Aguilar",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Dj Aguilar"
+  },
+  {
+    "artist_dir": "DJ CZ",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ CZ"
+  },
+  {
+    "artist_dir": "DJ Douglinhas",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Douglinhas"
+  },
+  {
+    "artist_dir": "Dj Duarte",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Dj Duarte"
+  },
+  {
+    "artist_dir": "DJ GB FAIXA PRETA",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ GB FAIXA PRETA"
+  },
+  {
+    "artist_dir": "DJ Gui Marques",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Gui Marques"
+  },
+  {
+    "artist_dir": "DJ LK DE ITAPE",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ LK DE ITAPE"
+  },
+  {
+    "artist_dir": "Duquesa",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Duquesa"
+  },
+  {
+    "artist_dir": "Dj Caio Vieira",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Dj Caio Vieira"
+  },
+  {
+    "artist_dir": "FBC",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "FBC"
+  },
+  {
+    "artist_dir": "Pedro Sampaio",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Pedro Sampaio"
+  },
+  {
+    "artist_dir": "DJ Holanda",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Holanda"
+  },
+  {
+    "artist_dir": "DJ Jeeh FDC",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ Jeeh FDC"
+  },
+  {
+    "artist_dir": "DJ Johnny Souza",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Johnny Souza"
+  },
+  {
+    "artist_dir": "DJ JZ",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ JZ"
+  },
+  {
+    "artist_dir": "Dj Luan Gomes",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Dj Luan Gomes"
+  },
+  {
+    "artist_dir": "DJ Léo da 17",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Léo da 17"
+  },
+  {
+    "artist_dir": "DJ NATAN 22",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ NATAN 22"
+  },
+  {
+    "artist_dir": "Dj Nattan",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Dj Nattan"
+  },
+  {
+    "artist_dir": "DJ NK3",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ NK3"
+  },
+  {
+    "artist_dir": "Dj Olliver",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Dj Olliver"
+  },
+  {
+    "artist_dir": "dj paran0ia",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "dj paran0ia"
+  },
+  {
+    "artist_dir": "DJ Patrick Muniz",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Patrick Muniz"
+  },
+  {
+    "artist_dir": "DJ Ramon Sucesso",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Ramon Sucesso"
+  },
+  {
+    "artist_dir": "DJ RD do Martins",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ RD do Martins"
+  },
+  {
+    "artist_dir": "DJ Rogerinho do Querô",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Rogerinho do Querô"
+  },
+  {
+    "artist_dir": "DJ Ryder",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ Ryder"
+  },
+  {
+    "artist_dir": "DJ SV",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ SV"
+  },
+  {
+    "artist_dir": "Dj THG",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Dj THG"
+  },
+  {
+    "artist_dir": "DJ Topo",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Topo"
+  },
+  {
+    "artist_dir": "DJ WIN",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ WIN"
+  },
+  {
+    "artist_dir": "DJ Ws da Igrejinha",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "DJ Ws da Igrejinha"
+  },
+  {
+    "artist_dir": "DJ Zigão",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "DJ Zigão"
+  },
+  {
+    "artist_dir": "Don Low",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Don Low"
+  },
+  {
+    "artist_dir": "Dyamante DJ",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ Dyamante"
+  },
+  {
+    "artist_dir": "Eddy M",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Eddy M"
+  },
+  {
+    "artist_dir": "Felipe Amorim",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Felipe Amorim"
+  },
+  {
+    "artist_dir": "Fezzo",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Fezzo"
+  },
+  {
+    "artist_dir": "Furacão 2000",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Furacão 2000"
+  },
+  {
+    "artist_dir": "ilysam",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "ilysam"
+  },
+  {
+    "artist_dir": "JAUM, O GANG$TAR",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "JAUM, O GANG$TAR"
+  },
+  {
+    "artist_dir": "JC no beat",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "JC no beat"
+  },
+  {
+    "artist_dir": "Jeninho",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Jeninho"
+  },
+  {
+    "artist_dir": "Kyan",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Kyan"
+  },
+  {
+    "artist_dir": "L7NNON",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "L7NNON"
+  },
+  {
+    "artist_dir": "Ladji Mouflet",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Ladji Mouflet"
+  },
+  {
+    "artist_dir": "Lou Garcia",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Lou Garcia"
+  },
+  {
+    "artist_dir": "MC Don Juan",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "MC Don Juan"
+  },
+  {
+    "artist_dir": "MC Fioti",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "MC Fioti"
+  },
+  {
+    "artist_dir": "Mc Gabzin",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Mc Gabzin"
+  },
+  {
+    "artist_dir": "MC Jvila",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MC Jvila"
+  },
+  {
+    "artist_dir": "Mc Kitinho",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Mc Kitinho"
+  },
+  {
+    "artist_dir": "MC L da Vinte",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MC L da Vinte"
+  },
+  {
+    "artist_dir": "Mc Livinho",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Mc Livinho"
+  },
+  {
+    "artist_dir": "Mc Menor Mr, Mano Gothia, Mc Dutra Rg, Caio Passos, Mc Meno K, Mc Sartori, DJ Camarozano",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Mc Menor Mr, Mano Gothia, Mc Dutra Rg, Caio Passos, Mc Meno K, Mc Sartori, DJ Camarozano"
+  },
+  {
+    "artist_dir": "MC Menor MT",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MC Menor MT"
+  },
+  {
+    "artist_dir": "Mc Neguinho do Morro",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Mc Neguinho do Morro"
+  },
+  {
+    "artist_dir": "MC Pogba",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MC Pogba"
+  },
+  {
+    "artist_dir": "MC Teteu",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MC Teteu"
+  },
+  {
+    "artist_dir": "Menor Teteu",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Menor Teteu"
+  },
+  {
+    "artist_dir": "MLQ 2N",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MLQ 2N"
+  },
+  {
+    "artist_dir": "Mulú",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Mulú"
+  },
+  {
+    "artist_dir": "Niack",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "MC Niack"
+  },
+  {
+    "artist_dir": "Nilo",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Nilo"
+  },
+  {
+    "artist_dir": "Novin Yarp",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Novin Yarp"
+  },
+  {
+    "artist_dir": "Papatinho",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Papatinho"
+  },
+  {
+    "artist_dir": "Prod. DTM",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Prod. DTM"
+  },
+  {
+    "artist_dir": "Ricii Lompeurs",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Ricii Lompeurs"
+  },
+  {
+    "artist_dir": "Syon Trio",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "Syon Trio"
+  },
+  {
+    "artist_dir": "shonci",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "shonci"
+  },
+  {
+    "artist_dir": "TR",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "TR"
+  },
+  {
+    "artist_dir": "Victor Lou",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Victor Lou"
+  },
+  {
+    "artist_dir": "ZAAC",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "ZAAC"
+  },
+  {
+    "artist_dir": "Zé Felipe",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Zé Felipe"
+  },
+  {
+    "artist_dir": "_Compilations",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "_Compilations"
+  },
+  {
+    "artist_dir": "Humildes",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "media",
+    "canonical_artist": "Humildes"
+  },
+  {
+    "artist_dir": "DJ Piu",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "alta",
+    "canonical_artist": "DJ Piu"
+  },
+  {
+    "artist_dir": "Drae Da Skimask",
+    "album_dir": null,
+    "dest": "Rap & Hip-Hop",
+    "confidence": "media",
+    "canonical_artist": "Drae Da Skimask"
+  },
+  {
+    "artist_dir": "Marina Sena",
+    "album_dir": null,
+    "dest": "MPB",
+    "confidence": "alta",
+    "canonical_artist": "Marina Sena"
+  },
+  {
+    "artist_dir": "Gal Costa",
+    "album_dir": "Azul (Illusionize & Linkage Remix) [tidal]",
+    "dest": "MPB",
+    "confidence": "baixa",
+    "canonical_artist": "Gal Costa"
+  },
+  {
+    "artist_dir": "Luan Pereira",
+    "album_dir": null,
+    "dest": "Country & Folk",
+    "confidence": "baixa",
+    "canonical_artist": "Luan Pereira"
+  },
+  {
+    "artist_dir": "VEIGH",
+    "album_dir": null,
+    "dest": "Rap & Hip-Hop",
+    "confidence": "media",
+    "canonical_artist": "VEIGH"
+  },
+  {
+    "artist_dir": "ZAC",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "baixa",
+    "canonical_artist": "ZAC"
+  },
+  {
+    "artist_dir": "Spinnin Records",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Spinnin Records"
+  },
+  {
+    "artist_dir": "Gordo",
+    "album_dir": null,
+    "dest": "Eletrofunk",
+    "confidence": "media",
+    "canonical_artist": "Gordo"
+  },
+  {
+    "artist_dir": "Various Artists",
+    "album_dir": null,
+    "dest": "Funk Brasileiro",
+    "confidence": "baixa",
+    "canonical_artist": "Various Artists"
+  }
+]
