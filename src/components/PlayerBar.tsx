@@ -15,7 +15,7 @@ import {
   applyTrackStarted, updatePosition, setPlayingState,
   setLiked, cycleRepeat, advanceQueue, retreatQueue, jumpToQueueIndex,
   shuffleQueue, reconcileFromState, setQueue, changeVolume, toggleMute,
-  rememberRecent, recentlyPlayed, resumeOnLaunch,
+  rememberRecent, recentlyPlayed, resumeOnLaunch, gaplessNext,
 } from "../store/player";
 import type { QueueScope, QueueSource } from "../store/player";
 import { registerSeen, registerSkipIfEarly, currentSession, ensureOpenRadioSession, noteAccepted } from "../store/radioSession";
@@ -127,10 +127,7 @@ export function PlayerBar() {
         applyTrackStarted(p.TrackStarted);
         // Pre-load next para gapless — repeat-aware: "one" pré-carrega a
         // própria track (loop gapless), "all" volta ao início no fim da fila.
-        const next = player.repeatMode === "one"
-          ? player.currentTrack
-          : player.queue[player.queueIndex + 1] ??
-            (player.repeatMode === "all" ? player.queue[0] : undefined);
+        const next = gaplessNext();
         if (next) playerEnqueueNext(next.path).catch(console.error);
         void saveSession();
 
@@ -597,10 +594,7 @@ export function PlayerBar() {
               // pré-enfileirado de forma AUTÔNOMA no EOS — um next stale
               // tocaria um blip da track errada (repeat one ligado no meio
               // da track) ou loopararia a mesma (desligado no meio).
-              const next = player.repeatMode === "one"
-                ? player.currentTrack
-                : player.queue[player.queueIndex + 1] ??
-                  (player.repeatMode === "all" ? player.queue[0] : undefined);
+              const next = gaplessNext();
               if (next) playerEnqueueNext(next.path).catch(console.error);
             }}
           >

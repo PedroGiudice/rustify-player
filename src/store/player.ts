@@ -323,6 +323,15 @@ export function setLiked(liked: boolean) {
   setPlayer("isLiked", liked);
 }
 
+/** Próxima faixa para o preload gapless — repeat-aware: "one" pré-carrega
+    a própria faixa (loop gapless), "all" volta ao início no fim da fila. */
+export function gaplessNext(): Track | undefined {
+  return player.repeatMode === "one"
+    ? player.currentTrack ?? undefined
+    : player.queue[player.queueIndex + 1] ??
+      (player.repeatMode === "all" ? player.queue[0] : undefined);
+}
+
 /** Faixas movidas de playlist (CMR-298) mudam de id (hash do caminho):
     a fila e a faixa atual passam a apontar para o id/caminho novos, senão
     o próximo play/evento iria para um id que não existe mais. */

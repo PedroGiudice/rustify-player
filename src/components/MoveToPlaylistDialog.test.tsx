@@ -11,6 +11,7 @@ vi.mock("../tauri", () => ({
   libListPlaylists: () => invoke("lib_list_playlists"),
   libMoveTracks: (trackIds: string[], destPlaylist: string) =>
     invoke("lib_move_tracks", { trackIds, destPlaylist }),
+  playerEnqueueNext: (path: string) => invoke("player_enqueue_next", { path }),
 }));
 
 import { MoveToPlaylistDialog } from "./MoveToPlaylistDialog";
@@ -29,11 +30,11 @@ beforeEach(() => {
   invoke.mockImplementation(async (cmd: string, args?: { trackIds: string[]; destPlaylist: string }) => {
     if (cmd === "lib_list_playlists") return ["Favoritas", "Rap"];
     const items = args!.trackIds.map((id) => ({
-      track_id: id, new_track_id: `${id}0`, new_path: `/m/${args!.destPlaylist}/A/B/${id}.flac`,
+      track_id: id, new_track_id: `${id}0`, new_path: `/m/${args!.destPlaylist}/A/B/${id}.flac`, new_lrc_path: null,
       title: null, status: id === "3" ? "failed" : "moved", detail: id === "3" ? "já existe um arquivo com esse nome no destino" : null,
     }));
     const failed = items.filter((i) => i.status === "failed").length;
-    return { dest_playlist: args!.destPlaylist, moved: items.length - failed, already_there: 0, failed, items };
+    return { dest_playlist: args!.destPlaylist, moved: items.length - failed, already_there: 0, failed, pending: 0, items };
   });
 });
 
@@ -74,11 +75,12 @@ describe("MoveToPlaylistDialog", () => {
     openMoveDialog([track("1")]);
     await waitFor(() => expect(item("Favoritas")).toBeTruthy());
     const input = document.querySelector<HTMLInputElement>(".palette__input")!;
-    fireEvent.input(input, { target: { value: "Treino" } });
-    expect(item("Nova pasta").textContent).toContain("Treino");
+    fireEvent.input(input, { target: { value: "Treino: pesado" } });
+    // Mostra o nome final (sanitizado) antes de mover.
+    expect(item("Nova pasta").textContent).toContain("será criada como ~/Music/Treino_ pesado");
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith("lib_move_tracks", { trackIds: ["1"], destPlaylist: "Treino" }),
+      expect(invoke).toHaveBeenCalledWith("lib_move_tracks", { trackIds: ["1"], destPlaylist: "Treino_ pesado" }),
     );
   });
 });

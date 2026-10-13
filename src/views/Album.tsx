@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { createResource, For, Show } from "solid-js";
-import { libGetTracksByAlbum, libGetAlbums, coverUrl, type Album, type Track } from "../tauri";
+import { libGetTracks, libGetAlbums, coverUrl, type Album, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { route } from "../router";
@@ -13,14 +13,11 @@ import { Icon, ICONS } from "../components/Icon";
 import { TrackRowTable } from "../components/TrackRowTable";
 import { libraryRevision, openMoveDialog } from "../store/moveDialog";
 
+/** Teto da listagem do álbum; bater nele = lista (e o "Mover") incompleta. */
+const ALBUM_TRACK_LIMIT = 200;
+
 export default function AlbumView() {
   const title = () => route().param ? decodeURIComponent(route().param!) : null;
-
-  // libraryRevision na chave: recarrega depois de "Mover para playlist…".
-  const [tracks] = createResource(() => ({ t: title(), rev: libraryRevision() }), async ({ t }): Promise<Track[]> => {
-    if (!t) return [];
-    try { return await libGetTracksByAlbum(t); } catch { return []; }
-  });
 
   const [album] = createResource(title, async (t): Promise<Album | null> => {
     if (!t) return null;
@@ -29,6 +26,19 @@ export default function AlbumView() {
       return list.find((a) => a.title === t) ?? null;
     } catch { return null; }
   });
+
+  // Filtra pelo artista do álbum além do título: dois álbuns homônimos
+  // ("Greatest Hits") não se misturam — e "Mover para playlist…" não leva
+  // faixa de outro artista. Espera o álbum resolver para não buscar duas
+  // vezes. libraryRevision na chave: recarrega depois de mover.
+  const [tracks] = createResource(
+    () => (album.loading ? false : { t: title(), artist: album()?.artist_name ?? undefined, rev: libraryRevision() }),
+    async ({ t, artist }): Promise<Track[]> => {
+      if (!t) return [];
+      try { return await libGetTracks({ album: t, artist, limit: ALBUM_TRACK_LIMIT }); } catch { return []; }
+    },
+  );
+  const truncated = () => (tracks()?.length ?? 0) >= ALBUM_TRACK_LIMIT;
 
   // scope "curated": shuffle dentro do album embaralha SO este tracklist.
   function play(t: Track) {
@@ -62,6 +72,9 @@ export default function AlbumView() {
             <p class="view__head-hint">
               {album()?.artist_name ?? "—"} · {tracks()?.length ?? 0} tracks
               {album()?.year && <> · {album()!.year}</>}
+              <Show when={truncated()}>
+                <> · mostrando só as primeiras {ALBUM_TRACK_LIMIT}</>
+              </Show>
             </p>
           </div>
         </div>
@@ -71,7 +84,9 @@ export default function AlbumView() {
           type="button"
           disabled={!(tracks()?.length)}
           onClick={() => openMoveDialog(tracks() ?? [], title())}
-          title="Mover o álbum para outra playlist"
+          title={truncated()
+            ? `Move só as ${ALBUM_TRACK_LIMIT} faixas listadas; o álbum tem mais`
+            : "Mover o álbum para outra playlist"}
         >
           <Icon name={ICONS.moveTo} size={13} />
           <span>Mover para playlist…</span>

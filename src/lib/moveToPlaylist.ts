@@ -22,16 +22,32 @@ export function isValidPlaylistName(name: string): boolean {
   return n.length > 0 && !n.startsWith(".") && !n.startsWith("_") && !/[\\/]/.test(n);
 }
 
+/** Espelho do `sanitize_component` do backend (slskd-client/stage_plan):
+    `/ \ \0` viram espaço, `: " * ? < > |` viram `_`, espaços colapsam,
+    teto de 120 bytes UTF-8. Só se aplica a pasta NOVA — existente vai
+    como está. */
+export function sanitizePlaylistName(name: string): string {
+  const replaced = name.replace(/[/\\\0]/g, " ").replace(/[:"*?<>|]/g, "_");
+  const collapsed = replaced.split(/\s+/).filter(Boolean).join(" ");
+  const enc = new TextEncoder();
+  let out = collapsed;
+  while (enc.encode(out).length > 120) out = out.slice(0, -1);
+  return out;
+}
+
 export function filterPlaylists(names: string[], query: string): string[] {
   const q = query.trim().toLowerCase();
   if (!q) return names;
   return names.filter((n) => n.toLowerCase().includes(q));
 }
 
-/** Nome digitado que vira "nova pasta": válido e sem playlist com o
-    mesmo nome (sem diferenciar caixa — no Android e no olho são iguais). */
+/** Nome FINAL (já sanitizado) da pasta nova para o que foi digitado, ou
+    null: inválido depois da sanitização (vazio, começa com `.`/`_`) ou já
+    existe uma playlist com esse nome (sem diferenciar caixa — no Android e
+    no olho são iguais). */
 export function newFolderCandidate(names: string[], query: string): string | null {
-  const q = query.trim();
+  if (names.includes(query.trim())) return null;
+  const q = sanitizePlaylistName(query);
   if (!isValidPlaylistName(q)) return null;
   const lower = q.toLowerCase();
   return names.some((n) => n.toLowerCase() === lower) ? null : q;
@@ -53,6 +69,7 @@ export function mergeReports(dest: string, reports: MoveReport[]): MoveReport {
     moved: reports.reduce((s, r) => s + r.moved, 0),
     already_there: reports.reduce((s, r) => s + r.already_there, 0),
     failed: reports.reduce((s, r) => s + r.failed, 0),
+    pending: reports.reduce((s, r) => s + (r.pending ?? 0), 0),
     items: reports.flatMap((r) => r.items),
   };
 }
@@ -63,6 +80,7 @@ export function summaryText(r: MoveReport): string {
   if (r.moved) parts.push(plural(r.moved, "movida", "movidas"));
   if (r.already_there) parts.push(`${r.already_there} já ${r.already_there === 1 ? "estava" : "estavam"} lá`);
   if (r.failed) parts.push(`${r.failed} ${r.failed === 1 ? "falhou" : "falharam"}`);
+  if (r.pending) parts.push(`${r.pending} ainda em andamento`);
   return parts.length ? parts.join(" · ") : "Nada a mover";
 }
 
@@ -82,7 +100,7 @@ export function trackRemapper(report: MoveReport): (t: Track) => Track {
       ...t,
       id: it.new_track_id!,
       path,
-      lrc_path: t.lrc_path ? path.replace(/\.[^./]+$/, ".lrc") : t.lrc_path,
+      lrc_path: it.new_lrc_path,
       genre_name: report.dest_playlist,
     };
   };

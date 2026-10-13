@@ -2,8 +2,8 @@
 // (CMR-298). Singleton como o menu de contexto: um diálogo por vez,
 // renderizado por <MoveToPlaylistDialog/> montado no App.
 import { createSignal } from "solid-js";
-import type { MoveReport, Track } from "../tauri";
-import { remapMovedTracks } from "./player";
+import { playerEnqueueNext, type MoveReport, type Track } from "../tauri";
+import { gaplessNext, remapMovedTracks } from "./player";
 import { trackRemapper } from "../lib/moveToPlaylist";
 
 export interface MoveRequest {
@@ -37,6 +37,12 @@ export function bumpLibraryRevision() {
     fila/faixa atual passam aos ids novos e as views recarregam. */
 export function applyMovedReport(report: MoveReport) {
   if (report.moved === 0) return;
+  const before = gaplessNext()?.path;
   remapMovedTracks(trackRemapper(report));
+  // O engine consome o next pré-enfileirado sozinho no EOS: se a próxima
+  // (ou a atual, no repeat one) foi movida, o preload apontaria para um
+  // arquivo que não existe mais — re-enfileira com o caminho novo.
+  const next = gaplessNext();
+  if (next && next.path !== before) playerEnqueueNext(next.path).catch(console.error);
   bumpLibraryRevision();
 }

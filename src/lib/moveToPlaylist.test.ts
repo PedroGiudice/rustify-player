@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   chunk, confirmText, filterPlaylists, isValidPlaylistName, mergeReports,
-  newFolderCandidate, summaryText, trackRemapper,
+  newFolderCandidate, sanitizePlaylistName, summaryText, trackRemapper,
 } from "./moveToPlaylist";
 import type { MoveReport, Track } from "../tauri";
 
@@ -33,6 +33,17 @@ describe("seletor de destino", () => {
     expect(newFolderCandidate(names, "")).toBeNull();
   });
 
+  it("pasta nova sai com o nome FINAL, já sanitizado como no backend", () => {
+    expect(sanitizePlaylistName("Treino: pesado")).toBe("Treino_ pesado");
+    expect(sanitizePlaylistName("AC/DC  ao vivo")).toBe("AC DC ao vivo");
+    expect(newFolderCandidate(names, "Treino: pesado")).toBe("Treino_ pesado");
+    // Vira algo inválido depois de limpar: recusado.
+    expect(newFolderCandidate(names, "?lixo")).toBeNull();
+    expect(newFolderCandidate(names, " / ")).toBeNull();
+    // Nome existente escrito igual não é "pasta nova", mesmo com caractere proibido.
+    expect(newFolderCandidate(["Funk: BR"], "Funk: BR")).toBeNull();
+  });
+
   it("recusa pastas ocultas, de sistema e com barra", () => {
     for (const bad of [".rustify-incoming", "_Compilations", "a/b", "a\\b", ""]) {
       expect(isValidPlaylistName(bad)).toBe(false);
@@ -48,9 +59,11 @@ describe("textos", () => {
   });
 
   it("resumo conta movidas, já presentes e falhas", () => {
-    const r = { dest_playlist: "X", moved: 13, already_there: 1, failed: 1, items: [] };
+    const r = { dest_playlist: "X", moved: 13, already_there: 1, failed: 1, pending: 0, items: [] };
     expect(summaryText(r)).toBe("13 movidas · 1 já estava lá · 1 falhou");
     expect(summaryText({ ...r, moved: 1, already_there: 0, failed: 0 })).toBe("1 movida");
+    // Timeout não é falha: segue em andamento.
+    expect(summaryText({ ...r, moved: 0, already_there: 0, failed: 0, pending: 4 })).toBe("4 ainda em andamento");
   });
 });
 
@@ -61,20 +74,29 @@ describe("lotes", () => {
   });
 
   it("mergeReports soma contagens e concatena itens na ordem", () => {
-    const a: MoveReport = { dest_playlist: "X", moved: 2, already_there: 0, failed: 1, items: [] };
-    const b: MoveReport = { dest_playlist: "X", moved: 1, already_there: 1, failed: 0, items: [] };
-    expect(mergeReports("X", [a, b])).toMatchObject({ moved: 3, already_there: 1, failed: 1 });
+    const a: MoveReport = { dest_playlist: "X", moved: 2, already_there: 0, failed: 1, pending: 0, items: [] };
+    const b: MoveReport = { dest_playlist: "X", moved: 1, already_there: 1, failed: 0, pending: 2, items: [] };
+    expect(mergeReports("X", [a, b])).toMatchObject({ moved: 3, already_there: 1, failed: 1, pending: 2 });
   });
 });
 
 describe("trackRemapper", () => {
   const report: MoveReport = {
-    dest_playlist: "Favoritas", moved: 1, already_there: 0, failed: 1,
+    dest_playlist: "Favoritas", moved: 1, already_there: 0, failed: 1, pending: 0,
     items: [
-      { track_id: "18446744073709551615", new_track_id: "42", new_path: "/m/Favoritas/A/B/x.flac", title: "x", status: "moved", detail: null },
-      { track_id: "7", new_track_id: null, new_path: null, title: "y", status: "failed", detail: "erro" },
+      {
+        track_id: "18446744073709551615", new_track_id: "42", new_path: "/m/Favoritas/A/B/x.flac",
+        new_lrc_path: "/m/Favoritas/A/B/x.lrc", title: "x", status: "moved", detail: null,
+      },
+      { track_id: "7", new_track_id: null, new_path: null, new_lrc_path: null, title: "y", status: "failed", detail: "erro" },
     ],
   };
+
+  it("letra vem do backend: .lrc que não acompanhou fica null, sem inventar caminho", () => {
+    const sem = { ...report, items: [{ ...report.items[0], new_lrc_path: null }] };
+    const t = track("18446744073709551615", { lrc_path: "/m/Rap/A/B/x.lrc" });
+    expect(trackRemapper(sem)(t).lrc_path).toBeNull();
+  });
 
   it("troca id (string u64 sem perder precisão), caminho, letra e pasta da faixa movida", () => {
     const t = track("18446744073709551615", { lrc_path: "/m/Rap/A/B/x.lrc" });

@@ -190,11 +190,15 @@ export const libListFolderTracks = (folder: string) => invoke<Track[]>("lib_list
 // ── Mover para playlist (CMR-298) ──────────────────────────────
 // Playlist = pasta de 1º nível em ~/Music. O backend move os arquivos e
 // leva vetores, like/vibe e play_events para o id novo (hash do caminho).
-export type MoveStatus = "moved" | "already_there" | "failed";
+/** "pending" = o indexador não respondeu a tempo; o pedido segue na fila e
+    o resultado chega pelo evento lib-tracks-moved. */
+export type MoveStatus = "moved" | "already_there" | "failed" | "pending";
 export interface MoveItem {
   track_id: string;
   new_track_id: string | null;
   new_path: string | null;
+  /** Sidecar .lrc que acompanhou a faixa (null = sem letra sincronizada). */
+  new_lrc_path: string | null;
   title: string | null;
   status: MoveStatus;
   /** Motivo da falha, ou avisos de migração parcial num item movido. */
@@ -205,6 +209,7 @@ export interface MoveReport {
   moved: number;
   already_there: number;
   failed: number;
+  pending: number;
   items: MoveItem[];
 }
 /** Pastas de 1º nível no disco (inclui vazias; sem `.` e `_`). */

@@ -68,9 +68,10 @@ function MoveDialogBody(props: { req: MoveRequest }) {
       } catch (e) {
         const why = String(e);
         reports.push({
-          dest_playlist: target, moved: 0, already_there: 0, failed: part.length,
+          dest_playlist: target, moved: 0, already_there: 0, failed: part.length, pending: 0,
           items: part.map((t) => ({
-            track_id: t.id, new_track_id: null, new_path: null, title: t.title, status: "failed" as const, detail: why,
+            track_id: t.id, new_track_id: null, new_path: null, new_lrc_path: null,
+            title: t.title, status: "failed" as const, detail: why,
           })),
         });
       }
@@ -136,7 +137,9 @@ function MoveDialogBody(props: { req: MoveRequest }) {
                         <span class="palette__item-icon"><Icon name={ICONS.folderPlus} /></span>
                         <span class="palette__item-text">
                           <span class="palette__item-title">Nova pasta “{c()}”</span>
-                          <span class="palette__item-sub">~/Music/{c()}</span>
+                          <span class="palette__item-sub">
+                            {c() === query().trim() ? `~/Music/${c()}` : `será criada como ~/Music/${c()}`}
+                          </span>
                         </span>
                       </button>
                     )}
@@ -162,7 +165,7 @@ function MoveDialogBody(props: { req: MoveRequest }) {
                   <Show when={!names.loading && filtered().length === 0 && !candidate()}>
                     <div class="move-dlg__msg">
                       {query().trim()
-                        ? "Nome inválido: não pode começar com . ou _ nem conter barra."
+                        ? "Nome inválido: depois de limpar os caracteres proibidos, não pode ficar vazio nem começar com . ou _."
                         : "Nenhuma playlist em ~/Music. Digite um nome para criar a pasta."}
                     </div>
                   </Show>
@@ -191,10 +194,15 @@ function MoveDialogBody(props: { req: MoveRequest }) {
             <Match when={phase() === "done"}>
               <div class="move-dlg__body" aria-live="polite">
                 <p class="move-dlg__line">
-                  <Icon name={(report()?.failed ?? 0) > 0 ? ICONS.alert : ICONS.check} size={14} />
+                  <Icon name={(report()?.failed ?? 0) > 0 || (report()?.pending ?? 0) > 0 ? ICONS.alert : ICONS.check} size={14} />
                   <span>{report() ? summaryText(report()!) : ""}</span>
                   <span class="move-dlg__dest">em {dest()}</span>
                 </p>
+                <Show when={(report()?.pending ?? 0) > 0}>
+                  <p class="move-dlg__hint">
+                    O indexador ainda está trabalhando nessas faixas; a biblioteca se atualiza sozinha quando terminar.
+                  </p>
+                </Show>
                 <Show when={failures().length > 0 || warnings().length > 0}>
                   <ul class="move-dlg__list">
                     <For each={failures()}>
