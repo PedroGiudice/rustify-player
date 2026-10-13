@@ -172,6 +172,14 @@ pub enum IndexerCommand {
         paths: Vec<PathBuf>,
         reply: Sender<Vec<IngestOutcome>>,
     },
+    /// Mover faixas para outra playlist preservando o histórico (CMR-298).
+    /// Roda na thread do coordinator, serializado com o `run_scan` — ver
+    /// `relocate.rs`.
+    MoveTracks {
+        ids: Vec<u64>,
+        dest_playlist: String,
+        reply: Sender<crate::relocate::MoveReport>,
+    },
     Shutdown,
 }
 

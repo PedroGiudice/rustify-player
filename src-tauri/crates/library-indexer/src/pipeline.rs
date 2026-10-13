@@ -232,6 +232,11 @@ fn coordinator_loop(
                     state.refresh(&client);
                     let _ = reply.send(out);
                 }
+                Ok(IndexerCommand::MoveTracks { ids, dest_playlist, reply }) => {
+                    let report = crate::relocate::move_tracks(&client, &config.music_root, &ids, &dest_playlist);
+                    state.refresh(&client);
+                    let _ = reply.send(report);
+                }
                 Ok(IndexerCommand::Shutdown) | Err(_) => break,
             },
             recv(embed_result_rx) -> msg => match msg {

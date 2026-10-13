@@ -992,6 +992,44 @@ impl QdrantClient {
         Ok(())
     }
 
+    /// Ponto completo — payload E todos os vetores nomeados (`mert`,
+    /// `lyrics`) — no formato que o próprio Qdrant aceita de volta no upsert.
+    /// Usado ao realocar uma faixa (CMR-298): o ponto novo nasce com os
+    /// MESMOS vetores, sem re-embeddar. `None` = ponto inexistente.
+    pub fn get_point_with_vectors(&self, id: u64) -> Result<Option<(Value, Value)>, IndexerError> {
+        let body = json!({ "ids": [id], "with_payload": true, "with_vector": true });
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{COLLECTION}/points", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant get point+vectors: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+        let Some(p) = resp["result"].as_array().and_then(|a| a.first()) else {
+            return Ok(None);
+        };
+        let payload = p.get("payload").cloned().unwrap_or_else(|| json!({}));
+        let vector = p.get("vector").cloned().unwrap_or(Value::Null);
+        Ok(Some((payload, vector)))
+    }
+
+    /// Upsert de UM ponto com payload e vetores já no formato do Qdrant
+    /// (`{"mert": [...], "lyrics": [...]}`). Vetor ausente/vazio cai no
+    /// `mert` zerado, como o `upsert_tracks` faz para faixa sem embedding.
+    pub fn upsert_point_raw(&self, id: u64, payload: &Value, vector: &Value) -> Result<(), IndexerError> {
+        let vector = match vector.as_object() {
+            Some(m) if !m.is_empty() => vector.clone(),
+            _ => json!({ VEC_MERT: vec![0.0_f32; MERT_DIM] }),
+        };
+        let body = json!({ "points": [{ "id": id, "vector": vector, "payload": payload }] });
+        self.agent
+            .put(&format!("{}/collections/{COLLECTION}/points", self.base_url))
+            .query("wait", "true")
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant upsert point: {e}")))?;
+        Ok(())
+    }
+
     /// Upsert tracks with full metadata payload and optional MERT vector.
     pub fn upsert_tracks(&self, points: &[(u64, Value, Option<Vec<f32>>)]) -> Result<(), IndexerError> {
         if points.is_empty() {
@@ -1738,6 +1776,70 @@ impl QdrantClient {
         let existing = self.get_enrichment(track_id)?;
         self.put_enrichment(track_id, existing, payload)
             .map_err(|e| IndexerError::Embedding(format!("qdrant set enrichment: {e}")))
+    }
+
+    /// Apaga o enrichment de uma faixa (realocação: o payload já foi copiado
+    /// para o id novo). Ausente = no-op no Qdrant.
+    pub fn delete_enrichment(&self, track_id: u64) -> Result<(), IndexerError> {
+        self.agent
+            .post(&format!("{}/collections/{ENRICHMENTS_COLLECTION}/points/delete", self.base_url))
+            .query("wait", "true")
+            .send_json(&json!({ "points": [track_id] }))
+            .map_err(|e| IndexerError::Embedding(format!("qdrant delete enrichment: {e}")))?;
+        Ok(())
+    }
+
+    /// `(point_id, track_id)` de TODOS os play_events. O filtro por
+    /// `track_id` no servidor não serve aqui: os ids são u64 e passam de
+    /// `i64::MAX` (o índice integer do Qdrant é i64), então a comparação é
+    /// feita no cliente. Point ids são UUID — voltam como `Value`.
+    pub fn scroll_play_event_track_ids(&self) -> Result<Vec<(Value, u64)>, IndexerError> {
+        let url = format!("{}/collections/{PLAY_EVENTS_COLLECTION}/points/scroll", self.base_url);
+        let mut out = Vec::new();
+        let mut offset: Option<Value> = None;
+        loop {
+            let mut body = json!({
+                "limit": 1000,
+                "with_payload": { "include": ["track_id"] },
+                "with_vector": false
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+            let resp: Value = self
+                .agent
+                .post(&url)
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll play_events ids: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    if let (Some(id), Some(tid)) = (p.get("id"), p["payload"]["track_id"].as_u64()) {
+                        out.push((id.clone(), tid));
+                    }
+                }
+            }
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Reaponta play_events para outro `track_id` (realocação de faixa),
+    /// em lotes de 500 pontos.
+    pub fn set_play_events_track_id(&self, point_ids: &[Value], track_id: u64) -> Result<(), IndexerError> {
+        let url = format!("{}/collections/{PLAY_EVENTS_COLLECTION}/points/payload", self.base_url);
+        for chunk in point_ids.chunks(500) {
+            self.agent
+                .post(&url)
+                .query("wait", "true")
+                .send_json(&json!({ "payload": { "track_id": track_id }, "points": chunk }))
+                .map_err(|e| IndexerError::Embedding(format!("qdrant set play_events track_id: {e}")))?;
+        }
+        Ok(())
     }
 
     pub fn scroll_enrichments(

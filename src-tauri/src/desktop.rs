@@ -717,6 +717,51 @@ fn lib_rescan(lib: State<Library>) -> Result<(), String> {
         .map_err(err)
 }
 
+/// Playlists existentes no DISCO (pastas de 1º nível de `~/Music`), sem as
+/// ocultas (`.rustify-incoming`, `.quarentena`) e as de sistema (`_…`).
+/// Diferente de `lib_list_folders`, inclui pasta vazia: é o seletor de
+/// destino do "Mover para playlist…".
+#[tauri::command]
+fn lib_list_playlists(lib: State<Library>) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = std::fs::read_dir(&lib.music_root)
+        .map_err(err)?
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.starts_with('.') && !n.starts_with('_'))
+        .collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    Ok(names)
+}
+
+/// "Mover para playlist…" (CMR-298): move os arquivos para
+/// `~/Music/<dest>/<Artista>/<Álbum>/` e leva junto vetores, letra externa,
+/// like/vibe (`track_enrichments`) e `play_events` para o id novo. O
+/// trabalho roda na thread do indexador (serializado com o scan do
+/// watcher); aqui só se espera fora da thread principal. O nome da
+/// playlist passa pelo mesmo `sanitize_component` do destino do Crate.
+#[tauri::command]
+async fn lib_move_tracks(
+    app: tauri::AppHandle,
+    lib: State<'_, Library>,
+    track_ids: Vec<String>,
+    dest_playlist: String,
+) -> Result<library_indexer::MoveReport, String> {
+    let ids = track_ids
+        .iter()
+        .map(|s| parse_id(s))
+        .collect::<Result<Vec<u64>, String>>()?;
+    let dest = slskd_client::stage_plan::sanitize_component(&dest_playlist);
+    let handle = lib.handle.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || handle.move_tracks(ids, dest))
+        .await
+        .map_err(err)?;
+    if report.moved > 0 {
+        let _ = app.emit("lib-tracks-moved", &report);
+    }
+    Ok(report)
+}
+
 // ---------------------------------------------------------------------------
 // Lyrics
 // ---------------------------------------------------------------------------
@@ -3415,6 +3460,8 @@ pub fn run() {
             lib_autoplay_next,
             lib_snapshot,
             lib_rescan,
+            lib_list_playlists,
+            lib_move_tracks,
             lib_get_lyrics,
             lib_list_folders,
             lib_list_folder_tracks,

@@ -29,6 +29,7 @@ pub mod lyrics;
 pub mod lyrics_fetch;
 pub mod qdrant_client;
 pub mod rerank;
+pub mod relocate;
 
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};
@@ -38,6 +39,7 @@ pub use dedup::{OwnedIndex, OwnedVerdict};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use metadata::{parse_flac, ParsedFlacMetadata};
+pub use relocate::{MoveItem, MoveReport, MoveStatus};
 pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};
 pub use rerank::{cap_per_artist, hybrid_rerank, vibe_from_enrichment, VibeProfile};
 pub use types::{
@@ -265,6 +267,27 @@ impl IndexerHandle {
                 })
                 .collect(),
         }
+    }
+
+    /// Move faixas para a playlist `dest_playlist` (pasta de 1º nível já
+    /// sanitizada) levando vetores, letra externa, like/vibe e play_events
+    /// para o id novo. Bloqueia até o coordinator responder; o teto é largo
+    /// porque cópia entre sistemas de arquivos pode demorar.
+    pub fn move_tracks(&self, ids: Vec<u64>, dest_playlist: String) -> relocate::MoveReport {
+        let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
+        let sent = self.inner.cmd_tx.send(IndexerCommand::MoveTracks {
+            ids: ids.clone(),
+            dest_playlist: dest_playlist.clone(),
+            reply: reply_tx,
+        });
+        if sent.is_err() {
+            return relocate::MoveReport::all_failed(&dest_playlist, &ids, "indexador desligado");
+        }
+        reply_rx
+            .recv_timeout(std::time::Duration::from_secs(600))
+            .unwrap_or_else(|_| {
+                relocate::MoveReport::all_failed(&dest_playlist, &ids, "tempo esgotado aguardando o indexador")
+            })
     }
 
     // --- Write operations -----------------------------------------------------
