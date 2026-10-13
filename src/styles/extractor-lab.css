@@ -3339,6 +3339,7 @@ html { --glow: 0; }
   transition: background var(--dur-base), border-color var(--dur-base), color var(--dur-base);
 }
 .pl-action-btn iconify-icon { width: 13px; height: 13px; }
+.pl-action-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
 .pl-action-btn:hover {
   background: var(--bg-soft);
   border-color: var(--fg-7);
@@ -3422,6 +3423,47 @@ html { --glow: 0; }
   margin: 5px 8px;
   background: var(--line-2);
 }
+
+/* ── Mover para playlist (CMR-298) ────────────────────────────
+   MoveToPlaylistDialog.tsx. Casca = .palette (⌘K); botões = .crate-btn.
+   Aqui só o que a ⌘K não tem: item como <button>, linhas de
+   confirmação/andamento/resultado. */
+.move-dlg { max-height: 60vh; }
+.move-dlg__item {
+  width: 100%; border: 0; background: transparent;
+  font: inherit; text-align: left; color: inherit;
+}
+.move-dlg__item:hover:not(:disabled),
+.move-dlg__item:focus-visible { background: var(--bg-soft); outline: 0; }
+.move-dlg__item:disabled { cursor: default; opacity: 0.5; }
+.move-dlg__item .palette__item-title,
+.move-dlg__item .palette__item-sub { display: block; }
+.move-dlg__msg { padding: 10px 14px; font-size: 12.5px; color: var(--fg-5); }
+.move-dlg__msg--err { color: var(--rose-fg); }
+.move-dlg__body { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; }
+.move-dlg__line {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0; font-size: 14px; font-weight: 600; color: var(--fg-1);
+}
+.move-dlg__dest { font-weight: 400; color: var(--fg-4); }
+.move-dlg__hint { margin: 0; font-size: 12px; color: var(--fg-5); }
+.move-dlg__acts { display: flex; justify-content: flex-end; gap: 6px; }
+.move-dlg__bar {
+  height: 4px; border-radius: var(--radius-pill);
+  background: var(--bg-tint); overflow: hidden;
+}
+.move-dlg__bar > div {
+  height: 100%; background: var(--fg-1);
+  transition: width var(--dur-base) var(--ease-out);
+}
+.move-dlg__list {
+  margin: 0; padding: 0; list-style: none;
+  max-height: 32vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px; color: var(--fg-3);
+}
+.move-dlg__list li[data-tone="err"] { color: var(--rose-fg); }
+.move-dlg__list b { font-weight: 600; color: var(--fg-1); margin-right: 4px; }
 
 /* ── Crate ─────────────────────────────────────────────────────
    Busca + download Soulseek in-app (docs/superpowers/specs/

@@ -4,7 +4,8 @@
    ============================================================ */
 
 import { createResource, For, Show } from "solid-js";
-import { libGetAlbumsByArtist, libGetTracksByAlbum, coverUrl, type Album } from "../tauri";
+import { libGetAlbumsByArtist, libGetTracksByAlbum, libGetTracksByArtist, coverUrl, type Album } from "../tauri";
+import { libraryRevision, openMoveDialog } from "../store/moveDialog";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate, route } from "../router";
@@ -14,13 +15,22 @@ import { Icon, ICONS } from "../components/Icon";
 export default function ArtistView() {
   const name = () => route().param ? decodeURIComponent(route().param!) : null;
 
-  const [albums] = createResource(name, async (n): Promise<Album[]> => {
+  const [albums] = createResource(() => ({ n: name(), rev: libraryRevision() }), async ({ n }): Promise<Album[]> => {
     if (!n) return [];
     // Filtro no backend (mesma igualdade exata do filtro antigo no cliente),
     // sem corte: baixar 500 alfabeticos e filtrar perdia os albuns do fim.
     try { return await libGetAlbumsByArtist(n, null); }
     catch { return []; }
   });
+
+  // Todas as faixas do artista (o teto alto cobre discografia inteira).
+  async function moveAll() {
+    const n = name(); if (!n) return;
+    try {
+      const tracks = await libGetTracksByArtist(n, 5000);
+      openMoveDialog(tracks, n);
+    } catch { /* lista indisponível: o botão só não abre */ }
+  }
 
   async function playAlbum(a: Album) {
     const tracks = await libGetTracksByAlbum(a.title);
@@ -41,6 +51,18 @@ export default function ArtistView() {
             <h1>{name() ?? "Artist"}</h1>
             <p class="view__head-hint">{albums()?.length ?? 0} albums</p>
           </div>
+        </div>
+        <div class="pl-hero-actions">
+          <button
+            class="pl-action-btn"
+            type="button"
+            disabled={!(albums()?.length)}
+            onClick={() => void moveAll()}
+            title="Mover todas as faixas do artista para outra playlist"
+          >
+            <Icon name={ICONS.moveTo} size={13} />
+            <span>Mover para playlist…</span>
+          </button>
         </div>
       </header>
 

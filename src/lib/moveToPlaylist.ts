@@ -1,0 +1,89 @@
+/* ============================================================
+   lib/moveToPlaylist.ts — Regras puras do "Mover para playlist…"
+   (CMR-298). Playlist = pasta de 1º nível em ~/Music; o backend
+   (lib_move_tracks) move os arquivos e leva o histórico junto.
+   ============================================================ */
+
+import type { MoveReport, Track } from "../tauri";
+
+/** Faixas por chamada ao backend: dá progresso em lote grande sem
+    pagar o scroll dos play_events a cada faixa. */
+export const MOVE_CHUNK = 10;
+
+export function chunk<T>(list: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+/** Mesmo filtro do backend: sem pastas ocultas (`.`) e de sistema (`_`). */
+export function isValidPlaylistName(name: string): boolean {
+  const n = name.trim();
+  return n.length > 0 && !n.startsWith(".") && !n.startsWith("_") && !/[\\/]/.test(n);
+}
+
+export function filterPlaylists(names: string[], query: string): string[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return names;
+  return names.filter((n) => n.toLowerCase().includes(q));
+}
+
+/** Nome digitado que vira "nova pasta": válido e sem playlist com o
+    mesmo nome (sem diferenciar caixa — no Android e no olho são iguais). */
+export function newFolderCandidate(names: string[], query: string): string | null {
+  const q = query.trim();
+  if (!isValidPlaylistName(q)) return null;
+  const lower = q.toLowerCase();
+  return names.some((n) => n.toLowerCase() === lower) ? null : q;
+}
+
+export function plural(n: number, um: string, varios: string): string {
+  return `${n} ${n === 1 ? um : varios}`;
+}
+
+/** Linha de confirmação de lote: "Mover 14 faixas de X para Y?". */
+export function confirmText(count: number, label: string | null, dest: string): string {
+  const what = plural(count, "faixa", "faixas");
+  return label ? `Mover ${what} de ${label} para ${dest}?` : `Mover ${what} para ${dest}?`;
+}
+
+export function mergeReports(dest: string, reports: MoveReport[]): MoveReport {
+  return {
+    dest_playlist: reports[0]?.dest_playlist ?? dest,
+    moved: reports.reduce((s, r) => s + r.moved, 0),
+    already_there: reports.reduce((s, r) => s + r.already_there, 0),
+    failed: reports.reduce((s, r) => s + r.failed, 0),
+    items: reports.flatMap((r) => r.items),
+  };
+}
+
+/** Resumo do resultado em uma linha: "13 movidas · 1 falhou". */
+export function summaryText(r: MoveReport): string {
+  const parts: string[] = [];
+  if (r.moved) parts.push(plural(r.moved, "movida", "movidas"));
+  if (r.already_there) parts.push(`${r.already_there} já ${r.already_there === 1 ? "estava" : "estavam"} lá`);
+  if (r.failed) parts.push(`${r.failed} ${r.failed === 1 ? "falhou" : "falharam"}`);
+  return parts.length ? parts.join(" · ") : "Nada a mover";
+}
+
+/** Função de remapeamento para a fila em memória: troca id, caminho e
+    pasta de 1º nível das faixas movidas; as outras passam intactas. */
+export function trackRemapper(report: MoveReport): (t: Track) => Track {
+  const moved = new Map(
+    report.items
+      .filter((i) => i.status === "moved" && i.new_track_id && i.new_path)
+      .map((i) => [i.track_id, i] as const),
+  );
+  return (t) => {
+    const it = moved.get(t.id);
+    if (!it) return t;
+    const path = it.new_path!;
+    return {
+      ...t,
+      id: it.new_track_id!,
+      path,
+      lrc_path: t.lrc_path ? path.replace(/\.[^./]+$/, ".lrc") : t.lrc_path,
+      genre_name: report.dest_playlist,
+    };
+  };
+}

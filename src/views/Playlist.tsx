@@ -22,6 +22,7 @@ import { isPinned, togglePin, pins } from "../store/pins";
 import { route } from "../router";
 import { Icon, ICONS } from "../components/Icon";
 import { TrackRowTable } from "../components/TrackRowTable";
+import { libraryRevision } from "../store/moveDialog";
 
 function fmtTotalDur(ms: number): string {
   const totalSec = Math.round(ms / 1000);
@@ -34,12 +35,13 @@ function fmtTotalDur(ms: number): string {
 export default function PlaylistView() {
   const name = () => (route().param ? decodeURIComponent(route().param!) : null);
 
-  const [tracks] = createResource(name, async (n): Promise<Track[]> => {
+  // libraryRevision na chave: recarrega depois de "Mover para playlist…".
+  const [tracks] = createResource(() => ({ n: name(), rev: libraryRevision() }), async ({ n }): Promise<Track[]> => {
     if (!n) return [];
     try { return await libListFolderTracks(n); } catch { return []; }
   });
 
-  const [folder] = createResource(name, async (n): Promise<FolderPlaylist | null> => {
+  const [folder] = createResource(() => ({ n: name(), rev: libraryRevision() }), async ({ n }): Promise<FolderPlaylist | null> => {
     if (!n) return null;
     try {
       const list = await libListFolders();

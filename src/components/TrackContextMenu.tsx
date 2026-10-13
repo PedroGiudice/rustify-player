@@ -17,6 +17,7 @@ import {
 } from "../store/player";
 import { playTrack } from "./PlayerBar";
 import { navigate } from "../router";
+import { openMoveDialog } from "../store/moveDialog";
 import { Icon, ICONS } from "./Icon";
 
 export function TrackContextMenu() {
@@ -102,6 +103,12 @@ export function TrackContextMenu() {
     } catch { /* no-op */ }
   };
 
+  const doMove = () => {
+    const st = trackMenu(); if (!st || !st.track.id) return;
+    openMoveDialog([st.track]);
+    closeTrackMenu();
+  };
+
   const goAlbum = () => {
     const st = trackMenu(); if (!st?.track.album_title) return;
     navigate(`/album/${encodeURIComponent(st.track.album_title)}`);
@@ -143,6 +150,10 @@ export function TrackContextMenu() {
             <button class="track-ctx-menu__item" type="button" onClick={doToggleLike} role="menuitem">
               <Icon name={liked() ? ICONS.heartFilled : ICONS.heart} size={15} />
               <span>{liked() ? "Unlike" : "Like"}</span>
+            </button>
+
+            <button class="track-ctx-menu__item" type="button" onClick={doMove} role="menuitem">
+              <Icon name={ICONS.moveTo} size={15} /><span>Mover para playlist…</span>
             </button>
 
             <Show when={st().track.album_title || st().track.artist_name}>

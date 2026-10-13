@@ -23,6 +23,9 @@ import { PlayerBar } from "./components/PlayerBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { TrackContextMenu } from "./components/TrackContextMenu";
+import { MoveToPlaylistDialog } from "./components/MoveToPlaylistDialog";
+import { applyMovedReport } from "./store/moveDialog";
+import { onTracksMoved } from "./tauri";
 import { SpectrumCanvas } from "./components/SpectrumCanvas";
 import { RouterView, navigate, route } from "./router";
 import { Tweaks } from "./views/Tweaks";
@@ -57,6 +60,13 @@ export default function App() {
   const bgMode = createMemo<"focused" | "ambient">(() =>
     cinema() || route().path === "/now-playing" ? "focused" : "ambient"
   );
+
+  // "Mover para playlist…" (CMR-298): o backend emite um evento por lote;
+  // a fila passa aos ids novos e as views da biblioteca recarregam.
+  onMount(() => {
+    const un = onTracksMoved(applyMovedReport);
+    onCleanup(() => { void un.then((f) => f()); });
+  });
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -128,6 +138,7 @@ export default function App() {
       <QueueDrawer />
       <Tweaks />
       <TrackContextMenu />
+      <MoveToPlaylistDialog />
     </div>
   );
 }

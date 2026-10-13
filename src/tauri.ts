@@ -186,6 +186,33 @@ export interface FolderPlaylist {
 }
 export const libListFolders = () => invoke<FolderPlaylist[]>("lib_list_folders");
 export const libListFolderTracks = (folder: string) => invoke<Track[]>("lib_list_folder_tracks", { folder });
+
+// ── Mover para playlist (CMR-298) ──────────────────────────────
+// Playlist = pasta de 1º nível em ~/Music. O backend move os arquivos e
+// leva vetores, like/vibe e play_events para o id novo (hash do caminho).
+export type MoveStatus = "moved" | "already_there" | "failed";
+export interface MoveItem {
+  track_id: string;
+  new_track_id: string | null;
+  new_path: string | null;
+  title: string | null;
+  status: MoveStatus;
+  /** Motivo da falha, ou avisos de migração parcial num item movido. */
+  detail: string | null;
+}
+export interface MoveReport {
+  dest_playlist: string;
+  moved: number;
+  already_there: number;
+  failed: number;
+  items: MoveItem[];
+}
+/** Pastas de 1º nível no disco (inclui vazias; sem `.` e `_`). */
+export const libListPlaylists = () => invoke<string[]>("lib_list_playlists");
+export const libMoveTracks = (trackIds: string[], destPlaylist: string) =>
+  invoke<MoveReport>("lib_move_tracks", { trackIds, destPlaylist });
+export const onTracksMoved = (cb: (r: MoveReport) => void) =>
+  listen<MoveReport>("lib-tracks-moved", (e) => cb(e.payload));
 export const libListLiked = (limit?: number) => invoke<Track[]>("lib_list_liked", { limit: limit ?? 200 });
 export const libMoodSearch = (query: string, limit?: number) => invoke<Track[]>("lib_mood_search", { query, limit: limit ?? 50 });
 export const checkForUpdate = () => invoke<any>("check_for_update");

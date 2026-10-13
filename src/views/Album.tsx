@@ -11,11 +11,13 @@ import { route } from "../router";
 import { CoverArt } from "../components/CoverArt";
 import { Icon, ICONS } from "../components/Icon";
 import { TrackRowTable } from "../components/TrackRowTable";
+import { libraryRevision, openMoveDialog } from "../store/moveDialog";
 
 export default function AlbumView() {
   const title = () => route().param ? decodeURIComponent(route().param!) : null;
 
-  const [tracks] = createResource(title, async (t): Promise<Track[]> => {
+  // libraryRevision na chave: recarrega depois de "Mover para playlist…".
+  const [tracks] = createResource(() => ({ t: title(), rev: libraryRevision() }), async ({ t }): Promise<Track[]> => {
     if (!t) return [];
     try { return await libGetTracksByAlbum(t); } catch { return []; }
   });
@@ -63,6 +65,17 @@ export default function AlbumView() {
             </p>
           </div>
         </div>
+        <div class="pl-hero-actions">
+        <button
+          class="pl-action-btn"
+          type="button"
+          disabled={!(tracks()?.length)}
+          onClick={() => openMoveDialog(tracks() ?? [], title())}
+          title="Mover o álbum para outra playlist"
+        >
+          <Icon name={ICONS.moveTo} size={13} />
+          <span>Mover para playlist…</span>
+        </button>
         <button
           class="hero-tile__cta"
           type="button"
@@ -72,6 +85,7 @@ export default function AlbumView() {
         >
           <Icon name={ICONS.play} size={12} />
         </button>
+        </div>
       </header>
 
       <div class="view__body">

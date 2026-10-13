@@ -25,6 +25,7 @@
 import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js";
 import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
 import { togglePin, pins } from "../store/pins";
+import { libraryRevision } from "../store/moveDialog";
 import { navigate } from "../router";
 
 function openPlaylist(folder: FolderPlaylist) {
@@ -120,7 +121,8 @@ function fmtTracks(n: number): string {
 
 export default function Playlists() {
   const [filter, setFilter] = createSignal("");
-  const [folders] = createResource(() => libListFolders().catch(() => [] as FolderPlaylist[]));
+  // libraryRevision na chave: contagens/capas mudam depois de "Mover para playlist…".
+  const [folders] = createResource(() => ({ rev: libraryRevision() }), () => libListFolders().catch(() => [] as FolderPlaylist[]));
 
   // "none" = ordem da API, "asc" = A→Z, "desc" = Z→A. Toggle ciclico.
   const [sortDir, setSortDir] = createSignal<"none" | "asc" | "desc">("none");

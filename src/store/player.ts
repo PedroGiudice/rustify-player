@@ -323,6 +323,14 @@ export function setLiked(liked: boolean) {
   setPlayer("isLiked", liked);
 }
 
+/** Faixas movidas de playlist (CMR-298) mudam de id (hash do caminho):
+    a fila e a faixa atual passam a apontar para o id/caminho novos, senão
+    o próximo play/evento iria para um id que não existe mais. */
+export function remapMovedTracks(remap: (t: Track) => Track) {
+  setPlayer("queue", (q) => q.map(remap));
+  if (player.currentTrack) setPlayer("currentTrack", remap(player.currentTrack));
+}
+
 export function cycleRepeat() {
   const modes: PlayerStore["repeatMode"][] = ["off", "all", "one"];
   const cur = modes.indexOf(player.repeatMode);
