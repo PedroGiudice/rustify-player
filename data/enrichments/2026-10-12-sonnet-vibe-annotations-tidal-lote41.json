@@ -1,0 +1,656 @@
+{
+ "15490741872300788547": {
+  "energy": 0.6,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "dreamy",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "social",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "3633114505008593263": {
+  "energy": 0.9,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "sensual",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "10048697878127813437": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "driving",
+   "groovy",
+   "confident",
+   "energetic"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "3882704573453812801": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "energetic",
+   "raw",
+   "driving",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "1713107283126638073": {
+  "energy": 0.9,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "aggressive",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "8772842456929780723": {
+  "energy": 0.8,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "dark",
+   "sensual",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "8847870691400105911": {
+  "energy": 0.8,
+  "valence": 0.3,
+  "mood_tags": [
+   "dark",
+   "raw",
+   "driving",
+   "intense"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "8928547441870517760": {
+  "energy": 0.6,
+  "valence": 0.5,
+  "mood_tags": [
+   "bittersweet",
+   "romantic",
+   "nostalgic",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "12813694221936659711": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "nostalgic",
+   "groovy",
+   "driving"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "11960217105133057239": {
+  "energy": 0.9,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "driving",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "3840193473529252423": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "energetic",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "151775175783114848": {
+  "energy": 0.8,
+  "valence": 0.5,
+  "mood_tags": [
+   "playful",
+   "raw",
+   "sensual",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "5169626561746479318": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "playful",
+   "groovy",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "1817478050314458968": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "groovy",
+   "confident",
+   "energetic",
+   "playful"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "7303648088504084710": {
+  "energy": 0.8,
+  "valence": 0.6,
+  "mood_tags": [
+   "driving",
+   "groovy",
+   "uplifting",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "16057783493524323971": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "groovy",
+   "driving",
+   "triumphant"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "11318572527422775495": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "uplifting",
+   "playful",
+   "social",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "7465968438961806491": {
+  "energy": 0.8,
+  "valence": 0.7,
+  "mood_tags": [
+   "driving",
+   "energetic",
+   "triumphant",
+   "confident"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "14309320825937068356": {
+  "energy": 0.9,
+  "valence": 0.4,
+  "mood_tags": [
+   "raw",
+   "sensual",
+   "intense",
+   "dark"
+  ],
+  "activity_tags": [
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "11157112668842396496": {
+  "energy": 0.6,
+  "valence": 0.6,
+  "mood_tags": [
+   "playful",
+   "romantic",
+   "sensual",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "driving"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "16082667204841293993": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "energetic",
+   "raw",
+   "confident",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "18268136614357919142": {
+  "energy": 0.7,
+  "valence": 0.5,
+  "mood_tags": [
+   "sensual",
+   "playful",
+   "energetic",
+   "confident"
+  ],
+  "activity_tags": [
+   "party",
+   "romance"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "10616505327350676324": {
+  "energy": 0.8,
+  "valence": 0.3,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "dark",
+   "sensual"
+  ],
+  "activity_tags": [
+   "party",
+   "romance"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "4161735320505272359": {
+  "energy": 0.9,
+  "valence": 0.5,
+  "mood_tags": [
+   "energetic",
+   "raw",
+   "social",
+   "playful"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "12756266044245048178": {
+  "energy": 0.8,
+  "valence": 0.5,
+  "mood_tags": [
+   "playful",
+   "raw",
+   "confident",
+   "sensual"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "7324900887614624683": {
+  "energy": 0.9,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "driving",
+   "confident",
+   "dark"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "12860660357983166336": {
+  "energy": 0.6,
+  "valence": 0.3,
+  "mood_tags": [
+   "melancholic",
+   "bittersweet",
+   "dreamy",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "chill",
+   "commute"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "11042834259976600607": {
+  "energy": 0.9,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "sensual",
+   "playful",
+   "social"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "13178844128279282654": {
+  "energy": 0.9,
+  "valence": 0.3,
+  "mood_tags": [
+   "driving",
+   "aggressive",
+   "dark",
+   "intense"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "8053344496516045478": {
+  "energy": 0.9,
+  "valence": 0.2,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "intense",
+   "raw"
+  ],
+  "activity_tags": [
+   "driving",
+   "workout"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "10664025486565941585": {
+  "energy": 0.7,
+  "valence": 0.7,
+  "mood_tags": [
+   "playful",
+   "uplifting",
+   "social",
+   "groovy"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "3230747358799596449": {
+  "energy": 0.8,
+  "valence": 0.8,
+  "mood_tags": [
+   "nostalgic",
+   "uplifting",
+   "playful",
+   "energetic"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "7011018181278304517": {
+  "energy": 0.9,
+  "valence": 0.3,
+  "mood_tags": [
+   "aggressive",
+   "dark",
+   "raw",
+   "rebellious"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "410042635275436319": {
+  "energy": 0.7,
+  "valence": 0.6,
+  "mood_tags": [
+   "confident",
+   "groovy",
+   "chill",
+   "social"
+  ],
+  "activity_tags": [
+   "social",
+   "chill"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "10862749732747474833": {
+  "energy": 0.8,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "social",
+   "confident",
+   "groovy"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "low"
+ },
+ "5228804503735843091": {
+  "energy": 0.7,
+  "valence": 0.8,
+  "mood_tags": [
+   "uplifting",
+   "playful",
+   "social",
+   "nostalgic"
+  ],
+  "activity_tags": [
+   "social",
+   "chill"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "2716885682812209511": {
+  "energy": 0.8,
+  "valence": 0.6,
+  "mood_tags": [
+   "uplifting",
+   "dreamy",
+   "bittersweet",
+   "driving"
+  ],
+  "activity_tags": [
+   "driving",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "9950701151320660038": {
+  "energy": 0.7,
+  "valence": 0.5,
+  "mood_tags": [
+   "sensual",
+   "dark",
+   "intense",
+   "dreamy"
+  ],
+  "activity_tags": [
+   "romance",
+   "party"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "17676815545636695744": {
+  "energy": 0.8,
+  "valence": 0.4,
+  "mood_tags": [
+   "aggressive",
+   "raw",
+   "sensual",
+   "confident"
+  ],
+  "activity_tags": [
+   "party",
+   "workout"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ },
+ "16782866749005170929": {
+  "energy": 0.8,
+  "valence": 0.6,
+  "mood_tags": [
+   "energetic",
+   "playful",
+   "social",
+   "sensual"
+  ],
+  "activity_tags": [
+   "party",
+   "social"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "high"
+ },
+ "9992267007619449484": {
+  "energy": 0.4,
+  "valence": 0.6,
+  "mood_tags": [
+   "chill",
+   "peaceful",
+   "nostalgic",
+   "confident"
+  ],
+  "activity_tags": [
+   "chill",
+   "study"
+  ],
+  "annotated_by": "sonnet-batch-2026-10-12g",
+  "annotation_confidence": "medium"
+ }
+}
