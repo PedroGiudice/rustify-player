@@ -536,6 +536,17 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
   0.2.88 o default era o IP da VPS DESLIGADA (`100.123.73.128`) e toda letra nova falhava
   em silencio com timeout de 30 s (`lyrics backfill: embed falhou` no log); o backfill do boot
   refaz as pendentes depois do upgrade. Endpoints da VM sem alarme no app = CMR-296.
+  **Texto da letra fora do Crate (13/10)**: o app so consulta o lrclib no fluxo do Crate;
+  o que entra pelo watcher (Tidal, Bandcamp, copia manual) nasce sem letra. Dois remedios:
+  (1) `tidal_mix_dl.py` busca a letra SINCRONIZADA no lrclib logo apos o download e envia o
+  `.lrc` junto do FLAC (`fetch_lrc`/`sidecar_for`; o resumo da fila mostra "n com letra");
+  (2) `scripts/curator/sync_lyrics.py --apply` roda NA cmr-auto (copia em `~/sync_lyrics.py`,
+  deploy por scp) todo dia 08:30 pelo timer `rustify-lyrics.timer` da VM (ssh), antes da
+  regua: sidecar para letra sincronizada, `lyrics_text` para letra sem tempo (mesmo
+  contrato do sink do Crate), `lyrics_status` synced/plain/instrumental/none. Medido em
+  13/10 sobre 729 faixas sem letra: 61 sincronizadas, 36 sem tempo, 12 instrumentais, 620
+  sem nada no lrclib (funk BR e eletronica quase nao existem la). O VETOR continua sendo
+  gerado pelo backfill do boot do app.
 
 ## Aquisicao Tidal (assinatura do CEO desde 12/10/2026)
 
