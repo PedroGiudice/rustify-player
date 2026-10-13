@@ -153,8 +153,8 @@ fn coordinator_loop(
     // Pendência de um "Mover para playlist…" interrompido por queda: resolve
     // ANTES do primeiro scan, senão o scan apagaria o ponto antigo (caminho
     // sumiu) ou indexaria o arquivo novo sem vetores.
-    if let Some(outcome) = crate::relocate::replay_pending(&client, &config.move_journal, &config.music_root) {
-        info!(target: "library_indexer::pipeline", ?outcome, "move journal replayed");
+    for (old_id, outcome) in crate::relocate::replay_pending(&client, &config.move_journal) {
+        info!(target: "library_indexer::pipeline", old_id, ?outcome, "move journal replayed");
     }
     state.refresh(&client);
 

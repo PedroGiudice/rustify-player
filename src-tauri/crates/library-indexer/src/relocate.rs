@@ -210,8 +210,10 @@ pub fn relocated_payload(old: &Value, new_path: &Path, new_lrc: Option<&Path>, d
 // Sistema de arquivos
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum FsOp {
+/// Operação de disco feita por um move — guardada no registro de intenção
+/// para o replay de uma queda poder desfazê-la.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FsOp {
     Moved { from: PathBuf, to: PathBuf },
     Copied { to: PathBuf },
 }
@@ -219,7 +221,7 @@ enum FsOp {
 /// Resultado da parte de disco de um movimento.
 #[derive(Debug)]
 pub struct FsOutcome {
-    ops: Vec<FsOp>,
+    pub ops: Vec<FsOp>,
     /// Pasta mais alta criada para o destino (rollback a remove se vazia).
     created_root: Option<PathBuf>,
     pub new_lrc: Option<PathBuf>,
@@ -489,13 +491,23 @@ pub struct MoveIntent {
     pub dst: PathBuf,
     pub lrc_src: Option<PathBuf>,
     pub lrc_dst: Option<PathBuf>,
+    /// Pasta mais alta que ESTE move cria no destino. O replay só remove
+    /// pastas vazias até ela — playlist que já existia nunca é apagada.
+    #[serde(default)]
+    pub created_root: Option<PathBuf>,
+    /// Operações de disco já feitas (FLAC, .lrc, capas), na ordem. Gravadas
+    /// logo depois da parte de disco; o replay as desfaz de trás para frente.
+    #[serde(default)]
+    pub ops: Vec<FsOp>,
     /// O ponto novo já foi gravado: o replay completa o histórico em vez
     /// de desfazer o rename.
     pub upserted: bool,
 }
 
-/// Arquivo `move-journal.json` no data dir. `path: None` desliga (testes e
-/// CLI sem data dir).
+/// Arquivo `move-journal.json` no data dir: LISTA de pendências, uma por
+/// faixa (chave `old_id`). Uma pendência que o replay não conseguiu fechar
+/// convive com os moves seguintes, nada é sobrescrito. `path: None` desliga
+/// (testes e CLI sem data dir).
 #[derive(Debug, Clone, Default)]
 pub struct Journal {
     path: Option<PathBuf>,
@@ -512,74 +524,130 @@ impl Journal {
         Journal { path: None }
     }
 
+    /// Todas as pendências. Aceita o formato antigo (um objeto só).
+    pub fn load_all(&self) -> Vec<MoveIntent> {
+        let Some(bytes) = self.path.as_ref().and_then(|p| fs::read(p).ok()) else { return Vec::new() };
+        serde_json::from_slice::<Vec<MoveIntent>>(&bytes)
+            .or_else(|_| serde_json::from_slice::<MoveIntent>(&bytes).map(|i| vec![i]))
+            .unwrap_or_default()
+    }
+
+    /// Grava/atualiza a pendência de `intent.old_id`, preservando as outras.
     pub fn write(&self, intent: &MoveIntent) -> Result<(), String> {
+        if self.path.is_none() {
+            return Ok(());
+        }
+        let mut all = self.load_all();
+        match all.iter_mut().find(|i| i.old_id == intent.old_id) {
+            Some(slot) => *slot = intent.clone(),
+            None => all.push(intent.clone()),
+        }
+        self.save(&all)
+    }
+
+    /// Fecha a pendência de `old_id`; o arquivo some quando a lista esvazia.
+    pub fn clear(&self, old_id: u64) {
+        let Some(path) = &self.path else { return };
+        let mut all = self.load_all();
+        all.retain(|i| i.old_id != old_id);
+        if all.is_empty() {
+            let _ = fs::remove_file(path);
+        } else if let Err(e) = self.save(&all) {
+            warn!(target: "library_indexer::relocate", error = %e, "registro de intenção não atualizado");
+        }
+    }
+
+    /// tmp + `sync_all` + rename: uma queda de energia deixa o arquivo
+    /// antigo ou o novo inteiro, nunca um pela metade.
+    fn save(&self, all: &[MoveIntent]) -> Result<(), String> {
+        use std::io::Write;
         let Some(path) = &self.path else { return Ok(()) };
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let tmp = path.with_extension("json.tmp");
-        let body = serde_json::to_vec(intent).map_err(|e| e.to_string())?;
-        fs::write(&tmp, body).map_err(|e| e.to_string())?;
+        let body = serde_json::to_vec(all).map_err(|e| e.to_string())?;
+        let mut f = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        f.write_all(&body).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+        drop(f);
         fs::rename(&tmp, path).map_err(|e| e.to_string())
-    }
-
-    pub fn load(&self) -> Option<MoveIntent> {
-        let path = self.path.as_ref()?;
-        let bytes = fs::read(path).ok()?;
-        serde_json::from_slice(&bytes).ok()
-    }
-
-    pub fn clear(&self) {
-        if let Some(path) = &self.path {
-            let _ = fs::remove_file(path);
-        }
     }
 }
 
 /// Desfecho do replay de uma pendência.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplayOutcome {
-    /// O ponto novo não chegou a ser gravado: o arquivo voltou à origem.
+    /// O ponto novo não chegou a ser gravado: os arquivos voltaram à origem.
     Undone,
-    /// Histórico completado no id novo (avisos, se houve; o registro fica
+    /// Histórico completado no id novo (avisos, se houve; a pendência fica
     /// para nova tentativa no próximo boot quando há aviso).
     Completed(Vec<String>),
 }
 
-/// Reprocessa a pendência do registro, se houver. Idempotente.
-pub fn replay_pending<S: HistoryStore>(store: &S, journal: &Journal, music_root: &Path) -> Option<ReplayOutcome> {
-    let intent = journal.load()?;
-    warn!(target: "library_indexer::relocate", ?intent, "mover para playlist: pendência de uma queda, reprocessando");
-    if !intent.upserted {
-        let back = |from: &Path, to: &Path| {
-            if from.is_file() && !to.exists() {
-                if let Some(dir) = to.parent() {
-                    let _ = fs::create_dir_all(dir);
-                }
-                if let Err(e) = fs::rename(from, to) {
-                    warn!(target: "library_indexer::relocate", error = %e, "replay: não deu para devolver o arquivo");
-                }
+/// Devolve `from` para `to` se ainda estiver no destino e a origem estiver
+/// livre (idempotente: rodar duas vezes não faz nada na segunda).
+fn move_back(from: &Path, to: &Path) {
+    if from.is_file() && !to.exists() {
+        if let Some(dir) = to.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        if let Err(e) = fs::rename(from, to) {
+            warn!(target: "library_indexer::relocate", error = %e, "replay: não deu para devolver o arquivo");
+        }
+    }
+}
+
+fn undo_intent(intent: &MoveIntent) {
+    for op in intent.ops.iter().rev() {
+        match op {
+            FsOp::Moved { from, to } => move_back(to, from),
+            FsOp::Copied { to } => {
+                let _ = fs::remove_file(to);
+            }
+        }
+    }
+    // Queda antes das ops serem gravadas: FLAC e .lrc pelo que se sabia antes.
+    move_back(&intent.dst, &intent.src);
+    if let (Some(ls), Some(ld)) = (&intent.lrc_src, &intent.lrc_dst) {
+        move_back(ld, ls);
+    }
+    if let (Some(root), Some(dir)) = (&intent.created_root, intent.dst.parent()) {
+        remove_empty_dirs(dir, root.parent().unwrap_or(root));
+    }
+}
+
+/// Reprocessa TODAS as pendências do registro. Idempotente.
+pub fn replay_pending<S: HistoryStore>(store: &S, journal: &Journal) -> Vec<(u64, ReplayOutcome)> {
+    let pending = journal.load_all();
+    if pending.is_empty() {
+        return Vec::new();
+    }
+    warn!(target: "library_indexer::relocate", n = pending.len(), "mover para playlist: pendências de uma queda, reprocessando");
+    let mut events: Option<Result<Vec<(Value, u64)>, String>> = None;
+    let mut out = Vec::new();
+    for intent in pending {
+        if !intent.upserted {
+            undo_intent(&intent);
+            journal.clear(intent.old_id);
+            out.push((intent.old_id, ReplayOutcome::Undone));
+            continue;
+        }
+        let rows = events.get_or_insert_with(|| store.play_event_track_ids());
+        let pids = match rows {
+            Ok(rows) => rows.iter().filter(|(_, t)| *t == intent.old_id).map(|(p, _)| p.clone()).collect(),
+            Err(e) => {
+                out.push((intent.old_id, ReplayOutcome::Completed(vec![format!("play_events indisponível: {e}")])));
+                continue;
             }
         };
-        back(&intent.dst, &intent.src);
-        if let (Some(ls), Some(ld)) = (&intent.lrc_src, &intent.lrc_dst) {
-            back(ld, ls);
+        let (warnings, _) = migrate_history(store, intent.old_id, intent.new_id, pids);
+        if warnings.is_empty() {
+            journal.clear(intent.old_id);
         }
-        if let Some(dir) = intent.dst.parent() {
-            remove_empty_dirs(dir, music_root);
-        }
-        journal.clear();
-        return Some(ReplayOutcome::Undone);
+        out.push((intent.old_id, ReplayOutcome::Completed(warnings)));
     }
-    let pids = match store.play_event_track_ids() {
-        Ok(rows) => rows.into_iter().filter(|(_, t)| *t == intent.old_id).map(|(p, _)| p).collect(),
-        Err(e) => return Some(ReplayOutcome::Completed(vec![format!("play_events indisponível: {e}")])),
-    };
-    let (warnings, _) = migrate_history(store, intent.old_id, intent.new_id, pids);
-    if warnings.is_empty() {
-        journal.clear();
-    }
-    Some(ReplayOutcome::Completed(warnings))
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -727,6 +795,8 @@ fn move_one(
         dst: dst.clone(),
         lrc_src: lrc_dst.as_ref().and(lrc_src),
         lrc_dst,
+        created_root: dst.parent().and_then(first_missing_ancestor),
+        ops: Vec::new(),
         upserted: false,
     };
     if let Err(e) = journal.write(&intent) {
@@ -736,16 +806,20 @@ fn move_one(
     let fs_out = match relocate_files(&src, &dst) {
         Ok(o) => o,
         Err(e) => {
-            journal.clear();
+            journal.clear(old_id);
             return fail(item, e);
         }
     };
+    intent.ops = fs_out.ops.clone();
+    if let Err(e) = journal.write(&intent) {
+        warn!(target: "library_indexer::relocate", error = %e, "registro de intenção sem as operações de disco");
+    }
 
     let new_payload = relocated_payload(&payload, &dst, fs_out.new_lrc.as_deref(), dest);
     if let Err(e) = client.upsert_point_raw(new_id, &new_payload, &vector) {
         let undo = match rollback_files(&fs_out, dst.parent().unwrap_or(&dst)) {
             Ok(()) => {
-                journal.clear();
+                journal.clear(old_id);
                 "arquivo devolvido à origem".to_string()
             }
             // O registro fica: o replay do próximo boot tenta de novo.
@@ -761,7 +835,7 @@ fn move_one(
 
     let (hist_warnings, _) = migrate_history(client, old_id, new_id, pids);
     warnings.extend(hist_warnings);
-    journal.clear();
+    journal.clear(old_id);
 
     if let Some(src_dir) = src.parent() {
         if let Ok(rel) = src.strip_prefix(music_root) {
@@ -1092,49 +1166,107 @@ mod tests {
         assert!(items[0].detail.is_none());
     }
 
-    #[test]
-    fn replay_sem_upsert_desfaz_o_rename() {
-        let tmp = tempfile::tempdir().unwrap();
-        let r = tmp.path();
-        fs::create_dir_all(r.join("Nova/A/B")).unwrap();
-        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
-        fs::write(r.join("Nova/A/B/1.flac"), "1").unwrap();
-        fs::write(r.join("Nova/A/B/1.lrc"), "l").unwrap();
-        let journal = Journal::in_dir(&r.join(".data"));
-        journal
-            .write(&MoveIntent {
-                old_id: 1, new_id: 2,
-                src: r.join("Rap/A/B/1.flac"), dst: r.join("Nova/A/B/1.flac"),
-                lrc_src: Some(r.join("Rap/A/B/1.lrc")), lrc_dst: Some(r.join("Nova/A/B/1.lrc")),
-                upserted: false,
-            })
-            .unwrap();
-        let s = store_with_history(1);
-        assert_eq!(replay_pending(&s, &journal, r), Some(ReplayOutcome::Undone));
-        assert!(r.join("Rap/A/B/1.flac").is_file() && r.join("Rap/A/B/1.lrc").is_file());
-        assert!(!r.join("Nova").exists());
-        assert!(journal.load().is_none());
-        // Histórico intocado: o ponto antigo continua sendo o válido.
-        assert!(s.tracks.borrow().contains(&1));
-        assert_eq!(replay_pending(&s, &journal, r), None, "idempotente");
+    fn intent(r: &Path, old: u64, upserted: bool) -> MoveIntent {
+        MoveIntent {
+            old_id: old, new_id: old + 100,
+            src: r.join(format!("Rap/A/B/{old}.flac")), dst: r.join(format!("Nova/A/B/{old}.flac")),
+            lrc_src: None, lrc_dst: None, created_root: None, ops: vec![], upserted,
+        }
     }
 
     #[test]
-    fn replay_com_upsert_completa_o_historico() {
+    fn replay_sem_upsert_desfaz_rename_lrc_e_capas() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = tmp.path();
+        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
+        for f in ["1.flac", "2.flac", "1.lrc", "cover.jpg"] {
+            fs::write(r.join("Rap/A/B").join(f), f).unwrap();
+        }
+        // Move de verdade (a 2 fica: capa COPIADA) e "queda" antes do upsert.
+        let src = r.join("Rap/A/B/1.flac");
+        let dst = plan_destination(r, &src, "Nova").unwrap();
+        let mut it = intent(r, 1, false);
+        it.lrc_src = Some(r.join("Rap/A/B/1.lrc"));
+        it.lrc_dst = Some(r.join("Nova/A/B/1.lrc"));
+        it.created_root = first_missing_ancestor(dst.parent().unwrap());
+        it.ops = relocate_files(&src, &dst).unwrap().ops;
+        assert!(r.join("Nova/A/B/cover.jpg").is_file());
+        let journal = Journal::in_dir(&r.join(".data"));
+        journal.write(&it).unwrap();
+
+        let s = store_with_history(1);
+        assert_eq!(replay_pending(&s, &journal), vec![(1, ReplayOutcome::Undone)]);
+        assert!(src.is_file() && r.join("Rap/A/B/1.lrc").is_file());
+        assert!(r.join("Rap/A/B/cover.jpg").is_file());
+        assert!(!r.join("Nova").exists(), "pastas criadas por este move saem");
+        assert!(journal.load_all().is_empty());
+        assert!(s.tracks.borrow().contains(&1), "ponto antigo segue válido");
+        assert!(replay_pending(&s, &journal).is_empty(), "idempotente");
+    }
+
+    #[test]
+    fn replay_desfaz_capa_movida_e_preserva_playlist_que_ja_existia() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = tmp.path();
+        fs::create_dir_all(r.join("Rap/A/B")).unwrap();
+        fs::create_dir_all(r.join("Nova")).unwrap(); // playlist já existia, vazia
+        fs::write(r.join("Rap/A/B/1.flac"), "1").unwrap();
+        fs::write(r.join("Rap/A/B/folder.jpg"), "capa").unwrap();
+        let src = r.join("Rap/A/B/1.flac");
+        let dst = plan_destination(r, &src, "Nova").unwrap();
+        let mut it = intent(r, 1, false);
+        it.created_root = first_missing_ancestor(dst.parent().unwrap());
+        assert_eq!(it.created_root.as_deref(), Some(r.join("Nova/A").as_path()));
+        it.ops = relocate_files(&src, &dst).unwrap().ops; // última faixa: capa MOVIDA
+        assert!(!r.join("Rap/A/B/folder.jpg").exists());
+        let journal = Journal::in_dir(&r.join(".data"));
+        journal.write(&it).unwrap();
+
+        replay_pending(&store_with_history(1), &journal);
+        assert!(src.is_file());
+        assert_eq!(fs::read_to_string(r.join("Rap/A/B/folder.jpg")).unwrap(), "capa");
+        assert!(!r.join("Nova/A").exists());
+        assert!(r.join("Nova").is_dir(), "playlist preexistente não é apagada");
+    }
+
+    #[test]
+    fn registro_guarda_varias_pendencias_e_o_replay_percorre_todas() {
         let tmp = tempfile::tempdir().unwrap();
         let journal = Journal::in_dir(tmp.path());
-        let intent = MoveIntent {
-            old_id: 1, new_id: 2,
-            src: tmp.path().join("Rap/x.flac"), dst: tmp.path().join("Nova/x.flac"),
-            lrc_src: None, lrc_dst: None, upserted: true,
-        };
-        journal.write(&intent).unwrap();
-        assert_eq!(journal.load(), Some(intent));
         let s = store_with_history(1);
-        assert_eq!(replay_pending(&s, &journal, tmp.path()), Some(ReplayOutcome::Completed(vec![])));
-        assert_eq!(s.enrich.borrow()[&2]["liked_at"], 5);
-        assert_eq!(s.events.borrow().iter().filter(|(_, t)| *t == 2).count(), 2);
-        assert!(!s.tracks.borrow().contains(&1));
-        assert!(journal.load().is_none());
+        s.enrich.borrow_mut().insert(2, json!({ "liked_at": 9 }));
+        s.events.borrow_mut().push((json!("d"), 2));
+        s.tracks.borrow_mut().insert(2);
+        journal.write(&intent(tmp.path(), 1, true)).unwrap();
+        journal.write(&intent(tmp.path(), 2, true)).unwrap();
+        // Regravar a pendência 1 atualiza só ela.
+        journal.write(&intent(tmp.path(), 1, true)).unwrap();
+        assert_eq!(journal.load_all().len(), 2);
+
+        // A primeira falha no reaponte e fica; a segunda fecha.
+        s.fail_after.set(Some(0));
+        let out = replay_pending(&s, &journal);
+        assert_eq!(out.len(), 2);
+        assert!(matches!(&out[0].1, ReplayOutcome::Completed(w) if !w.is_empty()));
+        assert_eq!(out[1], (2, ReplayOutcome::Completed(vec![])));
+        assert_eq!(journal.load_all().iter().map(|i| i.old_id).collect::<Vec<_>>(), vec![1]);
+        // Um move novo não apaga a pendência que sobrou.
+        journal.write(&intent(tmp.path(), 3, false)).unwrap();
+        assert_eq!(journal.load_all().len(), 2);
+        // Próximo boot fecha a 1.
+        replay_pending(&s, &journal);
+        assert_eq!(s.enrich.borrow()[&101]["liked_at"], 5);
+        assert!(journal.load_all().is_empty());
+    }
+
+    #[test]
+    fn registro_le_o_formato_antigo_de_um_objeto() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = intent(tmp.path(), 7, true);
+        let mut v = serde_json::to_value(&old).unwrap();
+        v.as_object_mut().unwrap().remove("ops");
+        v.as_object_mut().unwrap().remove("created_root");
+        fs::write(tmp.path().join(Journal::FILE), v.to_string()).unwrap();
+        assert_eq!(Journal::in_dir(tmp.path()).load_all(), vec![old]);
     }
 }
