@@ -41,6 +41,8 @@ pub enum MoveStatus {
 pub struct MoveItem {
     pub track_id: String,
     pub new_track_id: Option<String>,
+    /// Caminho novo do arquivo — o frontend atualiza a fila em memória.
+    pub new_path: Option<String>,
     pub title: Option<String>,
     pub status: MoveStatus,
     /// Motivo da falha, ou avisos de uma migração parcial (o arquivo foi
@@ -77,6 +79,7 @@ impl MoveReport {
             .map(|id| MoveItem {
                 track_id: id.to_string(),
                 new_track_id: None,
+                new_path: None,
                 title: None,
                 status: MoveStatus::Failed,
                 detail: Some(reason.to_string()),
@@ -382,6 +385,7 @@ fn move_one(
     let mut item = MoveItem {
         track_id: old_id.to_string(),
         new_track_id: None,
+        new_path: None,
         title: None,
         status: MoveStatus::Failed,
         detail: None,
@@ -462,6 +466,7 @@ fn move_one(
 
     item.status = MoveStatus::Moved;
     item.new_track_id = Some(new_id.to_string());
+    item.new_path = Some(dst.to_string_lossy().into_owned());
     item.detail = (!warnings.is_empty()).then(|| warnings.join("; "));
     item
 }
@@ -636,7 +641,7 @@ mod tests {
 
     #[test]
     fn relatorio_conta_por_status() {
-        let mk = |s| MoveItem { track_id: "1".into(), new_track_id: None, title: None, status: s, detail: None };
+        let mk = |s| MoveItem { track_id: "1".into(), new_track_id: None, new_path: None, title: None, status: s, detail: None };
         let r = MoveReport::new("X", vec![mk(MoveStatus::Moved), mk(MoveStatus::Moved), mk(MoveStatus::AlreadyThere), mk(MoveStatus::Failed)]);
         assert_eq!((r.moved, r.already_there, r.failed), (2, 1, 1));
         let s = serde_json::to_value(&r).unwrap();
