@@ -27,7 +27,7 @@ use std::path::{Component, Path, PathBuf};
 use tracing::{info, warn};
 
 /// Desfecho de uma faixa num pedido de mover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MoveStatus {
     Moved,
@@ -39,7 +39,7 @@ pub enum MoveStatus {
 }
 
 /// Uma linha do relatório. Ids como string: são u64 e passam de 2^53.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoveItem {
     pub track_id: String,
     pub new_track_id: Option<String>,
@@ -54,7 +54,7 @@ pub struct MoveItem {
     pub detail: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoveReport {
     pub dest_playlist: String,
     pub moved: usize,

@@ -717,14 +717,10 @@ fn lib_rescan(lib: State<Library>) -> Result<(), String> {
         .map_err(err)
 }
 
-/// Playlists existentes no DISCO (pastas de 1º nível de `~/Music`), sem as
+/// Pastas de 1º nível de `music_root` que servem de playlist: sem as
 /// ocultas (`.rustify-incoming`, `.quarentena`) e as de sistema (`_…`).
-/// Diferente de `lib_list_folders`, inclui pasta vazia: é o seletor de
-/// destino do "Mover para playlist…".
-#[tauri::command]
-fn lib_list_playlists(lib: State<Library>) -> Result<Vec<String>, String> {
-    let mut names: Vec<String> = std::fs::read_dir(&lib.music_root)
-        .map_err(err)?
+fn list_playlist_dirs(music_root: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let mut names: Vec<String> = std::fs::read_dir(music_root)?
         .flatten()
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .filter_map(|e| e.file_name().into_string().ok())
@@ -734,15 +730,35 @@ fn lib_list_playlists(lib: State<Library>) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+/// Nome final da playlist de destino. Pasta que JÁ EXISTE é usada como
+/// está (sanitizar `Funk: BR` criaria `Funk_ BR`, uma duplicata, e a
+/// faixa deixaria de ser reconhecida como "já está lá"); só pasta nova
+/// passa pelo `sanitize_component` do Crate.
+fn resolve_dest_playlist(existing: &[String], requested: &str) -> String {
+    if existing.iter().any(|n| n == requested) {
+        requested.to_string()
+    } else {
+        slskd_client::stage_plan::sanitize_component(requested)
+    }
+}
+
+/// Playlists existentes no DISCO. Diferente de `lib_list_folders`, inclui
+/// pasta vazia: é o seletor de destino do "Mover para playlist…".
+#[tauri::command]
+fn lib_list_playlists(lib: State<Library>) -> Result<Vec<String>, String> {
+    list_playlist_dirs(&lib.music_root).map_err(err)
+}
+
 /// "Mover para playlist…" (CMR-298): move os arquivos para
 /// `~/Music/<dest>/<Artista>/<Álbum>/` e leva junto vetores, letra externa,
 /// like/vibe (`track_enrichments`) e `play_events` para o id novo. O
 /// trabalho roda na thread do indexador (serializado com o scan do
-/// watcher); aqui só se espera fora da thread principal. O nome da
-/// playlist passa pelo mesmo `sanitize_component` do destino do Crate.
+/// watcher); aqui só se espera fora da thread principal. O resultado
+/// também sai como evento (`lib-tracks-moved`, ver `forward_indexer_events`)
+/// — é ele que atualiza o snapshot do player e a fila do frontend, mesmo
+/// quando esta chamada desiste por timeout (itens `pending`).
 #[tauri::command]
 async fn lib_move_tracks(
-    app: tauri::AppHandle,
     lib: State<'_, Library>,
     track_ids: Vec<String>,
     dest_playlist: String,
@@ -751,15 +767,62 @@ async fn lib_move_tracks(
         .iter()
         .map(|s| parse_id(s))
         .collect::<Result<Vec<u64>, String>>()?;
-    let dest = slskd_client::stage_plan::sanitize_component(&dest_playlist);
+    let existing = list_playlist_dirs(&lib.music_root).map_err(err)?;
+    let dest = resolve_dest_playlist(&existing, &dest_playlist);
     let handle = lib.handle.clone();
-    let report = tauri::async_runtime::spawn_blocking(move || handle.move_tracks(ids, dest))
+    tauri::async_runtime::spawn_blocking(move || handle.move_tracks(ids, dest))
         .await
-        .map_err(err)?;
-    if report.moved > 0 {
-        let _ = app.emit("lib-tracks-moved", &report);
+        .map_err(err)
+}
+
+/// Faixa movida de playlist (CMR-298) muda de id e de caminho. O snapshot
+/// do player passa aos novos: sem isto, o `flush_play_event` do fim da faixa
+/// tocando gravaria o play no id que acabou de ser apagado.
+fn remap_snapshot_after_move(snap: &mut PlayerSnapshot, report: &library_indexer::MoveReport) {
+    for it in report.items.iter().filter(|i| i.status == library_indexer::MoveStatus::Moved) {
+        let (Ok(old), Some(new), Some(path)) = (
+            it.track_id.parse::<u64>(),
+            it.new_track_id.as_deref().and_then(|s| s.parse::<u64>().ok()),
+            it.new_path.as_deref(),
+        ) else {
+            continue;
+        };
+        let lib_match = snap.current_library_track.as_ref().is_some_and(|t| t.id == old);
+        if snap.current_track_id != Some(old) && !lib_match {
+            continue;
+        }
+        if snap.current_track_id == Some(old) {
+            snap.current_track_id = Some(new);
+        }
+        if let Some(t) = snap.current_track.as_mut() {
+            t.path = PathBuf::from(path);
+        }
+        if let Some(t) = snap.current_library_track.as_mut().filter(|t| t.id == old) {
+            t.id = new;
+            t.path = PathBuf::from(path);
+            t.lrc_path = it.new_lrc_path.as_deref().map(PathBuf::from);
+            t.genre_name = Some(report.dest_playlist.clone());
+        }
     }
-    Ok(report)
+}
+
+/// Consome os eventos do indexador. Hoje só `TracksMoved` interessa ao app:
+/// atualiza o snapshot e repassa ao frontend como `lib-tracks-moved`.
+fn forward_indexer_events(
+    rx: crossbeam_channel::Receiver<library_indexer::IndexerEvent>,
+    snapshot: Arc<Mutex<PlayerSnapshot>>,
+    app: tauri::AppHandle,
+) {
+    for ev in rx.iter() {
+        if let library_indexer::IndexerEvent::TracksMoved(report) = ev {
+            if let Ok(mut s) = snapshot.lock() {
+                remap_snapshot_after_move(&mut s, &report);
+            }
+            if report.moved > 0 {
+                let _ = app.emit("lib-tracks-moved", &report);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3183,6 +3246,15 @@ pub fn run() {
                 })
                 .ok();
 
+            {
+                let rx = _app.state::<Library>().handle.subscribe();
+                let snap = snapshot.clone();
+                let app = _app.handle().clone();
+                std::thread::Builder::new()
+                    .name("indexer-events".into())
+                    .spawn(move || forward_indexer_events(rx, snap, app))
+                    .ok();
+            }
             _app.manage(Snapshot(snapshot));
             _app.manage(Player(Mutex::new(Some(engine))));
             _app.manage(NormState::with_target(norm_target_cell));
@@ -4139,6 +4211,60 @@ fn maybe_seed_default_station(lib: &Library) {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    // ── Mover para playlist (CMR-298) ──────────────────────────────────
+
+    #[test]
+    fn destino_existente_e_usado_como_esta_e_novo_e_sanitizado() {
+        let existing = vec!["Funk: BR".to_string(), "Rap".to_string()];
+        assert_eq!(resolve_dest_playlist(&existing, "Funk: BR"), "Funk: BR");
+        assert_eq!(resolve_dest_playlist(&existing, "Treino: pesado"), "Treino_ pesado");
+        assert_eq!(resolve_dest_playlist(&existing, "  Nova   pasta "), "Nova pasta");
+    }
+
+    #[test]
+    fn listagem_de_playlists_pula_ocultas_e_de_sistema() {
+        let tmp = tempfile::tempdir().unwrap();
+        for d in ["Rap", "funk", ".rustify-incoming", "_Compilations"] {
+            std::fs::create_dir(tmp.path().join(d)).unwrap();
+        }
+        std::fs::write(tmp.path().join("solto.flac"), "x").unwrap();
+        assert_eq!(list_playlist_dirs(tmp.path()).unwrap(), vec!["funk", "Rap"]);
+    }
+
+    #[test]
+    fn snapshot_passa_ao_id_e_caminho_novos_da_faixa_movida() {
+        let mut snap = PlayerSnapshot {
+            current_track_id: Some(18_446_744_073_709_551_615),
+            current_track: Some(audio_engine::TrackInfo {
+                handle: audio_engine::TrackHandle(1),
+                path: PathBuf::from("/m/Rap/A/B/x.flac"),
+                sample_rate: 44100, channels: 2, bit_depth: Some(16), total_frames: None,
+                duration: None, track_gain_db: None, album_gain_db: None, track_peak: None, album_peak: None,
+            }),
+            ..Default::default()
+        };
+        let report: library_indexer::MoveReport = serde_json::from_value(serde_json::json!({
+            "dest_playlist": "Nova", "moved": 1, "already_there": 0, "failed": 0, "pending": 0,
+            "items": [{
+                "track_id": "18446744073709551615", "new_track_id": "42",
+                "new_path": "/m/Nova/A/B/x.flac", "new_lrc_path": null, "title": "x",
+                "status": "moved", "detail": null
+            }]
+        }))
+        .unwrap();
+        remap_snapshot_after_move(&mut snap, &report);
+        assert_eq!(snap.current_track_id, Some(42));
+        assert_eq!(snap.current_track.unwrap().path, PathBuf::from("/m/Nova/A/B/x.flac"));
+    }
+
+    #[test]
+    fn snapshot_de_outra_faixa_fica_intacto() {
+        let mut snap = PlayerSnapshot { current_track_id: Some(7), ..Default::default() };
+        let report = library_indexer::MoveReport::new("Nova", vec![]);
+        remap_snapshot_after_move(&mut snap, &report);
+        assert_eq!(snap.current_track_id, Some(7));
+    }
 
     // ── Stations: wire de seed_track_ids e dedup de seeds ──────────────────
 
