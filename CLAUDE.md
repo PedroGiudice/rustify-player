@@ -702,6 +702,15 @@ decisoes). O que importa pro dia-a-dia:
   aceites só). Veredito: sem diferença clara, o app não muda; os 74% de skip não se explicam
   pela distância acústica até a semente. Vetores das 13 camadas (janela central, float16) em
   `~/.local/share/rustify-curator/mert-layers-20261014/` na VM, para reavaliar com mais eventos.
+- **Forense do autoplay (14/10, `scripts/metrics/autoplay_forense.py`, relatório
+  `docs/contexto/14102026-autoplay-forense.md`)**: desde a v0.2.75 o que separa aceite de pulo é
+  FAMILIARIDADE, não som: nº de vezes que a faixa já foi ouvida até o fim (AUC 0,72; 0,79 sem as 5
+  sessões dominantes) e like (pulo 72% curtida x 94% não curtida). Energia/valência, distância
+  acústica, duração, aparelho e repetição não separam. 72% das escolhas do motor são faixas
+  ouvidas até o fim no máximo 2 vezes; o rerank final (`rerank.rs`) usa só vibe (likes entram
+  apenas como exemplos na busca de candidatas). 77% dos pulos são em até 5 s (navegação, em
+  rajadas); sem eles o pulo do autoplay é 72%. O período anterior à v0.2.75 é contaminado pelo
+  S24 0.2.74 (96% de aceite, escuta em segundo plano) e não serve de linha de base.
 
 ## Crate — busca + download Soulseek in-app (v0.2.62)
 
