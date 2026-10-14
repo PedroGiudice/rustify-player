@@ -108,8 +108,8 @@ export function TrackRowList(props: TrackRowListProps) {
         <Show when={selectable()}>
           <span
             class="sel-check sel-check--cover"
-            role="checkbox"
-            aria-checked={selected()}
+            data-checked={selected() ? "true" : "false"}
+            aria-hidden="true"
             aria-label={`Selecionar ${props.track.title || "faixa"}`}
             onClick={(e) => {
               e.stopPropagation();

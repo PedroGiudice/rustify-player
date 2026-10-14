@@ -98,8 +98,8 @@ export function TrackRowTable(props: TrackRowTableProps) {
           </span>
           <span
             class="sel-check"
-            role="checkbox"
-            aria-checked={selected()}
+            data-checked={selected() ? "true" : "false"}
+            aria-hidden="true"
             aria-label={`Selecionar ${props.track.title || "faixa"}`}
             onClick={(e) => {
               e.stopPropagation();

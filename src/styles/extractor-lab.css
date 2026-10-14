@@ -4177,7 +4177,8 @@ html { --glow: 0; }
   --row-selected-line: color-mix(in srgb, var(--primary) 55%, transparent);
 }
 
-/* Caixa de marcar. Escondida por padrão; aparece no hover da linha, em
+/* Caixa de marcar: só mouse (aria-hidden, sem role nem foco). O teclado marca pela
+   linha (Shift+Espaço) e a linha anuncia o estado em aria-selected. Escondida por padrão; aparece no hover da linha, em
    foco de teclado e em todas as linhas quando há seleção. */
 .sel-check {
   display: none; align-items: center; justify-content: center;
@@ -4188,7 +4189,7 @@ html { --glow: 0; }
   transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .sel-check:hover { border-color: var(--primary); }
-.sel-check[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.sel-check[data-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 
 /* Tabela: a caixa fica AO LADO do número (ou do indicador de "tocando
    agora"), nunca no lugar dele. Só aparece no hover, no foco, na linha

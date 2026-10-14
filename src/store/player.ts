@@ -248,7 +248,9 @@ function mutateQueueRealign(mutate: () => void) {
   if (next && next.path !== before) playerEnqueueNext(next.path).catch(console.error);
 }
 
+/** A faixa que está tocando não entra de novo na fila (tocaria duas vezes seguidas). */
 export function enqueueNext(track: Track) {
+  if (track.id === player.currentTrack?.id) return;
   mutateQueueRealign(() =>
     setPlayer("queue", (q) => {
       const next = [...q];
@@ -276,9 +278,12 @@ export function enqueueNextMany(tracks: Track[]) {
     }));
 }
 
+/** Mesmo filtro do enqueueNextMany: a faixa que está tocando fica de fora do lote. */
 export function enqueueEndMany(tracks: Track[]) {
-  if (tracks.length === 0) return;
-  mutateQueueRealign(() => setPlayer("queue", (q) => [...q, ...tracks]));
+  const curId = player.currentTrack?.id;
+  const batch = tracks.filter((t) => t.id !== curId);
+  if (batch.length === 0) return;
+  mutateQueueRealign(() => setPlayer("queue", (q) => [...q, ...batch]));
 }
 
 export function advanceQueue(): Track | null {
