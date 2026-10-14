@@ -1,12 +1,16 @@
 // src/components/TrackRowList.tsx — linha de track para listas com cover (Família B/C).
 // Família B: .row (Home, History, Queue). Família C: .qrow (QueueDrawer).
-import { Show } from "solid-js";
+import { Show, onMount } from "solid-js";
 import { coverUrl, type Track } from "../tauri";
 import { player } from "../store/player";
 import { CoverArt } from "./CoverArt";
 import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import { fmtDur } from "../lib/format";
 import { openTrackMenu } from "../store/contextMenu";
+import {
+  focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionCount, toggleTrack,
+} from "../store/selection";
+import { Icon, ICONS } from "./Icon";
 
 interface TrackRowListProps {
   track: Track;
@@ -35,6 +39,10 @@ export function TrackRowList(props: TrackRowListProps) {
   const isCompact = () => props.size === "compact";
   const isCurrent = () => player.currentTrack?.id === props.track.id;
   const coverPx = () => isCompact() ? "36px" : "40px";
+  // Seleção múltipla: só linhas da família B que conhecem a lista.
+  const selectable = () => !isCompact() && props.contextList !== undefined;
+  const selected = () => selectable() && isSelected(props.track.id);
+  onMount(() => { if (selectable()) focusList(props.contextList!); });
 
   return (
     <div
@@ -46,9 +54,19 @@ export function TrackRowList(props: TrackRowListProps) {
         "qrow--current": isCompact() && isCurrent(),
         row: !isCompact(),
         "is-current": !isCompact() && isCurrent(),
+        "is-selected": selected(),
+        "is-sel-mode": selectable() && selectionCount() > 0,
       }}
-      onClick={props.onClick}
-      onContextMenu={(e) => openTrackMenu(e, props.track, { list: props.contextList, onPlay: props.onClick })}
+      aria-selected={selectable() ? selected() : undefined}
+      onClick={(e) => rowClick(e, selectable() ? props.contextList : undefined, props.track.id, props.onClick)}
+      onMouseDown={(e) => rowMouseDown(e, selectable() ? props.contextList : undefined)}
+      onFocus={() => { if (selectable()) focusList(props.contextList!); }}
+      onContextMenu={(e) =>
+        openTrackMenu(e, props.track, {
+          list: props.contextList,
+          onPlay: props.onClick,
+          selection: selectable() ? menuSelection(props.contextList!, props.track) : undefined,
+        })}
       style={{
         opacity: props.muted ? 0.55 : 1,
         ...(props.noWhen ? { "grid-template-columns": "40px 1fr auto" } : {}),
@@ -77,6 +95,21 @@ export function TrackRowList(props: TrackRowListProps) {
         />
         <Show when={isCurrent()}>
           <NowPlayingIndicator trackId={props.track.id} variant="overlay" />
+        </Show>
+        <Show when={selectable()}>
+          <span
+            class="sel-check sel-check--cover"
+            role="checkbox"
+            aria-checked={selected()}
+            aria-label="Selecionar faixa"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (e.shiftKey) rangeToTrack(props.contextList!, props.track.id);
+              else toggleTrack(props.contextList!, props.track.id);
+            }}
+          >
+            <Icon name={ICONS.check} size={12} />
+          </span>
         </Show>
       </div>
 

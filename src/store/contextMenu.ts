@@ -10,6 +10,8 @@ export interface TrackMenuState {
   list: Track[] | null;
   /** "tocar esta faixa no contexto da view" — reusa o onClick da linha. */
   onPlay: (() => void) | null;
+  /** Seleção múltipla que contém a faixa clicada; o menu age sobre ela inteira. */
+  selection: Track[] | null;
   x: number;
   y: number;
 }
@@ -20,7 +22,7 @@ export { trackMenu };
 export function openTrackMenu(
   e: MouseEvent,
   track: Track,
-  opts?: { list?: Track[]; onPlay?: () => void },
+  opts?: { list?: Track[]; onPlay?: () => void; selection?: Track[] },
 ) {
   e.preventDefault();
   e.stopPropagation();
@@ -28,6 +30,7 @@ export function openTrackMenu(
     track,
     list: opts?.list ?? null,
     onPlay: opts?.onPlay ?? null,
+    selection: opts?.selection ?? null,
     x: e.clientX,
     y: e.clientY,
   });

@@ -13,11 +13,13 @@ import { trackMenu, closeTrackMenu } from "../store/contextMenu";
 import { pushEscLayer } from "../lib/escLayers";
 import { libToggleLike, libIsLiked } from "../tauri";
 import {
-  setQueue, enqueueNext, enqueueEnd, shuffleQueue, player, setLiked,
+  setQueue, enqueueNext, enqueueEnd, enqueueNextMany, enqueueEndMany, shuffleQueue, player, setLiked,
 } from "../store/player";
 import { playTrack } from "./PlayerBar";
 import { navigate } from "../router";
 import { openMoveDialog } from "../store/moveDialog";
+import { clearSelection } from "../store/selection";
+import { moveLabel } from "../lib/selection";
 import { Icon, ICONS } from "./Icon";
 
 export function TrackContextMenu() {
@@ -105,8 +107,22 @@ export function TrackContextMenu() {
 
   const doMove = () => {
     const st = trackMenu(); if (!st || !st.track.id) return;
-    openMoveDialog([st.track]);
+    openMoveDialog(multi() ?? [st.track]);
     closeTrackMenu();
+  };
+
+  // Seleção múltipla: o menu age sobre as N faixas, não só sobre a clicada.
+  const multi = () => {
+    const sel = trackMenu()?.selection;
+    return sel && sel.length > 1 ? sel : null;
+  };
+  const doPlayNextMulti = () => {
+    const sel = multi(); if (!sel) return;
+    enqueueNextMany(sel); clearSelection(); closeTrackMenu();
+  };
+  const doAddQueueMulti = () => {
+    const sel = multi(); if (!sel) return;
+    enqueueEndMany(sel); clearSelection(); closeTrackMenu();
   };
 
   const goAlbum = () => {
@@ -131,6 +147,8 @@ export function TrackContextMenu() {
             style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
             role="menu"
           >
+            <Show when={multi()} fallback={
+              <>
             <button class="track-ctx-menu__item" type="button" onClick={doPlay} role="menuitem">
               <Icon name={ICONS.play} size={15} /><span>Play</span>
             </button>
@@ -167,6 +185,19 @@ export function TrackContextMenu() {
             <Show when={st().track.artist_name}>
               <button class="track-ctx-menu__item" type="button" onClick={goArtist} role="menuitem">
                 <Icon name={ICONS.artists} size={15} /><span>Go to Artist</span>
+              </button>
+            </Show>
+              </>
+            }>
+              <button class="track-ctx-menu__item" type="button" onClick={doPlayNextMulti} role="menuitem">
+                <Icon name={ICONS.next} size={15} /><span>{`Tocar ${multi()!.length} a seguir`}</span>
+              </button>
+              <button class="track-ctx-menu__item" type="button" onClick={doAddQueueMulti} role="menuitem">
+                <Icon name={ICONS.queue} size={15} /><span>{`Adicionar ${multi()!.length} à fila`}</span>
+              </button>
+              <div class="track-ctx-menu__sep" />
+              <button class="track-ctx-menu__item" type="button" onClick={doMove} role="menuitem">
+                <Icon name={ICONS.moveTo} size={15} /><span>{moveLabel(multi()!.length)}</span>
               </button>
             </Show>
           </div>

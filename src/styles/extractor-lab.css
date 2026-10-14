@@ -4169,3 +4169,82 @@ html { --glow: 0; }
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/* === Seleção múltipla === */
+:root {
+  /* Linha selecionada: acento do tema com alpha baixo (segue tema e capa). */
+  --row-selected: color-mix(in srgb, var(--primary) 14%, transparent);
+  --row-selected-line: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+/* Caixa de marcar. Escondida por padrão; aparece no hover da linha, em
+   foco de teclado e em todas as linhas quando há seleção. */
+.sel-check {
+  display: none; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: none;
+  border: 1.5px solid var(--fg-5); border-radius: 4px;
+  background: var(--bg-paper); color: transparent;
+  cursor: pointer;
+  transition: background 90ms var(--ease-out), border-color 90ms var(--ease-out), color 90ms var(--ease-out);
+}
+.sel-check:hover { border-color: var(--primary); }
+.sel-check[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--bg-paper); }
+
+/* Tabela: a caixa ocupa o lugar do número. */
+.tracks__row:hover .tracks__num,
+.tracks__row:focus-visible .tracks__num,
+.tracks__row--sel-mode .tracks__num { display: none; }
+.tracks__row:hover .sel-check,
+.tracks__row:focus-visible .sel-check,
+.tracks__row--sel-mode .sel-check { display: inline-flex; }
+
+/* Lista com capa: a caixa fica no canto da capa. */
+.sel-check--cover { position: absolute; top: 3px; left: 3px; z-index: 2; }
+.row:hover .sel-check--cover,
+.row:focus-visible .sel-check--cover,
+.row.is-sel-mode .sel-check--cover { display: inline-flex; }
+
+/* Linha selecionada (depois de hover e atual, mesma especificidade). */
+.row.is-selected { background: var(--row-selected); box-shadow: inset 2px 0 0 var(--row-selected-line); }
+.tracks__row.tracks__row--selected > div { background: var(--row-selected); }
+.tracks__row.tracks__row--selected > .tracks__idx { box-shadow: inset 2px 0 0 var(--row-selected-line); }
+
+/* Barra de ação, centrada na área de conteúdo, acima da PlayerBar. */
+.sel-bar-wrap {
+  position: fixed; left: var(--sidebar-w); right: 0;
+  bottom: calc(var(--playerbar-h) + 14px);
+  display: flex; justify-content: center;
+  z-index: 55; pointer-events: none;
+}
+.app[data-cinema="true"] .sel-bar-wrap { display: none; }
+.sel-bar {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 6px 14px;
+  background: var(--bg-paper); border: 1px solid var(--line-2);
+  border-radius: 999px; box-shadow: var(--shadow-hover);
+  animation: sel-bar-in 200ms var(--ease-out);
+}
+@keyframes sel-bar-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sel-bar__count {
+  font-size: 12.5px; font-weight: 600; color: var(--fg-1);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.sel-bar__sep { width: 1px; height: 18px; background: var(--line-2); margin: 0 4px; }
+.sel-bar__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--fg-3);
+  font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  cursor: pointer;
+  transition: background 90ms var(--ease-out), color 90ms var(--ease-out);
+}
+.sel-bar__btn:hover { background: var(--bg-soft); color: var(--fg-1); }
+.sel-bar__btn--primary { background: var(--fg-1); color: var(--bg-paper); }
+.sel-bar__btn--primary:hover { background: var(--fg-2); color: var(--bg-paper); }
+@media (prefers-reduced-motion: reduce) {
+  .sel-bar { animation: none; }
+}

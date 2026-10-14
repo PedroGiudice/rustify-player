@@ -1,13 +1,17 @@
 // src/components/TrackRowTable.tsx — linha de track para listas .tracks (Família A).
 // Uso: dentro de <div class="tracks"> ou <div class="tracks tracks--with-cover">.
 // O container pai define as colunas; a linha é um grid com subgrid (ver .tracks__row).
-import { Show } from "solid-js";
+import { Show, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { player } from "../store/player";
 import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import type { Track } from "../tauri";
 import { fmtDur } from "../lib/format";
 import { openTrackMenu } from "../store/contextMenu";
+import {
+  focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionCount, toggleTrack,
+} from "../store/selection";
+import { Icon, ICONS } from "./Icon";
 
 interface TrackRowTableProps {
   track: Track;
@@ -31,13 +35,29 @@ interface TrackRowTableProps {
 
 export function TrackRowTable(props: TrackRowTableProps) {
   const isCurrent = () => player.currentTrack?.id === props.track.id;
+  // Seleção múltipla só existe quando a linha sabe a lista a que pertence.
+  const selectable = () => props.contextList !== undefined;
+  const selected = () => selectable() && isSelected(props.track.id);
+  onMount(() => { if (props.contextList) focusList(props.contextList); });
 
   return (
     <div
       class="tracks__row"
-      classList={{ "tracks__row--current": isCurrent() }}
-      onClick={props.onClick}
-      onContextMenu={(e) => openTrackMenu(e, props.track, { list: props.contextList, onPlay: props.onClick })}
+      classList={{
+        "tracks__row--current": isCurrent(),
+        "tracks__row--selected": selected(),
+        "tracks__row--sel-mode": selectable() && selectionCount() > 0,
+      }}
+      aria-selected={selectable() ? selected() : undefined}
+      onClick={(e) => rowClick(e, props.contextList, props.track.id, props.onClick)}
+      onMouseDown={(e) => rowMouseDown(e, props.contextList)}
+      onFocus={() => { if (props.contextList) focusList(props.contextList); }}
+      onContextMenu={(e) =>
+        openTrackMenu(e, props.track, {
+          list: props.contextList,
+          onPlay: props.onClick,
+          selection: props.contextList ? menuSelection(props.contextList, props.track) : undefined,
+        })}
       role="row"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -53,8 +73,32 @@ export function TrackRowTable(props: TrackRowTableProps) {
     >
       {/* Célula índice: NPI quando current, número formatado quando não */}
       <div class="tracks__idx">
-        <Show when={isCurrent()} fallback={String(props.index).padStart(2, "0")}>
-          <NowPlayingIndicator trackId={props.track.id} variant="idx" />
+        <Show
+          when={selectable()}
+          fallback={
+            <Show when={isCurrent()} fallback={String(props.index).padStart(2, "0")}>
+              <NowPlayingIndicator trackId={props.track.id} variant="idx" />
+            </Show>
+          }
+        >
+          <span class="tracks__num">
+            <Show when={isCurrent()} fallback={String(props.index).padStart(2, "0")}>
+              <NowPlayingIndicator trackId={props.track.id} variant="idx" />
+            </Show>
+          </span>
+          <span
+            class="sel-check"
+            role="checkbox"
+            aria-checked={selected()}
+            aria-label="Selecionar faixa"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (e.shiftKey) rangeToTrack(props.contextList!, props.track.id);
+              else toggleTrack(props.contextList!, props.track.id);
+            }}
+          >
+            <Icon name={ICONS.check} size={12} />
+          </span>
         </Show>
       </div>
 

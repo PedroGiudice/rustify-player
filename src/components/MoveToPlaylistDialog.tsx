@@ -15,6 +15,7 @@ import {
   MOVE_CHUNK, chunk, confirmText, filterPlaylists, mergeReports, newFolderCandidate, plural,
   summaryText,
 } from "../lib/moveToPlaylist";
+import { clearSelection } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
 
 export function MoveToPlaylistDialog() {
@@ -79,7 +80,10 @@ function MoveDialogBody(props: { req: MoveRequest }) {
     }
     // A fila e as views se atualizam pelo evento lib-tracks-moved
     // (applyMovedReport, assinado no App), que o backend emite por lote.
-    setReport(mergeReports(target, reports));
+    const merged = mergeReports(target, reports);
+    setReport(merged);
+    // Seleção múltipla: o que foi movido saiu da lista; recomeçar limpo.
+    if (merged.moved > 0) clearSelection();
     setPhase("done");
   }
 

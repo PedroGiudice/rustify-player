@@ -24,6 +24,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { TrackContextMenu } from "./components/TrackContextMenu";
 import { MoveToPlaylistDialog } from "./components/MoveToPlaylistDialog";
+import { SelectionBar } from "./components/SelectionBar";
 import { applyMovedReport } from "./store/moveDialog";
 import { onTracksMoved } from "./tauri";
 import { SpectrumCanvas } from "./components/SpectrumCanvas";
@@ -133,6 +134,7 @@ export default function App() {
       <main class="main">
         <RouterView />
       </main>
+      <SelectionBar />
       <PlayerBar />
       <CommandPalette />
       <QueueDrawer />

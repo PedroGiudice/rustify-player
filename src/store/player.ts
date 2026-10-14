@@ -249,6 +249,21 @@ export function enqueueEnd(track: Track) {
   setPlayer("queue", (q) => [...q, track]);
 }
 
+/** Vários de uma vez, mantendo a ordem recebida (enqueueNext em laço a inverteria). */
+export function enqueueNextMany(tracks: Track[]) {
+  if (tracks.length === 0) return;
+  setPlayer("queue", (q) => {
+    const next = [...q];
+    next.splice(player.queueIndex + 1, 0, ...tracks);
+    return next;
+  });
+}
+
+export function enqueueEndMany(tracks: Track[]) {
+  if (tracks.length === 0) return;
+  setPlayer("queue", (q) => [...q, ...tracks]);
+}
+
 export function advanceQueue(): Track | null {
   const next = player.queueIndex + 1;
   if (next >= player.queue.length) return null;
