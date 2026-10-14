@@ -689,6 +689,14 @@ decisoes). O que importa pro dia-a-dia:
   `session_negative_ids` (uniao com negativos globais) e filtro
   `is_junk_artist` (URL no campo artista). NAO regredir: semear re-fetch
   pos-skip pela faixa skipada e o anti-pattern que causou o colapso.
+- **O vetor de som (`mert`) mede pouco estilo (medido 14/10, CMR-302)**: o container
+  `rustify-embed` devolve a média da ÚLTIMA camada do MERT-v1-95M, que é a pior para estilo
+  (playlists entre si, leave-one-artist-out: 0,457 de acurácia balanceada; camada 6 = 0,620;
+  gap de estilo da camada 7 é 2,4x o da 12) e captura mais o ARTISTA que o gênero. E a janela
+  não é o centro da faixa: `decode_flac` para em 60 s e `take_center_window` pega os segundos
+  15-45. Subgênero do funk não se separa em camada nenhuma (CMR-299). Sonda reprodutível:
+  `scripts/curator/mert_layer_probe.py` (relatório `docs/contexto/14102026-mert-camadas.md`).
+  Trocar camada/janela é decisão do CEO pendente (vetor novo ao lado, avaliação offline antes).
 
 ## Crate — busca + download Soulseek in-app (v0.2.62)
 
