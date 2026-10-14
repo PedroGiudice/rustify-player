@@ -3,13 +3,21 @@
    Clique simples e Enter/Espaço seguem tocando; Ctrl/Shift+clique
    mexem só na seleção.
    ============================================================ */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { createSignal, Show } from "solid-js";
 import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 import { TrackRowTable } from "./TrackRowTable";
 import { TrackRowList } from "./TrackRowList";
 import { SelectionBar } from "./SelectionBar";
-import { resetSelection, selectionCount, selectedTracks } from "../store/selection";
+import { hasFocusList, resetSelection, selectionCount, selectedTracks } from "../store/selection";
 import { player, setPlayer } from "../store/player";
+import { pushEscLayer } from "../lib/escLayers";
+
+vi.mock("../tauri", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tauri")>()),
+  setVolume: vi.fn(),
+  playerEnqueueNext: vi.fn().mockResolvedValue(undefined),
+}));
 import type { Track } from "../tauri";
 
 const mk = (id: string): Track => ({
@@ -146,5 +154,155 @@ describe("SelectionBar", () => {
     const input = container.querySelector("input")!;
     fireEvent.keyDown(input, { key: "a", ctrlKey: true });
     expect(selectionCount()).toBe(0);
+  });
+});
+
+const tick = () => new Promise<void>((r) => queueMicrotask(r));
+
+describe("escopo da seleção", () => {
+  it("troca de rota zera a seleção e a lista em foco", () => {
+    const { container } = render(() => (
+      <>
+        <div class="tracks">
+          {LIST.map((t, i) => <TrackRowTable track={t} index={i + 1} onClick={() => {}} contextList={LIST} />)}
+        </div>
+        <SelectionBar />
+      </>
+    ));
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(4);
+    window.location.hash = "#/albums";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(selectionCount()).toBe(0);
+    expect(container.querySelector(".sel-bar")).toBeNull();
+    expect(hasFocusList()).toBe(false);
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(0);
+  });
+
+  it("trocar de aba sem trocar de rota (a lista desmonta) zera a seleção", async () => {
+    const [tab, setTab] = createSignal<"tracks" | "albums">("tracks");
+    const { container } = render(() => (
+      <>
+        <Show when={tab() === "tracks"} fallback={<div class="albums" />}>
+          <div class="tracks">
+            {LIST.map((t, i) => <TrackRowTable track={t} index={i + 1} onClick={() => {}} contextList={LIST} />)}
+          </div>
+        </Show>
+        <SelectionBar />
+      </>
+    ));
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(4);
+    setTab("albums");
+    await tick();
+    expect(selectionCount()).toBe(0);
+    expect(container.querySelector(".sel-bar")).toBeNull();
+    // "Mover" não tem mais o que mover, e Ctrl+A não revive a lista de trás.
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(0);
+  });
+
+  it("lista recarregada (linhas novas, ids iguais): a seleção sobrevive, podada", async () => {
+    const [list, setList] = createSignal(LIST);
+    render(() => (
+      <>
+        <div class="tracks">
+          {list().map((t, i) => <TrackRowTable track={t} index={i + 1} onClick={() => {}} contextList={list()} />)}
+        </div>
+        <SelectionBar />
+      </>
+    ));
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(4);
+    setList(LIST.slice(0, 3).map((t) => ({ ...t })));
+    await tick();
+    expect(selectedTracks().map((t) => t.id)).toEqual(LIST.slice(0, 3).map((t) => t.id));
+  });
+});
+
+describe("Ctrl+A e Esc com overlay", () => {
+  it("Ctrl+A dentro de diálogo, menu, Tweaks ou fila não seleciona a lista de trás", () => {
+    const { container } = render(() => (
+      <>
+        <div class="tracks">
+          <TrackRowTable track={LIST[0]} index={1} onClick={() => {}} contextList={LIST} />
+        </div>
+        <div role="dialog"><button id="d" /></div>
+        <div role="menu"><button id="m" /></div>
+        <div class="tweaks"><button id="t" /></div>
+        <div class="queue-drawer"><button id="q" /></div>
+        <SelectionBar />
+      </>
+    ));
+    for (const id of ["d", "m", "t", "q"]) {
+      fireEvent.keyDown(container.querySelector(`#${id}`)!, { key: "a", ctrlKey: true });
+      expect(selectionCount()).toBe(0);
+    }
+  });
+
+  it("Ctrl+A com camada de Esc aberta (alvo no corpo) é ignorado", () => {
+    render(() => (
+      <>
+        <div class="tracks">
+          <TrackRowTable track={LIST[0]} index={1} onClick={() => {}} contextList={LIST} />
+        </div>
+        <SelectionBar />
+      </>
+    ));
+    const pop = pushEscLayer(() => {});
+    fireEvent.keyDown(document.body, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(0);
+    pop();
+    fireEvent.keyDown(document.body, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(LIST.length);
+  });
+
+  it("Esc fecha primeiro o overlay aberto depois da seleção; só então limpa a seleção", () => {
+    render(() => (
+      <>
+        <div class="tracks">
+          {LIST.map((t, i) => <TrackRowTable track={t} index={i + 1} onClick={() => {}} contextList={LIST} />)}
+        </div>
+        <SelectionBar />
+      </>
+    ));
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(selectionCount()).toBe(4);
+    let overlayOpen = true;
+    const pop = pushEscLayer(() => { overlayOpen = false; pop(); });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(overlayOpen).toBe(false);
+    expect(selectionCount()).toBe(4);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(selectionCount()).toBe(0);
+  });
+});
+
+describe("teclado: Shift+Espaço", () => {
+  it("alterna a marca sem tocar; Espaço sozinho toca", () => {
+    const played: string[] = [];
+    const { container } = table((t) => played.push(t.id));
+    const r = rows(container);
+    fireEvent.keyDown(r[1], { key: " ", shiftKey: true });
+    expect(selectedTracks().map((t) => t.id)).toEqual([LIST[1].id]);
+    expect(played).toEqual([]);
+    fireEvent.keyDown(r[1], { key: " ", shiftKey: true });
+    expect(selectionCount()).toBe(0);
+    fireEvent.keyDown(r[2], { key: " " });
+    expect(played).toEqual([LIST[2].id]);
+    expect(selectionCount()).toBe(0);
+  });
+
+  it("sem contextList, Shift+Espaço toca como antes", () => {
+    const played: string[] = [];
+    const { container } = table((t) => played.push(t.id), false);
+    fireEvent.keyDown(rows(container)[0], { key: " ", shiftKey: true });
+    expect(played).toEqual([LIST[0].id]);
+  });
+
+  it("a caixa tem aria-label com o título da faixa", () => {
+    const { container } = table(() => {});
+    expect(container.querySelectorAll(".sel-check")[0].getAttribute("aria-label")).toBe(`Selecionar T${LIST[0].id}`);
   });
 });

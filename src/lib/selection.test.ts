@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  EMPTY_SEL, toggleId, selectRange, selectAll, pruneTo, pickSelected, selLabel, moveLabel,
+  EMPTY_SEL, toggleId, selectRange, selectAll, pruneTo, pickSelected, selLabel, moveLabel, withoutIds,
 } from "./selection";
 
 const L = ["a", "b", "c", "d", "e"];
@@ -75,5 +75,15 @@ describe("seleção múltipla (lógica pura)", () => {
     expect(selLabel(12)).toBe("12 selecionadas");
     expect(moveLabel(1)).toBe("Mover para playlist…");
     expect(moveLabel(12)).toBe("Mover 12 faixas para playlist…");
+  });
+});
+
+describe("withoutIds", () => {
+  it("tira só os ids dados e mantém o resto; âncora removida zera", () => {
+    const s = { ids: new Set(["a", "b", "c"]), anchor: "b" };
+    const r = withoutIds(s, ["b", "zz"]);
+    expect([...r.ids]).toEqual(["a", "c"]);
+    expect(r.anchor).toBeNull();
+    expect(withoutIds(s, ["zz"])).toBe(s);
   });
 });
