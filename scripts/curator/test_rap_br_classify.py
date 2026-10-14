@@ -90,6 +90,78 @@ class ConfiancaTest(unittest.TestCase):
         self.assertEqual(R.decide("pt", "PT", None)[:2], (R.SRC, "baixa"))
 
 
+class ArtistaTest(unittest.TestCase):
+    def test_chave_junta_grafias(self):
+        self.assertEqual(R.artist_key("J. Cole"), R.artist_key("J Cole"))
+        self.assertEqual(R.artist_key("J.I.D"), R.artist_key("JID"))
+        self.assertEqual(R.artist_key("Tyler, The Creator"), R.artist_key("Tyler, the Creator"))
+        self.assertEqual(R.artist_key("Matuê feat. Future"), R.artist_key("Matuê"))
+
+    def test_decide_artist(self):
+        # MB BR + letra pt majoritária
+        self.assertEqual(R.decide_artist(5, 1, "BR", [], 0)[:2], (R.DEST_BR, "alta"))
+        # MB BR sem letra
+        self.assertEqual(R.decide_artist(0, 0, "BR", [], 0)[:2], (R.DEST_BR, "media"))
+        # MB BR e letra só em inglês: vai mesmo assim, mas baixa
+        self.assertEqual(R.decide_artist(0, 4, "BR", [], 0)[:2], (R.DEST_BR, "baixa"))
+        # só letra pt, MB ambíguo: resolve pela letra
+        self.assertEqual(R.decide_artist(1, 0, None, ["BR", "JP"], 0)[:2], (R.DEST_BR, "media"))
+        # pt empata com en: ainda brasileiro
+        self.assertEqual(R.decide_artist(2, 2, None, [], 0)[:2], (R.DEST_BR, "media"))
+        # letra pt com MB dos EUA: conflito, baixa
+        self.assertEqual(R.decide_artist(1, 0, "US", [], 0)[:2], (R.DEST_BR, "baixa"))
+        # gringo claro
+        self.assertEqual(R.decide_artist(0, 9, "US", [], 0)[:2], (R.SRC, "alta"))
+        self.assertEqual(R.decide_artist(0, 3, None, [], 0)[:2], (R.SRC, "media"))
+        # sem sinal
+        self.assertEqual(R.decide_artist(0, 0, None, [], 0)[:2], (R.SRC, "baixa"))
+
+
+def base(artist, title, lang, adir=None, alb="Alb"):
+    return {"id": title, "artist": artist, "title": title, "lyrics_lang": lang,
+            "lyrics_chars": 300 if lang else 0, "title_lang": None,
+            "artist_dir": adir or artist, "album_dir": alb, "file": f"{adir or artist}/{alb}/{title}.flac"}
+
+
+class ClassificaTest(unittest.TestCase):
+    def test_matue_em_ingles_vai_com_o_artista(self):
+        cache = {"matue": {"country": "BR", "found": True}}
+        ts = [base("Matuê", f"p{i}", "pt") for i in range(5)] + [base("Matuê", "Like This!", "en"),
+                                                                   base("Matuê", "Sem letra", None)]
+        out = R.classify_tracks(ts, cache)
+        self.assertEqual({t["dest"] for t in out}, {R.DEST_BR})
+        self.assertEqual({t["confidence"] for t in out}, {"alta"})
+
+    def test_teto_sem_letra_resolvido_por_outra_faixa_pt(self):
+        cache = {"teto": {"country": None, "found": True, "ambiguous": True, "candidates": ["BR", "JP"]}}
+        ts = [base("teto", "a", None), base("Teto", "b", "pt"), base("teto", "c", None)]
+        out = R.classify_tracks(ts, cache)
+        self.assertEqual({t["dest"] for t in out}, {R.DEST_BR})
+        self.assertEqual({t["confidence"] for t in out}, {"media"})
+        self.assertEqual(len({t["artist_key"] for t in out}), 1)
+
+    def test_teto_sem_nenhuma_letra_nao_anda(self):
+        cache = {"teto": {"country": None, "found": True, "ambiguous": True, "candidates": ["BR", "JP"]}}
+        out = R.classify_tracks([base("teto", "a", None)], cache)
+        self.assertEqual(out[0]["confidence"], "baixa")
+
+    def test_feat_de_gringo_com_brasileiro(self):
+        cache = {"djonga": {"country": "BR", "found": True}, "future": {"country": "US", "found": True}}
+        ts = [base("Djonga feat. Future", "x", "pt", adir="Djonga"), base("Djonga", "y", "pt", adir="Djonga"),
+              base("Future feat. Djonga", "z", "en", adir="Future")]
+        out = {t["title"]: t for t in R.classify_tracks(ts, cache)}
+        self.assertEqual(out["x"]["dest"], R.DEST_BR)  # artista principal é o brasileiro
+        self.assertEqual(out["y"]["dest"], R.DEST_BR)
+        self.assertEqual(out["z"]["dest"], R.SRC)  # principal é o gringo, mesmo com feat. BR
+
+    def test_artista_generico_decide_por_faixa(self):
+        out = {t["title"]: t for t in R.classify_tracks(
+            [base("Various Artists", "br", "pt", adir="Various Artists"),
+             base("Various Artists", "us", "en", adir="Various Artists")], {})}
+        self.assertEqual(out["br"]["dest"], R.DEST_BR)
+        self.assertEqual(out["us"]["dest"], R.SRC)
+
+
 def faixa(adir, alb, nome, dest, conf="alta", artista="X"):
     return {"artist_dir": adir, "album_dir": alb, "file": f"{adir}/{alb + '/' if alb else ''}{nome}.flac",
             "dest": dest, "confidence": conf, "canonical_artist": artista, "title": nome,

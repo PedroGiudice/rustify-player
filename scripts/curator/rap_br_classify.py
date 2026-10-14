@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 """Proposta de separação do rap e trap brasileiros de `Rap & Hip-Hop` (CMR-300).
 
-Decisão do CEO: rap/trap BRASILEIRO vai para `Rap & Trap Brasileiro`; o gringo (inclusive
-latino/espanhol) fica em `Rap & Hip-Hop`. A decisão é FAIXA A FAIXA e só agrega por pasta
-quando todas concordam. O vetor de som (MERT) não separa estilo; os sinais são:
+Decisão do CEO: artista BRASILEIRO vai para `Rap & Trap Brasileiro` (inclusive quando canta em
+inglês); o gringo (inclusive latino/espanhol) fica em `Rap & Hip-Hop`. A unidade de decisão é o
+ARTISTA principal da faixa (nome normalizado, variações de grafia juntas), com a evidência de
+TODAS as faixas dele; todas as faixas do artista seguem o mesmo destino. Sinais:
 
-  1. Idioma da letra (forte): `embedded_lyrics` (tags, costuma ser LRC), `lyrics_text` do
-     payload e o `.lrc` lido na cmr-auto (uma chamada ssh para todos). Detector por proporção
-     de stopwords pt/en/es (stdlib).
+  1. Idioma da letra (forte): `embedded_lyrics` (tags, costuma ser LRC), `lyrics_text` do payload
+     e o `.lrc` lido na cmr-auto (uma chamada ssh para todos). Detector por proporção de
+     stopwords pt/en/es (stdlib).
        - texto mínimo: MIN_CHARS (150) caracteres depois de tirar timestamps;
        - o 1º idioma precisa de >= MIN_SCORE (0,10) de stopwords por token e de margem
          >= MIN_MARGIN (0,05) sobre o 2º; senão `None` (indeterminado).
-  2. País do artista no MusicBrainz (forte quando inequívoco): só vale com nome normalizado
-     idêntico E score >= 95; se dois resultados assim discordam de país, é homônimo e o país
-     fica indeterminado. Artista da FAIXA (payload `artist`; o primeiro manda), não da pasta.
-  3. Idioma do título (fraco, só desempate).
+  2. País do artista no MusicBrainz: só vale com nome normalizado idêntico E score >= 95; se dois
+     resultados assim discordam de país, é homônimo e o país fica indeterminado (a letra das
+     outras faixas do mesmo artista resolve).
+  3. Idioma do título (fraco: só rebaixa suspeita de homônimo, nunca promove).
 
-Confiança: alta = letra e MusicBrainz concordam (ou letra forte, país não encontrado e título
-concorda com a letra); media = um sinal forte só (ou letra forte sem país e título que não
-confirma); baixa = conflito, nenhum sinal forte, ou só o país de fora com título em português
-(homônimo provável).
+Artista brasileiro = MusicBrainz BR sem ambiguidade OU (ao menos uma faixa com letra pt e as
+faixas pt >= as de outro idioma). Confiança do artista: alta = MB BR e letra pt majoritária
+concordam (ou MB de fora e letra de fora); media = um sinal só; baixa = conflito (letra pt com
+MB de fora, MB BR com letra só de fora) ou nenhum sinal. Pastas genéricas (Various Artists,
+_Compilations, CD 01...) saem por faixa, usando a decisão do artista de cada faixa.
 
 Só LEITURA: Qdrant da cmr-auto (túnel 16333) e ssh para ler .lrc. Não move nada. Uso:
   python3 scripts/curator/rap_br_classify.py [--out docs/contexto/14102026-rap-br-proposta.json]
@@ -182,6 +184,91 @@ def decide(lang: str | None, country: str | None, tlang: str | None) -> tuple[st
     return SRC, "baixa", "sem sinal"
 
 
+GENERICOS = {"variousartists", "various", "va", ""}
+
+
+def artist_key(artist: str) -> str:
+    """Chave de agrupamento do artista principal: sem acento, pontuação e espaços
+    ('J. Cole' = 'J Cole', 'J.I.D' = 'JID')."""
+    return normalize_name(primary_artist(artist)).replace(" ", "")
+
+
+def decide_artist(n_pt: int, n_other: int, country: str | None, candidates: list[str],
+                  pt_titles: int) -> tuple[str, str, str]:
+    """Decisão do ARTISTA. n_pt/n_other = faixas com letra pt / com letra en ou es.
+    `country` é None se indeterminado; `candidates` = países do homônimo ambíguo (informativo)."""
+    lyr_pt = n_pt >= 1 and n_pt >= n_other
+    lyr_out = n_other > n_pt
+    tem_letra = n_pt + n_other > 0
+    c_br = country == "BR"
+    c_out = country is not None and not c_br
+    if c_br:
+        if lyr_pt:
+            return DEST_BR, "alta", "MusicBrainz BR e letra pt majoritária"
+        if not tem_letra:
+            return DEST_BR, "media", "MusicBrainz BR, sem letra"
+        return DEST_BR, "baixa", "MusicBrainz BR mas letra só de fora (canta em inglês/espanhol?)"
+    if c_out:
+        if lyr_pt:
+            if country in LUSO_NON_BR:
+                return SRC, "baixa", "letra pt mas artista lusófono não brasileiro"
+            return DEST_BR, "baixa", f"letra pt mas MusicBrainz {country} (homônimo?)"
+        if lyr_out:
+            return SRC, "alta", "MusicBrainz de fora e letra de fora"
+        if pt_titles:
+            return SRC, "baixa", f"MusicBrainz {country}, sem letra, título em português (homônimo?)"
+        return SRC, "media", f"MusicBrainz {country}, sem letra"
+    amb = " (MusicBrainz ambíguo: " + "/".join(candidates) + ")" if candidates else ""
+    if lyr_pt:
+        return DEST_BR, "media", "só a letra pt" + amb
+    if lyr_out:
+        return SRC, "media", "só a letra de fora" + amb
+    return (DEST_BR if pt_titles else SRC), "baixa", "sem sinal" + amb
+
+
+def mb_for_artist(variants: set[str], cache: dict) -> tuple[str | None, list[str], bool]:
+    """Junta o MusicBrainz das grafias do artista: (país, candidatos, achou)."""
+    paises, cands, achou = set(), set(), False
+    for v in variants:
+        e = cache.get(normalize_name(v), {})
+        achou = achou or bool(e.get("found"))
+        if e.get("country"):
+            paises.add(e["country"])
+        cands |= set(e.get("candidates") or [])
+    if len(paises) == 1:
+        return next(iter(paises)), [], achou
+    return None, sorted(paises | cands), achou
+
+
+def classify_tracks(base: list[dict], cache: dict) -> list[dict]:
+    """base: faixas com artist, title, lyrics_lang, lyrics_chars, title_lang, artist_dir,
+    album_dir, file. Devolve as faixas com dest/confidence/reason decididos POR ARTISTA.
+    Artista genérico (Various Artists...) é decidido faixa a faixa pelos próprios sinais."""
+    grupos = defaultdict(list)
+    for t in base:
+        grupos[artist_key(t["artist"] or "")].append(t)
+    out = []
+    for key, ts in grupos.items():
+        nomes = Counter(primary_artist(t["artist"] or "") for t in ts)
+        canon = nomes.most_common(1)[0][0]
+        country, cands, achou = mb_for_artist(set(nomes), cache)
+        n_pt = sum(1 for t in ts if t["lyrics_lang"] == "pt")
+        n_other = sum(1 for t in ts if t["lyrics_lang"] in ("en", "es"))
+        pt_titles = sum(1 for t in ts if t["title_lang"] == "pt")
+        for t in ts:
+            if key in GENERICOS:
+                dest, conf, why = decide(t["lyrics_lang"], None, t["title_lang"])
+                why = "faixa de artista genérico: " + why
+            else:
+                dest, conf, why = decide_artist(n_pt, n_other, country, cands, pt_titles)
+            out.append({**t, "dest": dest, "confidence": conf, "reason": why,
+                        "canonical_artist": canon if key not in GENERICOS else (canon or t["artist_dir"]),
+                        "artist_key": key, "artist_tracks": len(ts), "artist_n_pt": n_pt,
+                        "artist_n_other": n_other, "mb_country": country,
+                        "mb_found": achou, "mb_ambiguous": bool(cands) and country is None})
+    return out
+
+
 def folder_confidence(confs: list[str]) -> str:
     return min(confs, key=lambda c: ORDER[c])
 
@@ -243,77 +330,107 @@ def pasta_bagunçada(adir: str, ts: list[dict]) -> bool:
     return not any(normalize_name(t["canonical_artist"]) == n for t in ts)
 
 
-def _evid(t: dict) -> str:
-    pais = t["mb_country"] or ("ambíguo" if t["mb_ambiguous"] else "não achado" if not t["mb_found"] else "sem país")
-    letra = f"{t['lyrics_lang']} ({t['lyrics_chars']} car.)" if t["lyrics_lang"] else (
-        f"indeterminada ({t['lyrics_chars']} car.)" if t["lyrics_chars"] else "sem letra")
-    return f"letra {letra}; país {pais}; título {t['title_lang'] or '?'}"
+def _evid_artista(ts: list[dict]) -> str:
+    t0 = ts[0]
+    pais = t0["mb_country"] or ("ambíguo" if t0["mb_ambiguous"] else "não achado" if not t0["mb_found"] else "sem país")
+    n = len(ts)
+    sem = sum(1 for t in ts if not t["lyrics_lang"])
+    return (f"{n} faixa(s); letra pt {t0['artist_n_pt']}, en/es {t0['artist_n_other']}, sem letra {sem}; "
+            f"país {pais}; motivo: {t0['reason']}")
+
+
+def artistas(tracks: list[dict]) -> dict:
+    """artist_key -> faixas (artistas genéricos entram por faixa, sob a própria chave)."""
+    g = defaultdict(list)
+    for t in tracks:
+        g[t["artist_key"]].append(t)
+    return g
 
 
 def write_report(tracks: list[dict], rows: list[dict], path: str) -> None:
     br = [t for t in tracks if t["dest"] == DEST_BR]
     fica = [t for t in tracks if t["dest"] == SRC]
     cc = Counter((t["dest"], t["confidence"]) for t in tracks)
+    g = artistas(tracks)
+    nomeados = {k: ts for k, ts in g.items() if k not in GENERICOS}
+    ca = Counter((ts[0]["dest"], ts[0]["confidence"]) for ts in nomeados.values())
     L = ["# Rap e trap brasileiros: proposta de separação (CMR-300)", "",
          "Data: 14/10/2026. Nada foi movido. Esta é só a proposta.", "",
+         "A decisão é por ARTISTA: artista brasileiro vai com todas as faixas, mesmo as em inglês",
+         "e as sem letra. Só as pastas genéricas (Various Artists, compilações) saem faixa a faixa.", "",
          "## Resumo", "",
-         f"- Faixas em `{SRC}` hoje: **{len(tracks)}**.",
-         f"- Vão para `{DEST_BR}`: **{len(br)}**.",
-         f"- Ficam em `{SRC}`: **{len(fica)}**.", "",
+         f"- Faixas em `{SRC}` hoje: **{len(tracks)}** de **{len(nomeados)}** artistas "
+         f"(mais as faixas de artista genérico).",
+         f"- Vão para `{DEST_BR}`: **{len(br)}** faixas.",
+         f"- Ficam em `{SRC}`: **{len(fica)}** faixas.", "",
+         "Faixas por confiança:", "",
          "| Destino | Alta | Média | Baixa |", "|---|---:|---:|---:|"]
     for d in (DEST_BR, SRC):
         L.append(f"| {d} | {cc[(d, 'alta')]} | {cc[(d, 'media')]} | {cc[(d, 'baixa')]} |")
+    L += ["", "Artistas por confiança:", "", "| Destino | Alta | Média | Baixa |", "|---|---:|---:|---:|"]
+    for d in (DEST_BR, SRC):
+        L.append(f"| {d} | {ca[(d, 'alta')]} | {ca[(d, 'media')]} | {ca[(d, 'baixa')]} |")
     sem = [t for t in tracks if not t["lyrics_lang"] and not t["mb_country"]]
     L += ["", "Como ler: **alta** = letra e país do artista concordam. **Média** = só um dos dois sinais.",
           "**Baixa** = os sinais brigam ou não há sinal. Na execução, só alta e média andam;",
           "baixa fica onde está até você decidir.", "",
-          f"Faixas sem nenhum sinal forte (sem letra utilizável e sem país): **{len(sem)}**.", ""]
+          f"Faixas sem letra utilizável e sem país: **{len(sem)}**.", ""]
 
     L += ["## Artistas que vão com confiança alta", ""]
-    alta = defaultdict(int)
-    for t in br:
-        if t["confidence"] == "alta":
-            alta[t["canonical_artist"]] += 1
-    L.append(", ".join(f"{a} ({n})" for a, n in sorted(alta.items(), key=lambda kv: kv[0].casefold())) or "nenhum")
+    alta = sorted(((ts[0]["canonical_artist"], len(ts)) for k, ts in nomeados.items()
+                   if ts[0]["dest"] == DEST_BR and ts[0]["confidence"] == "alta"), key=lambda x: x[0].casefold())
+    L.append(", ".join(f"{a} ({n})" for a, n in alta) or "nenhum")
     L.append("")
 
-    rev = [t for t in tracks if t["confidence"] != "alta"]
-    L += ["## Lista para revisão", "",
-          f"{len(rev)} faixas (média e baixa). VAI = proposta de ir para `{DEST_BR}`; fica = continua em `{SRC}`.", ""]
+    rev = {k: ts for k, ts in g.items() if ts[0]["confidence"] != "alta"}
+    L += ["## Lista para revisão (por artista)", "",
+          f"{len(rev)} artistas ou grupos (média e baixa). VAI = proposta de ir para `{DEST_BR}`; "
+          f"fica = continua em `{SRC}`.", ""]
     for conf in ("media", "baixa"):
-        sub = sorted((t for t in rev if t["confidence"] == conf),
-                     key=lambda t: (t["dest"], t["canonical_artist"].casefold(), t["file"]))
-        L += [f"### {'Média' if conf == 'media' else 'Baixa (não anda sem sua decisão)'} ({len(sub)})", ""]
-        for t in sub:
-            alvo = "VAI" if t["dest"] == DEST_BR else "fica"
-            L.append(f"- {alvo} | {t['canonical_artist']} | {t['title']} | pasta `{t['artist_dir']}` | {_evid(t)}")
+        L += [f"### {'Média' if conf == 'media' else 'Baixa (não anda sem sua decisão)'}", ""]
+        itens = sorted(((k, ts) for k, ts in rev.items() if ts[0]["confidence"] == conf and k not in GENERICOS),
+                       key=lambda kv: (kv[1][0]["dest"], kv[1][0]["canonical_artist"].casefold()))
+        for k, ts in itens:
+            alvo = "VAI" if ts[0]["dest"] == DEST_BR else "fica"
+            L.append(f"- {alvo} | {ts[0]['canonical_artist']} | {_evid_artista(ts)}")
+        for k in GENERICOS & set(g):
+            for t in g[k]:
+                if t["confidence"] == conf:
+                    alvo = "VAI" if t["dest"] == DEST_BR else "fica"
+                    L.append(f"- {alvo} | (artista genérico) {t['title']} | pasta `{t['artist_dir']}` | {t['reason']}")
         L.append("")
 
-    por_artista = defaultdict(list)
+    por_dir = defaultdict(list)
     for t in tracks:
-        por_artista[t["artist_dir"]].append(t)
-    solta = {a: ts for a, ts in por_artista.items() if pasta_bagunçada(a, ts)}
-    mistas = {a for a, ts in por_artista.items() if len({t["dest"] for t in ts}) > 1}
+        por_dir[t["artist_dir"]].append(t)
+    solta = {a: ts for a, ts in por_dir.items() if pasta_bagunçada(a, ts)}
+    mistas = {a for a, ts in por_dir.items() if len({t["dest"] for t in ts}) > 1}
     generica = {a for a in solta if GENERICA.search(a)}
     com_vao = {a for a in solta if any(t["dest"] == DEST_BR for t in solta[a])}
     listar = generica | mistas | com_vao
     resto = [a for a in solta if a not in listar]
     L += ["## Pastas bagunçadas e pastas divididas", "",
           f"Pastas de 2º nível que não são nome de artista (disco, leva, compilação, nome de álbum "
-          f"solto): **{len(solta)}**. Pastas cujas faixas vão para destinos diferentes: **{len(mistas)}**.",
-          "Nelas a decisão foi faixa a faixa; cada linha do JSON traz o caminho da faixa.", "",
-          f"Outras {len(resto)} pastas com nome de álbum solto, com {sum(len(solta[a]) for a in resto)} "
+          f"solto): **{len(solta)}**. Pastas cujas faixas vão para destinos diferentes: **{len(mistas)}**.", ""]
+    if mistas:
+        L += ["Pastas ainda divididas e por quê (cada faixa segue o destino do seu artista):", ""]
+        for a in sorted(mistas, key=str.casefold):
+            def nome(t):
+                return f'faixa "{t["title"]}"' if t["artist_key"] in GENERICOS else t["canonical_artist"]
+            vao = sorted({nome(t) for t in por_dir[a] if t["dest"] == DEST_BR})
+            fic = sorted({nome(t) for t in por_dir[a] if t["dest"] == SRC})
+            L.append(f"- `{a}`: vão {', '.join(vao)}; ficam {', '.join(fic)}")
+        L.append("")
+    L += [f"Outras {len(resto)} pastas com nome de álbum solto, com {sum(len(solta[a]) for a in resto)} "
           "faixas, ficam inteiras em `Rap & Hip-Hop` (nenhuma faixa vai) e não estão listadas.", "",
           "Pastas listadas (genéricas, divididas ou com alguma faixa que vai):", ""]
     for a in sorted(listar, key=str.casefold):
-        ts = por_artista[a]
+        ts = por_dir[a]
         v = sum(1 for t in ts if t["dest"] == DEST_BR)
         L.append(f"- `{a}`: {len(ts)} faixa(s), {v} vão, {len(ts) - v} ficam"
                  + (" (dividida)" if a in mistas else ""))
     L.append("")
     Path(path).write_text("\n".join(L), encoding="utf-8")
-
-
 
 
 # ---------------------------------------------------------------- E/S (não testado)
@@ -471,26 +588,17 @@ def main():
             print(f"  mb {i}/{len(novos)}", flush=True)
 
     pre = MUSIC + SRC + "/"
-    tracks = []
+    base = []
     for p in pts:
         d = p["payload"]
         rel = d["path"][len(pre):]
         partes = rel.split("/")
-        adir = partes[0]
-        alb = partes[1] if len(partes) > 2 else None
-        prim = primary_artist(d.get("artist") or "")
-        mb = cache.get(normalize_name(prim), {})
-        country = mb.get("country")
         lang, nchars = detect_lang(texts.get(p["id"], ""))
-        tl = title_lang(d.get("title") or "")
-        dest, conf, why = decide(lang, country, tl)
-        tracks.append({
-            "id": str(p["id"]), "artist_dir": adir, "album_dir": alb, "file": rel, "dest": dest,
-            "confidence": conf, "canonical_artist": prim or adir, "artist": d.get("artist"),
-            "title": d.get("title"), "lyrics_lang": lang, "lyrics_chars": nchars,
-            "mb_country": country, "mb_found": bool(mb.get("found")),
-            "mb_ambiguous": bool(mb.get("ambiguous")), "title_lang": tl, "reason": why,
-        })
+        base.append({"id": str(p["id"]), "artist_dir": partes[0],
+                     "album_dir": partes[1] if len(partes) > 2 else None, "file": rel,
+                     "artist": d.get("artist"), "title": d.get("title"), "lyrics_lang": lang,
+                     "lyrics_chars": nchars, "title_lang": title_lang(d.get("title") or "")})
+    tracks = sorted(classify_tracks(base, cache), key=lambda t: t["file"])
     rows = aggregate(tracks)
     Path(a.out).write_text(json.dumps(rows, ensure_ascii=False, indent=1))
     Path(a.faixas).write_text(json.dumps(tracks, ensure_ascii=False, indent=1))

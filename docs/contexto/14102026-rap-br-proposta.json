@@ -434,170 +434,23 @@
  {
   "artist_dir": "333 (2024)",
   "album_dir": null,
-  "file": "333 (2024)/01 - 01 - Crack com Mussilon.flac",
   "dest": "Rap & Trap Brasileiro",
   "confidence": "alta",
   "canonical_artist": "Matuê",
-  "title": "Crack com Mussilon",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2065,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 02 - Imagina esse Cenario.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "Imagina esse Cenário",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1851,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 03 - Isso e Serio.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "Isso é Sério",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 3328,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 04 - 1993.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "1993",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1134,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 05 - 4Tal.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "4Tal",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2080,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 06 - O Som.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "O Som",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 946,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 07 - 04AM.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "04AM",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1283,
-  "mb_country": "BR",
-  "title_lang": "en",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 08 - Castlevania.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "Castlevania",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1574,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 09 - V de Vilao.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "V de Vilão",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1579,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 10 - Maria.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "Maria",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1449,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 11 - 333.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Matuê",
-  "title": "333",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2201,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "333 (2024)",
-  "album_dir": null,
-  "file": "333 (2024)/01 - 12 - Like This!.flac",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Matuê",
-  "title": "Like This!",
-  "lyrics_lang": "en",
-  "lyrics_chars": 742,
-  "mb_country": "BR",
-  "title_lang": "en",
-  "reason": "letra e país discordam"
+  "n_tracks": 12,
+  "lyrics_lang": {
+   "pt": 11,
+   "en": 1
+  },
+  "lyrics_chars": 20232,
+  "mb_country": {
+   "BR": 12
+  },
+  "title_lang": {
+   "pt": 5,
+   "?": 5,
+   "en": 2
+  }
  },
  {
   "artist_dir": "6LACK",
@@ -931,7 +784,7 @@
   "artist_dir": "Baby Gravy II",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "alta",
+  "confidence": "media",
   "canonical_artist": "BABY GRAVY",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1023,12 +876,12 @@
   "artist_dir": "Black Alien",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Black Alien",
   "n_tracks": 15,
   "lyrics_lang": {
-   "pt": 14,
-   "?": 1
+   "?": 1,
+   "pt": 14
   },
   "lyrics_chars": 35318,
   "mb_country": {
@@ -1155,7 +1008,7 @@
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
   "confidence": "alta",
-  "canonical_artist": "Rae Sremmurd",
+  "canonical_artist": "Run the Jewels",
   "n_tracks": 2,
   "lyrics_lang": {
    "en": 2
@@ -1165,8 +1018,8 @@
    "US": 2
   },
   "title_lang": {
-   "?": 1,
-   "en": 1
+   "en": 1,
+   "?": 1
   }
  },
  {
@@ -1174,7 +1027,7 @@
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
   "confidence": "alta",
-  "canonical_artist": "Tyler, the Creator",
+  "canonical_artist": "Tyler, The Creator",
   "n_tracks": 1,
   "lyrics_lang": {
    "en": 1
@@ -1191,7 +1044,7 @@
   "artist_dir": "Cartoon & Cereal",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Kendrick Lamar",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1227,7 +1080,7 @@
   "artist_dir": "Chefin",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Chefin",
   "n_tracks": 2,
   "lyrics_lang": {
@@ -1392,12 +1245,12 @@
   "artist_dir": "Costa Gold",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Costa Gold",
   "n_tracks": 3,
   "lyrics_lang": {
-   "pt": 1,
-   "?": 2
+   "?": 2,
+   "pt": 1
   },
   "lyrics_chars": 3110,
   "mb_country": {
@@ -1413,7 +1266,7 @@
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
   "confidence": "alta",
-  "canonical_artist": "Schoolboy Q",
+  "canonical_artist": "ScHoolboy Q",
   "n_tracks": 1,
   "lyrics_lang": {
    "en": 1
@@ -1459,8 +1312,8 @@
    "US": 3
   },
   "title_lang": {
-   "?": 2,
-   "en": 1
+   "en": 1,
+   "?": 2
   }
  },
  {
@@ -1532,8 +1385,8 @@
    "US": 25
   },
   "title_lang": {
-   "en": 9,
-   "?": 16
+   "?": 16,
+   "en": 9
   }
  },
  {
@@ -1609,8 +1462,8 @@
    "US": 2
   },
   "title_lang": {
-   "?": 1,
-   "en": 1
+   "en": 1,
+   "?": 1
   }
  },
  {
@@ -1671,20 +1524,20 @@
   "artist_dir": "Earl Sweatshirt - Some Rap Songs",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Earl Sweatshirt",
   "n_tracks": 2,
   "lyrics_lang": {
-   "?": 1,
-   "en": 1
+   "en": 1,
+   "?": 1
   },
   "lyrics_chars": 2059,
   "mb_country": {
    "US": 2
   },
   "title_lang": {
-   "?": 1,
-   "en": 1
+   "en": 1,
+   "?": 1
   }
  },
  {
@@ -1720,20 +1573,20 @@
    "US": 22
   },
   "title_lang": {
-   "en": 9,
-   "?": 13
+   "?": 13,
+   "en": 9
   }
  },
  {
   "artist_dir": "Filipe Ret",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Filipe Ret",
   "n_tracks": 8,
   "lyrics_lang": {
-   "pt": 3,
-   "?": 5
+   "?": 5,
+   "pt": 3
   },
   "lyrics_chars": 5395,
   "mb_country": {
@@ -1748,20 +1601,20 @@
   "artist_dir": "Froid",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Froid",
   "n_tracks": 2,
   "lyrics_lang": {
-   "pt": 1,
-   "?": 1
+   "?": 1,
+   "pt": 1
   },
   "lyrics_chars": 2379,
   "mb_country": {
    "BR": 2
   },
   "title_lang": {
-   "pt": 1,
-   "?": 1
+   "?": 1,
+   "pt": 1
   }
  },
  {
@@ -1869,8 +1722,8 @@
    "US": 7
   },
   "title_lang": {
-   "en": 5,
-   "?": 2
+   "?": 2,
+   "en": 5
   }
  },
  {
@@ -1896,7 +1749,7 @@
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
   "confidence": "alta",
-  "canonical_artist": "Tyler, the Creator",
+  "canonical_artist": "Tyler, The Creator",
   "n_tracks": 2,
   "lyrics_lang": {
    "en": 2
@@ -1979,8 +1832,8 @@
    "US": 34
   },
   "title_lang": {
-   "en": 8,
    "?": 25,
+   "en": 8,
    "pt": 1
   }
  },
@@ -1988,16 +1841,15 @@
   "artist_dir": "J.I.D",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "media",
-  "canonical_artist": "J.I.D",
+  "confidence": "alta",
+  "canonical_artist": "JID",
   "n_tracks": 3,
   "lyrics_lang": {
    "en": 3
   },
   "lyrics_chars": 13007,
   "mb_country": {
-   "?": 2,
-   "US": 1
+   "US": 3
   },
   "title_lang": {
    "?": 2,
@@ -2055,9 +1907,9 @@
    "US": 8
   },
   "title_lang": {
-   "pt": 1,
    "en": 2,
-   "?": 5
+   "?": 5,
+   "pt": 1
   }
  },
  {
@@ -2100,20 +1952,20 @@
   "artist_dir": "Kayblack",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Kayblack",
   "n_tracks": 3,
   "lyrics_lang": {
-   "pt": 2,
-   "?": 1
+   "?": 1,
+   "pt": 2
   },
   "lyrics_chars": 3354,
   "mb_country": {
    "BR": 3
   },
   "title_lang": {
-   "pt": 2,
-   "?": 1
+   "?": 1,
+   "pt": 2
   }
  },
  {
@@ -2284,7 +2136,7 @@
   "artist_dir": "MC Kevin",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "MC Kevin",
   "n_tracks": 2,
   "lyrics_lang": {
@@ -2412,12 +2264,12 @@
   "artist_dir": "Matuê",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Matuê",
   "n_tracks": 10,
   "lyrics_lang": {
-   "pt": 4,
-   "?": 6
+   "?": 6,
+   "pt": 4
   },
   "lyrics_chars": 11398,
   "mb_country": {
@@ -2523,7 +2375,7 @@
   "artist_dir": "NGC Daddy",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "NGC Daddy",
   "n_tracks": 3,
   "lyrics_lang": {
@@ -2543,7 +2395,7 @@
   "artist_dir": "New Beginnings",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "alta",
+  "confidence": "media",
   "canonical_artist": "Reason",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -2595,148 +2447,34 @@
  },
  {
   "artist_dir": "Orochi",
-  "album_dir": "Acende o Isqueiro [tidal]",
+  "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "media",
   "canonical_artist": "Orochi",
-  "n_tracks": 1,
+  "n_tracks": 9,
   "lyrics_lang": {
-   "?": 1
+   "?": 5,
+   "pt": 4
   },
-  "lyrics_chars": 0,
+  "lyrics_chars": 9107,
   "mb_country": {
-   "?": 1
+   "?": 9
   },
   "title_lang": {
-   "pt": 1
-  }
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Celebridade [tidal]",
-  "file": "Orochi/Celebridade [tidal]/04 Mitsubishi.flac",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Orochi",
-  "title": "Mitsubishi",
-  "lyrics_lang": null,
-  "lyrics_chars": 0,
-  "mb_country": null,
-  "title_lang": null,
-  "reason": "sem sinal"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Celebridade [tidal]",
-  "file": "Orochi/Celebridade [tidal]/09 Amor de Fim de Noite.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
-  "canonical_artist": "Orochi",
-  "title": "Amor de Fim de Noite",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2439,
-  "mb_country": null,
-  "title_lang": null,
-  "reason": "só a letra"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Celebridade [tidal]",
-  "file": "Orochi/Celebridade [tidal]/13 Celebridade.flac",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Orochi",
-  "title": "Celebridade",
-  "lyrics_lang": null,
-  "lyrics_chars": 0,
-  "mb_country": null,
-  "title_lang": null,
-  "reason": "sem sinal"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Celebridade [tidal]",
-  "file": "Orochi/Celebridade [tidal]/14 Balão.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Orochi",
-  "title": "Balão",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2510,
-  "mb_country": null,
-  "title_lang": "pt",
-  "reason": "letra forte, país não achado, título concorda"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Lobo [tidal]",
-  "file": "Orochi/Lobo [tidal]/01 Lobo.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
-  "canonical_artist": "Orochi",
-  "title": "Lobo",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2051,
-  "mb_country": null,
-  "title_lang": null,
-  "reason": "só a letra"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Lobo [tidal]",
-  "file": "Orochi/Lobo [tidal]/02 Deixa Chapar.flac",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Orochi",
-  "title": "Deixa Chapar",
-  "lyrics_lang": null,
-  "lyrics_chars": 0,
-  "mb_country": null,
-  "title_lang": null,
-  "reason": "sem sinal"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Lobo [tidal]",
-  "file": "Orochi/Lobo [tidal]/07 Versace.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
-  "canonical_artist": "Orochi",
-  "title": "Versace",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2107,
-  "mb_country": null,
-  "title_lang": null,
-  "reason": "só a letra"
- },
- {
-  "artist_dir": "Orochi",
-  "album_dir": "Mitsubishi [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Orochi",
-  "n_tracks": 1,
-  "lyrics_lang": {
-   "?": 1
-  },
-  "lyrics_chars": 0,
-  "mb_country": {
-   "?": 1
-  },
-  "title_lang": {
-   "?": 1
+   "pt": 2,
+   "?": 7
   }
  },
  {
   "artist_dir": "Oruam",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Oruam",
   "n_tracks": 2,
   "lyrics_lang": {
-   "?": 1,
-   "pt": 1
+   "pt": 1,
+   "?": 1
   },
   "lyrics_chars": 1580,
   "mb_country": {
@@ -2840,12 +2578,12 @@
   "artist_dir": "Racionais MC's",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Racionais MC's",
   "n_tracks": 4,
   "lyrics_lang": {
-   "pt": 1,
-   "?": 3
+   "?": 3,
+   "pt": 1
   },
   "lyrics_chars": 4853,
   "mb_country": {
@@ -2998,8 +2736,8 @@
    "US": 5
   },
   "title_lang": {
-   "en": 1,
-   "?": 4
+   "?": 4,
+   "en": 1
   }
  },
  {
@@ -3116,7 +2854,7 @@
   "artist_dir": "Sidoka",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Sidoka",
   "n_tracks": 4,
   "lyrics_lang": {
@@ -3201,8 +2939,8 @@
    "US": 7
   },
   "title_lang": {
-   "en": 2,
-   "?": 5
+   "?": 5,
+   "en": 2
   }
  },
  {
@@ -3263,9 +3001,9 @@
  {
   "artist_dir": "Teto",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
+  "dest": "Rap & Trap Brasileiro",
   "confidence": "baixa",
-  "canonical_artist": "Teto",
+  "canonical_artist": "teto",
   "n_tracks": 1,
   "lyrics_lang": {
    "?": 1
@@ -3354,7 +3092,7 @@
   "artist_dir": "The Notorious B.I.G",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "The Notorious B.I.G.",
   "n_tracks": 22,
   "lyrics_lang": {
@@ -3403,8 +3141,8 @@
    "US": 11
   },
   "title_lang": {
-   "?": 8,
    "pt": 2,
+   "?": 8,
    "en": 1
   }
  },
@@ -3430,7 +3168,7 @@
   "artist_dir": "Tom Misch",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Tom Misch",
   "n_tracks": 4,
   "lyrics_lang": {
@@ -3791,385 +3529,25 @@
  },
  {
   "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Magika",
+  "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
   "confidence": "alta",
   "canonical_artist": "Yung Buda",
-  "n_tracks": 1,
+  "n_tracks": 27,
   "lyrics_lang": {
-   "pt": 1
+   "pt": 22,
+   "?": 3,
+   "en": 2
   },
-  "lyrics_chars": 1536,
+  "lyrics_chars": 55471,
   "mb_country": {
-   "BR": 1
+   "BR": 27
   },
   "title_lang": {
-   "?": 1
+   "?": 23,
+   "en": 1,
+   "pt": 3
   }
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.01 - Subaru Azul.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Subaru Azul",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 3998,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.02 - Safezone.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Safezone",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 3613,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.03 - Digimon.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Digimon",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2163,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.04 - Digivice.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Digivice",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2314,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.05 - Aquelamusicaali.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Aquelamusicaali",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1893,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.06 - Kekw.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Kekw",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1661,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.07 - The End.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "The End",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1814,
-  "mb_country": "BR",
-  "title_lang": "en",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.08 - Eu Já Morri uma Vez.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
-  "canonical_artist": "Yung Buda",
-  "title": "Eu Já Morri uma Vez",
-  "lyrics_lang": null,
-  "lyrics_chars": 0,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "só o país"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.09 - Monstro.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Monstro",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2238,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.10 - Cayo Perico.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Cayo Perico",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1767,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.11 - Gente Morta Não Conta História.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Gente Morta Não Conta História",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1788,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.12 - Skin do Kof.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Skin do Kof",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 5306,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.14 - Hydrobalance.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Hydrobalance",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1124,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.15 - Kaneda.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Kaneda",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 1065,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.16 - Lopes.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
-  "canonical_artist": "Yung Buda",
-  "title": "Lopes",
-  "lyrics_lang": null,
-  "lyrics_chars": 0,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "só o país"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.17 - Roxo.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Roxo",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2789,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.18 - Montenegro.flac",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Yung Buda",
-  "title": "Montenegro",
-  "lyrics_lang": "en",
-  "lyrics_chars": 537,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra e país discordam"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.19 - Vilão.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Vilão",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2377,
-  "mb_country": "BR",
-  "title_lang": "pt",
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.20 - Dio.flac",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "Yung Buda",
-  "title": "Dio",
-  "lyrics_lang": "en",
-  "lyrics_chars": 670,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra e país discordam"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.21 - Indigo Plateau.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Indigo Plateau",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 4281,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.22 - Monstro (Voodoo Doll).flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Monstro (Voodoo Doll)",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2240,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.23 - Cemitério.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Cemitério",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 594,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.24 - Necronomicon.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Necronomicon",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2302,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.25 - Morioh Cho Radio.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Morioh Cho Radio",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 2098,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.26 - Skin do Kof (Remix).flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "alta",
-  "canonical_artist": "Yung Buda",
-  "title": "Skin do Kof (Remix)",
-  "lyrics_lang": "pt",
-  "lyrics_chars": 5303,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "letra pt + artista BR"
- },
- {
-  "artist_dir": "Yung Buda",
-  "album_dir": "2022 - Zero",
-  "file": "Yung Buda/2022 - Zero/01.27 - Zero Maschine.flac",
-  "dest": "Rap & Trap Brasileiro",
-  "confidence": "media",
-  "canonical_artist": "Yung Buda",
-  "title": "Zero Maschine",
-  "lyrics_lang": null,
-  "lyrics_chars": 0,
-  "mb_country": "BR",
-  "title_lang": null,
-  "reason": "só o país"
  },
  {
   "artist_dir": "Yunk Vino",
@@ -4193,7 +3571,7 @@
   "artist_dir": "[2022] Few Good Things",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "alta",
+  "confidence": "media",
   "canonical_artist": "Saba",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -4237,19 +3615,19 @@
   },
   "lyrics_chars": 92552,
   "mb_country": {
-   "US": 30,
-   "?": 1
+   "?": 1,
+   "US": 30
   },
   "title_lang": {
-   "en": 11,
-   "?": 20
+   "?": 20,
+   "en": 11
   }
  },
  {
   "artist_dir": "_leva-2026-07-09",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "confidence": "alta",
   "canonical_artist": "Mac Miller",
   "n_tracks": 33,
   "lyrics_lang": {
@@ -4352,9 +3730,9 @@
    "US": 13
   },
   "title_lang": {
+   "es": 1,
    "?": 11,
-   "en": 1,
-   "es": 1
+   "en": 1
   }
  },
  {
@@ -4395,92 +3773,21 @@
  },
  {
   "artist_dir": "teto",
-  "album_dir": "Flow Espacial [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "teto",
-  "n_tracks": 1,
-  "lyrics_lang": {
-   "?": 1
-  },
-  "lyrics_chars": 0,
-  "mb_country": {
-   "?": 1
-  },
-  "title_lang": {
-   "?": 1
-  }
- },
- {
-  "artist_dir": "teto",
-  "album_dir": "M4 [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "teto",
-  "n_tracks": 1,
-  "lyrics_lang": {
-   "?": 1
-  },
-  "lyrics_chars": 0,
-  "mb_country": {
-   "?": 1
-  },
-  "title_lang": {
-   "?": 1
-  }
- },
- {
-  "artist_dir": "teto",
-  "album_dir": "Mateca x Teto [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "teto",
-  "n_tracks": 1,
-  "lyrics_lang": {
-   "?": 1
-  },
-  "lyrics_chars": 0,
-  "mb_country": {
-   "?": 1
-  },
-  "title_lang": {
-   "?": 1
-  }
- },
- {
-  "artist_dir": "teto",
-  "album_dir": "Minha Vida é um Filme [tidal]",
+  "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
   "confidence": "baixa",
   "canonical_artist": "teto",
-  "n_tracks": 1,
+  "n_tracks": 8,
   "lyrics_lang": {
-   "?": 1
+   "?": 8
   },
   "lyrics_chars": 0,
   "mb_country": {
-   "?": 1
+   "?": 8
   },
   "title_lang": {
+   "?": 7,
    "pt": 1
-  }
- },
- {
-  "artist_dir": "teto",
-  "album_dir": "previas.zip [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
-  "canonical_artist": "teto",
-  "n_tracks": 4,
-  "lyrics_lang": {
-   "?": 4
-  },
-  "lyrics_chars": 0,
-  "mb_country": {
-   "?": 4
-  },
-  "title_lang": {
-   "?": 4
   }
  },
  {
