@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent, waitFor, screen } from "@solidjs/testing-library";
-import type { TidalSearch, TidalTrack, TidalPreview, Track } from "../../tauri";
+import type { TidalSearch, TidalTrack, TidalPreview, TidalJob, TidalAlbum, TidalArtistPage, Track } from "../../tauri";
 
 vi.mock("../../tauri", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../tauri")>();
@@ -19,6 +19,7 @@ vi.mock("../../tauri", async (importOriginal) => {
     crateTidalCover: vi.fn(async () => "data:image/jpeg;base64,AA=="),
     crateTidalEnqueue: vi.fn(async () => "job-link"),
     crateTidalEnqueueSelection: vi.fn(async () => "job-sel"),
+    crateTidalResend: vi.fn(async () => "job-1"),
     libGetTracks: vi.fn(async () => [] as Track[]),
   };
 });
@@ -46,10 +47,35 @@ function libTrack(title: string, artist: string): Track {
   };
 }
 
-function renderTab() {
+function renderTab(jobs: TidalJob[] = [], refresh: () => void = () => {}) {
   return render(() => (
-    <TidalTab jobs={[]} pastas={["Rap & Hip-Hop"]} load="loaded" loadError={null} refresh={() => {}} tokenMissing={false} />
+    <TidalTab jobs={jobs} pastas={["Rap & Hip-Hop"]} load="loaded" loadError={null} refresh={refresh} tokenMissing={false} />
   ));
+}
+
+function job(over: Partial<TidalJob>): TidalJob {
+  return {
+    id: "20261014-101010", url: "", playlist: "Rap & Hip-Hop", status: "ok", added: "14/10 10:10", resumo: "",
+    inicio: null, fim: null, titulo: "Rádio Orochi", origem: "mix:a", n_faixas: 18, ...over,
+  };
+}
+
+function album(id: number, titulo: string): TidalAlbum {
+  return { id, titulo, artista: "Orochi", ano: 2020, n_faixas: 3, duracao_s: 600, hires: false, tipo: "ep", capa: null, url: `https://tidal.com/browse/album/${id}` };
+}
+
+/** Abre a prévia de rádio de uma busca com `faixas`. */
+async function abrePrevia(faixas: TidalTrack[]) {
+  mocks.crateTidalSearch.mockResolvedValue(busca("orochi", [faixa(1, "Mitsubishi")]));
+  mocks.crateTidalPreview.mockResolvedValue({
+    tipo: "radio", titulo: "Rádio de Mitsubishi", ref: "radio-faixa:1", duracao_s: faixas.length * 180, faixas,
+  });
+  renderTab();
+  fireEvent.input(field(), { target: { value: "orochi" } });
+  fireEvent.submit(field().form!);
+  await waitFor(() => expect(screen.getByText("Mitsubishi")).toBeTruthy());
+  fireEvent.click(screen.getByText("Rádio"));
+  await waitFor(() => expect(document.querySelector(".tdl-row--pick")).toBeTruthy());
 }
 
 function field() {
@@ -140,5 +166,102 @@ describe("TidalTab", () => {
     await waitFor(() =>
       expect(mocks.crateTidalEnqueueSelection).toHaveBeenCalledWith([2], "Rádio de Mitsubishi", "radio-faixa:1", "Rap & Hip-Hop"),
     );
+  });
+
+  it("prévia com mais de 200 faixas: padrão marca 200, 'Marcar todas' trava o Baixar e avisa", async () => {
+    await abrePrevia(Array.from({ length: 250 }, (_, i) => faixa(i + 1, `Faixa ${i + 1}`)));
+    await waitFor(() => expect(screen.getByText("200 de 250")).toBeTruthy());
+    expect(screen.getByText(/marcadas as 200 primeiras novas/)).toBeTruthy();
+    const baixar = () => screen.getByRole("button", { name: /Baixar/ }) as HTMLButtonElement;
+    expect(baixar().disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Marcar todas" }));
+    expect(screen.getByText("250 de 250")).toBeTruthy();
+    expect(screen.getByText("máx. 200 por vez")).toBeTruthy();
+    expect(baixar().disabled).toBe(true);
+    fireEvent.click(baixar());
+    expect(mocks.crateTidalEnqueueSelection).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Só as novas" }));
+    expect(baixar().disabled).toBe(false);
+  });
+
+  it("erro do enfileiramento da seleção aparece dentro do rodapé", async () => {
+    mocks.crateTidalEnqueueSelection.mockRejectedValueOnce("fila indisponível (VM fora? http://x)");
+    await abrePrevia([faixa(2, "Balão"), faixa(3, "Outra")]);
+    await waitFor(() => expect(screen.getByText("2 de 2")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Baixar 2/ }));
+    await waitFor(() => expect(document.querySelector(".tdl-foot [role=alert]")?.textContent).toContain("fila indisponível"));
+  });
+
+  it("Ctrl+A na prévia marca tudo mesmo sem foco numa caixa, mas não dentro do seletor de pasta", async () => {
+    await abrePrevia([faixa(2, "Balão"), faixa(3, "Outra")]);
+    await waitFor(() => expect(screen.getByText("2 de 2")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Desmarcar todas" }));
+    expect(screen.getByText("0 de 2")).toBeTruthy();
+    const selects = document.querySelectorAll<HTMLSelectElement>(".tdl-foot select");
+    expect(fireEvent.keyDown(selects[0], { key: "a", ctrlKey: true })).toBe(true); // não foi interceptado
+    expect(screen.getByText("0 de 2")).toBeTruthy();
+    const page = document.querySelector<HTMLElement>(".tdl-page--preview")!;
+    expect(fireEvent.keyDown(page, { key: "a", ctrlKey: true })).toBe(false); // preventDefault
+    expect(screen.getByText("2 de 2")).toBeTruthy();
+  });
+
+  it("texto que fica curto descarta a resposta em voo e limpa o resultado", async () => {
+    let solta!: (v: TidalSearch) => void;
+    mocks.crateTidalSearch.mockImplementationOnce(() => new Promise((res) => { solta = res; }));
+    renderTab();
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    await waitFor(() => expect(screen.getByText("buscando…")).toBeTruthy());
+    fireEvent.input(field(), { target: { value: "o" } });
+    expect(screen.queryByText("buscando…")).toBeNull();
+    solta(busca("orochi", [faixa(9, "Velha")]));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(screen.queryByText("Velha")).toBeNull();
+    expect(screen.getByText(/Cole um link da Tidal ou busque/)).toBeTruthy();
+  });
+
+  it("Reenviar só aparece em seleção parcial ou que falhou e chama o comando", async () => {
+    const refresh = vi.fn();
+    renderTab([
+      job({ id: "a", status: "parcial", titulo: "Parcial" }),
+      job({ id: "b", status: "falhou", titulo: "Falhou" }),
+      job({ id: "c", status: "ok", titulo: "Pronta" }),
+      job({ id: "d", status: "parcial", titulo: null, n_faixas: null, url: "https://tidal.com/browse/mix/x" }),
+    ], refresh);
+    const botoes = screen.getAllByRole("button", { name: "Reenviar" });
+    expect(botoes).toHaveLength(2); // o link parcial e a seleção pronta ficam sem o botão
+    fireEvent.click(botoes[0]);
+    await waitFor(() => expect(mocks.crateTidalResend).toHaveBeenCalledTimes(1));
+    expect(mocks.crateTidalResend.mock.calls[0][0]).toMatch(/^[ab]$/);
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it("voltar da prévia mantém a página do artista (sem recarregar nem perder 'Mostrar todos')", async () => {
+    const eps = Array.from({ length: 25 }, (_, i) => album(100 + i, `EP ${i + 1}`));
+    const pagina: TidalArtistPage = {
+      id: 5, nome: "Orochi", foto: null, url: "u", populares: [], albuns: [], eps_singles: eps,
+      radio: { mix_id: "abc", n_faixas: 50 },
+    };
+    mocks.crateTidalSearch.mockResolvedValue({
+      ...busca("orochi", []), artistas: [{ id: 5, nome: "Orochi", foto: null, url: "u" }],
+    });
+    mocks.crateTidalArtist.mockResolvedValue(pagina);
+    mocks.crateTidalPreview.mockResolvedValue({ tipo: "radio", titulo: "Rádio de Orochi", ref: "mix:abc", duracao_s: 180, faixas: [faixa(1, "Mitsubishi")] });
+    renderTab();
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    await waitFor(() => expect(screen.getByText("Artista")).toBeTruthy());
+    fireEvent.click(screen.getByText("Artista"));
+    await waitFor(() => expect(screen.getByText("EP 20")).toBeTruthy());
+    expect(screen.queryByText("EP 25")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Mostrar todos/ }));
+    expect(screen.getByText("EP 25")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Rádio do artista/ }));
+    await waitFor(() => expect(document.querySelector(".tdl-row--pick")).toBeTruthy());
+    fireEvent.click(screen.getAllByTitle("Voltar (Esc)").at(-1)!); // o da prévia (a do artista segue montada, oculta)
+    await waitFor(() => expect(screen.queryByText("Mitsubishi")).toBeNull());
+    expect(screen.getByText("EP 25")).toBeTruthy();
+    expect(mocks.crateTidalArtist).toHaveBeenCalledTimes(1);
   });
 });

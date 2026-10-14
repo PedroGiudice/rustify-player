@@ -1595,4 +1595,15 @@ describe("Crate: SoundCloud, segunda revisão", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("form", { name: /Confirmar faixa/ })).toBeNull());
   });
+
+  it("a aba Tidal fica montada ao trocar de aba: o texto do campo sobrevive", async () => {
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Tidal/ }));
+    const campo = () => screen.getByLabelText("Buscar na Tidal ou colar link") as HTMLInputElement;
+    fireEvent.input(campo(), { target: { value: "o" } }); // curto demais para buscar
+    await userEvent.click(screen.getByRole("tab", { name: /Buscar/ }));
+    expect(campo().closest("div[style]")?.getAttribute("style")).toContain("none"); // oculta, não desmontada
+    await userEvent.click(screen.getByRole("tab", { name: /Tidal/ }));
+    expect(campo().value).toBe("o");
+  });
 });

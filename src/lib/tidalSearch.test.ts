@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Track } from "../tauri";
 import {
   classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime,
-  buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly,
+  buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, titleKey, MAX_SELECTION,
 } from "./tidalSearch";
 
 function lib(title: string, artist: string): Track {
@@ -73,12 +73,54 @@ describe("no acervo", () => {
   it("faixa com o nome do artista não marca o artista inteiro", () => {
     expect(findOwned({ titulo: "Celebridade", artistas: ["Orochi"] }, idx)).toBeNull();
   });
+
+  describe("mesma chave do baixador (falsos positivos da revisão)", () => {
+    const i2 = buildOwnedIndex([
+      lib("HUMBLE.", "Kendrick Lamar"),
+      lib("Mitsubishi", "Orochi"),
+      lib("Love", "Kendrick Lamar"),
+      lib("Foo (feat. Rihanna)", "Drake"),
+      lib("Balão", "Orochi"),
+    ]);
+    it("remix, ao vivo e título maior não casam", () => {
+      expect(findOwned({ titulo: "HUMBLE. (Skrillex Remix)", artistas: ["Kendrick Lamar"] }, i2)).toBeNull();
+      expect(findOwned({ titulo: "Mitsubishi (Ao Vivo)", artistas: ["Orochi"] }, i2)).toBeNull();
+      expect(findOwned({ titulo: "Love Me Now", artistas: ["Kendrick Lamar"] }, i2)).toBeNull();
+      for (const v of ["Foo (Live)", "Foo (Acústico)", "Foo - Radio Edit", "Foo (Versão Estendida)", "Foo (Instrumental)"]) {
+        expect(findOwned({ titulo: v, artistas: ["Drake"] }, buildOwnedIndex([lib("Foo", "Drake")])), v).toBeNull();
+      }
+    });
+    it("verdadeiros positivos: feat. de um lado, caixa e acento", () => {
+      expect(findOwned({ titulo: "HUMBLE.", artistas: ["kendrick lamar"] }, i2)?.title).toBe("HUMBLE.");
+      expect(findOwned({ titulo: "Foo", artistas: ["Drake"] }, i2)?.title).toBe("Foo (feat. Rihanna)");
+      expect(findOwned({ titulo: "Foo [ft. Rihanna]", artistas: ["Drake"] }, i2)?.title).toBe("Foo (feat. Rihanna)");
+      expect(findOwned({ titulo: "BALAO", artistas: ["OROCHI"] }, i2)?.title).toBe("Balão");
+      expect(findOwned({ titulo: "Love", artistas: ["Kendrick Lamar"] }, i2)?.title).toBe("Love");
+    });
+    it("titleKey: créditos e Remastered saem, versão fica", () => {
+      expect(titleKey("Foo - Remastered 2011")).toBe(titleKey("Foo"));
+      expect(titleKey("Foo feat. Bar")).toBe(titleKey("Foo (Remastered)"));
+      expect(titleKey("Foo (Remix)")).not.toBe(titleKey("Foo"));
+      expect(titleKey("Stay (With You)")).not.toBe(titleKey("Stay"));
+      expect(titleKey("日本語")).toBe(""); // vazia nunca casa (igual ao baixador)
+      expect(findOwned({ titulo: "日本語", artistas: ["Orochi"] }, buildOwnedIndex([lib("日本語", "Orochi")]))).toBeNull();
+    });
+  });
 });
 
 describe("seleção padrão", () => {
   const tracks = [{ id: 1 }, { id: 2 }, { id: 3 }];
   it("desmarca o que está no acervo", () => {
     expect([...defaultSelection(tracks, (id) => id === 2)].sort()).toEqual([1, 3]);
+  });
+  it("nunca passa de 200: marca as 200 primeiras novas", () => {
+    const many = Array.from({ length: 350 }, (_, i) => ({ id: i + 1 }));
+    const sel = defaultSelection(many, (id) => id <= 10);
+    expect(sel.size).toBe(MAX_SELECTION);
+    expect(sel.has(10)).toBe(false);
+    expect(sel.has(11)).toBe(true);
+    expect(sel.has(210)).toBe(true);
+    expect(sel.has(211)).toBe(false);
   });
   it("ordem da lista no pedido", () => {
     expect(orderedSelection(tracks, new Set([3, 1]))).toEqual([1, 3]);
