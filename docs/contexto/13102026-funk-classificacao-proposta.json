@@ -1031,9 +1031,10 @@
  {
   "artist_dir": "Drae Da Skimask",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
+  "dest": "Rap & Trap Brasileiro",
   "confidence": "media",
-  "canonical_artist": "Drae Da Skimask"
+  "canonical_artist": "Drae Da Skimask",
+  "decisao": "14/10: rap BR vai para Rap & Trap Brasileiro (CMR-300)"
  },
  {
   "artist_dir": "Marina Sena",
@@ -1059,9 +1060,10 @@
  {
   "artist_dir": "VEIGH",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
+  "dest": "Rap & Trap Brasileiro",
   "confidence": "media",
-  "canonical_artist": "VEIGH"
+  "canonical_artist": "VEIGH",
+  "decisao": "14/10: rap BR vai para Rap & Trap Brasileiro (CMR-300)"
  },
  {
   "artist_dir": "ZAC",

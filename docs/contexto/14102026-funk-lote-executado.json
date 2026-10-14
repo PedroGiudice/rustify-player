@@ -1,0 +1,552 @@
+{
+ "executado_em": "2026-10-14 (app 0.2.91)",
+ "auditoria": "68/68 ok (move_audit.py)",
+ "chave": "caminho relativo SEM a pasta de 1º nível (o mover só troca a playlist)",
+ "ficaram_em_funk_brasileiro": "linhas de confiança baixa da proposta (40) e tudo que a proposta mantém",
+ "faixas": [
+  {
+   "rel": "Mc Jacaré/Eletrofunk Raiz [tidal]/04 Pinxadão.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Mc Jacaré",
+   "titulo": "Pinxadão",
+   "id_antigo": "7324900887614624683"
+  },
+  {
+   "rel": "DJ Guuga/MEGA ELETRO FUNK - Last Night [tidal]/01 MEGA ELETRO FUNK - Last Night.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "DJ Guuga",
+   "titulo": "MEGA ELETRO FUNK - Last Night",
+   "id_antigo": "9894796922689733602"
+  },
+  {
+   "rel": "MC Kevin o Chris/2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]/04 - Deixa Se Envolver (Spring Love) [LANNÉ Remix].flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Kevin o Chris",
+   "titulo": "Deixa Se Envolver (Spring Love) [LANNÉ Remix]",
+   "id_antigo": "1033327838165231928"
+  },
+  {
+   "rel": "MC Kevin o Chris/2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]/02 - Deixa Se Envolver (Spring Love) [Dj GBR Remix].flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Kevin o Chris",
+   "titulo": "Deixa Se Envolver (Spring Love) [Dj GBR Remix]",
+   "id_antigo": "4282922055275217727"
+  },
+  {
+   "rel": "MC Kevin o Chris/2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]/03 - Deixa Se Envolver (Spring Love) [DalePlay House Remix].flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Kevin o Chris",
+   "titulo": "Deixa Se Envolver (Spring Love) [DalePlay House Remix]",
+   "id_antigo": "6332930760248230227"
+  },
+  {
+   "rel": "MC Kevin o Chris/2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]/06 - Deixa Se Envolver (Spring Love) [NUZB & Reeva Remix].flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Kevin o Chris",
+   "titulo": "Deixa Se Envolver (Spring Love) [NUZB & Reeva Remix]",
+   "id_antigo": "11039153818293820081"
+  },
+  {
+   "rel": "MC Kevin o Chris/2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]/05 - Deixa Se Envolver (Spring Love) [LOCOS Remix].flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Kevin o Chris",
+   "titulo": "Deixa Se Envolver (Spring Love) [LOCOS Remix]",
+   "id_antigo": "12540887085213317610"
+  },
+  {
+   "rel": "MC Kevin o Chris/2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]/01 - Deixa Se Envolver (Spring Love) [Almanac Remix].flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Kevin o Chris",
+   "titulo": "Deixa Se Envolver (Spring Love) [Almanac Remix]",
+   "id_antigo": "14114102694763343826"
+  },
+  {
+   "rel": "Dubdogz/Could You Be Loved [tidal]/01 Could You Be Loved.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Dubdogz",
+   "titulo": "Could You Be Loved",
+   "id_antigo": "7297804457321022328"
+  },
+  {
+   "rel": "Vintage Culture/Promised Land [tidal]/04 Chemicals.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Vintage Culture",
+   "titulo": "Chemicals",
+   "id_antigo": "2716885682812209511"
+  },
+  {
+   "rel": "Vintage Culture/Promised Land [tidal]/05 Pleasure Chasers.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Vintage Culture",
+   "titulo": "Pleasure Chasers",
+   "id_antigo": "9950701151320660038"
+  },
+  {
+   "rel": "KVSH/Descobridor dos Sete Mares_ Remix [tidal]/01 Descobridor dos Sete Mares_ Remix.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "KVSH",
+   "titulo": "Descobridor dos Sete Mares: Remix",
+   "id_antigo": "2997559697023340112"
+  },
+  {
+   "rel": "Illusionize/Moogzera [tidal]/01 Moogzera.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Illusionize",
+   "titulo": "Moogzera",
+   "id_antigo": "8107656448253471809"
+  },
+  {
+   "rel": "Illusionize/Innina Tora [tidal]/01 Innina Tora.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Illusionize",
+   "titulo": "Innina Tora",
+   "id_antigo": "10436801319593179597"
+  },
+  {
+   "rel": "Illusionize/Illusionize's Universe [tidal]/10 Keep on Dancing.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Illusionize",
+   "titulo": "Keep on Dancing",
+   "id_antigo": "17616987329569059909"
+  },
+  {
+   "rel": "Illusionize/Oscillator (Jack Is Back) [tidal]/02 Oscillator.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Illusionize",
+   "titulo": "Oscillator",
+   "id_antigo": "18116454432688272619"
+  },
+  {
+   "rel": "Classmatic/Catuca [tidal]/01 Catuca.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Classmatic",
+   "titulo": "Catuca",
+   "id_antigo": "7623948527934675697"
+  },
+  {
+   "rel": "Alok, Mc Don Juan e DJ GBR/2020 - Liberdade (Quando o grave bate forte)/01 - Liberdade (Quando o grave bate forte).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Alok, Mc Don Juan e DJ GBR",
+   "titulo": "Liberdade (Quando o grave bate forte)",
+   "id_antigo": "1224611839145785948"
+  },
+  {
+   "rel": "MU540/4x4 [tidal]/01 DZ7.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MU540",
+   "titulo": "DZ7",
+   "id_antigo": "2358997429059414665"
+  },
+  {
+   "rel": "MU540/4x4 [tidal]/06 Pompoarismo.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MU540",
+   "titulo": "Pompoarismo",
+   "id_antigo": "12756266044245048178"
+  },
+  {
+   "rel": "Kioma, Buarky, kLap e Mu540/Funk Rave EP/01 Igrejinha.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Kioma, Buarky, kLap e Mu540",
+   "titulo": "Igrejinha",
+   "id_antigo": "879191846491101710"
+  },
+  {
+   "rel": "Kioma, Buarky, kLap e Mu540/Funk Rave EP/04 Prime.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Kioma, Buarky, kLap e Mu540",
+   "titulo": "Prime",
+   "id_antigo": "10129258184304627126"
+  },
+  {
+   "rel": "Kioma, Buarky, kLap e Mu540/Funk Rave EP/03 Toma de Graça.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Kioma, Buarky, kLap e Mu540",
+   "titulo": "Toma de Graça",
+   "id_antigo": "10975711779485503750"
+  },
+  {
+   "rel": "Kioma, Buarky, kLap e Mu540/Funk Rave EP/02 Aquecida.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Kioma, Buarky, kLap e Mu540",
+   "titulo": "Aquecida",
+   "id_antigo": "14478127763640556172"
+  },
+  {
+   "rel": "FatSync/Doin Nottin [tidal]/01 Doin Nottin.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "FatSync",
+   "titulo": "Doin Nottin",
+   "id_antigo": "1817478050314458968"
+  },
+  {
+   "rel": "FatSync/F.U.M [tidal]/01 F.U.M.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "FatSync",
+   "titulo": "F.U.M",
+   "id_antigo": "7303648088504084710"
+  },
+  {
+   "rel": "FatSync/Bed Stuy (Radio Edit) [tidal]/01 Bed Stuy (Radio Edit).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "FatSync",
+   "titulo": "Bed Stuy (Radio Edit)",
+   "id_antigo": "12381939200448391794"
+  },
+  {
+   "rel": "HUGEL/Bololo [tidal]/01 Bololo.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "HUGEL",
+   "titulo": "Bololo",
+   "id_antigo": "13311436735961766244"
+  },
+  {
+   "rel": "Andruss/Toma Que Toma [tidal]/01 Toma Que Toma.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Andruss",
+   "titulo": "Toma Que Toma",
+   "id_antigo": "10316281586767058447"
+  },
+  {
+   "rel": "ATANA/A Caipora (Vaitimbora) [tidal]/01 A Caipora (Vaitimbora).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "ATANA",
+   "titulo": "A Caipora (Vaitimbora)",
+   "id_antigo": "11713015325942239192"
+  },
+  {
+   "rel": "Bellaire/Brasil [tidal]/01 Brasil.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Bellaire",
+   "titulo": "Brasil",
+   "id_antigo": "15490741872300788547"
+  },
+  {
+   "rel": "Beltran/Origins EP [tidal]/03 Tira A Roupa.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Beltran",
+   "titulo": "Tira A Roupa",
+   "id_antigo": "3633114505008593263"
+  },
+  {
+   "rel": "Beltran/TOOLS 4 HARDWORKERS 001 [tidal]/01 Firewhip (Viralata Mix).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Beltran",
+   "titulo": "Firewhip (Viralata Mix)",
+   "id_antigo": "10048697878127813437"
+  },
+  {
+   "rel": "Meloko/Azzur Brazil Sampler #1 [tidal]/01 Dia De Sol.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Meloko",
+   "titulo": "Dia De Sol",
+   "id_antigo": "3725759908478975932"
+  },
+  {
+   "rel": "CHAMOS/Ravezinha [tidal]/01 Ravezinha.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "CHAMOS",
+   "titulo": "Ravezinha",
+   "id_antigo": "3882704573453812801"
+  },
+  {
+   "rel": "MC Th/Vou Encher de Leite e Vou Mandar Pros Alemão (Eletrofunk) [tidal]/01 Vou Encher de Leite e Vou Mandar Pros Alemão (Eletrofunk).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "MC Th",
+   "titulo": "Vou Encher de Leite e Vou Mandar Pros Alemão (Eletrofunk)",
+   "id_antigo": "10326237363351229215"
+  },
+  {
+   "rel": "PinkPantheress/2025 - Fancy Some More?/17 - Stars (DJ Caio Prince & Adame DJ remix).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "PinkPantheress",
+   "titulo": "Stars (DJ Caio Prince & Adame DJ remix)",
+   "id_antigo": "856682409661516561"
+  },
+  {
+   "rel": "PinkPantheress/2025 - Fancy Some More?/05 - Stars + DJ Caio Prince + Adame DJ.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "PinkPantheress",
+   "titulo": "Stars + DJ Caio Prince + Adame DJ",
+   "id_antigo": "1068926968218161561"
+  },
+  {
+   "rel": "PinkPantheress + DJ Caio Prince + Adame DJ/2025 - Fancy Some More?/05 - Stars.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "PinkPantheress",
+   "titulo": "Stars",
+   "id_antigo": "9894301240678755308"
+  },
+  {
+   "rel": "Gordo/NO HAY VERANO SIN GORDO [tidal]/03 Mexe Mexe (feat. Mc Gw).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrofunk",
+   "artista": "Gordo",
+   "titulo": "Mexe Mexe (feat. Mc Gw)",
+   "id_antigo": "14309320825937068356"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/01 ESTA NO AR A RADIO LIBERTADORA.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "ESTA NO AR A RADIO LIBERTADORA",
+   "id_antigo": "702144940405576541"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/04 PSY VEM FAZER NENEM.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "PSY VEM FAZER NENEM",
+   "id_antigo": "926486136066207806"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/10 ELA PEGA O BRINQUEDO NA MÃO.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "ELA PEGA O BRINQUEDO NA MÃO",
+   "id_antigo": "2240812552856323748"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/08 BEAT SUGA ALMA.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "BEAT SUGA ALMA",
+   "id_antigo": "3033025504754276826"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/03 SEQUENCIA DE BEAT ENTORTA NOIA.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "SEQUENCIA DE BEAT ENTORTA NOIA",
+   "id_antigo": "6071060177628130822"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/07 TROCA TIRO E FAZ DINHEIRO.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "TROCA TIRO E FAZ DINHEIRO",
+   "id_antigo": "7098781052324213502"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/12 TECHNO DE FAVELADO.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "TECHNO DE FAVELADO",
+   "id_antigo": "10455540248126182413"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/11 SOBREVIVE CONTRA O ESTADO.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "SOBREVIVE CONTRA O ESTADO",
+   "id_antigo": "14018413058966259169"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/05 SUA FILHA QUER OS D.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "SUA FILHA QUER OS D",
+   "id_antigo": "14444237576650390908"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/02 MEGA SUICIDIO AUDITIVO.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "MEGA SUICIDIO AUDITIVO",
+   "id_antigo": "15229905560662778507"
+  },
+  {
+   "rel": "[2025] Radio libertadora!/06 ALI PERTO DA IMIGRANTES.flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "DJ K",
+   "titulo": "ALI PERTO DA IMIGRANTES",
+   "id_antigo": "17640338879307809826"
+  },
+  {
+   "rel": "CyberKills/Mandelão da Toranja 160BPM (FKA twigs remix)/01 Mandelão da Toranja 160BPM (FKA twigs remix).flac",
+   "de": "Funk Brasileiro",
+   "para": "Techfunk",
+   "artista": "CyberKills",
+   "titulo": "Mandelão da Toranja 160BPM (FKA twigs remix)",
+   "id_antigo": "14303052230271381607"
+  },
+  {
+   "rel": "DJ Petroski/Mega Gypsy [tidal]/01 Mega Gypsy.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Petroski",
+   "titulo": "Mega Gypsy",
+   "id_antigo": "76524270784776500"
+  },
+  {
+   "rel": "DJ Petroski/MEGA FUNK SHOW ME LOVE [tidal]/01 MEGA FUNK SHOW ME LOVE.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Petroski",
+   "titulo": "MEGA FUNK SHOW ME LOVE",
+   "id_antigo": "8185371267683587451"
+  },
+  {
+   "rel": "DJ Petroski/MEGA FUNK MINMAL [tidal]/01 MEGA FUNK MINMAL.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Petroski",
+   "titulo": "MEGA FUNK MINMAL",
+   "id_antigo": "10584781675663556812"
+  },
+  {
+   "rel": "DJ Petroski/Mega Brazilian House [tidal]/01 Mega Brazilian House.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Petroski",
+   "titulo": "Mega Brazilian House",
+   "id_antigo": "12699956748669561281"
+  },
+  {
+   "rel": "DJ Petroski/MEGA FUNK TOXIC [tidal]/01 MEGA FUNK TOXIC.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Petroski",
+   "titulo": "MEGA FUNK TOXIC",
+   "id_antigo": "14675212698697891865"
+  },
+  {
+   "rel": "TAIDigital/MEGA FUNK UNDERGROUND [tidal]/01 MEGA FUNK UNDERGROUND.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "TAIDigital",
+   "titulo": "MEGA FUNK UNDERGROUND",
+   "id_antigo": "2837459901705032388"
+  },
+  {
+   "rel": "DJ Fernando Souza/Mega Funk Menó Neurose, Se Prepara 3/01 Mega Funk Menó Neurose, Se Prepara 3.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Fernando Souza",
+   "titulo": "Mega Funk Menó Neurose, Se Prepara 3",
+   "id_antigo": "11129281653631523174"
+  },
+  {
+   "rel": "DJ Luan Mark/2020 - Mega Funk del Rey/Mega Funk del Rey.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Luan Mark",
+   "titulo": "Mega Funk del Rey",
+   "id_antigo": "3368139461749027412"
+  },
+  {
+   "rel": "DJ Maninho/Mega Funk Lost [tidal]/01 Mega Funk Lost.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DJ Maninho",
+   "titulo": "Mega Funk Lost",
+   "id_antigo": "8847870691400105911"
+  },
+  {
+   "rel": "Dennis & Friends (2020)/DENNIS - Dennis & Friends - 09 - Mega Funk Esse é Seu Momento.flac",
+   "de": "Funk Brasileiro",
+   "para": "Mega Funk",
+   "artista": "DENNIS",
+   "titulo": "Mega Funk Esse é Seu Momento",
+   "id_antigo": "14302873089697515964"
+  },
+  {
+   "rel": "Quarterhead/You Will See [tidal]/01 You Will See.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrônica",
+   "artista": "Quarterhead",
+   "titulo": "You Will See",
+   "id_antigo": "14115808705446182641"
+  },
+  {
+   "rel": "OVEOUS/Queimar Dos [tidal]/01 Queimar Dos (Original Mix).flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrônica",
+   "artista": "OVEOUS",
+   "titulo": "Queimar Dos (Original Mix)",
+   "id_antigo": "9497031402514092326"
+  },
+  {
+   "rel": "Demm Deep/Tracks of the Blue Sky [tidal]/02 Brazilian Sky.flac",
+   "de": "Funk Brasileiro",
+   "para": "Eletrônica",
+   "artista": "Demm Deep",
+   "titulo": "Brazilian Sky",
+   "id_antigo": "12813694221936659711"
+  },
+  {
+   "rel": "Drae Da Skimask/2017 - Gucci Vai Para Baile/08 - Famoso Xota.flac",
+   "de": "Funk Brasileiro",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Drae Da Skimask",
+   "titulo": "Famoso Xota",
+   "id_antigo": "4521185486192873696"
+  },
+  {
+   "rel": "VEIGH/Nois é Nois [tidal]/01 Nois é Nois.flac",
+   "de": "Funk Brasileiro",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "VEIGH",
+   "titulo": "Nois é Nois",
+   "id_antigo": "410042635275436319"
+  },
+  {
+   "rel": "Marina Sena/Coisas Naturais [tidal]/12 CARNAVAL.flac",
+   "de": "Funk Brasileiro",
+   "para": "MPB",
+   "artista": "Marina Sena",
+   "titulo": "CARNAVAL",
+   "id_antigo": "8985085751192958371"
+  }
+ ]
+}
