@@ -160,8 +160,11 @@ def count_plays(ids: set[int], base: str = QDRANT) -> dict[int, int]:
         r = qcall("/collections/play_events/points/scroll", body, base)
         for p in r["points"]:
             t = (p.get("payload") or {}).get("track_id")
-            if t is not None and int(t) in counts:
-                counts[int(t)] += 1
+            # Só track_id inteiro, como o mover. Os 11 eventos legados com track_id em texto
+            # (search_click/queue_add de versões antigas, sem device_id) não são plays e o mover não os
+            # reaponta; contá-los gerava falso "plays ainda no id antigo" (lote do rap, 14/10).
+            if isinstance(t, int) and t in counts:
+                counts[t] += 1
         off = r.get("next_page_offset")
         if off is None:
             return counts
