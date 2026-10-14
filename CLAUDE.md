@@ -601,6 +601,21 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   removidas em 13/10). Gotcha pago: `pgrep -f` num laço de
   fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
   `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
+- **Fila: como subir e o que ela expõe (desde 0.2.91, 14/10)**. A fila importa o tidalapi para a
+  busca: subir SEMPRE com `uv run --with tidalapi --with mutagen python3
+  /home/opc/rustify-player/scripts/curator/tidal_fila.py 2>&1 | tee -a ~/tidal-out/logs/tidal_fila.log`
+  dentro do tmux `telemetria` (sessão com zsh; Ctrl+C e rodar de novo no mesmo pane). Com
+  `python3` puro a fila sobe, mas a busca responde 503. Rotas sob `/<token>/api/`: `fila`
+  (GET; POST `{url, playlist}` ou `{faixas, titulo, origem, playlist}`, máx. 200 ids),
+  `fila/<id>/reenviar` (POST, refaz uma seleção parcial/falha), `busca?q=`, `artista/<id>`,
+  `previa?ref=` (link ou `mix:`/`playlist:`/`album:`/`faixa:`/`radio-faixa:`). Cache de 5 min;
+  rede da Tidal com timeout 5 s (conexão) / 7 s (leitura) e lock com espera máx. de 7 s (503
+  "Tidal ocupada"); Tidal sem resposta = 502, login recusado = 503 "sessão expirada". Instância
+  de teste: `--port 8471 --bind 127.0.0.1 --out <dir>` (nunca mexer na 8470 para testar).
+  O baixador tem o modo seleção `--ids=1,2 --titulo= --origem=` (COMMENT `selecao <origem>`).
+  **"Já no acervo" tem DUAS cópias que precisam ficar iguais**: `title_key` em
+  `tidal_mix_dl.py` e `titleKey` em `src/lib/tidalSearch.ts` (créditos/feat/remaster saem;
+  remix, ao vivo, acústico, versão, edit, instrumental distinguem). Mudar uma = mudar a outra.
 - **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em
   batch, e conferir que o share do slskd NÃO cresceu).
 
@@ -761,6 +776,20 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   poll de 10 s enquanto a view está montada. Helpers puros em `src/lib/tidalFila.ts`.
   Se a VM cair, a aba diz "fila indisponível"; a cmr-auto nunca baixa sozinha. Fase 3
   (CMR-295) troca o motor por download nativo sem mudar a tela.
+- **Busca por texto na aba Tidal (v0.2.91, spec
+  `docs/superpowers/specs/2026-10-14-crate-tidal-busca-design.md`)**: o mesmo campo aceita link
+  (fluxo antigo) ou texto (busca 500 ms após a última tecla; resposta atrasada descartada).
+  Resultados Faixas/Álbuns/Artistas/Playlists com "Hi-Res" e "no acervo"; página de artista
+  (populares, álbuns, EPs e singles, rádio do artista); prévia de playlist/rádio/álbum com caixa
+  por faixa (o que está no acervo vem desmarcado; teto de 200 por pedido na tela, no Rust e na
+  fila) e rodapé com tamanho/tempo estimados. Tela em `src/views/crate/TidalTab.tsx` (o
+  `Crate.tsx` já tinha 2.377 linhas), helpers em `src/lib/tidalSearch.ts`, `dedupMatch` em
+  `src/lib/dedup.ts`. Commands: `crate_tidal_search/artist/preview/cover/resend` e
+  `crate_tidal_enqueue` com `track_ids`/`title`/`origin`. Capa da Tidal só via Rust
+  (`crate_tidal_cover`, prefixo `https://resources.tidal.com/images/`, `data:` URL): o CSP NÃO
+  ganha host da Tidal. A aba fica MONTADA e oculta ao trocar de aba do Crate (preserva busca,
+  prévia e página de artista): não voltar a desmontá-la com `<Show>`. Ordem de release: a fila
+  da VM sobe antes do .deb (é retrocompatível com o app antigo).
 - **v1.1 pendente**: handoff visual do claude design (usuario itera a tela);
   popovers fechando em clique fora; Fase 2 = album inteiro e Bandcamp por link
   (spec §6: NYP/free por `bcdl-free`, pago abre a página e espera a compra).
@@ -818,6 +847,26 @@ da faixa, botão no cabeçalho de Álbum e Artista).
   playlist de origem fica mesmo vazia (só artista/álbum vazios saem).
 - Teste de integração contra Qdrant real (o da VM, nunca o da cmr-auto):
   `cargo test -p library-indexer --test relocate_qdrant -- --ignored`.
+- Auditoria externa (independente do código do app): `scripts/curator/move_audit.py snapshot
+  --ids ...|--plan <plano> --out snap.json` ANTES de mover e `verify --snap snap.json [--dest X]`
+  DEPOIS (ponto novo por path exato, vetores, enrichment, plays, `.lrc` e FLAC no disco por um
+  ssh só; exit != 0 se algo falhou). Lotes de separação por gênero: `funk_split_plan.py --src
+  <playlist>` gera `{dest: [ids]}` a partir de uma proposta (linhas `file` > `album_dir` >
+  `artist_dir`; destino = origem fica). Propostas: funk (CMR-299, `13102026-funk-*`) e rap
+  brasileiro por idioma da letra + país no MusicBrainz, decidido por ARTISTA (CMR-300,
+  `14102026-rap-br-*`, `rap_br_classify.py`).
+- **Seleção múltipla (v0.2.91)**: nas listas de `TrackRowTable`/`TrackRowList` que recebem
+  `contextList` (Álbum, Playlist, Tracks, Recently played, Histórico; Queue/QueueDrawer não).
+  Ctrl/Cmd+clique alterna, Shift+clique soma intervalo, Ctrl+A, Esc, Shift+Espaço na linha
+  (teclado); clique simples continua tocando. Lógica pura em `lib/selection.ts` (ids SEMPRE
+  string), estado em `store/selection.ts`: cada linha reivindica a lista (`claimList`, contagem
+  por lista) e a seleção zera quando a última linha da lista em foco desmonta, na troca de aba
+  da Library e na troca de rota. `SelectionBar` (App) com Mover / Tocar a seguir / Adicionar à
+  fila; o menu de contexto sobre linha selecionada age na seleção. O diálogo de mover tira da
+  seleção só o que foi movido ou já estava no destino. Toda mudança de fila
+  (`enqueueNext/End[Many]`) passa por `mutateQueueRealign` (realinha o preload gapless) e a
+  faixa que está tocando não volta para a fila. Dívida: faixa inserida à mão numa fila de
+  rádio é logada como `autoplay` (CMR-301).
 
 ## Android (v0 — tocar + registrar, 2026-08-13)
 
