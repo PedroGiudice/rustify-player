@@ -1,0 +1,2548 @@
+[
+ {
+  "artist_dir": "DJ Anderson do Paraiso",
+  "album_dir": null,
+  "canonical_artist": "DJ Anderson do Paraíso",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.51,
+  "n_tracks": 8,
+  "split": {
+   "Rap & Hip-Hop": 6,
+   "Funk Brasileiro": 1,
+   "MPB": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Anderson do Paraíso",
+  "album_dir": null,
+  "canonical_artist": "DJ Anderson do Paraíso",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.296,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Dj Gbr",
+  "album_dir": null,
+  "canonical_artist": "DJ GBR",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.266,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj GBR",
+  "album_dir": null,
+  "canonical_artist": "DJ GBR",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.749,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ GBR",
+  "album_dir": null,
+  "canonical_artist": "DJ GBR",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.138,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Mc Jacare",
+  "album_dir": null,
+  "canonical_artist": "Mc Jacaré",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.58,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Mc Jacaré",
+  "album_dir": "Eletrofunk Raiz [tidal]",
+  "canonical_artist": "Mc Jacaré",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.423,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Mc Jacaré",
+  "album_dir": null,
+  "canonical_artist": "Mc Jacaré",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.025,
+  "n_tracks": 4,
+  "split": {
+   "Rap & Hip-Hop": 2,
+   "Eletrônica": 1,
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Arana",
+  "album_dir": null,
+  "canonical_artist": "DJ Arana",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.092,
+  "n_tracks": 27,
+  "split": {
+   "Rap & Hip-Hop": 13,
+   "Funk Brasileiro": 12,
+   "Eletrônica": 2
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Arana, Mc Larissa, Mc Lekão - Famoso Machuca Xota (2023)",
+  "album_dir": null,
+  "canonical_artist": "DJ Arana",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.731,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ K",
+  "album_dir": null,
+  "canonical_artist": "DJ K",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.014,
+  "n_tracks": 15,
+  "split": {
+   "Funk Brasileiro": 9,
+   "Rap & Hip-Hop": 5,
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Blakes",
+  "album_dir": null,
+  "canonical_artist": "DJ Blakes",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.448,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ LA Beat & DJ K9",
+  "album_dir": null,
+  "canonical_artist": "DJ LA Beat & DJ K9",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.119,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "GP DA ZL",
+  "album_dir": null,
+  "canonical_artist": "GP DA ZL",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.008,
+  "n_tracks": 2,
+  "split": {
+   "Funk Brasileiro": 1,
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Jhow Dancer",
+  "album_dir": null,
+  "canonical_artist": "Jhow Dancer",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "MAC10TA",
+  "album_dir": null,
+  "canonical_artist": "MAC10TA",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.177,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "OO Rubinho",
+  "album_dir": null,
+  "canonical_artist": "OO Rubinho",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.187,
+  "n_tracks": 20,
+  "split": {
+   "Rap & Hip-Hop": 12,
+   "Eletrônica": 5,
+   "Funk Brasileiro": 3
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Tropa do Bruxo",
+  "album_dir": null,
+  "canonical_artist": "Tropa do Bruxo",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.155,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Anderson do Paraiso",
+  "album_dir": "Última Bruxaria do Ano",
+  "canonical_artist": "DJ Anderson do Paraíso",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.019,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "[2025] Radio libertadora!",
+  "album_dir": null,
+  "canonical_artist": "Vários (coletânea bruxaria/automotivo)",
+  "proposta_dest": "Techfunk",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.099,
+  "n_tracks": 11,
+  "split": {
+   "Rap & Hip-Hop": 4,
+   "Funk Brasileiro": 4,
+   "Eletrônica": 3
+  },
+  "papel": "ancora_provisoria"
+ },
+ {
+  "artist_dir": "MC Saci",
+  "album_dir": null,
+  "canonical_artist": "MC Saci",
+  "proposta_dest": "Techfunk",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.081,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "petrus.wav",
+  "album_dir": null,
+  "canonical_artist": "petrus.wav",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.182,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Flux Zone",
+  "album_dir": null,
+  "canonical_artist": "Flux Zone",
+  "proposta_dest": "Techfunk",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.285,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Astrophysics",
+  "album_dir": null,
+  "canonical_artist": "Astrophysics",
+  "proposta_dest": "Techfunk",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.146,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Petroski",
+  "album_dir": null,
+  "canonical_artist": "DJ Petroski",
+  "proposta_dest": "Mega Funk",
+  "proposta_confidence": "alta",
+  "dest": "Mega Funk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.089,
+  "n_tracks": 5,
+  "split": {
+   "Rap & Hip-Hop": 2,
+   "Funk Brasileiro": 2,
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "TAIDigital",
+  "album_dir": null,
+  "canonical_artist": "TAIDigital",
+  "proposta_dest": "Mega Funk",
+  "proposta_confidence": "alta",
+  "dest": "Mega Funk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.189,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Fernando Souza",
+  "album_dir": null,
+  "canonical_artist": "DJ Fernando Souza",
+  "proposta_dest": "Mega Funk",
+  "proposta_confidence": "alta",
+  "dest": "Mega Funk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.147,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Luan Mark",
+  "album_dir": null,
+  "canonical_artist": "DJ Luan Mark",
+  "proposta_dest": "Mega Funk",
+  "proposta_confidence": "alta",
+  "dest": "Mega Funk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.688,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Maninho",
+  "album_dir": null,
+  "canonical_artist": "DJ Maninho",
+  "proposta_dest": "Mega Funk",
+  "proposta_confidence": "alta",
+  "dest": "Mega Funk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.555,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Dennis & Friends (2020)",
+  "album_dir": null,
+  "canonical_artist": "DENNIS",
+  "proposta_dest": "Mega Funk",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.599,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ CARLOZS ((NORMAL))",
+  "album_dir": null,
+  "canonical_artist": "DJ CARLOZS",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.136,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dubdogz",
+  "album_dir": null,
+  "canonical_artist": "Dubdogz",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.017,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Vintage Culture",
+  "album_dir": null,
+  "canonical_artist": "Vintage Culture",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.274,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "KVSH",
+  "album_dir": null,
+  "canonical_artist": "KVSH",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.01,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Illusionize",
+  "album_dir": null,
+  "canonical_artist": "Illusionize",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.626,
+  "n_tracks": 4,
+  "split": {
+   "Eletrônica": 4
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Classmatic",
+  "album_dir": null,
+  "canonical_artist": "Classmatic",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.436,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Alok, Mc Don Juan e DJ GBR",
+  "album_dir": null,
+  "canonical_artist": "Alok, Mc Don Juan e DJ GBR",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.731,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "MU540",
+  "album_dir": null,
+  "canonical_artist": "MU540",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.628,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Kioma, Buarky, kLap e Mu540",
+  "album_dir": null,
+  "canonical_artist": "Kioma, Buarky, kLap e Mu540",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.042,
+  "n_tracks": 4,
+  "split": {
+   "Rap & Hip-Hop": 2,
+   "Eletrônica": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "FatSync",
+  "album_dir": null,
+  "canonical_artist": "FatSync",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.815,
+  "n_tracks": 3,
+  "split": {
+   "Eletrônica": 3
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "HUGEL",
+  "album_dir": null,
+  "canonical_artist": "HUGEL",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.159,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Quarterhead",
+  "album_dir": null,
+  "canonical_artist": "Quarterhead",
+  "proposta_dest": "Eletrônica",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "OVEOUS",
+  "album_dir": null,
+  "canonical_artist": "OVEOUS",
+  "proposta_dest": "Eletrônica",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.115,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Andruss",
+  "album_dir": null,
+  "canonical_artist": "Andruss",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Mega Funk",
+  "confidence": "baixa",
+  "mert_dest": "Mega Funk",
+  "margin": 0.251,
+  "n_tracks": 1,
+  "split": {
+   "Mega Funk": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "ATANA",
+  "album_dir": null,
+  "canonical_artist": "ATANA",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.745,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Bellaire",
+  "album_dir": null,
+  "canonical_artist": "Bellaire",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.109,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Beltran",
+  "album_dir": null,
+  "canonical_artist": "Beltran (BR)",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.501,
+  "n_tracks": 2,
+  "split": {
+   "Eletrônica": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "CyberKills",
+  "album_dir": null,
+  "canonical_artist": "CyberKills",
+  "proposta_dest": "Techfunk",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.0,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora_provisoria"
+ },
+ {
+  "artist_dir": "Meloko",
+  "album_dir": null,
+  "canonical_artist": "Meloko",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.725,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Demm Deep",
+  "album_dir": null,
+  "canonical_artist": "Demm Deep",
+  "proposta_dest": "Eletrônica",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.756,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "ENNE (BR)",
+  "album_dir": null,
+  "canonical_artist": "ENNE (BR)",
+  "proposta_dest": "Eletrônica",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.578,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "AKALEX",
+  "album_dir": null,
+  "canonical_artist": "AKALEX",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.67,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Bronka",
+  "album_dir": "Electric Baile [tidal]",
+  "canonical_artist": "Bronka",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.717,
+  "n_tracks": 2,
+  "split": {
+   "Eletrônica": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Bronka",
+  "album_dir": "BRONKA SUCKS [tidal]",
+  "canonical_artist": "Bronka",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.395,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "CHAMOS",
+  "album_dir": null,
+  "canonical_artist": "CHAMOS",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.312,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Freenzy Music",
+  "album_dir": null,
+  "canonical_artist": "Freenzy Music",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.547,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Giu",
+  "album_dir": null,
+  "canonical_artist": "Giu",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.685,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC Th",
+  "album_dir": null,
+  "canonical_artist": "MC Th",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.055,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Guuga",
+  "album_dir": "MEGA ELETRO FUNK - Last Night [tidal]",
+  "canonical_artist": "DJ Guuga",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.423,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Guuga",
+  "album_dir": null,
+  "canonical_artist": "DJ Guuga",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.213,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 1,
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC Kevin o Chris",
+  "album_dir": "2022 - Deixa Se Envolver (Spring Love) [Remixes Pt. 1]",
+  "canonical_artist": "MC Kevin o Chris",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "alta",
+  "dest": "Eletrofunk",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.088,
+  "n_tracks": 6,
+  "split": {
+   "Rap & Hip-Hop": 3,
+   "Eletrônica": 3
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "MC Kevin o Chris",
+  "album_dir": null,
+  "canonical_artist": "MC Kevin o Chris",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.483,
+  "n_tracks": 3,
+  "split": {
+   "Rap & Hip-Hop": 2,
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "PinkPantheress",
+  "album_dir": null,
+  "canonical_artist": "PinkPantheress",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.726,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "PinkPantheress + DJ Caio Prince + Adame DJ",
+  "album_dir": null,
+  "canonical_artist": "PinkPantheress",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.724,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Gal Costa",
+  "album_dir": null,
+  "canonical_artist": "Gal Costa",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrofunk",
+  "confidence": "baixa",
+  "mert_dest": null,
+  "margin": null,
+  "n_tracks": 0,
+  "split": {},
+  "papel": "sem_faixas"
+ },
+ {
+  "artist_dir": "Adame DJ",
+  "album_dir": null,
+  "canonical_artist": "Adame DJ",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.462,
+  "n_tracks": 10,
+  "split": {
+   "Funk Brasileiro": 8,
+   "Eletrônica": 1,
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "BadSista",
+  "album_dir": null,
+  "canonical_artist": "BadSista",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.056,
+  "n_tracks": 6,
+  "split": {
+   "Rap & Hip-Hop": 3,
+   "Funk Brasileiro": 2,
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "D.A.N.V, DJ Kingdom, VKKramer",
+  "album_dir": null,
+  "canonical_artist": "D.A.N.V, DJ Kingdom, VKKramer",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.057,
+  "n_tracks": 12,
+  "split": {
+   "Rap & Hip-Hop": 5,
+   "Eletrônica": 4,
+   "Funk Brasileiro": 3
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Dave Nunes",
+  "album_dir": null,
+  "canonical_artist": "Dave Nunes",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.249,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DENNIS",
+  "album_dir": null,
+  "canonical_artist": "DENNIS",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.093,
+  "n_tracks": 3,
+  "split": {
+   "Funk Brasileiro": 1,
+   "Eletrônica": 1,
+   "MPB": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Dj Aguilar",
+  "album_dir": null,
+  "canonical_artist": "Dj Aguilar",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.28,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ CZ",
+  "album_dir": null,
+  "canonical_artist": "DJ CZ",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Douglinhas",
+  "album_dir": null,
+  "canonical_artist": "DJ Douglinhas",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.433,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj Duarte",
+  "album_dir": null,
+  "canonical_artist": "Dj Duarte",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.266,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ GB FAIXA PRETA",
+  "album_dir": null,
+  "canonical_artist": "DJ GB FAIXA PRETA",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.168,
+  "n_tracks": 9,
+  "split": {
+   "Funk Brasileiro": 5,
+   "Rap & Hip-Hop": 3,
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Gui Marques",
+  "album_dir": null,
+  "canonical_artist": "DJ Gui Marques",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.05,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ LK DE ITAPE",
+  "album_dir": null,
+  "canonical_artist": "DJ LK DE ITAPE",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.107,
+  "n_tracks": 7,
+  "split": {
+   "Funk Brasileiro": 4,
+   "Rap & Hip-Hop": 2,
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Duquesa",
+  "album_dir": null,
+  "canonical_artist": "Duquesa",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.593,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj Caio Vieira",
+  "album_dir": null,
+  "canonical_artist": "Dj Caio Vieira",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.12,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "FBC",
+  "album_dir": null,
+  "canonical_artist": "FBC",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.092,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 1,
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Pedro Sampaio",
+  "album_dir": null,
+  "canonical_artist": "Pedro Sampaio",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.003,
+  "n_tracks": 6,
+  "split": {
+   "Eletrônica": 3,
+   "Rap & Hip-Hop": 2,
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Holanda",
+  "album_dir": null,
+  "canonical_artist": "DJ Holanda",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.268,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Jeeh FDC",
+  "album_dir": null,
+  "canonical_artist": "DJ Jeeh FDC",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.017,
+  "n_tracks": 10,
+  "split": {
+   "Rap & Hip-Hop": 6,
+   "Funk Brasileiro": 4
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Johnny Souza",
+  "album_dir": null,
+  "canonical_artist": "DJ Johnny Souza",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.104,
+  "n_tracks": 5,
+  "split": {
+   "Funk Brasileiro": 3,
+   "Eletrônica": 1,
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ JZ",
+  "album_dir": null,
+  "canonical_artist": "DJ JZ",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.116,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj Luan Gomes",
+  "album_dir": null,
+  "canonical_artist": "Dj Luan Gomes",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.474,
+  "n_tracks": 3,
+  "split": {
+   "Rap & Hip-Hop": 3
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Léo da 17",
+  "album_dir": null,
+  "canonical_artist": "DJ Léo da 17",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.752,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ NATAN 22",
+  "album_dir": null,
+  "canonical_artist": "DJ NATAN 22",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.3,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj Nattan",
+  "album_dir": null,
+  "canonical_artist": "Dj Nattan",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.751,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ NK3",
+  "album_dir": null,
+  "canonical_artist": "DJ NK3",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.211,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj Olliver",
+  "album_dir": null,
+  "canonical_artist": "Dj Olliver",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.574,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "dj paran0ia",
+  "album_dir": null,
+  "canonical_artist": "dj paran0ia",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.02,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Patrick Muniz",
+  "album_dir": null,
+  "canonical_artist": "DJ Patrick Muniz",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.264,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Ramon Sucesso",
+  "album_dir": null,
+  "canonical_artist": "DJ Ramon Sucesso",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.687,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ RD do Martins",
+  "album_dir": null,
+  "canonical_artist": "DJ RD do Martins",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.571,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "DJ Rogerinho do Querô",
+  "album_dir": null,
+  "canonical_artist": "DJ Rogerinho do Querô",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.57,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Ryder",
+  "album_dir": null,
+  "canonical_artist": "DJ Ryder",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.433,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ SV",
+  "album_dir": null,
+  "canonical_artist": "DJ SV",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.439,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dj THG",
+  "album_dir": null,
+  "canonical_artist": "Dj THG",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.304,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Topo",
+  "album_dir": null,
+  "canonical_artist": "DJ Topo",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.458,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ WIN",
+  "album_dir": null,
+  "canonical_artist": "DJ WIN",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.45,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Ws da Igrejinha",
+  "album_dir": null,
+  "canonical_artist": "DJ Ws da Igrejinha",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.586,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Zigão",
+  "album_dir": null,
+  "canonical_artist": "DJ Zigão",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.139,
+  "n_tracks": 4,
+  "split": {
+   "Rap & Hip-Hop": 3,
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Don Low",
+  "album_dir": null,
+  "canonical_artist": "Don Low",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.428,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Dyamante DJ",
+  "album_dir": null,
+  "canonical_artist": "DJ Dyamante",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.352,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Eddy M",
+  "album_dir": null,
+  "canonical_artist": "Eddy M",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Felipe Amorim",
+  "album_dir": null,
+  "canonical_artist": "Felipe Amorim",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.248,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Fezzo",
+  "album_dir": null,
+  "canonical_artist": "Fezzo",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.429,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Furacão 2000",
+  "album_dir": null,
+  "canonical_artist": "Furacão 2000",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Eletrônica",
+  "margin": 0.168,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "ilysam",
+  "album_dir": null,
+  "canonical_artist": "ilysam",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "JAUM, O GANG$TAR",
+  "album_dir": null,
+  "canonical_artist": "JAUM, O GANG$TAR",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "JC no beat",
+  "album_dir": null,
+  "canonical_artist": "JC no beat",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.05,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Jeninho",
+  "album_dir": null,
+  "canonical_artist": "Jeninho",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.126,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Kyan",
+  "album_dir": null,
+  "canonical_artist": "Kyan",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.273,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "L7NNON",
+  "album_dir": null,
+  "canonical_artist": "L7NNON",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.249,
+  "n_tracks": 2,
+  "split": {
+   "Rap & Hip-Hop": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Ladji Mouflet",
+  "album_dir": null,
+  "canonical_artist": "Ladji Mouflet",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.3,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Lou Garcia",
+  "album_dir": null,
+  "canonical_artist": "Lou Garcia",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.042,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC Don Juan",
+  "album_dir": null,
+  "canonical_artist": "MC Don Juan",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "MC Fioti",
+  "album_dir": null,
+  "canonical_artist": "MC Fioti",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.733,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Mc Gabzin",
+  "album_dir": null,
+  "canonical_artist": "Mc Gabzin",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.34,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC Jvila",
+  "album_dir": null,
+  "canonical_artist": "MC Jvila",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.436,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Mc Kitinho",
+  "album_dir": null,
+  "canonical_artist": "Mc Kitinho",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.576,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC L da Vinte",
+  "album_dir": null,
+  "canonical_artist": "MC L da Vinte",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.147,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Mc Livinho",
+  "album_dir": null,
+  "canonical_artist": "Mc Livinho",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.323,
+  "n_tracks": 5,
+  "split": {
+   "Rap & Hip-Hop": 4,
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Mc Menor Mr, Mano Gothia, Mc Dutra Rg, Caio Passos, Mc Meno K, Mc Sartori, DJ Camarozano",
+  "album_dir": null,
+  "canonical_artist": "Mc Menor Mr, Mano Gothia, Mc Dutra Rg, Caio Passos, Mc Meno K, Mc Sartori, DJ Camarozano",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.737,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "MC Menor MT",
+  "album_dir": null,
+  "canonical_artist": "MC Menor MT",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Mega Funk",
+  "confidence": "baixa",
+  "mert_dest": "Mega Funk",
+  "margin": 0.171,
+  "n_tracks": 1,
+  "split": {
+   "Mega Funk": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Mc Neguinho do Morro",
+  "album_dir": null,
+  "canonical_artist": "Mc Neguinho do Morro",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.068,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC Pogba",
+  "album_dir": null,
+  "canonical_artist": "MC Pogba",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.576,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MC Teteu",
+  "album_dir": null,
+  "canonical_artist": "MC Teteu",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.612,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Menor Teteu",
+  "album_dir": null,
+  "canonical_artist": "Menor Teteu",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.707,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "MLQ 2N",
+  "album_dir": null,
+  "canonical_artist": "MLQ 2N",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.041,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Mulú",
+  "album_dir": null,
+  "canonical_artist": "Mulú",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.699,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Niack",
+  "album_dir": null,
+  "canonical_artist": "MC Niack",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.307,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Nilo",
+  "album_dir": null,
+  "canonical_artist": "Nilo",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Novin Yarp",
+  "album_dir": null,
+  "canonical_artist": "Novin Yarp",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.073,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Papatinho",
+  "album_dir": null,
+  "canonical_artist": "Papatinho",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.728,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Prod. DTM",
+  "album_dir": null,
+  "canonical_artist": "Prod. DTM",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.565,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Ricii Lompeurs",
+  "album_dir": null,
+  "canonical_artist": "Ricii Lompeurs",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.118,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Syon Trio",
+  "album_dir": null,
+  "canonical_artist": "Syon Trio",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.193,
+  "n_tracks": 9,
+  "split": {
+   "Rap & Hip-Hop": 5,
+   "Eletrônica": 3,
+   "Funk Brasileiro": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "shonci",
+  "album_dir": null,
+  "canonical_artist": "shonci",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.563,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "TR",
+  "album_dir": null,
+  "canonical_artist": "TR",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.187,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Victor Lou",
+  "album_dir": null,
+  "canonical_artist": "Victor Lou",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.001,
+  "n_tracks": 3,
+  "split": {
+   "Eletrônica": 1,
+   "Rap & Hip-Hop": 1,
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "ZAAC",
+  "album_dir": null,
+  "canonical_artist": "ZAAC",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.14,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Zé Felipe",
+  "album_dir": null,
+  "canonical_artist": "Zé Felipe",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.56,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "_Compilations",
+  "album_dir": null,
+  "canonical_artist": "_Compilations",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.025,
+  "n_tracks": 20,
+  "split": {
+   "Funk Brasileiro": 10,
+   "Rap & Hip-Hop": 9,
+   "MPB": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Humildes",
+  "album_dir": null,
+  "canonical_artist": "Humildes",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.212,
+  "n_tracks": 22,
+  "split": {
+   "Rap & Hip-Hop": 13,
+   "Funk Brasileiro": 7,
+   "Eletrônica": 2
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "DJ Piu",
+  "album_dir": null,
+  "canonical_artist": "DJ Piu",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "alta",
+  "dest": "Funk Brasileiro",
+  "confidence": "alta",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.034,
+  "n_tracks": 50,
+  "split": {
+   "Funk Brasileiro": 24,
+   "Rap & Hip-Hop": 21,
+   "Eletrônica": 4,
+   "Mega Funk": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Drae Da Skimask",
+  "album_dir": null,
+  "canonical_artist": "Drae Da Skimask",
+  "proposta_dest": "Rap & Hip-Hop",
+  "proposta_confidence": "media",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Marina Sena",
+  "album_dir": null,
+  "canonical_artist": "Marina Sena",
+  "proposta_dest": "MPB",
+  "proposta_confidence": "alta",
+  "dest": "MPB",
+  "confidence": "alta",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.269,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "ancora"
+ },
+ {
+  "artist_dir": "Gal Costa",
+  "album_dir": "Azul (Illusionize & Linkage Remix) [tidal]",
+  "canonical_artist": "Gal Costa",
+  "proposta_dest": "MPB",
+  "proposta_confidence": "baixa",
+  "dest": "MPB",
+  "confidence": "baixa",
+  "mert_dest": "MPB",
+  "margin": 0.539,
+  "n_tracks": 1,
+  "split": {
+   "MPB": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Luan Pereira",
+  "album_dir": null,
+  "canonical_artist": "Luan Pereira",
+  "proposta_dest": "Country & Folk",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "VEIGH",
+  "album_dir": null,
+  "canonical_artist": "VEIGH",
+  "proposta_dest": "Rap & Hip-Hop",
+  "proposta_confidence": "media",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 0.051,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "ZAC",
+  "album_dir": null,
+  "canonical_artist": "ZAC",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "baixa",
+  "dest": "Eletrônica",
+  "confidence": "baixa",
+  "mert_dest": "Eletrônica",
+  "margin": 1.0,
+  "n_tracks": 1,
+  "split": {
+   "Eletrônica": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Spinnin Records",
+  "album_dir": null,
+  "canonical_artist": "Spinnin Records",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.294,
+  "n_tracks": 1,
+  "split": {
+   "Rap & Hip-Hop": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Gordo",
+  "album_dir": null,
+  "canonical_artist": "Gordo",
+  "proposta_dest": "Eletrofunk",
+  "proposta_confidence": "media",
+  "dest": "Funk Brasileiro",
+  "confidence": "baixa",
+  "mert_dest": "Funk Brasileiro",
+  "margin": 0.404,
+  "n_tracks": 1,
+  "split": {
+   "Funk Brasileiro": 1
+  },
+  "papel": "classificada"
+ },
+ {
+  "artist_dir": "Various Artists",
+  "album_dir": null,
+  "canonical_artist": "Various Artists",
+  "proposta_dest": "Funk Brasileiro",
+  "proposta_confidence": "baixa",
+  "dest": "Rap & Hip-Hop",
+  "confidence": "baixa",
+  "mert_dest": "Rap & Hip-Hop",
+  "margin": 0.164,
+  "n_tracks": 11,
+  "split": {
+   "Rap & Hip-Hop": 7,
+   "Funk Brasileiro": 2,
+   "Eletrônica": 2
+  },
+  "papel": "classificada"
+ }
+]
