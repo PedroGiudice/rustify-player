@@ -6,6 +6,9 @@ A marca " [tidal]" no nome da pasta é o que mantém tudo isso fora do share do 
 Roda NA cmr-auto (acervo local) ou NA VM (staging + envio para a cmr-auto):
   uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <link> --list
   uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <link> [--playlist "Funk Brasileiro"] [--genre G]
+  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py --ids 1,2,3 --titulo "Rádio Orochi" --origem mix:<id>
+O modo --ids (seleção da prévia do Crate) baixa exatamente essas faixas pelo mesmo caminho do link
+(dedup, envio, .lrc, rc=2) e grava COMMENT "source: tidal <tier>; selecao <origem>".
 Na VM (hostname extractlab) o envio é AUTOMÁTICO, sem flag: staging em ~/tidal-out, dedup pelo túnel
 16333 (aberto sozinho se estiver caído), cada faixa vai por rsync para cmr-auto:~/Music assim que fica
 pronta (3 tentativas), a cópia local é apagada depois que chegou, e no fim um `touch` remoto acorda o
@@ -149,22 +152,74 @@ def library_keys() -> set[tuple[str, str]]:
     return keys
 
 
-def resolve_items(sess: tidalapi.Session, ref: str):
-    """Aceita link da Tidal (mix, playlist, álbum ou faixa) ou o id cru. Devolve (título, itens)."""
+MAX_IDS = 200
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+# Forma curta "tipo:id" usada pela fila (prévia e origem de seleção); "faixa" e "radio-faixa"
+# são os nomes em PT-BR que a tela usa.
+_PREFIX = {"mix": "mix", "playlist": "playlist", "album": "album", "faixa": "track", "track": "track",
+           "radio-faixa": "radio-track"}
+
+
+def parse_ref(ref: str) -> tuple[str, str]:
+    """Pura. Link da Tidal (mix, playlist, álbum, faixa), forma curta `tipo:id` ou id cru ->
+    (kind, ident), kind em mix|playlist|album|track|radio-track. ValueError se não reconhecer."""
+    ref = ref.strip()
+    mp = re.fullmatch(r"(mix|playlist|album|faixa|track|radio-faixa):([A-Za-z0-9-]+)", ref)
     mt = re.search(r"tidal\.com/.*?/track/(\d+)", ref)  # "album/<a>/track/<t>" = compartilhar faixa: só a faixa
     m = re.search(r"tidal\.com/(?:browse/)?(mix|playlist|album|track)/([A-Za-z0-9-]+)", ref)
-    if mt:
+    if mp:
+        kind, ident = _PREFIX[mp.group(1)], mp.group(2)
+    elif mt:
         kind, ident = "track", mt.group(1)
     elif m:
         kind, ident = m.group(1), m.group(2)
-    elif re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", ref):
+    elif re.fullmatch(_UUID, ref):
         kind, ident = "playlist", ref
     elif re.fullmatch(r"[0-9a-f]{20,40}", ref):
         kind, ident = "mix", ref
     elif re.fullmatch(r"[0-9]+", ref):
         kind, ident = "album", ref
     else:
-        raise SystemExit(f"referência não reconhecida: {ref}")
+        raise ValueError(f"referência não reconhecida: {ref}")
+    if kind in ("album", "track", "radio-track") and not ident.isdigit():
+        raise ValueError(f"id inválido para {kind}: {ident}")
+    if kind == "playlist" and not re.fullmatch(_UUID, ident):
+        raise ValueError(f"id de playlist inválido: {ident}")
+    return kind, ident
+
+
+def parse_ids(raw: str) -> list[int]:
+    """Pura. "1,2, 3" -> [1, 2, 3], sem repetidos e na ordem dada; 1 a MAX_IDS ids numéricos."""
+    out: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if not part.isdigit():
+            raise ValueError(f"id de faixa inválido: {part!r}")
+        n = int(part)
+        if n not in out:
+            out.append(n)
+    if not out:
+        raise ValueError("nenhum id de faixa")
+    if len(out) > MAX_IDS:
+        raise ValueError(f"no máximo {MAX_IDS} faixas por pedido ({len(out)})")
+    return out
+
+
+def comment_for(quality: str, mix_ref: str | None, origem: str | None) -> str:
+    """Pura. COMMENT gravado no FLAC: de onde a faixa veio (mix/link inteiro ou seleção)."""
+    if mix_ref:
+        return f"source: tidal {quality.lower()}; mix {mix_ref}"
+    return f"source: tidal {quality.lower()}; selecao {origem or 'manual'}"
+
+
+def resolve_items(sess: tidalapi.Session, ref: str):
+    """Aceita link da Tidal (mix, playlist, álbum ou faixa), `tipo:id` ou o id cru. Devolve (título, itens)."""
+    try:
+        kind, ident = parse_ref(ref)
+    except ValueError as e:
+        raise SystemExit(str(e))
     if kind == "mix":
         mix = sess.mix(ident)
         return getattr(mix, "title", ident), mix.items()
@@ -175,7 +230,23 @@ def resolve_items(sess: tidalapi.Session, ref: str):
         alb = sess.album(int(ident))
         return f"{alb.artist.name} - {alb.name}", alb.tracks()
     t = sess.track(int(ident))
+    if kind == "radio-track":
+        mix = t.get_radio_mix()
+        return f"Rádio de {t.name}", mix.items()
     return f"{t.artist.name} - {t.name}", [t]
+
+
+def resolve_ids(sess: tidalapi.Session, ids: list[int]):
+    """Modo seleção: as faixas exatamente como o CEO marcou. Id que a Tidal não devolve vira
+    linha FALHOU (conta no resumo da fila) em vez de derrubar o lote."""
+    out, failed = [], []
+    for i, tid in enumerate(ids, 1):
+        try:
+            out.append(sess.track(tid))
+        except Exception as e:
+            print(f"{i:3d} faixa {tid} FALHOU (não achada na Tidal): {e!r}", flush=True)
+            failed.append({"i": i, "title": str(tid), "err": repr(e)})
+    return out, failed
 
 
 def track_title(t) -> str:
@@ -310,7 +381,10 @@ def drop_local(dest: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("mix_id", help="link da Tidal (mix, playlist, álbum ou faixa) ou id")
+    ap.add_argument("mix_id", nargs="?", help="link da Tidal (mix, playlist, álbum ou faixa), `tipo:id` ou id")
+    ap.add_argument("--ids", help="modo seleção: ids de faixa separados por vírgula (máx. 200), no lugar do link")
+    ap.add_argument("--titulo", default="Seleção", help="título do lote no modo seleção (aparece no resumo da fila)")
+    ap.add_argument("--origem", default=None, help="de onde veio a seleção (ex.: mix:<id>, album:<id>, busca); vai no COMMENT")
     ap.add_argument("--playlist", default=GENRE, help="pasta de 1º nível em ~/Music")
     ap.add_argument("--list", action="store_true", help="só lista o mix, não baixa")
     ap.add_argument("--limit", type=int, default=0)
@@ -322,12 +396,24 @@ def main() -> int:
     args = ap.parse_args()
     if args.no_push:
         args.push = None
+    if bool(args.ids) == bool(args.mix_id):
+        ap.error("informe um link/id OU --ids")
+    try:
+        ids = parse_ids(args.ids) if args.ids else None
+    except ValueError as e:
+        ap.error(str(e))
 
     WORK.mkdir(parents=True, exist_ok=True)
     sess = load_session()
-    mix_title, items = resolve_items(sess, args.mix_id)
-    tracks = [i for i in items if isinstance(i, tidalapi.Track)]
-    print(f"MIX: {mix_title} | {len(tracks)} faixas", flush=True)
+    pre_failed: list[dict] = []
+    if ids:
+        mix_title = args.titulo.strip() or "Seleção"
+        print(f"MIX: {mix_title} | {len(ids)} faixas (seleção, origem {args.origem or 'manual'})", flush=True)
+        tracks, pre_failed = resolve_ids(sess, ids)
+    else:
+        mix_title, items = resolve_items(sess, args.mix_id)
+        tracks = [i for i in items if isinstance(i, tidalapi.Track)]
+        print(f"MIX: {mix_title} | {len(tracks)} faixas", flush=True)
     remote: set[str] = set()
     if args.push and not args.list:
         remote = remote_rels(args.push)
@@ -356,7 +442,8 @@ def main() -> int:
     print(f"acervo: {len(lib)} chaves título/artista", flush=True)
     dest_root = MUSIC / safe_name(args.playlist)
     genre = args.genre or args.playlist
-    report = {"mix": args.mix_id, "title": mix_title, "new": [], "skipped": [], "failed": []}
+    report_key = args.mix_id or f"selecao-{time.strftime('%Y%m%d-%H%M%S')}"
+    report = {"mix": report_key, "title": mix_title, "origem": args.origem, "new": [], "skipped": [], "failed": pre_failed}
     new_files: list[Path] = []
     covers: dict[int, Path | None] = {}
     for i, t in enumerate(tracks, 1):
@@ -409,7 +496,7 @@ def main() -> int:
             tags = {
                 "ARTIST": ", ".join(arts), "ALBUMARTIST": album_artist, "ALBUM": alb.name, "TITLE": title,
                 "TRACKNUMBER": str(t.track_num or i), "TRACKTOTAL": str(alb.num_tracks or ""), "GENRE": genre,
-                "COMMENT": f"source: tidal {info['quality'].lower()}; mix {args.mix_id}",
+                "COMMENT": comment_for(info["quality"], args.mix_id, args.origem),
             }
             if year:
                 tags["DATE"] = str(year)
@@ -443,7 +530,7 @@ def main() -> int:
                 p.unlink(missing_ok=True)
         time.sleep(PAUSE_S)
 
-    out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{re.sub(r'[^A-Za-z0-9-]+', '_', args.mix_id)[-40:]}.json"))
+    out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{re.sub(r'[^A-Za-z0-9-]+', '_', report_key)[-40:]}.json"))
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | LETRAS {report.get('lyrics', 0)} | relatório {out}", flush=True)
     if args.push:
