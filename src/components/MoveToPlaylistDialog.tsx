@@ -15,7 +15,7 @@ import {
   MOVE_CHUNK, chunk, confirmText, filterPlaylists, mergeReports, newFolderCandidate, plural,
   summaryText,
 } from "../lib/moveToPlaylist";
-import { clearSelection } from "../store/selection";
+import { deselectIds } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
 
 export function MoveToPlaylistDialog() {
@@ -82,8 +82,10 @@ function MoveDialogBody(props: { req: MoveRequest }) {
     // (applyMovedReport, assinado no App), que o backend emite por lote.
     const merged = mergeReports(target, reports);
     setReport(merged);
-    // Seleção múltipla: o que foi movido saiu da lista; recomeçar limpo.
-    if (merged.moved > 0) clearSelection();
+    // Seleção múltipla: sai da seleção só o que o relatório deu como movido
+    // ou já no destino. Falhas e pendentes continuam marcados; uma faixa
+    // movida pelo menu de faixa única não apaga as outras marcadas.
+    deselectIds(merged.items.filter((i) => i.status === "moved" || i.status === "already_there").map((i) => i.track_id));
     setPhase("done");
   }
 

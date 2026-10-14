@@ -1,7 +1,7 @@
 // src/components/TrackRowTable.tsx — linha de track para listas .tracks (Família A).
 // Uso: dentro de <div class="tracks"> ou <div class="tracks tracks--with-cover">.
 // O container pai define as colunas; a linha é um grid com subgrid (ver .tracks__row).
-import { Show, onMount } from "solid-js";
+import { Show, createEffect, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { player } from "../store/player";
 import { NowPlayingIndicator } from "./NowPlayingIndicator";
@@ -9,7 +9,7 @@ import type { Track } from "../tauri";
 import { fmtDur } from "../lib/format";
 import { openTrackMenu } from "../store/contextMenu";
 import {
-  focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionCount, toggleTrack,
+  claimList, focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionActive, toggleTrack,
 } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
 
@@ -38,7 +38,10 @@ export function TrackRowTable(props: TrackRowTableProps) {
   // Seleção múltipla só existe quando a linha sabe a lista a que pertence.
   const selectable = () => props.contextList !== undefined;
   const selected = () => selectable() && isSelected(props.track.id);
-  onMount(() => { if (props.contextList) focusList(props.contextList); });
+  createEffect(() => {
+    const l = props.contextList;
+    if (l) onCleanup(claimList(l));
+  });
 
   return (
     <div
@@ -46,7 +49,7 @@ export function TrackRowTable(props: TrackRowTableProps) {
       classList={{
         "tracks__row--current": isCurrent(),
         "tracks__row--selected": selected(),
-        "tracks__row--sel-mode": selectable() && selectionCount() > 0,
+        "tracks__row--sel-mode": selectable() && selectionActive(),
       }}
       aria-selected={selectable() ? selected() : undefined}
       onClick={(e) => rowClick(e, props.contextList, props.track.id, props.onClick)}
@@ -65,6 +68,13 @@ export function TrackRowTable(props: TrackRowTableProps) {
         // (inclusive no auto-repeat). !e.repeat: segurar a tecla re-tocaria a
         // faixa a cada repetição — play_count inflado e track_skipped perto de
         // 0 s da própria faixa escolhida.
+        // Shift+Espaço alterna a marca da faixa (a caixa não é focável);
+        // Espaço sozinho continua tocando.
+        if (e.key === " " && e.shiftKey && selectable()) {
+          e.preventDefault();
+          if (!e.repeat) toggleTrack(props.contextList!, props.track.id);
+          return;
+        }
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           if (!e.repeat) props.onClick();
@@ -72,7 +82,7 @@ export function TrackRowTable(props: TrackRowTableProps) {
       }}
     >
       {/* Célula índice: NPI quando current, número formatado quando não */}
-      <div class="tracks__idx">
+      <div class="tracks__idx" classList={{ "tracks__idx--sel": selectable() }}>
         <Show
           when={selectable()}
           fallback={
@@ -90,7 +100,7 @@ export function TrackRowTable(props: TrackRowTableProps) {
             class="sel-check"
             role="checkbox"
             aria-checked={selected()}
-            aria-label="Selecionar faixa"
+            aria-label={`Selecionar ${props.track.title || "faixa"}`}
             onClick={(e) => {
               e.stopPropagation();
               if (e.shiftKey) rangeToTrack(props.contextList!, props.track.id);

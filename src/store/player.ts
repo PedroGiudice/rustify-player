@@ -12,7 +12,7 @@
 import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { Track, TrackInfo } from "../tauri";
-import { setVolume as ipcSetVolume } from "../tauri";
+import { setVolume as ipcSetVolume, playerEnqueueNext } from "../tauri";
 import { resetRadioSession } from "./radioSession";
 
 // ── Tipos ──────────────────────────────────────────────────────
@@ -237,31 +237,48 @@ export function setQueue(
   });
 }
 
+/** Muda a fila e realinha o preload gapless: o engine já pode ter a "próxima"
+    antiga pré-carregada e a consome sozinho no EOS. Se a próxima efetiva
+    mudou (inclui o fim de fila com repeat-all), re-enfileira a nova. Mesmo
+    padrão de applyMovedReport (store/moveDialog.ts). */
+function mutateQueueRealign(mutate: () => void) {
+  const before = gaplessNext()?.path;
+  mutate();
+  const next = gaplessNext();
+  if (next && next.path !== before) playerEnqueueNext(next.path).catch(console.error);
+}
+
 export function enqueueNext(track: Track) {
-  setPlayer("queue", (q) => {
-    const next = [...q];
-    next.splice(player.queueIndex + 1, 0, track);
-    return next;
-  });
+  mutateQueueRealign(() =>
+    setPlayer("queue", (q) => {
+      const next = [...q];
+      next.splice(player.queueIndex + 1, 0, track);
+      return next;
+    }));
 }
 
 export function enqueueEnd(track: Track) {
-  setPlayer("queue", (q) => [...q, track]);
+  mutateQueueRealign(() => setPlayer("queue", (q) => [...q, track]));
 }
 
-/** Vários de uma vez, mantendo a ordem recebida (enqueueNext em laço a inverteria). */
+/** Vários de uma vez, mantendo a ordem recebida (enqueueNext em laço a inverteria).
+    A faixa que está tocando fica de fora do lote: inseri-la de novo a tocaria
+    duas vezes em seguida. */
 export function enqueueNextMany(tracks: Track[]) {
-  if (tracks.length === 0) return;
-  setPlayer("queue", (q) => {
-    const next = [...q];
-    next.splice(player.queueIndex + 1, 0, ...tracks);
-    return next;
-  });
+  const curId = player.currentTrack?.id;
+  const batch = tracks.filter((t) => t.id !== curId);
+  if (batch.length === 0) return;
+  mutateQueueRealign(() =>
+    setPlayer("queue", (q) => {
+      const next = [...q];
+      next.splice(player.queueIndex + 1, 0, ...batch);
+      return next;
+    }));
 }
 
 export function enqueueEndMany(tracks: Track[]) {
   if (tracks.length === 0) return;
-  setPlayer("queue", (q) => [...q, ...tracks]);
+  mutateQueueRealign(() => setPlayer("queue", (q) => [...q, ...tracks]));
 }
 
 export function advanceQueue(): Track | null {

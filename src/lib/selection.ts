@@ -43,6 +43,14 @@ export function pruneTo(s: SelState, ordered: readonly string[]): SelState {
   return { ids, anchor: s.anchor !== null && ids.has(s.anchor) ? s.anchor : null };
 }
 
+/** Tira da seleção só os ids dados (movidos, já no destino); o resto fica. */
+export function withoutIds(s: SelState, drop: Iterable<string>): SelState {
+  const gone = new Set(drop);
+  const ids = new Set([...s.ids].filter((id) => !gone.has(id)));
+  if (ids.size === s.ids.size) return s;
+  return { ids, anchor: s.anchor !== null && ids.has(s.anchor) ? s.anchor : null };
+}
+
 /** Itens selecionados, na ordem da lista (não na ordem dos cliques). */
 export function pickSelected<T extends { id: string }>(s: SelState, list: readonly T[]): T[] {
   return list.filter((t) => s.ids.has(t.id));

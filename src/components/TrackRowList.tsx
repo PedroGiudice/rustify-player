@@ -1,6 +1,6 @@
 // src/components/TrackRowList.tsx — linha de track para listas com cover (Família B/C).
 // Família B: .row (Home, History, Queue). Família C: .qrow (QueueDrawer).
-import { Show, onMount } from "solid-js";
+import { Show, createEffect, onCleanup } from "solid-js";
 import { coverUrl, type Track } from "../tauri";
 import { player } from "../store/player";
 import { CoverArt } from "./CoverArt";
@@ -8,7 +8,7 @@ import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import { fmtDur } from "../lib/format";
 import { openTrackMenu } from "../store/contextMenu";
 import {
-  focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionCount, toggleTrack,
+  claimList, focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionActive, toggleTrack,
 } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
 
@@ -42,7 +42,9 @@ export function TrackRowList(props: TrackRowListProps) {
   // Seleção múltipla: só linhas da família B que conhecem a lista.
   const selectable = () => !isCompact() && props.contextList !== undefined;
   const selected = () => selectable() && isSelected(props.track.id);
-  onMount(() => { if (selectable()) focusList(props.contextList!); });
+  createEffect(() => {
+    if (selectable()) onCleanup(claimList(props.contextList!));
+  });
 
   return (
     <div
@@ -55,7 +57,7 @@ export function TrackRowList(props: TrackRowListProps) {
         row: !isCompact(),
         "is-current": !isCompact() && isCurrent(),
         "is-selected": selected(),
-        "is-sel-mode": selectable() && selectionCount() > 0,
+        "is-sel-mode": selectable() && selectionActive(),
       }}
       aria-selected={selectable() ? selected() : undefined}
       onClick={(e) => rowClick(e, selectable() ? props.contextList : undefined, props.track.id, props.onClick)}
@@ -78,6 +80,13 @@ export function TrackRowList(props: TrackRowListProps) {
         // (inclusive no auto-repeat). !e.repeat: segurar a tecla re-tocaria a
         // faixa a cada repetição — play_count inflado e track_skipped perto de
         // 0 s da própria faixa escolhida.
+        // Shift+Espaço alterna a marca da faixa (a caixa não é focável);
+        // Espaço sozinho continua tocando.
+        if (e.key === " " && e.shiftKey && selectable()) {
+          e.preventDefault();
+          if (!e.repeat) toggleTrack(props.contextList!, props.track.id);
+          return;
+        }
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           if (!e.repeat) props.onClick();
@@ -101,7 +110,7 @@ export function TrackRowList(props: TrackRowListProps) {
             class="sel-check sel-check--cover"
             role="checkbox"
             aria-checked={selected()}
-            aria-label="Selecionar faixa"
+            aria-label={`Selecionar ${props.track.title || "faixa"}`}
             onClick={(e) => {
               e.stopPropagation();
               if (e.shiftKey) rangeToTrack(props.contextList!, props.track.id);

@@ -3,7 +3,8 @@
 // Ctrl+A (todas da lista em foco), Esc (limpa) e o reset na troca de rota.
 import { Show, createEffect, createMemo, on, onCleanup, onMount } from "solid-js";
 import { route } from "../router";
-import { pushEscLayer } from "../lib/escLayers";
+import { escLayerCount, pushEscLayer } from "../lib/escLayers";
+import { isTypingContext } from "../lib/keyboard";
 import { moveLabel, selLabel } from "../lib/selection";
 import { enqueueEndMany, enqueueNextMany } from "../store/player";
 import { openMoveDialog } from "../store/moveDialog";
@@ -12,10 +13,16 @@ import {
 } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
 
-function isTyping(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null;
-  if (!el || !el.tagName) return false;
-  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
+// Superfícies que têm o foco do usuário por cima da lista.
+const OVERLAY_SEL = '[role="dialog"], [role="menu"], .tweaks, .queue-drawer';
+const OVERLAY_OPEN_SEL = '.palette-scrim[data-open="true"], .queue-drawer[data-open="true"], .tweaks.is-visible, [role="menu"]';
+
+/** Ctrl+A é da lista só quando nada está por cima dela. */
+function overlayAbove(e: KeyboardEvent, ownLayers: number): boolean {
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.(OVERLAY_SEL)) return true;
+  if (escLayerCount() > ownLayers) return true;
+  return document.querySelector(OVERLAY_OPEN_SEL) !== null;
 }
 
 export function SelectionBar() {
@@ -33,7 +40,8 @@ export function SelectionBar() {
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "a") return;
-      if (isTyping(e.target) || !hasFocusList()) return;
+      if (isTypingContext(e) || !hasFocusList()) return;
+      if (overlayAbove(e, active() ? 1 : 0)) return;
       e.preventDefault();
       selectAllInFocus();
     };

@@ -9,11 +9,14 @@ import { libSnapshot, libListGenres, libGetAlbums, libGetArtists } from "../taur
 import Tracks from "./Tracks";
 import Albums from "./Albums";
 import Artists from "./Artists";
+import { resetSelection } from "../store/selection";
 
 type Tab = "tracks" | "albums" | "artists" | "genres";
 
 export default function Library() {
-  const [tab, setTab] = createSignal<Tab>("tracks");
+  const [tab, setTabRaw] = createSignal<Tab>("tracks");
+  // Aba nova = lista nova: a seleção de faixas não atravessa a troca.
+  const setTab = (t: Tab) => { if (t !== tab()) resetSelection(); setTabRaw(t); };
   // O snapshot do indexer so tem tracks_total (IndexerSnapshot, types.rs):
   // albums/artists sao contados das listagens completas — o mesmo agrupamento
   // que as abas mostram. Falha vira null => "—", nunca numero inventado.

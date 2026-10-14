@@ -1000,13 +1000,13 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   /* 5 colunas: idx | title (flex) | album | genre | length.
      Tinha 6 antes (sobrava 70px) — com as rows em display:contents
      (ate 25/09), o slot vago empurrava todas uma coluna pra direita. */
-  grid-template-columns: 36px 1fr 180px 120px 70px;
+  grid-template-columns: 48px 1fr 180px 120px 70px;
   font-size: 13px;
 }
 /* Variante com cover por linha (usado em Playlist).
    6 colunas: idx | cover | title (flex) | album | genre | length. */
 .tracks--with-cover {
-  grid-template-columns: 36px 44px 1fr 180px 110px 70px;
+  grid-template-columns: 48px 44px 1fr 180px 110px 70px;
 }
 /* Celulas: os cabecalhos sao filhos diretos de .tracks, mas as celulas
    das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row.
@@ -4185,17 +4185,20 @@ html { --glow: 0; }
   border: 1.5px solid var(--fg-5); border-radius: 4px;
   background: var(--bg-paper); color: transparent;
   cursor: pointer;
-  transition: background 90ms var(--ease-out), border-color 90ms var(--ease-out), color 90ms var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .sel-check:hover { border-color: var(--primary); }
-.sel-check[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--bg-paper); }
+.sel-check[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 
-/* Tabela: a caixa ocupa o lugar do número. */
-.tracks__row:hover .tracks__num,
-.tracks__row:focus-visible .tracks__num,
-.tracks__row--sel-mode .tracks__num { display: none; }
+/* Tabela: a caixa fica AO LADO do número (ou do indicador de "tocando
+   agora"), nunca no lugar dele. Só aparece no hover, no foco, na linha
+   selecionada e, em modo de seleção, em todas as linhas. A coluna do # tem
+   48px para caber caixa + número de até 4 dígitos. */
+.tracks > .tracks__row > .tracks__idx--sel { padding-inline: 0; gap: 4px; }
+.tracks__idx--sel .sel-check { width: 16px; height: 16px; }
 .tracks__row:hover .sel-check,
 .tracks__row:focus-visible .sel-check,
+.tracks__row--selected .sel-check,
 .tracks__row--sel-mode .sel-check { display: inline-flex; }
 
 /* Lista com capa: a caixa fica no canto da capa. */
@@ -4204,9 +4207,15 @@ html { --glow: 0; }
 .row:focus-visible .sel-check--cover,
 .row.is-sel-mode .sel-check--cover { display: inline-flex; }
 
-/* Linha selecionada (depois de hover e atual, mesma especificidade). */
+/* Linha selecionada (depois de hover e atual, mesma especificidade).
+   Na faixa atual selecionada o azul de "tocando agora" continua por baixo:
+   o realce da seleção é só uma película de acento sobre ele. */
 .row.is-selected { background: var(--row-selected); box-shadow: inset 2px 0 0 var(--row-selected-line); }
+.row.is-selected.is-current { background: linear-gradient(var(--row-selected), var(--row-selected)), var(--blue-bg); }
 .tracks__row.tracks__row--selected > div { background: var(--row-selected); }
+.tracks__row.tracks__row--selected.tracks__row--current > div {
+  background: linear-gradient(var(--row-selected), var(--row-selected)), var(--blue-bg);
+}
 .tracks__row.tracks__row--selected > .tracks__idx { box-shadow: inset 2px 0 0 var(--row-selected-line); }
 
 /* Barra de ação, centrada na área de conteúdo, acima da PlayerBar. */
@@ -4214,7 +4223,8 @@ html { --glow: 0; }
   position: fixed; left: var(--sidebar-w); right: 0;
   bottom: calc(var(--playerbar-h) + 14px);
   display: flex; justify-content: center;
-  z-index: 55; pointer-events: none;
+  /* Abaixo do Tweaks (50) e dos overlays (fila 95, paleta 100, menu 300). */
+  z-index: 45; pointer-events: none;
 }
 .app[data-cinema="true"] .sel-bar-wrap { display: none; }
 .sel-bar {
@@ -4223,7 +4233,7 @@ html { --glow: 0; }
   padding: 6px 8px 6px 14px;
   background: var(--bg-paper); border: 1px solid var(--line-2);
   border-radius: 999px; box-shadow: var(--shadow-hover);
-  animation: sel-bar-in 200ms var(--ease-out);
+  animation: sel-bar-in var(--dur-med) var(--ease-out);
 }
 @keyframes sel-bar-in {
   from { opacity: 0; transform: translateY(10px); }
@@ -4240,7 +4250,7 @@ html { --glow: 0; }
   background: transparent; color: var(--fg-3);
   font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap;
   cursor: pointer;
-  transition: background 90ms var(--ease-out), color 90ms var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .sel-bar__btn:hover { background: var(--bg-soft); color: var(--fg-1); }
 .sel-bar__btn--primary { background: var(--fg-1); color: var(--bg-paper); }

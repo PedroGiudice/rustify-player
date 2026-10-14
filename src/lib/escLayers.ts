@@ -48,3 +48,8 @@ export function pushEscLayer(close: () => void): () => void {
 export function hasEscLayer(): boolean {
   return stack.length > 0;
 }
+
+/** Quantas camadas estão empilhadas (a seleção múltipla conta a sua). */
+export function escLayerCount(): number {
+  return stack.length;
+}
