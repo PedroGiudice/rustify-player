@@ -696,7 +696,12 @@ decisoes). O que importa pro dia-a-dia:
   não é o centro da faixa: `decode_flac` para em 60 s e `take_center_window` pega os segundos
   15-45. Subgênero do funk não se separa em camada nenhuma (CMR-299). Sonda reprodutível:
   `scripts/curator/mert_layer_probe.py` (relatório `docs/contexto/14102026-mert-camadas.md`).
-  Trocar camada/janela é decisão do CEO pendente (vetor novo ao lado, avaliação offline antes).
+  Avaliação offline nas escolhas reais do autoplay (`mert_autoplay_eval.py`, relatório
+  `14102026-mert-camadas-autoplay.md`): desde a v0.2.75 a similaridade semente->faixa do vetor
+  do app NÃO prevê aceite (AUC 0,520); camada 7 com janela central 0,587, IC sobreposto (63
+  aceites só). Veredito: sem diferença clara, o app não muda; os 74% de skip não se explicam
+  pela distância acústica até a semente. Vetores das 13 camadas (janela central, float16) em
+  `~/.local/share/rustify-curator/mert-layers-20261014/` na VM, para reavaliar com mais eventos.
 
 ## Crate — busca + download Soulseek in-app (v0.2.62)
 
