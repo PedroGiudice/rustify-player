@@ -12,8 +12,11 @@ API JSON para o app (seção Tidal do Crate, pela tailnet em TAILNET_IP:8470, me
   GET  /<token>/api/busca?q=                  -> {q, top, faixas[], albuns[], artistas[], playlists[]}
   GET  /<token>/api/artista/<id>              -> {id, nome, foto, populares[], albuns[], eps_singles[], radio}
   GET  /<token>/api/previa?ref=               -> {tipo, titulo, ref, faixas[], duracao_s}
+  POST /<token>/api/fila/<id>/reenviar        -> {"ok":true,"id":...} (seleção parcial/falhou volta para a fila)
 As rotas de busca/artista/prévia falam com a Tidal (tidalapi, sessão PKCE só lida, nunca regravada)
-e guardam a resposta 5 min em memória. Sessão inválida -> 503; texto curto ou ref inválida -> 400.
+e guardam a resposta 5 min em memória. Sessão inválida -> 503; Tidal sem resposta -> 502 (timeout de rede
+de 5 s para conectar e 7 s para ler; só uma chamada à Tidal por vez, quem espera mais de 7 s leva 503); texto curto
+ou ref inválida -> 400.
 Rodar na VM (a busca precisa do tidalapi; sem ele a fila segue funcionando e a busca devolve 503):
   tmux new -d -s telemetria 'uv run --with tidalapi --with mutagen python3 ~/rustify-player/scripts/curator/tidal_fila.py'
 Instância de teste ao lado da real: --port 8471 --bind 127.0.0.1 --out /tmp/x (fila.json própria).
@@ -90,19 +93,21 @@ def pastas():
 
 
 def enfileira(url, playlist):
+    """Enfileira um link. Devolve (erro, id): o id sai do próprio job criado sob o lock."""
     url = url.strip()
     if not URL_RE.match(url):
-        return "link não reconhecido: use um link da Tidal de mix, playlist, álbum ou faixa"
+        return "link não reconhecido: use um link da Tidal de mix, playlist, álbum ou faixa", None
     playlist = limpa_pasta(playlist)
     if not playlist:
-        return "pasta vazia"
+        return "pasta vazia", None
     with LOCK:
         jobs = load_fila()
         if any(j["url"] == url and not j.get("faixas") and j["status"] in ("fila", "baixando") for j in jobs):
-            return "esse link já está na fila"
-        jobs.append(novo_job(jobs, url, playlist))
+            return "esse link já está na fila", None
+        job = novo_job(jobs, url, playlist)
+        jobs.append(job)
         save_fila(jobs)
-    return None
+    return None, job["id"]
 
 
 def novo_job(jobs, url, playlist, **extra):
@@ -117,6 +122,14 @@ def novo_job(jobs, url, playlist, **extra):
             "log": str(LOGS / f"{jid}.log"), "resumo": "", **extra}
 
 
+ID_RE = re.compile(r"\d{1,19}", re.ASCII)  # str.isdigit() aceitaria "²" e "١٢٣"; ids da Tidal cabem em 19 dígitos
+
+
+def so_id(s):
+    """Pura. True se `s` é um id numérico da Tidal: só 0-9 ASCII, 1 a 19 dígitos."""
+    return isinstance(s, str) and ID_RE.fullmatch(s) is not None
+
+
 def limpa_pasta(playlist):
     return re.sub(r"[^\w &'\-.]+", " ", str(playlist or ""), flags=re.U).strip()[:60]
 
@@ -128,11 +141,11 @@ def valida_selecao(body):
         return "nenhuma faixa selecionada", None
     ids = []
     for f in faixas:
-        if isinstance(f, bool) or not (isinstance(f, int) or (isinstance(f, str) and f.strip().isdigit())):
-            return f"id de faixa inválido: {f!r}", None
-        n = int(f)
-        if n <= 0:
-            return f"id de faixa inválido: {f!r}", None
+        if isinstance(f, bool) or not (isinstance(f, int) or (isinstance(f, str) and so_id(f.strip()))):
+            return f"id de faixa inválido: {str(f)[:30]!r}", None
+        n = int(f.strip() if isinstance(f, str) else f)
+        if n <= 0 or n >= 10 ** 19:
+            return f"id de faixa inválido: {str(f)[:30]!r}", None
         if n not in ids:
             ids.append(n)
     if len(ids) > MAX_FAIXAS:
@@ -169,11 +182,34 @@ def enfileira_selecao(body):
     return None, job["id"]
 
 
+def reenvia(jid):
+    """Seleção parcial/falhou volta para a fila com as mesmas faixas (o servidor guarda a lista). (código, corpo)."""
+    with LOCK:
+        jobs = load_fila()
+        job = next((j for j in jobs if j["id"] == jid), None)
+        if job is None:
+            return 404, {"error": "pedido não encontrado"}
+        if not job.get("faixas"):
+            return 400, {"error": "só uma seleção pode ser reenviada; para um link, envie o link de novo"}
+        if job["status"] not in ("parcial", "falhou"):
+            return 400, {"error": "esse pedido não está parcial nem falhou"}
+        if any(j is not job and j.get("faixas") == job["faixas"] and j["playlist"] == job["playlist"]
+               and j["status"] in ("fila", "baixando") for j in jobs):
+            return 400, {"error": "essa seleção já está na fila"}
+        job["status"] = "fila"
+        job["resumo"] = ""
+        for k in ("inicio", "fim"):
+            job.pop(k, None)
+        job["added"] = datetime.now().strftime("%d/%m %H:%M")
+        save_fila(jobs)
+    return 200, {"ok": True, "id": jid}
+
+
 def resumo_do_log(path):
     try:
         txt = Path(path).read_text(errors="ignore")
     except Exception:
-        return "", None
+        return ""
     lines = txt.splitlines()
     titulo = next((l[5:].split(" | ")[0] for l in lines if l.startswith("MIX: ")), "")
     n = sum(1 for l in lines if " -> " in l)
@@ -196,8 +232,9 @@ def resumo_do_log(path):
 def alvo_do_job(job):
     """Pura. Argumentos do baixador: o link (job de link) ou --ids/--titulo/--origem (job de seleção)."""
     if job.get("faixas"):
-        return ["--ids", ",".join(str(i) for i in job["faixas"]), "--titulo", job.get("titulo") or "Seleção",
-                "--origem", job.get("origem") or "busca"]
+        # --flag=valor: um título/origem começando com "-" não vira outra opção no argparse do baixador
+        return ["--ids=" + ",".join(str(i) for i in job["faixas"]), "--titulo=" + (job.get("titulo") or "Seleção"),
+                "--origem=" + (job.get("origem") or "busca")]
     return [job["url"]]
 
 
@@ -222,7 +259,7 @@ def worker():
         # 16333 (abre sozinho), envio faixa a faixa para cmr-auto:~/Music, staging limpo e touch remoto.
         with open(job["log"], "w") as lf:
             rc = subprocess.run([UV, "run", "--with", "tidalapi", "--with", "mutagen", "python3", str(SCRIPT)] + alvo_do_job(job)
-                                + ["--playlist", job["playlist"]], stdout=lf, stderr=subprocess.STDOUT, cwd=str(OUT)).returncode
+                                + ["--playlist=" + job["playlist"]], stdout=lf, stderr=subprocess.STDOUT, cwd=str(OUT)).returncode
         resumo = resumo_do_log(job["log"])
         fim = "FIM" in Path(job["log"]).read_text(errors="ignore")
         status = "ok" if rc == 0 and fim else ("parcial" if rc == 2 and fim else "falhou")
@@ -332,9 +369,14 @@ def loop():
 
 # ---------- busca na Tidal (aba Tidal do Crate) ----------
 TIDAL_LOCK = threading.Lock()  # uma chamada à Tidal por vez: a sessão do tidalapi não é thread-safe no refresh
+LOCK_TIMEOUT = 7  # s esperando a vez; passou disso, 503 em vez de empilhar requisições atrás de uma conexão pendurada
+REDE_TIMEOUT = (5, 7)  # (conectar, ler) em s, em TODA chamada da sessão do tidalapi
+CACHE_LOCK = threading.Lock()  # protege CACHE (leitura, escrita e limpeza); nunca segurado durante uma chamada à Tidal
 SESS = {"s": None}
 CACHE: dict = {}
 SESSAO_EXPIRADA = "sessão da Tidal expirada"
+TIDAL_SEM_RESPOSTA = "Tidal sem resposta"
+TIDAL_OCUPADA = "Tidal ocupada, tente de novo"
 
 
 class TidalErro(Exception):
@@ -342,6 +384,33 @@ class TidalErro(Exception):
         super().__init__(msg)
         self.code = code
         self.msg = msg
+
+
+def aplica_timeout(sess, timeout=REDE_TIMEOUT):
+    """O tidalapi 0.8.11 chama `session.request_session.request(...)` sem timeout. Embrulha esse método para
+    que toda chamada (busca, artista, prévia, check de login) tenha o timeout de rede."""
+    rs = sess.request_session
+    original = rs.request
+
+    def request(method, url, **kw):
+        kw.setdefault("timeout", timeout)
+        return original(method, url, **kw)
+    rs.request = request
+    return sess
+
+
+def confere_login(sess):
+    """Separa 'a Tidal não respondeu' (TidalErro 502) de 'o login foi recusado' (TidalErro 503, sessão expirada).
+    Substitui `sess.check_login()`, que devolve False para os dois casos."""
+    try:
+        r = sess.request.basic_request("GET", f"users/{sess.user.id}/subscription")
+    except Exception as e:
+        raise TidalErro(502, f"{TIDAL_SEM_RESPOSTA} ({type(e).__name__})")
+    if r.ok:
+        return
+    if r.status_code in (401, 403):
+        raise TidalErro(503, SESSAO_EXPIRADA)
+    raise TidalErro(502, f"{TIDAL_SEM_RESPOSTA} (HTTP {r.status_code})")
 
 
 def tidal_session():
@@ -353,13 +422,14 @@ def tidal_session():
         import tidalapi
     except ImportError:
         raise TidalErro(503, "busca indisponível: a fila precisa rodar com uv run --with tidalapi")
-    sess = tidalapi.Session()
+    sess = aplica_timeout(tidalapi.Session())
     try:
-        ok = sess.load_session_from_file(SECRET) and sess.check_login()
-    except Exception:
-        ok = False
+        ok = sess.load_session_from_file(SECRET)
+    except Exception as e:  # rede, timeout ou resposta que não é JSON ao validar o token
+        raise TidalErro(502, f"{TIDAL_SEM_RESPOSTA} ({type(e).__name__})")
     if not ok:
         raise TidalErro(503, SESSAO_EXPIRADA)
+    confere_login(sess)
     SESS["s"] = sess
     return sess
 
@@ -378,23 +448,47 @@ def _erro_da_tidal(e):
         return TidalErro(503, SESSAO_EXPIRADA)
     if nome == "TooManyRequests" or code == 429:
         return TidalErro(503, "a Tidal pediu para esperar (muitas buscas); tente em 1 minuto")
-    return TidalErro(502, f"Tidal sem resposta ({nome})")
+    return TidalErro(502, f"{TIDAL_SEM_RESPOSTA} ({nome})")
+
+
+_VAZIO = object()
+
+
+def _cache_get(chave):
+    with CACHE_LOCK:
+        hit = CACHE.get(chave)
+    if hit and time.time() - hit[0] < CACHE_TTL:
+        return hit[1]
+    return _VAZIO
+
+
+def _cache_put(chave, val):
+    agora = time.time()
+    with CACHE_LOCK:
+        if len(CACHE) > 500:
+            for k in [k for k, (t, _) in CACHE.items() if agora - t >= CACHE_TTL]:
+                CACHE.pop(k, None)
+        CACHE[chave] = (agora, val)
 
 
 def com_cache(chave, fn):
-    agora = time.time()
-    hit = CACHE.get(chave)
-    if hit and agora - hit[0] < CACHE_TTL:
-        return hit[1]
-    with TIDAL_LOCK:
+    val = _cache_get(chave)
+    if val is not _VAZIO:
+        return val
+    if not TIDAL_LOCK.acquire(timeout=LOCK_TIMEOUT):
+        raise TidalErro(503, TIDAL_OCUPADA)
+    try:
+        # Quem esperou o lock pode ter encontrado a resposta pronta: duas buscas iguais não vão as duas à Tidal.
+        val = _cache_get(chave)
+        if val is not _VAZIO:
+            return val
         try:
             val = fn(tidal_session())
         except Exception as e:
             raise _erro_da_tidal(e)
-    if len(CACHE) > 500:
-        for k in [k for k, (t, _) in CACHE.items() if agora - t >= CACHE_TTL]:
-            CACHE.pop(k, None)
-    CACHE[chave] = (agora, val)
+    finally:
+        TIDAL_LOCK.release()
+    _cache_put(chave, val)
     return val
 
 
@@ -426,7 +520,7 @@ def _titulo(t):
 def faixa_json(t):
     alb = getattr(t, "album", None)
     arts = [a.name for a in (getattr(t, "artists", None) or []) if getattr(a, "name", None)]
-    if not arts and getattr(t, "artist", None) is not None:
+    if not arts and getattr(getattr(t, "artist", None), "name", None):
         arts = [t.artist.name]
     return {"id": int(t.id), "titulo": _titulo(t), "artistas": arts, "album": getattr(alb, "name", None) or "",
             "album_id": int(alb.id) if alb is not None and getattr(alb, "id", None) else None, "ano": _ano(alb),
@@ -436,19 +530,19 @@ def faixa_json(t):
 
 def album_json(a):
     tipo = str(getattr(a, "type", None) or "ALBUM").lower()
-    return {"id": int(a.id), "titulo": a.name, "artista": getattr(getattr(a, "artist", None), "name", None) or "",
+    return {"id": int(a.id), "titulo": a.name or "", "artista": getattr(getattr(a, "artist", None), "name", None) or "",
             "ano": _ano(a), "n_faixas": int(getattr(a, "num_tracks", 0) or 0), "duracao_s": int(getattr(a, "duration", 0) or 0),
             "hires": _hires(a), "tipo": tipo if tipo in ("album", "ep", "single") else "album", "capa": _img(a),
             "url": f"https://tidal.com/browse/album/{a.id}"}
 
 
 def artista_json(a):
-    return {"id": int(a.id), "nome": a.name, "foto": _img(a), "url": f"https://tidal.com/browse/artist/{a.id}"}
+    return {"id": int(a.id), "nome": a.name or "", "foto": _img(a), "url": f"https://tidal.com/browse/artist/{a.id}"}
 
 
 def playlist_json(p):
     criador = getattr(getattr(p, "creator", None), "name", None)
-    return {"id": str(p.id), "titulo": p.name, "n_faixas": int(getattr(p, "num_tracks", 0) or 0),
+    return {"id": str(p.id), "titulo": p.name or "", "n_faixas": int(getattr(p, "num_tracks", 0) or 0),
             "duracao_s": int(getattr(p, "duration", 0) or 0), "autor": criador or None, "capa": _img(p),
             "url": f"https://tidal.com/browse/playlist/{p.id}"}
 
@@ -476,7 +570,7 @@ def api_busca(q):
 
 
 def api_artista(ident):
-    if not str(ident).isdigit():
+    if not so_id(str(ident)):
         raise TidalErro(400, "id de artista inválido")
 
     def pega(s):
@@ -506,7 +600,7 @@ def ref_da_previa(ref):
     if m:
         kind, ident = m.group(1), m.group(2)
     else:
-        mt = re.search(r"tidal\.com/.*?/track/(\d+)", ref)
+        mt = re.search(r"tidal\.com/.*?/track/(\d{1,19})(?!\d)", ref, re.ASCII)
         ml = _LINK_RE.search(ref)
         if mt:
             kind, ident = "faixa", mt.group(1)
@@ -514,7 +608,7 @@ def ref_da_previa(ref):
             kind, ident = {"track": "faixa"}.get(ml.group(1), ml.group(1)), ml.group(2)
         else:
             raise TidalErro(400, "referência não reconhecida: use um link da Tidal ou mix:/playlist:/album:/radio-faixa:<id>")
-    if kind in ("album", "faixa", "radio-faixa") and not ident.isdigit():
+    if kind in ("album", "faixa", "radio-faixa") and not so_id(ident):
         raise TidalErro(400, f"id inválido para {kind}")
     if kind == "playlist" and not _UUID_RE.fullmatch(ident):
         raise TidalErro(400, "id de playlist inválido")
@@ -546,17 +640,17 @@ def api_previa(ref):
             titulo, itens = (f"Rádio de {titulo}" if tipo == "radio" else titulo), mx.items()
         elif kind == "playlist":
             pl = s.playlist(ident)
-            tipo, titulo, itens = "playlist", pl.name, _todas(pl.tracks, getattr(pl, "num_tracks", 0))
+            tipo, titulo, itens = "playlist", pl.name or "", _todas(pl.tracks, getattr(pl, "num_tracks", 0))
         elif kind == "album":
             alb = s.album(int(ident))
-            tipo, titulo, itens = "album", f"{alb.artist.name} - {alb.name}", alb.tracks()
+            tipo, titulo, itens = "album", f"{alb.artist.name or ''} - {alb.name or ''}", alb.tracks()
         elif kind == "faixa":
             t = s.track(int(ident))
-            tipo, titulo, itens = "faixa", f"{t.artist.name} - {t.name}", [t]
+            tipo, titulo, itens = "faixa", f"{t.artist.name or ''} - {t.name or ''}", [t]
         else:
             t = s.track(int(ident))
             mx = t.get_radio_mix()
-            tipo, titulo, itens = "radio", f"Rádio de {t.name}", mx.items()
+            tipo, titulo, itens = "radio", f"Rádio de {t.name or ''}", mx.items()
         faixas = [faixa_json(t) for t in itens if type(t).__name__ == "Track"]
         return {"tipo": tipo, "titulo": titulo, "ref": canon, "faixas": faixas, "duracao_s": sum(f["duracao_s"] for f in faixas)}
 
@@ -584,12 +678,10 @@ def api_post_fila(body):
     if "faixas" in body:
         err, jid = enfileira_selecao(body)
         return (400, {"error": err}) if err else (200, {"ok": True, "id": jid})
-    err = enfileira(str(body.get("url") or ""), str(body.get("playlist") or ""))
+    err, jid = enfileira(str(body.get("url") or ""), str(body.get("playlist") or ""))
     if err:
         return 400, {"error": err}
-    with LOCK:
-        jobs = load_fila()
-    return 200, {"ok": True, "id": jobs[-1]["id"]}
+    return 200, {"ok": True, "id": jid}
 
 
 def job_publico(j):
@@ -645,6 +737,10 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?")[0].rstrip("/")
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n).decode("utf-8", "ignore")
+        m = re.fullmatch(re.escape(f"/{TOKEN}/api/fila/") + r"([0-9A-Za-z-]{1,40})/reenviar", path)
+        if m:
+            code, resp = reenvia(m.group(1))
+            return self._json(resp, code)
         if path == f"/{TOKEN}/api/fila":
             try:
                 body = json.loads(raw or "{}")
@@ -659,7 +755,7 @@ class H(BaseHTTPRequestHandler):
         playlist = (form.get("playlist") or [""])[0]
         if playlist == "__nova__":
             playlist = (form.get("nova") or [""])[0]
-        err = enfileira(url, playlist)
+        err, _ = enfileira(url, playlist)
         PAGE["html"] = render(err or "")
         self._send(b"", 303, {"Location": f"/{TOKEN}"})
 

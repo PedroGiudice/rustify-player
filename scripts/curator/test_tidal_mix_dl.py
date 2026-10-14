@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
 
-from tidal_mix_dl import CMR_SSH, LRC_TS, MAX_IDS, TUNNEL_PORT, comment_for, parse_ids, parse_ref, sidecar_for, vm_defaults  # noqa: E402
+from tidal_mix_dl import CMR_SSH, LRC_TS, MAX_IDS, TUNNEL_PORT, build_parser, comment_for, parse_ids, parse_ref, sidecar_for, split_artists, title_key, vm_defaults  # noqa: E402
 
 
 class VmDefaults(unittest.TestCase):
@@ -78,6 +78,21 @@ class Selecao(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 parse_ids(bad)
 
+    def test_id_so_com_algarismos_ascii(self):
+        for bad in ("²", "١٢٣", "1" * 20, "1,²"):
+            with self.assertRaises(ValueError, msg=bad):
+                parse_ids(bad)
+        with self.assertRaises(ValueError):
+            parse_ref("album:²")
+        self.assertEqual(parse_ids("9" * 19), [int("9" * 19)])
+
+    def test_titulo_origem_e_pasta_com_hifen_inicial_passam_pelo_argparse(self):
+        from tidal_fila import alvo_do_job  # a fila monta os argumentos; o baixador tem de aceitá-los
+        job = {"url": "", "faixas": [1, 2], "titulo": "--limit 5", "origem": "-x"}
+        args = build_parser().parse_args(alvo_do_job(job) + ["--playlist=-Rap"])
+        self.assertEqual((args.ids, args.titulo, args.origem, args.playlist), ("1,2", "--limit 5", "-x", "-Rap"))
+        self.assertEqual(args.limit, 0)
+
     def test_teto_de_ids(self):
         self.assertEqual(len(parse_ids(",".join(str(i) for i in range(1, MAX_IDS + 1)))), MAX_IDS)
         with self.assertRaises(ValueError):
@@ -87,6 +102,34 @@ class Selecao(unittest.TestCase):
         self.assertEqual(comment_for("HI_RES_LOSSLESS", "https://tidal.com/mix/x", None), "source: tidal hi_res_lossless; mix https://tidal.com/mix/x")
         self.assertEqual(comment_for("LOSSLESS", None, "mix:abc"), "source: tidal lossless; selecao mix:abc")
         self.assertEqual(comment_for("LOSSLESS", None, None), "source: tidal lossless; selecao manual")
+
+
+class JaNoAcervo(unittest.TestCase):
+    """A mesma chave da tela (titleKey em src/lib/tidalSearch.ts): igualdade do título + artista sobreposto."""
+
+    def key(self, titulo, artista="Kendrick Lamar"):
+        return {(title_key(titulo), a) for a in split_artists(artista)}
+
+    def casa(self, no_acervo, da_tidal):
+        return bool(self.key(*no_acervo) & self.key(*da_tidal))
+
+    def test_falsos_positivos_da_revisao(self):
+        self.assertFalse(self.casa(("HUMBLE.",), ("HUMBLE. (Skrillex Remix)",)))
+        self.assertFalse(self.casa(("Mitsubishi", "Orochi"), ("Mitsubishi (Ao Vivo)", "Orochi")))
+        self.assertFalse(self.casa(("Love",), ("Love Me Now",)))
+        for versao in ("Foo (Live)", "Foo (Acústico)", "Foo - Radio Edit", "Foo (Versão Estendida)", "Foo (Instrumental)"):
+            self.assertFalse(self.casa(("Foo",), (versao,)), versao)
+
+    def test_verdadeiros_positivos(self):
+        self.assertTrue(self.casa(("HUMBLE.",), ("HUMBLE.",)))
+        self.assertTrue(self.casa(("Balão", "Orochi"), ("BALAO", "orochi")))
+        self.assertTrue(self.casa(("Foo (feat. Rihanna)",), ("Foo",)))
+        self.assertTrue(self.casa(("Foo",), ("Foo [ft. Rihanna]",)))
+        self.assertTrue(self.casa(("Foo - Remastered 2011",), ("Foo",)))
+        self.assertTrue(self.casa(("Foo feat. Bar",), ("Foo (Remastered)",)))
+
+    def test_titulo_sem_letra_latina_nao_gera_chave_que_casa_tudo(self):
+        self.assertEqual(title_key("日本語"), "")
 
 
 if __name__ == "__main__":

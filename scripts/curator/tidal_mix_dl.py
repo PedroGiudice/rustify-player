@@ -25,6 +25,7 @@ import socket
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -86,6 +87,28 @@ def fetch(url: str, dest: Path) -> None:
             f.write(b)
 
 
+# O que NÃO é marca de versão e pode sair do título antes de comparar: créditos ("feat.") e "Remastered".
+# Remix, live, ao vivo, acústico, versão, edit, mix, instrumental continuam distinguindo a faixa.
+# A tela (src/lib/tidalSearch.ts, `titleKey`) usa a mesma regra: manter as duas iguais.
+_CREDITO = re.compile(r"(?:feat|ft|featuring|prod|part|participacao)\b\.?.*")
+_NEUTRO = re.compile(r"(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|explicit|bonus track")
+
+
+def title_key(title: str) -> str:
+    """Pura. Chave frouxa do título para o 'JÁ NO ACERVO': sem acentos, sem créditos/remaster, sem pontuação."""
+    t = unicodedata.normalize("NFD", title or "")
+    t = "".join(c for c in t if not unicodedata.combining(c)).lower()
+
+    def neutro(inner: str) -> bool:
+        inner = inner.strip()
+        return bool(_CREDITO.fullmatch(inner) or _NEUTRO.fullmatch(inner))
+
+    t = re.sub(r"\(([^()]*)\)|\[([^\[\]]*)\]", lambda m: " " if neutro(m.group(1) if m.group(1) is not None else m.group(2)) else m.group(0), t)
+    t = re.sub(r"\s+-\s+(.*)$", lambda m: " " if neutro(m.group(1)) else m.group(0), t)
+    t = re.sub(r"\s+(?:feat\.?|ft\.?|featuring)\s+.*$", " ", t)
+    return loose(t)
+
+
 def split_artists(s: str) -> list[str]:
     parts = re.split(r",|&| e | feat\.? | ft\.? | x ", s, flags=re.I)
     return [loose(p) for p in parts if loose(p)]
@@ -143,7 +166,9 @@ def library_keys() -> set[tuple[str, str]]:
             res = json.load(r)["result"]
         for p in res["points"]:
             pl = p.get("payload") or {}
-            t = loose(str(pl.get("title") or ""))
+            t = title_key(str(pl.get("title") or ""))
+            if not t:  # título sem letra latina: a chave vazia casaria qualquer faixa do artista
+                continue
             for a in split_artists(str(pl.get("artist") or "")) + split_artists(str(pl.get("album_artist") or "")):
                 keys.add((t, a))
         offset = res.get("next_page_offset")
@@ -181,7 +206,7 @@ def parse_ref(ref: str) -> tuple[str, str]:
         kind, ident = "album", ref
     else:
         raise ValueError(f"referência não reconhecida: {ref}")
-    if kind in ("album", "track", "radio-track") and not ident.isdigit():
+    if kind in ("album", "track", "radio-track") and not re.fullmatch(r"\d{1,19}", ident, re.ASCII):
         raise ValueError(f"id inválido para {kind}: {ident}")
     if kind == "playlist" and not re.fullmatch(_UUID, ident):
         raise ValueError(f"id de playlist inválido: {ident}")
@@ -195,7 +220,7 @@ def parse_ids(raw: str) -> list[int]:
         part = part.strip()
         if not part:
             continue
-        if not part.isdigit():
+        if not re.fullmatch(r"\d{1,19}", part, re.ASCII):  # isdigit() aceitaria "²" e "١٢٣"
             raise ValueError(f"id de faixa inválido: {part!r}")
         n = int(part)
         if n not in out:
@@ -379,7 +404,7 @@ def drop_local(dest: Path) -> None:
                 break
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("mix_id", nargs="?", help="link da Tidal (mix, playlist, álbum ou faixa), `tipo:id` ou id")
     ap.add_argument("--ids", help="modo seleção: ids de faixa separados por vírgula (máx. 200), no lugar do link")
@@ -393,6 +418,11 @@ def main() -> int:
                     help="destino rsync (padrão na VM: %(default)s); copia cada faixa assim que fica pronta, "
                          "apaga a cópia local e dá touch remoto no fim (race do watcher)")
     ap.add_argument("--no-push", action="store_true", help="não enviar (fica no acervo/staging local)")
+    return ap
+
+
+def main() -> int:
+    ap = build_parser()
     args = ap.parse_args()
     if args.no_push:
         args.push = None
@@ -459,7 +489,8 @@ def main() -> int:
             continue
         album_artist = alb.artist.name
         year = alb.release_date.year if getattr(alb, "release_date", None) else None
-        keys = {(loose(title), a) for a in split_artists(", ".join(arts)) + split_artists(album_artist)}
+        tk = title_key(title)
+        keys = {(tk, a) for a in split_artists(", ".join(arts)) + split_artists(album_artist)} if tk else set()
         dup = keys & lib
         dest_dir = dest_root / safe_name(album_artist) / (safe_name(alb.name) + " [tidal]")
         dest = dest_dir / f"{int(t.track_num or i):02d} {safe_name(title)}.flac"

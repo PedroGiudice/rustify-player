@@ -6,6 +6,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -144,6 +146,119 @@ class Busca(Base):
         json.dumps(r)  # serializável
 
 
+class Concorrencia(Base):
+    def test_lock_ocupado_devolve_503_sem_chamar_a_tidal(self):
+        orig = tf.LOCK_TIMEOUT
+        tf.LOCK_TIMEOUT = 0.05
+        tf.tidal_session = lambda: (_ for _ in ()).throw(AssertionError("não devia abrir sessão"))
+        tf.TIDAL_LOCK.acquire()  # uma conexão pendurada segurando a vez
+        try:
+            t0 = time.time()
+            code, body = tf.api_get("busca", {"q": ["orochi"]})
+            self.assertLess(time.time() - t0, 2)
+        finally:
+            tf.TIDAL_LOCK.release()
+            tf.LOCK_TIMEOUT = orig
+        self.assertEqual((code, body["error"]), (503, "Tidal ocupada, tente de novo"))
+        self.assertFalse(tf.TIDAL_LOCK.locked())
+
+    def test_lock_e_liberado_depois_de_erro(self):
+        class S:
+            def search(self, q, limit=10):
+                raise RuntimeError("x")
+        tf.tidal_session = lambda: S()
+        self.assertEqual(tf.api_get("busca", {"q": ["orochi"]})[0], 502)
+        self.assertFalse(tf.TIDAL_LOCK.locked())
+
+    def test_duas_buscas_iguais_ao_mesmo_tempo_vao_uma_vez_a_tidal(self):
+        class Lenta(FakeSession):
+            def search(self, q, limit=10):
+                time.sleep(0.2)
+                return super().search(q, limit)
+        fake = Lenta()
+        tf.tidal_session = lambda: fake
+        out = []
+        ths = [threading.Thread(target=lambda: out.append(tf.api_get("busca", {"q": ["orochi"]})[0])) for _ in range(2)]
+        for t in ths:
+            t.start()
+        for t in ths:
+            t.join()
+        self.assertEqual(out, [200, 200])
+        self.assertEqual(fake.calls, 1)
+
+    def test_limpeza_do_cache_com_lock_proprio(self):
+        tf.CACHE.clear()
+        velho = time.time() - tf.CACHE_TTL - 1
+        for i in range(501):
+            tf.CACHE[("k", i)] = (velho, i)
+        tf._cache_put(("novo",), 1)
+        self.assertEqual(list(tf.CACHE), [("novo",)])
+
+    def test_timeout_de_rede_em_toda_chamada_da_sessao(self):
+        class RS:
+            def __init__(self):
+                self.visto = None
+
+            def request(self, method, url, **kw):
+                self.visto = kw
+                return "ok"
+
+        class S:
+            request_session = RS()
+        s = tf.aplica_timeout(S())
+        self.assertEqual(s.request_session.request("GET", "u", params={}), "ok")
+        self.assertEqual(s.request_session.visto["timeout"], (5, 7))
+        s.request_session.request("GET", "u", timeout=1)  # quem passa o próprio timeout mantém o dele
+        self.assertEqual(s.request_session.visto["timeout"], 1)
+
+
+class Login(Base):
+    def sessao(self, resp):
+        class R:
+            def __init__(self, ok, code):
+                self.ok, self.status_code = ok, code
+
+        class Req:
+            def basic_request(_, m, path):
+                if isinstance(resp, Exception):
+                    raise resp
+                return R(resp == 200, resp)
+
+        class U:
+            id = 7
+
+        class S:
+            request, user = Req(), U()
+        return S()
+
+    def test_rede_e_502_e_login_recusado_e_503(self):
+        tf.confere_login(self.sessao(200))
+        for exc in (ConnectionError("x"), TimeoutError("y")):
+            with self.assertRaises(tf.TidalErro) as c:
+                tf.confere_login(self.sessao(exc))
+            self.assertEqual(c.exception.code, 502)
+            self.assertIn("Tidal sem resposta", c.exception.msg)
+        with self.assertRaises(tf.TidalErro) as c:
+            tf.confere_login(self.sessao(503))  # servidor fora do ar: não é sessão expirada
+        self.assertEqual(c.exception.code, 502)
+        for code in (401, 403):
+            with self.assertRaises(tf.TidalErro) as c:
+                tf.confere_login(self.sessao(code))
+            self.assertEqual((c.exception.code, c.exception.msg), (503, tf.SESSAO_EXPIRADA))
+
+
+class NomesNulos(Base):
+    def test_nome_nulo_da_tidal_nao_derruba_a_resposta(self):
+        sem_nome = Artist(9, None)
+        alb = Album(5, None, sem_nome)
+        f = tf.faixa_json(Track(1, None, alb, [sem_nome]))
+        self.assertEqual((f["titulo"], f["album"], f["artistas"]), ("", "", []))
+        self.assertEqual(tf.album_json(alb)["titulo"], "")
+        self.assertEqual(tf.artista_json(sem_nome)["nome"], "")
+        self.assertEqual(tf.playlist_json(Playlist(UUID, None))["titulo"], "")
+        json.dumps([f, tf.album_json(alb)])
+
+
 class Previa(Base):
     def test_ref_invalida_e_400(self):
         tf.tidal_session = lambda: (_ for _ in ()).throw(AssertionError("não devia abrir sessão"))
@@ -203,6 +318,10 @@ class Previa(Base):
 
     def test_artista_id_invalido(self):
         self.assertEqual(tf.api_get("artista/abc", {})[0], 400)
+        for ruim in ("²", "١٢٣", "1" * 20):
+            self.assertEqual(tf.api_get(f"artista/{ruim}", {})[0], 400, ruim)
+        for ruim in ("album:²", "album:" + "1" * 20, "faixa:١٢٣"):
+            self.assertEqual(tf.api_get("previa", {"ref": [ruim]})[0], 400, ruim)
         self.assertEqual(tf.api_get("nada", {})[0], 404)
 
 
@@ -215,7 +334,9 @@ class Selecao(unittest.TestCase):
     def test_recusa(self):
         casos = [{}, {"faixas": []}, {"faixas": "1,2", "playlist": "x"}, {"faixas": [1, "a"], "playlist": "x"},
                  {"faixas": [True], "playlist": "x"}, {"faixas": [0], "playlist": "x"}, {"faixas": [1], "playlist": "  "},
-                 {"faixas": list(range(1, tf.MAX_FAIXAS + 2)), "playlist": "x"}]
+                 {"faixas": list(range(1, tf.MAX_FAIXAS + 2)), "playlist": "x"},
+                 {"faixas": ["²"], "playlist": "x"}, {"faixas": ["١٢٣"], "playlist": "x"},
+                 {"faixas": [10 ** 19], "playlist": "x"}, {"faixas": ["1" * 20], "playlist": "x"}]
         for c in casos:
             err, sel = tf.valida_selecao(c)
             self.assertTrue(err, c)
@@ -234,7 +355,10 @@ class Selecao(unittest.TestCase):
     def test_alvo_do_job(self):
         self.assertEqual(tf.alvo_do_job({"url": "https://tidal.com/mix/a"}), ["https://tidal.com/mix/a"])
         self.assertEqual(tf.alvo_do_job({"url": "", "faixas": [1, 2], "titulo": "T", "origem": "mix:a"}),
-                         ["--ids", "1,2", "--titulo", "T", "--origem", "mix:a"])
+                         ["--ids=1,2", "--titulo=T", "--origem=mix:a"])
+        # valor que começa com "-" vai colado ao nome da opção (o argparse não o toma por outra opção)
+        self.assertEqual(tf.alvo_do_job({"url": "", "faixas": [1], "titulo": "-x", "origem": "--y"}),
+                         ["--ids=1", "--titulo=-x", "--origem=--y"])
 
     def test_post_de_selecao_grava_job_e_api_esconde_ids(self):
         with tempfile.TemporaryDirectory() as d:
@@ -258,6 +382,80 @@ class Selecao(unittest.TestCase):
                 self.assertEqual(tf.api_post_fila([1])[0], 400)
             finally:
                 tf.FILA, tf.LOGS = orig
+
+
+class FilaEmDisco(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.orig = (tf.FILA, tf.LOGS)
+        tf.FILA, tf.LOGS = Path(self.d.name) / "fila.json", Path(self.d.name) / "logs"
+
+    def tearDown(self):
+        tf.FILA, tf.LOGS = self.orig
+        self.d.cleanup()
+
+    def test_post_de_link_devolve_o_id_do_proprio_job(self):
+        code, r = tf.api_post_fila({"url": "https://tidal.com/browse/mix/abc", "playlist": "Rap"})
+        self.assertEqual(code, 200)
+        # outro pedido entra logo depois: o id devolvido continua sendo o do primeiro
+        code2, r2 = tf.api_post_fila({"faixas": [1], "playlist": "Rap"})
+        self.assertNotEqual(r["id"], r2["id"])
+        self.assertEqual(tf.load_fila()[0]["id"], r["id"])
+        self.assertEqual(tf.enfileira("https://tidal.com/browse/mix/abc", "Rap"), ("esse link já está na fila", None))
+        self.assertEqual(tf.enfileira("lixo", "Rap")[1], None)
+
+    def test_resumo_do_log_ausente_e_string_vazia(self):
+        self.assertEqual(tf.resumo_do_log(Path(self.d.name) / "nao-existe.log"), "")
+
+    def _selecao(self, status, **extra):
+        code, r = tf.api_post_fila({"faixas": [5, 6], "titulo": "T", "origem": "mix:a", "playlist": "Rap"})
+        jobs = tf.load_fila()
+        jobs[-1].update(status=status, resumo="3 NÃO chegaram", inicio="14/10 10:00", fim="14/10 10:05", **extra)
+        tf.save_fila(jobs)
+        return r["id"]
+
+    def test_reenviar_selecao_parcial_ou_que_falhou(self):
+        for status in ("parcial", "falhou"):
+            jid = self._selecao(status)
+            self.assertEqual(tf.reenvia(jid), (200, {"ok": True, "id": jid}))
+            job = next(j for j in tf.load_fila() if j["id"] == jid)
+            self.assertEqual((job["status"], job["resumo"], job["faixas"]), ("fila", "", [5, 6]))
+            self.assertNotIn("fim", job)
+            jobs = tf.load_fila()
+            for j in jobs:
+                j["status"] = "ok"
+            tf.save_fila(jobs)
+
+    def test_reenviar_recusa(self):
+        self.assertEqual(tf.reenvia("nada")[0], 404)
+        jid = self._selecao("ok")
+        self.assertEqual(tf.reenvia(jid)[0], 400)  # concluída: nada a reenviar
+        _, r = tf.api_post_fila({"url": "https://tidal.com/browse/mix/abc", "playlist": "Rap"})
+        jobs = tf.load_fila()
+        jobs[-1]["status"] = "falhou"
+        tf.save_fila(jobs)
+        self.assertEqual(tf.reenvia(r["id"])[0], 400)  # link: reenvia-se colando o link
+        jid2 = self._selecao("falhou")
+        tf.api_post_fila({"faixas": [5, 6], "titulo": "T", "origem": "mix:a", "playlist": "Rap"})  # mesma seleção já na fila
+        self.assertEqual(tf.reenvia(jid2), (400, {"error": "essa seleção já está na fila"}))
+
+    def test_rota_http_de_reenviar(self):
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        orig_token = tf.TOKEN
+        tf.TOKEN = "tok"
+        jid = self._selecao("parcial")
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), tf.H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{srv.server_port}/tok/api/fila/{jid}/reenviar"
+            with urllib.request.urlopen(urllib.request.Request(url, data=b"", method="POST")) as r:
+                self.assertEqual(json.load(r), {"ok": True, "id": jid})
+            self.assertEqual(tf.load_fila()[0]["status"], "fila")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            tf.TOKEN = orig_token
 
 
 if __name__ == "__main__":
