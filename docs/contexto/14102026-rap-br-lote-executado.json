@@ -1,0 +1,1504 @@
+{
+ "executado_em": "2026-10-14T03:37Z",
+ "app": "0.2.90",
+ "auditoria": "187/187 ok (move_audit.py, 8b5464b)",
+ "chave": "caminho relativo SEM a pasta de 1º nível (o mover só troca a playlist)",
+ "faixas": [
+  {
+   "rel": "Various Artists/Assault (Carro Forte) [tidal]/01 Assault (Carro Forte).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Various Artists",
+   "titulo": "Assault (Carro Forte)",
+   "id_antigo": "4992608074376730581"
+  },
+  {
+   "rel": "Various Artists/Poesia Acústica #3_ Capricorniana [tidal]/01 Poesia Acústica #3_ Capricorniana.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Various Artists",
+   "titulo": "Poesia Acústica #3: Capricorniana",
+   "id_antigo": "15488547576443279603"
+  },
+  {
+   "rel": "Various Artists/Poesia Acústica #9 Melhor Forma [tidal]/01 Poesia Acústica #9 Melhor Forma.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Various Artists",
+   "titulo": "Poesia Acústica #9 Melhor Forma",
+   "id_antigo": "7272684841318156021"
+  },
+  {
+   "rel": "Various Artists/Poesia Acústica 12 - Pra Sempre [tidal]/01 Poesia Acústica 12 - Pra Sempre.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Various Artists",
+   "titulo": "Poesia Acústica 12 - Pra Sempre",
+   "id_antigo": "13585365810444739703"
+  },
+  {
+   "rel": "Various Artists/Sereia [tidal]/01 Sereia.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Various Artists",
+   "titulo": "Sereia",
+   "id_antigo": "14771362521262194069"
+  },
+  {
+   "rel": "333 (2024)/01 - 11 - 333.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "333",
+   "id_antigo": "1779480545724697703"
+  },
+  {
+   "rel": "333 (2024)/01 - 01 - Crack com Mussilon.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Crack com Mussilon",
+   "id_antigo": "2296929740828312419"
+  },
+  {
+   "rel": "333 (2024)/01 - 08 - Castlevania.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Castlevania",
+   "id_antigo": "4002914182661402707"
+  },
+  {
+   "rel": "333 (2024)/01 - 12 - Like This!.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Like This!",
+   "id_antigo": "4425178988478140009"
+  },
+  {
+   "rel": "333 (2024)/01 - 03 - Isso e Serio.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Isso é Sério",
+   "id_antigo": "6649390592712904006"
+  },
+  {
+   "rel": "333 (2024)/01 - 04 - 1993.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "1993",
+   "id_antigo": "7137887100031202563"
+  },
+  {
+   "rel": "333 (2024)/01 - 09 - V de Vilao.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "V de Vilão",
+   "id_antigo": "9662796974398499624"
+  },
+  {
+   "rel": "333 (2024)/01 - 02 - Imagina esse Cenario.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Imagina esse Cenário",
+   "id_antigo": "11024359222208030258"
+  },
+  {
+   "rel": "333 (2024)/01 - 06 - O Som.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "O Som",
+   "id_antigo": "14920899996623642307"
+  },
+  {
+   "rel": "333 (2024)/01 - 05 - 4Tal.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "4Tal",
+   "id_antigo": "16054405167908366190"
+  },
+  {
+   "rel": "333 (2024)/01 - 07 - 04AM.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "04AM",
+   "id_antigo": "16519975212199039896"
+  },
+  {
+   "rel": "333 (2024)/01 - 10 - Maria.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Maria",
+   "id_antigo": "17111675291973860506"
+  },
+  {
+   "rel": "Altamira/Vem Cá [tidal]/01 Vem Cá.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Altamira",
+   "titulo": "Vem Cá",
+   "id_antigo": "13404504136059102259"
+  },
+  {
+   "rel": "Andrade, Kawe & Aldeia Records/Rubi [tidal]/01 Rubi.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Andrade, Kawe & Aldeia Records",
+   "titulo": "Rubi",
+   "id_antigo": "14089728382719937260"
+  },
+  {
+   "rel": "BAILE/02 Quando o DJ Toca.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "FBC, Vhoor",
+   "titulo": "Quando o DJ Toca",
+   "id_antigo": "10956139409460145382"
+  },
+  {
+   "rel": "BK/Gigantes [tidal]/09 Planos.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "BK",
+   "titulo": "Planos",
+   "id_antigo": "6296154308737881408"
+  },
+  {
+   "rel": "BORGES/Ak do Flamengo [tidal]/01 Ak do Flamengo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "BORGES",
+   "titulo": "Ak do Flamengo",
+   "id_antigo": "3031923333263947480"
+  },
+  {
+   "rel": "BORGES/Aonde Eu Sou Cria [tidal]/01 Aonde Eu Sou Cria.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "BORGES",
+   "titulo": "Aonde Eu Sou Cria",
+   "id_antigo": "13605273840272971473"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/09 - BB King.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "BB King",
+   "id_antigo": "2490253728223687659"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/02 - Queima Minha Pele.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Queima Minha Pele",
+   "id_antigo": "4143913801217748217"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/05 - Kanye West da Bahia.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Kanye West da Bahia",
+   "id_antigo": "7712385010507011725"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/04 - Minotauro de Borges.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Minotauro de Borges",
+   "id_antigo": "8595782064225408341"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/08 - Preto e Prata.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Preto e Prata",
+   "id_antigo": "10203091456491173192"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/07 - Girassóis de Van Gogh.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Girassóis de Van Gogh",
+   "id_antigo": "10984189740428870508"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/01 - Bluesman.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Bluesman",
+   "id_antigo": "11018761012138357336"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/03 - Me Desculpa Jay Z.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Me Desculpa Jay Z",
+   "id_antigo": "11878757597383379364"
+  },
+  {
+   "rel": "Baco Exu do Blues/2018 - Bluesman/06 - Flamingos.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Baco Exu do Blues",
+   "titulo": "Flamingos",
+   "id_antigo": "15937151813493148910"
+  },
+  {
+   "rel": "Black Alien/2004 - Babylon by Gus, Volume I: O ano do macaco/02 - Caminhos do destino.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Caminhos do destino",
+   "id_antigo": "752805744108313388"
+  },
+  {
+   "rel": "Black Alien/2004 - Babylon by Gus, Volume I: O ano do macaco/05 - Como eu te quero.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Como eu te quero",
+   "id_antigo": "814062708029285706"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/09 - Capítulo zero.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Capítulo zero",
+   "id_antigo": "920172492606996219"
+  },
+  {
+   "rel": "Black Alien/2004 - Babylon by Gus, Volume I: O ano do macaco/06 - Umaextrapunkprumextrafunk.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Umaextrapunkprumextrafunk",
+   "id_antigo": "1114106380699391143"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/02 - Carta pra Amy.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Carta pra Amy",
+   "id_antigo": "2052725995998139968"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/03 - Vai baby.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Vai baby",
+   "id_antigo": "2793911228769348315"
+  },
+  {
+   "rel": "Black Alien/2004 - Babylon by Gus, Volume I: O ano do macaco/04 - U-Informe.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "U-Informe",
+   "id_antigo": "3076450125091983824"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/06 - Au revoir.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Au revoir",
+   "id_antigo": "6645759292588026684"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/01 - Área 51.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Área 51",
+   "id_antigo": "7454515244174078636"
+  },
+  {
+   "rel": "Black Alien/2004 - Babylon by Gus, Volume I: O ano do macaco/01 - Mister Niterói.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Mister Niterói",
+   "id_antigo": "10207572587994186750"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/08 - Jamais serão.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Jamais serão",
+   "id_antigo": "11944085414949461331"
+  },
+  {
+   "rel": "Black Alien/2004 - Babylon by Gus, Volume I: O ano do macaco/03 - Babylon by Gus.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Babylon by Gus",
+   "id_antigo": "12081366389359799458"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/05 - Take Ten.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Take Ten",
+   "id_antigo": "12244213787742715175"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/07 - Aniversário de sobriedade.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Aniversário de sobriedade",
+   "id_antigo": "14169425502420385514"
+  },
+  {
+   "rel": "Black Alien/2019 - Abaixo de Zero: Hello Hell/04 - Que nem o meu cachorro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Black Alien",
+   "titulo": "Que nem o meu cachorro",
+   "id_antigo": "14752434769432709594"
+  },
+  {
+   "rel": "Chefin/212 [tidal]/01 212.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Chefin",
+   "titulo": "212",
+   "id_antigo": "2933598133469789047"
+  },
+  {
+   "rel": "Chefin/Deus É o Meu Guia [tidal]/01 Deus É o Meu Guia.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Chefin",
+   "titulo": "Deus É o Meu Guia",
+   "id_antigo": "6549488027274470696"
+  },
+  {
+   "rel": "Ciça/Tranquila & calma [tidal]/01 tranquila & Calma.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Ciça",
+   "titulo": "tranquila & Calma",
+   "id_antigo": "9992267007619449484"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/11 - EuVoluindo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "EuVoluindo",
+   "id_antigo": "2877232228048122326"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/03 - O mundo dá voltas.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "O mundo dá voltas",
+   "id_antigo": "2990500640409452883"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/04 - Lá pa Lapa.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Lá pa Lapa",
+   "id_antigo": "4732911888795756272"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/13 - Relíquia.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Relíquia",
+   "id_antigo": "4765102976785311371"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/01 - Cone Island (intro).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Cone Island (intro)",
+   "id_antigo": "5377788993208615241"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/02 - Chama os mulekes.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Chama os mulekes",
+   "id_antigo": "6003910607932491589"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/16 - Calma na alma.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Calma na alma",
+   "id_antigo": "6274567152016531891"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/09 - Rainha da pista.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Rainha da pista",
+   "id_antigo": "9027590179972245548"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/17 - Sem a planta.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Sem a planta",
+   "id_antigo": "12737877812399934020"
+  },
+  {
+   "rel": "ConeCrewDiretoria/2011 - Com os neurônios evoluindo/06 - Fênix.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "ConeCrewDiretoria",
+   "titulo": "Fênix",
+   "id_antigo": "14068999882732145268"
+  },
+  {
+   "rel": "Costa Gold/UAU! [tidal]/01 Uau!.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Costa Gold",
+   "titulo": "Uau!",
+   "id_antigo": "3148463222247534417"
+  },
+  {
+   "rel": "Costa Gold/Irmão Dqbrada! [tidal]/01 Irmão DQbrada!.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Costa Gold",
+   "titulo": "Irmão DQbrada!",
+   "id_antigo": "7782480957590852852"
+  },
+  {
+   "rel": "Costa Gold/AUGE [tidal]/13 O Pai Tá On.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Costa Gold",
+   "titulo": "O Pai Tá On",
+   "id_antigo": "8481462671697104190"
+  },
+  {
+   "rel": "DJ Matt D/Pandora [tidal]/01 Pandora.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "DJ Matt D",
+   "titulo": "Pandora",
+   "id_antigo": "10127471378629720482"
+  },
+  {
+   "rel": "DJ Matt D/Tipo Gringa [tidal]/01 Tipo Gringa.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "DJ Matt D",
+   "titulo": "Tipo Gringa",
+   "id_antigo": "13467779305923945317"
+  },
+  {
+   "rel": "Dfideliz/Progresso [tidal]/01 Progresso.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Dfideliz",
+   "titulo": "Progresso",
+   "id_antigo": "4110366478933439276"
+  },
+  {
+   "rel": "Djonga/2018 - O Menino Que Queria Ser Deus/04 - 1010.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "1010",
+   "id_antigo": "87010990969341551"
+  },
+  {
+   "rel": "Djonga/2018 - O Menino Que Queria Ser Deus/02 - Junho de 94.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "Junho de 94",
+   "id_antigo": "1220244409503360349"
+  },
+  {
+   "rel": "Djonga/Ladrão [tidal]/03 LEAL.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "LEAL",
+   "id_antigo": "2445428032791681184"
+  },
+  {
+   "rel": "Djonga/2018 - O Menino Que Queria Ser Deus/06 - Canção Pro Meu Filho.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "Canção Pro Meu Filho",
+   "id_antigo": "3607355996772727099"
+  },
+  {
+   "rel": "Djonga/2018 - O Menino Que Queria Ser Deus/01 - Atípico.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "Atípico",
+   "id_antigo": "7894583107637206033"
+  },
+  {
+   "rel": "Djonga/2019 - Ladrão/01 - HAT-TRICK.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "HAT-TRICK",
+   "id_antigo": "11493154592752537043"
+  },
+  {
+   "rel": "Djonga/Ladrão [tidal]/07 BENÇA.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "BENÇA",
+   "id_antigo": "17537028601268849944"
+  },
+  {
+   "rel": "Djonga/2018 - O Menino Que Queria Ser Deus/05 - Solto.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "Solto",
+   "id_antigo": "18097281054092827940"
+  },
+  {
+   "rel": "Doode/Groupies [tidal]/01 Groupies.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Doode",
+   "titulo": "Groupies",
+   "id_antigo": "12502660708848567396"
+  },
+  {
+   "rel": "DÊTRE - ANTISKIP VOL. 1 - FLAC/DÊTRE - ANTISKIP VOL. 1 - 01 GloRilla - Yeah Glo! (DÊTRE FLIP).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "DÊTRE",
+   "titulo": "GloRilla - Yeah Glo! (DÊTRE FLIP)",
+   "id_antigo": "10992110065837548081"
+  },
+  {
+   "rel": "Edmon/1991 - O Dono do Mundo/14 - Coração de Gelo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Various Artists",
+   "titulo": "Coração de Gelo",
+   "id_antigo": "14827244873787949402"
+  },
+  {
+   "rel": "Filipe Ret/Imaterial (Deluxe) [tidal]/01 Corte Americano.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "Corte Americano",
+   "id_antigo": "156659750728536360"
+  },
+  {
+   "rel": "Filipe Ret/LUME [tidal]/06 7 Meiota.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "7 Meiota",
+   "id_antigo": "2932072111445380401"
+  },
+  {
+   "rel": "Filipe Ret/Imaterial (Deluxe) [tidal]/05 Acende a Vela.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "Acende a Vela",
+   "id_antigo": "5185413803321881326"
+  },
+  {
+   "rel": "Filipe Ret/Imaterial (Deluxe) [tidal]/03 Não Desista Agora.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "Não Desista Agora",
+   "id_antigo": "5625670607920462294"
+  },
+  {
+   "rel": "Filipe Ret/Imaterial (Deluxe) [tidal]/04 Além do Dinheiro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "Além do Dinheiro",
+   "id_antigo": "8390522135288075802"
+  },
+  {
+   "rel": "Filipe Ret/F_ F_ M [tidal]/01 F_ F_ M.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "F* F* M*",
+   "id_antigo": "9140233641428625750"
+  },
+  {
+   "rel": "Filipe Ret/Vivaz [tidal]/02 Neurótico de Guerra.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "Neurótico de Guerra",
+   "id_antigo": "11320910293820337433"
+  },
+  {
+   "rel": "Filipe Ret/LUME [tidal]/04 Good Vibe.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Filipe Ret",
+   "titulo": "Good Vibe",
+   "id_antigo": "15254903215695005205"
+  },
+  {
+   "rel": "Froid/Peita de Dar Rolê [tidal]/01 Peita de Dar Rolê.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Froid",
+   "titulo": "Peita de Dar Rolê",
+   "id_antigo": "2277349139455801106"
+  },
+  {
+   "rel": "Froid/Lamentável, Pt. III [tidal]/01 Lamentável, Pt. III.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Froid",
+   "titulo": "Lamentável, Pt. III",
+   "id_antigo": "12723728890817571560"
+  },
+  {
+   "rel": "Japa/Ok Baby [tidal]/01 Ok Baby.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Japa",
+   "titulo": "Ok Baby",
+   "id_antigo": "1747390388388523082"
+  },
+  {
+   "rel": "Japa/Dejavu [tidal]/01 Dejavu.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Japa",
+   "titulo": "Dejavu",
+   "id_antigo": "15277568622124741882"
+  },
+  {
+   "rel": "Kayblack/Vivências [tidal]/01 Vivências.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Kayblack",
+   "titulo": "Vivências",
+   "id_antigo": "1170257751057759992"
+  },
+  {
+   "rel": "Kayblack/Vestido da Fendi [tidal]/01 Vestido da Fendi.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Kayblack",
+   "titulo": "Vestido da Fendi",
+   "id_antigo": "1955734817007942146"
+  },
+  {
+   "rel": "Kayblack/Contradições [tidal]/06 Melhor Só.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Kayblack",
+   "titulo": "Melhor Só",
+   "id_antigo": "4876305428368997981"
+  },
+  {
+   "rel": "Kenny G [2019]/1. Kenny G.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Kenny G",
+   "id_antigo": "5744861382728045233"
+  },
+  {
+   "rel": "Kyan/Dias Antes de Mandrake [tidal]/10 Nós é Ruim e o Cabelo Ajuda.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Kyan",
+   "titulo": "Nós é Ruim e o Cabelo Ajuda",
+   "id_antigo": "9253140790718168925"
+  },
+  {
+   "rel": "Leozin/Chega de Falar de Ice [tidal]/01 Chega de Falar de Ice.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Leozin",
+   "titulo": "Chega de Falar de Ice",
+   "id_antigo": "10604333171577201423"
+  },
+  {
+   "rel": "MC Caverinha/Flash [tidal]/01 Flash.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "MC Caverinha",
+   "titulo": "Flash",
+   "id_antigo": "18349402393110978542"
+  },
+  {
+   "rel": "MC Igu/Japão [tidal]/01 Japão.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "MC Igu",
+   "titulo": "Japão",
+   "id_antigo": "4219338572532874803"
+  },
+  {
+   "rel": "MC Kevin/Cavalo de Tróia [tidal]/01 Cavalo de Tróia.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "MC Kevin",
+   "titulo": "Cavalo de Tróia",
+   "id_antigo": "7837922636840330792"
+  },
+  {
+   "rel": "MC Kevin/Terapia [tidal]/01 Terapia.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "MC Kevin",
+   "titulo": "Terapia",
+   "id_antigo": "14804069235809983797"
+  },
+  {
+   "rel": "MC Ryan SP/Coração Terra de Ninguém [tidal]/02 Aliança.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "MC Ryan SP",
+   "titulo": "Aliança",
+   "id_antigo": "10763445019746248348"
+  },
+  {
+   "rel": "Mainstreet/Dior [tidal]/01 Dior.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Mainstreet",
+   "titulo": "Dior",
+   "id_antigo": "16695638329487872091"
+  },
+  {
+   "rel": "Major RD/2% [tidal]/02 Corporação Cápsula.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Major RD",
+   "titulo": "Corporação Cápsula",
+   "id_antigo": "496345217881879663"
+  },
+  {
+   "rel": "Matuê/Vampiro [tidal]/01 Vampiro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Vampiro",
+   "id_antigo": "1485404596286983786"
+  },
+  {
+   "rel": "Matuê/Máquina do Tempo [tidal]/02 Antes.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Antes",
+   "id_antigo": "5993894118454147893"
+  },
+  {
+   "rel": "Matuê/Máquina do Tempo [tidal]/03 Gorilla Roxo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Gorilla Roxo",
+   "id_antigo": "6036124594411899153"
+  },
+  {
+   "rel": "Matuê/Lama No Copo [tidal]/01 Lama No Copo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Lama No Copo",
+   "id_antigo": "6380616198678119171"
+  },
+  {
+   "rel": "Matuê/Máquina do Tempo [tidal]/06 É Sal.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "É Sal",
+   "id_antigo": "11592645200615522955"
+  },
+  {
+   "rel": "Matuê/A Morte do Autotune [tidal]/01 A Morte do Autotune.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "A Morte do Autotune",
+   "id_antigo": "12045771725158865571"
+  },
+  {
+   "rel": "Matuê/Anos Luz [tidal]/01 Anos Luz.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Anos Luz",
+   "id_antigo": "13425643950755901062"
+  },
+  {
+   "rel": "Matuê/Máquina do Tempo [tidal]/05 777-666.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "777-666",
+   "id_antigo": "13877651519725528323"
+  },
+  {
+   "rel": "Matuê/Quem Manda É a 30 [tidal]/01 Quem Manda É a 30.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Quem Manda É a 30",
+   "id_antigo": "13887564027024685185"
+  },
+  {
+   "rel": "Matuê/Sem Dó [tidal]/01 Sem Dó.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Matuê",
+   "titulo": "Sem Dó",
+   "id_antigo": "15878738953275327828"
+  },
+  {
+   "rel": "Mc Poze do Rodo/Eu Fiz o Jogo Virar [tidal]/01 Eu Fiz o Jogo Virar.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Mc Poze do Rodo",
+   "titulo": "Eu Fiz o Jogo Virar",
+   "id_antigo": "453614305481458385"
+  },
+  {
+   "rel": "Mc Poze do Rodo/Vida Louca [tidal]/01 Vida Louca.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Mc Poze do Rodo",
+   "titulo": "Vida Louca",
+   "id_antigo": "1315143739214569322"
+  },
+  {
+   "rel": "Mc Poze do Rodo/A Cara do Crime (Nós Incomoda) [tidal]/01 A Cara do Crime (Nós Incomoda).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Mc Poze do Rodo",
+   "titulo": "A Cara do Crime (Nós Incomoda)",
+   "id_antigo": "2538906253916035180"
+  },
+  {
+   "rel": "Mc Poze do Rodo/Assault (Rio) [tidal]/01 Assault (Rio).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Mc Poze do Rodo",
+   "titulo": "Assault (Rio)",
+   "id_antigo": "17303147580348287422"
+  },
+  {
+   "rel": "NGC Daddy/Bendito [tidal]/01 Bendito.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "NGC Daddy",
+   "titulo": "Bendito",
+   "id_antigo": "9585288301338693262"
+  },
+  {
+   "rel": "NGC Daddy/Love And Choppa [tidal]/01 Love And Choppa.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "NGC Daddy",
+   "titulo": "Love And Choppa",
+   "id_antigo": "10098908625839488288"
+  },
+  {
+   "rel": "NGC Daddy/Glockada [tidal]/01 Glockada.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "NGC Daddy",
+   "titulo": "Glockada",
+   "id_antigo": "14911836692034511845"
+  },
+  {
+   "rel": "O Menino Que Queria Ser Deus/03 - UFA.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Djonga",
+   "titulo": "UFA",
+   "id_antigo": "1869051928295212196"
+  },
+  {
+   "rel": "Orochi/Celebridade [tidal]/09 Amor de Fim de Noite.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Amor de Fim de Noite",
+   "id_antigo": "118504267865623694"
+  },
+  {
+   "rel": "Orochi/Celebridade [tidal]/14 Balão.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Balão",
+   "id_antigo": "310948564615213498"
+  },
+  {
+   "rel": "Orochi/Lobo [tidal]/01 Lobo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Lobo",
+   "id_antigo": "2990408093947294889"
+  },
+  {
+   "rel": "Orochi/Lobo [tidal]/07 Versace.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Versace",
+   "id_antigo": "3003309306382070176"
+  },
+  {
+   "rel": "Orochi/Lobo [tidal]/02 Deixa Chapar.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Deixa Chapar",
+   "id_antigo": "5498517252792272626"
+  },
+  {
+   "rel": "Orochi/Celebridade [tidal]/04 Mitsubishi.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Mitsubishi",
+   "id_antigo": "6685598502931686299"
+  },
+  {
+   "rel": "Orochi/Acende o Isqueiro [tidal]/01 Acende o Isqueiro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Acende o Isqueiro",
+   "id_antigo": "6712335408746178899"
+  },
+  {
+   "rel": "Orochi/Mitsubishi [tidal]/01 Mitsubishi.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Mitsubishi",
+   "id_antigo": "7687105149547083135"
+  },
+  {
+   "rel": "Orochi/Celebridade [tidal]/13 Celebridade.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Orochi",
+   "titulo": "Celebridade",
+   "id_antigo": "9500189226906975838"
+  },
+  {
+   "rel": "Oruam/Predestinado [tidal]/01 Predestinado.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Oruam",
+   "titulo": "Predestinado",
+   "id_antigo": "11316253500125810485"
+  },
+  {
+   "rel": "Oruam/Papo de Agustinho [tidal]/01 Papo de Agustinho.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Oruam",
+   "titulo": "Papo de Agustinho",
+   "id_antigo": "17519594750791409786"
+  },
+  {
+   "rel": "Racionais MC's/Nada Como um Dia Após o Outro Dia, Vol. 1 & 2 [tidal]/06 Estilo Cachorro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Racionais MC's",
+   "titulo": "Estilo Cachorro",
+   "id_antigo": "2982914104733869691"
+  },
+  {
+   "rel": "Racionais MC's/Nada Como um Dia Após o Outro Dia, Vol. 1 & 2 [tidal]/04 Jesus Chorou.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Racionais MC's",
+   "titulo": "Jesus Chorou",
+   "id_antigo": "10115714483650331291"
+  },
+  {
+   "rel": "Racionais MC's/Nada Como um Dia Após o Outro Dia, Vol. 1 & 2 [tidal]/07 Vida Loka, Pt. 2.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Racionais MC's",
+   "titulo": "Vida Loka, Pt. 2",
+   "id_antigo": "11556150559780517467"
+  },
+  {
+   "rel": "Racionais MC's/Nada Como um Dia Após o Outro Dia, Vol. 1 & 2 [tidal]/10 Da Ponte pra Cá.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Racionais MC's",
+   "titulo": "Da Ponte pra Cá",
+   "id_antigo": "16042821674965313588"
+  },
+  {
+   "rel": "Raffa Moreira/10K [tidal]/01 10K.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Raffa Moreira",
+   "titulo": "10K",
+   "id_antigo": "8186478174270334424"
+  },
+  {
+   "rel": "Recayd Mob/Mlks de Sp [tidal]/01 Mlks de Sp.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Recayd Mob",
+   "titulo": "Mlks de Sp",
+   "id_antigo": "6675503699554358105"
+  },
+  {
+   "rel": "Rock Danger/Rock Danger, Vol. 1 [tidal]/06 Só Rock 2.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Rock Danger",
+   "titulo": "Só Rock 2",
+   "id_antigo": "14530439696173395939"
+  },
+  {
+   "rel": "Roteiro pra Aïnouz (Vol. 3)/01 - Eu não te amo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Don L",
+   "titulo": "Eu não te amo",
+   "id_antigo": "3819618411309211513"
+  },
+  {
+   "rel": "Roteiro pra Aïnouz (Vol. 3)/02 - Fazia sentido.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Don L",
+   "titulo": "Fazia sentido",
+   "id_antigo": "11594063593748331916"
+  },
+  {
+   "rel": "Salvador da Rima/Vergonha pra Mídia (feat. MC Ryan SP & Mc Lele JP) [tidal]/01 Vergonha pra Mídia (feat. MC Ryan SP & Mc Lele JP).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Salvador da Rima",
+   "titulo": "Vergonha pra Mídia (feat. MC Ryan SP & Mc Lele JP)",
+   "id_antigo": "6013189457192983036"
+  },
+  {
+   "rel": "Sidoka/Mi'adama [tidal]/01 Mi'adama.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Sidoka",
+   "titulo": "Mi'adama",
+   "id_antigo": "7273545767425550061"
+  },
+  {
+   "rel": "Sidoka/Louis V, Menina Linda [tidal]/01 Louis V, Menina Linda.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Sidoka",
+   "titulo": "Louis V, Menina Linda",
+   "id_antigo": "11031060035220662200"
+  },
+  {
+   "rel": "Sidoka/Quadro [tidal]/01 Quadro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Sidoka",
+   "titulo": "Quadro",
+   "id_antigo": "12950332701183520031"
+  },
+  {
+   "rel": "Sidoka/Não Me Sinto Mal Mais [tidal]/01 Não Me Sinto Mal Mais.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Sidoka",
+   "titulo": "Não Me Sinto Mal Mais",
+   "id_antigo": "13480540162787302477"
+  },
+  {
+   "rel": "Teto/Fim de Semana no Rio [tidal]/01 Fim de Semana no Rio.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Teto",
+   "titulo": "Fim de Semana no Rio",
+   "id_antigo": "16536714171596272035"
+  },
+  {
+   "rel": "UCLÃ/Acústico Duzz [tidal]/04 Quit Cat (Acústico).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "UCLÃ",
+   "titulo": "Quit Cat (Acústico)",
+   "id_antigo": "2952941945661137597"
+  },
+  {
+   "rel": "WC no Beat/Meu Mundo [tidal]/01 Meu Mundo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "WC no Beat",
+   "titulo": "Meu Mundo",
+   "id_antigo": "9170316894531820682"
+  },
+  {
+   "rel": "Wiu/Lágrimas de Crocodilo [tidal]/01 Lágrimas de Crocodilo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Wiu",
+   "titulo": "Lágrimas de Crocodilo",
+   "id_antigo": "8499722450096815428"
+  },
+  {
+   "rel": "Wiu/Felina [tidal]/01 Felina.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Wiu",
+   "titulo": "Felina",
+   "id_antigo": "9690041625635469240"
+  },
+  {
+   "rel": "Xamã/Pecado Capital [tidal]/08 Luxúria.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Xamã",
+   "titulo": "Luxúria",
+   "id_antigo": "16106123556473898828"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.21 - Indigo Plateau.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Indigo Plateau",
+   "id_antigo": "323864426476969248"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.25 - Morioh Cho Radio.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Morioh Cho Radio",
+   "id_antigo": "1878776065221403703"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.19 - Vilão.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Vilão",
+   "id_antigo": "2474079398487192069"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.14 - Hydrobalance.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Hydrobalance",
+   "id_antigo": "3842507750787000757"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.04 - Digivice.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Digivice",
+   "id_antigo": "5384340708448296724"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.12 - Skin do Kof.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Skin do Kof",
+   "id_antigo": "5530442463906180971"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.02 - Safezone.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Safezone",
+   "id_antigo": "5922612940430682968"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.17 - Roxo.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Roxo",
+   "id_antigo": "6141209413875752074"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.01 - Subaru Azul.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Subaru Azul",
+   "id_antigo": "6152805844133681876"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.10 - Cayo Perico.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Cayo Perico",
+   "id_antigo": "6186070314718821140"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.06 - Kekw.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Kekw",
+   "id_antigo": "6896829015903649976"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.03 - Digimon.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Digimon",
+   "id_antigo": "8319421182948423108"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.15 - Kaneda.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Kaneda",
+   "id_antigo": "8761008607730195284"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.11 - Gente Morta Não Conta História.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Gente Morta Não Conta História",
+   "id_antigo": "9281199964360012449"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.18 - Montenegro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Montenegro",
+   "id_antigo": "9498732666043183229"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.20 - Dio.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Dio",
+   "id_antigo": "9577817140504621965"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.24 - Necronomicon.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Necronomicon",
+   "id_antigo": "9986379642881021365"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.09 - Monstro.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Monstro",
+   "id_antigo": "10691754495416739746"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.05 - Aquelamusicaali.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Aquelamusicaali",
+   "id_antigo": "11915173584182432303"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.22 - Monstro (Voodoo Doll).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Monstro (Voodoo Doll)",
+   "id_antigo": "11986982568678637340"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.23 - Cemitério.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Cemitério",
+   "id_antigo": "12381709254702675233"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.16 - Lopes.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Lopes",
+   "id_antigo": "13075334803772066538"
+  },
+  {
+   "rel": "Yung Buda/2022 - Magika/01.01 - Magika.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Magika",
+   "id_antigo": "14455567428000189043"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.26 - Skin do Kof (Remix).flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Skin do Kof (Remix)",
+   "id_antigo": "15203543442347999488"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.27 - Zero Maschine.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Zero Maschine",
+   "id_antigo": "15866383688396280752"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.08 - Eu Já Morri uma Vez.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "Eu Já Morri uma Vez",
+   "id_antigo": "15970507906038533008"
+  },
+  {
+   "rel": "Yung Buda/2022 - Zero/01.07 - The End.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yung Buda",
+   "titulo": "The End",
+   "id_antigo": "18423312903012432467"
+  },
+  {
+   "rel": "Yunk Vino/MIDNIGHT CALLS [tidal]/11 30 Dias.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "Yunk Vino",
+   "titulo": "30 Dias",
+   "id_antigo": "2059831534838281904"
+  },
+  {
+   "rel": "teto/previas.zip [tidal]/02 Dia Azul.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Dia Azul",
+   "id_antigo": "4901425022121824197"
+  },
+  {
+   "rel": "teto/previas.zip [tidal]/04 Fashion.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Fashion",
+   "id_antigo": "6813577790966085852"
+  },
+  {
+   "rel": "teto/Minha Vida é um Filme [tidal]/01 Minha Vida é um Filme.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Minha Vida é um Filme",
+   "id_antigo": "8659047942409682001"
+  },
+  {
+   "rel": "teto/M4 [tidal]/01 M4.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "M4",
+   "id_antigo": "11506405186636902356"
+  },
+  {
+   "rel": "teto/Flow Espacial [tidal]/01 Flow Espacial.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Flow Espacial",
+   "id_antigo": "12834885547957502194"
+  },
+  {
+   "rel": "teto/previas.zip [tidal]/03 Manha.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Manha",
+   "id_antigo": "16328884111090630075"
+  },
+  {
+   "rel": "teto/Mateca x Teto [tidal]/02 Balazul.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Balazul",
+   "id_antigo": "16528423287343677599"
+  },
+  {
+   "rel": "teto/previas.zip [tidal]/01 Paypal.flac",
+   "de": "Rap & Hip-Hop",
+   "para": "Rap & Trap Brasileiro",
+   "artista": "teto",
+   "titulo": "Paypal",
+   "id_antigo": "17186497373917840652"
+  }
+ ]
+}
