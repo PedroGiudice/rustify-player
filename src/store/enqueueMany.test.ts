@@ -39,6 +39,23 @@ describe("enqueue em lote", () => {
   });
 });
 
+describe("a faixa que está tocando não volta para a fila", () => {
+  it("adicionar ao fim (lote) deixa a atual de fora", () => {
+    enqueueEndMany([mk("a"), mk("x"), mk("a")]);
+    expect(ids()).toEqual(["a", "b", "c", "x"]);
+    enqueueEndMany([mk("a")]);
+    expect(ids()).toEqual(["a", "b", "c", "x"]);
+  });
+  it("tocar a seguir de uma faixa só: a atual é ignorada, outra entra logo depois", () => {
+    enqueuePreload.mockClear();
+    enqueueNext(mk("a"));
+    expect(ids()).toEqual(["a", "b", "c"]);
+    expect(enqueuePreload).not.toHaveBeenCalled();
+    enqueueNext(mk("x"));
+    expect(ids()).toEqual(["a", "x", "b", "c"]);
+  });
+});
+
 describe("realinhamento do preload gapless", () => {
   it("tocar a seguir (lote) com a próxima já pré-carregada: re-enfileira a nova primeira", () => {
     enqueueNextMany(["x", "y", "z", "w", "v"].map(mk));
