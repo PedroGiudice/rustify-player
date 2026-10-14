@@ -854,6 +854,9 @@ export const crateTidalEnqueue = (url: string, playlist: string) =>
 export const crateTidalEnqueueSelection = (trackIds: number[], title: string, origin: string, playlist: string) =>
   invoke<string>("crate_tidal_enqueue", { url: "", playlist, trackIds, title, origin });
 
+/** Reenvia uma seleção da fila que ficou parcial ou falhou (mesmas faixas, mesmo pedido). */
+export const crateTidalResend = (jobId: string) => invoke<string>("crate_tidal_resend", { jobId });
+
 /** Busca por texto na Tidal, pela fila da VM. Rejeita com texto em PT-BR
     (texto curto, sessão da Tidal expirada, Tidal sem resposta, fila
     indisponível). */

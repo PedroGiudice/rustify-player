@@ -664,6 +664,13 @@ pub(crate) async fn crate_tidal_enqueue(
     .await
 }
 
+/// Reenvia uma seleção da fila que ficou parcial ou falhou (mesmas faixas, mesmo pedido).
+#[tauri::command]
+pub(crate) async fn crate_tidal_resend(sl: State<'_, Slsk>, job_id: String) -> Result<String, String> {
+    let ext = sl.ext.clone();
+    blocking(move || tidal_fila::resend(&ext.sources, &job_id)).await
+}
+
 #[tauri::command]
 pub(crate) async fn crate_tidal_search(sl: State<'_, Slsk>, q: String) -> Result<TidalSearch, String> {
     let ext = sl.ext.clone();

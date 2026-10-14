@@ -16,7 +16,7 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::sources::SourcesConfig;
 
@@ -28,6 +28,11 @@ pub const MAX_TRACK_IDS: usize = 200;
 /// Único host de capa aceito por [`fetch_cover`].
 const COVER_PREFIX: &str = "https://resources.tidal.com/images/";
 const COVER_MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Texto que a Tidal pode mandar como `null` (nome vazio): vira `""` em vez de derrubar a resposta inteira.
+fn texto<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.unwrap_or_default())
+}
 
 /// Um job da fila, como a API devolve (o campo `log` do script já vem
 /// removido na origem).
@@ -60,10 +65,11 @@ pub struct TidalJob {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TidalTrack {
     pub id: u64,
+    #[serde(default, deserialize_with = "texto")]
     pub titulo: String,
     #[serde(default)]
     pub artistas: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub album: String,
     #[serde(default)]
     pub album_id: Option<u64>,
@@ -75,15 +81,16 @@ pub struct TidalTrack {
     pub hires: bool,
     #[serde(default)]
     pub capa: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TidalAlbum {
     pub id: u64,
+    #[serde(default, deserialize_with = "texto")]
     pub titulo: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub artista: String,
     #[serde(default)]
     pub ano: Option<i32>,
@@ -94,27 +101,29 @@ pub struct TidalAlbum {
     #[serde(default)]
     pub hires: bool,
     /// `album | ep | single`.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub tipo: String,
     #[serde(default)]
     pub capa: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TidalArtist {
     pub id: u64,
+    #[serde(default, deserialize_with = "texto")]
     pub nome: String,
     #[serde(default)]
     pub foto: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TidalPlaylist {
     pub id: String,
+    #[serde(default, deserialize_with = "texto")]
     pub titulo: String,
     #[serde(default)]
     pub n_faixas: u32,
@@ -124,7 +133,7 @@ pub struct TidalPlaylist {
     pub autor: Option<String>,
     #[serde(default)]
     pub capa: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub url: String,
 }
 
@@ -160,10 +169,11 @@ pub struct TidalRadio {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TidalArtistPage {
     pub id: u64,
+    #[serde(default, deserialize_with = "texto")]
     pub nome: String,
     #[serde(default)]
     pub foto: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "texto")]
     pub url: String,
     #[serde(default)]
     pub populares: Vec<TidalTrack>,
@@ -179,6 +189,7 @@ pub struct TidalArtistPage {
 pub struct TidalPreview {
     /// `mix | radio | playlist | album | faixa`.
     pub tipo: String,
+    #[serde(default, deserialize_with = "texto")]
     pub titulo: String,
     /// Forma canônica `tipo:id` — vai como `origem` no pedido de seleção.
     #[serde(rename = "ref")]
@@ -343,6 +354,25 @@ fn post_fila(cfg: &SourcesConfig, token: &str, body: serde_json::Value) -> Resul
             Err(body.error.unwrap_or_else(|| "pedido recusado pela fila".to_string()))
         }
         Err(ureq::Error::Status(code, _)) => Err(format!("fila ({}) respondeu {code}", host_port(cfg))),
+        Err(ureq::Error::Transport(_)) => Err(offline_msg(cfg)),
+    }
+}
+
+/// Reenvia uma seleção parcial ou que falhou: a fila guarda as faixas e reabre o MESMO pedido
+/// (`POST .../api/fila/<id>/reenviar`). Devolve o id. O id vem da própria fila; só
+/// `[0-9A-Za-z-]` entra no caminho (nada de `/` ou `..`).
+pub fn resend(cfg: &SourcesConfig, job_id: &str) -> Result<String, String> {
+    let job_id = job_id.trim();
+    if job_id.is_empty() || job_id.len() > 40 || !job_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("pedido inválido".to_string());
+    }
+    let token = cfg.read_tidal_token().map_err(|_| SEM_TOKEN.to_string())?;
+    match agent().post(&api_url(cfg, &token, &format!("fila/{job_id}/reenviar"))).send_bytes(b"") {
+        Ok(resp) => {
+            let ok: EnqueueOk = resp.into_json().map_err(|e| format!("resposta inválida da fila ({}): {e}", host_port(cfg)))?;
+            ok.id.ok_or_else(|| format!("fila ({}) não devolveu o id do job", host_port(cfg)))
+        }
+        Err(ureq::Error::Status(code, resp)) => Err(status_msg(cfg, code, resp)),
         Err(ureq::Error::Transport(_)) => Err(offline_msg(cfg)),
     }
 }
@@ -584,6 +614,32 @@ mod tests {
         assert!(!is_tidal_cover_url("https://evil.com/https://resources.tidal.com/images/x.jpg"));
         assert!(!is_tidal_cover_url("https://resources.tidal.com/images/../x"));
         assert_eq!(fetch_cover("file:///etc/passwd").unwrap_err(), "endereço de capa inválido");
+    }
+
+    #[test]
+    fn nome_nulo_ou_ausente_da_tidal_vira_vazio() {
+        let raw = r#"{"q":"x","faixas":[{"id":1,"titulo":null}],
+            "albuns":[{"id":2,"titulo":null,"artista":null,"tipo":null}],
+            "artistas":[{"id":3,"nome":null}],"playlists":[{"id":"u","titulo":null}]}"#;
+        let r: TidalSearch = serde_json::from_str(raw).unwrap();
+        assert_eq!(r.faixas[0].titulo, "");
+        assert_eq!((r.albuns[0].titulo.as_str(), r.albuns[0].artista.as_str()), ("", ""));
+        assert_eq!(r.artistas[0].nome, "");
+        assert_eq!(r.playlists[0].titulo, "");
+        let a: TidalArtistPage = serde_json::from_str(r#"{"id":1}"#).unwrap();
+        assert_eq!(a.nome, "");
+        let p: TidalPreview = serde_json::from_str(r#"{"tipo":"album","ref":"album:1","titulo":null}"#).unwrap();
+        assert_eq!(p.titulo, "");
+    }
+
+    #[test]
+    fn reenvio_valida_o_id_antes_da_rede() {
+        let c = cfg();
+        for ruim in ["", "  ", "../x", "a/b", "a b", &"1".repeat(41)] {
+            assert_eq!(resend(&c, ruim).unwrap_err(), "pedido inválido", "{ruim:?}");
+        }
+        // id bom: o próximo passo é o token, que falta
+        assert_eq!(resend(&c, "20261014-101010-2").unwrap_err(), SEM_TOKEN);
     }
 
     #[test]

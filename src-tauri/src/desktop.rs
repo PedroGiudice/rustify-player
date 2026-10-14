@@ -3654,6 +3654,7 @@ pub fn run() {
             slsk::crate_sources_status,
             slsk::crate_tidal_jobs,
             slsk::crate_tidal_enqueue,
+            slsk::crate_tidal_resend,
             slsk::crate_tidal_search,
             slsk::crate_tidal_artist,
             slsk::crate_tidal_preview,

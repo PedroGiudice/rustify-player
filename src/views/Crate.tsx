@@ -1171,6 +1171,8 @@ function ConfirmCard(props: {
 // ── View principal ─────────────────────────────────────────────
 export default function Crate(props: { param?: string | null }) {
   const [tab, setTab] = createSignal<"search" | "queue" | "tidal">("search");
+  const [tidalVisited, setTidalVisited] = createSignal(false);
+  createEffect(() => { if (tab() === "tidal") setTidalVisited(true); });
   const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : "");
   const [searchId, setSearchId] = createSignal<string | null>(null);
   const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(null);
@@ -2135,15 +2137,20 @@ export default function Crate(props: { param?: string | null }) {
           </Show>
         </Show>
 
-        <Show when={tab() === "tidal"}>
-          <TidalTab
-            jobs={tidalJobs()}
-            pastas={tidalPastas()}
-            load={tidalLoad()}
-            loadError={tidalLoadError()}
-            refresh={refreshTidal}
-            tokenMissing={sourcesStatus()?.tidal === "no_token"}
-          />
+        {/* Monta na 1ª visita e fica oculta ao trocar de aba: busca, prévia e seleção sobrevivem. O polling
+            da fila já roda no Crate inteiro; a aba escondida não ganha nenhum. */}
+        <Show when={tidalVisited()}>
+          <div style={{ display: tab() === "tidal" ? "contents" : "none" }}>
+            <TidalTab
+              jobs={tidalJobs()}
+              pastas={tidalPastas()}
+              load={tidalLoad()}
+              loadError={tidalLoadError()}
+              refresh={refreshTidal}
+              tokenMissing={sourcesStatus()?.tidal === "no_token"}
+              active={tab() === "tidal"}
+            />
+          </div>
         </Show>
       </div>
     </article>

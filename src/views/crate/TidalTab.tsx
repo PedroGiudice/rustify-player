@@ -34,7 +34,7 @@ import {
 } from "solid-js";
 import {
   crateTidalEnqueue, crateTidalEnqueueSelection, crateTidalSearch, crateTidalArtist, crateTidalPreview,
-  crateTidalCover, libGetTracks,
+  crateTidalCover, crateTidalResend, libGetTracks,
   type TidalJob, type TidalSearch, type TidalTrack, type TidalAlbum, type TidalArtist, type TidalPlaylist,
   type TidalArtistPage, type TidalPreview,
 } from "../../tauri";
@@ -43,7 +43,7 @@ import {
 } from "../../lib/tidalFila";
 import {
   classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime, plural,
-  buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, SEARCH_DEBOUNCE_MS,
+  buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, SEARCH_DEBOUNCE_MS, MAX_SELECTION,
   type OwnedIndex,
 } from "../../lib/tidalSearch";
 import { pushEscLayer } from "../../lib/escLayers";
@@ -58,6 +58,8 @@ interface Props {
   loadError: string | null;
   refresh: () => void;
   tokenMissing: boolean;
+  /** A aba fica montada e oculta ao trocar de aba do Crate: só a ativa pega o Esc. */
+  active?: boolean;
 }
 
 type Page =
@@ -73,13 +75,19 @@ function errText(e: unknown): string {
 }
 
 // ── capa: data URL pelo Rust, cache por URL, no máximo 6 em voo ──────
+const COVER_CACHE_MAX = 300;
+/** LRU simples: a ordem de inserção do Map é a de uso (acerto reinsere). Promessa que falhou sai do cache. */
 const coverCache = new Map<string, Promise<string>>();
 let coverActive = 0;
 const coverWaiting: (() => void)[] = [];
 
 function loadCover(url: string): Promise<string> {
   const hit = coverCache.get(url);
-  if (hit) return hit;
+  if (hit) {
+    coverCache.delete(url);
+    coverCache.set(url, hit);
+    return hit;
+  }
   const p = new Promise<void>((res) => {
     if (coverActive < 6) { coverActive++; res(); } else coverWaiting.push(() => { coverActive++; res(); });
   }).then(() => crateTidalCover(url)).finally(() => {
@@ -87,6 +95,8 @@ function loadCover(url: string): Promise<string> {
     coverWaiting.shift()?.();
   });
   coverCache.set(url, p);
+  p.catch(() => { if (coverCache.get(url) === p) coverCache.delete(url); });
+  while (coverCache.size > COVER_CACHE_MAX) coverCache.delete(coverCache.keys().next().value as string);
   return p;
 }
 
@@ -220,10 +230,11 @@ function Section(props: { title: string; count: number; children: any; more?: an
 }
 
 // ── job da fila (link ou seleção) ──────────────────────────────────
-function TidalJobRow(props: { job: TidalJob }) {
+function TidalJobRow(props: { job: TidalJob; onResend: (j: TidalJob) => void }) {
   const tone = () => tidalStatusTone(props.job.status);
   const horario = () => props.job.fim ?? props.job.inicio ?? props.job.added;
   const isSel = () => (props.job.n_faixas ?? 0) > 0;
+  const canResend = () => isSel() && (props.job.status === "parcial" || props.job.status === "falhou");
   return (
     <div class="crate-row-wrap">
       <div class="crate-tidal-row">
@@ -245,6 +256,12 @@ function TidalJobRow(props: { job: TidalJob }) {
             <p class="crate-tidal-row__resumo">{props.job.resumo}</p>
           </Show>
         </div>
+        <Show when={canResend()}>
+          <button type="button" class="crate-btn crate-btn--quiet" title="Volta para a fila com as mesmas faixas"
+            onClick={() => props.onResend(props.job)}>
+            Reenviar
+          </button>
+        </Show>
         <span class="crate-r-dur crate-tidal-row__time">{horario()}</span>
       </div>
     </div>
@@ -410,15 +427,18 @@ function PreviewView(props: {
   dest: () => string;
   destPicker: any;
   tokenMissing: boolean;
-  onEnqueue: (ids: number[], titulo: string, ref: string) => Promise<boolean>;
+  /** Devolve null se foi para a fila, ou o texto do erro (mostrado junto do rodapé). */
+  onEnqueue: (ids: number[], titulo: string, ref: string) => Promise<string | null>;
 }) {
   const [data, setData] = createSignal<TidalPreview | null>(null);
   const [err, setErr] = createSignal<string | null>(null);
   const [sel, setSel] = createSignal<Set<number>>(new Set());
   const [touched, setTouched] = createSignal(false);
   const [sending, setSending] = createSignal(false);
+  const [sendErr, setSendErr] = createSignal<string | null>(null);
   let alive = true;
   let listEl: HTMLDivElement | undefined;
+  let rootEl: HTMLDivElement | undefined;
   onCleanup(() => { alive = false; });
 
   const ownedIds = createMemo(() => {
@@ -438,32 +458,46 @@ function PreviewView(props: {
     setErr(null);
     crateTidalPreview(props.page.ref).then((d) => { if (alive) setData(d); }).catch((e) => { if (alive) setErr(errText(e)); });
   }
-  onMount(load);
+  onMount(() => {
+    load();
+    rootEl?.focus({ preventScroll: true }); // o Ctrl+A da prévia vale logo, sem clicar numa caixa
+  });
 
   function toggle(id: number) {
     setTouched(true);
+    setSendErr(null);
     setSel((s) => {
       const n = new Set(s);
       if (n.has(id)) n.delete(id); else n.add(id);
       return n;
     });
   }
-  const all = () => { setTouched(true); setSel(new Set((data()?.faixas ?? []).map((t) => t.id))); };
-  const none = () => { setTouched(true); setSel(new Set<number>()); };
-  const onlyNew = () => { setTouched(true); setSel(defaultSelection(data()?.faixas ?? [], (id) => ownedIds().has(id))); };
+  const all = () => { setTouched(true); setSendErr(null); setSel(new Set((data()?.faixas ?? []).map((t) => t.id))); };
+  const none = () => { setTouched(true); setSendErr(null); setSel(new Set<number>()); };
+  const onlyNew = () => { setTouched(true); setSendErr(null); setSel(defaultSelection(data()?.faixas ?? [], (id) => ownedIds().has(id))); };
 
   const chosen = createMemo(() => (data()?.faixas ?? []).filter((t) => sel().has(t.id)));
   const est = createMemo(() => estimateSelection(chosen()));
+  const overMax = () => est().count > MAX_SELECTION;
+  // Mais de 200 novas: a seleção padrão marca só as 200 primeiras; o rodapé avisa.
+  const cappedDefault = () => !touched() && (data()?.faixas.length ?? 0) - ownedIds().size > MAX_SELECTION;
+
+  /** Ctrl/Cmd+A em qualquer ponto da prévia marca todas, menos dentro de um campo de texto ou
+      seletor (ali é o do próprio campo). */
+  function onPageKey(e: KeyboardEvent) {
+    if (!((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a")) return;
+    const el = e.target as HTMLElement | null;
+    const campo = el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || !!el?.isContentEditable
+      || (el instanceof HTMLInputElement && el.type !== "checkbox");
+    if (campo) return;
+    e.preventDefault();
+    e.stopPropagation();
+    all();
+  }
 
   function onListKey(e: KeyboardEvent) {
     const boxes = listEl ? [...listEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]")] : [];
     const i = boxes.indexOf(document.activeElement as HTMLInputElement);
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-      e.stopPropagation();
-      all();
-      return;
-    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       e.stopPropagation();
@@ -476,17 +510,19 @@ function PreviewView(props: {
     const d = data();
     if (!d || sending()) return;
     const ids = orderedSelection(d.faixas, sel());
-    if (!ids.length) return;
+    if (!ids.length || ids.length > MAX_SELECTION) return;
     setSending(true);
+    setSendErr(null);
     try {
-      await props.onEnqueue(ids, d.titulo, d.ref);
+      const err = await props.onEnqueue(ids, d.titulo, d.ref);
+      if (alive && err) setSendErr(err);
     } finally {
       if (alive) setSending(false);
     }
   }
 
   return (
-    <div class="tdl-page tdl-page--preview">
+    <div class="tdl-page tdl-page--preview" ref={rootEl} tabindex="-1" onKeyDown={onPageKey}>
       <header class="tdl-head">
         <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onBack} title="Voltar (Esc)">
           <Icon name={ICONS.chevronLeft} size={12} /> {props.backLabel}
@@ -546,17 +582,28 @@ function PreviewView(props: {
               </For>
             </div>
             <footer class="tdl-foot">
+              <Show when={sendErr()}>
+                {(e) => (
+                  <p class="tdl-flash tdl-foot__err" data-tone="err" role="alert"><Icon name={ICONS.alert} size={12} />{e()}</p>
+                )}
+              </Show>
               <span class="tdl-foot__sum">
                 <span class="tdl-num-inline">{est().count} de {d().faixas.length}</span>
                 {" · "}<span class="tdl-num-inline">{formatSize(est().bytes)}</span>
                 {" · "}<span class="tdl-num-inline">{formatEta(est().seconds)}</span>
+                <Show when={overMax()}>
+                  {" · "}<span class="tdl-warn" role="alert">máx. {MAX_SELECTION} por vez</span>
+                </Show>
+                <Show when={cappedDefault() && !overMax()}>
+                  {" · "}<span class="tdl-warn">marcadas as {MAX_SELECTION} primeiras novas (máx. por vez)</span>
+                </Show>
               </span>
               <span class="tdl-tools__sp" />
               {props.destPicker}
               <button
                 type="button"
                 class="crate-btn crate-btn--primary"
-                disabled={sending() || est().count === 0 || !props.dest() || props.tokenMissing}
+                disabled={sending() || est().count === 0 || overMax() || !props.dest() || props.tokenMissing}
                 onClick={() => void send()}
               >
                 <Icon name={ICONS.download} size={12} />
@@ -593,6 +640,22 @@ export default function TidalTab(props: Props) {
 
   const [stack, setStack] = createSignal<Page[]>([]);
   const page = () => stack()[stack().length - 1] ?? null;
+  // A página do artista que originou a prévia continua montada (oculta): "Mostrar todos" e a
+  // rolagem sobrevivem ao ir e voltar.
+  const artistRoot = () => {
+    const f = stack()[0];
+    return f?.kind === "artist" ? f : null;
+  };
+  let rootEl: HTMLDivElement | undefined;
+  let savedScroll = 0;
+  /** Quem rola a aba: o ancestral com overflow-y auto/scroll mais próximo. */
+  function scroller(): HTMLElement | null {
+    for (let el = rootEl?.parentElement ?? null; el; el = el.parentElement) {
+      const oy = getComputedStyle(el).overflowY;
+      if (oy === "auto" || oy === "scroll") return el;
+    }
+    return null;
+  }
   const backLabel = () => {
     const s = stack();
     const below = s[s.length - 2];
@@ -610,14 +673,22 @@ export default function TidalTab(props: Props) {
 
   // Esc com página aberta volta um nível (prévia -> artista -> busca).
   createEffect(() => {
-    if (stack().length > 0) {
+    if (stack().length > 0 && props.active !== false) {
       const pop = pushEscLayer(goBack);
       onCleanup(pop);
     }
   });
 
-  function goBack() { setStack((s) => s.slice(0, -1)); }
-  function push(p: Page) { setStack((s) => [...s, p]); }
+  function goBack() {
+    const volta = stack()[stack().length - 2];
+    setStack((s) => s.slice(0, -1));
+    if (volta?.kind === "artist") requestAnimationFrame(() => { const sc = scroller(); if (sc) sc.scrollTop = savedScroll; });
+  }
+  function push(p: Page) {
+    if (page()?.kind === "artist") savedScroll = scroller()?.scrollTop ?? 0;
+    setStack((s) => [...s, p]);
+    requestAnimationFrame(() => { const sc = scroller(); if (sc) sc.scrollTop = 0; });
+  }
 
   function say(text: string, tone: Flash["tone"] = "ok") {
     setFlash({ text, tone });
@@ -635,12 +706,13 @@ export default function TidalTab(props: Props) {
   function onInput(v: string) {
     setText(v);
     clearTimeout(debounce);
+    seq.cancel(); // resposta em voo é de um texto que já não é o do campo
     if (stack().length) setStack([]);
     const k = classifyTidalInput(v);
     if (k === "text") {
       debounce = setTimeout(() => void runSearch(v.trim()), SEARCH_DEBOUNCE_MS);
-    } else if (k !== "short") {
-      seq.cancel();
+    } else {
+      // vazio, link ou curto demais: some o resultado velho (e o "buscando…" de quem foi descartado)
       batch(() => { setResult(null); setSearchState("idle"); setSearchError(null); });
     }
   }
@@ -683,20 +755,30 @@ export default function TidalTab(props: Props) {
     }
   }
 
-  async function enqueueSelection(ids: number[], titulo: string, ref: string) {
+  /** null = foi para a fila; texto = erro, que a prévia mostra junto do rodapé (o aviso do topo fica fora da vista). */
+  async function enqueueSelection(ids: number[], titulo: string, ref: string): Promise<string | null> {
     const d = resolvedDest();
-    if (!d) { say("Escolha a pasta de destino antes de baixar.", "err"); return false; }
+    if (!d) return "Escolha a pasta de destino antes de baixar.";
     try {
       await crateTidalEnqueueSelection(ids, titulo, ref, d);
       rememberDest(d);
       say(`${plural(ids.length, "faixa", "faixas")} de "${titulo}" foram para a fila (${d}).`);
       props.refresh();
       goBack();
-      return true;
+      return null;
+    } catch (e) {
+      return errText(e);
+    }
+  }
+
+  async function resend(j: TidalJob) {
+    try {
+      await crateTidalResend(j.id);
+      say(`"${j.titulo || "Seleção"}" voltou para a fila.`);
     } catch (e) {
       say(errText(e), "err");
-      return false;
     }
+    props.refresh();
   }
 
   async function onSubmit(e: Event) {
@@ -752,7 +834,7 @@ export default function TidalTab(props: Props) {
   );
 
   return (
-    <div class="crate-tidal tdl">
+    <div class="crate-tidal tdl" ref={rootEl}>
       <form class="crate-tidal-form" onSubmit={(e) => void onSubmit(e)}>
         <div class="crate-tidal-form__row">
           <div class="tdl-field" data-busy={searchState() === "loading" ? "true" : undefined}>
@@ -816,12 +898,12 @@ export default function TidalTab(props: Props) {
         </div>
       </Show>
 
-      <Switch>
-        <Match when={page()?.kind === "artist" && (page() as Extract<Page, { kind: "artist" }>)} keyed>
-          {(p) => (
+      <Show when={artistRoot()} keyed>
+        {(p) => (
+          <div style={{ display: page() === p ? "contents" : "none" }}>
             <ArtistView
               page={p}
-              backLabel={backLabel()}
+              backLabel="Busca"
               onBack={goBack}
               isOwned={isOwned}
               onTrackDownload={trackDownload}
@@ -830,8 +912,11 @@ export default function TidalTab(props: Props) {
               onAlbumDownload={albumDownload}
               onPreview={openPreview}
             />
-          )}
-        </Match>
+          </div>
+        )}
+      </Show>
+
+      <Switch>
         <Match when={page()?.kind === "preview" && (page() as Extract<Page, { kind: "preview" }>)} keyed>
           {(p) => (
             <PreviewView
@@ -846,6 +931,7 @@ export default function TidalTab(props: Props) {
             />
           )}
         </Match>
+        <Match when={stack().length > 0}>{null}</Match>
         <Match when={kind() === "text" || kind() === "short" ? result() || searchState() !== "idle" : false}>
           <Show when={activeJobs() > 0}>
             <p class="tdl-sub tdl-queue-note">
@@ -928,7 +1014,7 @@ export default function TidalTab(props: Props) {
               <h3 class="tdl-sec__h">Fila da VM <span class="tdl-num">{props.jobs.length}</span></h3>
               <div class="crate-list crate-tidal-list">
                 <div class="crate-list-inner">
-                  <For each={[...props.jobs].reverse()}>{(j) => <TidalJobRow job={j} />}</For>
+                  <For each={[...props.jobs].reverse()}>{(j) => <TidalJobRow job={j} onResend={resend} />}</For>
                 </div>
               </div>
             </section>

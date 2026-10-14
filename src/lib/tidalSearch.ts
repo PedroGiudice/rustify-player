@@ -6,7 +6,6 @@
    ============================================================ */
 
 import type { Track, TidalTrack } from "../tauri";
-import { dedupMatch, normWords } from "./dedup";
 
 /** Mesma regra do `is_valid_tidal_link` (Rust) e do `URL_RE` da fila. */
 const TIDAL_LINK = /^https?:\/\/(listen\.|www\.)?tidal\.com\/(browse\/)?(mix|playlist|album|track)\/[A-Za-z0-9-]/i;
@@ -91,18 +90,44 @@ export function plural(n: number, um: string, varios: string): string {
 }
 
 // ── no acervo ─────────────────────────────────────────────────────
+/* A MESMA chave do baixador (`tidal_mix_dl.py`: `title_key` + `split_artists` + `loose`), para a
+   tela e o "JÁ NO ACERVO" do download concordarem: título igual depois de tirar só o que não é marca
+   de versão (créditos "feat." e "Remastered"), e artista sobreposto. Remix, live, ao vivo,
+   acústico, versão, edit, mix e instrumental continuam distinguindo a faixa. Mudou aqui? Mude lá. */
+
 /** Mesmo corte de artistas do `split_artists` do baixador. */
 const ARTIST_SPLIT = /,|&| e | feat\.? | ft\.? | x /i;
+const CREDITO = /^(?:feat|ft|featuring|prod|part|participacao)\b\.?.*$/;
+const NEUTRO = /^(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|explicit|bonus track)$/;
+
+/** `loose` do baixador: caixa, pontuação e "&" x "e" não contam; só a-z e 0-9 sobram. */
+function loose(s: string): string {
+  return s.toLowerCase().replace(/&/g, " e ").replace(/ and /g, " e ").replace(/[^a-z0-9]+/g, "");
+}
+
+function neutro(inner: string): boolean {
+  const i = inner.trim();
+  return CREDITO.test(i) || NEUTRO.test(i);
+}
+
+/** Chave frouxa do título. Vazia (título sem letra latina) nunca casa. */
+export function titleKey(title: string): string {
+  let t = title.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  t = t.replace(/\(([^()]*)\)|\[([^[\]]*)\]/g, (m, a, b) => (neutro(a ?? b) ? " " : m));
+  t = t.replace(/\s+-\s+(.*)$/, (m, a) => (neutro(a) ? " " : m));
+  t = t.replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.*$/, " ");
+  return loose(t);
+}
 
 function artistKeys(name: string | null | undefined): string[] {
   if (!name) return [];
-  return name.split(ARTIST_SPLIT).map(normWords).filter(Boolean);
+  return name.split(ARTIST_SPLIT).map(loose).filter(Boolean);
 }
 
 export type OwnedIndex = Map<string, Track[]>;
 
-/** Acervo agrupado por artista normalizado (cada nome de uma faixa com
-    vários artistas entra em todas as chaves). */
+/** Acervo agrupado por artista (cada nome de uma faixa com vários artistas
+    entra em todas as chaves). */
 export function buildOwnedIndex(tracks: Track[]): OwnedIndex {
   const idx: OwnedIndex = new Map();
   for (const t of tracks) {
@@ -115,28 +140,39 @@ export function buildOwnedIndex(tracks: Track[]): OwnedIndex {
   return idx;
 }
 
+const ownedTitleKey = new WeakMap<Track, string>();
+function keyOf(t: Track): string {
+  let k = ownedTitleKey.get(t);
+  if (k === undefined) { k = titleKey(t.title); ownedTitleKey.set(t, k); }
+  return k;
+}
+
 /** A faixa da Tidal já está no acervo? Candidatas = faixas de algum dos
-    artistas dela; decide o `dedupMatch` do Crate (o título do acervo
-    aparece inteiro, como palavras, no título da Tidal). Assim "Mitsubishi
-    (Remastered)" casa com "Mitsubishi", e uma faixa chamada "Orochi" de
-    outro artista não marca tudo do Orochi como baixado. */
+    artistas dela; vale quem tem o MESMO título (`titleKey`). "HUMBLE." no
+    acervo não marca "HUMBLE. (Skrillex Remix)", "Love" não marca "Love Me
+    Now", e "Foo (feat. X)" casa com "Foo". */
 export function findOwned(t: Pick<TidalTrack, "titulo" | "artistas">, idx: OwnedIndex): Track | null {
-  const seen = new Set<Track>();
-  const cands: Track[] = [];
+  const key = titleKey(t.titulo);
+  if (!key) return null;
   for (const a of t.artistas) {
     for (const k of artistKeys(a)) {
-      for (const c of idx.get(k) ?? []) {
-        if (!seen.has(c)) { seen.add(c); cands.push(c); }
-      }
+      for (const c of idx.get(k) ?? []) if (keyOf(c) === key) return c;
     }
   }
-  return cands.length ? dedupMatch(t.titulo, cands) : null;
+  return null;
 }
 
 // ── seleção da prévia ─────────────────────────────────────────────
-/** Padrão: tudo marcado, menos o que já está no acervo. */
-export function defaultSelection(tracks: Pick<TidalTrack, "id">[], owned: (id: number) => boolean): Set<number> {
-  return new Set(tracks.filter((t) => !owned(t.id)).map((t) => t.id));
+/** Teto do pedido (o mesmo `MAX_FAIXAS` da fila e `MAX_TRACK_IDS` do Rust). */
+export const MAX_SELECTION = 200;
+
+/** Padrão: as primeiras `max` faixas que não estão no acervo, na ordem da lista. */
+export function defaultSelection(
+  tracks: Pick<TidalTrack, "id">[],
+  owned: (id: number) => boolean,
+  max: number = MAX_SELECTION,
+): Set<number> {
+  return new Set(tracks.filter((t) => !owned(t.id)).slice(0, max).map((t) => t.id));
 }
 
 /** Ids marcados na ordem da lista (a fila baixa nessa ordem). */

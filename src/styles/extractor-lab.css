@@ -4390,6 +4390,8 @@ html { --glow: 0; }
   border-top: 1px solid var(--line-2);
 }
 .tdl-foot__sum { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
+.tdl-foot__err { flex: 1 0 100%; }
+.tdl-warn { color: var(--rose-fg); font-weight: 600; }
 
 .tdl-queue-note { margin: 0; }
 .tdl-linkbtn {
