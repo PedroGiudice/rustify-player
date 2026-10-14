@@ -4258,3 +4258,142 @@ html { --glow: 0; }
 @media (prefers-reduced-motion: reduce) {
   .sel-bar { animation: none; }
 }
+/* === Crate > Tidal: busca === */
+/* Spec 2026-10-14. Papéis (ver o topo de views/crate/TidalTab.tsx):
+   13,5/600 título, 12/400 secundário, 11,5 tabular-nums números.
+   Um acento só (--blue-ring): caixa marcada e anel de foco. */
+.tdl-field {
+  position: relative; flex: 1 1 360px; min-width: 0;
+  display: flex; align-items: center;
+}
+.tdl-field > iconify-icon {
+  position: absolute; left: 11px; width: 14px; height: 14px;
+  color: var(--fg-6); pointer-events: none;
+}
+.tdl-field .tdl-field__input {
+  flex: 1 1 auto; width: 100%;
+  padding-left: 32px; padding-right: 84px;
+  font-size: 13.5px;
+}
+/* "buscando…" dentro do campo: não empurra nada, não pula o layout. */
+.tdl-field__state {
+  position: absolute; right: 12px;
+  font-size: 12px; color: var(--fg-6); pointer-events: none;
+}
+
+.tdl-flash {
+  display: flex; align-items: center; gap: 6px; margin: 0;
+  font-size: 12px; color: var(--fg-5);
+}
+.tdl-flash iconify-icon { width: 12px; height: 12px; flex: none; }
+.tdl-flash[data-tone="err"] { color: var(--rose-fg); }
+
+.tdl-sec { display: flex; flex-direction: column; gap: 6px; }
+.tdl-sec + .tdl-sec { margin-top: 10px; }
+.tdl-sec__h {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-1);
+}
+.tdl-list {
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+}
+.tdl-results { display: flex; flex-direction: column; gap: 14px; transition: opacity var(--dur-med) var(--ease-out); }
+.tdl-results[data-stale="true"] { opacity: 0.55; }
+
+/* linha: capa | texto | marcas | duração | ações */
+.tdl-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto 56px auto;
+  align-items: center; column-gap: 12px;
+  width: 100%; min-height: 54px; padding: 7px 10px;
+  border: 0; background: transparent; text-align: left;
+  font: inherit; color: inherit;
+}
+.tdl-row + .tdl-row { border-top: 1px solid var(--line-2); }
+.tdl-row:hover,
+.tdl-row:focus-within { background: var(--bg-soft); }
+.tdl-row--link { cursor: pointer; }
+.tdl-row--btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.tdl-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tdl-title {
+  font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--fg-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tdl-sub {
+  font-size: 12px; font-weight: 400; line-height: 1.35; color: var(--fg-5);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tdl-num {
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 400;
+  font-variant-numeric: tabular-nums; color: var(--fg-6);
+  text-align: right; white-space: nowrap;
+}
+.tdl-num-inline { font-variant-numeric: tabular-nums; }
+.tdl-acts { display: flex; align-items: center; justify-content: flex-end; gap: 6px; color: var(--fg-6); }
+.tdl-acts iconify-icon { width: 14px; height: 14px; }
+
+.tdl-cover {
+  display: block; width: 40px; height: 40px; flex: none;
+  border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--bg-tint);
+}
+.tdl-cover[data-round="true"] { border-radius: var(--radius-pill); }
+.tdl-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.tdl-marks { display: flex; align-items: center; gap: 8px; justify-self: end; }
+.tdl-owned {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--fg-6); white-space: nowrap;
+}
+.tdl-owned iconify-icon { width: 12px; height: 12px; }
+.tdl-hires {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px;
+  border: 1px solid var(--line-2); border-radius: var(--radius-xs);
+  font-size: 12px; color: var(--fg-5); white-space: nowrap;
+}
+
+/* página (artista, prévia) */
+.tdl-page { display: flex; flex-direction: column; gap: 14px; }
+.tdl-head {
+  display: flex; align-items: center; gap: 12px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--line-2);
+}
+.tdl-head .tdl-main { flex: 1; }
+.tdl-head .crate-btn .tdl-num { margin-left: 2px; }
+.tdl-more { align-self: flex-start; }
+.tdl-placeholder {
+  min-height: 240px; border-radius: var(--radius-lg);
+  background: var(--bg-soft);
+}
+
+/* prévia: caixa | capa | texto | marcas | duração */
+.tdl-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tdl-tools__sp { flex: 1; }
+.tdl-row--pick {
+  grid-template-columns: 18px 40px minmax(0, 1fr) auto 56px;
+  cursor: pointer;
+}
+.tdl-row--pick input[type="checkbox"] {
+  width: 16px; height: 16px; margin: 0;
+  accent-color: var(--blue-ring); cursor: pointer;
+}
+.tdl-row--pick input[type="checkbox"]:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.tdl-row--pick[data-off="true"] .tdl-title { color: var(--fg-5); font-weight: 400; }
+.tdl-row--pick[data-off="true"] .tdl-cover { opacity: 0.5; }
+.tdl-foot {
+  position: sticky; bottom: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 0 12px;
+  background: var(--bg-canvas);
+  border-top: 1px solid var(--line-2);
+}
+.tdl-foot__sum { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
+
+.tdl-queue-note { margin: 0; }
+.tdl-linkbtn {
+  border: 0; padding: 0; background: none; font: inherit;
+  color: var(--fg-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.tdl-jobtitle { font-size: 12px; font-weight: 600; color: var(--fg-2); }
+.tdl-jobtitle .tdl-num { margin-left: 6px; }

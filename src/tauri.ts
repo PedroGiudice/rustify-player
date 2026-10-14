@@ -696,6 +696,79 @@ export interface TidalJob {
   resumo: string;
   inicio: string | null;
   fim: string | null;
+  /** Job de seleção (prévia da busca): título do lote e quantas faixas. */
+  titulo?: string | null;
+  origem?: string | null;
+  n_faixas?: number | null;
+}
+
+/** Busca da Tidal (slsk/tidal_fila.rs; os nomes vêm da fila da VM). */
+export interface TidalTrack {
+  id: number;
+  titulo: string;
+  artistas: string[];
+  album: string;
+  album_id: number | null;
+  ano: number | null;
+  duracao_s: number;
+  hires: boolean;
+  capa: string | null;
+  url: string;
+}
+
+export interface TidalAlbum {
+  id: number;
+  titulo: string;
+  artista: string;
+  ano: number | null;
+  n_faixas: number;
+  duracao_s: number;
+  hires: boolean;
+  tipo: "album" | "ep" | "single" | string;
+  capa: string | null;
+  url: string;
+}
+
+export interface TidalArtist {
+  id: number;
+  nome: string;
+  foto: string | null;
+  url: string;
+}
+
+export interface TidalPlaylist {
+  id: string;
+  titulo: string;
+  n_faixas: number;
+  duracao_s: number;
+  autor: string | null;
+  capa: string | null;
+  url: string;
+}
+
+export interface TidalSearch {
+  q: string;
+  top: { tipo: "faixa" | "album" | "artista" | "playlist"; id: string } | null;
+  faixas: TidalTrack[];
+  albuns: TidalAlbum[];
+  artistas: TidalArtist[];
+  playlists: TidalPlaylist[];
+}
+
+export interface TidalArtistPage extends TidalArtist {
+  populares: TidalTrack[];
+  albuns: TidalAlbum[];
+  eps_singles: TidalAlbum[];
+  radio: { mix_id: string; n_faixas: number } | null;
+}
+
+export interface TidalPreview {
+  tipo: "mix" | "radio" | "playlist" | "album" | "faixa";
+  titulo: string;
+  /** Forma canônica `tipo:id`; vai como origem do pedido de seleção. */
+  ref: string;
+  faixas: TidalTrack[];
+  duracao_s: number;
 }
 
 export interface TidalFilaSnapshot {
@@ -775,6 +848,27 @@ export const crateTidalJobs = () => invoke<TidalFilaSnapshot>("crate_tidal_jobs"
     indisponível). */
 export const crateTidalEnqueue = (url: string, playlist: string) =>
   invoke<string>("crate_tidal_enqueue", { url, playlist });
+
+/** Enfileira só as faixas marcadas na prévia (máx. 200). `origin` = o
+    `ref` canônico da prévia (`mix:<id>`, `album:<id>`...). */
+export const crateTidalEnqueueSelection = (trackIds: number[], title: string, origin: string, playlist: string) =>
+  invoke<string>("crate_tidal_enqueue", { url: "", playlist, trackIds, title, origin });
+
+/** Busca por texto na Tidal, pela fila da VM. Rejeita com texto em PT-BR
+    (texto curto, sessão da Tidal expirada, Tidal sem resposta, fila
+    indisponível). */
+export const crateTidalSearch = (q: string) => invoke<TidalSearch>("crate_tidal_search", { q });
+
+export const crateTidalArtist = (id: number) => invoke<TidalArtistPage>("crate_tidal_artist", { id });
+
+/** Prévia de mix/rádio/playlist/álbum/faixa: link da Tidal ou `tipo:id`
+    (`radio-faixa:<id>` = rádio a partir de uma faixa). */
+export const crateTidalPreview = (reference: string) =>
+  invoke<TidalPreview>("crate_tidal_preview", { reference });
+
+/** Capa de `resources.tidal.com` como data URL JPEG (<= 192 px), baixada
+    pelo Rust: a CSP não ganha o host da Tidal. */
+export const crateTidalCover = (url: string) => invoke<string>("crate_tidal_cover", { url });
 
 /** Board inteiro por evento (spec §3.5) — throttle 500ms no backend, só
     quando dirty. Nunca diffs incrementais. */
