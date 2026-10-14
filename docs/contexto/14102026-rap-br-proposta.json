@@ -601,8 +601,8 @@
  {
   "artist_dir": "Altamira",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Altamira",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -614,7 +614,8 @@
   },
   "title_lang": {
    "pt": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Am I Wrong (2015)",
@@ -657,7 +658,7 @@
   "artist_dir": "Andrade, Kawe & Aldeia Records",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "Andrade",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -669,7 +670,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "B4.DA.$$ (2015)",
@@ -710,8 +712,8 @@
  {
   "artist_dir": "BK",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "BK",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -723,7 +725,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "BLACK BALLOONS _ 13LACK 13ALLOONZ (Love Below Remixes)",
@@ -1153,8 +1156,8 @@
  {
   "artist_dir": "Ciça",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "media",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Ciça",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1166,7 +1169,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Come Home the Kids Miss You",
@@ -1337,8 +1341,8 @@
  {
   "artist_dir": "Dfideliz",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Dfideliz",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1350,7 +1354,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Die Lit (2018)",
@@ -1469,8 +1474,8 @@
  {
   "artist_dir": "Doode",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Doode",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1482,7 +1487,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Dreamville",
@@ -1505,8 +1511,8 @@
  {
   "artist_dir": "DÊTRE - ANTISKIP VOL. 1 - FLAC",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "DÊTRE",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1518,7 +1524,8 @@
   },
   "title_lang": {
    "pt": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Earl Sweatshirt - Some Rap Songs",
@@ -1544,7 +1551,7 @@
   "artist_dir": "Edmon",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "Various Artists",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -1556,7 +1563,8 @@
   },
   "title_lang": {
    "pt": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Eminem",
@@ -2009,7 +2017,7 @@
   "artist_dir": "Kyan",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "Kyan",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -2021,7 +2029,8 @@
   },
   "title_lang": {
    "pt": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "LIFE (2018)",
@@ -2191,8 +2200,8 @@
  {
   "artist_dir": "Mainstreet",
   "album_dir": null,
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Mainstreet",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -2204,7 +2213,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Major RD",
@@ -2431,7 +2441,7 @@
   "artist_dir": "Open Deck Crate",
   "album_dir": null,
   "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "Various",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -2443,7 +2453,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10 (fica)"
  },
  {
   "artist_dir": "Orochi",
@@ -3002,7 +3013,7 @@
   "artist_dir": "Teto",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "teto",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -3014,7 +3025,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "The Audition",
@@ -3241,8 +3253,8 @@
  {
   "artist_dir": "Various Artists",
   "album_dir": "Assault (Carro Forte) [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Various Artists",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -3254,13 +3266,14 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Various Artists",
   "album_dir": "Poesia Acústica #3_ Capricorniana [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Various Artists",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -3272,13 +3285,14 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Various Artists",
   "album_dir": "Poesia Acústica #9 Melhor Forma [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Various Artists",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -3290,13 +3304,14 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Various Artists",
   "album_dir": "Poesia Acústica 12 - Pra Sempre [tidal]",
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "Various Artists",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -3308,13 +3323,14 @@
   },
   "title_lang": {
    "pt": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Various Artists",
   "album_dir": "Sereia [tidal]",
-  "dest": "Rap & Hip-Hop",
-  "confidence": "baixa",
+  "dest": "Rap & Trap Brasileiro",
+  "confidence": "alta",
   "canonical_artist": "Various Artists",
   "n_tracks": 1,
   "lyrics_lang": {
@@ -3326,7 +3342,8 @@
   },
   "title_lang": {
    "?": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "Veteran",
@@ -3775,7 +3792,7 @@
   "artist_dir": "teto",
   "album_dir": null,
   "dest": "Rap & Trap Brasileiro",
-  "confidence": "baixa",
+  "confidence": "alta",
   "canonical_artist": "teto",
   "n_tracks": 8,
   "lyrics_lang": {
@@ -3788,7 +3805,8 @@
   "title_lang": {
    "?": 7,
    "pt": 1
-  }
+  },
+  "decisao": "CEO 14/10"
  },
  {
   "artist_dir": "ye",

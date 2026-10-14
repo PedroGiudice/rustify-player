@@ -116,3 +116,17 @@ Pastas listadas (genéricas, divididas ou com alguma faixa que vai):
 - `O Menino Que Queria Ser Deus`: 1 faixa(s), 1 vão, 0 ficam
 - `Roteiro pra Aïnouz (Vol. 3)`: 2 faixa(s), 2 vão, 0 ficam
 - `Various Artists`: 5 faixa(s), 1 vão, 4 ficam (dividida)
+
+## Decisões do CEO (14/10/2026)
+
+Revisão da lista de casos sem sinal claro: "todos vão menos Look Alive". Aplicado no JSON
+(campo `decisao`, confiança passa a `alta`):
+
+- Vão para Rap & Trap Brasileiro: BK, Ciça, Dfideliz, Mainstreet, Kyan, DÊTRE, Altamira, Doode,
+  Andrade (Kawe & Aldeia Records), teto (as duas pastas, `Teto` e `teto`), "Coração de Gelo"
+  (pasta Edmon), "Assault (Carro Forte)", "Poesia Acústica #3", "#9" e "12", "Sereia".
+- Fica em Rap & Hip-Hop: "Look Alive" (BlocBoy JB e Drake, pasta Open Deck Crate).
+
+Plano resultante (`funk_split_plan.py --src "Rap & Hip-Hop"`): **187 faixas** para Rap & Trap
+Brasileiro, nenhuma linha pulada. Atenção: rodar `rap_br_classify.py` de novo regenera o JSON e
+APAGA estas decisões; reaplicar a partir desta lista.
