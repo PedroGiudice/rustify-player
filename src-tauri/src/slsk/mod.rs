@@ -35,7 +35,7 @@ use board::{ConfirmedMeta, DownloadJob, Source};
 use config::SlskConfig;
 use coordinator::{FetchEvent, FetchTask, FetchWiring, SearchSnapshot, SearchState, SearchStore, SlskTask};
 use sources::{SourcesConfig, SourcesStatus, TokenStatus};
-use tidal_fila::FilaSnapshot;
+use tidal_fila::{FilaSnapshot, TidalArtistPage, TidalPreview, TidalSearch};
 
 /// Três estados distinguíveis (spec §3.3) — colapsá-los gera ticket de
 /// suporte ("app não funciona" quando é só o slskd fora do ar).
@@ -136,6 +136,8 @@ const NO_TOKEN: &str = "no_token";
 /// Teto da capa baixada para o card e lado máximo do JPEG devolvido.
 const ARTWORK_MAX_BYTES: usize = 8 * 1024 * 1024;
 const ARTWORK_CARD_SIDE: u32 = 500;
+/// Capa da lista da busca da Tidal (exibida a 40-96 px; 2x para tela densa).
+const TIDAL_COVER_SIDE: u32 = 192;
 
 /// Estado das fontes externas compartilhado entre os comandos.
 struct External {
@@ -636,10 +638,64 @@ pub(crate) async fn crate_tidal_jobs(sl: State<'_, Slsk>) -> Result<FilaSnapshot
     blocking(move || tidal_fila::list_jobs(&ext.sources)).await
 }
 
+/// Enfileira um link (`url`) OU uma seleção da prévia (`track_ids`, com
+/// `title` e `origin` = o `ref` canônico da prévia). Com `track_ids`, `url`
+/// é ignorado.
 #[tauri::command]
-pub(crate) async fn crate_tidal_enqueue(sl: State<'_, Slsk>, url: String, playlist: String) -> Result<String, String> {
+pub(crate) async fn crate_tidal_enqueue(
+    sl: State<'_, Slsk>,
+    url: String,
+    playlist: String,
+    track_ids: Option<Vec<u64>>,
+    title: Option<String>,
+    origin: Option<String>,
+) -> Result<String, String> {
     let ext = sl.ext.clone();
-    blocking(move || tidal_fila::enqueue(&ext.sources, &url, &playlist)).await
+    blocking(move || match track_ids {
+        Some(ids) => tidal_fila::enqueue_selection(
+            &ext.sources,
+            &ids,
+            title.as_deref().unwrap_or(""),
+            origin.as_deref().unwrap_or(""),
+            &playlist,
+        ),
+        None => tidal_fila::enqueue(&ext.sources, &url, &playlist),
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn crate_tidal_search(sl: State<'_, Slsk>, q: String) -> Result<TidalSearch, String> {
+    let ext = sl.ext.clone();
+    blocking(move || tidal_fila::search(&ext.sources, &q)).await
+}
+
+#[tauri::command]
+pub(crate) async fn crate_tidal_artist(sl: State<'_, Slsk>, id: u64) -> Result<TidalArtistPage, String> {
+    let ext = sl.ext.clone();
+    blocking(move || tidal_fila::artist(&ext.sources, id)).await
+}
+
+#[tauri::command]
+pub(crate) async fn crate_tidal_preview(sl: State<'_, Slsk>, reference: String) -> Result<TidalPreview, String> {
+    let ext = sl.ext.clone();
+    blocking(move || tidal_fila::preview(&ext.sources, &reference)).await
+}
+
+/// Capa da busca da Tidal como data URL JPEG pequena: só
+/// `resources.tidal.com`, baixada aqui (a CSP não aceita host externo),
+/// mesmo padrão do `crate_sc_artwork`.
+#[tauri::command]
+pub(crate) async fn crate_tidal_cover(url: String) -> Result<String, String> {
+    if !tidal_fila::is_tidal_cover_url(&url) {
+        return Err("endereço de capa inválido".to_string());
+    }
+    blocking(move || {
+        let bytes = tidal_fila::fetch_cover(&url)?;
+        let jpeg = library_indexer::resize_cover_jpeg(&bytes, TIDAL_COVER_SIDE)?;
+        Ok(format!("data:image/jpeg;base64,{}", sources::base64_encode(&jpeg)))
+    })
+    .await
 }
 
 #[cfg(test)]
