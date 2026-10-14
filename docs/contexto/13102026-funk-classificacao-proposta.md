@@ -166,21 +166,21 @@ Ordenada por pasta destino, depois por nome do artista. Quando o artista tem mai
 | [2025] Radio libertadora! | — | 11 | Techfunk | media | titulos com TECHNO DE FAVELADO, PSY VEM FAZER NENEM, MEGA SUICIDIO AUDITIVO -- estetica tech/psy explicita |
 | Astrophysics | — | 1 | Techfunk | baixa | BAILE DA MIKU -- tema vocaloid/techno-funk meme, sinal fraco |
 | CyberKills | — | 1 | Techfunk | media | confirmado: dupla BR, 'funk mandelão + deconstructed club/EDM', remix 160bpm de FKA twigs -- extremo, perfil tech/experimental |
-| DJ Anderson do Paraiso | Última Bruxaria do Ano | 1 | Techfunk | media | faixa isolada tema bruxaria, diverge do resto do catalogo (funk de BH) |
-| DJ Arana | — | 27 | Techfunk | alta | expoente do funk bruxaria confirmado (DJ Arana, DJ K, DJ Blakes); tag qdrant 'beat bruxaria' no album Rock pesado 2 |
-| DJ Arana, Mc Larissa, Mc Lekão - Famoso Machuca Xota (2023) | — | 1 | Techfunk | media | colab de DJ Arana, segue o estilo bruxaria do artista principal |
-| DJ Blakes | — | 1 | Techfunk | alta | expoente citado do funk bruxaria |
-| Dj GBR | — | 1 | Techfunk | media | Mega Rave Sem Chão [tidal] -- titulo 'rave' sugere vertente eletronica/bruxaria do GBR, diverge do resto |
-| DJ K | — | 15 | Techfunk | alta | expoente citado do funk bruxaria (Panico no Submundo) |
-| DJ LA Beat & DJ K9 | — | 1 | Techfunk | media | Convocação da Bruxaria -- tema explicito |
+| DJ Anderson do Paraiso | Última Bruxaria do Ano | 1 | Funk Brasileiro | alta | faixa isolada tema bruxaria, diverge do resto do catalogo (funk de BH) [CEO 14/10: bruxaria é funk] |
+| DJ Arana | — | 27 | Funk Brasileiro | alta | expoente do funk bruxaria confirmado (DJ Arana, DJ K, DJ Blakes); tag qdrant 'beat bruxaria' no album Rock pesado 2 [CEO 14/10: bruxaria é funk] |
+| DJ Arana, Mc Larissa, Mc Lekão - Famoso Machuca Xota (2023) | — | 1 | Funk Brasileiro | alta | colab de DJ Arana, segue o estilo bruxaria do artista principal [CEO 14/10: bruxaria é funk] |
+| DJ Blakes | — | 1 | Funk Brasileiro | alta | expoente citado do funk bruxaria [CEO 14/10: bruxaria é funk] |
+| Dj GBR | — | 1 | Funk Brasileiro | alta | Mega Rave Sem Chão [tidal] -- titulo 'rave' sugere vertente eletronica/bruxaria do GBR, diverge do resto [CEO 14/10: bruxaria é funk] |
+| DJ K | — | 15 | Funk Brasileiro | alta | expoente citado do funk bruxaria (Panico no Submundo) [CEO 14/10: bruxaria é funk] |
+| DJ LA Beat & DJ K9 | — | 1 | Funk Brasileiro | alta | Convocação da Bruxaria -- tema explicito [CEO 14/10: bruxaria é funk] |
 | Flux Zone | — | 2 | Techfunk | baixa | Machine Hearts / The Underground -- nomes sugerem techno, sem confirmacao de fusao com funk |
-| GP DA ZL | — | 2 | Techfunk | media | colabora com Jhow Dancer em 'Eu Quero Bruxaria'; ZL on Air / Mixtape Underground, estetica submundo |
-| Jhow Dancer | — | 1 | Techfunk | media | Violino Subverso classificado como Mandelão Funk mas cena bruxaria (feat. GP DA ZL, tema 'Eu Quero Bruxaria') |
-| MAC10TA | — | 1 | Techfunk | alta | Bruxaria do Beco da Morte -- tema explicito |
+| GP DA ZL | — | 2 | Funk Brasileiro | alta | colabora com Jhow Dancer em 'Eu Quero Bruxaria'; ZL on Air / Mixtape Underground, estetica submundo [CEO 14/10: bruxaria é funk] |
+| Jhow Dancer | — | 1 | Funk Brasileiro | alta | Violino Subverso classificado como Mandelão Funk mas cena bruxaria (feat. GP DA ZL, tema 'Eu Quero Bruxaria') [CEO 14/10: bruxaria é funk] |
+| MAC10TA | — | 1 | Funk Brasileiro | alta | Bruxaria do Beco da Morte -- tema explicito [CEO 14/10: bruxaria é funk] |
 | MC Saci | — | 1 | Techfunk | baixa | album 'Funktroit' (trocadilho Funk+Detroit/techno); sinal fraco |
-| OO Rubinho | — | 20 | Techfunk | alta | Bruxaria Cósmica + HARDFUNK -- titulos tech/sci-fi (ALPHA, ZYLON, LASER, APHEX TUIM ref. a Aphex Twin, MEGATRON) |
-| petrus.wav | — | 1 | Techfunk | baixa | titulo agressivo/vulgar no padrao bruxaria (FODE PRA KARALHO, versionamento MASTER V5); nao confirmado |
-| Tropa do Bruxo | — | 1 | Techfunk | media | nome e album ja citam bruxo/bruxaria |
+| OO Rubinho | — | 20 | Funk Brasileiro | alta | Bruxaria Cósmica + HARDFUNK -- titulos tech/sci-fi (ALPHA, ZYLON, LASER, APHEX TUIM ref. a Aphex Twin, MEGATRON) [CEO 14/10: bruxaria é funk] |
+| petrus.wav | — | 1 | Funk Brasileiro | baixa | titulo agressivo/vulgar no padrao bruxaria (FODE PRA KARALHO, versionamento MASTER V5); nao confirmado [CEO 14/10: bruxaria é funk] |
+| Tropa do Bruxo | — | 1 | Funk Brasileiro | alta | nome e album ja citam bruxo/bruxaria [CEO 14/10: bruxaria é funk] |
 | Demm Deep | — | 1 | Eletrônica | media | confirmado: French house puro (94bpm), titulo 'Brazilian Sky' e so tematico -- nao e funk |
 | ENNE (BR) | — | 1 | Eletrônica | baixa | confirmado: minimal deep tech carioca, sem fusao evidente com funk -- nao e funk |
 | OVEOUS | — | 1 | Eletrônica | media | House puro (Brobot Records), sem elemento de funk BR -- nao e funk |
@@ -247,7 +247,7 @@ Nao unificadas por falta de evidencia de que sejam a mesma pessoa (grafias parec
 | Various Artists | — | Funk Brasileiro | pasta heterogenea (varios mixes [tidal] + singles); maioria tem titulo/giria de funk raiz. Revisar manualmente antes do lote: 'Samba de Malandro' e 'TOP BRASIL - MAIS TOCADAS DO VERÃO 2026' sao os mais duvidosos |
 | Gal Costa | Azul (Illusionize & Linkage Remix) [tidal] | MPB | alternativa: manter como MPB (artista original) em vez de Eletrofunk (remix); ambiguidade reportada acima tambem |
 | MC Saci | — | Techfunk | album 'Funktroit' (trocadilho Funk+Detroit/techno); sinal fraco |
-| petrus.wav | — | Techfunk | titulo agressivo/vulgar no padrao bruxaria (FODE PRA KARALHO, versionamento MASTER V5); nao confirmado |
+| petrus.wav | — | Funk Brasileiro | titulo agressivo/vulgar no padrao bruxaria (FODE PRA KARALHO, versionamento MASTER V5); nao confirmado [CEO 14/10: bruxaria é funk] |
 | Flux Zone | — | Techfunk | Machine Hearts / The Underground -- nomes sugerem techno, sem confirmacao de fusao com funk |
 | Astrophysics | — | Techfunk | BAILE DA MIKU -- tema vocaloid/techno-funk meme, sinal fraco |
 
@@ -273,3 +273,7 @@ Nao unificadas por falta de evidencia de que sejam a mesma pessoa (grafias parec
 4. Classificacao por ALBUM quando o catalogo do artista cruza subgeneros (ex.: Mc Jacaré tem um album chamado literalmente 'Eletrofunk Raiz' entre discos de funk raiz convencional; MC Kevin o Chris tem um album inteiro de remixes house/electro).
 5. Nao foi aberto, movido ou renomeado nenhum arquivo -- isso e tarefa do CMR-298 (comando de mover no app), ainda nao implementado.
 
+
+## Ajuste do CEO (14/10/2026)
+
+Bruxaria (DJ K, DJ Arana, DJ Blakes e demais linhas justificadas por "bruxaria") é **Funk Brasileiro**, não Techfunk. Techfunk fica só para funk com base techno/trance de fato. Observação do CEO: a classificação deveria ter usado os vetores MERT (vizinhança acústica) para diferenciar subgêneros, não só nomes e web; a próxima passada parte de âncoras aprovadas por ele e agrupa o resto por similaridade MERT.
