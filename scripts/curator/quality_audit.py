@@ -215,6 +215,21 @@ def decode(path: Path, start: float, length: float, ch: int) -> tuple[np.ndarray
     return np.frombuffer(out.stdout, dtype=np.float32).reshape(-1, ch), out.stderr.decode(errors="replace").strip()
 
 
+def decode_gst(path: Path, ch: int) -> np.ndarray:
+    """Faixa inteira pelo GStreamer, que resincroniza no primeiro quadro válido.
+    Resgate para FLAC com lixo antes do primeiro quadro: o ffmpeg não devolve
+    nada e o app (GStreamer) toca normalmente (mesmo caso do phone_sync_encode)."""
+    ch = max(1, min(ch, 2))
+    out = subprocess.run(
+        ["gst-launch-1.0", "-q", "filesrc", f"location={path}", "!", "decodebin", "!", "audioconvert",
+         "!", f"audio/x-raw,format=F32LE,layout=interleaved,channels={ch}", "!", "fdsink", "fd=1"],
+        capture_output=True, timeout=300,
+    )
+    if out.returncode != 0:
+        raise RuntimeError("gstreamer: " + out.stderr.decode(errors="replace")[-200:])
+    return np.frombuffer(out.stdout, dtype=np.float32).reshape(-1, ch)
+
+
 def analyze(path: Path) -> dict:
     t0 = time.monotonic()
     info = probe(path)
@@ -231,6 +246,16 @@ def analyze(path: Path) -> dict:
         freqs, rel = frame_spectra(x, sr)
         parts.append(rel)
     rel = np.concatenate(parts) if parts else np.zeros((0, 1))
+    decoder = "ffmpeg"
+    if rel.shape[0] < 20:
+        whole = decode_gst(path, info["ch"])
+        decoder = "gstreamer"
+        parts = []
+        for start, length in spans:
+            a = int(start * sr)
+            freqs, r = frame_spectra(whole[a:a + int(length * sr)], sr)
+            parts.append(r)
+        rel = np.concatenate(parts)
     frames = int(rel.shape[0])
     if frames < 20:
         raise RuntimeError(f"só {frames} quadros com som")
@@ -241,7 +266,7 @@ def analyze(path: Path) -> dict:
     return {
         "codec": info["codec"], "sr": sr, "bits": info["bits"], "dur": round(dur, 1),
         "comment": comment[:120], "encoder": str(tags.get("encoder", ""))[:60],
-        "source": source_hint(tags), "frames": frames, **cut,
+        "source": source_hint(tags), "frames": frames, "decoder": decoder, **cut,
         "decode_warn": warns[0][:150] if warns else "", "decode_warn_windows": len(warns),
         "class": classify(sr, cut["cutoff_hz"], declared_lossy),
         "elapsed": round(time.monotonic() - t0, 2),
