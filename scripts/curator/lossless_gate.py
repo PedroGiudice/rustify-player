@@ -54,11 +54,13 @@ class Verdict:
 
 
 def check_file(path: Path) -> Verdict:
-    """Mede o arquivo e decide. Exceção da ferramenta (ffmpeg, numpy, faixa curta) vira
-    Verdict.error: a faixa entra, quem chama imprime o aviso."""
-    try:
-        import quality_audit
+    """Mede o arquivo e decide. Falha da medição nesta faixa (ffmpeg, faixa curta) vira
+    Verdict.error: a faixa entra, quem chama imprime o aviso. Sem numpy, ImportError sobe."""
+    # Dependência faltando (numpy) não é falha de uma faixa: derruba a execução, senão o
+    # portão deixaria tudo entrar em silêncio (ex.: fila reiniciada sem --with numpy).
+    import quality_audit
 
+    try:
         r = quality_audit.analyze(Path(path))
         return Verdict(reason=refusal_reason(r), cutoff_hz=r.get("cutoff_hz"))
     except Exception as e:  # noqa: BLE001 — falha da ferramenta não bloqueia a faixa
