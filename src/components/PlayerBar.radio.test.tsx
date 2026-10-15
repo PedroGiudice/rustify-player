@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 import { PlayerBar } from "./PlayerBar";
 import { player, setPlayer, setQueue } from "../store/player";
-import { resetRadioSession } from "../store/radioSession";
+import { resetRadioSession, ensureOpenRadioSession, advanceMix, currentSession } from "../store/radioSession";
 import { libAutoplayNext, playerPlay } from "../tauri";
 import type { Track } from "../tauri";
 
@@ -192,6 +192,26 @@ describe("rádio reage a skip como a station (Fase 3 pro autoplay)", () => {
     });
     const slots = vi.mocked(libAutoplayNext).mock.calls.map((c) => c[4]);
     expect(slots).toEqual([0, 1, 2]);
+  });
+
+  it("re-fetch pós-pulo recua o ciclo só pelas faixas da cauda que o rádio serviu", async () => {
+    const r1 = track("rw-r1");
+    const r2 = track("rw-r2");
+    const m1 = track("rw-m1"); // posta na fila à mão
+    const r3 = track("rw-r3");
+    setQueue([r1, r2, m1, r3], 0, "open", { kind: "radio" });
+    ensureOpenRadioSession();
+    advanceMix([r2.id, r3.id]);
+    expect(currentSession().mixSlot).toBe(2);
+    setPlayer({ currentTrack: r1, positionSecs: 2, durationSecs: 180 });
+    const { container } = await mountAndWait();
+
+    // Pulo cedo em r1 → toca r2, cauda [m1, r3] é truncada: só r3 devolve slot.
+    fireEvent.click(container.querySelector("#pb-next")!);
+    await vi.waitFor(() => {
+      expect(vi.mocked(libAutoplayNext)).toHaveBeenCalled();
+    });
+    expect(vi.mocked(libAutoplayNext).mock.calls.at(-1)![4]).toBe(1);
   });
 
   it("skip em fila station NÃO contamina a sessão de rádio (contextos separados)", async () => {

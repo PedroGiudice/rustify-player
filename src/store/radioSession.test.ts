@@ -32,6 +32,7 @@ describe("startRadioSession", () => {
       skippedIds: [],
       lastAcceptedId: null,
       mixSlot: 0,
+      mixServedIds: [],
     });
   });
 
@@ -121,6 +122,7 @@ describe("resetRadioSession", () => {
       skippedIds: [],
       lastAcceptedId: null,
       mixSlot: 0,
+      mixServedIds: [],
     });
   });
 });
@@ -129,30 +131,41 @@ describe("mixSlot (mistura 2:1 do rádio, v0.2.92)", () => {
   it("rodada nova começa no slot 0 e avança pelas faixas servidas", () => {
     ensureOpenRadioSession();
     expect(currentSession().mixSlot).toBe(0);
-    advanceMix(1);
-    advanceMix(2);
+    advanceMix(["a"]);
+    advanceMix(["b", "c"]);
     expect(currentSession().mixSlot).toBe(3);
   });
 
   it("a mesma rodada de rádio preserva o slot (o re-fetch pós-pulo continua o ciclo)", () => {
     ensureOpenRadioSession();
-    advanceMix(2);
+    advanceMix(["a", "b"]);
     ensureOpenRadioSession(); // idempotente dentro da rodada
     expect(currentSession().mixSlot).toBe(2);
   });
 
   it("cauda truncada devolve os slots, sem ficar negativo", () => {
     ensureOpenRadioSession();
-    advanceMix(3);
-    rewindMix(1);
+    advanceMix(["a", "b", "c"]);
+    rewindMix(["c"]);
     expect(currentSession().mixSlot).toBe(2);
-    rewindMix(9);
+    rewindMix(["a", "b", "a", "b"]);
     expect(currentSession().mixSlot).toBe(0);
+  });
+
+  it("faixa posta na fila à mão na cauda não recua o ciclo", () => {
+    ensureOpenRadioSession();
+    advanceMix(["r1", "r2"]);
+    // Cauda truncada: uma do rádio (r2) e duas da mão (m1, m2).
+    rewindMix(["r2", "m1", "m2", null]);
+    expect(currentSession().mixSlot).toBe(1);
+    // r2 já foi devolvida: truncar de novo não recua outra vez.
+    rewindMix(["r2"]);
+    expect(currentSession().mixSlot).toBe(1);
   });
 
   it("station nova zera o slot", () => {
     ensureOpenRadioSession();
-    advanceMix(4);
+    advanceMix(["a", "b", "c", "d"]);
     startRadioSession("s1");
     expect(currentSession().mixSlot).toBe(0);
   });

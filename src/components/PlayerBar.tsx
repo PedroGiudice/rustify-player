@@ -330,7 +330,7 @@ export function PlayerBar() {
       const recs = await libAutoplayNext(seed, exclude, negatives, 1, mixSlot);
       if (!recs.length) return;
       registerSeen(recs.map((t) => t.id));
-      advanceMix(recs.length);
+      advanceMix(recs.map((t) => t.id));
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open", { kind: "radio" });
     } catch (e) {
@@ -790,7 +790,7 @@ async function doAutoplay(seedId: string) {
     const tracks = await libAutoplayNext(seedId, exclude, negatives, 1, mixSlot);
     if (!tracks.length) return;
     registerSeen(tracks.map((t) => t.id));
-    advanceMix(tracks.length);
+    advanceMix(tracks.map((t) => t.id));
     // Append new tracks to queue and advance index by 1 (same as vanilla).
     // A partir daqui quem abastece a fila é o autoplay — proveniência
     // "radio", pra contOrigin logar as continuações como "autoplay".
@@ -818,7 +818,7 @@ async function prefetchRadio(seedId: string) {
     const tracks = await libAutoplayNext(seedId, exclude, negatives, 1, mixSlot);
     if (!tracks.length) return;
     registerSeen(tracks.map((t) => t.id));
-    advanceMix(tracks.length);
+    advanceMix(tracks.map((t) => t.id));
     // Re-passa a proveniência radio — o setQueue com defaults zerava o
     // source e o chip virava "solta" no primeiro top-up (e o contOrigin
     // perdia o mapeamento radio→autoplay).
@@ -881,9 +881,10 @@ function reactToQueueSkip(
     if (skippedTrack?.id) {
       registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
     }
-    // A cauda truncada foi servida pelo rádio mas não vai tocar: devolve os
-    // slots dela ao ciclo da mistura 2:1.
-    rewindMix(Math.max(0, player.queue.length - (player.queueIndex + 1)));
+    // A cauda truncada não vai tocar: as faixas dela que o RÁDIO serviu
+    // devolvem o slot ao ciclo da mistura 2:1 (as postas na fila à mão
+    // nunca ocuparam slot).
+    rewindMix(player.queue.slice(player.queueIndex + 1).map((t) => t.id));
     setPlayer("queue", (q) => q.slice(0, player.queueIndex + 1));
     const seed = currentSession().lastAcceptedId ?? player.currentTrack?.id;
     if (seed) void prefetchRadio(seed);

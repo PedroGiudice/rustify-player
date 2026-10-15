@@ -43,12 +43,16 @@ interface RadioSession {
   // cada re-fetch recomeçaria em "conhecida, conhecida" e a descoberta
   // nunca chegaria numa sessão de muitos pulos.
   mixSlot: number;
+  // Ids que o rádio serviu e que ainda contam no mixSlot. O rewind pós-pulo
+  // só devolve slot de faixa daqui: faixa que o usuário pôs na fila à mão
+  // nunca ocupou slot do ciclo.
+  mixServedIds: string[];
 }
 
 function emptySession(): RadioSession {
   return {
     stationId: null, contextId: null, seenIds: [], skippedIds: [],
-    lastAcceptedId: null, mixSlot: 0,
+    lastAcceptedId: null, mixSlot: 0, mixServedIds: [],
   };
 }
 
@@ -62,7 +66,7 @@ export function startRadioSession(stationId: string): string {
   const contextId = `station:${stationId}:${Date.now()}`;
   session = {
     stationId, contextId, seenIds: [], skippedIds: [], lastAcceptedId: null,
-    mixSlot: 0,
+    mixSlot: 0, mixServedIds: [],
   };
   return contextId;
 }
@@ -91,15 +95,26 @@ export function registerSeen(ids: (string | null | undefined)[]): void {
   session.seenIds.push(...ids.filter((id): id is string => !!id));
 }
 
-/** Avança o ciclo da mistura pelas `n` faixas que o rádio acabou de servir. */
-export function advanceMix(n: number): void {
-  if (n > 0) session.mixSlot += n;
+/** Avança o ciclo da mistura pelas faixas que o rádio acabou de servir. */
+export function advanceMix(ids: (string | null | undefined)[]): void {
+  const served = ids.filter((id): id is string => !!id);
+  session.mixSlot += served.length;
+  session.mixServedIds.push(...served);
 }
 
-/** Devolve ao ciclo as `n` faixas servidas que saíram da fila sem tocar
-    (cauda truncada no re-fetch pós-pulo): o próximo fetch reocupa os
-    slots delas, em vez de pular uma descoberta ou uma conhecida. */
-export function rewindMix(n: number): void {
+/** Devolve ao ciclo as faixas da cauda truncada (re-fetch pós-pulo) que o
+    RÁDIO serviu e não vão tocar: o próximo fetch reocupa os slots delas, em
+    vez de pular uma descoberta ou uma conhecida. Faixa da cauda posta na
+    fila à mão não ocupou slot e não recua o ciclo. */
+export function rewindMix(tailIds: (string | null | undefined)[]): void {
+  let n = 0;
+  for (const id of tailIds) {
+    if (!id) continue;
+    const i = session.mixServedIds.lastIndexOf(id);
+    if (i < 0) continue;
+    session.mixServedIds.splice(i, 1);
+    n += 1;
+  }
   if (n > 0) session.mixSlot = Math.max(0, session.mixSlot - n);
 }
 
