@@ -56,6 +56,125 @@ def is_pos_v3(e: dict) -> bool:
 META_SKIP = 0.55
 SESSION_GAP_S = 30 * 60
 
+# Aceite e pulo: a definição única da régua. O motor (familiarity.rs) replica
+# a mesma regra; a fixture scripts/metrics/fixtures/familiaridade.json trava a
+# equivalência nos testes dos dois lados.
+ACEITE = "track_ended"
+PULO = "track_skipped"
+# Pulo até 5 s é quase navegação ("próxima, próxima"): 77% dos pulos do
+# autoplay desde a v0.2.75 (forense 14/10). Recorte complementar, não muda o
+# veredito.
+NAV_SKIP_MS = 5_000
+# Primeira versão com familiaridade + mistura 2:1 no autoplay. O recorte por
+# versão mede a mudança sem misturar com o período anterior.
+VERSAO_MISTURA = "0.2.92"
+# Familiaridade (mesmos limiares do motor, familiarity.rs).
+KNOWN_MIN_ENDED = 3
+NEVER_ENDS_MIN_ATTEMPTS = 3
+MOTOR_ORIGINS = ("autoplay", "station")
+UNPLAYABLE_SUSPECT_DEVICE = "s24"
+
+
+def is_accept(e: dict) -> bool:
+    return e.get("event_type") == ACEITE
+
+
+def is_skip(e: dict) -> bool:
+    return e.get("event_type") == PULO
+
+
+def is_nav_skip(e: dict, limite_ms: int = NAV_SKIP_MS) -> bool:
+    """Pulo nos primeiros `limite_ms` (mesma regra da forense)."""
+    return is_skip(e) and (e.get("end_position_ms") or 0) <= limite_ms
+
+
+def version_tuple(v: str) -> tuple:
+    """'0.2.92' -> (0, 2, 92); vazio ou malformado -> () (menor que tudo)."""
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except (AttributeError, ValueError):
+        return ()
+
+
+def desde_versao(e: dict, versao: str = VERSAO_MISTURA) -> bool:
+    return version_tuple(e.get("app_version") or "") >= version_tuple(versao)
+
+
+def familiaridade(events) -> dict:
+    """{track_id: {"ended", "motor_attempts"}} — referência do índice do motor.
+
+    ended = vezes ouvida até o fim (qualquer origem, todo o histórico);
+    motor_attempts = vezes servida pelo autoplay/station, sem os pulos em 0 ms
+    do S24 (suspeitos de arquivo que não toca). track_id que não é inteiro
+    (11 eventos legados em texto) fica fora.
+    """
+    out: dict = {}
+    for e in events:
+        tid = e.get("track_id")
+        if not isinstance(tid, int) or isinstance(tid, bool):
+            continue
+        aceite = is_accept(e)
+        tentativa = (
+            (aceite or is_skip(e))
+            and e.get("origin") in MOTOR_ORIGINS
+            and not (is_skip(e) and e.get("device_id") == UNPLAYABLE_SUSPECT_DEVICE
+                     and e.get("end_position_ms") == 0)
+        )
+        if not aceite and not tentativa:
+            continue
+        f = out.setdefault(tid, {"ended": 0, "motor_attempts": 0})
+        f["ended"] += 1 if aceite else 0
+        f["motor_attempts"] += 1 if tentativa else 0
+    return out
+
+
+def is_known(f: dict, liked: bool) -> bool:
+    return liked or f["ended"] >= KNOWN_MIN_ENDED
+
+
+def never_ends(f: dict, liked: bool) -> bool:
+    return not liked and f["ended"] == 0 and f["motor_attempts"] >= NEVER_ENDS_MIN_ATTEMPTS
+
+
+def stats(evs) -> dict:
+    """Pulo e pulo cedo (<10%) de um recorte de eventos ended/skipped."""
+    n = len(evs)
+    if n == 0:
+        return {"n": 0}
+    skips = sum(1 for e in evs if is_skip(e))
+    early = sum(1 for e in evs if (e.get("listen_pct") or 0) < 0.1)
+    return {
+        "n": n,
+        "skip_rate": round(skips / n, 3),
+        "early_rate": round(early / n, 3),
+    }
+
+
+def recortes_autoplay(autoplay_pos_v3) -> dict:
+    """Recortes complementares do autoplay (não entram no veredito):
+    - sem_pulos_5s: tira os pulos de até NAV_SKIP_MS (rajadas de navegação);
+    - desde_<VERSAO_MISTURA>: só eventos da versão com a mistura 2:1.
+    """
+    desde = [e for e in autoplay_pos_v3 if desde_versao(e)]
+    return {
+        "sem_pulos_5s": stats([e for e in autoplay_pos_v3 if not is_nav_skip(e)]),
+        f"desde_{VERSAO_MISTURA}": stats(desde),
+        f"desde_{VERSAO_MISTURA}_sem_pulos_5s": stats([e for e in desde if not is_nav_skip(e)]),
+    }
+
+
+def recortes_md(rec: dict) -> str:
+    def fmt(s):
+        return "sem eventos" if s["n"] == 0 else f"skip {s['skip_rate']:.0%} (n={s['n']})"
+    return (
+        "Recortes do autoplay (não mudam o veredito): "
+        f"sem os pulos de até {NAV_SKIP_MS // 1000} s, {fmt(rec['sem_pulos_5s'])}; "
+        f"desde a v{VERSAO_MISTURA} (mistura conhecida/descoberta), "
+        f"{fmt(rec[f'desde_{VERSAO_MISTURA}'])}; "
+        f"desde a v{VERSAO_MISTURA} sem os pulos de até {NAV_SKIP_MS // 1000} s, "
+        f"{fmt(rec[f'desde_{VERSAO_MISTURA}_sem_pulos_5s'])}.\n\n"
+    )
+
 
 def qdrant_ok() -> bool:
     try:
@@ -180,18 +299,6 @@ def main() -> int:
 
     pos_v3 = [e for e in events if is_pos_v3(e)]
 
-    def stats(evs):
-        n = len(evs)
-        if n == 0:
-            return {"n": 0}
-        skips = sum(1 for e in evs if e["event_type"] == "track_skipped")
-        early = sum(1 for e in evs if (e.get("listen_pct") or 0) < 0.1)
-        return {
-            "n": n,
-            "skip_rate": round(skips / n, 3),
-            "early_rate": round(early / n, 3),
-        }
-
     by_origin = {}
     for origin in ("autoplay", "station", "queue", "playlist", "manual", "album_seq", "repeat"):
         by_origin[origin] = stats([e for e in pos_v3 if e.get("origin") == origin])
@@ -231,6 +338,7 @@ def main() -> int:
         by_device.setdefault(d, []).append(e)
     by_device = {d: stats(evs) for d, evs in by_device.items()}
 
+    rec_ap = recortes_autoplay([e for e in pos_v3 if e.get("origin") == "autoplay"])
     cov = coverage()
     record = {
         "measured_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -247,6 +355,7 @@ def main() -> int:
         },
         "meta_skip": META_SKIP,
         "by_device": by_device,
+        "autoplay_recortes": rec_ap,
         "coverage": cov,
     }
     with open(OUT_DIR / "regua-autoplay.jsonl", "a") as f:
@@ -300,7 +409,8 @@ def main() -> int:
             if len(by_device) >= 2
             else ""
         )
-        + "\n\nAutoplay por semana:\n" + weeks_md + "\n\n"
+        + "\n\n" + recortes_md(rec_ap)
+        + "Autoplay por semana:\n" + weeks_md + "\n\n"
         + cobertura_md(cov) + "\n"
         "Histórico completo: docs/metrics/regua-autoplay.jsonl. "
         "Medir à mão: `python3 scripts/metrics/autoplay_regua.py`.\n"
