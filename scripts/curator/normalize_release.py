@@ -210,16 +210,21 @@ def describe(plan: Plan) -> str:
     return "\n".join(lines)
 
 
+def flac_cmd(src: Path, dest: Path) -> list[str]:
+    """Comando ffmpeg da conversão. -map_metadata -1: as tags são reescritas depois;
+    -vn descarta a capa embutida (reembutida depois). Origem lossy sai em 16 bit
+    com dither: o decodificador entrega float e o FLAC sairia 24 bit (falso hi-res)."""
+    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-map_metadata", "-1"]
+    if src.suffix.lower() in LOSSY:
+        cmd += ["-af", "aresample=out_sample_fmt=s16:dither_method=triangular"]
+    return cmd + ["-c:a", "flac", "-compression_level", "8", str(dest)]
+
+
 def _to_flac(src: Path, dest: Path) -> None:
     if src.suffix.lower() == ".flac":
         shutil.copy2(src, dest)
         return
-    # -map_metadata -1: as tags são reescritas abaixo; -vn descarta capa embutida (reembutida depois)
-    subprocess.run(
-        ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn",
-         "-map_metadata", "-1", "-c:a", "flac", "-compression_level", "8", str(dest)],
-        check=True,
-    )
+    subprocess.run(flac_cmd(src, dest), check=True)
 
 
 def _prepare_cover(cover: Path | None, workdir: Path) -> Path | None:

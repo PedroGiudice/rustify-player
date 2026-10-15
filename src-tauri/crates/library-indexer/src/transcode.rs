@@ -183,7 +183,13 @@ fn parse_probe_json(stdout: &[u8]) -> Result<MediaProbe, TranscodeError> {
     Ok(MediaProbe { codec, duration_s, bit_rate_kbps, bits_per_sample: bits })
 }
 
+/// Codec com perda: tudo que não é PCM nem lossless conhecido.
+fn is_lossy_codec(codec: &str) -> bool {
+    !(codec.starts_with("pcm_") || matches!(codec, "flac" | "alac" | "wavpack" | "ape" | "tta" | "mlp" | "truehd"))
+}
+
 /// WAV/AIFF/MP3 -> FLAC. Metadados e capa da origem descartados (serão reescritos).
+/// Origem lossy sai em 16 bit (com dither); PCM mantém a profundidade.
 /// Valida a saída: `parse_flac` + duração dentro de 2% (o ffmpeg pode sair 0 e escrever lixo).
 /// Em qualquer falha nem `dst` nem o temporário `.flac.part` ficam no disco.
 pub fn to_flac(tools: &Tools, src: &Path, dst: &Path) -> Result<(), TranscodeError> {
@@ -199,8 +205,13 @@ pub fn to_flac(tools: &Tools, src: &Path, dst: &Path) -> Result<(), TranscodeErr
     let mut c = Command::new(&tools.ffmpeg);
     c.args(["-nostdin", "-loglevel", "error", "-y", "-i"])
         .arg(src)
-        .args(["-vn", "-map_metadata", "-1", "-c:a", "flac", "-compression_level", "8", "-f", "flac"])
-        .arg(&tmp);
+        .args(["-vn", "-map_metadata", "-1"]);
+    if is_lossy_codec(&probe.codec) {
+        // O decodificador de MP3/AAC entrega float e o encoder FLAC escolheria
+        // 32 bit (gravado como 24): o arquivo pareceria hi-res sem ser.
+        c.args(["-af", "aresample=out_sample_fmt=s16:dither_method=triangular"]);
+    }
+    c.args(["-c:a", "flac", "-compression_level", "8", "-f", "flac"]).arg(&tmp);
     let teto = tools.transcode_floor + Duration::from_secs_f64(probe.duration_s.max(0.0));
     let out = run_limited(c, "ffmpeg", teto).map_err(falha)?;
     if !out.ok {
@@ -314,6 +325,32 @@ mod tests {
         assert!((md.duration_ms as f64 / 1000.0 - 2.0).abs() < 0.1);
         assert_eq!(md.bit_depth, 16);
         assert!(!tmp.path().join("out.flac.part").exists());
+    }
+
+    /// O decodificador de MP3/AAC entrega float e o encoder FLAC escolhia
+    /// 32 bit (gravado como 24): a faixa parecia hi-res sem ser.
+    #[test]
+    fn to_flac_de_lossy_sai_16_bit() {
+        if !have_ffmpeg() { eprintln!("sem ffmpeg: teste pulado"); return; }
+        let tmp = tempfile::tempdir().unwrap();
+        for (nome, extra) in [("in.mp3", &["-b:a", "320k"][..]), ("in.m4a", &["-c:a", "aac", "-b:a", "256k"][..])] {
+            let src = synth(tmp.path(), nome, 2, extra);
+            let out = tmp.path().join(format!("{nome}.flac"));
+            to_flac(&Tools::default(), &src, &out).unwrap();
+            let md = crate::parse_flac(&out).unwrap();
+            assert_eq!(md.bit_depth, 16, "{nome} virou FLAC {} bit", md.bit_depth);
+            assert!((md.duration_ms as f64 / 1000.0 - 2.0).abs() < 0.1);
+        }
+    }
+
+    #[test]
+    fn to_flac_de_wav_24_continua_24_bit() {
+        if !have_ffmpeg() { eprintln!("sem ffmpeg: teste pulado"); return; }
+        let tmp = tempfile::tempdir().unwrap();
+        let w = synth(tmp.path(), "in24.wav", 2, &["-c:a", "pcm_s24le"]);
+        let out = tmp.path().join("out24.flac");
+        to_flac(&Tools::default(), &w, &out).unwrap();
+        assert_eq!(crate::parse_flac(&out).unwrap().bit_depth, 24);
     }
 
     #[test]

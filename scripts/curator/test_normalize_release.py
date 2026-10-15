@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from normalize_release import build_plan, loose, looks_like_url, parse_track_filename, safe_name, strip_artist_suffix  # noqa: E402
+from normalize_release import build_plan, flac_cmd, loose, looks_like_url, parse_track_filename, safe_name, strip_artist_suffix  # noqa: E402
 
 
 def test_safe_name():
@@ -140,6 +140,16 @@ def test_build_plan_rejects_url_artist():
             assert False
         except ValueError as e:
             assert "URL" in str(e)
+
+
+def test_flac_cmd_lossy_sai_16_bit():
+    # MP3/AAC decodificam em float; sem fixar, o FLAC sairia 24 bit (falso hi-res)
+    for ext in (".mp3", ".m4a", ".opus"):
+        cmd = flac_cmd(Path("a" + ext), Path("b.flac"))
+        assert "aresample=out_sample_fmt=s16:dither_method=triangular" in cmd, cmd
+    for ext in (".wav", ".aiff"):
+        cmd = flac_cmd(Path("a" + ext), Path("b.flac"))
+        assert not any("aresample" in c for c in cmd), cmd
 
 
 if __name__ == "__main__":
