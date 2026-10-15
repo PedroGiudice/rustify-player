@@ -504,13 +504,13 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
   (`'NoneType'... get_email_list`, esperado), o link chega no Gmail em ~20 s e se
   baixa com `BCFreeDownloader._download_file(url, "FLAC")`.
 - **SoundCloud (desde a v0.2.87 é in-app pelo Crate, fase 1; os comandos abaixo
-  ficam para leva grande por script)**: o arquivo original (WAV/MP3 320 do produtor) so sai LOGADO:
+  ficam para leva grande por script)**: o arquivo original (WAV/FLAC do produtor) so sai LOGADO:
   `uvx scdl -l <url> --path <dir> --only-original --original-name --auth-token
   "$(cat ~/.secrets/soundcloud-oauth.txt)"` NA cmr-auto. Sem token toda ferramenta
   entrega stream transcodificado (AAC 160/MP3 128), inutil. Filtrar pela API v2
   (`downloadable`/`has_downloads_left`/`purchase_url`), nao pelo titulo "FREE
-  DOWNLOAD": metade e gate Hypeddit/ToneDen. Politica: MP3 320 original entra
-  convertido com COMMENT `source: lossy mp3`; MP3 128 fica fora.
+  DOWNLOAD": metade e gate Hypeddit/ToneDen. Politica: so lossless de verdade (secao
+  "Qualidade real do acervo"); MP3 do produtor nao entra, nem 320.
 - **Cookies** (`~/.secrets/*.txt`, 0600, so na cmr-auto): extraidos do Chrome com
   `uvx --with secretstorage yt-dlp --cookies-from-browser chrome+gnomekeyring
   --cookies <jar> --skip-download <url>` (precisa de
@@ -629,6 +629,39 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   remix, ao vivo, acústico, versão, edit, instrumental distinguem). Mudar uma = mudar a outra.
 - **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em
   batch, e conferir que o share do slskd NÃO cresceu).
+
+## Qualidade real do acervo (corte espectral, 15/10/2026, v0.2.93, CMR-297)
+
+Regra do CEO: **só entra lossless de verdade (FLAC 16/44 ou melhor), medido pelo
+CONTEÚDO, não pela etiqueta.** MP3 não entra (nem 320); WAV/FLAC com corte de lossy é
+recusado nas quatro portas (Crate Soulseek e SoundCloud, `normalize_release.py`,
+Tidal). Nada do acervo antigo é apagado: fica marcado. Relatório com método,
+calibração e números: `docs/contexto/15102026-qualidade-soundcloud.md`.
+
+- **Detector, duas cópias que precisam concordar**: `scripts/curator/quality_audit.py`
+  (auditoria, e as portas por script via `lossless_gate.py`, que exige numpy: sem ele
+  a execução cai, não deixa passar) e `library-indexer/src/spectral.rs` (app,
+  decodifica com symphonia, ~0,4 s/faixa em release). A fixture
+  `scripts/curator/fixtures/spectral_cliffs.json` (espectros reais + resultado do
+  Python) é lida pelos testes dos dois lados; mudou constante num, mude no outro.
+  Método: 3 janelas de 20 s, maior degrau acima de 10 kHz na MEDIANA e no PERCENTIL 10
+  dos quadros (a média falha em master no talo: o MP3 saturado espalha ruído acima
+  do corte). Classes: `sem_corte`, `provavel_lossy` (19,5-20,6 kHz), `lossy` (< 19,5),
+  `hires_de_cd` (> 48 kHz com corte de CD). O corte NÃO dá o bitrate. Escapam MP3 V0 e
+  AAC 256 (limite conhecido); 0 falso positivo em 11 lossless de referência.
+- **Payload** `quality_class`/`quality_cutoff_hz` em `rustify_tracks`: gravado no
+  `build_track_payload` (todo ingest, inclusive watcher) e pelo
+  `backfill_missing_quality` do boot (depois do loudness, mesma thread, 200 ms entre
+  faixas); medição que falha grava `indeterminado` (o backfill não insiste). Acervo
+  semeado em 15/10 com a auditoria (`scripts/curator/quality_seed.py`, só preenche
+  ponto sem o campo). O mover copia o payload.
+- **Tela**: `src/lib/quality.ts` `qualityBadge` troca o "24/44" do arquivo por "Lossy
+  16,1 kHz" (ponto da pílula em âmbar) ou "CD em 24/96" na barra, no selo da capa e na
+  ficha do Now Playing; faixa não medida mostra o rótulo do arquivo. S24 ainda não.
+- **Profundidade de bits não mede qualidade**: 53 faixas são 24 bit com corte de MP3,
+  14 da Tidal (funk vendido como HI_RES). Troca por "versão melhor" (CMR-297) compara a
+  classe espectral, nunca `bit_depth`.
+- MP3/AAC que ainda passe por `to_flac` sai 16 bit com dither (antes saía 24 bit).
 
 ## Motor de inteligencia — sinal v3 (v0.2.66, 2026-08-12)
 
@@ -804,8 +837,13 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   `~/.secrets/soundcloud-oauth.txt` lido sob demanda, nunca em log/Debug/evento),
   converte para FLAC (`library-indexer/src/transcode.rs`, ffmpeg com teto de tempo),
   escreve tags (`tagwrite.rs`, lofty) e capa JPEG <=1500 px, e entrega ao mesmo
-  staging/ingest do Soulseek. Política: WAV/FLAC/AIFF entram; MP3 >=320 entra com
-  COMMENT `source: lossy mp3`; abaixo é recusado antes do download (`probe_verdict`).
+  staging/ingest do Soulseek. Política (CEO, 15/10/2026): só lossless de verdade. MP3
+  é recusado já no card (`probe_verdict`: "MP3 320 · não entra (só lossless)") e no
+  worker (`RejectReason::LossyFormat`); FLAC com corte espectral de lossy é recusado no
+  `stage_file`, que vale para o Soulseek E para o original do SoundCloud
+  (`LossyInside`, quarentena `lossy_inside`; no Soulseek, [Trocar fonte] pega outro
+  peer). A medição é injetável no coordinator (`stage::QualityCheck`): os testes de
+  tempo dele não medem (`new_sem_medicao`); a medição tem testes no `stage.rs`.
   Config em `sources.json` no data dir (só CAMINHOS de segredo) ou env `RUSTIFY_*`
   (`sources.rs`); status das fontes no topo do Crate (`crate_sources_status`).
   Comandos: `crate_sc_search/resolve/probe/artwork`, `crate_download`,

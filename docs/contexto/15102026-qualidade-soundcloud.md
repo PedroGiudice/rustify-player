@@ -94,8 +94,16 @@ profundidade. As faixas já gravadas não foram tocadas.
 - O caminho SoundCloud/Bandcamp é a melhor fonte de funk em qualidade (5% com corte, contra 15% na Tidal e 43%
   no Soulseek).
 
-## Pendências (decisão do CEO)
+## Decisão do CEO (15/10/2026) e o que foi implementado
 
-1. Checagem espectral na entrada do SoundCloud: marcar ou recusar o original com corte.
-2. Regravar em 16 bit as 6 MP3 do Crate (e corrigir o COMMENT das 4 que são 128 por dentro).
-3. Mostrar a qualidade real no app (hoje a barra do player mostra "24/44" para MP3 disfarçado).
+"Qualquer coisa menos que FLAC 16 bit/44,1 kHz não vale a pena." Correções registradas na conversa: a
+etiqueta mente (o piso se mede pelo conteúdo), e MP3 320 não é pior de ouvido em teste cego (excluir é
+higiene do acervo, não audição). Regra: só lossless de verdade, nas quatro portas; nada do acervo atual é
+apagado, a qualidade real é marcada e aparece no player.
+
+- Crate (Soulseek e SoundCloud): MP3 recusado no card e no worker; FLAC com corte recusado no `stage_file`.
+- Scripts: `normalize_release.py` sem `--allow-lossy`, mede cada faixa; `tidal_mix_dl.py` mede antes do
+  rename final, cache `recusadas.json`, recusada não é falha; fila com `--with numpy` (reiniciada 15/10).
+- Acervo: `quality_class`/`quality_cutoff_hz` no Qdrant (2.202 faixas semeadas da auditoria); barra e Now
+  Playing mostram "Lossy 16,1 kHz" / "CD em 24/96".
+- Detector em Rust (`spectral.rs`) com paridade travada por fixture: 51/51 referências iguais ao Python.
