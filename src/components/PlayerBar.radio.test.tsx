@@ -164,6 +164,36 @@ describe("rádio reage a skip como a station (Fase 3 pro autoplay)", () => {
     expect(excludeIds).toContain(t9.id);
   });
 
+  it("mistura 2:1: mixSlot anda com cada faixa servida e o re-fetch pós-pulo continua o ciclo", async () => {
+    const t1 = track("mx-1");
+    const a = track("mx-a");
+    const b = track("mx-b");
+    const c = track("mx-c");
+    vi.mocked(libAutoplayNext)
+      .mockResolvedValueOnce([a])
+      .mockResolvedValueOnce([b])
+      .mockResolvedValueOnce([c]);
+    setQueue([t1], 0);
+    setPlayer({ currentTrack: t1, positionSecs: 0, durationSecs: 180 });
+    const { container } = await mountAndWait();
+
+    // Fim da fila → 1º pick da rodada (slot 0, conhecida).
+    await h.playerStateCb!({ TrackEnded: {} });
+    // `a` termina → 2º pick (slot 1, conhecida).
+    await h.playerStateCb!({ TrackEnded: {} });
+    await vi.waitFor(() => {
+      expect(vi.mocked(libAutoplayNext).mock.calls.length).toBe(2);
+    });
+    // `b` é pulada cedo → re-fetch serve o slot 2 (descoberta), não volta ao 0.
+    setPlayer({ positionSecs: 2, durationSecs: 180 });
+    fireEvent.click(container.querySelector("#pb-next")!);
+    await vi.waitFor(() => {
+      expect(vi.mocked(libAutoplayNext).mock.calls.length).toBe(3);
+    });
+    const slots = vi.mocked(libAutoplayNext).mock.calls.map((c) => c[4]);
+    expect(slots).toEqual([0, 1, 2]);
+  });
+
   it("skip em fila station NÃO contamina a sessão de rádio (contextos separados)", async () => {
     const s1 = track("st-1");
     const s2 = track("st-2");

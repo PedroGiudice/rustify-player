@@ -18,7 +18,7 @@ import {
   rememberRecent, recentlyPlayed, resumeOnLaunch, gaplessNext,
 } from "../store/player";
 import type { QueueScope, QueueSource } from "../store/player";
-import { registerSeen, registerSkipIfEarly, currentSession, ensureOpenRadioSession, noteAccepted } from "../store/radioSession";
+import { registerSeen, registerSkipIfEarly, currentSession, ensureOpenRadioSession, noteAccepted, advanceMix, rewindMix } from "../store/radioSession";
 import { dsp } from "../store/dsp";
 import { tweaks, updateTweak } from "../store/tweaks";
 import {
@@ -326,10 +326,11 @@ export function PlayerBar() {
     const seed = player.currentTrack?.id;
     if (!seed) return;
     try {
-      const { exclude, negatives } = radioFetchArgs();
-      const recs = await libAutoplayNext(seed, exclude, negatives, 1);
+      const { exclude, negatives, mixSlot } = radioFetchArgs();
+      const recs = await libAutoplayNext(seed, exclude, negatives, 1, mixSlot);
       if (!recs.length) return;
       registerSeen(recs.map((t) => t.id));
+      advanceMix(recs.length);
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open", { kind: "radio" });
     } catch (e) {
@@ -769,12 +770,13 @@ async function topUpStation() {
     mata a repetição que o FIFO-30 deixava recircular em sessão longa) e
     skips cedos da rodada (penalizam a vizinhança do rejeitado no
     recommend — paridade com libStationNext). */
-function radioFetchArgs(): { exclude: string[]; negatives: string[] } {
+function radioFetchArgs(): { exclude: string[]; negatives: string[]; mixSlot: number } {
   ensureOpenRadioSession();
   const session = currentSession();
   return {
     exclude: [...new Set([...recentlyPlayed(), ...session.seenIds])],
     negatives: [...session.skippedIds],
+    mixSlot: session.mixSlot,
   };
 }
 
@@ -784,10 +786,11 @@ async function doAutoplay(seedId: string) {
     // behavioral mais recente. Sem isso, uma chamada com limit>1
     // pré-computa uma queue que envelhece — a 5ª track ainda
     // reflete a vibe da 1ª, sem influência do que aconteceu no meio.
-    const { exclude, negatives } = radioFetchArgs();
-    const tracks = await libAutoplayNext(seedId, exclude, negatives, 1);
+    const { exclude, negatives, mixSlot } = radioFetchArgs();
+    const tracks = await libAutoplayNext(seedId, exclude, negatives, 1, mixSlot);
     if (!tracks.length) return;
     registerSeen(tracks.map((t) => t.id));
+    advanceMix(tracks.length);
     // Append new tracks to queue and advance index by 1 (same as vanilla).
     // A partir daqui quem abastece a fila é o autoplay — proveniência
     // "radio", pra contOrigin logar as continuações como "autoplay".
@@ -811,10 +814,11 @@ async function prefetchRadio(seedId: string) {
     // player chega às 2 últimas posições da queue (ver TrackEnded
     // handler). Garante 1 track sempre à frente, recalculada com
     // base no que toca agora.
-    const { exclude, negatives } = radioFetchArgs();
-    const tracks = await libAutoplayNext(seedId, exclude, negatives, 1);
+    const { exclude, negatives, mixSlot } = radioFetchArgs();
+    const tracks = await libAutoplayNext(seedId, exclude, negatives, 1, mixSlot);
     if (!tracks.length) return;
     registerSeen(tracks.map((t) => t.id));
+    advanceMix(tracks.length);
     // Re-passa a proveniência radio — o setQueue com defaults zerava o
     // source e o chip virava "solta" no primeiro top-up (e o contOrigin
     // perdia o mapeamento radio→autoplay).
@@ -877,6 +881,9 @@ function reactToQueueSkip(
     if (skippedTrack?.id) {
       registerSkipIfEarly(skippedTrack.id, posAtSkip, durAtSkip);
     }
+    // A cauda truncada foi servida pelo rádio mas não vai tocar: devolve os
+    // slots dela ao ciclo da mistura 2:1.
+    rewindMix(Math.max(0, player.queue.length - (player.queueIndex + 1)));
     setPlayer("queue", (q) => q.slice(0, player.queueIndex + 1));
     const seed = currentSession().lastAcceptedId ?? player.currentTrack?.id;
     if (seed) void prefetchRadio(seed);

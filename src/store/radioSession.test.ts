@@ -11,6 +11,9 @@ import {
   registerSkipIfEarly,
   resetRadioSession,
   currentSession,
+  ensureOpenRadioSession,
+  advanceMix,
+  rewindMix,
 } from "./radioSession";
 
 beforeEach(() => {
@@ -28,6 +31,7 @@ describe("startRadioSession", () => {
       seenIds: [],
       skippedIds: [],
       lastAcceptedId: null,
+      mixSlot: 0,
     });
   });
 
@@ -116,6 +120,40 @@ describe("resetRadioSession", () => {
       seenIds: [],
       skippedIds: [],
       lastAcceptedId: null,
+      mixSlot: 0,
     });
+  });
+});
+
+describe("mixSlot (mistura 2:1 do rádio, v0.2.92)", () => {
+  it("rodada nova começa no slot 0 e avança pelas faixas servidas", () => {
+    ensureOpenRadioSession();
+    expect(currentSession().mixSlot).toBe(0);
+    advanceMix(1);
+    advanceMix(2);
+    expect(currentSession().mixSlot).toBe(3);
+  });
+
+  it("a mesma rodada de rádio preserva o slot (o re-fetch pós-pulo continua o ciclo)", () => {
+    ensureOpenRadioSession();
+    advanceMix(2);
+    ensureOpenRadioSession(); // idempotente dentro da rodada
+    expect(currentSession().mixSlot).toBe(2);
+  });
+
+  it("cauda truncada devolve os slots, sem ficar negativo", () => {
+    ensureOpenRadioSession();
+    advanceMix(3);
+    rewindMix(1);
+    expect(currentSession().mixSlot).toBe(2);
+    rewindMix(9);
+    expect(currentSession().mixSlot).toBe(0);
+  });
+
+  it("station nova zera o slot", () => {
+    ensureOpenRadioSession();
+    advanceMix(4);
+    startRadioSession("s1");
+    expect(currentSession().mixSlot).toBe(0);
   });
 });

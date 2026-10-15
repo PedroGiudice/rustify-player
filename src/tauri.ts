@@ -161,14 +161,16 @@ export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_ly
 export const libRecordPlay = (trackId: string) => invoke<void>("lib_record_play", { trackId });
 /** sessionNegativeIds = skips cedos da rodada de rádio (radioSession) —
     penalizam candidatos parecidos com o rejeitado, paridade com
-    libStationNext. */
+    libStationNext. mixSlot = posição da próxima faixa no ciclo
+    conhecida, conhecida, descoberta da rodada (radioSession.mixSlot). */
 export const libAutoplayNext = (
   trackId: string,
   excludeIds: string[],
   sessionNegativeIds: string[],
   limit: number,
+  mixSlot?: number,
 ) =>
-  invoke<Track[]>("lib_autoplay_next", { trackId, excludeIds, sessionNegativeIds, limit });
+  invoke<Track[]>("lib_autoplay_next", { trackId, excludeIds, sessionNegativeIds, limit, mixSlot });
 export const libListHistory = (limit?: number) => invoke<Track[]>("lib_list_history", { limit: limit ?? 50 });
 export const libSnapshot = () => invoke<any>("lib_snapshot");
 export const libListGenres = () => invoke<any[]>("lib_list_genres");

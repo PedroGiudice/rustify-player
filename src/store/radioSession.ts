@@ -37,12 +37,18 @@ interface RadioSession {
   // caminhar PRA DENTRO da vizinhança que o usuário estava rejeitando
   // (forense 18/08: sessões de martelo com 95% de skip).
   lastAcceptedId: string | null;
+  // Posição da PRÓXIMA faixa do rádio no ciclo conhecida, conhecida,
+  // descoberta (mistura 2:1 do lib_autoplay_next, v0.2.92). Conta as
+  // faixas servidas na rodada e sobrevive ao re-fetch pós-pulo — sem isto
+  // cada re-fetch recomeçaria em "conhecida, conhecida" e a descoberta
+  // nunca chegaria numa sessão de muitos pulos.
+  mixSlot: number;
 }
 
 function emptySession(): RadioSession {
   return {
     stationId: null, contextId: null, seenIds: [], skippedIds: [],
-    lastAcceptedId: null,
+    lastAcceptedId: null, mixSlot: 0,
   };
 }
 
@@ -56,6 +62,7 @@ export function startRadioSession(stationId: string): string {
   const contextId = `station:${stationId}:${Date.now()}`;
   session = {
     stationId, contextId, seenIds: [], skippedIds: [], lastAcceptedId: null,
+    mixSlot: 0,
   };
   return contextId;
 }
@@ -82,6 +89,18 @@ export function noteAccepted(id: string | null | undefined): void {
     vazios/nulos (track sem id) são descartados. */
 export function registerSeen(ids: (string | null | undefined)[]): void {
   session.seenIds.push(...ids.filter((id): id is string => !!id));
+}
+
+/** Avança o ciclo da mistura pelas `n` faixas que o rádio acabou de servir. */
+export function advanceMix(n: number): void {
+  if (n > 0) session.mixSlot += n;
+}
+
+/** Devolve ao ciclo as `n` faixas servidas que saíram da fila sem tocar
+    (cauda truncada no re-fetch pós-pulo): o próximo fetch reocupa os
+    slots delas, em vez de pular uma descoberta ou uma conhecida. */
+export function rewindMix(n: number): void {
+  if (n > 0) session.mixSlot = Math.max(0, session.mixSlot - n);
 }
 
 /** Registra rejeição de sessão se o skip foi CEDO (posição relativa

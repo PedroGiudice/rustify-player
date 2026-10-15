@@ -10,7 +10,7 @@ use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
 use library_indexer::{
-    rerank, Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
+    familiarity, rerank, Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
     IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults,
     Track, TrackFilter, TrackOrder,
 };
@@ -409,6 +409,15 @@ fn lib_shuffle(
         .map_err(err)
 }
 
+/// Saida do re-rank com o score final de cada track e o conjunto de
+/// curtidas entre seed + candidatos (lido do MESMO batch de enrichments, sem
+/// chamada extra). `liked = None` quando o batch falhou: quem usa o like
+/// (filtro de nunca-termina) nao pode adivinhar.
+struct RerankOut {
+    scored: Vec<(f64, Track)>,
+    liked: Option<std::collections::HashSet<u64>>,
+}
+
 /// Re-rankeia a uniao de `pools` (cada um ja em ordem de rank MERT) pela
 /// vibe do seed: busca os enrichments do seed + candidatos numa UNICA
 /// chamada batch e aplica o re-rank hibrido multi-pool (melhor rank MERT
@@ -419,7 +428,7 @@ fn lib_shuffle(
 /// Falha do batch NAO derruba o fluxo: warn + degrada pra concatenacao dos
 /// pools com dedup, mantendo o rank MERT (cap por artista e shuffle seguem
 /// valendo no chamador).
-fn rerank_by_seed_vibe_pools(lib: &Library, seed_id: u64, pools: Vec<Vec<Track>>) -> Vec<Track> {
+fn rerank_by_seed_vibe_pools_scored(lib: &Library, seed_id: u64, pools: Vec<Vec<Track>>) -> RerankOut {
     let client = lib.handle.client();
     let mut batch_ids: Vec<u64> = pools.iter().flatten().map(|t| t.id).collect();
     batch_ids.push(seed_id);
@@ -436,6 +445,7 @@ fn rerank_by_seed_vibe_pools(lib: &Library, seed_id: u64, pools: Vec<Vec<Track>>
                 enrichments.get(&seed_id).unwrap_or(&null),
                 seed_genre,
             );
+            let liked = library_indexer::qdrant_client::liked_ids(&enrichments);
             let pools_with_vibes: Vec<Vec<(Track, rerank::VibeProfile)>> = pools
                 .into_iter()
                 .map(|pool| {
@@ -450,24 +460,128 @@ fn rerank_by_seed_vibe_pools(lib: &Library, seed_id: u64, pools: Vec<Vec<Track>>
                         .collect()
                 })
                 .collect();
-            rerank::hybrid_rerank_pools(&seed_vibe, pools_with_vibes)
+            RerankOut {
+                scored: rerank::hybrid_rerank_pools_scored(&seed_vibe, pools_with_vibes),
+                liked: Some(liked),
+            }
         }
         Err(e) => {
             tracing::warn!(seed_id, error = %e, "re-rank: enrichments batch falhou — mantendo rank MERT");
             let mut seen = std::collections::HashSet::new();
-            pools
+            let flat: Vec<Track> = pools
                 .into_iter()
                 .flatten()
                 .filter(|t| seen.insert(t.id))
-                .collect()
+                .collect();
+            // Score sintetico decrescente = a propria ordem MERT.
+            let n = flat.len().max(1) as f64;
+            let scored = flat
+                .into_iter()
+                .enumerate()
+                .map(|(i, t)| (1.0 - i as f64 / n, t))
+                .collect();
+            RerankOut { scored, liked: None }
         }
     }
 }
 
-/// Atalho de pool unico do [`rerank_by_seed_vibe_pools`] — usado pelas
-/// stations, onde cada seed re-rankeia so a propria vizinhanca.
+/// Atalho sem score/likes do [`rerank_by_seed_vibe_pools_scored`] — usado
+/// pelas stations, onde cada seed re-rankeia so a propria vizinhanca.
 fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> Vec<Track> {
-    rerank_by_seed_vibe_pools(lib, seed_id, vec![candidates])
+    rerank_by_seed_vibe_pools_scored(lib, seed_id, vec![candidates])
+        .scored
+        .into_iter()
+        .map(|(_, t)| t)
+        .collect()
+}
+
+/// Ids, entre `ids`, que o filtro de nunca-termina tira das candidatas
+/// (`familiarity::never_ends`: servida 3+ vezes pelo motor, nunca ouvida ate
+/// o fim, sem like). Busca likes SO dos suspeitos (batch pequeno, e so quando
+/// ha suspeito). Qualquer falha (indice ou likes) devolve vazio: o filtro
+/// degrada pra "nao filtra", nunca pra "tira faixa curtida".
+fn never_ending_ids(lib: &Library, ids: &[u64]) -> std::collections::HashSet<u64> {
+    let client = lib.handle.client();
+    let fam = match client.familiarity() {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::warn!(error = %e, "familiarity indisponivel — sem filtro de nunca-termina");
+            return Default::default();
+        }
+    };
+    let suspects: Vec<u64> = ids
+        .iter()
+        .copied()
+        .filter(|id| familiarity::never_ends(fam.get(*id), false))
+        .collect();
+    if suspects.is_empty() {
+        return Default::default();
+    }
+    match client.liked_among(&suspects) {
+        Ok(liked) => suspects.into_iter().filter(|id| !liked.contains(id)).collect(),
+        Err(e) => {
+            tracing::warn!(error = %e, "likes dos suspeitos falharam — sem filtro de nunca-termina");
+            Default::default()
+        }
+    }
+}
+
+/// Familiaridade + mistura 2:1 sobre as candidatas ja re-rankeadas do
+/// autoplay. Ordem dos passos (cada um com o motivo):
+/// 1. metadata-lixo fora antes de tudo (nao consome slot de artista);
+/// 2. nunca-termina fora (precisa do like: sem `liked`, nao filtra);
+/// 3. cap de 2 por artista sobre a lista inteira (como antes);
+/// 4. particao conhecida/descoberta mantendo a ordem do re-rank;
+/// 5. sorteio ponderado DENTRO de cada grupo (variedade entre chamadas, como
+///    o antigo sorteio sobre a lista inteira);
+/// 6. intercalacao K, K, D a partir de `mix_slot`.
+///
+/// Sem indice de familiaridade (Qdrant falhou na montagem), cai no
+/// comportamento anterior: cap + sorteio na lista inteira.
+fn autoplay_mix(
+    scored: Vec<(f64, Track)>,
+    liked: Option<&std::collections::HashSet<u64>>,
+    fam: Option<&familiarity::FamiliarityIndex>,
+    mix_slot: usize,
+    lim: usize,
+    seed: u64,
+) -> Vec<Track> {
+    let mut scored: Vec<(f64, Track)> = scored
+        .into_iter()
+        .filter(|(_, t)| !rerank::is_junk_artist(t.artist_name.as_deref()))
+        .collect();
+    if let (Some(fam), Some(liked)) = (fam, liked) {
+        scored.retain(|(_, t)| !familiarity::never_ends(fam.get(t.id), liked.contains(&t.id)));
+    }
+    // cap_per_artist trabalha sobre Track; o score volta pelo id.
+    let scores: HashMap<u64, f64> = scored.iter().map(|(s, t)| (t.id, *s)).collect();
+    let capped = rerank::cap_per_artist(scored.into_iter().map(|(_, t)| t).collect(), 2);
+    let prefix = (lim * 5).max(8);
+    let Some(fam) = fam else {
+        let mut ranked = capped;
+        weighted_pick_prefix(&mut ranked, prefix, seed);
+        ranked.truncate(lim);
+        return ranked;
+    };
+    let pairs: Vec<(f64, Track)> = capped
+        .into_iter()
+        .map(|t| (scores.get(&t.id).copied().unwrap_or(0.0), t))
+        .collect();
+    let empty = std::collections::HashSet::new();
+    let liked = liked.unwrap_or(&empty);
+    let (mut known, mut discovery) =
+        familiarity::partition_known(pairs, |t| t.id, fam, |id| liked.contains(&id));
+    tracing::debug!(
+        known = known.len(),
+        discovery = discovery.len(),
+        mix_slot,
+        "autoplay: mistura conhecida/descoberta"
+    );
+    weighted_pick_prefix(&mut known, prefix, seed);
+    weighted_pick_prefix(&mut discovery, prefix, seed ^ 0xD15C_0FE5_D15C_0FE5);
+    let mut ranked = familiarity::interleave_mix(known, discovery, mix_slot);
+    ranked.truncate(lim);
+    ranked
 }
 
 #[tauri::command]
@@ -477,8 +591,12 @@ fn lib_autoplay_next(
     exclude_ids: Vec<String>,
     session_negative_ids: Option<Vec<String>>,
     limit: Option<usize>,
+    mix_slot: Option<usize>,
 ) -> Result<Vec<Track>, String> {
     let track_id = parse_id(&track_id)?;
+    // Posicao da proxima faixa no ciclo K, K, D da rodada de radio
+    // (radioSession.mixSlot no frontend). Ausente = inicio do ciclo.
+    let mix_slot = mix_slot.unwrap_or(0);
     let exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
     // Skips cedos da rodada de rádio (radioSession do frontend) — paridade
     // com lib_station_next: penalizam a vizinhança do rejeitado no
@@ -569,24 +687,34 @@ fn lib_autoplay_next(
                     };
                     let pools = vec![resolve(&seed_pool), resolve(&taste_pool)];
 
-                    // Re-rank da uniao pela vibe do seed + cap de 2 por artista.
-                    let mut ranked = rerank_by_seed_vibe_pools(&lib, track_id, pools);
-                    // Metadata-lixo (URL no campo artista) fora ANTES do cap,
-                    // pra não consumir slot de artista legítimo.
-                    ranked.retain(|t| !rerank::is_junk_artist(t.artist_name.as_deref()));
-                    ranked = rerank::cap_per_artist(ranked, 2);
+                    // Re-rank da uniao pela vibe do seed, depois familiaridade
+                    // (filtro de nunca-termina + mistura 2:1) e cap de 2 por
+                    // artista — ver autoplay_mix.
+                    let out = rerank_by_seed_vibe_pools_scored(&lib, track_id, pools);
+                    let fam = client
+                        .familiarity()
+                        .map_err(|e| {
+                            tracing::warn!(error = %e, "autoplay: familiarity indisponivel — sem mistura");
+                        })
+                        .ok();
 
                     // Variedade entre chamadas sem destruir o re-rank:
-                    // sorteio ponderado geometrico (r=0.7) sobre o topo —
-                    // com o lookahead 1 do frontend, o rank-1 vence ~30%
-                    // das vezes e a cauda do top-8 participa.
+                    // sorteio ponderado geometrico (r=0.7) sobre o topo de
+                    // cada grupo — com o lookahead 1 do frontend, o rank-1
+                    // vence ~30% das vezes e a cauda do top-8 participa.
                     let seed = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_nanos() as u64)
                         .unwrap_or(0x9E3779B97F4A7C15)
                         .wrapping_add(track_id);
-                    weighted_pick_prefix(&mut ranked, (lim * 5).max(8), seed);
-                    ranked.truncate(lim);
+                    let mut ranked = autoplay_mix(
+                        out.scored,
+                        out.liked.as_ref(),
+                        fam.as_deref(),
+                        mix_slot,
+                        lim,
+                        seed,
+                    );
 
                     for t in &mut ranked {
                         if let Some(rel) = &t.album_cover_path {
@@ -3038,6 +3166,20 @@ pub fn run() {
             };
             // Cria a station "Your Mix" caso o usuario nao tenha nenhuma ainda.
             maybe_seed_default_station(&library);
+            // Aquece o indice de familiaridade (varre todo o play_events,
+            // ~120 ms) fora do caminho do primeiro autoplay. O clone do
+            // client compartilha o cache. Falha aqui so adia a montagem.
+            {
+                let client = library.handle.client().clone();
+                std::thread::Builder::new()
+                    .name("familiarity-warm".into())
+                    .spawn(move || {
+                        if let Err(e) = client.familiarity() {
+                            tracing::warn!(error = %e, "familiarity: aquecimento falhou");
+                        }
+                    })
+                    .ok();
+            }
             // Receptor do sync de play_events de outros dispositivos (S24).
             // Escuta no IP tailscale; sem tailnet simplesmente não sobe.
             // Token Bearer (CMR-194): mesmo arquivo que o export_manifest.py
@@ -3954,6 +4096,10 @@ fn generate_station_batch(
                         cands.push(t);
                     }
                 }
+                // Faixa que o motor insiste em servir e nunca termina sai
+                // ANTES do re-rank, pra nao gastar vaga do per_seed.
+                let never = never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>());
+                cands.retain(|t| !never.contains(&t.id));
                 // Uma chamada batch de enrichments por seed e aceitavel —
                 // o Qdrant e sidecar localhost.
                 let ranked = rerank_by_seed_vibe(lib, sid, cands);
@@ -3998,9 +4144,11 @@ fn generate_station_batch(
             };
             let exclude_set: std::collections::HashSet<u64> =
                 exclude_ids.iter().copied().collect();
+            // Filtro de nunca-termina (paridade com autoplay e station seed).
+            let never = never_ending_ids(lib, &ids);
             let mut tracks = Vec::new();
             for track_id in ids {
-                if exclude_set.contains(&track_id) {
+                if exclude_set.contains(&track_id) || never.contains(&track_id) {
                     continue;
                 }
                 if let Ok(Some(mut t)) = lib.handle.track(track_id) {
@@ -4913,5 +5061,108 @@ fg-8: '#404040'
         drop(tx);
         handle.join().unwrap();
         assert_eq!(calls.load(Ordering::Relaxed), 1, "teardown nao deve reemitir");
+    }
+
+    // ── Familiaridade + mistura 2:1 no autoplay (v0.2.92) ───────────────
+
+    fn mix_track(id: u64, artist: &str) -> Track {
+        Track {
+            id,
+            path: PathBuf::new(),
+            filename: String::new(),
+            title: format!("t{id}"),
+            track_number: None,
+            disc_number: 1,
+            duration_ms: 0,
+            album_title: None,
+            album_year: None,
+            album_cover_path: None,
+            artist_name: Some(artist.to_string()),
+            genre_name: None,
+            tags: Vec::new(),
+            sample_rate: 44_100,
+            bit_depth: 16,
+            channels: 2,
+            rg_track_gain: None,
+            rg_album_gain: None,
+            rg_track_peak: None,
+            rg_album_peak: None,
+            lufs_integrated: None,
+            embedding_status: library_indexer::EmbeddingStatus::Done,
+            play_count: 0,
+            last_played: None,
+            liked_at: None,
+            lrc_path: None,
+        }
+    }
+
+    /// `ended` fins + `served` pulos do autoplay por faixa.
+    fn mix_fam(rows: &[(u64, u32, u32)]) -> familiarity::FamiliarityIndex {
+        let mut evs = Vec::new();
+        for &(id, ended, served) in rows {
+            for _ in 0..ended {
+                evs.push(serde_json::json!({"event_type": "track_ended", "track_id": id, "origin": "manual"}));
+            }
+            for _ in 0..served {
+                evs.push(serde_json::json!({"event_type": "track_skipped", "track_id": id,
+                    "origin": "autoplay", "end_position_ms": 1500, "device_id": "cmr-auto"}));
+            }
+        }
+        familiarity::FamiliarityIndex::from_payloads(evs.iter())
+    }
+
+    fn ids(v: &[Track]) -> Vec<u64> {
+        v.iter().map(|t| t.id).collect()
+    }
+
+    #[test]
+    fn autoplay_mix_intercala_conhecida_conhecida_descoberta() {
+        // Conhecidas: 1, 3, 5 (3+ fins), 6 (curtida). Descoberta: 2, 4.
+        let fam = mix_fam(&[(1, 3, 0), (3, 4, 0), (5, 9, 0)]);
+        let scored: Vec<(f64, Track)> = (1..=6u64)
+            .map(|i| (1.0 - i as f64 / 10.0, mix_track(i, &format!("a{i}"))))
+            .collect();
+        let liked: std::collections::HashSet<u64> = [6].into_iter().collect();
+        // lim pequeno (prefix minimo 8 cobre tudo, sorteio embaralha cada
+        // grupo): o que se trava e o PADRAO de grupos por slot.
+        let out = autoplay_mix(scored.clone(), Some(&liked), Some(&fam), 0, 6, 7);
+        let grupo = |id: u64| if [1, 3, 5, 6].contains(&id) { 'K' } else { 'D' };
+        let padrao: String = ids(&out).into_iter().map(grupo).collect();
+        assert_eq!(padrao, "KKDKKD");
+        // Slot 2 (re-fetch pós-pulo no terceiro da rodada) serve descoberta.
+        let um = autoplay_mix(scored, Some(&liked), Some(&fam), 2, 1, 7);
+        assert_eq!(grupo(um[0].id), 'D');
+    }
+
+    #[test]
+    fn autoplay_mix_tira_nunca_termina_e_lixo_mas_nao_curtida() {
+        // 2: servida 3x, nunca terminou -> sai. 4: idem mas curtida -> fica.
+        // 7: artista-URL -> sai. 3: servida 2x so -> fica.
+        let fam = mix_fam(&[(2, 0, 3), (4, 0, 5), (3, 0, 2)]);
+        let mut scored: Vec<(f64, Track)> = [2u64, 3, 4]
+            .into_iter()
+            .map(|i| (0.5, mix_track(i, &format!("a{i}"))))
+            .collect();
+        scored.push((0.4, mix_track(7, "www.ftpdjemilio.com")));
+        let liked: std::collections::HashSet<u64> = [4].into_iter().collect();
+        let mut out = ids(&autoplay_mix(scored.clone(), Some(&liked), Some(&fam), 0, 10, 1));
+        out.sort_unstable();
+        assert_eq!(out, vec![3, 4]);
+        // Sem likes conhecidos (batch de enrichments falhou): nao filtra
+        // nunca-termina — nunca arriscar tirar faixa curtida.
+        let mut sem_like = ids(&autoplay_mix(scored, None, Some(&fam), 0, 10, 1));
+        sem_like.sort_unstable();
+        assert_eq!(sem_like, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn autoplay_mix_mantem_cap_por_artista_e_degrada_sem_indice() {
+        let scored: Vec<(f64, Track)> = (1..=5u64)
+            .map(|i| (1.0 - i as f64 / 10.0, mix_track(i, "Mesmo")))
+            .collect();
+        let fam = mix_fam(&[]);
+        assert_eq!(autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), 0, 10, 3).len(), 2);
+        // Sem indice: comportamento anterior (cap + sorteio, sem mistura).
+        assert_eq!(autoplay_mix(scored, None, None, 0, 10, 3).len(), 2);
     }
 }
