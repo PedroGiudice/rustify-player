@@ -30,6 +30,7 @@ pub mod lyrics_fetch;
 pub mod qdrant_client;
 pub mod rerank;
 pub mod relocate;
+pub mod familiarity;
 
 mod embed_client;
 pub use embed_client::{EmbedClient, LyricsEmbedClient};

@@ -1,0 +1,46 @@
+{
+  "_doc": "Fixture compartilhada: trava a equivalência entre a régua (scripts/metrics/autoplay_regua.py, função familiaridade) e o motor (src-tauri/crates/library-indexer/src/familiarity.rs). Aceite = track_ended; pulo = track_skipped. Pulo com end_position_ms 0 no S24 não conta como tentativa do motor. track_id em texto e eventos fora de ended/skipped ficam fora.",
+  "events": [
+    {"event_type": "track_ended", "track_id": 18446744073709551000, "origin": "manual", "end_position_ms": 200000, "device_id": "cmr-auto"},
+    {"event_type": "track_ended", "track_id": 18446744073709551000, "origin": "autoplay", "end_position_ms": 210000, "device_id": "cmr-auto"},
+    {"event_type": "track_ended", "track_id": 18446744073709551000, "origin": "playlist", "end_position_ms": 205000, "device_id": "s24"},
+
+    {"event_type": "track_skipped", "track_id": 2, "origin": "autoplay", "end_position_ms": 1200, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 2, "origin": "autoplay", "end_position_ms": 0, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 2, "origin": "station", "end_position_ms": 50000, "device_id": "cmr-auto"},
+
+    {"event_type": "track_skipped", "track_id": 3, "origin": "autoplay", "end_position_ms": 0, "device_id": "s24"},
+    {"event_type": "track_skipped", "track_id": 3, "origin": "autoplay", "end_position_ms": 0, "device_id": "s24"},
+    {"event_type": "track_skipped", "track_id": 3, "origin": "autoplay", "end_position_ms": 0, "device_id": "s24"},
+    {"event_type": "track_skipped", "track_id": 3, "origin": "station", "end_position_ms": 800, "device_id": "s24"},
+
+    {"event_type": "track_skipped", "track_id": 4, "origin": "station", "end_position_ms": 3000, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 4, "origin": "station", "end_position_ms": 3000, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 4, "origin": "station", "end_position_ms": 3000, "device_id": "cmr-auto"},
+
+    {"event_type": "track_skipped", "track_id": 5, "origin": "autoplay", "end_position_ms": 900, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 5, "origin": "autoplay", "end_position_ms": 900},
+    {"event_type": "track_skipped", "track_id": 5, "origin": "autoplay", "end_position_ms": 900, "device_id": "s24"},
+    {"event_type": "track_ended", "track_id": 5, "origin": "manual", "end_position_ms": 180000, "device_id": "cmr-auto"},
+
+    {"event_type": "track_skipped", "track_id": 6, "origin": "album_seq", "end_position_ms": 100, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 6, "origin": "album_seq", "end_position_ms": 100, "device_id": "cmr-auto"},
+    {"event_type": "track_skipped", "track_id": 6, "origin": "album_seq", "end_position_ms": 100, "device_id": "cmr-auto"},
+
+    {"event_type": "track_skipped", "track_id": 10, "origin": "autoplay", "device_id": "s24"},
+
+    {"event_type": "track_ended", "track_id": "7", "origin": "manual", "end_position_ms": 100000},
+    {"event_type": "search_click", "track_id": 8, "origin": "manual"},
+    {"event_type": "track_ended", "origin": "manual"}
+  ],
+  "liked": [4],
+  "expected": {
+    "18446744073709551000": {"ended": 3, "motor_attempts": 1, "known": true, "never_ends": false},
+    "2": {"ended": 0, "motor_attempts": 3, "known": false, "never_ends": true},
+    "3": {"ended": 0, "motor_attempts": 1, "known": false, "never_ends": false},
+    "4": {"ended": 0, "motor_attempts": 3, "known": true, "never_ends": false},
+    "5": {"ended": 1, "motor_attempts": 3, "known": false, "never_ends": false},
+    "6": {"ended": 0, "motor_attempts": 0, "known": false, "never_ends": false},
+    "10": {"ended": 0, "motor_attempts": 1, "known": false, "never_ends": false}
+  }
+}

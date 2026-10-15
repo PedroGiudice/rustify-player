@@ -115,6 +115,19 @@ pub fn hybrid_rerank_pools(
     seed: &VibeProfile,
     pools: Vec<Vec<(Track, VibeProfile)>>,
 ) -> Vec<Track> {
+    hybrid_rerank_pools_scored(seed, pools)
+        .into_iter()
+        .map(|(_, t)| t)
+        .collect()
+}
+
+/// [`hybrid_rerank_pools`] devolvendo o score final de cada track junto —
+/// o autoplay usa o score para desempatar por familiaridade dentro das
+/// conhecidas ([`crate::familiarity::partition_known`]). Mesma ordem.
+pub fn hybrid_rerank_pools_scored(
+    seed: &VibeProfile,
+    pools: Vec<Vec<(Track, VibeProfile)>>,
+) -> Vec<(f64, Track)> {
     // Primeira passada: consolida a união dos pools. `order` preserva a
     // ordem de primeira ocorrência (desempate estável do sort abaixo);
     // `best` guarda o melhor mert_norm visto pra cada track.
@@ -146,7 +159,7 @@ pub fn hybrid_rerank_pools(
         })
         .collect();
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    scored.into_iter().map(|(_, t)| t).collect()
+    scored
 }
 
 /// Normaliza o nome de artista pra chave de agrupamento do cap: lowercase,

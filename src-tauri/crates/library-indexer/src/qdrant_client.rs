@@ -11,8 +11,10 @@
 
 use crate::error::IndexerError;
 use serde_json::{json, Value};
+use crate::familiarity::FamiliarityIndex;
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// Vocabulário canônico de mood — os 24 tokens DE FATO anotados na collection
 /// `track_enrichments` (extraídos de todas as 1378 tracks anotadas, 2026-07).
@@ -324,7 +326,24 @@ pub struct QdrantClient {
     agent: ureq::Agent,
     base_url: String,
     provenance: Option<Provenance>,
+    /// Cache da familiaridade por faixa (ver [`Self::familiarity`]).
+    /// Compartilhado entre clones: todos os caminhos de escrita de evento
+    /// passam por este client e atualizam o mesmo índice.
+    familiarity: Arc<Mutex<Option<FamiliarityCache>>>,
 }
+
+/// Índice de familiaridade montado de `play_events` + quando foi montado.
+#[derive(Debug)]
+struct FamiliarityCache {
+    built_at: Instant,
+    index: Arc<FamiliarityIndex>,
+}
+
+/// Rede de segurança do cache: remonta do zero depois deste tempo. Cobre o
+/// que o incremental não vê (escrita por script fora do app, replay de lote
+/// sincado já aplicado). A montagem custa ~120 ms no Qdrant local da
+/// cmr-auto (10k eventos, medido 15/10/2026), uma vez a cada 6 h.
+const FAMILIARITY_TTL: Duration = Duration::from_secs(6 * 3600);
 
 impl QdrantClient {
     /// Construct a client pointing at `base_url`
@@ -340,6 +359,7 @@ impl QdrantClient {
             agent,
             base_url: base_url.into().trim_end_matches('/').to_string(),
             provenance: None,
+            familiarity: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1369,6 +1389,7 @@ impl QdrantClient {
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant insert play_event: {e}")))?;
 
+        self.observe_familiarity(&body["points"][0]["payload"]);
         Ok(())
     }
 
@@ -1393,6 +1414,7 @@ impl QdrantClient {
             ))
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant insert event: {e}")))?;
+        self.observe_familiarity(payload);
         Ok(())
     }
 
@@ -1428,7 +1450,13 @@ impl QdrantClient {
             ))
             .send_json(&body)
         {
-            Ok(_) => Ok(SyncedOutcome::Applied),
+            Ok(_) => {
+                // Replay de um uuid já aplicado conta de novo até a próxima
+                // remontagem (FAMILIARITY_TTL) — raro: o S24 só reenvia lote
+                // sem ack.
+                self.observe_familiarity(payload);
+                Ok(SyncedOutcome::Applied)
+            }
             Err(e) => SyncedFail::from_ureq("insert synced event", e).into_outcome(),
         }
     }
@@ -1582,6 +1610,108 @@ impl QdrantClient {
             &liked,
             now,
         ))
+    }
+
+    /// Familiaridade por faixa (vezes ouvida até o fim, vezes servida pelo
+    /// motor) — [`crate::familiarity`]. `behavioral_signals` só lê os 300
+    /// eventos mais recentes de cada lado; a familiaridade precisa de TODO o
+    /// histórico, que custa ~120 ms para varrer (10k eventos no Qdrant local).
+    /// Por isso vive num cache em memória: montado na primeira chamada (o app
+    /// aquece no boot), atualizado a cada evento gravado por este client
+    /// (`insert_play_event`, `insert_raw_event`, `insert_synced_event`),
+    /// invalidado quando eventos mudam de faixa (mover para playlist) e
+    /// remontado depois de [`FAMILIARITY_TTL`]. No caminho quente custa um
+    /// `Arc::clone`.
+    pub fn familiarity(&self) -> Result<Arc<FamiliarityIndex>, IndexerError> {
+        let mut guard = self
+            .familiarity
+            .lock()
+            .map_err(|_| IndexerError::Embedding("familiarity: mutex envenenado".into()))?;
+        if let Some(c) = guard.as_ref() {
+            if c.built_at.elapsed() < FAMILIARITY_TTL {
+                return Ok(Arc::clone(&c.index));
+            }
+        }
+        let t0 = Instant::now();
+        let payloads = self.scroll_familiarity_events()?;
+        let index = Arc::new(FamiliarityIndex::from_payloads(payloads.iter()));
+        tracing::info!(
+            events = payloads.len(),
+            tracks = index.len(),
+            ms = t0.elapsed().as_millis() as u64,
+            "familiarity: índice montado"
+        );
+        *guard = Some(FamiliarityCache {
+            built_at: Instant::now(),
+            index: Arc::clone(&index),
+        });
+        Ok(index)
+    }
+
+    /// Atualização incremental: só mexe se o índice já existe (sem índice,
+    /// a próxima montagem lê o evento do banco).
+    fn observe_familiarity(&self, payload: &Value) {
+        if let Ok(mut guard) = self.familiarity.lock() {
+            if let Some(c) = guard.as_mut() {
+                Arc::make_mut(&mut c.index).observe(payload);
+            }
+        }
+    }
+
+    /// Descarta o índice; a próxima [`Self::familiarity`] remonta.
+    pub fn invalidate_familiarity(&self) {
+        if let Ok(mut guard) = self.familiarity.lock() {
+            *guard = None;
+        }
+    }
+
+    /// Todos os play_events com só os campos que a familiaridade lê.
+    fn scroll_familiarity_events(&self) -> Result<Vec<Value>, IndexerError> {
+        let url = format!("{}/collections/{PLAY_EVENTS_COLLECTION}/points/scroll", self.base_url);
+        let mut out = Vec::new();
+        let mut offset: Option<Value> = None;
+        loop {
+            let mut body = json!({
+                "limit": 2000,
+                "with_payload": { "include": ["event_type", "track_id", "origin", "end_position_ms", "device_id"] },
+                "with_vector": false
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+            let resp: Value = self
+                .agent
+                .post(&url)
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll familiarity: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+            if let Some(points) = resp["result"]["points"].as_array() {
+                out.extend(points.iter().filter_map(|p| p.get("payload").cloned()));
+            }
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Quais destes ids têm like vigente (`liked_at` inteiro, mesma regra do
+    /// `is_liked`). Batch com payload restrito a `liked_at`.
+    pub fn liked_among(&self, ids: &[u64]) -> Result<HashSet<u64>, IndexerError> {
+        if ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let body = json!({ "ids": ids, "with_payload": { "include": ["liked_at"] } });
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{ENRICHMENTS_COLLECTION}/points", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant liked_among: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+        Ok(liked_ids(&parse_id_payload_map(&resp)))
     }
 
     /// Track ids com like explícito, mais recentes primeiro (por `liked_at`).
@@ -1841,10 +1971,13 @@ impl QdrantClient {
                 .query("wait", "true")
                 .send_json(&json!({ "payload": { "track_id": track_id }, "points": chunk }))
             {
+                self.invalidate_familiarity();
                 return (done, Some(IndexerError::Embedding(format!("qdrant set play_events track_id: {e}"))));
             }
             done += chunk.len();
         }
+        // Eventos mudaram de faixa: as contagens por id ficaram velhas.
+        self.invalidate_familiarity();
         (done, None)
     }
 
@@ -2258,6 +2391,16 @@ pub(crate) fn build_recommend_body(
     body
 }
 
+/// Ids com like vigente num mapa `{id → payload de enrichment}`. Mesma regra
+/// do `is_liked`: `liked_at` inteiro presente (unlike grava `null`).
+pub fn liked_ids(enrichments: &HashMap<u64, Value>) -> HashSet<u64> {
+    enrichments
+        .iter()
+        .filter(|(_, p)| p["liked_at"].as_i64().is_some())
+        .map(|(id, _)| *id)
+        .collect()
+}
+
 /// Extract `{point_id → payload}` from a Qdrant batch-retrieve response
 /// (`result` is an array of points with `id` and `payload`).
 ///
@@ -2514,6 +2657,61 @@ mod tests {
                 "{payload}"
             );
         }
+    }
+
+    // ── Cache de familiaridade (v0.2.92) ───────────────────────────────
+
+    #[test]
+    fn familiaridade_monta_uma_vez_atualiza_incremental_e_remonta_ao_invalidar() {
+        // Scroll (POST) devolve 2 fins da faixa 5; insert (PUT) aceita.
+        let port = fake_qdrant_with(
+            (
+                200,
+                r#"{"result":{"points":[
+                    {"id":"a","payload":{"event_type":"track_ended","track_id":5,"origin":"manual"}},
+                    {"id":"b","payload":{"event_type":"track_ended","track_id":5,"origin":"autoplay"}},
+                    {"id":"c","payload":{"event_type":"track_ended","track_id":"5","origin":"manual"}}
+                ],"next_page_offset":null}}"#,
+            ),
+            (200, "{}"),
+        );
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        assert_eq!(client.familiarity().unwrap().get(5).ended, 2, "texto ignorado");
+        assert_eq!(client.familiarity().unwrap().get(5).motor_attempts, 1);
+
+        // Evento novo gravado por este client entra no índice SEM remontar
+        // (o scroll do fake continuaria dizendo 2).
+        client
+            .insert_raw_event(&json!({"event_type": "track_ended", "track_id": 5, "origin": "autoplay", "timestamp": 1}))
+            .unwrap();
+        let clone = client.clone();
+        assert_eq!(clone.familiarity().unwrap().get(5).ended, 3, "clone compartilha o cache");
+        assert_eq!(client.familiarity().unwrap().get(5).motor_attempts, 2);
+
+        // Mover faixa invalida: a próxima leitura remonta do banco.
+        client.invalidate_familiarity();
+        assert_eq!(client.familiarity().unwrap().get(5).ended, 2);
+    }
+
+    #[test]
+    fn familiaridade_sem_indice_nao_observa_e_erro_de_rede_propaga() {
+        let client = QdrantClient::new("http://127.0.0.1:1");
+        // Sem índice montado o observe é no-op (não monta índice parcial).
+        client.observe_familiarity(&json!({"event_type": "track_ended", "track_id": 1}));
+        assert!(client.familiarity.lock().unwrap().is_none());
+        assert!(client.familiarity().is_err());
+    }
+
+    #[test]
+    fn liked_ids_segue_a_regra_do_is_liked() {
+        let mut m = HashMap::new();
+        m.insert(1u64, json!({"liked_at": 1_700_000_000}));
+        m.insert(2u64, json!({"liked_at": null, "like_updated_at": 5}));
+        m.insert(3u64, json!({"energy": 0.4}));
+        m.insert(u64::MAX - 1, json!({"liked_at": 9}));
+        let mut ids: Vec<u64> = liked_ids(&m).into_iter().collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec![1, u64::MAX - 1]);
     }
 
     /// Qdrant fake mínimo (std): responde `body` com 200 a qualquer request
