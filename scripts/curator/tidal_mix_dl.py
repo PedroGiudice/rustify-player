@@ -44,7 +44,7 @@ from pathlib import Path
 import tidalapi
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lossless_gate import Verdict, check_file  # noqa: E402
+from lossless_gate import Verdict, check_file, require  # noqa: E402
 from normalize_release import _prepare_cover, _write_tags, loose, safe_name  # noqa: E402
 
 SECRET = os.path.expanduser("~/.secrets/tidal-pkce.json")
@@ -487,6 +487,7 @@ def main() -> int:
         ids = parse_ids(args.ids) if args.ids else None
     except ValueError as e:
         ap.error(str(e))
+    require()  # sem numpy, cai aqui (rc != 0, fila "falhou") antes de baixar qualquer coisa
 
     WORK.mkdir(parents=True, exist_ok=True)
     sess = load_session()
@@ -564,6 +565,16 @@ def main() -> int:
             continue
         if dest.exists():
             if args.push and str(dest.relative_to(MUSIC)) not in remote:  # sobra de envio que falhou
+                # A sobra pode ser de antes do portão (15/10): mede antes de enviar.
+                verdict = check_file(dest)
+                if verdict.refused:
+                    print(f"{i:3d} {title[:45]:45s} RECUSADA ({verdict.reason})", flush=True)
+                    record_refused(refused_cache, t.id, title, ", ".join(arts), verdict.cutoff_hz)
+                    save_refused(REFUSED_CACHE, refused_cache)
+                    report["recusadas"].append({"id": t.id, "titulo": title, "artista": ", ".join(arts),
+                                                "cutoff_hz": verdict.cutoff_hz})
+                    drop_local(dest)
+                    continue
                 print(f"{i:3d} {title[:45]:45s} JÁ BAIXADA, reenviando", flush=True)
                 (pushed if push_one(dest, args.push) else unsent).append(dest)
             else:

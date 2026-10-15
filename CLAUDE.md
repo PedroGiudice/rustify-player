@@ -639,9 +639,12 @@ Tidal). Nada do acervo antigo é apagado: fica marcado. Relatório com método,
 calibração e números: `docs/contexto/15102026-qualidade-soundcloud.md`.
 
 - **Detector, duas cópias que precisam concordar**: `scripts/curator/quality_audit.py`
-  (auditoria, e as portas por script via `lossless_gate.py`, que exige numpy: sem ele
-  a execução cai, não deixa passar) e `library-indexer/src/spectral.rs` (app,
-  decodifica com symphonia, ~0,4 s/faixa em release). A fixture
+  (auditoria, e as portas por script via `lossless_gate.py`, que exige numpy:
+  `require()` derruba o baixador no início, nunca deixa passar; o portão também
+  recusa < 44,1 kHz ou < 16 bit, que o detector não julga) e `library-indexer/src/spectral.rs` (app,
+  decodifica com symphonia saltando até as janelas, ~0,3 s/faixa em release, igual
+  para 3 min ou 1 h; roda sob `catch_unwind`: arquivo estranho vira erro, nunca
+  derruba a thread do indexador ou do Crate). A fixture
   `scripts/curator/fixtures/spectral_cliffs.json` (espectros reais + resultado do
   Python) é lida pelos testes dos dois lados; mudou constante num, mude no outro.
   Método: 3 janelas de 20 s, maior degrau acima de 10 kHz na MEDIANA e no PERCENTIL 10
@@ -842,7 +845,8 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   worker (`RejectReason::LossyFormat`); FLAC com corte espectral de lossy é recusado no
   `stage_file`, que vale para o Soulseek E para o original do SoundCloud
   (`LossyInside`, quarentena `lossy_inside`; no Soulseek, [Trocar fonte] pega outro
-  peer). A medição é injetável no coordinator (`stage::QualityCheck`): os testes de
+  peer). Abaixo de 16 bit/44,1 kHz (pelo cabeçalho, antes da medição) é `BelowCd`;
+  mu-law/A-law e PCM 8 bit do SoundCloud são recusados no worker. A medição é injetável no coordinator (`stage::QualityCheck`): os testes de
   tempo dele não medem (`new_sem_medicao`); a medição tem testes no `stage.rs`.
   Config em `sources.json` no data dir (só CAMINHOS de segredo) ou env `RUSTIFY_*`
   (`sources.rs`); status das fontes no topo do Crate (`crate_sources_status`).

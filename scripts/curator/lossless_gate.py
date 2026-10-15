@@ -35,8 +35,19 @@ def format_khz(hz: float) -> str:
     return f"{hz / 1000:.1f}".replace(".", ",")
 
 
+def format_rate(sr: int) -> str:
+    """22050 -> '22,05'; 32000 -> '32'."""
+    return f"{sr / 1000:.3f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
 def refusal_reason(r: dict) -> str | None:
-    """Pura. Motivo de recusa (sem o prefixo RECUSADA) ou None se a faixa pode entrar."""
+    """Pura. Motivo de recusa (sem o prefixo RECUSADA) ou None se a faixa pode entrar.
+    Primeiro o piso do CEO (16 bit/44,1 kHz, pelo cabeçalho: com Nyquist baixo o
+    detector não tem o que julgar), depois o corte espectral."""
+    if r.get("sr") and r["sr"] < 44100:
+        return f"abaixo de CD ({format_rate(r['sr'])} kHz)"
+    if r.get("bits") and r["bits"] < 16:
+        return f"abaixo de CD ({r['bits']} bit)"
     if spectral_class(r) not in REFUSED_CLASSES:
         return None
     return f"lossy por dentro, corte {format_khz(r['cutoff_hz'])} kHz"
@@ -51,6 +62,12 @@ class Verdict:
     @property
     def refused(self) -> bool:
         return self.reason is not None
+
+
+def require() -> None:
+    """Falha cedo (ImportError) se a medição não puder rodar. Os baixadores chamam
+    no início: sem numpy, cada faixa seria baixada e marcada como falha."""
+    import quality_audit  # noqa: F401
 
 
 def check_file(path: Path) -> Verdict:

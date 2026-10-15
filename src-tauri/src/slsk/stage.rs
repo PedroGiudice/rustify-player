@@ -311,6 +311,16 @@ pub fn stage_file(
         return Ok(StageOutcome::Rejected(reason));
     }
 
+    // Piso do CEO (15/10/2026): abaixo de 16 bit/44,1 kHz não entra. Vem antes
+    // da medição: com Nyquist baixo o detector espectral não tem o que julgar.
+    if md.sample_rate < 44_100 || md.bit_depth < 16 {
+        move_to_quarantine(music_root, local, "below_cd");
+        return Ok(StageOutcome::Rejected(RejectReason::BelowCd {
+            sample_rate: md.sample_rate,
+            bit_depth: md.bit_depth as u16,
+        }));
+    }
+
     if decode_probe(local).is_err() {
         move_to_quarantine(music_root, local, "corrupt");
         return Ok(StageOutcome::Rejected(RejectReason::Corrupt));
@@ -804,6 +814,30 @@ mod tests {
             other => panic!("esperava Staged, veio {other:?}"),
         }
         assert!(!local.exists(), "arquivo original deve ter sido movido");
+    }
+
+    /// Piso do CEO: abaixo de 16 bit/44,1 kHz não entra. FLAC de 22,05 kHz
+    /// (que o detector espectral não consegue julgar: o Nyquist fica abaixo
+    /// da busca) é recusado pelo cabeçalho, antes da medição.
+    #[test]
+    fn stage_file_rejects_abaixo_de_cd() {
+        let tmp = tempfile::tempdir().unwrap();
+        let local = tmp.path().join("baixa.flac");
+        let ok = std::process::Command::new("ffmpeg")
+            .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=8:c=pink:a=0.3", "-ac", "2", "-ar", "22050", "-sample_fmt", "s16", "-c:a", "flac", "-metadata", "artist=A", "-metadata", "title=T"])
+            .arg(&local)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            eprintln!("sem ffmpeg: teste pulado");
+            return;
+        }
+        let music_root = tmp.path().join("Music");
+        fs::create_dir_all(&music_root).unwrap();
+        let outcome = stage_file(&music_root, "Funk Brasileiro", &local, &empty_owned_index(), "job-baixa", measure_quality).unwrap();
+        assert_eq!(outcome, StageOutcome::Rejected(RejectReason::BelowCd { sample_rate: 22_050, bit_depth: 16 }));
+        assert!(!local.exists(), "arquivo foi para a quarentena");
     }
 
     /// FLAC que é MP3 por dentro (ruído rosa -> MP3 128 -> FLAC, com tags):

@@ -162,10 +162,15 @@ function isAlreadyOwnedReason(r: RejectReason): r is { already_owned: { track_id
   return typeof r === "object" && r !== null && "already_owned" in r;
 }
 
-/** Recusa pela regra "só lossless entra" (CEO, 15/10/2026): refazer o mesmo
-    original não muda o resultado. */
+/** Recusa pela regra "só lossless de CD para cima entra" (CEO, 15/10/2026):
+    refazer o mesmo original não muda o resultado. */
 function isLossyReason(r: RejectReason): boolean {
-  return typeof r === "object" && r !== null && ("lossy_format" in r || "lossy_inside" in r);
+  return typeof r === "object" && r !== null && ("lossy_format" in r || "lossy_inside" in r || "below_cd" in r);
+}
+
+/** 22050 -> "22,05"; 32000 -> "32" */
+function rateKhz(sr: number): string {
+  return String(sr / 1000).replace(".", ",");
 }
 
 /** 16075 -> "16,1" */
@@ -180,6 +185,10 @@ function rejectReasonText(reason: RejectReason): string {
   }
   if (typeof reason === "object" && reason !== null && "lossy_inside" in reason) {
     return `lossy por dentro (corte em ${khz(reason.lossy_inside.cutoff_hz)} kHz)`;
+  }
+  if (typeof reason === "object" && reason !== null && "below_cd" in reason) {
+    const { sample_rate, bit_depth } = reason.below_cd;
+    return sample_rate > 0 && sample_rate < 44100 ? `abaixo de CD (${rateKhz(sample_rate)} kHz)` : `abaixo de CD (${bit_depth} bit)`;
   }
   if (reason === "no_download") return "sem download nativo";
   if (reason === "bit32_unsupported") return "FLAC 32-bit — o player não decodifica";

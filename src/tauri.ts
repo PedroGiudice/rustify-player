@@ -597,6 +597,7 @@ export type RejectReason =
   | "corrupt"
   | { lossy_format: { format: string } }
   | { lossy_inside: { cutoff_hz: number } }
+  | { below_cd: { sample_rate: number; bit_depth: number } }
   | "no_download";
 
 /** JobState — 12 estados, `#[serde(tag = "kind")]` (board.rs): internamente

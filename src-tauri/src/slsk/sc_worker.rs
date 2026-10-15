@@ -31,6 +31,9 @@ const PROGRESS_EVERY_MS: u128 = 300;
 pub fn classify_original(ext: &str, p: &MediaProbe) -> Result<FormatIn, RejectReason> {
     match p.codec.as_str() {
         "flac" => Ok(FormatIn::Flac),
+        // PCM que não é lossless de CD: mu-law/A-law comprimem; 8 bit fica abaixo do piso.
+        c @ ("pcm_mulaw" | "pcm_alaw") => Err(RejectReason::LossyFormat { format: c.to_ascii_uppercase() }),
+        "pcm_u8" | "pcm_s8" => Err(RejectReason::BelowCd { sample_rate: 0, bit_depth: 8 }),
         c if c.starts_with("pcm_") => {
             if ext.eq_ignore_ascii_case("aiff") || ext.eq_ignore_ascii_case("aif") {
                 return Ok(FormatIn::Aiff);
@@ -270,6 +273,10 @@ mod tests {
         assert_eq!(classify_original("wav", &p("mp3", Some(192), None)), lossy("MP3"));
         assert_eq!(classify_original("m4a", &p("aac", Some(256), None)), lossy("AAC"));
         assert_eq!(classify_original("bin", &p("mjpeg", None, None)), Err(RejectReason::NoDownload));
+        // PCM que não é lossless de CD: mu-law/A-law comprimem; 8 bit fica abaixo do piso
+        assert_eq!(classify_original("wav", &p("pcm_mulaw", None, Some(8))), lossy("PCM_MULAW"));
+        assert_eq!(classify_original("wav", &p("pcm_alaw", None, Some(8))), lossy("PCM_ALAW"));
+        assert_eq!(classify_original("wav", &p("pcm_u8", None, Some(8))), Err(RejectReason::BelowCd { sample_rate: 0, bit_depth: 8 }));
     }
 
     /// Modos do `FakeSc`: cada um simula um jeito de a fonte responder.

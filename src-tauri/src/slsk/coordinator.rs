@@ -334,9 +334,11 @@ struct PersistedJob {
     /// não recomeça a cada gravação nem a cada reinício.
     #[serde(default)]
     waiting_since_unix: Option<i64>,
-    /// Formato de origem já detectado (rótulo WAV/MP3 320 na fila). Só
-    /// importa para job que volta em `Indexing`; os outros baixam de novo.
-    #[serde(default)]
+    /// Formato de origem já detectado (rótulo WAV/FLAC na fila). Só importa
+    /// para job que volta em `Indexing`; os outros baixam de novo. Variante
+    /// que saiu (ex. "mp3_320" até a 0.2.92) vira `None` em vez de invalidar
+    /// o arquivo inteiro.
+    #[serde(default, deserialize_with = "lenient_format_in")]
     format_in: Option<FormatIn>,
     /// Arquivo já colocado em `~/Music` de um job em `Indexing`: o boot
     /// retoma o ingest dele em vez de baixar de novo.
@@ -349,6 +351,11 @@ struct PersistedJob {
 
 fn one() -> u16 {
     1
+}
+
+fn lenient_format_in<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<FormatIn>, D::Error> {
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(v.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 fn legacy_source_placeholder() -> Source {
@@ -446,6 +453,7 @@ fn reject_slug(reason: &RejectReason) -> &'static str {
         RejectReason::Corrupt => "corrupt",
         RejectReason::LossyFormat { .. } => "lossy_format",
         RejectReason::LossyInside { .. } => "lossy_inside",
+        RejectReason::BelowCd { .. } => "below_cd",
         RejectReason::NoDownload => "no_download",
     }
 }
@@ -3573,6 +3581,18 @@ mod tests {
         let tasks2: Vec<FetchTask> = frx2.try_iter().collect();
         assert_eq!(tasks2.len(), 1, "re-despachado ao worker no boot");
         assert_eq!(tasks2[0].artwork_url, capa);
+    }
+
+    #[test]
+    fn persisted_job_com_formato_que_saiu_nao_derruba_a_carga() {
+        // 0.2.92 gravava "mp3_320"; a variante saiu na 0.2.93 (só lossless entra).
+        // Um job assim não pode invalidar o arquivo inteiro e apagar a fila salva.
+        let raw = r#"[{"job_id":"a","dest_playlist":"P","created_at":1,"format_in":"mp3_320"},
+                      {"job_id":"b","dest_playlist":"P","created_at":1,"format_in":"wav24"}]"#;
+        let jobs: Vec<PersistedJob> = serde_json::from_str(raw).unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].format_in, None);
+        assert_eq!(jobs[1].format_in, Some(FormatIn::Wav24));
     }
 
     #[test]

@@ -76,6 +76,9 @@ pub enum RejectReason {
     /// FLAC/WAV com corte espectral de lossy (MP3 disfarçado), medido por
     /// `library_indexer::spectral`.
     LossyInside { cutoff_hz: u32 },
+    /// Abaixo do piso do CEO (16 bit/44,1 kHz). `sample_rate` 0 = não sabido
+    /// (PCM de 8 bit visto só pelo codec).
+    BelowCd { sample_rate: u32, bit_depth: u16 },
     /// A faixa não tem download nativo (ou a cota acabou) — nada a baixar.
     NoDownload,
 }

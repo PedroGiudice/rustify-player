@@ -1254,6 +1254,8 @@ describe("Crate: SoundCloud", () => {
       job({ job_id: "w", source: { kind: "bandcamp", item_type: "album", item_id: 1, url: "https://x.bandcamp.com/album/y" }, state: { kind: "waiting", reason: "purchase", url: "https://x.bandcamp.com/album/y", since_secs: 10 } }),
       job({ job_id: "r", state: { kind: "rejected", reason: { lossy_format: { format: "MP3" } } } }),
       job({ job_id: "l", state: { kind: "rejected", reason: { lossy_inside: { cutoff_hz: 16075 } } } }),
+      job({ job_id: "c", state: { kind: "rejected", reason: { below_cd: { sample_rate: 22050, bit_depth: 16 } } } }),
+      job({ job_id: "8", state: { kind: "rejected", reason: { below_cd: { sample_rate: 0, bit_depth: 8 } } } }),
       job({ job_id: "n", state: { kind: "rejected", reason: "no_download" } }),
     ]);
     render(() => <Crate />);
@@ -1261,6 +1263,8 @@ describe("Crate: SoundCloud", () => {
     expect(await screen.findByText(/Aguardando compra no Bandcamp/)).toBeInTheDocument();
     expect(screen.getByText("MP3 não entra: só lossless")).toBeInTheDocument();
     expect(screen.getByText("lossy por dentro (corte em 16,1 kHz)")).toBeInTheDocument();
+    expect(screen.getByText("abaixo de CD (22,05 kHz)")).toBeInTheDocument();
+    expect(screen.getByText("abaixo de CD (8 bit)")).toBeInTheDocument();
     expect(screen.getByText(/sem download nativo/)).toBeInTheDocument();
   });
 });
@@ -1309,6 +1313,7 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     mocks.slskJobs.mockResolvedValue([
       scJob({ kind: "rejected", reason: { lossy_format: { format: "MP3" } } }, { job_id: "a" }),
       scJob({ kind: "rejected", reason: { lossy_inside: { cutoff_hz: 16075 } } }, { job_id: "e", source: { ...scSource, track_id: 11 } }),
+      scJob({ kind: "rejected", reason: { below_cd: { sample_rate: 22050, bit_depth: 16 } } }, { job_id: "f", source: { ...scSource, track_id: 12 } }),
       scJob({ kind: "rejected", reason: "no_download" }, { job_id: "d", source: { ...scSource, track_id: 10 } }),
       scJob({ kind: "rejected", reason: { already_owned: { track_id: "9" } } }, { job_id: "b", source: { ...scSource, track_id: 8 } }),
       scJob({ kind: "rejected", reason: "corrupt" }, { job_id: "c", source: { ...scSource, track_id: 9 } }),

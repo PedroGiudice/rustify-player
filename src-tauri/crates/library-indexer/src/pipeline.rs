@@ -577,6 +577,12 @@ fn backfill_missing_quality(client: &QdrantClient) -> Result<(), IndexerError> {
             failed += 1;
             continue;
         };
+        // Arquivo fora do lugar agora (mover em curso, disco ausente): não grava
+        // `indeterminado`, que seria permanente; o próximo boot tenta de novo.
+        if !path.is_file() {
+            failed += 1;
+            continue;
+        }
         let m = crate::spectral::analyze_flac(&path);
         if let Err(e) = &m {
             warn!(target: "library_indexer::pipeline", track_id = id, path = ?path, error = %e, "quality backfill: não medida");
