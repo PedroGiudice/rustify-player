@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Testes das funções puras do tidal_mix_dl (rodar: uv run --with tidalapi --with mutagen python3 scripts/curator/test_tidal_mix_dl.py)."""
+"""Testes das funções puras do tidal_mix_dl (rodar: uv run --with tidalapi --with mutagen --with numpy python3 scripts/curator/test_tidal_mix_dl.py)."""
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
 
-from tidal_mix_dl import CMR_SSH, LRC_TS, MAX_IDS, TUNNEL_PORT, build_parser, comment_for, parse_ids, parse_ref, sidecar_for, split_artists, title_key, vm_defaults  # noqa: E402
+from lossless_gate import Verdict, refusal_reason  # noqa: E402
+from tidal_mix_dl import CMR_SSH, LRC_TS, MAX_IDS, TUNNEL_PORT, build_parser, clean_album_dir, comment_for, download_flac, is_refused, load_refused, parse_ids, parse_ref, record_refused, save_refused, sidecar_for, split_artists, title_key, vm_defaults  # noqa: E402
 
 
 class VmDefaults(unittest.TestCase):
@@ -28,6 +31,11 @@ class VmDefaults(unittest.TestCase):
     def test_env_sobrepoe(self):
         d = vm_defaults("extractlab", {"TIDAL_MUSIC_ROOT": "/x", "TIDAL_QDRANT": "http://q:1", "TIDAL_PUSH": "h:dir"})
         self.assertEqual((d["music"], d["qdrant"], d["push"]), ("/x", "http://q:1", "h:dir"))
+
+    def test_cache_de_recusas_fica_no_staging(self):
+        self.assertEqual(vm_defaults("extractlab", {})["refused"], "~/tidal-out/recusadas.json")
+        self.assertEqual(vm_defaults("cmrlinuxmachine", {})["refused"], "~/.cache/tidal-spike/recusadas.json")
+        self.assertEqual(vm_defaults("extractlab", {"TIDAL_REFUSED_CACHE": "/x/r.json"})["refused"], "/x/r.json")
 
     def test_tidal_push_off_desliga(self):
         for v in ("off", "OFF", "0", "no", "none"):
@@ -130,6 +138,130 @@ class JaNoAcervo(unittest.TestCase):
 
     def test_titulo_sem_letra_latina_nao_gera_chave_que_casa_tudo(self):
         self.assertEqual(title_key("日本語"), "")
+
+
+class CacheDeRecusas(unittest.TestCase):
+    def test_gravar_ler_consultar(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "sub" / "recusadas.json"
+            self.assertEqual(load_refused(p), {})  # ausente
+            cache = load_refused(p)
+            self.assertFalse(is_refused(cache, 123))
+            record_refused(cache, 123, "Faixa", "Artista", 16000)
+            save_refused(p, cache)
+            self.assertFalse(list(p.parent.glob("*.tmp")))  # rename atômico, sem sobra
+            lido = load_refused(p)
+            self.assertTrue(is_refused(lido, 123))
+            self.assertTrue(is_refused(lido, "123"))  # chave sempre string (JSON)
+            self.assertFalse(is_refused(lido, 124))
+            self.assertEqual((lido["123"]["titulo"], lido["123"]["artista"], lido["123"]["cutoff_hz"]), ("Faixa", "Artista", 16000))
+            record_refused(lido, 7, "Outra", "X", 15500)
+            save_refused(p, lido)
+            self.assertEqual(sorted(load_refused(p)), ["123", "7"])
+
+    def test_arquivo_corrompido_ou_de_tipo_errado_vira_vazio(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "r.json"
+            p.write_text("{nao e json", encoding="utf-8")
+            self.assertEqual(load_refused(p), {})
+            p.write_text(json.dumps([1, 2]), encoding="utf-8")
+            self.assertEqual(load_refused(p), {})
+            p.write_text(json.dumps({"1": {"cutoff_hz": 1}, "2": "lixo"}), encoding="utf-8")
+            self.assertEqual(sorted(load_refused(p)), ["1"])
+
+
+class DecisaoDeRecusa(unittest.TestCase):
+    """O baixador usa a mesma regra do normalize_release (lossless_gate.refusal_reason)."""
+
+    def test_classes(self):
+        self.assertEqual(refusal_reason({"sr": 44100, "cutoff_hz": 16000}), "lossy por dentro, corte 16,0 kHz")
+        self.assertEqual(refusal_reason({"sr": 44100, "cutoff_hz": 20000}), "lossy por dentro, corte 20,0 kHz")  # provável lossy
+        self.assertIsNone(refusal_reason({"sr": 44100, "cutoff_hz": None}))            # sem_corte
+        self.assertIsNone(refusal_reason({"sr": 44100, "cutoff_hz": 21400}))           # filtro do conversor
+        self.assertIsNone(refusal_reason({"sr": 96000, "cutoff_hz": 22000}))           # hires_de_cd entra
+        # o COMMENT não conta: só o conteúdo
+        self.assertIsNone(refusal_reason({"sr": 44100, "cutoff_hz": None, "comment": "source: lossy mp3"}))
+
+    def test_corte_com_virgula_decimal(self):
+        self.assertEqual(refusal_reason({"sr": 44100, "cutoff_hz": 19450}), "lossy por dentro, corte 19,4 kHz")
+
+
+class _Manifest:
+    mime_type = "application/octet-stream"
+
+    def get_urls(self):
+        return ["http://x/a"]
+
+
+class _Stream:
+    audio_quality = "LOSSLESS"
+
+    def get_stream_manifest(self):
+        return _Manifest()
+
+
+class _Track:
+    id = 99
+
+    def get_stream(self):
+        return _Stream()
+
+
+class PortaoNoDownload(unittest.TestCase):
+    """download_flac com rede e ffmpeg trocados: a recusa apaga o temporário e NUNCA cria o destino."""
+
+    def setUp(self):
+        import tidal_mix_dl as m
+        self.m = m
+        self.orig = (m.fetch, m.probe, m.subprocess.run, m.WORK)
+        self.td = tempfile.TemporaryDirectory()
+        m.WORK = Path(self.td.name) / "work"
+        m.fetch = lambda url, dest: Path(dest).write_bytes(b"raw")
+        m.probe = lambda p: {"codec": "flac", "bits": "16", "sr": "44100", "dur": "70"}
+        m.subprocess.run = lambda cmd, **kw: Path(cmd[-1]).write_bytes(b"flac")  # o ffmpeg falso grava o .part
+
+    def tearDown(self):
+        self.m.fetch, self.m.probe, self.m.subprocess.run, self.m.WORK = self.orig
+        self.td.cleanup()
+
+    def test_lossy_nao_cria_destino_e_apaga_o_temporario(self):
+        dest = Path(self.td.name) / "A" / "B [tidal]" / "01 X.flac"
+        dest.parent.mkdir(parents=True)
+        vistos = []
+        info = download_flac(_Track(), dest, gate=lambda p: vistos.append(p) or Verdict(reason="lossy por dentro, corte 16,0 kHz", cutoff_hz=16000))
+        self.assertTrue(info["verdict"].refused)
+        self.assertFalse(dest.exists())
+        self.assertEqual(vistos[0].name, "01 X.flac.part")  # medido antes do rename final
+        self.assertFalse(dest.with_name(dest.name + ".part").exists())
+
+    def test_lossless_e_falha_da_analise_entram(self):
+        for v in (Verdict(), Verdict(error="RuntimeError: ffmpeg")):
+            dest = Path(self.td.name) / "A" / "B [tidal]" / "02 Y.flac"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            info = download_flac(_Track(), dest, gate=lambda p, v=v: v)
+            self.assertFalse(info["verdict"].refused)
+            self.assertTrue(dest.exists())
+            self.assertEqual(info["bytes"], 4)
+            dest.unlink()
+
+
+class LimpezaDeAlbum(unittest.TestCase):
+    def test_album_sem_flac_perde_capa_e_pastas_vazias(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "Art" / "Alb [tidal]"
+            d.mkdir(parents=True)
+            (d / "cover.jpg").write_bytes(b"x")
+            clean_album_dir(d)
+            self.assertFalse(d.exists() or d.parent.exists())
+
+    def test_album_com_flac_fica_intacto(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "Art" / "Alb [tidal]"
+            d.mkdir(parents=True)
+            (d / "cover.jpg").write_bytes(b"x")
+            (d / "01 A.flac").write_bytes(b"x")
+            clean_album_dir(d)
+            self.assertTrue((d / "cover.jpg").exists() and (d / "01 A.flac").exists())
 
 
 if __name__ == "__main__":

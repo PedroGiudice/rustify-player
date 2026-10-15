@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Normaliza um release baixado (Bandcamp, SoundCloud) para o layout do acervo.
 
-Entrada: uma pasta com os arquivos de áudio de UM release (FLAC/WAV/AIFF; MP3
-só com --allow-lossy) e, opcionalmente, uma capa. Saída: a pasta canônica
+Entrada: uma pasta com os arquivos de áudio de UM release (FLAC/WAV/AIFF) e,
+opcionalmente, uma capa. Saída: a pasta canônica
 
     <out>/Funk Brasileiro/<Artista>/<Release>/NN Título.flac  (+ cover.jpg)
 
@@ -13,9 +13,15 @@ funk BR costuma chegar com artista = URL do ripper, álbum vazio, ano errado).
 Regras:
 - Nome de pasta/arquivo sem  : " * ? < > | \\ /  (o storage do Android recusa;
   ver scripts/android/phone_sync_encode.py::safe_rel). `_` no lugar.
-- WAV/AIFF vira FLAC (lossless). MP3/M4A só com --allow-lossy: vira FLAC para
-  o indexer aceitar (só lê .flac) e recebe COMMENT "source: lossy <fmt>" para
-  não fingir qualidade.
+- WAV/AIFF vira FLAC (lossless).
+- Só entra lossless de verdade (decisão do CEO, 15/10/2026), medido pelo CONTEÚDO:
+  MP3/M4A/AAC/OGG/OPUS na pasta de origem é erro (lossy não entra, nem 320), e
+  cada WAV/FLAC/AIFF passa pelo detector de corte espectral (quality_audit.py,
+  via lossless_gate.py) ANTES de converter. Corte de lossy = a faixa é RECUSADA
+  (não converte, não copia) e o resumo lista "RECUSADA (lossy por dentro, corte
+  X,X kHz)". As outras seguem; se TODAS forem recusadas, sai com código 3. Falha
+  da análise não bloqueia: a faixa entra e o motivo é impresso. Precisa de numpy
+  e ffmpeg (a análise roda também no --dry-run).
 - Capa: --cover <arquivo>, ou cover.jpg/folder.jpg/*.jpg|png na pasta de
   origem; embutida em cada FLAC e copiada como cover.jpg.
 - Número de faixa: lido do nome do arquivo (padrões Bandcamp
@@ -31,12 +37,12 @@ Regras:
 - Nunca grava valor com aparência de URL em campo nenhum.
 
 Uso (na VM; mutagen via uv):
-    uv run --with mutagen scripts/curator/normalize_release.py \
+    uv run --with mutagen --with numpy scripts/curator/normalize_release.py \
         --src /tmp/dl/hardfunk --out /tmp/staging \
         --artist "OO Rubinho" --release "HARDFUNK" --year 2022 \
         --label "Business Casual" [--genre "Funk Brasileiro"] [--cover capa.jpg] \
-        [--allow-lossy] [--dry-run]
-Testes: python3 scripts/curator/test_normalize_release.py
+        [--dry-run]
+Testes: uv run --with numpy python3 scripts/curator/test_normalize_release.py
 """
 from __future__ import annotations
 
@@ -124,7 +130,6 @@ class Item:
     src: Path
     track_no: int
     title: str
-    lossy_source: str | None  # ex.: "mp3" quando convertido de lossy
     track_artist: str | None = None  # crédito por faixa; None = usa o albumartist
 
     @property
@@ -138,6 +143,7 @@ class Plan:
     items: list[Item]
     cover: Path | None
     tags: dict[str, str] = field(default_factory=dict)
+    refused: list[tuple[str, str]] = field(default_factory=list)  # (nome do arquivo, motivo): não entram
 
 
 def find_cover(src: Path, explicit: Path | None) -> Path | None:
@@ -151,46 +157,72 @@ def find_cover(src: Path, explicit: Path | None) -> Path | None:
     return max(imgs, key=lambda p: p.stat().st_size) if imgs else None
 
 
+def list_audio(src: Path) -> list[Path]:
+    """Áudios lossless da pasta, em ordem. Lossy (mp3/m4a/aac/ogg/opus) é erro: não entra no acervo."""
+    audio = sorted(p for p in src.iterdir() if p.suffix.lower() in LOSSLESS | LOSSY)
+    if not audio:
+        raise ValueError(f"nenhum áudio em {src}")
+    lossy = [p for p in audio if p.suffix.lower() in LOSSY]
+    if lossy:
+        raise ValueError(
+            f"lossy não entra no acervo (só lossless de verdade; nem MP3 320). "
+            f"{len(lossy)} arquivo(s) lossy em {src}: " + ", ".join(p.name for p in lossy)
+        )
+    return audio
+
+
+def screen_sources(src: Path) -> dict[str, str]:
+    """Mede o corte espectral de cada áudio de ORIGEM (antes de converter) e devolve
+    {nome do arquivo: motivo} dos recusados. Falha da análise não bloqueia: a faixa entra
+    e o motivo vai para o stderr."""
+    from lossless_gate import check_file
+
+    refused: dict[str, str] = {}
+    for p in list_audio(src):
+        v = check_file(p)
+        if v.error:
+            print(f"aviso: análise espectral falhou em {p.name} ({v.error}); a faixa entra", file=sys.stderr)
+        elif v.refused:
+            refused[p.name] = v.reason
+    return refused
+
+
 def build_plan(src: Path, out: Path, *, artist: str, release: str, year: int | None,
-               label: str | None, genre: str, allow_lossy: bool,
+               label: str | None, genre: str,
                cover: Path | None = None, flat_artist: bool = False,
-               track_artists: dict[str, str] | None = None, title: str | None = None) -> Plan:
+               track_artists: dict[str, str] | None = None, title: str | None = None,
+               refused: dict[str, str] | None = None) -> Plan:
     """track_artists: {nome do arquivo: ARTIST} já lido (os testes injetam; o CLI lê das tags).
+    refused: {nome do arquivo: motivo} das faixas que o detector espectral recusou (ver
+    screen_sources); elas ficam fora do plano e aparecem em Plan.refused.
     title: título explícito, só para release de UMA faixa (single do SoundCloud: o nome do
     upload vem em caixa alta e com o artista repetido)."""
     for v in (artist, release, label or ""):
         if looks_like_url(v):
             raise ValueError(f"valor com aparência de URL recusado: {v!r}")
-    audio = sorted(p for p in src.iterdir() if p.suffix.lower() in LOSSLESS | LOSSY)
-    if not audio:
-        raise ValueError(f"nenhum áudio em {src}")
-    lossy = [p for p in audio if p.suffix.lower() in LOSSY]
-    if lossy and not allow_lossy:
-        raise ValueError(
-            f"{len(lossy)} arquivo(s) lossy ({', '.join(sorted({p.suffix for p in lossy}))}); "
-            "passe --allow-lossy para converter com COMMENT de origem"
-        )
-    if title and len(audio) != 1:
-        raise ValueError(f"--title só vale para release de 1 faixa (há {len(audio)})")
+    refused = refused or {}
+    everything = list_audio(src)
+    if title and len(everything) != 1:
+        raise ValueError(f"--title só vale para release de 1 faixa (há {len(everything)})")
+    audio = [p for p in everything if p.name not in refused]
     parsed = [(p, *parse_track_filename(p.stem, artist, release)) for p in audio]
-    if title:
+    if title and audio:
         parsed = [(audio[0], 1, title)]
     numbered = all(n is not None for _, n, _ in parsed) and len({n for _, n, _ in parsed}) == len(parsed)
     items = []
     for i, (p, n, title) in enumerate(parsed, start=1):
-        ext = p.suffix.lower()
         ta = None
         if not flat_artist:
             ta = (track_artists or {}).get(p.name) if track_artists is not None else read_track_artist(p)
             if ta and (loose(ta) == loose(artist) or looks_like_url(ta)):
                 ta = None
         title = strip_artist_suffix(title, ta or artist)
-        items.append(Item(src=p, track_no=n if numbered else i, title=title,
-                          lossy_source=ext.lstrip(".") if ext in LOSSY else None, track_artist=ta))
+        items.append(Item(src=p, track_no=n if numbered else i, title=title, track_artist=ta))
     items.sort(key=lambda it: it.track_no)
     tags = {
         "ARTIST": artist, "ALBUMARTIST": artist, "ALBUM": release, "GENRE": genre,
-        "TRACKTOTAL": str(len(items)),
+        # com números do release e faixas recusadas, o total continua sendo o do release
+        "TRACKTOTAL": str(len(everything) if numbered else len(items)),
     }
     if year:
         tags["DATE"] = str(year)
@@ -198,26 +230,26 @@ def build_plan(src: Path, out: Path, *, artist: str, release: str, year: int | N
         tags["LABEL"] = label
         tags["ORGANIZATION"] = label
     dest_dir = out / genre / safe_name(artist) / safe_name(release)
-    return Plan(dest_dir=dest_dir, items=items, cover=find_cover(src, cover), tags=tags)
+    return Plan(dest_dir=dest_dir, items=items, cover=find_cover(src, cover), tags=tags,
+                refused=[(p.name, refused[p.name]) for p in everything if p.name in refused])
 
 
 def describe(plan: Plan) -> str:
     lines = [f"-> {plan.dest_dir}  ({len(plan.items)} faixas; capa: {plan.cover.name if plan.cover else 'nenhuma'})"]
     for it in plan.items:
-        flag = f"  [lossy:{it.lossy_source}]" if it.lossy_source else ""
         who = f"  (artist: {it.track_artist})" if it.track_artist else ""
-        lines.append(f"   {it.dest_name}{who}  <- {it.src.name}{flag}")
+        lines.append(f"   {it.dest_name}{who}  <- {it.src.name}")
+    for name, why in plan.refused:
+        lines.append(f"   RECUSADA ({why})  <- {name}")
     return "\n".join(lines)
 
 
 def flac_cmd(src: Path, dest: Path) -> list[str]:
     """Comando ffmpeg da conversão. -map_metadata -1: as tags são reescritas depois;
-    -vn descarta a capa embutida (reembutida depois). Origem lossy sai em 16 bit
-    com dither: o decodificador entrega float e o FLAC sairia 24 bit (falso hi-res)."""
-    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-map_metadata", "-1"]
-    if src.suffix.lower() in LOSSY:
-        cmd += ["-af", "aresample=out_sample_fmt=s16:dither_method=triangular"]
-    return cmd + ["-c:a", "flac", "-compression_level", "8", str(dest)]
+    -vn descarta a capa embutida (reembutida depois). Só origem lossless chega aqui
+    (lossy é recusado em list_audio), então não há reamostragem nem dither."""
+    return ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-map_metadata", "-1",
+            "-c:a", "flac", "-compression_level", "8", str(dest)]
 
 
 def _to_flac(src: Path, dest: Path) -> None:
@@ -267,8 +299,6 @@ def apply(plan: Plan) -> None:
         tags = dict(plan.tags, TITLE=it.title, TRACKNUMBER=str(it.track_no))
         if it.track_artist:
             tags["ARTIST"] = it.track_artist
-        if it.lossy_source:
-            tags["COMMENT"] = f"source: lossy {it.lossy_source}"
         _write_tags(dest, tags, cover)
     if cover:
         cover.replace(plan.dest_dir / "cover.jpg")
@@ -284,23 +314,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--label")
     ap.add_argument("--genre", default="Funk Brasileiro")
     ap.add_argument("--cover", type=Path)
-    ap.add_argument("--allow-lossy", action="store_true")
     ap.add_argument("--flat-artist", action="store_true", help="ignora o ARTIST por faixa dos arquivos")
     ap.add_argument("--title", help="título da faixa (só para release de 1 faixa)")
-    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="mede e mostra o plano (inclusive as recusadas), sem gravar")
     a = ap.parse_args(argv)
     try:
+        refused = screen_sources(a.src)
         plan = build_plan(a.src, a.out, artist=a.artist, release=a.release, year=a.year,
-                          label=a.label, genre=a.genre, allow_lossy=a.allow_lossy, cover=a.cover,
-                          flat_artist=a.flat_artist, title=a.title)
+                          label=a.label, genre=a.genre, cover=a.cover,
+                          flat_artist=a.flat_artist, title=a.title, refused=refused)
     except ValueError as e:
         print(f"erro: {e}", file=sys.stderr)
         return 2
     print(describe(plan))
+    if not plan.items:
+        print(f"erro: todas as {len(plan.refused)} faixas foram recusadas (lossy por dentro); nada entra", file=sys.stderr)
+        return 3
     if a.dry_run:
         return 0
     apply(plan)
-    print(f"ok: {len(plan.items)} faixas em {plan.dest_dir}")
+    print(f"ok: {len(plan.items)} faixas em {plan.dest_dir}" + (f"; {len(plan.refused)} RECUSADAS" if plan.refused else ""))
     return 0
 
 

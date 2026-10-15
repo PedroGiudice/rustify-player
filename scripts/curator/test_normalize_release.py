@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Testes das funções puras do normalize_release.py (sem mutagen, sem ffmpeg).
+"""Testes das funções puras do normalize_release.py (sem mutagen, sem ffmpeg, sem numpy).
 
     python3 scripts/curator/test_normalize_release.py
 """
@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from normalize_release import build_plan, flac_cmd, loose, looks_like_url, parse_track_filename, safe_name, strip_artist_suffix  # noqa: E402
+from normalize_release import build_plan, describe, flac_cmd, main, loose, looks_like_url, parse_track_filename, safe_name, strip_artist_suffix  # noqa: E402
 
 
 def test_safe_name():
@@ -53,16 +53,16 @@ def test_build_plan_track_artists():
         names = ["Kioma - FUNK RAVE EP - 02 Aquecida - Kioma.flac", "kLap - FUNK RAVE EP - 04 Prime - kLap.flac"]
         _touch(src, names)
         plan = build_plan(src, out, artist="Kioma, Buarky, kLap e Mu540", release="Funk Rave EP", year=2020,
-                          label="Funk na Caixa", genre="Funk Brasileiro", allow_lossy=False,
+                          label="Funk na Caixa", genre="Funk Brasileiro",
                           track_artists={names[0]: "Kioma", names[1]: "kLap"})
         assert [(it.track_no, it.title, it.track_artist) for it in plan.items] == [(2, "Aquecida", "Kioma"), (4, "Prime", "kLap")]
         assert plan.tags["ALBUMARTIST"] == "Kioma, Buarky, kLap e Mu540"
         # ARTIST do arquivo igual ao albumartist não vira crédito por faixa; URL é ignorada
-        plan2 = build_plan(src, out, artist="Kioma", release="X", year=None, label=None, genre="G", allow_lossy=False,
+        plan2 = build_plan(src, out, artist="Kioma", release="X", year=None, label=None, genre="G",
                            track_artists={names[0]: "KIOMA", names[1]: "www.ripper.com"})
         assert [it.track_artist for it in plan2.items] == [None, None]
         # --flat-artist ignora tudo
-        plan3 = build_plan(src, out, artist="Z", release="X", year=None, label=None, genre="G", allow_lossy=False,
+        plan3 = build_plan(src, out, artist="Z", release="X", year=None, label=None, genre="G",
                            flat_artist=True, track_artists={names[0]: "Kioma"})
         assert plan3.items[0].track_artist is None
 
@@ -78,7 +78,7 @@ def test_build_plan_bandcamp_layout():
         src.mkdir()
         _touch(src, ["OO RUBINHO - HARDFUNK - 02 COMBAL.flac", "OO RUBINHO - HARDFUNK - 01 VILÃO.flac", "cover.jpg"])
         plan = build_plan(src, out, artist="OO Rubinho", release="HARDFUNK", year=2022,
-                          label="Business Casual", genre="Funk Brasileiro", allow_lossy=False, track_artists={})
+                          label="Business Casual", genre="Funk Brasileiro", track_artists={})
         assert plan.dest_dir == out / "Funk Brasileiro" / "OO Rubinho" / "HARDFUNK"
         assert [it.dest_name for it in plan.items] == ["01 VILÃO.flac", "02 COMBAL.flac"]
         assert plan.cover and plan.cover.name == "cover.jpg"
@@ -91,39 +91,89 @@ def test_build_plan_unnumbered_and_wav():
         src.mkdir()
         _touch(src, ["Zaffe.wav", "Conflito.wav"])
         plan = build_plan(src, out, artist="Adame DJ", release="EP", year=None, label=None,
-                          genre="Funk Brasileiro", allow_lossy=False)
+                          genre="Funk Brasileiro")
         # sem número: ordem alfabética, numera de 1
         assert [it.dest_name for it in plan.items] == ["01 Conflito.flac", "02 Zaffe.flac"]
-        assert all(it.lossy_source is None for it in plan.items)
         assert "DATE" not in plan.tags
 
 
-def test_build_plan_lossy_guard():
+def test_build_plan_lossy_na_origem_e_erro_sem_escape():
     with tempfile.TemporaryDirectory() as td:
         src, out = Path(td) / "src", Path(td) / "out"
         src.mkdir()
-        _touch(src, ["01 Faixa.mp3"])
+        _touch(src, ["01 Faixa.mp3", "02 Outra.flac"])
         try:
-            build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G", allow_lossy=False)
-            assert False, "devia recusar lossy sem --allow-lossy"
+            build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G", track_artists={})
+            assert False, "devia recusar lossy na origem"
         except ValueError as e:
-            assert "lossy" in str(e)
-        plan = build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G", allow_lossy=True)
-        assert plan.items[0].lossy_source == "mp3"
+            msg = str(e)
+            assert "lossy não entra" in msg and "01 Faixa.mp3" in msg
+            assert "--allow-lossy" not in msg and "02 Outra.flac" not in msg
+        # a flag de escape não existe mais
+        try:
+            main(["--src", str(src), "--out", str(out), "--artist", "X", "--release", "Y", "--allow-lossy"])
+            assert False
+        except SystemExit as e:
+            assert e.code == 2
+        # todos os formatos lossy
+        for ext in (".m4a", ".aac", ".ogg", ".opus"):
+            (src / "01 Faixa.mp3").unlink(missing_ok=True)
+            _touch(src, [f"03 Z{ext}"])
+            try:
+                build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G", track_artists={})
+                assert False, ext
+            except ValueError as e:
+                assert f"03 Z{ext}" in str(e)
+            (src / f"03 Z{ext}").unlink()
+
+
+def test_build_plan_faixa_recusada_fica_fora():
+    with tempfile.TemporaryDirectory() as td:
+        src, out = Path(td) / "src", Path(td) / "out"
+        src.mkdir()
+        names = ["A - EP - 01 Boa.flac", "A - EP - 02 Falsa.flac", "A - EP - 03 Outra.wav"]
+        _touch(src, names)
+        why = "lossy por dentro, corte 16,0 kHz"
+        plan = build_plan(src, out, artist="A", release="EP", year=None, label=None, genre="G",
+                          track_artists={}, refused={names[1]: why})
+        assert [it.dest_name for it in plan.items] == ["01 Boa.flac", "03 Outra.flac"]
+        assert plan.refused == [(names[1], why)]
+        assert plan.tags["TRACKTOTAL"] == "3"  # total do release, com os números originais
+        txt = describe(plan)
+        assert f"RECUSADA ({why})  <- {names[1]}" in txt
+        # todas recusadas: plano vazio (o CLI sai com código 3), sem exceção
+        plan2 = build_plan(src, out, artist="A", release="EP", year=None, label=None, genre="G",
+                           track_artists={}, refused={n: why for n in names})
+        assert plan2.items == [] and len(plan2.refused) == 3
+
+
+def test_main_todas_recusadas_sai_com_codigo_3():
+    import normalize_release as nr
+    with tempfile.TemporaryDirectory() as td:
+        src, out = Path(td) / "src", Path(td) / "out"
+        src.mkdir()
+        _touch(src, ["01 Falsa.flac"])
+        orig = nr.screen_sources
+        nr.screen_sources = lambda _src: {"01 Falsa.flac": "lossy por dentro, corte 16,0 kHz"}
+        try:
+            rc = main(["--src", str(src), "--out", str(out), "--artist", "X", "--release", "Y", "--dry-run"])
+        finally:
+            nr.screen_sources = orig
+        assert rc == 3
+        assert not out.exists()
 
 
 def test_build_plan_single_with_title():
     with tempfile.TemporaryDirectory() as td:
         src, out = Path(td) / "src", Path(td) / "out"
         src.mkdir()
-        _touch(src, ["FESTA DO PENTE RALA - DJ ARANA.mp3"])
+        _touch(src, ["FESTA DO PENTE RALA - DJ ARANA.wav"])
         plan = build_plan(src, out, artist="DJ Arana", release="Festa do Pente Rala", year=2024, label=None,
-                          genre="Funk Brasileiro", allow_lossy=True, track_artists={}, title="Festa do Pente Rala")
+                          genre="Funk Brasileiro", track_artists={}, title="Festa do Pente Rala")
         assert [it.dest_name for it in plan.items] == ["01 Festa do Pente Rala.flac"]
-        assert plan.items[0].lossy_source == "mp3"
-        _touch(src, ["outra.mp3"])
+        _touch(src, ["outra.wav"])
         try:
-            build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G", allow_lossy=True,
+            build_plan(src, out, artist="X", release="Y", year=None, label=None, genre="G",
                        track_artists={}, title="Z")
             assert False
         except ValueError as e:
@@ -136,20 +186,18 @@ def test_build_plan_rejects_url_artist():
         src.mkdir()
         _touch(src, ["01 Faixa.flac"])
         try:
-            build_plan(src, out, artist="www.ftpdjemilio.com", release="Y", year=None, label=None, genre="G", allow_lossy=False)
+            build_plan(src, out, artist="www.ftpdjemilio.com", release="Y", year=None, label=None, genre="G")
             assert False
         except ValueError as e:
             assert "URL" in str(e)
 
 
-def test_flac_cmd_lossy_sai_16_bit():
-    # MP3/AAC decodificam em float; sem fixar, o FLAC sairia 24 bit (falso hi-res)
-    for ext in (".mp3", ".m4a", ".opus"):
-        cmd = flac_cmd(Path("a" + ext), Path("b.flac"))
-        assert "aresample=out_sample_fmt=s16:dither_method=triangular" in cmd, cmd
-    for ext in (".wav", ".aiff"):
+def test_flac_cmd_sem_ramo_de_lossy():
+    # só origem lossless chega ao ffmpeg: sem reamostragem/dither, qualquer extensão
+    for ext in (".wav", ".aiff", ".mp3"):
         cmd = flac_cmd(Path("a" + ext), Path("b.flac"))
         assert not any("aresample" in c for c in cmd), cmd
+        assert cmd[-3:] == ["-compression_level", "8", "b.flac"] and "flac" in cmd
 
 
 if __name__ == "__main__":

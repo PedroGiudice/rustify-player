@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Testes da API da fila da Tidal sem rede (rodar: uv run --with tidalapi --with mutagen python3 scripts/curator/test_tidal_fila.py).
+"""Testes da API da fila da Tidal sem rede (rodar: uv run --with tidalapi --with mutagen --with numpy python3 scripts/curator/test_tidal_fila.py).
 A sessão da Tidal é trocada por objetos falsos; nenhum teste fala com a Tidal nem com a cmr-auto."""
 import datetime as dt
 import json
@@ -403,6 +403,35 @@ class FilaEmDisco(unittest.TestCase):
         self.assertEqual(tf.load_fila()[0]["id"], r["id"])
         self.assertEqual(tf.enfileira("https://tidal.com/browse/mix/abc", "Rap"), ("esse link já está na fila", None))
         self.assertEqual(tf.enfileira("lixo", "Rap")[1], None)
+
+    def _log(self, texto):
+        p = Path(self.d.name) / "job.log"
+        p.write_text(texto, encoding="utf-8")
+        return p
+
+    def test_resumo_mostra_recusadas_lossy(self):
+        log = self._log("MIX: Mix X | 4 faixas\n  1 A | Art | LOSSLESS 16/44100 3.0 MB em 5.0s -> a/b.flac\n"
+                        "  2 B RECUSADA (lossy por dentro, corte 16,0 kHz)\n  3 C JÁ RECUSADA (lossy por dentro)\n"
+                        "  4 D JÁ NO ACERVO (x)\nNOVAS 1 | PULADAS 1 | FALHAS 0 | LETRAS 0 | relatório r.json\n"
+                        "RECUSADAS 2 (lossy por dentro)\nENVIADAS 1 para h:Music; staging limpo\nFIM\n")
+        r = tf.resumo_do_log(log)
+        self.assertIn("1 novas, 1 já no acervo, 0 falhas de 4", r)
+        self.assertIn("2 recusadas (lossy por dentro)", r)
+        self.assertIn("1 na cmr-auto", r)
+
+    def test_resumo_sem_recusadas_nao_menciona(self):
+        log = self._log("MIX: M | 1 faixas\nNOVAS 0 | PULADAS 0 | FALHAS 0 | LETRAS 0 | relatório r\nRECUSADAS 0 (lossy por dentro)\nFIM\n")
+        self.assertNotIn("recusadas", tf.resumo_do_log(log))
+
+    def test_job_so_com_recusadas_termina_ok_e_o_baixador_leva_numpy(self):
+        # recusada não muda o rc do baixador (0): o job fecha ok; rc 2 continua parcial
+        self.assertEqual(tf.status_final(0, True), "ok")
+        self.assertEqual(tf.status_final(2, True), "parcial")
+        self.assertEqual(tf.status_final(0, False), "falhou")
+        self.assertEqual(tf.status_final(1, True), "falhou")
+        cmd = tf.comando_do_job({"url": "https://tidal.com/browse/mix/abc", "playlist": "Rap"})
+        self.assertEqual(cmd[1:9], ["run", "--with", "tidalapi", "--with", "mutagen", "--with", "numpy", "python3"])
+        self.assertEqual(cmd[-2:], ["https://tidal.com/browse/mix/abc", "--playlist=Rap"])
 
     def test_resumo_do_log_ausente_e_string_vazia(self):
         self.assertEqual(tf.resumo_do_log(Path(self.d.name) / "nao-existe.log"), "")

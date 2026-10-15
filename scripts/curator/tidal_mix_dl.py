@@ -4,9 +4,9 @@
 A marca " [tidal]" no nome da pasta é o que mantém tudo isso fora do share do slskd.
 
 Roda NA cmr-auto (acervo local) ou NA VM (staging + envio para a cmr-auto):
-  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <link> --list
-  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py <link> [--playlist "Funk Brasileiro"] [--genre G]
-  uv run --with tidalapi --with mutagen python3 tidal_mix_dl.py --ids 1,2,3 --titulo "Rádio Orochi" --origem mix:<id>
+  uv run --with tidalapi --with mutagen --with numpy python3 tidal_mix_dl.py <link> --list
+  uv run --with tidalapi --with mutagen --with numpy python3 tidal_mix_dl.py <link> [--playlist "Funk Brasileiro"] [--genre G]
+  uv run --with tidalapi --with mutagen --with numpy python3 tidal_mix_dl.py --ids 1,2,3 --titulo "Rádio Orochi" --origem mix:<id>
 O modo --ids (seleção da prévia do Crate) baixa exatamente essas faixas pelo mesmo caminho do link
 (dedup, envio, .lrc, rc=2) e grava COMMENT "source: tidal <tier>; selecao <origem>".
 Na VM (hostname extractlab) o envio é AUTOMÁTICO, sem flag: staging em ~/tidal-out, dedup pelo túnel
@@ -15,6 +15,17 @@ pronta (3 tentativas), a cópia local é apagada depois que chegou, e no fim um 
 watcher. Se a cmr-auto não responder, o script aborta ANTES de baixar. TIDAL_PUSH=off ou --no-push
 desligam; TIDAL_PUSH=<host:dir> troca o destino. A sessão PKCE (~/.secrets/tidal-pkce.json) é a mesma
 nas duas máquinas; o refresh não rotaciona o token.
+
+Portão de qualidade (decisão do CEO, 15/10/2026: só entra lossless de verdade, medido pelo CONTEÚDO):
+depois de remuxar para FLAC e ANTES de renomear para o destino (o watcher e o rsync nunca veem o arquivo),
+o detector de corte espectral (quality_audit.py via lossless_gate.py; precisa de numpy) mede a faixa.
+Corte de lossy = linha `RECUSADA (lossy por dentro, corte X,X kHz)`: o arquivo é apagado, nada é enviado,
+a faixa vai para `recusadas` no relatório mix_<id>.json e para o cache de recusas (JSON no staging,
+`~/tidal-out/recusadas.json` na VM, `~/.cache/tidal-spike/recusadas.json` fora dela; TIDAL_REFUSED_CACHE
+troca), chave = id da faixa na Tidal, para não baixar de novo a cada execução (`JÁ RECUSADA`). Apagar a
+entrada (ou o arquivo) força a reavaliação. Recusada NÃO é falha: rc continua 0 (rc=2 é só "não enviadas");
+o resumo final traz `RECUSADAS n (lossy por dentro)`. Falha da análise não bloqueia: a faixa entra e o
+motivo é impresso.
 """
 import argparse
 import json
@@ -33,6 +44,7 @@ from pathlib import Path
 import tidalapi
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lossless_gate import Verdict, check_file  # noqa: E402
 from normalize_release import _prepare_cover, _write_tags, loose, safe_name  # noqa: E402
 
 SECRET = os.path.expanduser("~/.secrets/tidal-pkce.json")
@@ -57,12 +69,14 @@ def vm_defaults(hostname: str, env: dict) -> dict:
         push = f"{CMR_SSH}:Music" if on_vm else ""
     if push.strip().lower() in ("off", "0", "no", "none"):
         push = ""
-    return {"music": music, "qdrant": qdrant, "push": push, "on_vm": on_vm}
+    refused = env.get("TIDAL_REFUSED_CACHE") or ("~/tidal-out/recusadas.json" if on_vm else "~/.cache/tidal-spike/recusadas.json")
+    return {"music": music, "qdrant": qdrant, "push": push, "on_vm": on_vm, "refused": refused}
 
 
 _DEF = vm_defaults(socket.gethostname(), os.environ)
 MUSIC = Path(os.path.expanduser(_DEF["music"]))
 QDRANT = _DEF["qdrant"]
+REFUSED_CACHE = Path(os.path.expanduser(_DEF["refused"]))
 
 
 def load_session() -> tidalapi.Session:
@@ -232,6 +246,34 @@ def parse_ids(raw: str) -> list[int]:
     return out
 
 
+def load_refused(path: Path) -> dict[str, dict]:
+    """Cache de recusas {id da faixa na Tidal (str): {titulo, artista, cutoff_hz, quando}}.
+    Ausente ou corrompido = vazio (pior caso: mede a faixa de novo)."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {str(k): v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
+
+
+def save_refused(path: Path, cache: dict[str, dict]) -> None:
+    """Grava por arquivo temporário + rename: queda no meio não deixa JSON pela metade."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)
+
+
+def is_refused(cache: dict[str, dict], track_id) -> bool:
+    return str(track_id) in cache
+
+
+def record_refused(cache: dict[str, dict], track_id, titulo: str, artista: str, cutoff_hz: int | None) -> None:
+    cache[str(track_id)] = {"titulo": titulo, "artista": artista, "cutoff_hz": cutoff_hz,
+                            "quando": time.strftime("%Y-%m-%d %H:%M:%S")}
+
+
 def comment_for(quality: str, mix_ref: str | None, origem: str | None) -> str:
     """Pura. COMMENT gravado no FLAC: de onde a faixa veio (mix/link inteiro ou seleção)."""
     if mix_ref:
@@ -292,8 +334,10 @@ def probe(path: Path) -> dict:
             "sr": s.get("sample_rate"), "dur": (pj.get("format") or {}).get("duration")}
 
 
-def download_flac(t, dest: Path) -> dict:
-    """Baixa a faixa (DASH fMP4 ou arquivo direto), remuxa para FLAC sem recodificar, grava em dest."""
+def download_flac(t, dest: Path, gate=check_file) -> dict:
+    """Baixa a faixa (DASH fMP4 ou arquivo direto), remuxa para FLAC sem recodificar, grava em dest.
+    Antes do rename final passa o FLAC pelo portão de qualidade (`gate(Path) -> Verdict`): se o
+    conteúdo é lossy, apaga o temporário, NÃO cria dest e devolve info["verdict"] com a recusa."""
     st = t.get_stream()
     man = st.get_stream_manifest()
     urls = man.get_urls() if hasattr(man, "get_urls") else [man.get_stream_url()]
@@ -316,8 +360,15 @@ def download_flac(t, dest: Path) -> dict:
     subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(raw), "-vn", "-c:a", "copy",
                     "-f", "flac", str(tmp)], check=True)
     raw.unlink(missing_ok=True)
-    tmp.rename(dest)
     info["quality"] = str(getattr(st, "audio_quality", "?"))
+    verdict = gate(tmp)
+    info["verdict"] = verdict
+    if verdict.refused:
+        tmp.unlink(missing_ok=True)
+        return info
+    if verdict.error:
+        print(f"    aviso: análise espectral falhou ({verdict.error}); a faixa entra", flush=True)
+    tmp.rename(dest)
     info["bytes"] = dest.stat().st_size
     return info
 
@@ -394,8 +445,12 @@ def drop_local(dest: Path) -> None:
     """Apaga a cópia do staging depois que a faixa chegou; capa e pastas vazias saem junto quando sobra nada."""
     dest.unlink(missing_ok=True)
     sidecar_for(dest).unlink(missing_ok=True)
-    d = dest.parent
-    if not any(q.suffix == ".flac" for q in d.iterdir() if q.is_file()):
+    clean_album_dir(dest.parent)
+
+
+def clean_album_dir(d: Path) -> None:
+    """Pasta de álbum sem nenhum FLAC: some a capa e as pastas vazias (álbum, artista)."""
+    if d.is_dir() and not any(q.suffix == ".flac" for q in d.iterdir() if q.is_file()):
         (d / "cover.jpg").unlink(missing_ok=True)
         for x in (d, d.parent):
             try:
@@ -470,10 +525,13 @@ def main() -> int:
 
     lib = library_keys()
     print(f"acervo: {len(lib)} chaves título/artista", flush=True)
+    refused_cache = load_refused(REFUSED_CACHE)
+    print(f"cache de recusas: {len(refused_cache)} faixas lossy por dentro ({REFUSED_CACHE})", flush=True)
+    touched_dirs: set[Path] = set()
     dest_root = MUSIC / safe_name(args.playlist)
     genre = args.genre or args.playlist
     report_key = args.mix_id or f"selecao-{time.strftime('%Y%m%d-%H%M%S')}"
-    report = {"mix": report_key, "title": mix_title, "origem": args.origem, "new": [], "skipped": [], "failed": pre_failed}
+    report = {"mix": report_key, "title": mix_title, "origem": args.origem, "new": [], "skipped": [], "failed": pre_failed, "recusadas": []}
     new_files: list[Path] = []
     covers: dict[int, Path | None] = {}
     for i, t in enumerate(tracks, 1):
@@ -497,6 +555,12 @@ def main() -> int:
         if dup:
             print(f"{i:3d} {title[:45]:45s} JÁ NO ACERVO ({sorted(dup)[0][1]})", flush=True)
             report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "acervo"})
+            continue
+        if is_refused(refused_cache, t.id):
+            c = refused_cache[str(t.id)]
+            print(f"{i:3d} {title[:45]:45s} JÁ RECUSADA (lossy por dentro)", flush=True)
+            report["recusadas"].append({"id": t.id, "titulo": title, "artista": ", ".join(arts),
+                                        "cutoff_hz": c.get("cutoff_hz"), "cache": True})
             continue
         if dest.exists():
             if args.push and str(dest.relative_to(MUSIC)) not in remote:  # sobra de envio que falhou
@@ -523,7 +587,17 @@ def main() -> int:
                 covers[alb.id] = _prepare_cover(cov, WORK) if cov.exists() else None
                 if covers[alb.id]:
                     covers[alb.id] = covers[alb.id].rename(WORK / f"cover-{alb.id}.jpg")
+            touched_dirs.add(dest_dir)
             info = download_flac(t, dest)
+            verdict: Verdict = info.pop("verdict")  # fora de `info`: ele vai inteiro para o relatório JSON
+            if verdict.refused:
+                print(f"{i:3d} {title[:45]:45s} RECUSADA ({verdict.reason})", flush=True)
+                record_refused(refused_cache, t.id, title, ", ".join(arts), verdict.cutoff_hz)
+                save_refused(REFUSED_CACHE, refused_cache)
+                report["recusadas"].append({"id": t.id, "titulo": title, "artista": ", ".join(arts),
+                                            "cutoff_hz": verdict.cutoff_hz})
+                time.sleep(PAUSE_S)
+                continue
             tags = {
                 "ARTIST": ", ".join(arts), "ALBUMARTIST": album_artist, "ALBUM": alb.name, "TITLE": title,
                 "TRACKNUMBER": str(t.track_num or i), "TRACKTOTAL": str(alb.num_tracks or ""), "GENRE": genre,
@@ -561,9 +635,12 @@ def main() -> int:
                 p.unlink(missing_ok=True)
         time.sleep(PAUSE_S)
 
+    for d in touched_dirs:  # álbum onde só houve recusadas: sem FLAC, a capa e as pastas vazias saem
+        clean_album_dir(d)
     out = Path(os.path.expanduser(f"~/.cache/tidal-spike/mix_{re.sub(r'[^A-Za-z0-9-]+', '_', report_key)[-40:]}.json"))
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     print(f"NOVAS {len(report['new'])} | PULADAS {len(report['skipped'])} | FALHAS {len(report['failed'])} | LETRAS {report.get('lyrics', 0)} | relatório {out}", flush=True)
+    print(f"RECUSADAS {len(report['recusadas'])} (lossy por dentro)", flush=True)
     if args.push:
         if unsent:  # última chance, em lote, para o que falhou no meio
             print(f"reenviando {len(unsent)} faixas que falharam...", flush=True)

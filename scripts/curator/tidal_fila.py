@@ -18,7 +18,9 @@ e guardam a resposta 5 min em memória. Sessão inválida -> 503; Tidal sem resp
 de 5 s para conectar e 7 s para ler; só uma chamada à Tidal por vez, quem espera mais de 7 s leva 503); texto curto
 ou ref inválida -> 400.
 Rodar na VM (a busca precisa do tidalapi; sem ele a fila segue funcionando e a busca devolve 503):
-  tmux new -d -s telemetria 'uv run --with tidalapi --with mutagen python3 ~/rustify-player/scripts/curator/tidal_fila.py'
+  tmux new -d -s telemetria 'uv run --with tidalapi --with mutagen --with numpy python3 ~/rustify-player/scripts/curator/tidal_fila.py'
+O numpy é do baixador (tidal_mix_dl.py), que mede o corte espectral de cada faixa e RECUSA a que é lossy
+por dentro; o resumo do job mostra quantas ("n recusadas"). Recusada não é falha: o job termina ok.
 Instância de teste ao lado da real: --port 8471 --bind 127.0.0.1 --out /tmp/x (fila.json própria).
 """
 import argparse
@@ -218,10 +220,13 @@ def resumo_do_log(path):
     total = next((l.split("|")[1].strip().split(" ")[0] for l in lines if l.startswith("MIX: ") and "|" in l), "?")
     env = next((l.split(" ")[1] for l in lines if l.startswith("ENVIADAS ")), None)
     nao = next((l.split(" ")[2] for l in lines if l.startswith("NÃO ENVIADAS ")), None)
+    recusadas = next((l.split(" ")[1] for l in lines if l.startswith("RECUSADAS ")), None)
     letras = next((l.split("LETRAS ")[1].split(" ")[0] for l in lines if l.startswith("NOVAS") and "LETRAS " in l), None)
     txt = f"{titulo}: {n} novas, {s} já no acervo, {f} falhas de {total}"
     if letras and letras != "0":
         txt += f"; {letras} com letra"
+    if recusadas and recusadas != "0":  # lossy por dentro: recusada não é falha, o job segue ok
+        txt += f"; {recusadas} recusadas (lossy por dentro)"
     if env:
         txt += f"; {env} na cmr-auto"
     if nao:
@@ -236,6 +241,18 @@ def alvo_do_job(job):
         return ["--ids=" + ",".join(str(i) for i in job["faixas"]), "--titulo=" + (job.get("titulo") or "Seleção"),
                 "--origem=" + (job.get("origem") or "busca")]
     return [job["url"]]
+
+
+def comando_do_job(job):
+    """Pura. Linha de comando do baixador. O numpy é do portão de qualidade (corte espectral) do tidal_mix_dl."""
+    return ([UV, "run", "--with", "tidalapi", "--with", "mutagen", "--with", "numpy", "python3", str(SCRIPT)]
+            + alvo_do_job(job) + ["--playlist=" + job["playlist"]])
+
+
+def status_final(rc, fim):
+    """Pura. ok = rc 0 até o FIM (faixa recusada por ser lossy não é falha e não muda o rc);
+    parcial = rc 2 (alguma faixa não chegou na cmr-auto); o resto é falha."""
+    return "ok" if rc == 0 and fim else ("parcial" if rc == 2 and fim else "falhou")
 
 
 def worker():
@@ -258,11 +275,10 @@ def worker():
         # Sem flag nem env: na VM o tidal_mix_dl.py já assume staging ~/tidal-out, Qdrant pelo túnel
         # 16333 (abre sozinho), envio faixa a faixa para cmr-auto:~/Music, staging limpo e touch remoto.
         with open(job["log"], "w") as lf:
-            rc = subprocess.run([UV, "run", "--with", "tidalapi", "--with", "mutagen", "python3", str(SCRIPT)] + alvo_do_job(job)
-                                + ["--playlist=" + job["playlist"]], stdout=lf, stderr=subprocess.STDOUT, cwd=str(OUT)).returncode
+            rc = subprocess.run(comando_do_job(job), stdout=lf, stderr=subprocess.STDOUT, cwd=str(OUT)).returncode
         resumo = resumo_do_log(job["log"])
         fim = "FIM" in Path(job["log"]).read_text(errors="ignore")
-        status = "ok" if rc == 0 and fim else ("parcial" if rc == 2 and fim else "falhou")
+        status = status_final(rc, fim)
         with LOCK:
             jobs = load_fila()
             for j in jobs:

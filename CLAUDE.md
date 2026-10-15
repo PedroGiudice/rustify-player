@@ -518,12 +518,17 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
   em BASICTEXT e nao decifra v11). Nunca imprimir o valor (a cmdline do scdl o expoe:
   nao `pgrep -a` enquanto roda).
 - **Higienizacao** (obrigatoria antes de entrar em `~/Music`):
-  `uv run --with mutagen scripts/curator/normalize_release.py --src <pasta> --out
-  <staging> --artist --release --year [--label] [--title (single)] [--allow-lossy]`
+  `uv run --with mutagen --with numpy scripts/curator/normalize_release.py --src <pasta> --out
+  <staging> --artist --release --year [--label] [--title (single)] [--dry-run]`
   — tags da PAGINA do release (nao do arquivo), WAV->FLAC, artista por faixa
   preservado, titulo sem o artista repetido, capa JPEG <=1500 px embutida +
-  cover.jpg, nomes sem `: " * ? < > | \ /`. Testes:
-  `python3 scripts/curator/test_normalize_release.py`.
+  cover.jpg, nomes sem `: " * ? < > | \ /`. **So entra lossless de verdade (CEO,
+  15/10/2026), medido pelo CONTEUDO**: lossy na pasta de origem (mp3/m4a/aac/ogg/opus,
+  nem 320) e erro, sem flag de escape (`--allow-lossy` foi removida); cada WAV/FLAC/AIFF
+  passa pelo corte espectral (`quality_audit.py` via `lossless_gate.py`) ANTES de
+  converter e a faixa com corte de lossy sai como `RECUSADA (lossy por dentro, corte
+  X,X kHz)` (todas recusadas = codigo 3; falha da analise nao bloqueia). Testes:
+  `uv run --with numpy python3 scripts/curator/test_normalize_release.py`.
 - **Depois de mover pra `~/Music`**: `touch` nos FLAC (race do watcher), conferir
   no Qdrant (total, `embedding_status`), rodar o batch de vibe (subagente Opus,
   formato de `data/enrichments/*.json`, upsert com merge em `track_enrichments`)
@@ -570,7 +575,7 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   tidalapi, 0600, renova sozinha). `tidal-session.json` (OAuth) serve só pra busca.
   streamrip não serve (403 HTML no token).
 - **Download**: `scripts/curator/tidal_mix_dl.py <id de mix ou playlist> [--list]`
-  (cópia em `~/.cache/tidal-spike/` na cmr-auto, `uv run --with tidalapi --with mutagen`).
+  (cópia em `~/.cache/tidal-spike/` na cmr-auto, `uv run --with tidalapi --with mutagen --with numpy`).
   Baixa o mix inteiro: pula o que já está no acervo (título+artista soltos, Qdrant local)
   ou no disco, DASH -> `ffmpeg -c:a copy` (sem recodificar), tags da Tidal (ARTIST por
   faixa, ALBUMARTIST, TRACKNUMBER/TOTAL, DATE, ISRC, COMMENT `source: tidal <tier>; mix
@@ -582,7 +587,7 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   sessão PKCE copiada para `~/.secrets/tidal-pkce.json` da VM (o refresh NÃO rotaciona
   o token, as duas cópias convivem; testado). Na VM (hostname `extractlab`) o script
   reconhece a máquina e NÃO precisa de flag nem de variável: `uv run --with tidalapi
-  --with mutagen python3 scripts/curator/tidal_mix_dl.py <link> --playlist <pasta>` baixa no
+  --with mutagen --with numpy python3 scripts/curator/tidal_mix_dl.py <link> --playlist <pasta>` baixa no
   staging `~/tidal-out` (~3,5 MB/s), abre o túnel 16333 sozinho se estiver caído, lista por
   SSH os FLAC `[tidal]` já na cmr-auto (cobre a janela app-fechado em que o Qdrant ainda
   não conhece a faixa) e ABORTA antes de baixar se a cmr-auto não responder. Cada faixa vai
@@ -593,7 +598,13 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   link reenvia (`JÁ BAIXADA, reenviando`). `TIDAL_PUSH=off`/`--no-push` desligam o envio,
   `TIDAL_PUSH=<host:dir>` troca o destino; `TIDAL_MUSIC_ROOT`/`TIDAL_QDRANT` seguem
   valendo por cima do padrão (lógica em `vm_defaults`, teste em `test_tidal_mix_dl.py`,
-  rodar via `uv run --with tidalapi --with mutagen`). A página do CEO (fila de links,
+  rodar via `uv run --with tidalapi --with mutagen --with numpy`). **Portão de qualidade
+  (15/10)**: depois do remux e antes do rename final, o corte espectral (`lossless_gate.py`)
+  mede a faixa; lossy por dentro = `RECUSADA (lossy por dentro, corte X,X kHz)`, arquivo
+  apagado, nada enviado, entra em `recusadas` do `mix_<id>.json` e no cache
+  `~/tidal-out/recusadas.json` (chave = id da faixa; `JÁ RECUSADA` nas próximas rodadas; apagar a
+  entrada reavalia). Recusada NÃO é falha (rc 0; `rc=2` segue só para "não enviadas"); o resumo
+  da fila mostra "n recusadas". A página do CEO (fila de links,
   `scripts/curator/tidal_fila.py`, tmux `telemetria` na VM, Funnel :10000, token em
   `~/.secrets/telemetria-token.txt`) chama ESSE script sem flag: cada link colado lá
   termina em `~/Music` da cmr-auto; estado `parcial` = alguma faixa não chegou, colar o
@@ -602,7 +613,7 @@ Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
   fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
   `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
 - **Fila: como subir e o que ela expõe (desde 0.2.91, 14/10)**. A fila importa o tidalapi para a
-  busca: subir SEMPRE com `uv run --with tidalapi --with mutagen python3
+  busca: subir SEMPRE com `uv run --with tidalapi --with mutagen --with numpy python3
   /home/opc/rustify-player/scripts/curator/tidal_fila.py 2>&1 | tee -a ~/tidal-out/logs/tidal_fila.log`
   dentro do tmux `telemetria` (sessão com zsh; Ctrl+C e rodar de novo no mesmo pane). Com
   `python3` puro a fila sobe, mas a busca responde 503. Rotas sob `/<token>/api/`: `fila`
