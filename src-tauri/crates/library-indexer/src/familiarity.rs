@@ -17,14 +17,16 @@
 //!   descoberta ([`MIX_KNOWN_RUN`] conhecidas por descoberta). O padrão é
 //!   ancorado num `slot` que o frontend mantém por rodada de rádio, por isso
 //!   sobrevive ao re-fetch pós-pulo (não recomeça em "conhecida, conhecida").
-//! - [`never_ends`]: faixa servida pelo motor [`NEVER_ENDS_MIN_ATTEMPTS`]
-//!   vezes ou mais, nunca ouvida até o fim em todo o histórico e sem like,
-//!   sai das candidatas de autoplay e station. Ao contrário do negativo do
+//! - [`never_ends`]: faixa pulada CEDO (escuta abaixo de
+//!   [`NEVER_ENDS_MAX_LISTEN`]) [`NEVER_ENDS_MIN_ATTEMPTS`] vezes ou mais
+//!   quando o motor a serviu, nunca ouvida até o fim em todo o histórico e
+//!   sem like, sai das candidatas de autoplay e station. Pulo aos 95% não é
+//!   rejeição: não conta. Ao contrário do negativo do
 //!   `behavioral_signals` (decai em ~2 semanas), este filtro não expira:
 //!   sai só quando a faixa for ouvida até o fim (por outra via) ou curtida.
 
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Faixa "conhecida": ouvida até o fim pelo menos esta quantidade de vezes
 /// (qualquer origem, todo o histórico), ou curtida. Na forense, a faixa de
@@ -38,6 +40,11 @@ pub const MIX_KNOWN_RUN: usize = 2;
 /// Faixa servida pelo motor (autoplay/station) pelo menos esta quantidade de
 /// vezes, com zero escutas até o fim e sem like, sai das candidatas.
 pub const NEVER_ENDS_MIN_ATTEMPTS: u32 = 3;
+
+/// Tentativa sem fim só conta para o nunca-termina quando a escuta ficou
+/// abaixo desta fração da faixa (decisão do CTO, 15/10/2026): pular aos 95%
+/// é quase um fim, pular no segundo 1 é rejeição.
+pub const NEVER_ENDS_MAX_LISTEN: f64 = 0.5;
 
 /// Origens que contam como "o motor serviu esta faixa".
 pub const MOTOR_ORIGINS: &[&str] = &["autoplay", "station"];
@@ -73,12 +80,41 @@ pub fn counts_as_motor_attempt(p: &Value) -> bool {
         && !is_unplayable_suspect(p)
 }
 
+/// Fração ouvida do evento. `listen_pct` gravado vale; sem ele, deriva de
+/// `end_position_ms / duration_ms`. Duração 0 = desconhecida mesmo com
+/// `listen_pct` (os builders gravam 0.0 quando não há duração, e isso não é
+/// "ouviu 0%"). Desconhecida = `None`.
+pub fn listen_fraction(p: &Value) -> Option<f64> {
+    let dur = p["duration_ms"].as_f64();
+    if dur == Some(0.0) {
+        return None;
+    }
+    if let Some(lp) = p["listen_pct"].as_f64() {
+        return Some(lp);
+    }
+    match (p["end_position_ms"].as_f64(), dur) {
+        (Some(end), Some(d)) if d > 0.0 => Some(end / d),
+        _ => None,
+    }
+}
+
+/// Tentativa do motor que conta para o nunca-termina: pulo com escuta
+/// conhecida abaixo de [`NEVER_ENDS_MAX_LISTEN`]. Escuta desconhecida não
+/// conta (o filtro não expira: sem evidência, não condena).
+pub fn counts_as_early_skip(p: &Value) -> bool {
+    is_skip(p)
+        && counts_as_motor_attempt(p)
+        && listen_fraction(p).is_some_and(|f| f < NEVER_ENDS_MAX_LISTEN)
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TrackFamiliarity {
     /// Vezes ouvida até o fim (qualquer origem, todo o histórico).
     pub ended: u32,
     /// Vezes servida pelo autoplay/station (aceite ou pulo).
     pub motor_attempts: u32,
+    /// Das `motor_attempts`, quantas foram pulo cedo ([`counts_as_early_skip`]).
+    pub early_skips: u32,
 }
 
 /// "Conhecida" para a mistura: ouvida até o fim [`KNOWN_MIN_ENDED`]+ vezes ou curtida.
@@ -88,15 +124,36 @@ pub fn is_known(f: TrackFamiliarity, liked: bool) -> bool {
 
 /// Faixa que o motor insiste em servir e que nunca termina (ver doc do módulo).
 pub fn never_ends(f: TrackFamiliarity, liked: bool) -> bool {
-    !liked && f.ended == 0 && f.motor_attempts >= NEVER_ENDS_MIN_ATTEMPTS
+    !liked && f.ended == 0 && f.early_skips >= NEVER_ENDS_MIN_ATTEMPTS
 }
 
 /// Contagens por faixa, derivadas de `play_events`. Chave sempre u64: os
 /// eventos legados com `track_id` em texto (11, `search_click`/`queue_add`)
 /// ficam fora.
+///
+/// Dedup por id do ponto (`seen`): o mesmo evento pode chegar duas vezes —
+/// reenvio de lote do S24 (`insert_synced_event` é idempotente no banco, mas
+/// a observação incremental somaria de novo) e evento gravado durante a
+/// montagem, que aparece no scroll E na observação. Evento sem id (fixtures,
+/// [`Self::observe`]) sempre conta.
 #[derive(Debug, Clone, Default)]
 pub struct FamiliarityIndex {
     by_track: HashMap<u64, TrackFamiliarity>,
+    seen: HashSet<String>,
+}
+
+/// Forma canônica do id de ponto do Qdrant: UUID em minúsculas com hífens
+/// (como o Qdrant devolve no scroll), inteiro em decimal. O UUID que chega do
+/// S24 pode vir em outra grafia e precisa bater com o do scroll.
+pub fn canonical_point_id(id: &Value) -> Option<String> {
+    if let Some(n) = id.as_u64() {
+        return Some(n.to_string());
+    }
+    let s = id.as_str()?;
+    Some(match uuid::Uuid::parse_str(s) {
+        Ok(u) => u.hyphenated().to_string(),
+        Err(_) => s.to_string(),
+    })
 }
 
 impl FamiliarityIndex {
@@ -108,8 +165,7 @@ impl FamiliarityIndex {
         idx
     }
 
-    /// Incorpora um evento (montagem inicial e atualização incremental quando
-    /// um evento novo é gravado).
+    /// Incorpora um evento sem id de ponto (sem dedup).
     pub fn observe(&mut self, p: &Value) {
         let Some(tid) = p["track_id"].as_u64() else {
             return;
@@ -126,6 +182,22 @@ impl FamiliarityIndex {
         if attempt {
             e.motor_attempts += 1;
         }
+        if counts_as_early_skip(p) {
+            e.early_skips += 1;
+        }
+    }
+
+    /// Incorpora um evento identificado pelo id do ponto (montagem e
+    /// atualização incremental). Id já visto = ignorado; devolve se contou.
+    /// Id ausente/ilegível cai no [`Self::observe`] sem dedup.
+    pub fn observe_point(&mut self, id: &Value, p: &Value) -> bool {
+        if let Some(key) = canonical_point_id(id) {
+            if !self.seen.insert(key) {
+                return false;
+            }
+        }
+        self.observe(p);
+        true
     }
 
     pub fn get(&self, track_id: u64) -> TrackFamiliarity {
@@ -138,14 +210,6 @@ impl FamiliarityIndex {
 
     pub fn is_empty(&self) -> bool {
         self.by_track.is_empty()
-    }
-
-    /// Faixas que hoje cairiam no filtro de nunca-termina (sem olhar like).
-    pub fn never_ends_candidates(&self) -> impl Iterator<Item = u64> + '_ {
-        self.by_track
-            .iter()
-            .filter(|(_, f)| never_ends(**f, false))
-            .map(|(id, _)| *id)
     }
 }
 
@@ -236,6 +300,11 @@ mod tests {
                 exp["motor_attempts"].as_u64().unwrap() as u32,
                 "motor_attempts de {id}"
             );
+            assert_eq!(
+                f.early_skips,
+                exp["early_skips"].as_u64().unwrap() as u32,
+                "early_skips de {id}"
+            );
             assert_eq!(is_known(f, lk), exp["known"].as_bool().unwrap(), "known de {id}");
             assert_eq!(never_ends(f, lk), exp["never_ends"].as_bool().unwrap(), "never_ends de {id}");
         }
@@ -270,18 +339,64 @@ mod tests {
     }
 
     #[test]
-    fn nunca_termina_exige_tres_tentativas_zero_fins_e_sem_like() {
-        let f = |ended, motor_attempts| TrackFamiliarity { ended, motor_attempts };
-        assert!(never_ends(f(0, 3), false));
-        assert!(!never_ends(f(0, 2), false), "duas tentativas ainda não bastam");
-        assert!(!never_ends(f(1, 9), false), "uma escuta até o fim tira do filtro");
-        assert!(!never_ends(f(0, 9), true), "like tira do filtro");
+    fn nunca_termina_exige_tres_pulos_cedo_zero_fins_e_sem_like() {
+        let f = |ended, motor_attempts, early_skips| TrackFamiliarity { ended, motor_attempts, early_skips };
+        assert!(never_ends(f(0, 3, 3), false));
+        assert!(!never_ends(f(0, 3, 2), false), "dois pulos cedo ainda não bastam");
+        assert!(!never_ends(f(0, 9, 0), false), "pulos tardios não condenam");
+        assert!(!never_ends(f(1, 9, 9), false), "uma escuta até o fim tira do filtro");
+        assert!(!never_ends(f(0, 9, 9), true), "like tira do filtro");
+    }
+
+    #[test]
+    fn pulo_aos_95_nao_conta_e_pulo_no_segundo_1_conta() {
+        let ev = |pct: f64| json!({"event_type": "track_skipped", "track_id": 1, "origin": "autoplay",
+                                   "end_position_ms": (pct * 200_000.0) as u64, "duration_ms": 200_000,
+                                   "listen_pct": pct});
+        assert!(!counts_as_early_skip(&ev(0.95)));
+        assert!(!counts_as_early_skip(&ev(0.5)), "limite é estrito");
+        assert!(counts_as_early_skip(&ev(0.005)));
+        let idx = FamiliarityIndex::from_payloads([&ev(0.95), &ev(0.95), &ev(0.95)].into_iter());
+        assert_eq!(idx.get(1).motor_attempts, 3);
+        assert!(!never_ends(idx.get(1), false));
+    }
+
+    #[test]
+    fn escuta_desconhecida_ou_duracao_zero_nao_conta_como_pulo_cedo() {
+        let sem_nada = json!({"event_type": "track_skipped", "track_id": 1, "origin": "autoplay"});
+        let dur_zero = json!({"event_type": "track_skipped", "track_id": 1, "origin": "station",
+                              "end_position_ms": 0, "duration_ms": 0, "listen_pct": 0.0});
+        let derivada = json!({"event_type": "track_skipped", "track_id": 1, "origin": "autoplay",
+                              "end_position_ms": 10_000, "duration_ms": 200_000});
+        assert_eq!(listen_fraction(&sem_nada), None);
+        assert_eq!(listen_fraction(&dur_zero), None);
+        assert_eq!(listen_fraction(&derivada), Some(0.05));
+        assert!(!counts_as_early_skip(&sem_nada));
+        assert!(!counts_as_early_skip(&dur_zero));
+        assert!(counts_as_early_skip(&derivada));
+    }
+
+    #[test]
+    fn mesmo_ponto_observado_duas_vezes_conta_uma() {
+        let ev = json!({"event_type": "track_ended", "track_id": 9, "origin": "autoplay"});
+        let mut idx = FamiliarityIndex::default();
+        assert!(idx.observe_point(&json!("6F9619FF-8B86-D011-B42D-00CF4FC964FF"), &ev));
+        // Reenvio do S24 com o mesmo uuid em outra grafia (o scroll devolve
+        // minúsculas): não soma de novo.
+        assert!(!idx.observe_point(&json!("6f9619ff-8b86-d011-b42d-00cf4fc964ff"), &ev));
+        assert!(idx.observe_point(&json!(42u64), &ev));
+        assert!(!idx.observe_point(&json!(42u64), &ev));
+        // Sem id: sem dedup.
+        assert!(idx.observe_point(&Value::Null, &ev));
+        assert_eq!(idx.get(9).ended, 3);
+        assert_eq!(idx.get(9).motor_attempts, 3);
     }
 
     #[test]
     fn pulo_zero_ms_do_s24_nao_conta_mas_do_desktop_conta() {
         let s24 = json!({"event_type": "track_skipped", "track_id": 1, "origin": "autoplay",
-                         "end_position_ms": 0, "device_id": "s24"});
+                         "end_position_ms": 0, "duration_ms": 200_000, "listen_pct": 0.0,
+                         "device_id": "s24"});
         let desk = json!({"event_type": "track_skipped", "track_id": 1, "origin": "autoplay",
                           "end_position_ms": 0, "device_id": "cmr-auto"});
         let s24_tocou = json!({"event_type": "track_skipped", "track_id": 1, "origin": "station",
@@ -290,12 +405,13 @@ mod tests {
         assert!(counts_as_motor_attempt(&desk));
         assert!(counts_as_motor_attempt(&s24_tocou));
         let idx = FamiliarityIndex::from_payloads([&s24, &s24, &s24, &s24]);
+        assert_eq!(idx.get(1).early_skips, 0);
         assert!(!never_ends(idx.get(1), false), "quatro pulos 0 ms do S24 não condenam a faixa");
     }
 
     #[test]
     fn conhecida_por_tres_fins_ou_like() {
-        let f = |ended| TrackFamiliarity { ended, motor_attempts: 0 };
+        let f = |ended| TrackFamiliarity { ended, motor_attempts: 0, early_skips: 0 };
         assert!(!is_known(f(2), false));
         assert!(is_known(f(3), false));
         assert!(is_known(f(0), true));

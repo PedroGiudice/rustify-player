@@ -496,18 +496,16 @@ fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> V
 }
 
 /// Ids, entre `ids`, que o filtro de nunca-termina tira das candidatas
-/// (`familiarity::never_ends`: servida 3+ vezes pelo motor, nunca ouvida ate
-/// o fim, sem like). Busca likes SO dos suspeitos (batch pequeno, e so quando
-/// ha suspeito). Qualquer falha (indice ou likes) devolve vazio: o filtro
-/// degrada pra "nao filtra", nunca pra "tira faixa curtida".
+/// (`familiarity::never_ends`: pulada cedo 3+ vezes quando o motor a serviu,
+/// nunca ouvida ate o fim, sem like). Busca likes SO dos suspeitos (batch
+/// pequeno, e so quando ha suspeito). Indice ainda nao montado ou falha nos
+/// likes devolve vazio: o filtro degrada pra "nao filtra", nunca pra "tira
+/// faixa curtida".
 fn never_ending_ids(lib: &Library, ids: &[u64]) -> std::collections::HashSet<u64> {
     let client = lib.handle.client();
-    let fam = match client.familiarity() {
-        Ok(f) => f,
-        Err(e) => {
-            tracing::warn!(error = %e, "familiarity indisponivel — sem filtro de nunca-termina");
-            return Default::default();
-        }
+    let Some(fam) = client.familiarity() else {
+        tracing::debug!("familiarity ainda nao montada — sem filtro de nunca-termina");
+        return Default::default();
     };
     let suspects: Vec<u64> = ids
         .iter()
@@ -584,6 +582,36 @@ fn autoplay_mix(
     ranked
 }
 
+/// Camada 2 do autoplay: tira metadata-lixo e nunca-termina (`never`, ja
+/// com os likes considerados) e corta em `lim`, mantendo a ordem do
+/// recommend.
+fn filter_fallback_candidates(
+    tracks: Vec<Track>,
+    never: &std::collections::HashSet<u64>,
+    lim: usize,
+) -> Vec<Track> {
+    let mut out: Vec<Track> = tracks
+        .into_iter()
+        .filter(|t| !rerank::is_junk_artist(t.artist_name.as_deref()) && !never.contains(&t.id))
+        .collect();
+    out.truncate(lim);
+    out
+}
+
+/// Camada 3 do autoplay: shuffle sem as faixas de `exclude`. Se o exclude
+/// cobrir tudo o que veio, devolve o shuffle cru: repetir uma faixa e melhor
+/// que o radio parar.
+fn shuffle_excluding(tracks: Vec<Track>, exclude: &[u64], lim: usize) -> Vec<Track> {
+    let excl: std::collections::HashSet<u64> = exclude.iter().copied().collect();
+    let (mut keep, rest): (Vec<Track>, Vec<Track>) =
+        tracks.into_iter().partition(|t| !excl.contains(&t.id));
+    if keep.is_empty() {
+        keep = rest;
+    }
+    keep.truncate(lim);
+    keep
+}
+
 #[tauri::command]
 fn lib_autoplay_next(
     lib: State<Library>,
@@ -626,7 +654,8 @@ fn lib_autoplay_next(
     // best_score o score e o MELHOR match individual, repeticao nao muda o
     // max. O resultado do recommend e tratado como RANK (nunca valor) e
     // re-rankeado por energy/valence/mood_tags/genre contra o seed
-    // (rerank_by_seed_vibe_pools), com cap de 2 por artista.
+    // (rerank_by_seed_vibe_pools_scored), depois autoplay_mix (familiaridade
+    // e cap de 2 por artista).
     //
     // exclude_ids segue como filtro duro (must_not has_id), NAO como
     // negative — negatives penalizam candidatos proximos de skips fortes.
@@ -691,12 +720,9 @@ fn lib_autoplay_next(
                     // (filtro de nunca-termina + mistura 2:1) e cap de 2 por
                     // artista — ver autoplay_mix.
                     let out = rerank_by_seed_vibe_pools_scored(&lib, track_id, pools);
-                    let fam = client
-                        .familiarity()
-                        .map_err(|e| {
-                            tracing::warn!(error = %e, "autoplay: familiarity indisponivel — sem mistura");
-                        })
-                        .ok();
+                    // Nunca espera I/O: sem indice montado ainda, None e a
+                    // mistura cai no comportamento anterior.
+                    let fam = client.familiarity();
 
                     // Variedade entre chamadas sem destruir o re-rank:
                     // sorteio ponderado geometrico (r=0.7) sobre o topo de
@@ -732,16 +758,29 @@ fn lib_autoplay_next(
         }
     }
 
-    // Layer 2: Similar via Qdrant recommend
-    let recs = lib.handle.autoplay_next(track_id, &exclude_ids, lim).map_err(err)?;
+    // Layer 2: Similar via Qdrant recommend. Chega aqui quando a camada 1
+    // falhou OU quando lixo + nunca-termina esvaziaram as candidatas dela —
+    // por isso os mesmos dois filtros valem aqui (over-fetch pra compensar).
+    // Erro do recommend nao derruba: cai no shuffle.
+    let recs = lib
+        .handle
+        .autoplay_next(track_id, &exclude_ids, lim.saturating_mul(4).max(lim + 10))
+        .unwrap_or_else(|e| {
+            tracing::warn!(track_id, error = %e, "autoplay: camada 2 falhou");
+            Vec::new()
+        });
     if !recs.is_empty() {
         let mut tracks = Vec::new();
         for (rec_id, _score) in recs {
-            if let Ok(Some(mut t)) = lib.handle.track(rec_id) {
-                if let Some(rel) = &t.album_cover_path {
-                    t.album_cover_path = Some(lib.cache_dir.join(rel));
-                }
+            if let Ok(Some(t)) = lib.handle.track(rec_id) {
                 tracks.push(t);
+            }
+        }
+        let never = never_ending_ids(&lib, &tracks.iter().map(|t| t.id).collect::<Vec<_>>());
+        let mut tracks = filter_fallback_candidates(tracks, &never, lim);
+        for t in &mut tracks {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
             }
         }
         if !tracks.is_empty() {
@@ -749,14 +788,17 @@ fn lib_autoplay_next(
         }
     }
 
-    // Layer 3: Shuffle fallback
+    // Layer 3: Shuffle fallback, respeitando exclude_ids (over-fetch do
+    // tamanho do exclude); se o exclude cobrir tudo, o shuffle cru — o radio
+    // nunca fica sem proxima faixa.
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    let mut tracks = lib.handle
-        .shuffle(TrackFilter::default(), seed, lim)
+    let shuffled = lib.handle
+        .shuffle(TrackFilter::default(), seed, lim + exclude_ids.len())
         .map_err(err)?;
+    let mut tracks = shuffle_excluding(shuffled, &exclude_ids, lim);
     for t in &mut tracks {
         if let Some(rel) = &t.album_cover_path {
             t.album_cover_path = Some(lib.cache_dir.join(rel));
@@ -3168,13 +3210,14 @@ pub fn run() {
             maybe_seed_default_station(&library);
             // Aquece o indice de familiaridade (varre todo o play_events,
             // ~120 ms) fora do caminho do primeiro autoplay. O clone do
-            // client compartilha o cache. Falha aqui so adia a montagem.
+            // client compartilha o cache. Falha aqui so adia a montagem
+            // (o autoplay tenta de novo em fundo, com backoff).
             {
                 let client = library.handle.client().clone();
                 std::thread::Builder::new()
                     .name("familiarity-warm".into())
                     .spawn(move || {
-                        if let Err(e) = client.familiarity() {
+                        if let Err(e) = client.rebuild_familiarity() {
                             tracing::warn!(error = %e, "familiarity: aquecimento falhou");
                         }
                     })
@@ -4072,34 +4115,34 @@ fn generate_station_batch(
                 // de lib_autoplay_next: combined_negatives -> so globais ->
                 // sem negatives (== comportamento pre-Fase-2) antes de
                 // desistir daquele seed. exclude_ids (hard filter) e
-                // constante nas 3 tentativas.
-                let recs = client
-                    .recommend(&[sid], &combined_negatives, exclude_ids, per_seed_fetch)
-                    .ok()
-                    .filter(|r| !r.is_empty())
-                    .or_else(|| {
-                        client
-                            .recommend(&[sid], &global_negatives, exclude_ids, per_seed_fetch)
-                            .ok()
-                            .filter(|r| !r.is_empty())
-                    })
-                    .or_else(|| {
-                        client
-                            .recommend(&[sid], &[], exclude_ids, per_seed_fetch)
-                            .ok()
-                    })
-                    .unwrap_or_default();
-                // Resolve as tracks preservando a ordem (= rank MERT).
-                let mut cands: Vec<Track> = Vec::new();
-                for (track_id, _score) in recs {
-                    if let Ok(Some(t)) = lib.handle.track(track_id) {
-                        cands.push(t);
-                    }
-                }
-                // Faixa que o motor insiste em servir e nunca termina sai
-                // ANTES do re-rank, pra nao gastar vaga do per_seed.
-                let never = never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>());
-                cands.retain(|t| !never.contains(&t.id));
+                // constante nas 3 tentativas. A tentativa so vale se sobrar
+                // candidata DEPOIS do filtro de nunca-termina (faixa que o
+                // motor insiste em servir e nunca termina sai ANTES do
+                // re-rank, pra nao gastar vaga do per_seed); se ele zerar,
+                // segue pra proxima camada.
+                let cands = first_nonempty_layer(
+                    [
+                        combined_negatives.as_slice(),
+                        global_negatives.as_slice(),
+                        &[],
+                    ],
+                    |negatives| {
+                        let recs = client
+                            .recommend(&[sid], negatives, exclude_ids, per_seed_fetch)
+                            .unwrap_or_default();
+                        // Resolve as tracks preservando a ordem (= rank MERT).
+                        let mut cands: Vec<Track> = Vec::new();
+                        for (track_id, _score) in recs {
+                            if let Ok(Some(t)) = lib.handle.track(track_id) {
+                                cands.push(t);
+                            }
+                        }
+                        let never =
+                            never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>());
+                        cands.retain(|t| !never.contains(&t.id));
+                        cands
+                    },
+                );
                 // Uma chamada batch de enrichments por seed e aceitavel —
                 // o Qdrant e sidecar localhost.
                 let ranked = rerank_by_seed_vibe(lib, sid, cands);
@@ -4136,43 +4179,80 @@ fn generate_station_batch(
             // nao e vetorial, negativos reais nao tem como penalizar. Only
             // exclude_ids (hard filter, client-side pos-scroll). Over-fetch
             // proporcional ao exclude pra manter a chance de bater `limit`
-            // apos o filtro — com exclude vazio (wrapper sem sessao) e
-            // identico ao comportamento pre-Fase-2 (fetch == limit).
-            let ids = match client.mood_search_enrichments(&filters, limit + exclude_ids.len()) {
-                Ok(v) => v,
-                Err(_) => return Vec::new(),
-            };
+            // apos o filtro; o filtro de nunca-termina (paridade com autoplay
+            // e station seed) e o de genero tambem cortam, entao se o lote
+            // sair curto e o scroll ainda tinha mais, busca de novo com o
+            // dobro (ate MOOD_FETCH_ROUNDS). Com exclude vazio e nada
+            // filtrado e identico ao comportamento pre-Fase-2.
+            const MOOD_FETCH_ROUNDS: usize = 4;
             let exclude_set: std::collections::HashSet<u64> =
                 exclude_ids.iter().copied().collect();
-            // Filtro de nunca-termina (paridade com autoplay e station seed).
-            let never = never_ending_ids(lib, &ids);
+            let mut fetch = limit + exclude_ids.len();
             let mut tracks = Vec::new();
-            for track_id in ids {
-                if exclude_set.contains(&track_id) || never.contains(&track_id) {
-                    continue;
+            for _ in 0..MOOD_FETCH_ROUNDS {
+                let ids = match client.mood_search_enrichments(&filters, fetch) {
+                    Ok(v) => v,
+                    Err(_) => return Vec::new(),
+                };
+                let exhausted = ids.len() < fetch;
+                let never = never_ending_ids(lib, &ids);
+                tracks = mood_tracks(lib, &ids, &exclude_set, &never, filters.genre.as_deref(), limit);
+                if tracks.len() >= limit || exhausted {
+                    break;
                 }
-                if let Ok(Some(mut t)) = lib.handle.track(track_id) {
-                    if let Some(rel) = &t.album_cover_path {
-                        t.album_cover_path = Some(lib.cache_dir.join(rel));
-                    }
-                    // Mesmo filtro client-side do lib_mood_search: o scroll de
-                    // enrichments nao conhece genre (payload de rustify_tracks) —
-                    // sem isto, station mood com termo de genero ignorava o genero.
-                    if let Some(ref genre_filter) = filters.genre {
-                        match &t.genre_name {
-                            Some(g) if g == genre_filter => {}
-                            _ => continue,
-                        }
-                    }
-                    tracks.push(t);
-                    if tracks.len() >= limit {
-                        break;
-                    }
-                }
+                fetch *= 2;
             }
             tracks
         }
     }
+}
+
+/// Primeira camada (em ordem) cujas candidatas, ja filtradas por `fetch`,
+/// nao saem vazias. Todas vazias = vazio.
+fn first_nonempty_layer<L, T>(layers: impl IntoIterator<Item = L>, mut fetch: impl FnMut(L) -> Vec<T>) -> Vec<T> {
+    for layer in layers {
+        let out = fetch(layer);
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    Vec::new()
+}
+
+/// Lote da station de mood a partir dos ids do scroll de enrichments, na
+/// ordem deles: sem exclude, sem nunca-termina, so o genero pedido (o scroll
+/// nao conhece genre — payload de rustify_tracks), ate `limit`.
+fn mood_tracks(
+    lib: &Library,
+    ids: &[u64],
+    exclude: &std::collections::HashSet<u64>,
+    never: &std::collections::HashSet<u64>,
+    genre: Option<&str>,
+    limit: usize,
+) -> Vec<Track> {
+    let mut tracks = Vec::new();
+    for &track_id in ids {
+        if exclude.contains(&track_id) || never.contains(&track_id) {
+            continue;
+        }
+        if let Ok(Some(mut t)) = lib.handle.track(track_id) {
+            if let Some(rel) = &t.album_cover_path {
+                t.album_cover_path = Some(lib.cache_dir.join(rel));
+            }
+            // Mesmo filtro client-side do lib_mood_search: sem isto,
+            // station mood com termo de genero ignorava o genero.
+            if let Some(g) = genre {
+                if t.genre_name.as_deref() != Some(g) {
+                    continue;
+                }
+            }
+            tracks.push(t);
+            if tracks.len() >= limit {
+                break;
+            }
+        }
+    }
+    tracks
 }
 
 /// Resolve a contagem de artistas já presentes na fila (por track IDs) pra
@@ -5105,7 +5185,8 @@ fg-8: '#404040'
             }
             for _ in 0..served {
                 evs.push(serde_json::json!({"event_type": "track_skipped", "track_id": id,
-                    "origin": "autoplay", "end_position_ms": 1500, "device_id": "cmr-auto"}));
+                    "origin": "autoplay", "end_position_ms": 1500, "duration_ms": 200_000,
+                    "listen_pct": 0.0075, "device_id": "cmr-auto"}));
             }
         }
         familiarity::FamiliarityIndex::from_payloads(evs.iter())
@@ -5164,5 +5245,57 @@ fg-8: '#404040'
         assert_eq!(autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), 0, 10, 3).len(), 2);
         // Sem indice: comportamento anterior (cap + sorteio, sem mistura).
         assert_eq!(autoplay_mix(scored, None, None, 0, 10, 3).len(), 2);
+    }
+
+    #[test]
+    fn autoplay_mix_nao_tira_faixa_pulada_perto_do_fim() {
+        // 3 pulos aos 95% (servida pelo motor, nunca chegou ao track_ended):
+        // nao e rejeicao, fica nas candidatas.
+        let evs: Vec<serde_json::Value> = (0..3)
+            .map(|_| serde_json::json!({"event_type": "track_skipped", "track_id": 8,
+                "origin": "autoplay", "end_position_ms": 190_000, "duration_ms": 200_000,
+                "listen_pct": 0.95, "device_id": "cmr-auto"}))
+            .collect();
+        let fam = familiarity::FamiliarityIndex::from_payloads(evs.iter());
+        let scored = vec![(0.9, mix_track(8, "a8"))];
+        let out = autoplay_mix(scored, Some(&Default::default()), Some(&fam), 0, 5, 1);
+        assert_eq!(ids(&out), vec![8]);
+    }
+
+    #[test]
+    fn camada_2_tira_lixo_e_nunca_termina_e_corta_no_limite() {
+        let tracks = vec![
+            mix_track(1, "www.ftpdjemilio.com"),
+            mix_track(2, "a2"),
+            mix_track(3, "a3"),
+            mix_track(4, "a4"),
+            mix_track(5, "a5"),
+        ];
+        let never: std::collections::HashSet<u64> = [3].into_iter().collect();
+        assert_eq!(ids(&filter_fallback_candidates(tracks.clone(), &never, 2)), vec![2, 4]);
+        assert_eq!(ids(&filter_fallback_candidates(tracks, &never, 10)), vec![2, 4, 5]);
+    }
+
+    #[test]
+    fn camada_3_respeita_exclude_mas_nunca_fica_vazia() {
+        let tracks: Vec<Track> = (1..=4u64).map(|i| mix_track(i, &format!("a{i}"))).collect();
+        assert_eq!(ids(&shuffle_excluding(tracks.clone(), &[1, 3], 5)), vec![2, 4]);
+        assert_eq!(ids(&shuffle_excluding(tracks.clone(), &[1, 3], 1)), vec![2]);
+        // Exclude cobre tudo: shuffle cru, o radio segue tocando.
+        assert_eq!(ids(&shuffle_excluding(tracks, &[1, 2, 3, 4], 2)), vec![1, 2]);
+    }
+
+    #[test]
+    fn station_seed_cai_para_a_proxima_camada_quando_o_filtro_zera() {
+        // Camada 1 so tem faixa que nunca termina (filtrada -> vazio),
+        // camada 2 tem candidata: vale a 2.
+        let mut chamadas = Vec::new();
+        let out = first_nonempty_layer([1u8, 2, 3], |l| {
+            chamadas.push(l);
+            if l == 1 { Vec::<u64>::new() } else { vec![u64::from(l) * 10] }
+        });
+        assert_eq!(out, vec![20]);
+        assert_eq!(chamadas, vec![1, 2], "para na primeira camada com candidata");
+        assert!(first_nonempty_layer([1u8, 2], |_| Vec::<u64>::new()).is_empty());
     }
 }

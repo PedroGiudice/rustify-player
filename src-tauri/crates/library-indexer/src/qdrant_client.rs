@@ -329,15 +329,58 @@ pub struct QdrantClient {
     /// Cache da familiaridade por faixa (ver [`Self::familiarity`]).
     /// Compartilhado entre clones: todos os caminhos de escrita de evento
     /// passam por este client e atualizam o mesmo índice.
-    familiarity: Arc<Mutex<Option<FamiliarityCache>>>,
+    familiarity: Arc<Mutex<FamiliarityState>>,
 }
 
-/// Índice de familiaridade montado de `play_events` + quando foi montado.
-#[derive(Debug)]
-struct FamiliarityCache {
-    built_at: Instant,
-    index: Arc<FamiliarityIndex>,
+/// Estado do cache de familiaridade. O lock protege SÓ este estado: nenhuma
+/// I/O acontece com ele preso (a varredura do Qdrant roda fora, ver
+/// [`QdrantClient::familiarity`]).
+#[derive(Debug, Default)]
+struct FamiliarityState {
+    /// Último índice montado (servido mesmo vencido enquanto remonta).
+    index: Option<Arc<FamiliarityIndex>>,
+    built_at: Option<Instant>,
+    /// Invalidação explícita (eventos mudaram de faixa): remontar já.
+    stale: bool,
+    /// Há uma montagem em voo (no máximo uma por vez).
+    building: bool,
+    /// Sobe a cada invalidação: montagem iniciada antes dela é descartada.
+    generation: u64,
+    /// Eventos gravados durante a montagem em voo (id do ponto, payload):
+    /// aplicados no índice novo ao fim dela, com dedup por id.
+    pending: Vec<(Value, Value)>,
+    /// Última montagem que falhou: segura novas tentativas por
+    /// [`FAMILIARITY_RETRY_BACKOFF`].
+    last_failure: Option<Instant>,
+    /// Montagens iniciadas (diagnóstico e testes).
+    builds_started: u64,
 }
+
+impl FamiliarityState {
+    fn is_fresh(&self) -> bool {
+        self.index.is_some()
+            && !self.stale
+            && self.built_at.is_some_and(|t| t.elapsed() < FAMILIARITY_TTL)
+    }
+
+    fn in_backoff(&self) -> bool {
+        self.last_failure
+            .is_some_and(|t| t.elapsed() < FAMILIARITY_RETRY_BACKOFF)
+    }
+
+    /// Marca o início de uma montagem e devolve a geração dela.
+    fn begin_build(&mut self) -> u64 {
+        self.building = true;
+        self.builds_started += 1;
+        self.pending.clear();
+        self.generation
+    }
+}
+
+/// Depois de uma montagem que falhou (Qdrant fora), espera este tempo antes
+/// de tentar de novo, servindo o índice velho (ou nenhum) nesse meio tempo.
+/// Sem isto, TTL vencido + Qdrant falhando refaria a varredura a cada pick.
+const FAMILIARITY_RETRY_BACKOFF: Duration = Duration::from_secs(60);
 
 /// Rede de segurança do cache: remonta do zero depois deste tempo. Cobre o
 /// que o incremental não vê (escrita por script fora do app, replay de lote
@@ -359,7 +402,7 @@ impl QdrantClient {
             agent,
             base_url: base_url.into().trim_end_matches('/').to_string(),
             provenance: None,
-            familiarity: Arc::new(Mutex::new(None)),
+            familiarity: Arc::new(Mutex::new(FamiliarityState::default())),
         }
     }
 
@@ -1389,7 +1432,7 @@ impl QdrantClient {
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant insert play_event: {e}")))?;
 
-        self.observe_familiarity(&body["points"][0]["payload"]);
+        self.observe_familiarity(&body["points"][0]["id"], &body["points"][0]["payload"]);
         Ok(())
     }
 
@@ -1414,7 +1457,7 @@ impl QdrantClient {
             ))
             .send_json(&body)
             .map_err(|e| IndexerError::Embedding(format!("qdrant insert event: {e}")))?;
-        self.observe_familiarity(payload);
+        self.observe_familiarity(&body["points"][0]["id"], payload);
         Ok(())
     }
 
@@ -1451,10 +1494,9 @@ impl QdrantClient {
             .send_json(&body)
         {
             Ok(_) => {
-                // Replay de um uuid já aplicado conta de novo até a próxima
-                // remontagem (FAMILIARITY_TTL) — raro: o S24 só reenvia lote
-                // sem ack.
-                self.observe_familiarity(payload);
+                // Replay de um uuid já aplicado (o S24 reenvia o lote sem
+                // ack) não conta de novo: o índice deduplica pelo id.
+                self.observe_familiarity(&body["points"][0]["id"], payload);
                 Ok(SyncedOutcome::Applied)
             }
             Err(e) => SyncedFail::from_ureq("insert synced event", e).into_outcome(),
@@ -1616,64 +1658,151 @@ impl QdrantClient {
     /// motor) — [`crate::familiarity`]. `behavioral_signals` só lê os 300
     /// eventos mais recentes de cada lado; a familiaridade precisa de TODO o
     /// histórico, que custa ~120 ms para varrer (10k eventos no Qdrant local).
-    /// Por isso vive num cache em memória: montado na primeira chamada (o app
-    /// aquece no boot), atualizado a cada evento gravado por este client
-    /// (`insert_play_event`, `insert_raw_event`, `insert_synced_event`),
-    /// invalidado quando eventos mudam de faixa (mover para playlist) e
-    /// remontado depois de [`FAMILIARITY_TTL`]. No caminho quente custa um
-    /// `Arc::clone`.
-    pub fn familiarity(&self) -> Result<Arc<FamiliarityIndex>, IndexerError> {
-        let mut guard = self
-            .familiarity
-            .lock()
-            .map_err(|_| IndexerError::Embedding("familiarity: mutex envenenado".into()))?;
-        if let Some(c) = guard.as_ref() {
-            if c.built_at.elapsed() < FAMILIARITY_TTL {
-                return Ok(Arc::clone(&c.index));
+    /// Por isso vive num cache em memória, atualizado a cada evento gravado
+    /// por este client (`insert_play_event`, `insert_raw_event`,
+    /// `insert_synced_event`).
+    ///
+    /// NUNCA faz I/O nem espera I/O: quem chama pode ser a thread principal
+    /// do Tauri (o `player_play` grava o evento de pulo com o mutex do
+    /// snapshot preso, e a gravação observa o índice). Por isso:
+    /// - índice fresco: devolve na hora (um `Arc::clone`);
+    /// - vencido ([`FAMILIARITY_TTL`]) ou invalidado (mover para playlist):
+    ///   devolve o velho e remonta numa thread de fundo;
+    /// - nenhum índice ainda: devolve `None` (o rádio segue sem
+    ///   familiaridade, como antes da v0.2.92) e monta em fundo;
+    /// - montagem falhou há menos de [`FAMILIARITY_RETRY_BACKOFF`]: não tenta
+    ///   de novo, serve o que tiver.
+    ///
+    /// O app aquece no boot com [`Self::rebuild_familiarity`].
+    pub fn familiarity(&self) -> Option<Arc<FamiliarityIndex>> {
+        let (out, build_gen) = {
+            let mut st = self.familiarity_state();
+            let build_gen = if !st.is_fresh() && !st.building && !st.in_backoff() {
+                Some(st.begin_build())
+            } else {
+                None
+            };
+            (st.index.clone(), build_gen)
+        };
+        if let Some(gen) = build_gen {
+            let client = self.clone();
+            let spawned = std::thread::Builder::new()
+                .name("familiarity-build".into())
+                .spawn(move || {
+                    let _ = client.run_familiarity_build(gen);
+                });
+            if let Err(e) = spawned {
+                tracing::warn!(error = %e, "familiarity: thread de montagem não subiu");
+                let mut st = self.familiarity_state();
+                st.building = false;
+                st.last_failure = Some(Instant::now());
             }
         }
+        out
+    }
+
+    /// Monta o índice na thread que chama (aquecimento no boot, testes),
+    /// sem segurar o lock durante a varredura. Se já há montagem em voo,
+    /// não faz nada.
+    pub fn rebuild_familiarity(&self) -> Result<(), IndexerError> {
+        let gen = {
+            let mut st = self.familiarity_state();
+            if st.building {
+                return Ok(());
+            }
+            st.begin_build()
+        };
+        self.run_familiarity_build(gen)
+    }
+
+    fn familiarity_state(&self) -> std::sync::MutexGuard<'_, FamiliarityState> {
+        // Lock envenenado = algum pânico com ele preso; o estado continua
+        // coerente o bastante (pior caso, um índice um pouco velho).
+        self.familiarity.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Varre o banco FORA do lock; ao terminar, re-trava, aplica os eventos
+    /// gravados durante a varredura (dedup pelo id cobre os que apareceram
+    /// nos dois) e publica o índice. Montagem de geração velha (houve
+    /// invalidação no meio) é descartada.
+    fn run_familiarity_build(&self, gen: u64) -> Result<(), IndexerError> {
         let t0 = Instant::now();
-        let payloads = self.scroll_familiarity_events()?;
-        let index = Arc::new(FamiliarityIndex::from_payloads(payloads.iter()));
-        tracing::info!(
-            events = payloads.len(),
-            tracks = index.len(),
-            ms = t0.elapsed().as_millis() as u64,
-            "familiarity: índice montado"
-        );
-        *guard = Some(FamiliarityCache {
-            built_at: Instant::now(),
-            index: Arc::clone(&index),
-        });
-        Ok(index)
-    }
-
-    /// Atualização incremental: só mexe se o índice já existe (sem índice,
-    /// a próxima montagem lê o evento do banco).
-    fn observe_familiarity(&self, payload: &Value) {
-        if let Ok(mut guard) = self.familiarity.lock() {
-            if let Some(c) = guard.as_mut() {
-                Arc::make_mut(&mut c.index).observe(payload);
+        let res = self.scroll_familiarity_points();
+        let mut st = self.familiarity_state();
+        st.building = false;
+        match res {
+            Err(e) => {
+                st.last_failure = Some(Instant::now());
+                st.pending.clear();
+                tracing::warn!(error = %e, "familiarity: montagem falhou — servindo o índice anterior");
+                Err(e)
+            }
+            Ok(points) => {
+                if st.generation != gen {
+                    st.pending.clear();
+                    tracing::info!("familiarity: montagem descartada (invalidada no meio)");
+                    return Ok(());
+                }
+                let mut index = FamiliarityIndex::default();
+                for (id, p) in &points {
+                    index.observe_point(id, p);
+                }
+                let pending = std::mem::take(&mut st.pending);
+                for (id, p) in &pending {
+                    index.observe_point(id, p);
+                }
+                tracing::info!(
+                    events = points.len(),
+                    during_build = pending.len(),
+                    tracks = index.len(),
+                    ms = t0.elapsed().as_millis() as u64,
+                    "familiarity: índice montado"
+                );
+                st.index = Some(Arc::new(index));
+                st.built_at = Some(Instant::now());
+                st.stale = false;
+                st.last_failure = None;
+                Ok(())
             }
         }
     }
 
-    /// Descarta o índice; a próxima [`Self::familiarity`] remonta.
-    pub fn invalidate_familiarity(&self) {
-        if let Ok(mut guard) = self.familiarity.lock() {
-            *guard = None;
+    /// Atualização incremental de um evento recém-gravado (só CPU, lock
+    /// curto). Com montagem em voo, guarda o evento para aplicar no índice
+    /// novo; sem índice e sem montagem é no-op (a próxima montagem lê o
+    /// evento do banco).
+    fn observe_familiarity(&self, point_id: &Value, payload: &Value) {
+        let mut st = self.familiarity_state();
+        if st.building {
+            st.pending.push((point_id.clone(), payload.clone()));
+        }
+        if let Some(index) = st.index.as_mut() {
+            Arc::make_mut(index).observe_point(point_id, payload);
         }
     }
 
-    /// Todos os play_events com só os campos que a familiaridade lê.
-    fn scroll_familiarity_events(&self) -> Result<Vec<Value>, IndexerError> {
+    /// Marca o índice como velho e descarta a montagem em voo; a próxima
+    /// [`Self::familiarity`] serve o velho e remonta em fundo.
+    pub fn invalidate_familiarity(&self) {
+        let mut st = self.familiarity_state();
+        st.stale = true;
+        st.generation += 1;
+        st.pending.clear();
+    }
+
+    /// Todos os play_events (id do ponto, payload só com os campos que a
+    /// familiaridade lê).
+    fn scroll_familiarity_points(&self) -> Result<Vec<(Value, Value)>, IndexerError> {
         let url = format!("{}/collections/{PLAY_EVENTS_COLLECTION}/points/scroll", self.base_url);
         let mut out = Vec::new();
         let mut offset: Option<Value> = None;
         loop {
             let mut body = json!({
                 "limit": 2000,
-                "with_payload": { "include": ["event_type", "track_id", "origin", "end_position_ms", "device_id"] },
+                "with_payload": { "include": [
+                    "event_type", "track_id", "origin", "end_position_ms", "duration_ms",
+                    "listen_pct", "device_id"
+                ] },
                 "with_vector": false
             });
             if let Some(ref off) = offset {
@@ -1687,7 +1816,10 @@ impl QdrantClient {
                 .into_json()
                 .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
             if let Some(points) = resp["result"]["points"].as_array() {
-                out.extend(points.iter().filter_map(|p| p.get("payload").cloned()));
+                out.extend(points.iter().filter_map(|p| {
+                    let payload = p.get("payload")?.clone();
+                    Some((p.get("id").cloned().unwrap_or(Value::Null), payload))
+                }));
             }
             match resp["result"].get("next_page_offset") {
                 Some(Value::Null) | None => break,
@@ -2661,21 +2793,26 @@ mod tests {
 
     // ── Cache de familiaridade (v0.2.92) ───────────────────────────────
 
+    /// Espera `cond` virar verdade (até 3 s) — montagens em fundo.
+    fn wait_until(mut cond: impl FnMut() -> bool) {
+        let t0 = Instant::now();
+        while !cond() {
+            assert!(t0.elapsed() < Duration::from_secs(3), "condição não chegou a tempo");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    const SCROLL_DOIS_FINS: &str = r#"{"result":{"points":[
+        {"id":"00000000-0000-0000-0000-00000000000a","payload":{"event_type":"track_ended","track_id":5,"origin":"manual"}},
+        {"id":"00000000-0000-0000-0000-00000000000b","payload":{"event_type":"track_ended","track_id":5,"origin":"autoplay"}},
+        {"id":"00000000-0000-0000-0000-00000000000c","payload":{"event_type":"track_ended","track_id":"5","origin":"manual"}}
+    ],"next_page_offset":null}}"#;
+
     #[test]
-    fn familiaridade_monta_uma_vez_atualiza_incremental_e_remonta_ao_invalidar() {
-        // Scroll (POST) devolve 2 fins da faixa 5; insert (PUT) aceita.
-        let port = fake_qdrant_with(
-            (
-                200,
-                r#"{"result":{"points":[
-                    {"id":"a","payload":{"event_type":"track_ended","track_id":5,"origin":"manual"}},
-                    {"id":"b","payload":{"event_type":"track_ended","track_id":5,"origin":"autoplay"}},
-                    {"id":"c","payload":{"event_type":"track_ended","track_id":"5","origin":"manual"}}
-                ],"next_page_offset":null}}"#,
-            ),
-            (200, "{}"),
-        );
+    fn familiaridade_atualiza_incremental_e_invalidar_serve_o_velho_e_remonta() {
+        let port = fake_qdrant_with((200, SCROLL_DOIS_FINS), (200, "{}"));
         let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        client.rebuild_familiarity().unwrap();
         assert_eq!(client.familiarity().unwrap().get(5).ended, 2, "texto ignorado");
         assert_eq!(client.familiarity().unwrap().get(5).motor_attempts, 1);
 
@@ -2688,18 +2825,114 @@ mod tests {
         assert_eq!(clone.familiarity().unwrap().get(5).ended, 3, "clone compartilha o cache");
         assert_eq!(client.familiarity().unwrap().get(5).motor_attempts, 2);
 
-        // Mover faixa invalida: a próxima leitura remonta do banco.
+        // Mover faixa invalida: a leitura seguinte serve o velho na hora e
+        // remonta do banco em fundo.
         client.invalidate_familiarity();
-        assert_eq!(client.familiarity().unwrap().get(5).ended, 2);
+        assert_eq!(client.familiarity().unwrap().get(5).ended, 3, "velho servido sem esperar");
+        wait_until(|| client.familiarity().unwrap().get(5).ended == 2);
     }
 
     #[test]
-    fn familiaridade_sem_indice_nao_observa_e_erro_de_rede_propaga() {
-        let client = QdrantClient::new("http://127.0.0.1:1");
-        // Sem índice montado o observe é no-op (não monta índice parcial).
-        client.observe_familiarity(&json!({"event_type": "track_ended", "track_id": 1}));
-        assert!(client.familiarity.lock().unwrap().is_none());
-        assert!(client.familiarity().is_err());
+    fn primeira_chamada_sem_indice_devolve_none_e_monta_em_fundo() {
+        let port = fake_qdrant_with((200, SCROLL_DOIS_FINS), (200, "{}"));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        // Sem índice o observe não monta índice parcial.
+        client.observe_familiarity(&json!("x"), &json!({"event_type": "track_ended", "track_id": 1}));
+        assert!(client.familiarity_state().index.is_none());
+        assert!(client.familiarity().is_none(), "não bloqueia esperando a varredura");
+        wait_until(|| client.familiarity().is_some_and(|f| f.get(5).ended == 2));
+        assert_eq!(client.familiarity_state().builds_started, 1, "uma montagem só");
+    }
+
+    #[test]
+    fn montagem_nao_segura_o_lock_durante_a_varredura() {
+        // Qdrant lento: o scroll leva 800 ms. Enquanto ele roda, ler o índice
+        // e observar eventos (o que o player_play faz na thread principal)
+        // tem de voltar na hora.
+        let port = fake_qdrant_slow((200, SCROLL_DOIS_FINS), (200, "{}"), Duration::from_millis(800));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        let builder = {
+            let c = client.clone();
+            std::thread::spawn(move || c.rebuild_familiarity())
+        };
+        wait_until(|| client.familiarity_state().building);
+        let t0 = Instant::now();
+        assert!(client.familiarity().is_none());
+        // Mesmo ponto que o scroll vai devolver (grafia maiúscula, como pode
+        // chegar do S24) e um ponto novo.
+        let fim = json!({"event_type": "track_ended", "track_id": 5, "origin": "manual"});
+        client.observe_familiarity(&json!("00000000-0000-0000-0000-00000000000A"), &fim);
+        client.observe_familiarity(&json!("00000000-0000-0000-0000-0000000000ff"), &fim);
+        let gasto = t0.elapsed();
+        assert!(gasto < Duration::from_millis(200), "esperou a varredura: {gasto:?}");
+        assert!(client.familiarity_state().building, "a varredura ainda estava em voo");
+        builder.join().unwrap().unwrap();
+        // 2 do scroll + o ponto novo; o repetido conta uma vez.
+        assert_eq!(client.familiarity().unwrap().get(5).ended, 3);
+        assert!(client.familiarity_state().pending.is_empty());
+    }
+
+    #[test]
+    fn ttl_vencido_serve_o_velho_na_hora_e_remonta_em_fundo() {
+        let port = fake_qdrant_slow((200, SCROLL_DOIS_FINS), (200, "{}"), Duration::from_millis(300));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        client.rebuild_familiarity().unwrap();
+        client.familiarity_state().built_at =
+            Instant::now().checked_sub(FAMILIARITY_TTL + Duration::from_secs(1));
+        let t0 = Instant::now();
+        assert_eq!(client.familiarity().unwrap().get(5).ended, 2);
+        assert!(t0.elapsed() < Duration::from_millis(150), "esperou a remontagem");
+        wait_until(|| {
+            let st = client.familiarity_state();
+            !st.building && st.is_fresh()
+        });
+        assert_eq!(client.familiarity_state().builds_started, 2);
+    }
+
+    #[test]
+    fn falha_na_montagem_entra_em_backoff_servindo_o_velho() {
+        let port = fake_qdrant_with((200, SCROLL_DOIS_FINS), (200, "{}"));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        client.rebuild_familiarity().unwrap();
+        // Mesmo cache, Qdrant fora.
+        let mut fora = client.clone();
+        fora.base_url = "http://127.0.0.1:1".into();
+        fora.familiarity_state().built_at =
+            Instant::now().checked_sub(FAMILIARITY_TTL + Duration::from_secs(1));
+        assert_eq!(fora.familiarity().unwrap().get(5).ended, 2);
+        wait_until(|| {
+            let st = fora.familiarity_state();
+            !st.building && st.last_failure.is_some()
+        });
+        for _ in 0..5 {
+            assert_eq!(fora.familiarity().unwrap().get(5).ended, 2, "segue servindo o velho");
+        }
+        assert_eq!(fora.familiarity_state().builds_started, 2, "backoff: nada de varrer a cada chamada");
+
+        // Sem índice algum e Qdrant fora: None, uma tentativa só.
+        let sem = QdrantClient::new("http://127.0.0.1:1");
+        assert!(sem.familiarity().is_none());
+        wait_until(|| sem.familiarity_state().last_failure.is_some());
+        assert!(sem.familiarity().is_none());
+        assert_eq!(sem.familiarity_state().builds_started, 1);
+        assert!(sem.rebuild_familiarity().is_err(), "a montagem explícita propaga o erro");
+    }
+
+    #[test]
+    fn reenvio_do_lote_do_s24_nao_conta_de_novo() {
+        let vazio = r#"{"result":{"points":[],"next_page_offset":null}}"#;
+        let port = fake_qdrant_with((200, vazio), (200, "{}"));
+        let client = QdrantClient::new(format!("http://127.0.0.1:{port}"));
+        client.rebuild_familiarity().unwrap();
+        let mut play = like_valido(10);
+        play["event_type"] = json!("track_ended");
+        play["origin"] = json!("autoplay");
+        let uuid = "11111111-2222-3333-4444-555555555555";
+        for _ in 0..3 {
+            assert!(matches!(client.insert_synced_event(uuid, &play), Ok(SyncedOutcome::Applied)));
+        }
+        let f = client.familiarity().unwrap().get(12755931536157556);
+        assert_eq!((f.ended, f.motor_attempts), (1, 1), "upsert idempotente no banco, idem no índice");
     }
 
     #[test]
@@ -2724,6 +2957,15 @@ mod tests {
     /// Fake com status/corpo separados pro GET e pro PUT — é o que exercita
     /// a classificação 4xx (determinístico, ackável) × 5xx (transitório).
     fn fake_qdrant_with(get: (u16, &'static str), put: (u16, &'static str)) -> u16 {
+        fake_qdrant_slow(get, put, Duration::ZERO)
+    }
+    /// Como [`fake_qdrant_with`], mas segura `post_delay` antes de responder
+    /// cada POST (scroll): simula Qdrant lento.
+    fn fake_qdrant_slow(
+        get: (u16, &'static str),
+        put: (u16, &'static str),
+        post_delay: Duration,
+    ) -> u16 {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -2757,6 +2999,9 @@ mod tests {
                     buf.extend_from_slice(&chunk[..n]);
                 }
                 let (status, body) = if buf.starts_with(b"PUT ") { put } else { get };
+                if buf.starts_with(b"POST ") && !post_delay.is_zero() {
+                    std::thread::sleep(post_delay);
+                }
                 let reason = match status {
                     200 => "OK",
                     400 => "Bad Request",

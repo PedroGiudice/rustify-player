@@ -71,6 +71,9 @@ VERSAO_MISTURA = "0.2.92"
 # Familiaridade (mesmos limiares do motor, familiarity.rs).
 KNOWN_MIN_ENDED = 3
 NEVER_ENDS_MIN_ATTEMPTS = 3
+# Tentativa sem fim só conta para o nunca-termina com escuta abaixo disto
+# (pulo aos 95% não é rejeição).
+NEVER_ENDS_MAX_LISTEN = 0.5
 MOTOR_ORIGINS = ("autoplay", "station")
 UNPLAYABLE_SUSPECT_DEVICE = "s24"
 
@@ -100,13 +103,31 @@ def desde_versao(e: dict, versao: str = VERSAO_MISTURA) -> bool:
     return version_tuple(e.get("app_version") or "") >= version_tuple(versao)
 
 
+def listen_fraction(e: dict):
+    """Fração ouvida: listen_pct gravado; sem ele, end_position_ms/duration_ms.
+    Duração 0 = desconhecida mesmo com listen_pct (os builders gravam 0.0 sem
+    duração). Desconhecida = None. Mesma regra do motor (listen_fraction)."""
+    dur = e.get("duration_ms")
+    if dur == 0:
+        return None
+    lp = e.get("listen_pct")
+    if isinstance(lp, (int, float)) and not isinstance(lp, bool):
+        return float(lp)
+    end = e.get("end_position_ms")
+    if isinstance(end, (int, float)) and isinstance(dur, (int, float)) and dur > 0:
+        return end / dur
+    return None
+
+
 def familiaridade(events) -> dict:
-    """{track_id: {"ended", "motor_attempts"}} — referência do índice do motor.
+    """{track_id: {"ended", "motor_attempts", "early_skips"}} — referência do
+    índice do motor.
 
     ended = vezes ouvida até o fim (qualquer origem, todo o histórico);
     motor_attempts = vezes servida pelo autoplay/station, sem os pulos em 0 ms
-    do S24 (suspeitos de arquivo que não toca). track_id que não é inteiro
-    (11 eventos legados em texto) fica fora.
+    do S24 (suspeitos de arquivo que não toca); early_skips = das tentativas,
+    os pulos com escuta conhecida abaixo de NEVER_ENDS_MAX_LISTEN. track_id
+    que não é inteiro (11 eventos legados em texto) fica fora.
     """
     out: dict = {}
     for e in events:
@@ -122,9 +143,12 @@ def familiaridade(events) -> dict:
         )
         if not aceite and not tentativa:
             continue
-        f = out.setdefault(tid, {"ended": 0, "motor_attempts": 0})
+        frac = listen_fraction(e)
+        cedo = tentativa and is_skip(e) and frac is not None and frac < NEVER_ENDS_MAX_LISTEN
+        f = out.setdefault(tid, {"ended": 0, "motor_attempts": 0, "early_skips": 0})
         f["ended"] += 1 if aceite else 0
         f["motor_attempts"] += 1 if tentativa else 0
+        f["early_skips"] += 1 if cedo else 0
     return out
 
 
@@ -133,7 +157,7 @@ def is_known(f: dict, liked: bool) -> bool:
 
 
 def never_ends(f: dict, liked: bool) -> bool:
-    return not liked and f["ended"] == 0 and f["motor_attempts"] >= NEVER_ENDS_MIN_ATTEMPTS
+    return not liked and f["ended"] == 0 and f["early_skips"] >= NEVER_ENDS_MIN_ATTEMPTS
 
 
 def stats(evs) -> dict:
