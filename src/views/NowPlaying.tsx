@@ -24,8 +24,11 @@ import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
 import { navigate } from "../router";
 import { isTypingContext } from "../lib/keyboard";
 import { openTrackMenu } from "../store/contextMenu";
+import { qualityBadge } from "../lib/quality";
 
 export default function NowPlaying() {
+  // Selo da capa e ficha técnica: a qualidade medida no conteúdo vence o "24/44" do arquivo.
+  const badge = () => qualityBadge(player.techInfo, player.currentTrack);
   const shape = useShape();
   const renderer = useRenderer();
   // Shape/renderer só existem no fundo 2D. Com as cenas WebGL montadas
@@ -388,9 +391,7 @@ export default function NowPlaying() {
                   style={{ width: "200px", height: "200px" }}
                 >
                   <Show when={player.techInfo.sampleRate}>
-                    <span class="badge-fmt">
-                      {player.techInfo.format} · {player.techInfo.bitDepth}/{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}
-                    </span>
+                    <span class="badge-fmt" title={badge().title ?? undefined}>{badge().label}</span>
                   </Show>
                 </CoverArt>
               )}
@@ -431,7 +432,11 @@ export default function NowPlaying() {
               <Show when={player.techInfo.sampleRate}>
                 <div class="np__specs">
                   <span><b>{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}</b> kHz</span>
-                  <span><b>{player.techInfo.bitDepth}</b>-bit</span>
+                  {/* Faixa com qualidade medida diferente do arquivo (MP3 disfarçado,
+                      upsample de CD): o rótulo real no lugar do "24-bit". */}
+                  <Show when={badge().title} fallback={<span><b>{player.techInfo.bitDepth}</b>-bit</span>}>
+                    <span title={badge().title ?? undefined}><b>{badge().label}</b></span>
+                  </Show>
                   <span>{player.techInfo.format}</span>
                   <span>{player.techInfo.channels === 1 ? "mono" : "stereo"}</span>
                 </div>

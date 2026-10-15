@@ -1209,6 +1209,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-tech:hover { background: var(--bg-soft); border-color: var(--fg-8); }
 .pb-tech__sep { color: var(--fg-7); }
 .pb-tech__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent); }
+/* Faixa lossy por dentro (corte espectral medido): o ponto do caminho do sinal vira aviso. */
+.pb-tech--lossy .pb-tech__dot { background: var(--amber-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-ring) calc(var(--halo-alpha) * 160%), transparent); }
 .pb-vol { display: flex; align-items: center; gap: 8px; min-width: 130px; }
 .pb-vol .progress { flex: 1; }
 

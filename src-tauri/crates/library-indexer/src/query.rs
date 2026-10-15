@@ -54,6 +54,8 @@ pub(crate) fn payload_to_track(id: u64, p: &Value) -> Track {
         rg_track_peak: p["rg_track_peak"].as_f64().map(|v| v as f32),
         rg_album_peak: p["rg_album_peak"].as_f64().map(|v| v as f32),
         lufs_integrated: p["lufs_integrated"].as_f64().map(|v| v as f32),
+        quality_class: p["quality_class"].as_str().and_then(crate::spectral::QualityClass::parse),
+        quality_cutoff_hz: p["quality_cutoff_hz"].as_u64().map(|v| v as u32),
         embedding_status: EmbeddingStatus::parse(status).unwrap_or(EmbeddingStatus::Pending),
         play_count: p["play_count"].as_u64().unwrap_or(0) as u32,
         last_played: p["last_played"].as_i64(),
@@ -913,7 +915,20 @@ fn unix_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{match_score, norm};
+    use super::{match_score, norm, payload_to_track};
+    use crate::spectral::QualityClass;
+
+    #[test]
+    fn qualidade_medida_vem_do_payload() {
+        let t = payload_to_track(1, &serde_json::json!({ "quality_class": "lossy", "quality_cutoff_hz": 16075 }));
+        assert_eq!(t.quality_class, Some(QualityClass::Lossy));
+        assert_eq!(t.quality_cutoff_hz, Some(16075));
+        // medição que falhou (arquivo curto/mudo) e faixa ainda não medida: sem rótulo
+        let t = payload_to_track(1, &serde_json::json!({ "quality_class": "indeterminado", "quality_cutoff_hz": null }));
+        assert_eq!(t.quality_class, None);
+        let t = payload_to_track(1, &serde_json::json!({}));
+        assert_eq!((t.quality_class, t.quality_cutoff_hz), (None, None));
+    }
 
     #[test]
     fn norm_lowercases_and_strips_accents() {

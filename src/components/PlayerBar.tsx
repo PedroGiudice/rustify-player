@@ -35,6 +35,7 @@ import { CoverArt } from "./CoverArt";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
 import { QUEUE_EVENT } from "./QueueDrawer";
 import { navigate } from "../router";
+import { qualityBadge } from "../lib/quality";
 
 // Re-export para que outros call-sites possam importar daqui.
 export { CMD_PALETTE_EVENT };
@@ -421,6 +422,9 @@ export function PlayerBar() {
 
   const volPct = () => (player.isMuted ? 0 : player.volume * 100);
 
+  // Formato da tech pill: a qualidade medida no conteúdo vence o "24/44" do arquivo.
+  const badge = () => qualityBadge(player.techInfo, player.currentTrack);
+
   // DSP chain summary mostrado na tech pill. Reage ao store de dsp,
   // entao toggles na view Signal aparecem aqui imediatamente.
   const dspSummary = () => {
@@ -633,15 +637,14 @@ export function PlayerBar() {
       {/* ── Direito: tech pill + queue + volume ── */}
       <div class="pb-right">
         <Show when={player.techInfo.format && player.techInfo.format !== "—"}>
-          <div class="pb-tech" id="pb-tech" title="Signal path">
+          <div
+            class="pb-tech"
+            classList={{ "pb-tech--lossy": badge().lossy }}
+            id="pb-tech"
+            title={badge().title ?? "Signal path"}
+          >
             <span class="pb-tech__dot" />
-            <span>
-              {player.techInfo.format}
-              <Show when={player.techInfo.bitDepth && player.techInfo.sampleRate}>
-                {" "}
-                {player.techInfo.bitDepth}/{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}
-              </Show>
-            </span>
+            <span>{badge().label}</span>
             <span class="pb-tech__sep">·</span>
             <span>{dspSummary()}</span>
           </div>

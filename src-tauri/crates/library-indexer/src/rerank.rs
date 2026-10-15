@@ -294,6 +294,8 @@ mod tests {
             rg_track_peak: None,
             rg_album_peak: None,
             lufs_integrated: None,
+            quality_class: None,
+            quality_cutoff_hz: None,
             embedding_status: EmbeddingStatus::Done,
             play_count: 0,
             last_played: None,

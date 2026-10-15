@@ -201,6 +201,14 @@ fn coordinator_loop(
                         "loudness bulk backfill failed"
                     );
                 }
+                // Depois do loudness, na mesma thread: uma carga pesada por vez.
+                if let Err(e) = backfill_missing_quality(&backfill_client) {
+                    warn!(
+                        target: "library_indexer::pipeline",
+                        error = %e,
+                        "quality backfill failed"
+                    );
+                }
             })
             .ok();
     }
@@ -549,6 +557,58 @@ fn backfill_missing_lufs(client: &QdrantClient) -> Result<(), IndexerError> {
     Ok(())
 }
 
+/// Mede o corte espectral das faixas sem `quality_class` (indexadas antes da
+/// medição existir, 0.2.93). O acervo da cmr-auto foi semeado com a auditoria
+/// de 15/10 (`scripts/curator/quality_seed.py`); sobra o que entrou depois.
+/// ~0,4 s por faixa em 44,1 kHz; uma pausa curta entre faixas mantém a CPU
+/// folgada enquanto o app toca.
+fn backfill_missing_quality(client: &QdrantClient) -> Result<(), IndexerError> {
+    let filter = json!({ "must": [ { "is_empty": { "key": "quality_class" } } ] });
+    let pending = client.scroll_all_with_filter(filter, &["path"])?;
+    if pending.is_empty() {
+        info!(target: "library_indexer::pipeline", "quality backfill: nothing to do");
+        return Ok(());
+    }
+    let total = pending.len();
+    info!(target: "library_indexer::pipeline", total, "quality backfill: starting");
+    let (mut done, mut failed) = (0usize, 0usize);
+    for (id, payload) in pending {
+        let Some(path) = payload["path"].as_str().filter(|p| !p.is_empty()).map(PathBuf::from) else {
+            failed += 1;
+            continue;
+        };
+        let m = crate::spectral::analyze_flac(&path);
+        if let Err(e) = &m {
+            warn!(target: "library_indexer::pipeline", track_id = id, path = ?path, error = %e, "quality backfill: não medida");
+        }
+        match client.set_payload(&[id], quality_fields(&m)) {
+            Ok(()) => done += 1,
+            Err(e) => {
+                warn!(target: "library_indexer::pipeline", track_id = id, error = %e, "quality backfill: set_payload failed");
+                failed += 1;
+            }
+        }
+        if (done + failed) % 50 == 0 {
+            info!(target: "library_indexer::pipeline", done, failed, total, "quality backfill: progress");
+        }
+        thread::sleep(std::time::Duration::from_millis(200));
+    }
+    info!(target: "library_indexer::pipeline", done, failed, total, "quality backfill: complete");
+    Ok(())
+}
+
+/// Classe gravada quando a medição do corte espectral falha (arquivo curto,
+/// mudo ou ilegível): não é `is_empty`, então o backfill não insiste a cada boot.
+pub const QUALITY_UNKNOWN: &str = "indeterminado";
+
+/// `quality_class`/`quality_cutoff_hz` do payload a partir da medição.
+fn quality_fields(m: &Result<crate::spectral::SpectralVerdict, IndexerError>) -> serde_json::Value {
+    match m {
+        Ok(v) => json!({ "quality_class": v.class.as_str(), "quality_cutoff_hz": v.cutoff_hz }),
+        Err(_) => json!({ "quality_class": QUALITY_UNKNOWN, "quality_cutoff_hz": null }),
+    }
+}
+
 /// Campos do payload que NÃO vêm do arquivo e por isso não sobrevivem a um
 /// re-ingest: `build_track_payload` os reconstrói do zero e o `upsert_tracks`
 /// (PUT /points) reescreve o ponto inteiro.
@@ -688,6 +748,15 @@ fn build_track_payload(
         }
     };
 
+    // Corte espectral (só lossless de verdade entra pelo Crate; aqui a medição
+    // vale para TODO arquivo que chega, inclusive pelo watcher). Falha não
+    // aborta a indexação: grava QUALITY_UNKNOWN.
+    let quality = crate::spectral::analyze_flac(&entry.path);
+    if let Err(e) = &quality {
+        warn!(target: "library_indexer::pipeline", path = ?entry.path, error = %e, "corte espectral não medido");
+    }
+    let quality = quality_fields(&quality);
+
     Ok(json!({
         "path": path_str(&entry.path),
         "filename": filename,
@@ -711,6 +780,8 @@ fn build_track_payload(
         "rg_track_peak": md.rg_track_peak,
         "rg_album_peak": md.rg_album_peak,
         "lufs_integrated": lufs_integrated,
+        "quality_class": quality["quality_class"],
+        "quality_cutoff_hz": quality["quality_cutoff_hz"],
         "embedding_status": "pending",
         "lrc_path": lrc_path,
         "embedded_lyrics": embedded_lyrics,
@@ -1277,6 +1348,18 @@ mod tests {
         let r = resolve_lyrics(&payload);
         assert_eq!(r.text.as_deref(), Some(LETRA));
         assert_eq!(r.lrc_path_for_payload, None);
+    }
+
+    #[test]
+    fn campos_de_qualidade_do_payload() {
+        use crate::spectral::{QualityClass, SpectralVerdict};
+        let ok = quality_fields(&Ok(SpectralVerdict { class: QualityClass::Lossy, cutoff_hz: Some(16075) }));
+        assert_eq!(ok, json!({ "quality_class": "lossy", "quality_cutoff_hz": 16075 }));
+        let limpo = quality_fields(&Ok(SpectralVerdict { class: QualityClass::SemCorte, cutoff_hz: None }));
+        assert_eq!(limpo, json!({ "quality_class": "sem_corte", "quality_cutoff_hz": null }));
+        // Falha marca "indeterminado": o backfill (filtro is_empty) não tenta de novo a cada boot.
+        let falhou = quality_fields(&Err(IndexerError::Shutdown));
+        assert_eq!(falhou, json!({ "quality_class": QUALITY_UNKNOWN, "quality_cutoff_hz": null }));
     }
 
     #[test]

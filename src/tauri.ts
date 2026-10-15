@@ -24,7 +24,14 @@ export interface Track {
   last_played?: number | null;
   play_count?: number;
   liked_at?: number | null;
+  /** Qualidade medida no conteúdo (corte espectral do indexador). Ausente =
+      ainda não medida. Ver `lib/quality.ts`. */
+  quality_class?: QualityClass | null;
+  quality_cutoff_hz?: number | null;
 }
+
+/** `library_indexer::spectral::QualityClass`. */
+export type QualityClass = "sem_corte" | "provavel_lossy" | "lossy" | "hires_de_cd";
 
 export interface Album {
   title: string;

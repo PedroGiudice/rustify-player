@@ -100,6 +100,14 @@ pub struct Track {
     /// landed; backfilled lazily on first playback.
     pub lufs_integrated: Option<f32>,
 
+    /// Qualidade medida no CONTEÚDO (corte espectral, `spectral.rs`): um FLAC
+    /// 24 bit pode ser MP3 por dentro. `None` = ainda não medida, ou a medição
+    /// falhou (arquivo curto ou mudo).
+    #[serde(default)]
+    pub quality_class: Option<crate::spectral::QualityClass>,
+    #[serde(default)]
+    pub quality_cutoff_hz: Option<u32>,
+
     pub embedding_status: EmbeddingStatus,
     pub play_count: u32,
     pub last_played: Option<i64>,
