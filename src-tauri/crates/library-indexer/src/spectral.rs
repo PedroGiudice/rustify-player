@@ -212,7 +212,11 @@ fn frame_spectra(x: &[f32], ch: usize, sr: u32, out: &mut Vec<Vec<f64>>) {
     if emax <= 0.0 {
         return;
     }
-    let (r_lo, r_hi) = ((2000.0 / df).ceil() as usize, (8000.0 / df).floor() as usize);
+    // 2-8 kHz, cortada no Nyquist (taxa baixa); sem banda, não há o que medir.
+    let (r_lo, r_hi) = ((2000.0 / df).ceil() as usize, ((8000.0 / df).floor() as usize).min(nbins - 1));
+    if r_lo > r_hi {
+        return;
+    }
     for (p, e) in powers.into_iter().zip(energy) {
         if 10.0 * (e / emax + 1e-30).log10() <= -SILENCE_DB {
             continue;
@@ -223,32 +227,98 @@ fn frame_spectra(x: &[f32], ch: usize, sr: u32, out: &mut Vec<Vec<f64>>) {
     }
 }
 
-/// Decodifica só as amostras das janelas pedidas (em quadros de amostra).
-/// Devolve (taxa, canais, uma Vec intercalada por janela).
-fn decode_windows(path: &Path) -> Result<(u32, usize, Vec<Vec<f32>>), IndexerError> {
+/// Lê pacotes a partir da posição atual e copia para cada janela o trecho que
+/// cai nela, pela posição do pacote (`ts`, em quadros de amostra). Para quando
+/// todas as janelas pedidas encheram ou o arquivo acabou.
+fn fill_windows(
+    format: &mut Box<dyn symphonia::core::formats::FormatReader>,
+    decoder: &mut Box<dyn symphonia::core::codecs::Decoder>,
+    track_id: u32,
+    ch: usize,
+    spans: &[(u64, u64)],
+    wins: &mut [Vec<f32>],
+) -> Result<(), String> {
     use symphonia::core::audio::SampleBuffer;
-    use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_FLAC};
     use symphonia::core::errors::Error as SErr;
-    use symphonia::core::formats::FormatOptions;
+    let end = spans.iter().map(|(a, l)| a + l).max().unwrap_or(0);
+    let mut sbuf: Option<SampleBuffer<f32>> = None;
+    loop {
+        if spans.iter().zip(wins.iter()).all(|((_, l), w)| w.len() as u64 >= l * ch as u64) {
+            return Ok(());
+        }
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(SErr::IoError(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
+            Err(SErr::ResetRequired) => return Ok(()),
+            Err(e) => return Err(format!("leitura: {e}")),
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        let pos = packet.ts();
+        if pos >= end {
+            return Ok(());
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(d) => d,
+            Err(SErr::DecodeError(_)) => continue,
+            Err(e) => return Err(format!("decodificação: {e}")),
+        };
+        let spec = *decoded.spec();
+        let buf = sbuf.get_or_insert_with(|| SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
+        if buf.capacity() < decoded.capacity() * spec.channels.count() {
+            *buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+        }
+        buf.copy_interleaved_ref(decoded);
+        let s = buf.samples();
+        let nfr = (s.len() / ch) as u64;
+        for ((a, l), w) in spans.iter().zip(wins.iter_mut()) {
+            // `w.len()` conta o que a janela já tem: pacote repetido depois de um
+            // salto impreciso não duplica amostras.
+            let from = (pos.max(*a)).max(a + (w.len() / ch) as u64);
+            let to = (pos + nfr).min(a + l);
+            if from < to {
+                w.extend_from_slice(&s[((from - pos) as usize) * ch..((to - pos) as usize) * ch]);
+            }
+        }
+    }
+}
+
+/// Decodifica só as amostras das janelas pedidas. Salta (seek) até cada
+/// janela: o custo fica em ~60 s de áudio, seja a faixa de 3 min ou um mix de
+/// 1 h. Se o salto falhar, refaz lendo do começo. Devolve (taxa, canais, uma
+/// Vec intercalada por janela).
+fn decode_windows(path: &Path) -> Result<(u32, usize, Vec<Vec<f32>>), IndexerError> {
+    use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_FLAC};
+    use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
     use symphonia::core::io::MediaSourceStream;
     use symphonia::core::meta::{Limit, MetadataOptions};
     use symphonia::core::probe::Hint;
 
     let err = |m: String| IndexerError::Metadata { path: path.to_path_buf(), message: m };
-    let file = std::fs::File::open(path).map_err(|e| err(format!("open: {e}")))?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
-    let mut hint = Hint::new();
-    hint.with_extension("flac");
-    let meta = MetadataOptions { limit_visual_bytes: Limit::Maximum(0), limit_metadata_bytes: Limit::Maximum(64 * 1024) };
-    let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &meta)
-        .map_err(|e| err(format!("probe: {e}")))?;
-    let mut format = probed.format;
-    let track = format
-        .tracks()
-        .iter()
-        .find(|t| t.codec_params.codec == CODEC_TYPE_FLAC)
-        .ok_or_else(|| err("sem trilha FLAC".into()))?;
+    let open = || -> Result<_, IndexerError> {
+        let file = std::fs::File::open(path).map_err(|e| err(format!("open: {e}")))?;
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+        let mut hint = Hint::new();
+        hint.with_extension("flac");
+        let meta = MetadataOptions { limit_visual_bytes: Limit::Maximum(0), limit_metadata_bytes: Limit::Maximum(64 * 1024) };
+        let format = symphonia::default::get_probe()
+            .format(&hint, mss, &FormatOptions::default(), &meta)
+            .map_err(|e| err(format!("probe: {e}")))?
+            .format;
+        let track = format
+            .tracks()
+            .iter()
+            .find(|t| t.codec_params.codec == CODEC_TYPE_FLAC)
+            .ok_or_else(|| err("sem trilha FLAC".into()))?
+            .clone();
+        let decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .map_err(|e| err(format!("decoder: {e}")))?;
+        Ok((format, decoder, track))
+    };
+
+    let (mut format, mut decoder, track) = open()?;
     let track_id = track.id;
     let sr = track.codec_params.sample_rate.ok_or_else(|| err("sem taxa de amostragem".into()))?;
     let ch = track.codec_params.channels.map(|c| c.count()).unwrap_or(0);
@@ -262,43 +332,25 @@ fn decode_windows(path: &Path) -> Result<(u32, usize, Vec<Vec<f32>>), IndexerErr
         // Curta ou sem duração no cabeçalho: até 60 s desde o começo.
         vec![(0, (3.0 * WINDOW_S * sr as f64) as u64)]
     };
-    let end = spans.iter().map(|(a, l)| a + l).max().unwrap_or(0);
-    let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
-        .map_err(|e| err(format!("decoder: {e}")))?;
     let mut wins: Vec<Vec<f32>> = spans.iter().map(|(_, l)| Vec::with_capacity(*l as usize * ch)).collect();
-    let mut sbuf: Option<SampleBuffer<f32>> = None;
-    let mut pos: u64 = 0;
-    while pos < end {
-        let packet = match format.next_packet() {
-            Ok(p) => p,
-            Err(SErr::IoError(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(SErr::ResetRequired) => break,
-            Err(e) => return Err(err(format!("leitura: {e}"))),
-        };
-        if packet.track_id() != track_id {
-            continue;
-        }
-        let decoded = match decoder.decode(&packet) {
-            Ok(d) => d,
-            Err(SErr::DecodeError(_)) => continue,
-            Err(e) => return Err(err(format!("decodificação: {e}"))),
-        };
-        let spec = *decoded.spec();
-        let buf = sbuf.get_or_insert_with(|| SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
-        if buf.capacity() < decoded.capacity() * spec.channels.count() {
-            *buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-        }
-        buf.copy_interleaved_ref(decoded);
-        let s = buf.samples();
-        let nfr = (s.len() / ch) as u64;
-        for ((a, l), w) in spans.iter().zip(wins.iter_mut()) {
-            let (lo, hi) = (pos.max(*a), (pos + nfr).min(a + l));
-            if lo < hi {
-                w.extend_from_slice(&s[((lo - pos) as usize) * ch..((hi - pos) as usize) * ch]);
+
+    let mut saltou = true;
+    for (k, span) in spans.iter().enumerate() {
+        if span.0 > 0 {
+            if format.seek(SeekMode::Accurate, SeekTo::TimeStamp { ts: span.0, track_id }).is_err() {
+                saltou = false;
+                break;
             }
+            decoder.reset();
         }
-        pos += nfr;
+        fill_windows(&mut format, &mut decoder, track_id, ch, std::slice::from_ref(span), std::slice::from_mut(&mut wins[k]))
+            .map_err(err)?;
+    }
+    if !saltou {
+        tracing::debug!(path = %path.display(), "spectral: salto falhou, lendo do começo");
+        let (mut format, mut decoder, _) = open()?;
+        wins.iter_mut().for_each(Vec::clear);
+        fill_windows(&mut format, &mut decoder, track_id, ch, &spans, &mut wins).map_err(err)?;
     }
     Ok((sr, ch, wins))
 }
@@ -307,6 +359,14 @@ fn decode_windows(path: &Path) -> Result<(u32, usize, Vec<Vec<f32>>), IndexerErr
 /// começo se for curta), canais somados, quadros de silêncio fora. Erro se não
 /// houver áudio suficiente (arquivo mudo, curto demais ou ilegível).
 pub fn analyze_flac(path: &Path) -> Result<SpectralVerdict, IndexerError> {
+    // Quem mede são threads longas (indexador, Crate, backfill): um pânico do
+    // decodificador ou desta conta com um arquivo estranho não pode derrubá-las.
+    std::panic::catch_unwind(|| analyze_inner(path)).unwrap_or_else(|_| {
+        Err(IndexerError::Metadata { path: path.to_path_buf(), message: "pânico na medição".into() })
+    })
+}
+
+fn analyze_inner(path: &Path) -> Result<SpectralVerdict, IndexerError> {
     let (sr, ch, wins) = decode_windows(path)?;
     let mut rel: Vec<Vec<f64>> = Vec::new();
     for w in &wins {
@@ -370,6 +430,40 @@ mod tests {
         assert_eq!(v.class, QualityClass::Lossy, "{v:?}");
         let c = v.cutoff_hz.unwrap();
         assert!((15_000..18_000).contains(&c), "corte {c}");
+    }
+
+    /// Taxa baixa (11.025 Hz mono): a banda de referência de 2-8 kHz passa do
+    /// Nyquist. Antes, o fatiamento entrava em pânico e derrubava a thread que
+    /// mede (indexador, Crate, backfill), a cada boot.
+    #[test]
+    fn taxa_baixa_nao_entra_em_panico() {
+        if !have_ffmpeg() { eprintln!("sem ffmpeg: teste pulado"); return; }
+        let tmp = tempfile::tempdir().unwrap();
+        for (sr, ch) in [("11025", "1"), ("8000", "1"), ("16000", "2")] {
+            let f = tmp.path().join(format!("baixa-{sr}.flac"));
+            ff(&["-f", "lavfi", "-i", "anoisesrc=d=8:c=pink:a=0.3", "-ac", ch, "-ar", sr, "-c:a", "flac"], &f);
+            // pânico interno vira Err "pânico na medição": a faixa não pode depender disso
+            if let Err(e) = analyze_flac(&f) {
+                assert!(!e.to_string().contains("pânico"), "{sr} Hz: {e}");
+            }
+        }
+    }
+
+    /// As janelas começam em 20%, 45% e 70% da faixa: com a amplitude
+    /// subindo em rampa (t/100), a 1ª amostra de cada janela diz onde ela
+    /// começou. Trava a leitura por salto (seek) contra a sequencial.
+    #[test]
+    fn janelas_comecam_no_ponto_certo_da_faixa() {
+        if !have_ffmpeg() { eprintln!("sem ffmpeg: teste pulado"); return; }
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("rampa.flac");
+        ff(&["-f", "lavfi", "-i", "aevalsrc=t/100|t/100:s=44100:d=100", "-c:a", "flac", "-sample_fmt", "s32"], &f);
+        let (sr, ch, wins) = decode_windows(&f).unwrap();
+        assert_eq!((sr, ch, wins.len()), (44_100, 2, 3));
+        for (w, inicio) in wins.iter().zip([0.20f32, 0.45, 0.70]) {
+            assert_eq!(w.len(), 20 * 44_100 * 2, "janela de 20 s");
+            assert!((w[0] - inicio).abs() < 0.001, "janela começa em {} (esperado {inicio})", w[0]);
+        }
     }
 
     #[test]
