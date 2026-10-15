@@ -1203,7 +1203,7 @@ describe("Crate: SoundCloud", () => {
 
   it("Baixar abre o card pré-preenchido, sonda o formato e envia crate_download com o metadado confirmado", async () => {
     mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "FESTA DO PENTE RALA - DJ ARANA", user_name: "DJ ARANA OFICIAL", duration_ms: 183000, availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
-    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 7441408, kbps_est: 325, format_label: "MP3 320", allowed: true, reason: null });
+    mocks.crateScProbe.mockResolvedValue({ ext: "wav", size: 7441408, kbps_est: 1411, format_label: "WAV", allowed: true, reason: null });
     mocks.crateDownload.mockResolvedValue("job-1");
     render(() => <Crate />);
     await typeAndEnter("festa");
@@ -1212,7 +1212,7 @@ describe("Crate: SoundCloud", () => {
     expect(within(card).getByLabelText("Artista")).toHaveValue("DJ Arana");
     expect(within(card).getByLabelText("Título")).toHaveValue("Festa do Pente Rala");
     expect(within(card).getByLabelText("Ano")).toHaveValue(2024);
-    expect(await within(card).findByText(/MP3 320 · 7,1 MB/)).toBeInTheDocument();
+    expect(await within(card).findByText(/WAV · 7,1 MB/)).toBeInTheDocument();
     expect(mocks.crateScProbe).toHaveBeenCalledWith(1, 183000);
     await userEvent.clear(within(card).getByLabelText("Artista"));
     await userEvent.type(within(card).getByLabelText("Artista"), "DJ Arana{enter}");
@@ -1224,14 +1224,14 @@ describe("Crate: SoundCloud", () => {
     ));
   });
 
-  it("MP3 128 mostra 'não entra' e desabilita Baixar; sem token explica", async () => {
+  it("MP3 (até 320) mostra 'não entra' e desabilita Baixar; sem token explica", async () => {
     mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "A", user_name: "B", availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
-    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 3672064, kbps_est: 129, format_label: "MP3 128", allowed: false, reason: "abaixo de 320 kbps" });
+    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 7441408, kbps_est: 320, format_label: "MP3 320", allowed: false, reason: "só lossless" });
     render(() => <Crate />);
     await typeAndEnter("a");
     await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
     const card = await screen.findByRole("form", { name: /Confirmar faixa/ });
-    expect(await within(card).findByText(/MP3 128 · não entra/)).toBeInTheDocument();
+    expect(await within(card).findByText(/MP3 320 · não entra/)).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: /^Baixar$/ })).toBeDisabled();
     mocks.crateScProbe.mockRejectedValue("no_token");
     await userEvent.click(within(card).getByRole("button", { name: /Cancelar/ }));
@@ -1252,13 +1252,15 @@ describe("Crate: SoundCloud", () => {
   it("estado waiting e rejeições novas têm linha própria", async () => {
     mocks.slskJobs.mockResolvedValue([
       job({ job_id: "w", source: { kind: "bandcamp", item_type: "album", item_id: 1, url: "https://x.bandcamp.com/album/y" }, state: { kind: "waiting", reason: "purchase", url: "https://x.bandcamp.com/album/y", since_secs: 10 } }),
-      job({ job_id: "r", state: { kind: "rejected", reason: { low_bitrate: { kbps: 128 } } } }),
+      job({ job_id: "r", state: { kind: "rejected", reason: { lossy_format: { format: "MP3" } } } }),
+      job({ job_id: "l", state: { kind: "rejected", reason: { lossy_inside: { cutoff_hz: 16075 } } } }),
       job({ job_id: "n", state: { kind: "rejected", reason: "no_download" } }),
     ]);
     render(() => <Crate />);
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
     expect(await screen.findByText(/Aguardando compra no Bandcamp/)).toBeInTheDocument();
-    expect(screen.getByText(/MP3 128: abaixo de 320/)).toBeInTheDocument();
+    expect(screen.getByText("MP3 não entra: só lossless")).toBeInTheDocument();
+    expect(screen.getByText("lossy por dentro (corte em 16,1 kHz)")).toBeInTheDocument();
     expect(screen.getByText(/sem download nativo/)).toBeInTheDocument();
   });
 });
@@ -1303,16 +1305,17 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     ));
   });
 
-  it("rejeição por bitrate baixo, formato sem download ou posse não oferece 'Tentar de novo'; rejeição por arquivo inválido oferece", async () => {
+  it("rejeição por lossy, formato sem download ou posse não oferece 'Tentar de novo'; rejeição por arquivo inválido oferece", async () => {
     mocks.slskJobs.mockResolvedValue([
-      scJob({ kind: "rejected", reason: { low_bitrate: { kbps: 128 } } }, { job_id: "a" }),
+      scJob({ kind: "rejected", reason: { lossy_format: { format: "MP3" } } }, { job_id: "a" }),
+      scJob({ kind: "rejected", reason: { lossy_inside: { cutoff_hz: 16075 } } }, { job_id: "e", source: { ...scSource, track_id: 11 } }),
       scJob({ kind: "rejected", reason: "no_download" }, { job_id: "d", source: { ...scSource, track_id: 10 } }),
       scJob({ kind: "rejected", reason: { already_owned: { track_id: "9" } } }, { job_id: "b", source: { ...scSource, track_id: 8 } }),
       scJob({ kind: "rejected", reason: "corrupt" }, { job_id: "c", source: { ...scSource, track_id: 9 } }),
     ]);
     render(() => <Crate />);
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
-    await screen.findByText(/MP3 128: abaixo de 320/);
+    await screen.findByText("MP3 não entra: só lossless");
     expect(screen.getAllByRole("button", { name: /Tentar de novo/ })).toHaveLength(1);
   });
 
@@ -1337,12 +1340,12 @@ describe("Crate: SoundCloud, correções da revisão", () => {
 
   it("formato que não entra mostra o motivo uma vez só, com a string real do backend", async () => {
     mocks.crateScSearch.mockResolvedValue([scResult({ id: 1, title: "A", user_name: "B", availability: { kind: "native" }, suggested_dest: "Funk Brasileiro" })]);
-    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 3672064, kbps_est: 128, format_label: "MP3 128", allowed: false, reason: "abaixo de 320 kbps" });
+    mocks.crateScProbe.mockResolvedValue({ ext: "mp3", size: 3672064, kbps_est: 128, format_label: "MP3 128", allowed: false, reason: "só lossless" });
     const { container } = render(() => <Crate />);
     await typeAndEnter("a");
     await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
     await screen.findByText(/não entra/);
-    expect(container.querySelector(".crate-fmt")!.textContent).toBe("MP3 128 · não entra (abaixo de 320 kbps)");
+    expect(container.querySelector(".crate-fmt")!.textContent).toBe("MP3 128 · não entra (só lossless)");
   });
 
   it("o que o CEO edita no card (artista, título, ano) é o que vai para o crate_download; Esc fecha o card", async () => {

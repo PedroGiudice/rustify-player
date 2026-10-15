@@ -588,7 +588,8 @@ export type RejectReason =
   | "bit32_unsupported"
   | "not_flac"
   | "corrupt"
-  | { low_bitrate: { kbps: number } }
+  | { lossy_format: { format: string } }
+  | { lossy_inside: { cutoff_hz: number } }
   | "no_download";
 
 /** JobState — 12 estados, `#[serde(tag = "kind")]` (board.rs): internamente
@@ -623,7 +624,7 @@ export interface ConfirmedMeta {
   label: string | null;
 }
 
-export type FormatIn = "flac" | "wav24" | "wav16" | "aiff" | "mp3_320";
+export type FormatIn = "flac" | "wav24" | "wav16" | "aiff";
 
 export interface DownloadJob {
   job_id: string;

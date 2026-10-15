@@ -337,15 +337,12 @@ fn probe_verdict(ext: &str, size: Option<u64>, kbps_est: Option<u32>) -> ScProbe
         "flac" => ("FLAC".to_string(), true, None),
         "wav" | "wave" => ("WAV".to_string(), true, None),
         "aiff" | "aif" | "aifc" => ("AIFF".to_string(), true, None),
-        "mp3" => match kbps_est {
-            Some(k) if k < sc_worker::MIN_MP3_KBPS => {
-                // Só o motivo: o card já mostra "MP3 {k} · não entra".
-                (format!("MP3 {k}"), false, Some("abaixo de 320 kbps".to_string()))
-            }
-            Some(_) => ("MP3 320".to_string(), true, None),
-            // Sem tamanho não há estimativa: o ffprobe decide depois de baixar.
-            None => ("MP3".to_string(), true, None),
-        },
+        // Só lossless entra (CEO, 15/10/2026). Só o motivo: o card já mostra
+        // "MP3 {k} · não entra".
+        "mp3" => {
+            let label = kbps_est.map(|k| format!("MP3 {}", k.min(320))).unwrap_or_else(|| "MP3".to_string());
+            (label, false, Some("só lossless".to_string()))
+        }
         // A URL assinada do CDN não tem extensão e o `ext` vem só dos
         // headers: sem ele, quem decide é o ffprobe do arquivo baixado,
         // como faz o worker.
@@ -897,13 +894,14 @@ mod tests {
     fn probe_verdict_segue_a_politica_de_formato() {
         assert!(probe_verdict("WAV", Some(1), Some(1411)).allowed);
         assert_eq!(probe_verdict("aif", None, None).format_label, "AIFF");
-        let ok = probe_verdict("mp3", Some(7_000_000), Some(320));
-        assert!(ok.allowed && ok.format_label == "MP3 320");
-        let baixo = probe_verdict("mp3", Some(3_000_000), Some(129));
-        assert!(!baixo.allowed);
-        assert_eq!(baixo.format_label, "MP3 129");
-        assert_eq!(baixo.reason.as_deref(), Some("abaixo de 320 kbps"), "o rótulo não se repete no motivo");
-        assert!(probe_verdict("mp3", None, None).allowed, "sem estimativa o ffprobe decide");
+        // Só lossless entra (CEO, 15/10/2026): MP3 fica fora em qualquer bitrate.
+        let mp3 = probe_verdict("mp3", Some(7_000_000), Some(320));
+        assert!(!mp3.allowed);
+        assert_eq!(mp3.format_label, "MP3 320");
+        assert_eq!(mp3.reason.as_deref(), Some("só lossless"), "o rótulo não se repete no motivo");
+        let sem_estimativa = probe_verdict("mp3", None, None);
+        assert!(!sem_estimativa.allowed);
+        assert_eq!(sem_estimativa.format_label, "MP3");
         let m4a = probe_verdict("m4a", Some(1), Some(256));
         assert!(!m4a.allowed && m4a.reason.as_deref() == Some("formato não suportado"));
         let vazio = probe_verdict("", None, None);

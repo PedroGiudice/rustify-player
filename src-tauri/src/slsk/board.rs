@@ -70,9 +70,12 @@ pub enum RejectReason {
     Bit32Unsupported,
     NotFlac,
     Corrupt,
-    /// MP3 original abaixo de 300 kbps (estimado na sondagem ou medido no
-    /// arquivo baixado) — não entra no acervo (spec §3, política de lossy).
-    LowBitrate { kbps: u32 },
+    /// Original em formato com perda (MP3, AAC...): só lossless entra no
+    /// acervo (decisão do CEO, 15/10/2026; antes MP3 320 entrava marcado).
+    LossyFormat { format: String },
+    /// FLAC/WAV com corte espectral de lossy (MP3 disfarçado), medido por
+    /// `library_indexer::spectral`.
+    LossyInside { cutoff_hz: u32 },
     /// A faixa não tem download nativo (ou a cota acabou) — nada a baixar.
     NoDownload,
 }
@@ -136,14 +139,6 @@ pub enum FormatIn {
     Wav24,
     Wav16,
     Aiff,
-    Mp3_320,
-}
-
-#[allow(dead_code)] // consumido pelo sc-worker e pela UI (tasks seguintes do plano Crate fase 1)
-impl FormatIn {
-    pub fn is_lossy(self) -> bool {
-        matches!(self, FormatIn::Mp3_320)
-    }
 }
 
 /// Por que um job está em `Waiting` (só Bandcamp, spec §2.2).
@@ -712,8 +707,10 @@ mod tests {
 
     #[test]
     fn reject_reasons_novos_serializam_snake_case() {
-        let v = serde_json::to_value(RejectReason::LowBitrate { kbps: 128 }).unwrap();
-        assert_eq!(v, serde_json::json!({ "low_bitrate": { "kbps": 128 } }));
+        let v = serde_json::to_value(RejectReason::LossyFormat { format: "MP3".into() }).unwrap();
+        assert_eq!(v, serde_json::json!({ "lossy_format": { "format": "MP3" } }));
+        let v = serde_json::to_value(RejectReason::LossyInside { cutoff_hz: 16_075 }).unwrap();
+        assert_eq!(v, serde_json::json!({ "lossy_inside": { "cutoff_hz": 16_075 } }));
         let v = serde_json::to_value(RejectReason::NoDownload).unwrap();
         assert_eq!(v, serde_json::json!("no_download"));
     }

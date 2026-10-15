@@ -281,12 +281,22 @@ fn place_at_destination(music_root: &Path, incoming: &Path, dest: &Path) -> Resu
 /// (`.rustify-incoming/<job_id>.flac`, spec §5.4) — habilita
 /// [`clean_orphan_incoming`] a correlacionar exatamente (review, Minor
 /// promovido: antes usava o basename local, sem relação com o job).
+/// Medição do corte espectral usada no staging. Injetável para os testes de
+/// tempo do coordinator (sem otimização, medir faixas de minutos leva segundos).
+pub type QualityCheck = fn(&Path) -> Result<library_indexer::spectral::SpectralVerdict, String>;
+
+/// A medição de verdade.
+pub fn measure_quality(path: &Path) -> Result<library_indexer::spectral::SpectralVerdict, String> {
+    library_indexer::spectral::analyze_flac(path).map_err(|e| e.to_string())
+}
+
 pub fn stage_file(
     music_root: &Path,
     playlist: &str,
     local: &Path,
     owned: &OwnedIndex,
     job_id: &str,
+    quality: QualityCheck,
 ) -> Result<StageOutcome, String> {
     let md = match library_indexer::parse_flac(local) {
         Ok(md) => md,
@@ -304,6 +314,19 @@ pub fn stage_file(
     if decode_probe(local).is_err() {
         move_to_quarantine(music_root, local, "corrupt");
         return Ok(StageOutcome::Rejected(RejectReason::Corrupt));
+    }
+
+    // Só lossless de verdade entra (CEO, 15/10/2026): FLAC com corte espectral
+    // de lossy (MP3 disfarçado) é recusado. Vale para o Soulseek e para o
+    // original das fontes externas, que chegam aqui já em FLAC. Falha da
+    // medição (arquivo curto ou mudo) não bloqueia.
+    match quality(local) {
+        Ok(v) if v.class.is_lossy() => {
+            move_to_quarantine(music_root, local, "lossy_inside");
+            return Ok(StageOutcome::Rejected(RejectReason::LossyInside { cutoff_hz: v.cutoff_hz.unwrap_or(0) }));
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(path = %local.display(), error = %e, "stage: corte espectral não medido; a faixa segue"),
     }
 
     let dedup_artist = md
@@ -682,7 +705,7 @@ mod tests {
         fs::write(&local, b"isto nao e um flac de verdade").unwrap();
 
         let owned = empty_owned_index();
-        let outcome = stage_file(&music_root, "Rap & Hip-Hop", &local, &owned, "job-abc").unwrap();
+        let outcome = stage_file(&music_root, "Rap & Hip-Hop", &local, &owned, "job-abc", measure_quality).unwrap();
         assert_eq!(outcome, StageOutcome::Rejected(RejectReason::NotFlac));
         // IM-2: nao fica largado no lugar original NEM e deletado — vai
         // pra quarentena.
@@ -737,7 +760,7 @@ mod tests {
         );
 
         let owned = empty_owned_index();
-        let outcome = stage_file(&music_root, "Rap & Hip-Hop", &local, &owned, "job-corrupt").unwrap();
+        let outcome = stage_file(&music_root, "Rap & Hip-Hop", &local, &owned, "job-corrupt", measure_quality).unwrap();
         assert_eq!(outcome, StageOutcome::Rejected(RejectReason::Corrupt));
         assert!(!local.exists());
     }
@@ -772,7 +795,7 @@ mod tests {
         fs::copy(flac_fixture(), &local).unwrap();
 
         let owned = empty_owned_index();
-        let outcome = stage_file(&music_root, "Trance", &local, &owned, "job-ok").unwrap();
+        let outcome = stage_file(&music_root, "Trance", &local, &owned, "job-ok", measure_quality).unwrap();
         match outcome {
             StageOutcome::Staged { final_path } => {
                 assert!(final_path.starts_with(music_root.join("Trance")));
@@ -781,6 +804,46 @@ mod tests {
             other => panic!("esperava Staged, veio {other:?}"),
         }
         assert!(!local.exists(), "arquivo original deve ter sido movido");
+    }
+
+    /// FLAC que é MP3 por dentro (ruído rosa -> MP3 128 -> FLAC, com tags):
+    /// recusado com o corte medido e quarentenado, nunca vai para o acervo.
+    #[test]
+    fn stage_file_rejects_flac_lossy_por_dentro() {
+        let ff = |args: &[&str]| {
+            std::process::Command::new("ffmpeg")
+                .args(["-nostdin", "-loglevel", "error", "-y"])
+                .args(args)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let mp3 = tmp.path().join("x.mp3");
+        let local = tmp.path().join("baixado.flac");
+        if !ff(&["-f", "lavfi", "-i", "anoisesrc=d=70:c=pink:a=0.3", "-ac", "2", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k", mp3.to_str().unwrap()])
+            || !ff(&["-i", mp3.to_str().unwrap(), "-c:a", "flac", "-metadata", "artist=Teste", "-metadata", "title=Faixa", local.to_str().unwrap()])
+        {
+            eprintln!("sem ffmpeg: teste pulado");
+            return;
+        }
+        let music_root = tmp.path().join("Music");
+        fs::create_dir_all(&music_root).unwrap();
+        let outcome = stage_file(&music_root, "Funk Brasileiro", &local, &empty_owned_index(), "job-lossy", measure_quality).unwrap();
+        match outcome {
+            StageOutcome::Rejected(RejectReason::LossyInside { cutoff_hz }) => {
+                assert!((15_000..18_000).contains(&cutoff_hz), "corte {cutoff_hz}");
+            }
+            other => panic!("esperava LossyInside, veio {other:?}"),
+        }
+        assert!(!local.exists(), "arquivo foi para a quarentena");
+        assert!(!music_root.join("Funk Brasileiro").exists(), "nada entra no acervo");
+        let q: Vec<_> = walkdir::WalkDir::new(music_root.join(QUARANTINE_DIR_NAME))
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .collect();
+        assert_eq!(q.len(), 1, "um arquivo na quarentena");
     }
 
     #[test]

@@ -16,8 +16,6 @@ use super::board::{FormatIn, JobBoard, RejectReason, Source};
 use super::coordinator::{FetchEvent, FetchTask};
 use super::sources::SourcesConfig;
 
-/// Piso do MP3 original (spec §3, política de lossy).
-pub const MIN_MP3_KBPS: u32 = 300;
 /// Teto da capa baixada da fonte.
 const COVER_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// Lado máximo da capa embutida no FLAC.
@@ -27,7 +25,9 @@ const PROGRESS_EVERY_MS: u128 = 300;
 
 /// Puro, testável: decide o `FormatIn` (ou a rejeição) a partir da sondagem
 /// do arquivo BAIXADO. A extensão só desempata PCM (AIFF x WAV); o codec
-/// real manda: um `.wav` que é MP3 por dentro segue a regra do MP3.
+/// real manda: um `.wav` que é MP3 por dentro segue a regra do MP3. Só
+/// lossless entra (CEO, 15/10/2026): codec com perda é recusado em qualquer
+/// bitrate; o corte espectral do lossless é checado depois, no `stage_file`.
 pub fn classify_original(ext: &str, p: &MediaProbe) -> Result<FormatIn, RejectReason> {
     match p.codec.as_str() {
         "flac" => Ok(FormatIn::Flac),
@@ -37,13 +37,8 @@ pub fn classify_original(ext: &str, p: &MediaProbe) -> Result<FormatIn, RejectRe
             }
             Ok(if p.bits_per_sample.unwrap_or(16) >= 24 { FormatIn::Wav24 } else { FormatIn::Wav16 })
         }
-        "mp3" => {
-            let kbps = p.bit_rate_kbps.unwrap_or(0);
-            if kbps >= MIN_MP3_KBPS {
-                Ok(FormatIn::Mp3_320)
-            } else {
-                Err(RejectReason::LowBitrate { kbps })
-            }
+        c @ ("mp3" | "mp2" | "aac" | "opus" | "vorbis" | "wmav2" | "ac3" | "eac3") => {
+            Err(RejectReason::LossyFormat { format: c.to_ascii_uppercase() })
         }
         _ => Err(RejectReason::NoDownload),
     }
@@ -234,7 +229,6 @@ fn run_task(
         let _ = std::fs::remove_file(&flac);
         return canceled();
     }
-    let comment = if format_in.is_lossy() { Some("source: lossy mp3") } else { None };
     let tags = TagSet {
         artist: &t.meta.artist,
         album_artist: &t.meta.artist,
@@ -245,7 +239,7 @@ fn run_task(
         track_total: 1,
         genre: &t.playlist,
         label: t.meta.label.as_deref(),
-        comment,
+        comment: None,
     };
     if let Err(e) = write_tags(&flac, &tags, cover.as_deref()) {
         let _ = std::fs::remove_file(&flac);
@@ -268,11 +262,14 @@ mod tests {
         assert_eq!(classify_original("wav", &p("pcm_s16le", None, Some(16))), Ok(FormatIn::Wav16));
         assert_eq!(classify_original("aiff", &p("pcm_s16be", None, Some(16))), Ok(FormatIn::Aiff));
         assert_eq!(classify_original("flac", &p("flac", None, Some(16))), Ok(FormatIn::Flac));
-        assert_eq!(classify_original("mp3", &p("mp3", Some(320), None)), Ok(FormatIn::Mp3_320));
-        assert_eq!(classify_original("mp3", &p("mp3", Some(128), None)), Err(RejectReason::LowBitrate { kbps: 128 }));
+        // Só lossless entra (CEO, 15/10/2026): MP3 de qualquer bitrate fica fora
+        let lossy = |f: &str| Err(RejectReason::LossyFormat { format: f.into() });
+        assert_eq!(classify_original("mp3", &p("mp3", Some(320), None)), lossy("MP3"));
+        assert_eq!(classify_original("mp3", &p("mp3", Some(128), None)), lossy("MP3"));
         // extensão mente: ".wav" que é mp3 por dentro segue a sondagem
-        assert_eq!(classify_original("wav", &p("mp3", Some(192), None)), Err(RejectReason::LowBitrate { kbps: 192 }));
-        assert_eq!(classify_original("m4a", &p("aac", Some(256), None)), Err(RejectReason::NoDownload));
+        assert_eq!(classify_original("wav", &p("mp3", Some(192), None)), lossy("MP3"));
+        assert_eq!(classify_original("m4a", &p("aac", Some(256), None)), lossy("AAC"));
+        assert_eq!(classify_original("bin", &p("mjpeg", None, None)), Err(RejectReason::NoDownload));
     }
 
     /// Modos do `FakeSc`: cada um simula um jeito de a fonte responder.
@@ -464,24 +461,15 @@ mod tests {
     }
 
     #[test]
-    fn mp3_abaixo_de_300_rejeita_low_bitrate() {
-        if !ffmpeg_ok() { return; }
-        let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "128k"]);
-        let evs = run_one(api, cfg, board, task(&tmp));
-        assert!(matches!(evs.last(), Some(FetchEvent::Rejected { reason: RejectReason::LowBitrate { .. }, .. })), "{evs:?}");
-        assert!(!tmp.path().join(".rustify-incoming/j1.a0.mp3").exists(), "original rejeitado sai do incoming");
-    }
-
-    #[test]
-    fn mp3_320_entra_com_comment_de_origem() {
+    fn mp3_320_e_recusado_e_sai_do_incoming() {
         if !ffmpeg_ok() { return; }
         let (tmp, api, cfg, board) = setup("mp3", &["-b:a", "320k"]);
         let evs = run_one(api, cfg, board, task(&tmp));
-        let (path, fmt) = done_de(&evs).unwrap();
-        assert_eq!(fmt, FormatIn::Mp3_320);
-        let tagged = lofty::read_from_path(&path).unwrap();
-        use lofty::prelude::*; let c = tagged.primary_tag().and_then(|t| t.comment().map(|s| s.to_string()));
-        assert_eq!(c.as_deref(), Some("source: lossy mp3"));
+        assert!(
+            matches!(evs.last(), Some(FetchEvent::Rejected { reason: RejectReason::LossyFormat { format }, .. }) if format == "MP3"),
+            "{evs:?}"
+        );
+        assert!(!tmp.path().join(".rustify-incoming/j1.a0.mp3").exists(), "original rejeitado sai do incoming");
     }
 
     #[test]

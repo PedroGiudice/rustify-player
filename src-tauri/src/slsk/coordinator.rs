@@ -444,7 +444,8 @@ fn reject_slug(reason: &RejectReason) -> &'static str {
         RejectReason::Bit32Unsupported => "bit32_unsupported",
         RejectReason::NotFlac => "not_flac",
         RejectReason::Corrupt => "corrupt",
-        RejectReason::LowBitrate { .. } => "low_bitrate",
+        RejectReason::LossyFormat { .. } => "lossy_format",
+        RejectReason::LossyInside { .. } => "lossy_inside",
         RejectReason::NoDownload => "no_download",
     }
 }
@@ -512,6 +513,9 @@ pub struct Coordinator {
     /// `Failed{"fonte ainda não suportada"}`.
     fetch_workers: HashMap<&'static str, Sender<FetchTask>>,
     fetch_rx: Option<Receiver<FetchEvent>>,
+    /// Corte espectral no staging (só lossless entra). O app usa a medição
+    /// real; testes de tempo trocam por uma que não mede.
+    quality: stage::QualityCheck,
     /// Próxima tentativa (`DownloadJob::attempt`). Monotônico na sessão;
     /// o boot o avança além das tentativas persistidas.
     attempt_seq: AtomicU32,
@@ -552,6 +556,7 @@ impl Coordinator {
             lyrics_tx: None,
             fetch_workers: HashMap::new(),
             fetch_rx: None,
+            quality: stage::measure_quality,
             attempt_seq: AtomicU32::new(0),
             dirty: Mutex::new(false),
             last_emit: Mutex::new(None),
@@ -563,6 +568,25 @@ impl Coordinator {
     fn with_lyrics_tx(mut self, tx: Sender<LyricsJob>) -> Self {
         self.lyrics_tx = Some(tx);
         self
+    }
+
+    /// Testes do coordinator: o staging não mede o corte espectral (a medição
+    /// tem os testes dela no `stage.rs`; sem otimização, medir as fixtures
+    /// de minutos estoura os prazos dos testes de tempo).
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    fn new_sem_medicao(
+        cfg: Arc<SlskConfig>,
+        api: Arc<dyn SlskdApi>,
+        board: Arc<JobBoard>,
+        searches: Arc<RwLock<SearchStore>>,
+        ingest: Box<dyn Fn(Vec<PathBuf>) -> Vec<IngestOutcome> + Send + Sync>,
+        owned_index_provider: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync>,
+        jobs_path: PathBuf,
+    ) -> Self {
+        let mut c = Self::new(cfg, api, board, searches, ingest, owned_index_provider, jobs_path);
+        c.quality = |_| Err("testes do coordinator não medem".into());
+        c
     }
 
     /// Registra o worker de uma origem externa (`Source::kind`).
@@ -1932,7 +1956,7 @@ impl Coordinator {
             }
         };
 
-        match stage::stage_file(&self.cfg.music_root, &job.dest_playlist, &local, &owned, &job.job_id) {
+        match stage::stage_file(&self.cfg.music_root, &job.dest_playlist, &local, &owned, &job.job_id, self.quality) {
             Ok(stage::StageOutcome::Staged { final_path }) => {
                 // Fonte externa (`format_in` detectado): o worker embutiu a
                 // capa no FLAC; a pasta do álbum ganha o `cover.jpg` dela.
@@ -2285,7 +2309,7 @@ mod tests {
         let (ingest, _calls) = recording_ingest();
         let owned_provider: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync> =
             Box::new(|| Ok(empty_owned_index()));
-        Coordinator::new(
+        Coordinator::new_sem_medicao(
             cfg,
             api,
             Arc::new(JobBoard::new()),
@@ -2728,7 +2752,7 @@ mod tests {
         let (ingest, _calls) = recording_ingest();
         let owned_provider: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync> =
             Box::new(|| Ok(empty_owned_index()));
-        let coord = Coordinator::new(
+        let coord = Coordinator::new_sem_medicao(
             cfg,
             fake,
             Arc::new(JobBoard::new()),
@@ -2792,7 +2816,7 @@ mod tests {
         let (ingest, _calls) = recording_ingest();
         let owned_provider: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync> =
             Box::new(|| Ok(empty_owned_index()));
-        let coord = Coordinator::new(
+        let coord = Coordinator::new_sem_medicao(
             cfg,
             fake,
             Arc::new(JobBoard::new()),
@@ -2914,7 +2938,7 @@ mod tests {
         });
         let owned_provider: Box<dyn Fn() -> Result<OwnedIndex, String> + Send + Sync> =
             Box::new(|| Ok(empty_owned_index()));
-        let coord = Coordinator::new(
+        let coord = Coordinator::new_sem_medicao(
             coord_cfg,
             fake.clone(),
             Arc::new(JobBoard::new()),
@@ -3468,9 +3492,9 @@ mod tests {
         let (r, rx) = crossbeam_channel::bounded(1);
         c.handle_task(SlskTask::DownloadExternal { source: sc_source(2), meta: meta("A", "T"), artwork_url: None, dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
-        etx.send(FetchEvent::Rejected { job_id: id.clone(), attempt: att(&c, &id), reason: RejectReason::LowBitrate { kbps: 128 }, quarantine: None }).unwrap();
+        etx.send(FetchEvent::Rejected { job_id: id.clone(), attempt: att(&c, &id), reason: RejectReason::LossyFormat { format: "MP3".into() }, quarantine: None }).unwrap();
         c.drain_fetch_events(Instant::now());
-        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LowBitrate { kbps: 128 } });
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LossyFormat { format: "MP3".into() } });
     }
 
     #[test]
@@ -3795,9 +3819,9 @@ mod tests {
         let id = external(&c, sc_source(35), meta("A", "T"), "P").unwrap();
         let task = frx.try_recv().unwrap();
         let raw = fetched_flac(&c, &task);
-        etx.send(FetchEvent::Rejected { job_id: id.clone(), attempt: task.attempt, reason: RejectReason::LowBitrate { kbps: 128 }, quarantine: Some(raw.clone()) }).unwrap();
+        etx.send(FetchEvent::Rejected { job_id: id.clone(), attempt: task.attempt, reason: RejectReason::LossyFormat { format: "MP3".into() }, quarantine: Some(raw.clone()) }).unwrap();
         c.drain_fetch_events(Instant::now());
-        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LowBitrate { kbps: 128 } });
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LossyFormat { format: "MP3".into() } });
         assert!(!raw.exists(), "saiu do incoming");
         assert_eq!(flacs_under(&tmp.path().join("Music").join(".rustify-quarentena")).len(), 1, "arquivo na quarentena");
     }
@@ -3824,7 +3848,7 @@ mod tests {
         let failing: Box<dyn Fn(Vec<PathBuf>) -> Vec<IngestOutcome> + Send + Sync> = Box::new(|paths: Vec<PathBuf>| {
             paths.into_iter().map(|path| IngestOutcome { path, result: Err("qdrant fora".to_string()) }).collect()
         });
-        let c = Coordinator::new(
+        let c = Coordinator::new_sem_medicao(
             cfg,
             Arc::new(FakeSlskd::new()),
             Arc::new(JobBoard::new()),
@@ -3951,7 +3975,7 @@ mod tests {
     fn falha_de_dedup_em_job_externo_apaga_o_arquivo_do_incoming() {
         let tmp = tempfile::tempdir().unwrap();
         let (ingest, _calls) = recording_ingest();
-        let c = Coordinator::new(
+        let c = Coordinator::new_sem_medicao(
             test_cfg(tmp.path()),
             Arc::new(FakeSlskd::new()),
             Arc::new(JobBoard::new()),
@@ -3994,12 +4018,12 @@ mod tests {
         etx.send(FetchEvent::Rejected {
             job_id: id.clone(),
             attempt: task.attempt,
-            reason: RejectReason::LowBitrate { kbps: 128 },
+            reason: RejectReason::LossyFormat { format: "MP3".into() },
             quarantine: Some(escapando),
         })
         .unwrap();
         c.drain_fetch_events(Instant::now());
-        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LowBitrate { kbps: 128 } });
+        assert_eq!(c.board.get(&id).unwrap().state, JobState::Rejected { reason: RejectReason::LossyFormat { format: "MP3".into() } });
         assert!(faixa.exists(), "arquivo do acervo não vai para a quarentena");
     }
 
@@ -4056,7 +4080,7 @@ mod tests {
             source: src,
             meta: meta("A", "T"),
             artwork_url: None,
-            format_in: Some(FormatIn::Mp3_320),
+            format_in: Some(FormatIn::Wav16),
             tracks: 1,
             display: "A - T".into(),
             dest_playlist: "P".into(),
@@ -4074,7 +4098,7 @@ mod tests {
         c.save_jobs();
         let (c2, _) = test_coordinator_at(tmp.path());
         c2.reconcile_boot(unix_now());
-        assert_eq!(c2.board.get(&id).unwrap().format_in, Some(FormatIn::Mp3_320));
+        assert_eq!(c2.board.get(&id).unwrap().format_in, Some(FormatIn::Wav16));
     }
 
     #[test]
@@ -4143,7 +4167,7 @@ mod tests {
         let (ftx, frx) = crossbeam_channel::bounded::<FetchTask>(16);
         let (etx, erx) = crossbeam_channel::unbounded::<FetchEvent>();
         let c = Arc::new(
-            Coordinator::new(
+            Coordinator::new_sem_medicao(
                 test_cfg(tmp.path()),
                 Arc::new(FakeSlskd::new()),
                 Arc::new(JobBoard::new()),

@@ -162,10 +162,24 @@ function isAlreadyOwnedReason(r: RejectReason): r is { already_owned: { track_id
   return typeof r === "object" && r !== null && "already_owned" in r;
 }
 
+/** Recusa pela regra "só lossless entra" (CEO, 15/10/2026): refazer o mesmo
+    original não muda o resultado. */
+function isLossyReason(r: RejectReason): boolean {
+  return typeof r === "object" && r !== null && ("lossy_format" in r || "lossy_inside" in r);
+}
+
+/** 16075 -> "16,1" */
+function khz(hz: number): string {
+  return (hz / 1000).toFixed(1).replace(".", ",");
+}
+
 function rejectReasonText(reason: RejectReason): string {
   if (isAlreadyOwnedReason(reason)) return "já tinhas — o arquivo ficou em downloads";
-  if (typeof reason === "object" && reason !== null && "low_bitrate" in reason) {
-    return `MP3 ${reason.low_bitrate.kbps}: abaixo de 320`;
+  if (typeof reason === "object" && reason !== null && "lossy_format" in reason) {
+    return `${reason.lossy_format.format} não entra: só lossless`;
+  }
+  if (typeof reason === "object" && reason !== null && "lossy_inside" in reason) {
+    return `lossy por dentro (corte em ${khz(reason.lossy_inside.cutoff_hz)} kHz)`;
   }
   if (reason === "no_download") return "sem download nativo";
   if (reason === "bit32_unsupported") return "FLAC 32-bit — o player não decodifica";
@@ -223,7 +237,6 @@ const FORMAT_IN_LABEL: Record<FormatIn, string> = {
   wav24: "WAV 24 bit",
   wav16: "WAV 16 bit",
   aiff: "AIFF",
-  mp3_320: "MP3 320",
 };
 
 /** Badge de formato na Fila. Soulseek: rótulo da fonte (ou o tamanho, em
@@ -238,9 +251,9 @@ function jobFormatLabel(job: DownloadJob): string | null {
 /** Job de origem externa (SoundCloud, Bandcamp) que pode ser refeito. Lá
     não há [Trocar fonte] (não existem alternativas), e o job_id fixo por
     faixa deixaria a linha presa em `failed` para sempre, inclusive entre
-    sessões. O backend recria job terminal com `attempt` novo. Bitrate
-    baixo, formato do original sem download (spec §3.2) e posse não
-    mudam ao refazer: ficam de fora. */
+    sessões. O backend recria job terminal com `attempt` novo. Original
+    lossy (formato ou corte espectral), sem download (spec §3.2) e posse
+    não mudam ao refazer: ficam de fora. */
 function canRetryExternal(job: DownloadJob): boolean {
   if (job.source.kind === "soulseek") return false;
   const st = job.state;
@@ -248,7 +261,7 @@ function canRetryExternal(job: DownloadJob): boolean {
   if (st.kind !== "rejected") return false;
   const r = st.reason;
   if (r === "no_download") return false;
-  return !isAlreadyOwnedReason(r) && !(typeof r === "object" && r !== null && "low_bitrate" in r);
+  return !isAlreadyOwnedReason(r) && !isLossyReason(r);
 }
 
 /** Badge da origem (à esquerda do formato). */
