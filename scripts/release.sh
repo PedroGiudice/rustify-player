@@ -36,6 +36,17 @@ if [ ! -f "$QDRANT_BIN" ]; then
   mv src-tauri/binaries/qdrant "$QDRANT_BIN"
 fi
 
+# Gate da régua (mesmo padrão do test_export_manifest.py no release_android.sh):
+# a régua roda sozinha todo dia pelo timer e não tem outro teste automático.
+# A fixture de familiaridade é a mesma do teste Rust; mudar a definição de
+# aceite/pulo/nunca-termina num lado só quebra aqui antes do build.
+echo "[release] gate: scripts/metrics/test_autoplay_regua.py"
+if ! GATE_OUT="$(python3 scripts/metrics/test_autoplay_regua.py 2>&1)"; then
+  printf '%s\n' "$GATE_OUT"
+  echo "[release] gate FALHOU: test_autoplay_regua.py — release abortado"; exit 1
+fi
+echo "[release] gate ok: $(printf '%s\n' "$GATE_OUT" | tail -n 1)"
+
 echo "[release] building frontend"
 bun run build
 
