@@ -711,6 +711,22 @@ decisoes). O que importa pro dia-a-dia:
   apenas como exemplos na busca de candidatas). 77% dos pulos são em até 5 s (navegação, em
   rajadas); sem eles o pulo do autoplay é 72%. O período anterior à v0.2.75 é contaminado pelo
   S24 0.2.74 (96% de aceite, escuta em segundo plano) e não serve de linha de base.
+- **Familiaridade no autoplay (v0.2.92, desktop; S24 depois)**: `library-indexer/src/
+  familiarity.rs` conta por faixa as vezes ouvida até o fim e as tentativas do motor. Cache no
+  `QdrantClient`: `familiarity()` devolve `Option` e NUNCA faz I/O nem espera lock de varredura
+  (remonta em thread de fundo a cada 6 h ou após invalidação; backoff de 60 s após falha; sem
+  índice o rádio segue sem familiaridade); aquecimento no boot por `rebuild_familiarity()`;
+  atualização incremental por evento gravado, deduplicada pelo id do ponto (replay do S24 não
+  conta duas vezes); invalidação no mover. Aceite/pulo = definição da régua, travada pela
+  fixture `scripts/metrics/fixtures/familiaridade.json` lida pelos testes Rust e Python (mudar
+  um lado = mudar o outro; `release.sh` roda `test_autoplay_regua.py` antes do build).
+  Conhecida = 3+ fins ou curtida. Autoplay serve conhecida, conhecida, descoberta (`autoplay_mix`
+  em `desktop.rs`, `mix_slot` vindo de `radioSession.mixSlot`; o re-fetch pós-pulo recua o ciclo
+  só pelas faixas que o rádio serviu, `mixServedIds`; não zerar o slot no re-fetch). Nunca-termina
+  = 3+ pulos do motor com `listen_pct < 0.5`, 0 fins, sem like (escuta desconhecida/duração 0 e
+  pulos 0 ms do S24 não contam): sai do autoplay e das stations e não expira. Camada 2 do
+  fallback aplica lixo e nunca-termina; camada 3 respeita `exclude_ids`. Simulação nos dados
+  reais previa pulo ~87% (de 92%); medir pela régua, linha "desde a v0.2.92".
 
 ## Crate — busca + download Soulseek in-app (v0.2.62)
 
