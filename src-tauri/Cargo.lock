@@ -3043,6 +3043,7 @@ dependencies = [
  "lofty",
  "notify",
  "rubato",
+ "rustfft",
  "serde",
  "serde_json",
  "sha1",

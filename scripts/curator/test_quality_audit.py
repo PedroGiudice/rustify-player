@@ -123,5 +123,20 @@ class Classify(unittest.TestCase):
                          "lucida,soundcloud")
 
 
+class FixtureCompartilhada(unittest.TestCase):
+    """fixtures/spectral_cliffs.json também é lida por library-indexer/src/spectral.rs:
+    se este teste quebrar, a cópia Rust do detector deixou de concordar com esta."""
+
+    def test_espectros_reais(self):
+        import json
+        fx = json.loads((Path(__file__).parent / "fixtures" / "spectral_cliffs.json").read_text())
+        for c in fx["cases"]:
+            f = np.fft.rfftfreq(c["n_fft"], 1 / c["sr"])
+            med, p10, e = np.array(c["median_db"]), np.array(c["p10_db"]), c["expect"]
+            self.assertEqual(qa.find_cliff(f, med), (e["cut_med"], e["drop_med"]), c["name"])
+            self.assertEqual(qa.find_cliff(f, p10), (e["cut_p10"], e["drop_p10"]), c["name"])
+            self.assertEqual(qa.classify(c["sr"], e["cutoff_hz"], False), e["class"], c["name"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -21,6 +21,7 @@ mod retry;
 pub mod query;
 mod pipeline;
 pub mod dedup;
+pub mod spectral;
 pub mod transcode;
 pub mod tagwrite;
 

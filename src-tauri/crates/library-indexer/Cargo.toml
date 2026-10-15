@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 # Shared via workspace
 symphonia = { workspace = true }
+rustfft = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 crossbeam-channel = { workspace = true }
@@ -42,3 +43,7 @@ default = []
 [[example]]
 name = "scan_folder"
 path = "examples/scan_folder.rs"
+
+[[example]]
+name = "spectral_check"
+path = "examples/spectral_check.rs"
