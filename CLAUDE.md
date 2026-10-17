@@ -561,7 +561,12 @@ Regra do CEO: **nada da Tidal vai pro Soulseek**. O mecanismo é a marca ` [tida
 no nome da pasta do álbum (`~/Music/<playlist>/<Artista>/<Álbum> [tidal]/NN Título.flac`)
 + `shares.filters: ['\[tidal\]']` em `~/slskd_dados/slskd.yml` (verificado pela API:
 pasta com a marca não aparece no share). O app lê as tags, a marca não aparece na UI.
-Não renomear nem mover pasta `[tidal]` pra fora desse padrão.
+Não renomear nem mover pasta `[tidal]` pra fora desse padrão. **Exceção decidida pelo CEO
+(17/10, CMR-297)**: as 21 faixas trocadas no MESMO caminho por versão limpa da Tidal (COMMENT
+`source: tidal ...; troca CMR-297`) ficam fora de pasta `[tidal]` e estão no share, de
+propósito. No mesmo dia o CEO disse que "todas do tidal têm que estar nos caminhos normais,
+como tracks normais": o alcance (só estas, ou também as 351 em pasta `[tidal]` e os downloads
+novos) ficou para confirmar; até lá a regra acima segue valendo para o resto.
 
 - **Login = PKCE, não device code.** O OAuth por device code (`login_oauth`) devolve
   `HIGH` (AAC 320) pra toda faixa sem `HIRES_LOSSLESS` em `media_metadata_tags`
@@ -665,6 +670,22 @@ calibração e números: `docs/contexto/15102026-qualidade-soundcloud.md`.
   14 da Tidal (funk vendido como HI_RES). Troca por "versão melhor" (CMR-297) compara a
   classe espectral, nunca `bit_depth`.
 - MP3/AAC que ainda passe por `to_flac` sai 16 bit com dither (antes saía 24 bit).
+- **Troca por versão limpa na Tidal (CMR-297, 17/10)**: `scripts/curator/upgrade_tidal.py`
+  (listar/buscar/lotes/juntar, só leitura no acervo) acha a mesma gravação (ISRC, ou
+  `title_key` + artista PRINCIPAL + duração; no funk o MC repete o verso em produção de outro
+  DJ) e o `tidal_mix_dl.py --ids ... --no-dedup --no-push` baixa num staging (`--no-dedup`
+  recusa envio). Das 167 marcadas, só 25 têm versão sem corte; em 112 a Tidal tem o MESMO
+  corte (no funk o MP3 está na distribuidora; nada melhor em streaming). Na faixa de
+  20,0-20,6 kHz o detector não separa master de MP3 320 (teste com conversor de taxa e LAME).
+  Relatório: `docs/contexto/17102026-troca-lossless-tidal.md`. **Troca feita em 17/10 (opção
+  (a) do CEO, mesmo caminho)**: 23 faixas, áudio da Tidal com as tags e a capa ANTIGAS (só o
+  áudio muda; sai ReplayGain), id igual, likes/vibe/plays intactos, MERT refeito pelo ingest;
+  o vetor de letra sai na regravação do ponto (PUT) e volta no backfill do próximo boot. Antes
+  de trocar: mesma gravação por Chromaprint (`ffmpeg -f chromaprint`; mesma >= 0,88, diferente
+  ~0,55) e deslocamento por correlação para ajustar `.lrc` alinhado à cópia velha (Rebelião,
+  +12,07 s). Originais em `~/quarentena-lossy/<caminho>` na cmr-auto (desfazer = `mv` de volta).
+  Help Me (Sonny Boy) e Zip a di dou da (Henri Salvador) esperam o ouvido do CEO
+  (`~/cmr297-ouvir/` na cmr-auto): outra transferência/mixagem, similaridade 0,72-0,77.
 
 ## Motor de inteligencia — sinal v3 (v0.2.66, 2026-08-12)
 
