@@ -557,16 +557,14 @@ candidatos verificados com URL: `docs/contexto/12102026-piloto-funk-br.md` + `.j
 
 A Tidal entra como fonte lossless do que Bandcamp/SoundCloud não têm (54 dos 121
 candidatos do piloto estão lá; medido por `scripts/curator/tidal_coverage.py`).
-Regra do CEO: **nada da Tidal vai pro Soulseek**. O mecanismo é a marca ` [tidal]`
-no nome da pasta do álbum (`~/Music/<playlist>/<Artista>/<Álbum> [tidal]/NN Título.flac`)
-+ `shares.filters: ['\[tidal\]']` em `~/slskd_dados/slskd.yml` (verificado pela API:
-pasta com a marca não aparece no share). O app lê as tags, a marca não aparece na UI.
-Não renomear nem mover pasta `[tidal]` pra fora desse padrão. **Exceção decidida pelo CEO
-(17/10, CMR-297)**: as 21 faixas trocadas no MESMO caminho por versão limpa da Tidal (COMMENT
-`source: tidal ...; troca CMR-297`) ficam fora de pasta `[tidal]` e estão no share, de
-propósito. No mesmo dia o CEO disse que "todas do tidal têm que estar nos caminhos normais,
-como tracks normais": o alcance (só estas, ou também as 351 em pasta `[tidal]` e os downloads
-novos) ficou para confirmar; até lá a regra acima segue valendo para o resto.
+**Faixa da Tidal é faixa normal (decisão do CEO, 17/10/2026, reverte a regra de 12/10)**:
+mora em `~/Music/<playlist>/<Artista>/<Álbum>/NN Título.flac`, como qualquer outra, e
+entra no share do Soulseek. A marca ` [tidal]` no nome da pasta, que a tirava do share,
+acabou: o baixador não a cria mais, as 351 faixas em 309 pastas marcadas foram renomeadas
+pelo próprio app em 17/10 (`lib_unmark_tidal`, id migrado com vetores, letra, like/vibe e
+plays; auditoria externa 351/351) e o filtro `'\[tidal\]'` saiu do `~/slskd_dados/slskd.yml`
+(cópia do arquivo antigo em `slskd.yml.bak-cmr297-20261017`, 0600). A origem fica no
+COMMENT do FLAC (`source: tidal <tier>; ...`); não reintroduzir marca no caminho.
 
 - **Login = PKCE, não device code.** O OAuth por device code (`login_oauth`) devolve
   `HIGH` (AAC 320) pra toda faixa sem `HIRES_LOSSLESS` em `media_metadata_tags`
@@ -594,7 +592,7 @@ novos) ficou para confirmar; até lá a regra acima segue valendo para o resto.
   reconhece a máquina e NÃO precisa de flag nem de variável: `uv run --with tidalapi
   --with mutagen --with numpy python3 scripts/curator/tidal_mix_dl.py <link> --playlist <pasta>` baixa no
   staging `~/tidal-out` (~3,5 MB/s), abre o túnel 16333 sozinho se estiver caído, lista por
-  SSH os FLAC `[tidal]` já na cmr-auto (cobre a janela app-fechado em que o Qdrant ainda
+  SSH os FLAC já na cmr-auto (cobre a janela app-fechado em que o Qdrant ainda
   não conhece a faixa) e ABORTA antes de baixar se a cmr-auto não responder. Cada faixa vai
   por rsync (+ capa) para `cmr-auto:~/Music` assim que fica pronta (até 4 tentativas,
   5/20/60 s; o rsync renomeia no fim, o watcher nunca vê arquivo pela metade), a cópia
@@ -628,12 +626,13 @@ novos) ficou para confirmar; até lá a regra acima segue valendo para o resto.
   rede da Tidal com timeout 5 s (conexão) / 7 s (leitura) e lock com espera máx. de 7 s (503
   "Tidal ocupada"); Tidal sem resposta = 502, login recusado = 503 "sessão expirada". Instância
   de teste: `--port 8471 --bind 127.0.0.1 --out <dir>` (nunca mexer na 8470 para testar).
-  O baixador tem o modo seleção `--ids=1,2 --titulo= --origem=` (COMMENT `selecao <origem>`).
+  O baixador tem o modo seleção `--ids=1,2 --titulo= --origem=` (COMMENT `selecao <origem>`)
+  e o `--no-dedup` (exige `--no-push`; baixa o que já está no acervo, para comparar versão).
   **"Já no acervo" tem DUAS cópias que precisam ficar iguais**: `title_key` em
   `tidal_mix_dl.py` e `titleKey` em `src/lib/tidalSearch.ts` (créditos/feat/remaster saem;
   remix, ao vivo, acústico, versão, edit, instrumental distinguem). Mudar uma = mudar a outra.
 - **Depois**: os mesmos passos do Bandcamp (Qdrant total/`embedding_status`, vibe em
-  batch, e conferir que o share do slskd NÃO cresceu).
+  batch, reescanear o share do slskd).
 
 ## Qualidade real do acervo (corte espectral, 15/10/2026, v0.2.93, CMR-297)
 
@@ -876,7 +875,7 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   `canonical_dest` troca `" * : < > ? \ |` por `_` (storage do Android). Desvio
   declarado da spec §5.1/5.3: links externos no Crate são "Copiar link", não "Abrir"
   (capability do opener restrita; abrir URL exige `opener:allow-open-url` com
-  allowlist, decisão para a fase 2). Faixa `[tidal]` nunca entra na fila do Soulseek.
+  allowlist, decisão para a fase 2).
 - **Aba Tidal no Crate (v0.2.88, 13/10)**: terceira aba do Crate, "colar link + pasta +
   Baixar". NÃO é cliente Tidal nativo: o app fala com a FILA DA VM (`scripts/curator/
   tidal_fila.py`, API `GET/POST /<token>/api/fila` em `100.64.242.118:8470`) por `ureq` no
@@ -914,6 +913,13 @@ sem vetores, com like/vibe (`track_enrichments`) e `play_events` órfãos no id
 antigo. NUNCA mover faixa à mão; usar "Mover para playlist…" (menu de contexto
 da faixa, botão no cabeçalho de Álbum e Artista).
 
+- Segundo alvo do mesmo mover (17/10, `MoveTarget::UnmarkTidal { playlist }`, comando
+  `lib_unmark_tidal(track_ids, playlist)`, sem UI, disparado pela ponte): mesma playlist, a
+  pasta do álbum perde o ` [tidal]` (`plan_unmark_tidal`; uma playlist por chamada, faixa de
+  outra = falha; sem marca = "já estava lá"). Usado uma vez para as 351 faixas da Tidal;
+  fica para alguma pasta marcada que apareça. Auditoria: `move_audit.py verify --dest :sem-tidal`.
+  O S24 (manifest de 11/09, sem USB desde então) segue com os ids antigos dessas 351 até
+  reexportar o manifest: plays e likes que ele sincronizar nelas ficam no id apagado.
 - Backend: `lib_move_tracks(track_ids, dest_playlist)` + `lib_list_playlists`
   (pastas no disco, sem `.`/`_`). Pasta que já existe vai como está; só pasta
   nova passa pelo `sanitize_component` (o frontend mostra o nome final antes),
@@ -922,7 +928,7 @@ da faixa, botão no cabeçalho de Álbum e Artista).
   O trabalho roda na thread do coordinator do indexador
   (`IndexerCommand::MoveTracks`, `library-indexer/src/relocate.rs`),
   serializado com o `run_scan`: move o FLAC (só troca a pasta de 1º nível;
-  artista, álbum e ` [tidal]` ficam), o `.lrc` de mesmo stem (um `.lrc` que já
+  artista e álbum ficam), o `.lrc` de mesmo stem (um `.lrc` que já
   estava no destino não é adotado) e a capa da pasta (copia enquanto restam
   faixas; na última, apaga a da origem só se a do destino for idêntica),
   grava o ponto novo com o payload e os vetores `mert`/`lyrics` do antigo

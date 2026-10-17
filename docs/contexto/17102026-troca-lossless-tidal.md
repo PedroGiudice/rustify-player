@@ -210,10 +210,36 @@ Execução:
 Desfazer uma troca: `mv ~/quarentena-lossy/<caminho> ~/Music/<caminho>` na cmr-auto (o app reindexa pelo
 mesmo id). Cópia extra dos 25 originais na VM em `~/tidal-upgrade/antigas/`.
 
+## Faixas da Tidal no caminho normal (17/10/2026, 0.2.94)
+
+Depois da troca o CEO decidiu que **toda faixa da Tidal mora no caminho normal**, renomeando as pastas
+antigas e aceitando o custo no S24. Feito no mesmo dia:
+
+- **App (0.2.94)**: o mover ganhou o alvo `MoveTarget::UnmarkTidal { playlist }` e o comando
+  `lib_unmark_tidal`: mesma playlist, a pasta do álbum perde o ` [tidal]`, e o id novo leva payload,
+  vetores, letra externa, like/vibe e plays, com o journal de queda do "Mover para playlist". Testes:
+  regra de destino (5 casos) e ciclo completo contra o Qdrant da VM.
+- **Renomeação**: 351 faixas em 309 pastas, sete playlists (Funk Brasileiro 152, Rap & Trap Brasileiro
+  102, Jazz 60, Eletrofunk 26, Mega Funk 7, Eletrônica 3, MPB 1), disparadas pela ponte em lotes de até
+  50, depois de um ensaio com a faixa de MPB. Relatórios do app: 351 movidas, 0 falhas. Auditoria
+  externa (`move_audit.py verify --dest :sem-tidal`, foto tirada antes): 351/351 ok. Disco: 0 pastas e 0
+  arquivos com `[tidal]`; journal de queda vazio. Só "Speak No Evil" (Wayne Shorter) se juntou a uma
+  pasta que já existia, sem duplicata.
+- **Antes de renomear**: o boot da 0.2.94 refez o vetor de letra de 14 das 15 trocadas; "Manhattan"
+  (Dinah Washington) tinha a letra só no índice, no campo da letra das tags (leva antiga, anterior à
+  regra da 0.2.71), e a regravação do ponto a perdeu: restaurada em `lyrics_text` a partir da foto (o
+  vetor vem no próximo boot).
+- **Soulseek**: filtro `'\[tidal\]'` removido do `slskd.yml` (cópia `slskd.yml.bak-cmr297-20261017`);
+  share reescaneado: 3.396 para 4.242 arquivos (as 351 com letras e capas).
+- **Baixador**: `tidal_mix_dl.py` não cria mais a marca e a dedup remota lista todos os FLAC; a página
+  da fila (reiniciada) mostra a cobertura do acervo inteiro.
+- **S24**: não estava no USB. O manifest do celular é de 11/09; até reexportar, plays e likes dessas
+  351 faixas que ele sincronizar ficam no id antigo (custo aceito pelo CEO).
+
 ## Próximos passos
 
 1. CEO ouve os 2 pares em espera e decide se troca (o staging da VM guarda as duas versões da Tidal).
-2. Confirmar o alcance de "todas do tidal no caminho normal" (ver CLAUDE.md, seção da Tidal).
+2. S24 no USB: rodar o encode do acervo, `export_manifest.py --deploy` e `phone_push_retry.sh`.
 3. Soulseek para as 29 não encontradas e as 112 lossy na Tidal: rendimento esperado baixo (no funk as
    cópias da rede vêm da mesma origem MP3); se for tentar, pelo Crate ([Trocar fonte]), respeitando o
    teto de 40 buscas por hora.
