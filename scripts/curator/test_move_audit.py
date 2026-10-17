@@ -24,6 +24,13 @@ class CaminhoEsperado(unittest.TestCase):
         self.assertEqual(m.expected_path(p, "Música Brasileira [x]"),
                          R + "Música Brasileira [x]/Elis Regina/1995 - Elis ao Vivo/0915 - Cadeira Vazia.flac")
 
+    def test_sem_marca_tidal_mesma_playlist(self):
+        # `--dest :sem-tidal` confere o `lib_unmark_tidal` (17/10/2026): só a pasta do álbum perde a marca.
+        p = R + "Funk Brasileiro/DJ K/Panico no Submundo [tidal]/02 Puta de Silicone.flac"
+        self.assertEqual(m.expected_path(p, m.UNMARK_TIDAL), R + "Funk Brasileiro/DJ K/Panico no Submundo/02 Puta de Silicone.flac")
+        self.assertEqual(m.expected_path(R + "Jazz/A/B [tidal]/CD2/01 Live [tidal].lrc", m.UNMARK_TIDAL),
+                         R + "Jazz/A/B/CD2/01 Live [tidal].lrc")
+
     def test_nome_da_playlist_repetido_no_resto_nao_e_trocado(self):
         p = R + "Rock/Rock/Rock/01 Rock.flac"
         self.assertEqual(m.expected_path(p, "Pop"), R + "Pop/Rock/Rock/01 Rock.flac")

@@ -12,7 +12,7 @@ Esquema real (confirmado em qdrant_client.rs / relocate.rs e no Qdrant da cmr-au
 
 Uso (o Qdrant da cmr-auto pelo túnel 16333; nada é escrito, nem no Qdrant nem na cmr-auto):
   move_audit.py snapshot (--ids id1,id2 | --plan plano.json) --out snap.json
-  move_audit.py verify --snap snap.json [--dest <playlist>]
+  move_audit.py verify --snap snap.json [--dest <playlist> | --dest :sem-tidal]
 O `--plan` é a saída do funk_split_plan.py (`{"plan": {dest: [ids]}, ...}`; também aceita
 `{dest: [ids]}` puro) e grava o destino esperado por id.
 """
@@ -35,13 +35,25 @@ SOFT_ENRICH_FIELDS = {"play_count", "last_played"}
 
 # --------------------------------------------------------------------------- funções puras
 
+UNMARK_TIDAL = ":sem-tidal"  # `--dest` do `lib_unmark_tidal`: mesma playlist, pasta do álbum sem " [tidal]"
+TIDAL_MARK = " [tidal]"
+
+
 def expected_path(path: str, dest: str) -> str:
-    """Troca SÓ a pasta de 1º nível depois de ROOT pelo destino."""
+    """Troca SÓ a pasta de 1º nível depois de ROOT pelo destino; com `UNMARK_TIDAL`, a playlist fica
+    e as pastas entre ela e o arquivo perdem o " [tidal]" do fim (o nome do arquivo não muda)."""
     if not path.startswith(ROOT):
         raise ValueError(f"caminho fora de {ROOT}: {path}")
     rest = path[len(ROOT):]
     if "/" not in rest:
         raise ValueError(f"caminho sem pasta de playlist: {path}")
+    if dest == UNMARK_TIDAL:
+        parts = rest.split("/")
+        for i in range(1, len(parts) - 1):
+            base = parts[i][: -len(TIDAL_MARK)] if parts[i].endswith(TIDAL_MARK) else parts[i]
+            if base.strip():
+                parts[i] = base
+        return ROOT + "/".join(parts)
     return ROOT + dest + "/" + rest.split("/", 1)[1]
 
 

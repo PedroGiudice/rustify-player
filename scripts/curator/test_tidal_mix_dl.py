@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
 
 from lossless_gate import Verdict, refusal_reason  # noqa: E402
-from tidal_mix_dl import CMR_SSH, LRC_TS, MAX_IDS, TUNNEL_PORT, build_parser, clean_album_dir, comment_for, download_flac, is_refused, load_refused, parse_ids, parse_ref, record_refused, save_refused, sidecar_for, split_artists, title_key, vm_defaults  # noqa: E402
+from tidal_mix_dl import CMR_SSH, LRC_TS, MAX_IDS, TUNNEL_PORT, album_dir, build_parser, clean_album_dir, comment_for, download_flac, is_refused, load_refused, parse_ids, parse_ref, record_refused, save_refused, sidecar_for, split_artists, title_key, vm_defaults  # noqa: E402
 
 
 class VmDefaults(unittest.TestCase):
@@ -100,6 +100,26 @@ class Selecao(unittest.TestCase):
         args = build_parser().parse_args(alvo_do_job(job) + ["--playlist=-Rap"])
         self.assertEqual((args.ids, args.titulo, args.origem, args.playlist), ("1,2", "--limit 5", "-x", "-Rap"))
         self.assertEqual(args.limit, 0)
+
+    def test_pasta_do_album_sem_marca_tidal(self):
+        # Decisão do CEO (17/10/2026): faixa da Tidal mora no caminho normal, como qualquer outra.
+        self.assertEqual(album_dir(Path("/m/Funk"), "DJ K", "Panico no Submundo"), Path("/m/Funk/DJ K/Panico no Submundo"))
+        self.assertEqual(album_dir(Path("/m/Rap"), "A/B", "Álbum: Parte 2?"), Path("/m/Rap/A_B/Álbum_ Parte 2"))
+        self.assertNotIn("[tidal]", str(album_dir(Path("/m/X"), "Y", "Z")))
+
+    def test_sem_dedup_exige_staging_sem_envio(self):
+        # --no-dedup baixa o que já está no acervo (candidata a troca, CMR-297): com envio, viraria duplicata na cmr-auto
+        import tidal_mix_dl
+        argv = sys.argv
+        try:
+            sys.argv = ["tidal_mix_dl.py", "--ids", "1", "--no-dedup", "--push", "h:Music"]
+            with self.assertRaises(SystemExit):
+                tidal_mix_dl.main()
+        finally:
+            sys.argv = argv
+        args = build_parser().parse_args(["--ids", "1", "--no-dedup", "--no-push"])
+        self.assertTrue(args.no_dedup and args.no_push)
+        self.assertFalse(build_parser().parse_args(["--ids", "1"]).no_dedup)
 
     def test_teto_de_ids(self):
         self.assertEqual(len(parse_ids(",".join(str(i) for i in range(1, MAX_IDS + 1)))), MAX_IDS)

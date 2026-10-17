@@ -325,12 +325,22 @@ def fila_html(msg=""):
 
 
 def acervo():
+    # Desde 17/10/2026 a faixa da Tidal mora no caminho normal (sem a pasta " [tidal]"): a linha
+    # mostra a cobertura do acervo inteiro, que é o que importa depois de uma leva.
     try:
         r = json.load(urllib.request.urlopen(f"{QDRANT}/collections/rustify_tracks", timeout=10))["result"]
         total = r["points_count"]
-        body = {"limit": 1000, "with_payload": ["embedding_status"], "with_vector": False, "filter": {"must": [{"key": "path", "match": {"text": "[tidal]"}}]}}
-        req = urllib.request.Request(f"{QDRANT}/collections/rustify_tracks/points/scroll", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-        pts = json.load(urllib.request.urlopen(req, timeout=20))["result"]["points"]
+        pts, offset = [], None
+        while True:
+            body = {"limit": 1000, "with_payload": ["embedding_status"], "with_vector": False}
+            if offset is not None:
+                body["offset"] = offset
+            req = urllib.request.Request(f"{QDRANT}/collections/rustify_tracks/points/scroll", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+            res = json.load(urllib.request.urlopen(req, timeout=20))["result"]
+            pts += res["points"]
+            offset = res.get("next_page_offset")
+            if offset is None:
+                break
         c = Counter(p["payload"].get("embedding_status") for p in pts)
         ids = [p["id"] for p in pts]
         have = 0
@@ -338,7 +348,7 @@ def acervo():
             b = json.dumps({"ids": ids[i:i + 500], "with_payload": ["energy"], "with_vector": False}).encode()
             rq = urllib.request.Request(f"{QDRANT}/collections/track_enrichments/points", data=b, headers={"Content-Type": "application/json"})
             have += sum(1 for p in json.load(urllib.request.urlopen(rq, timeout=20))["result"] if p.get("payload", {}).get("energy") is not None)
-        return (f"<p>Acervo: <b>{total}</b> faixas. Da Tidal (pastas [tidal]) indexadas: <b>{len(pts)}</b> "
+        return (f"<p>Acervo: <b>{total}</b> faixas "
                 f"(MERT pronto {c.get('done', 0)}, pendente {c.get('pending', 0) + c.get('running', 0)}, falho {c.get('failed', 0)}; vibe {have}/{len(pts)}).</p>")
     except Exception as e:
         return f"<p class='dim'>Qdrant indisponível (túnel 16333?): {html.escape(repr(e))}</p>"

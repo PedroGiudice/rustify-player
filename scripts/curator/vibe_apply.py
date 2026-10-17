@@ -31,7 +31,7 @@ def main(out_file, tsv_file, dest_json):
         print("  nota:", n[:200].replace("\n", " "))
     pts, offset = [], None
     while True:
-        body = {"limit": 1000, "with_payload": ["path"], "with_vector": False, "filter": {"must": [{"key": "path", "match": {"text": "[tidal]"}}]}}
+        body = {"limit": 1000, "with_payload": ["path"], "with_vector": False}
         if offset:
             body["offset"] = offset
         r = q("/collections/rustify_tracks/points/scroll", body)

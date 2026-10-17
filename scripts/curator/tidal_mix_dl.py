@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Baixa todas as faixas de um mix ou playlist da Tidal em qualidade máxima, direto para
-~/Music/<playlist>/<Artista do álbum>/<Álbum> [tidal]/NN Título.flac, com tags da Tidal e capa.
-A marca " [tidal]" no nome da pasta é o que mantém tudo isso fora do share do slskd.
+~/Music/<playlist>/<Artista do álbum>/<Álbum>/NN Título.flac, com tags da Tidal e capa.
+Caminho normal, como qualquer faixa do acervo (decisão do CEO, 17/10/2026: a marca " [tidal]" no
+nome da pasta, que tirava a Tidal do share do slskd, acabou; as pastas antigas foram renomeadas).
 
 Roda NA cmr-auto (acervo local) ou NA VM (staging + envio para a cmr-auto):
   uv run --with tidalapi --with mutagen --with numpy python3 tidal_mix_dl.py <link> --list
@@ -123,6 +124,11 @@ def title_key(title: str) -> str:
     return loose(t)
 
 
+def album_dir(dest_root: Path, album_artist: str, album: str) -> Path:
+    """Pura. <playlist>/<Artista do álbum>/<Álbum>: o caminho normal, sem marca de origem."""
+    return dest_root / safe_name(album_artist) / safe_name(album)
+
+
 def split_artists(s: str) -> list[str]:
     parts = re.split(r",|&| e | feat\.? | ft\.? | x ", s, flags=re.I)
     return [loose(p) for p in parts if loose(p)]
@@ -154,10 +160,10 @@ def ensure_tunnel() -> None:
 
 
 def remote_rels(push: str) -> set[str]:
-    """Caminhos relativos dos FLAC [tidal] já na cmr-auto: cobre a janela entre o rsync e a indexação
+    """Caminhos relativos dos FLAC já na cmr-auto: cobre a janela entre o rsync e a indexação
     (app fechado = Qdrant ainda não conhece a faixa) e prova, antes de baixar, que a cmr-auto responde."""
     host, _, remote_dir = push.partition(":")
-    cmd = f"cd {shlex.quote(remote_dir)} && find . -type f -name '*.flac' -path '*[[]tidal[]]*'"
+    cmd = f"cd {shlex.quote(remote_dir)} && find . -type f -name '*.flac'"
     out = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", host, cmd],
                          capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
@@ -473,6 +479,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="destino rsync (padrão na VM: %(default)s); copia cada faixa assim que fica pronta, "
                          "apaga a cópia local e dá touch remoto no fim (race do watcher)")
     ap.add_argument("--no-push", action="store_true", help="não enviar (fica no acervo/staging local)")
+    ap.add_argument("--no-dedup", action="store_true",
+                    help="não pula o que já está no acervo: baixar versão candidata a troca (CMR-297); "
+                         "use com --no-push e TIDAL_MUSIC_ROOT num staging, nunca direto no ~/Music")
     return ap
 
 
@@ -481,6 +490,8 @@ def main() -> int:
     args = ap.parse_args()
     if args.no_push:
         args.push = None
+    if args.no_dedup and args.push:  # sem dedup, o envio poria duplicata no acervo da cmr-auto
+        ap.error("--no-dedup exige --no-push (baixa num staging, a troca é outro passo)")
     if bool(args.ids) == bool(args.mix_id):
         ap.error("informe um link/id OU --ids")
     try:
@@ -503,7 +514,7 @@ def main() -> int:
     remote: set[str] = set()
     if args.push and not args.list:
         remote = remote_rels(args.push)
-        print(f"envio para {args.push}: {len(remote)} faixas [tidal] já lá", flush=True)
+        print(f"envio para {args.push}: {len(remote)} faixas já lá", flush=True)
 
     albums: dict[int, tidalapi.Album] = {}
     pushed: list[Path] = []
@@ -524,8 +535,8 @@ def main() -> int:
                   f"#{t.track_num}/{alb.num_tracks} {getattr(alb, 'audio_quality', '?')}", flush=True)
         return 0
 
-    lib = library_keys()
-    print(f"acervo: {len(lib)} chaves título/artista", flush=True)
+    lib = set() if args.no_dedup else library_keys()
+    print("acervo: dedup desligado (--no-dedup)" if args.no_dedup else f"acervo: {len(lib)} chaves título/artista", flush=True)
     refused_cache = load_refused(REFUSED_CACHE)
     print(f"cache de recusas: {len(refused_cache)} faixas lossy por dentro ({REFUSED_CACHE})", flush=True)
     touched_dirs: set[Path] = set()
@@ -544,18 +555,18 @@ def main() -> int:
             alb = album_of(t)
         except Exception as e:
             print(f"{i:3d} {title} FALHOU (álbum): {e!r}", flush=True)
-            report["failed"].append({"i": i, "title": title, "err": repr(e)})
+            report["failed"].append({"i": i, "id": t.id, "title": title, "err": repr(e)})
             continue
         album_artist = alb.artist.name
         year = alb.release_date.year if getattr(alb, "release_date", None) else None
         tk = title_key(title)
         keys = {(tk, a) for a in split_artists(", ".join(arts)) + split_artists(album_artist)} if tk else set()
         dup = keys & lib
-        dest_dir = dest_root / safe_name(album_artist) / (safe_name(alb.name) + " [tidal]")
+        dest_dir = album_dir(dest_root, album_artist, alb.name)
         dest = dest_dir / f"{int(t.track_num or i):02d} {safe_name(title)}.flac"
         if dup:
             print(f"{i:3d} {title[:45]:45s} JÁ NO ACERVO ({sorted(dup)[0][1]})", flush=True)
-            report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "acervo"})
+            report["skipped"].append({"i": i, "id": t.id, "title": title, "artists": arts, "why": "acervo"})
             continue
         if is_refused(refused_cache, t.id):
             c = refused_cache[str(t.id)]
@@ -579,11 +590,11 @@ def main() -> int:
                 (pushed if push_one(dest, args.push) else unsent).append(dest)
             else:
                 print(f"{i:3d} {title[:45]:45s} JÁ BAIXADA", flush=True)
-            report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "existe"})
+            report["skipped"].append({"i": i, "id": t.id, "title": title, "artists": arts, "why": "existe"})
             continue
         if str(dest.relative_to(MUSIC)) in remote:
             print(f"{i:3d} {title[:45]:45s} JÁ NA CMR-AUTO (fora do índice)", flush=True)
-            report["skipped"].append({"i": i, "title": title, "artists": arts, "why": "cmr-auto"})
+            report["skipped"].append({"i": i, "id": t.id, "title": title, "artists": arts, "why": "cmr-auto"})
             continue
         t0 = time.time()
         try:
@@ -635,13 +646,13 @@ def main() -> int:
                 pushed.append(dest)
             elif args.push:
                 unsent.append(dest)
-            report["new"].append({"i": i, "title": title, "artists": arts, "album": alb.name, "album_artist": album_artist,
+            report["new"].append({"i": i, "id": t.id, "title": title, "artists": arts, "album": alb.name, "album_artist": album_artist,
                                   "year": year, "path": str(dest), "pushed": sent, **info})
             print(f"{i:3d} {title[:45]:45s} | {', '.join(arts)[:30]:30s} | {info['quality']} {info['bits']}/{info['sr']} "
                   f"{info['bytes'] / 1e6:.1f} MB em {time.time() - t0:.1f}s{' +letra' if lrc else ''} -> {dest.relative_to(MUSIC)}", flush=True)
         except Exception as e:
             print(f"{i:3d} {title} FALHOU: {e!r}", flush=True)
-            report["failed"].append({"i": i, "title": title, "artists": arts, "err": repr(e)})
+            report["failed"].append({"i": i, "id": t.id, "title": title, "artists": arts, "err": repr(e)})
             for p in (dest, dest.with_name(dest.name + ".part")):
                 p.unlink(missing_ok=True)
         time.sleep(PAUSE_S)
