@@ -1,4 +1,4 @@
-use library_indexer::relocate::{move_tracks, Journal, MoveStatus};
+use library_indexer::relocate::{move_tracks, Journal, MoveStatus, MoveTarget};
 use library_indexer::types::path_to_id;
 use library_indexer::QdrantClient;
 use serde_json::json;
@@ -63,7 +63,7 @@ fn mover_leva_vetores_like_e_plays() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    let report = move_tracks(&client, root, &Journal::in_dir(&root.join(".data")), &[old_id], "Favoritas");
+    let report = move_tracks(&client, root, &Journal::in_dir(&root.join(".data")), &[old_id], &MoveTarget::Playlist("Favoritas".into()));
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
     assert_eq!(report.moved, 1, "{report:?}");
     assert!(report.items[0].detail.is_none(), "{report:?}");
@@ -94,7 +94,7 @@ fn mover_leva_vetores_like_e_plays() {
     assert_eq!(events.iter().filter(|(_, t)| *t == old_id).count(), 0);
 
     // De novo para o mesmo lugar: "já estava lá", nada muda.
-    let again = move_tracks(&client, root, &Journal::disabled(), &[new_id], "Favoritas");
+    let again = move_tracks(&client, root, &Journal::disabled(), &[new_id], &MoveTarget::Playlist("Favoritas".into()));
     assert_eq!(again.items[0].status, MoveStatus::AlreadyThere);
 
     // Limpeza do que o teste gravou.
@@ -103,4 +103,95 @@ fn mover_leva_vetores_like_e_plays() {
         .send_json(json!({ "points": pids }));
     client.delete_enrichment(new_id).unwrap();
     client.delete_points(&[new_id]).unwrap();
+}
+
+/// Tirar a marca `[tidal]` da pasta do álbum (decisão do CEO, 17/10/2026): a
+/// faixa fica na mesma playlist, no caminho normal, com vetores, letra
+/// externa, like e plays no id novo; a pasta marcada some com a capa.
+/// cargo test -p library-indexer --test relocate_qdrant -- --ignored --nocapture
+#[test]
+#[ignore = "requires running Qdrant on localhost:6333"]
+fn tirar_marca_tidal_leva_identidade_e_some_com_a_pasta() {
+    let client = QdrantClient::new("http://localhost:6333");
+    if !client.is_healthy() {
+        eprintln!("Qdrant not available, skipping");
+        return;
+    }
+    client.ensure_collection().unwrap();
+    client.ensure_play_events_collection().unwrap();
+    client.ensure_enrichments_collection().unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let album = root.join("Jazz/Artista/2020 - Álbum [tidal]");
+    fs::create_dir_all(&album).unwrap();
+    let a = album.join("01 - A.flac");
+    let b = album.join("02 - B.flac");
+    fs::write(&a, b"flac-a").unwrap();
+    fs::write(&b, b"flac-b").unwrap();
+    fs::write(album.join("01 - A.lrc"), b"[00:01.00] verso").unwrap();
+    fs::write(album.join("cover.jpg"), b"jpg").unwrap();
+
+    let mert: Vec<f32> = (0..768).map(|i| i as f32 / 768.0).collect();
+    let lyrics: Vec<f32> = (0..1024).map(|i| (i % 5) as f32).collect();
+    let (id_a, id_b) = (path_to_id(&a), path_to_id(&b));
+    for (id, p, t) in [(id_a, &a, "A"), (id_b, &b, "B")] {
+        client
+            .upsert_point_raw(
+                id,
+                &json!({ "path": p.to_string_lossy(), "filename": p.file_name().unwrap().to_string_lossy(),
+                         "genre": "Jazz", "title": t, "lyrics_text": "verso", "lyrics_status": "plain",
+                         "mtime": 1, "size_bytes": 6, "embedding_status": "done" }),
+                &json!({ "mert": mert, "lyrics": lyrics }),
+            )
+            .unwrap();
+    }
+    client.set_enrichment(id_a, json!({ "liked_at": 456, "energy": 0.3 })).unwrap();
+    client
+        .insert_raw_event(&json!({ "event_type": "track_ended", "track_id": id_a, "started_at": 1, "listen_pct": 1.0 }))
+        .unwrap();
+    for _ in 0..50 {
+        if client.scroll_play_event_track_ids().unwrap().iter().any(|(_, t)| *t == id_a) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    let target = MoveTarget::UnmarkTidal { playlist: "Jazz".into() };
+    let report = move_tracks(&client, root, &Journal::in_dir(&root.join(".data")), &[id_a, id_b], &target);
+    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    assert_eq!(report.moved, 2, "{report:?}");
+    assert_eq!(report.dest_playlist, "Jazz");
+
+    let clean = root.join("Jazz/Artista/2020 - Álbum");
+    let (na, nb) = (clean.join("01 - A.flac"), clean.join("02 - B.flac"));
+    assert!(na.is_file() && nb.is_file() && clean.join("01 - A.lrc").is_file());
+    assert!(clean.join("cover.jpg").is_file(), "capa acompanha o álbum");
+    assert!(!album.exists(), "a pasta com a marca some quando esvazia");
+
+    let new_a = path_to_id(&na);
+    let (payload, vector) = client.get_point_with_vectors(new_a).unwrap().expect("ponto novo");
+    assert_eq!(payload["path"], na.to_string_lossy().as_ref());
+    assert_eq!(payload["genre"], "Jazz");
+    assert_eq!(payload["lyrics_text"], "verso");
+    assert_eq!(vector["lyrics"].as_array().unwrap().len(), 1024);
+    assert!(client.get_point_with_vectors(id_a).unwrap().is_none());
+    assert_eq!(client.get_enrichment(new_a).unwrap()["liked_at"], 456);
+    let events = client.scroll_play_event_track_ids().unwrap();
+    assert_eq!(events.iter().filter(|(_, t)| *t == new_a).count(), 1);
+
+    // Pedido repetido: já está no caminho normal, nada muda.
+    let again = move_tracks(&client, root, &Journal::disabled(), &[new_a], &target);
+    assert_eq!(again.items[0].status, MoveStatus::AlreadyThere);
+    // Faixa de outra playlist no mesmo pedido: falha sem tocar em nada.
+    let other = move_tracks(&client, root, &Journal::disabled(), &[new_a], &MoveTarget::UnmarkTidal { playlist: "Rap".into() });
+    assert_eq!(other.items[0].status, MoveStatus::Failed);
+    assert!(na.is_file());
+
+    let pids: Vec<_> = events.into_iter().filter(|(_, t)| *t == new_a).map(|(p, _)| p).collect();
+    let _ = ureq::post("http://localhost:6333/collections/play_events/points/delete")
+        .send_json(json!({ "points": pids }));
+    let new_b = path_to_id(&nb);
+    client.delete_enrichment(new_a).unwrap();
+    client.delete_points(&[new_a, new_b]).unwrap();
 }

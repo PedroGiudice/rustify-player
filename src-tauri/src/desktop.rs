@@ -959,6 +959,31 @@ async fn lib_move_tracks(
         .map_err(err)
 }
 
+/// Tira a marca ` [tidal]` da pasta do álbum das faixas de `playlist`
+/// (decisão do CEO, 17/10/2026: faixa da Tidal mora no caminho normal). Mesma
+/// maquinaria do `lib_move_tracks` (id novo com vetores, letra, like/vibe e
+/// plays; mesmo evento `lib-tracks-moved`). Uma playlist por chamada; não
+/// cria playlist: o nome tem de ser uma pasta que já existe.
+#[tauri::command]
+async fn lib_unmark_tidal(
+    lib: State<'_, Library>,
+    track_ids: Vec<String>,
+    playlist: String,
+) -> Result<library_indexer::MoveReport, String> {
+    let ids = track_ids
+        .iter()
+        .map(|s| parse_id(s))
+        .collect::<Result<Vec<u64>, String>>()?;
+    let existing = list_playlist_dirs(&lib.music_root).map_err(err)?;
+    if !existing.iter().any(|p| *p == playlist) {
+        return Err(format!("playlist não existe: {playlist}"));
+    }
+    let handle = lib.handle.clone();
+    tauri::async_runtime::spawn_blocking(move || handle.unmark_tidal(ids, playlist))
+        .await
+        .map_err(err)
+}
+
 /// Faixa movida de playlist (CMR-298) muda de id e de caminho. O snapshot
 /// do player passa aos novos: sem isto, o `flush_play_event` do fim da faixa
 /// tocando gravaria o play no id que acabou de ser apagado.
@@ -3734,6 +3759,7 @@ pub fn run() {
             lib_rescan,
             lib_list_playlists,
             lib_move_tracks,
+            lib_unmark_tidal,
             lib_get_lyrics,
             lib_list_folders,
             lib_list_folder_tracks,

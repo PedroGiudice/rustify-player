@@ -41,7 +41,7 @@ pub use dedup::{OwnedIndex, OwnedVerdict};
 pub use error::IndexerError;
 pub use lyrics::LyricLine;
 pub use metadata::{parse_flac, ParsedFlacMetadata};
-pub use relocate::{MoveItem, MoveReport, MoveStatus};
+pub use relocate::{MoveItem, MoveReport, MoveStatus, MoveTarget};
 pub use query::{FolderPlaylist, PlaylistSearchResult, Recommendations};
 pub use rerank::{cap_per_artist, hybrid_rerank, vibe_from_enrichment, VibeProfile};
 pub use types::{
@@ -286,20 +286,33 @@ impl IndexerHandle {
     /// as faixas como `Pending`: o pedido segue na fila e o resultado chega
     /// pelo evento `IndexerEvent::TracksMoved`.
     pub fn move_tracks(&self, ids: Vec<u64>, dest_playlist: String) -> relocate::MoveReport {
+        self.relocate(ids, relocate::MoveTarget::Playlist(dest_playlist))
+    }
+
+    /// Tira a marca ` [tidal]` da pasta do álbum das faixas de `playlist`
+    /// (decisão do CEO, 17/10/2026): mesmo caminho de antes sem a marca, com
+    /// o histórico migrado como no mover. Mesmo teto e mesma semântica de
+    /// `Pending` de `move_tracks`.
+    pub fn unmark_tidal(&self, ids: Vec<u64>, playlist: String) -> relocate::MoveReport {
+        self.relocate(ids, relocate::MoveTarget::UnmarkTidal { playlist })
+    }
+
+    fn relocate(&self, ids: Vec<u64>, target: relocate::MoveTarget) -> relocate::MoveReport {
+        let label = target.playlist().to_string();
         let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
         let sent = self.inner.cmd_tx.send(IndexerCommand::MoveTracks {
             ids: ids.clone(),
-            dest_playlist: dest_playlist.clone(),
+            target,
             reply: reply_tx,
         });
         if sent.is_err() {
-            return relocate::MoveReport::all_failed(&dest_playlist, &ids, "indexador desligado");
+            return relocate::MoveReport::all_failed(&label, &ids, "indexador desligado");
         }
         reply_rx
             .recv_timeout(std::time::Duration::from_secs(600))
             // O pedido segue na fila do coordinator: não é falha. O resultado
             // chega pelo evento `TracksMoved`.
-            .unwrap_or_else(|_| relocate::MoveReport::all_pending(&dest_playlist, &ids))
+            .unwrap_or_else(|_| relocate::MoveReport::all_pending(&label, &ids))
     }
 
     // --- Write operations -----------------------------------------------------

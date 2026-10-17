@@ -111,6 +111,73 @@ pub enum PlanError {
     SameDest,
     /// O arquivo não está sob `music_root`, ou está solto na raiz.
     OutsideLibrary,
+    /// Tirar a marca `[tidal]` é feito uma playlist por vez e a faixa é de outra.
+    OtherPlaylist,
+}
+
+/// Para onde um pedido de mover leva as faixas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoveTarget {
+    /// Outra playlist (pasta de 1º nível); artista, álbum e arquivo ficam.
+    Playlist(String),
+    /// Mesma playlist, sem a marca ` [tidal]` no nome da pasta do álbum: a
+    /// faixa da Tidal passa a morar no caminho normal, como qualquer outra
+    /// (decisão do CEO, 17/10/2026). Uma playlist por pedido, para o
+    /// relatório e a fila do app continuarem sabendo a playlist da faixa.
+    UnmarkTidal { playlist: String },
+}
+
+impl MoveTarget {
+    /// A playlist em que as faixas ficam depois do pedido.
+    pub fn playlist(&self) -> &str {
+        match self {
+            MoveTarget::Playlist(p) | MoveTarget::UnmarkTidal { playlist: p } => p,
+        }
+    }
+}
+
+/// Marca que o baixador da Tidal punha no nome da pasta do álbum.
+pub const TIDAL_MARK: &str = " [tidal]";
+
+/// Caminho novo de uma faixa para o alvo do pedido.
+pub fn plan_destination_for(music_root: &Path, src: &Path, target: &MoveTarget) -> Result<PathBuf, PlanError> {
+    match target {
+        MoveTarget::Playlist(dest) => plan_destination(music_root, src, dest),
+        MoveTarget::UnmarkTidal { playlist } => plan_unmark_tidal(music_root, src, playlist),
+    }
+}
+
+/// Tira ` [tidal]` do fim do nome das pastas entre a playlist e o arquivo
+/// (o álbum; o nome do arquivo não muda). Sem marca = `SameDest`.
+fn plan_unmark_tidal(music_root: &Path, src: &Path, playlist: &str) -> Result<PathBuf, PlanError> {
+    let rel = src.strip_prefix(music_root).map_err(|_| PlanError::OutsideLibrary)?;
+    let comps: Vec<&str> = rel
+        .components()
+        .map(|c| match c {
+            Component::Normal(s) => s.to_str(),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(PlanError::OutsideLibrary)?;
+    if comps.len() < 2 {
+        return Err(PlanError::OutsideLibrary);
+    }
+    if comps[0] != playlist {
+        return Err(PlanError::OtherPlaylist);
+    }
+    let last = comps.len() - 1;
+    let mut changed = false;
+    let mut out = music_root.to_path_buf();
+    for (i, c) in comps.iter().enumerate() {
+        match c.strip_suffix(TIDAL_MARK) {
+            Some(base) if i > 0 && i < last && !base.trim().is_empty() => {
+                out.push(base);
+                changed = true;
+            }
+            _ => out.push(c),
+        }
+    }
+    if changed { Ok(out) } else { Err(PlanError::SameDest) }
 }
 
 /// Nome de playlist aceitável como destino: não vazio, sem separador de
@@ -129,7 +196,7 @@ pub fn is_valid_dest_playlist(name: &str) -> bool {
 
 /// Caminho novo de uma faixa: troca SÓ a pasta de 1º nível (a playlist) e
 /// preserva tudo o que vem abaixo dela — artista, álbum (com a marca
-/// ` [tidal]`, que nunca muda), subpasta de disco e nome do arquivo.
+/// ` [tidal]`, que só o `MoveTarget::UnmarkTidal` tira), subpasta de disco e nome do arquivo.
 pub fn plan_destination(music_root: &Path, src: &Path, dest_playlist: &str) -> Result<PathBuf, PlanError> {
     let rel = src.strip_prefix(music_root).map_err(|_| PlanError::OutsideLibrary)?;
     let comps: Vec<&std::ffi::OsStr> = rel
@@ -659,8 +726,9 @@ pub fn move_tracks(
     music_root: &Path,
     journal: &Journal,
     ids: &[u64],
-    dest_playlist: &str,
+    target: &MoveTarget,
 ) -> MoveReport {
+    let dest_playlist = target.playlist();
     if !is_valid_dest_playlist(dest_playlist) {
         return MoveReport::all_failed(dest_playlist, ids, "nome de playlist inválido");
     }
@@ -682,7 +750,7 @@ pub fn move_tracks(
         .iter()
         .map(|&id| {
             let pids = events.remove(&id).unwrap_or_default();
-            move_one(client, music_root, journal, id, dest_playlist, pids)
+            move_one(client, music_root, journal, id, target, pids)
         })
         .collect();
 
@@ -750,9 +818,10 @@ fn move_one(
     music_root: &Path,
     journal: &Journal,
     old_id: u64,
-    dest: &str,
+    target: &MoveTarget,
     pids: Vec<Value>,
 ) -> MoveItem {
+    let dest = target.playlist();
     let mut item = MoveItem {
         track_id: old_id.to_string(),
         new_track_id: None,
@@ -776,13 +845,14 @@ fn move_one(
     let Some(src) = payload["path"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from) else {
         return fail(item, "faixa sem caminho no índice".into());
     };
-    let dst = match plan_destination(music_root, &src, dest) {
+    let dst = match plan_destination_for(music_root, &src, target) {
         Ok(d) => d,
         Err(PlanError::SameDest) => {
             item.status = MoveStatus::AlreadyThere;
             return item;
         }
         Err(PlanError::OutsideLibrary) => return fail(item, "arquivo fora de uma playlist do acervo".into()),
+        Err(PlanError::OtherPlaylist) => return fail(item, format!("faixa fora da playlist {dest}")),
     };
     let new_id = path_to_id(&dst);
 
@@ -879,6 +949,61 @@ mod tests {
             plan_destination(&root(), src, "Novas").unwrap(),
             PathBuf::from("/m/Novas/Artista/Álbum [tidal]/CD2/01 Faixa.flac")
         );
+    }
+
+    #[test]
+    fn tirar_marca_tidal_so_muda_a_pasta_do_album() {
+        let src = Path::new("/m/Funk/DJ K/Panico no Submundo [tidal]/02 Puta de Silicone.flac");
+        assert_eq!(
+            plan_destination_for(&root(), src, &MoveTarget::UnmarkTidal { playlist: "Funk".into() }).unwrap(),
+            PathBuf::from("/m/Funk/DJ K/Panico no Submundo/02 Puta de Silicone.flac")
+        );
+    }
+
+    #[test]
+    fn tirar_marca_tidal_preserva_subpasta_de_disco() {
+        let src = Path::new("/m/Jazz/Artista/Álbum [tidal]/CD2/01 Faixa.flac");
+        assert_eq!(
+            plan_destination_for(&root(), src, &MoveTarget::UnmarkTidal { playlist: "Jazz".into() }).unwrap(),
+            PathBuf::from("/m/Jazz/Artista/Álbum/CD2/01 Faixa.flac")
+        );
+    }
+
+    #[test]
+    fn sem_marca_tidal_ja_esta_no_lugar() {
+        let t = MoveTarget::UnmarkTidal { playlist: "Rap".into() };
+        assert_eq!(plan_destination_for(&root(), Path::new("/m/Rap/A/B/x.flac"), &t), Err(PlanError::SameDest));
+        // A marca no NOME DO ARQUIVO não é a da pasta: não mexe.
+        assert_eq!(
+            plan_destination_for(&root(), Path::new("/m/Rap/A/B/01 Live [tidal].flac"), &t),
+            Err(PlanError::SameDest)
+        );
+        // Pasta que se chama só " [tidal]" ficaria sem nome: não mexe.
+        assert_eq!(plan_destination_for(&root(), Path::new("/m/Rap/A/ [tidal]/x.flac"), &t), Err(PlanError::SameDest));
+    }
+
+    #[test]
+    fn tirar_marca_tidal_recusa_faixa_de_outra_playlist() {
+        let t = MoveTarget::UnmarkTidal { playlist: "Rap".into() };
+        assert_eq!(
+            plan_destination_for(&root(), Path::new("/m/Jazz/A/B [tidal]/x.flac"), &t),
+            Err(PlanError::OtherPlaylist)
+        );
+        assert_eq!(
+            plan_destination_for(&root(), Path::new("/outro/Rap/A/B [tidal]/x.flac"), &t),
+            Err(PlanError::OutsideLibrary)
+        );
+    }
+
+    #[test]
+    fn alvo_playlist_e_o_mover_de_sempre() {
+        let src = Path::new("/m/Rap/Baco/2017 - Esú/03 - Esú.flac");
+        assert_eq!(
+            plan_destination_for(&root(), src, &MoveTarget::Playlist("Favoritas".into())).unwrap(),
+            plan_destination(&root(), src, "Favoritas").unwrap()
+        );
+        assert_eq!(MoveTarget::Playlist("Favoritas".into()).playlist(), "Favoritas");
+        assert_eq!(MoveTarget::UnmarkTidal { playlist: "Jazz".into() }.playlist(), "Jazz");
     }
 
     #[test]

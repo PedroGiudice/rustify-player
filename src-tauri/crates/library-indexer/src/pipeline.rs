@@ -248,9 +248,9 @@ fn coordinator_loop(
                     state.refresh(&client);
                     let _ = reply.send(out);
                 }
-                Ok(IndexerCommand::MoveTracks { ids, dest_playlist, reply }) => {
+                Ok(IndexerCommand::MoveTracks { ids, target, reply }) => {
                     let report = crate::relocate::move_tracks(
-                        &client, &config.music_root, &config.move_journal, &ids, &dest_playlist,
+                        &client, &config.music_root, &config.move_journal, &ids, &target,
                     );
                     state.refresh(&client);
                     // Evento independente da resposta: se quem pediu desistiu
