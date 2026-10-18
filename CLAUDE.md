@@ -196,7 +196,8 @@ Tweaks (secao "Fundo", `bgEngine`) escolhe qual monta — nunca os dois
 juntos, entao segue existindo UM rAF e UM contexto GL. `2d` = o
 SpectrumCanvas de sempre (18 shapes x 5 renderers, intocado); `webgl` =
 `src/gl/engine.ts` (sem three) com as cenas de `src/gl/scenes/<chave>.ts`
-(`bgScene`): Poeira, Relevo, Orbitas, Nebula, Tinta (`paint`) e Riso.
+(`bgScene`): Poeira, Relevo, Orbitas, Nebula, Tinta (`paint`), Riso, Lorem e
+Mandala (v0.2.95, 18/10).
 Contrato de cena em `src/gl/scene.ts`; cena nova entra em DOIS registros,
 `gl/meta.ts` (SCENE_META: rotulo e dica do Tweaks) e `gl/registry.ts`
 (nao compila se faltar um). Custo por cena no WebKitGTK real:
@@ -212,6 +213,25 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   `highLift`) e as cores vem da paleta do app. Gosto do CEO: nada de
   textura fina repetida (moire = "hipnotico", reticula = "tripofobia"),
   nada generico (fitas).
+- Lorem e Mandala (0.2.95, 18/10, pedido do CEO a partir da gravacao do fundo
+  do Claude Desktop): Lorem = grade de glifos de uma escrita INVENTADA
+  (alfabeto asemico rasterizado na CPU em `gl/glyphAtlas.ts`, sem fonte nem
+  Canvas 2D, textura R8), paragrafos com indentacao e margem irregular, duas
+  tintas por celula (ink/ink2), nevoa lenta decidindo onde o texto aparece e
+  uma ONDA circular por kick (o "clique" do video), de ponto sorteado, que
+  acende a frente e redigita os glifos ao passar (estado na CPU,
+  `stepLoremWaves`, 8 ondas, rastro = MAXIMO entre ondas, nunca soma: somar
+  saturava a tela). Hash de seno sai enviesado no WebKitGTK com entradas
+  inteiras pequenas (faisca em 8-15% das celulas em vez de 2,5%): decisoes
+  por celula usam hash sem seno, o ruido da nevoa (suave) fica no de seno
+  (1,3 ms mais barato). Mandala = log-polar (zoom = translacao, sem fim) +
+  dobra em 6 setores + IFS caleidoscopico de 4 iteracoes com armadilha de
+  orbita nos eixos (anel/raio), so linha + brilho em ink2/ink; raios e
+  nivel fino apagam longe do centro (senao viram reticula). Zoom integrado
+  na CPU com velocidade do grave; kick = impulso angular amortecido. Custo
+  no gl-bench (1857x1048, 18/10): Lorem 5,9 ms, Mandala 2,2 ms. O bench
+  ganhou `settle=<s>` (desenha s segundos antes da foto) para cena com
+  estado proprio aparecer com ondas/giro desenvolvidos.
 - Tinta (0.2.85): as 6 camadas tem BRILHO FIXO (degraus de L do OKLab,
   `gl/paintPalette.ts`) e a capa decide so o tom — capa clara de um tom so
   (verde-limao) pintava 93% do fundo com luminancia 0,6-0,8; agora a media

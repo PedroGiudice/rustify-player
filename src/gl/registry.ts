@@ -19,6 +19,8 @@ import { orbits } from "./scenes/orbits";
 import { nebula } from "./scenes/nebula";
 import { paint } from "./scenes/paint";
 import { riso } from "./scenes/riso";
+import { lorem } from "./scenes/lorem";
+import { mandala } from "./scenes/mandala";
 
 export const SCENES: Readonly<Record<SceneKey, SceneDef>> = {
   dust,
@@ -27,4 +29,6 @@ export const SCENES: Readonly<Record<SceneKey, SceneDef>> = {
   nebula,
   paint,
   riso,
+  lorem,
+  mandala,
 };

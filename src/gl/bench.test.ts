@@ -133,7 +133,7 @@ describe("runGlBench", () => {
     expect(await a).not.toBeNull();
   });
 
-  it("mede as 6 cenas e depois o Relevo em cada variante, sem tocar na preferência", async () => {
+  it("mede as 8 cenas e depois o Relevo em cada variante, sem tocar na preferência", async () => {
     fakeHost();
     const pref = { lines: "contours", shape: "smooth", surface: "solid" } as const;
     setGlReliefStyle(pref);
@@ -146,20 +146,21 @@ describe("runGlBench", () => {
     }
     const r = await p;
     expect(r!.scenes.map((s) => s.key)).toEqual([
-      "dust", "relief", "orbits", "nebula", "paint", "riso", "relief", "relief", "relief", "relief", "relief",
+      "dust", "relief", "orbits", "nebula", "paint", "riso", "lorem", "mandala",
+      "relief", "relief", "relief", "relief", "relief",
     ]);
-    expect(r!.scenes.slice(6).map((s) => s.variant)).toEqual(["original", "mesh", "ridges", "contours", "weave"]);
-    expect(r!.scenes[6].label).toBe("Relevo · Original");
-    expect(r!.scenes[8].label).toBe("Relevo · Cristas");
-    expect(r!.scenes.slice(0, 6).every((s) => s.variant === undefined)).toBe(true);
+    expect(r!.scenes.slice(8).map((s) => s.variant)).toEqual(["original", "mesh", "ridges", "contours", "weave"]);
+    expect(r!.scenes[8].label).toBe("Relevo · Original");
+    expect(r!.scenes[10].label).toBe("Relevo · Cristas");
+    expect(r!.scenes.slice(0, 8).every((s) => s.variant === undefined)).toBe(true);
     // Override com a forma/superfície da preferência; nulo nas cenas.
-    expect(seen.slice(0, 6)).toEqual([null, null, null, null, null, null]);
-    const forced = seen.slice(6);
+    expect(seen.slice(0, 8)).toEqual([null, null, null, null, null, null, null, null]);
+    const forced = seen.slice(8);
     expect(forced.map((o) => o!.lines)).toEqual(["original", "mesh", "ridges", "contours", "weave"]);
     for (const o of forced) expect(o).toMatchObject({ shape: "smooth", surface: "solid" });
     expect(glReliefOverride()).toBeNull();
     expect(glReliefStyle()).toEqual(pref);
-    expect((window as any).__rustifyGlBench.scenes[10].variant).toBe("weave");
+    expect((window as any).__rustifyGlBench.scenes[12].variant).toBe("weave");
     setGlReliefStyle(RELIEF_DEFAULT);
   });
 

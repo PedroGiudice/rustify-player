@@ -25,6 +25,9 @@
      relief=all   mede o Relevo em TODAS as variantes numa rodada: o
                   original, mesh x 2 formas e ridges/contours/weave x
                   2 formas x 2 superfícies (15)
+     settle=<s>   antes da foto, desenha esses segundos de sinal (até 60):
+                  cena com estado próprio (ondas do kick da Lorem, giro da
+                  Mandala) aparece com o estado desenvolvido
      shots        envia um PNG de cada cena/variante ao runner
                   (POST /shot?name=<chave>.png; Relevo com variante:
                   relief-<linhas>-<forma>-<superfície>.png)
@@ -204,6 +207,7 @@ async function run(): Promise<void> {
   const only = q.get("scenes")?.split(",").filter(Boolean);
   const wantFull = q.has("full");
   const shots = q.has("shots");
+  const settle = Math.max(0, Math.min(60, Number(q.get("settle") ?? 0) || 0));
   const reliefQ = q.get("relief");
   const replayQ = q.get("replay");
   let replay: FftReplay | null = null;
@@ -388,6 +392,12 @@ async function run(): Promise<void> {
         const shotSim = createSim();
         const shotSig = createGlSignal();
         for (let t = 0; t < SHOT_T; t += DT) stepGlSignal(shotSig, DT, true, stepSim(shotSim, DT), DEFAULT_GL_CFG);
+        // settle=<s>: cena com estado próprio (ondas do kick, giro) ganha
+        // esses segundos DESENHANDO antes da foto, com o sinal já aquecido.
+        for (let t = 0; t < settle; t += DT) {
+          stepGlSignal(shotSig, DT, true, stepSim(shotSim, DT), DEFAULT_GL_CFG);
+          engine.frame(shotSig, DT);
+        }
         engine.frame(shotSig, DT);
         r.glError = gl.getError();
         r.lit = +litFraction(gl, full).toFixed(4);

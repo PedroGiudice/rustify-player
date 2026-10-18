@@ -95,7 +95,7 @@ describe("Tinta e Riso: registro e ciclo de vida", () => {
   const creates = (fake: FakeGl) => fake.calls.filter((c) => c[0].startsWith("create")).length;
 
   it("as duas estão nos dois registros, depois das quatro de antes", () => {
-    expect(SCENE_KEYS).toEqual(["dust", "relief", "orbits", "nebula", "paint", "riso"]);
+    expect(SCENE_KEYS.slice(0, 6)).toEqual(["dust", "relief", "orbits", "nebula", "paint", "riso"]);
     expect(SCENES.paint).toBe(paint);
     expect(SCENES.riso).toBe(riso);
   });

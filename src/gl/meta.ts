@@ -46,6 +46,16 @@ export const SCENE_META = [
     label: "Riso",
     hint: "Manchas impressas em duas cores: graves crescem as manchas, o kick desalinha a segunda cor",
   },
+  {
+    key: "lorem",
+    label: "Lorem",
+    hint: "Parágrafos de uma escrita inventada: cada kick abre uma onda que acende e redigita o texto ao passar",
+  },
+  {
+    key: "mandala",
+    label: "Mandala",
+    hint: "Anéis fractais concêntricos em linha: graves aprofundam o túnel, o kick gira a mandala, agudos acendem o detalhe",
+  },
 ] as const;
 
 export type SceneKey = (typeof SCENE_META)[number]["key"];
