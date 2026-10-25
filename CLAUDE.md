@@ -445,6 +445,27 @@ Gotchas:
   `~/slskd_dados/slskd.yml` na cmr-auto, chmod 600 — a conta antiga `cmr-auto`
   morreu com a senha no incidente abaixo). O yml tambem ativa share de `/music`
   (cidadania na rede; peers recusam leecher).
+- **API/UI do slskd (5030/5031) escuta SÓ em 127.0.0.1 (desde 2026-10-04).**
+  Antes o container publicava em 0.0.0.0: da VM, pela tailnet, o login padrão
+  `slskd`/`slskd` devolvia token, e com `SLSKD_REMOTE_CONFIGURATION=true`
+  quem entrasse lia e reescrevia o `slskd.yml` (senha da conta Soulseek).
+  O `ufw` da cmr-auto NÃO protegia: porta publicada pelo Docker passa por fora
+  dele (a chain `DOCKER-USER` está vazia). Nenhum consumidor legítimo usa a
+  5030 fora do loopback (app = `http://127.0.0.1:5030`, script = `localhost`).
+  A 50300 (escuta da rede Soulseek, conexões de peers) continua em 0.0.0.0 —
+  fechá-la mata o compartilhamento. Senha padrão mantida de propósito: com
+  bind no loopback, o único atacante restante é processo local do mesmo uid,
+  que já lê o `slskd.yml` (0600 do próprio usuário). Ao RECRIAR o container
+  (atualizar imagem etc.), usar este run, nunca `-p 5030:5030`:
+  ```bash
+  docker run -d --name slskd --restart unless-stopped --user 1000:1000 \
+    -e SLSKD_REMOTE_CONFIGURATION=true \
+    -p 127.0.0.1:5030:5030 -p 127.0.0.1:5031:5031 -p 50300:50300 \
+    -v /home/cmr-auto/slskd_dados:/app -v /home/cmr-auto/Music:/music \
+    slskd/slskd:latest
+  ```
+  Validar de FORA (da VM): `curl -m5 http://100.102.249.9:5030/` tem de
+  falhar. `inspect` do container antigo em `cmr-auto:~/backups/slskd-inspect-20261004.json`.
 - **Incidente 2026-07-28: `~/slskd_dados` foi deletado na cmr-auto.** O Docker
   recria o bind mount vazio como root:root e o container entra em crash-loop
   ("/app is not readable and/or writable"). Fix: `sudo chown 1000:1000
