@@ -9,9 +9,12 @@ paths:
 
 # Impeccable neste repo: avaliar no app real
 
-Contexto do Impeccable: `PRODUCT.md` (produto, confirmado pelo CEO em 25/10/2026) e
-`.impeccable/config.json` (gancho do detector ligado; Instrument Sans, Inter e Fraunces
-ignorados pelo `overused-font` por decisão do CEO).
+Contexto do Impeccable: `PRODUCT.md` (produto, confirmado pelo CEO em 25/10/2026),
+`DESIGN.md` + `.impeccable/design.json` (sistema visual, gerado pelo `document` em 26/10/2026
+a partir do `:root`, dos tokens do S24, do tema `really-dark` e de capturas do app real; North
+Star, fonte do desktop e doutrina dos controles confirmados pelo CEO) e `.impeccable/config.json`
+(gancho do detector ligado; Instrument Sans, Inter e Fraunces ignorados pelo `overused-font` por
+decisão do CEO). Mudou token, componente ou regra: regenerar o sidecar junto com o DESIGN.md.
 
 ## Tela renderizada = app da cmr-auto pela ponte
 
