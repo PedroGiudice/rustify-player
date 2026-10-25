@@ -56,3 +56,7 @@ ai.json
 
 # Docs: zips redundantes (versao extraida ja entra no repo)
 docs/rustify-player-new-telas.zip
+
+# Impeccable: capturas/achados locais e sessões do modo live
+.impeccable/captures/
+.impeccable/live/

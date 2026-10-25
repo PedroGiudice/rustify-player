@@ -93,6 +93,13 @@ RESERVADOS (sem serviço exposto a proteger); gatilho de reabertura na spec.
 `main` — trabalho commitado direto em `main`, com rolling dev release
 (tag `dev` no GitHub via `release.sh`). Sem PR para fixes pontuais.
 
+## Avaliação de design (Impeccable)
+
+Trabalho de UI passa pelo Impeccable; contexto em `PRODUCT.md` e `.impeccable/config.json`.
+A tela renderizada é avaliada no app REAL da cmr-auto pela ponte
+(`scripts/impeccable/app_eval.sh capture|detect`), não num navegador: procedimento, motivo e
+pontos cegos em `.claude/rules/impeccable.md`.
+
 ## TweaksPanel e o hub de customizacao
 
 O painel **Tweaks** (sidebar bottom-left, atalho via evento
