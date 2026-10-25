@@ -106,6 +106,11 @@ serde_yaml = "0.9"
 notify = { workspace = true }
 walkdir = { workspace = true }
 symphonia = { workspace = true }
+# Captura da janela pelo próprio WebKitGTK (capture.rs): mesmas versões que o
+# wry do tauri já traz, para o `inner()` do webview ser do mesmo tipo.
+webkit2gtk = "2.0"
+cairo-rs = "0.18"
+image = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

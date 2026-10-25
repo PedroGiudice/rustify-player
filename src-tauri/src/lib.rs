@@ -20,6 +20,8 @@ pub(crate) mod mobile_lyrics;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) mod mobile_sync;
 #[cfg(not(target_os = "android"))]
+pub(crate) mod capture;
+#[cfg(not(target_os = "android"))]
 pub(crate) mod persistence;
 
 // Módulos desktop-only: Qdrant sidecar e Soulseek dependem de

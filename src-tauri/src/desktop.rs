@@ -1,4 +1,4 @@
-use crate::{device_identity, persistence, qdrant_process, slsk, sync_receiver};
+use crate::{capture, device_identity, persistence, qdrant_process, slsk, sync_receiver};
 
 /// cogmem (BGE-M3) para os vetores `lyrics`. IP tailnet da VM dedicada (extractlab,
 /// desde 18/09/2026). O literal antigo apontava para a VPS desligada
@@ -3149,7 +3149,7 @@ pub fn run() {
 
             let home = dirs_home();
             let data_dir = home.join(".local/share/rustify-player");
-            let cache_dir = home.join(".cache/rustify-player");
+            let cache_dir = cache_dir();
             std::fs::create_dir_all(&data_dir).ok();
             std::fs::create_dir_all(&cache_dir).ok();
 
@@ -3743,6 +3743,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            capture::debug_capture_webview,
             lib_list_genres,
             lib_mood_vocabulary,
             lib_list_tracks,
@@ -3879,6 +3880,10 @@ fn dirs_home() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/home"))
+}
+
+pub(crate) fn cache_dir() -> PathBuf {
+    dirs_home().join(".cache/rustify-player")
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

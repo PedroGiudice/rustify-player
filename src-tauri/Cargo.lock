@@ -4952,7 +4952,9 @@ name = "rustify-player"
 version = "0.2.13"
 dependencies = [
  "audio-engine",
+ "cairo-rs",
  "crossbeam-channel",
+ "image",
  "library-indexer",
  "lofty",
  "log",
@@ -4978,6 +4980,7 @@ dependencies = [
  "tracing-subscriber",
  "ureq",
  "walkdir",
+ "webkit2gtk",
 ]
 
 [[package]]
