@@ -20,7 +20,9 @@ ou ref inválida -> 400.
 Rodar na VM (a busca precisa do tidalapi; sem ele a fila segue funcionando e a busca devolve 503):
   tmux new -d -s telemetria 'uv run --with tidalapi --with mutagen --with numpy python3 ~/rustify-player/scripts/curator/tidal_fila.py'
 O numpy é do baixador (tidal_mix_dl.py), que mede o corte espectral de cada faixa e RECUSA a que é lossy
-por dentro; o resumo do job mostra quantas ("n recusadas"). Recusada não é falha: o job termina ok.
+por dentro; o resumo do job mostra quantas ("n recusadas"). Recusada não é falha: o job termina ok,
+EXCETO quando nada chegou e tudo foi recusado: aí o estado é "recusada" (26/10: um job de 1 faixa
+recusada aparecia verde como "na cmr-auto" no app e o CEO procurou a faixa no acervo).
 Instância de teste ao lado da real: --port 8471 --bind 127.0.0.1 --out /tmp/x (fila.json própria).
 """
 import argparse
@@ -221,12 +223,13 @@ def resumo_do_log(path):
     env = next((l.split(" ")[1] for l in lines if l.startswith("ENVIADAS ")), None)
     nao = next((l.split(" ")[2] for l in lines if l.startswith("NÃO ENVIADAS ")), None)
     recusadas = next((l.split(" ")[1] for l in lines if l.startswith("RECUSADAS ")), None)
+    cortes = sorted({m.group(1) for l in lines for m in [re.search(r"RECUSADA \(lossy por dentro, corte ([\d,\.]+ kHz)\)", l)] if m})
     letras = next((l.split("LETRAS ")[1].split(" ")[0] for l in lines if l.startswith("NOVAS") and "LETRAS " in l), None)
     txt = f"{titulo}: {n} novas, {s} já no acervo, {f} falhas de {total}"
     if letras and letras != "0":
         txt += f"; {letras} com letra"
     if recusadas and recusadas != "0":  # lossy por dentro: recusada não é falha, o job segue ok
-        txt += f"; {recusadas} recusadas (lossy por dentro)"
+        txt += f"; {recusadas} recusadas (lossy por dentro" + (f", corte {' / '.join(cortes)}" if cortes else "") + ")"
     if env:
         txt += f"; {env} na cmr-auto"
     if nao:
@@ -249,9 +252,28 @@ def comando_do_job(job):
             + alvo_do_job(job) + ["--playlist=" + job["playlist"]])
 
 
-def status_final(rc, fim):
+def tudo_recusado(path):
+    """Pura. True quando o job não trouxe nada e pelo menos uma faixa foi recusada (lossy por dentro):
+    0 novas, 0 já no acervo, 0 falhas, RECUSADAS n > 0. Um job assim não pode terminar "ok"."""
+    try:
+        lines = Path(path).read_text(errors="ignore").splitlines()
+    except Exception:
+        return False
+    recusadas = next((l.split(" ")[1] for l in lines if l.startswith("RECUSADAS ")), "0")
+    if not recusadas.isdigit() or int(recusadas) == 0:
+        return False
+    novas = sum(1 for l in lines if " -> " in l)
+    ja = sum(1 for l in lines if "JÁ NO ACERVO" in l or "JÁ BAIXADA" in l or "JÁ NA CMR-AUTO" in l)
+    falhas = sum(1 for l in lines if "FALHOU" in l)
+    return novas == 0 and ja == 0 and falhas == 0
+
+
+def status_final(rc, fim, recusado=False):
     """Pura. ok = rc 0 até o FIM (faixa recusada por ser lossy não é falha e não muda o rc);
-    parcial = rc 2 (alguma faixa não chegou na cmr-auto); o resto é falha."""
+    parcial = rc 2 (alguma faixa não chegou na cmr-auto); o resto é falha. `recusado` (tudo_recusado)
+    sobrepõe o ok: nada chegou e tudo foi recusado = "recusada", nunca "na cmr-auto"."""
+    if rc == 0 and fim and recusado:
+        return "recusada"
     return "ok" if rc == 0 and fim else ("parcial" if rc == 2 and fim else "falhou")
 
 
@@ -278,7 +300,7 @@ def worker():
             rc = subprocess.run(comando_do_job(job), stdout=lf, stderr=subprocess.STDOUT, cwd=str(OUT)).returncode
         resumo = resumo_do_log(job["log"])
         fim = "FIM" in Path(job["log"]).read_text(errors="ignore")
-        status = status_final(rc, fim)
+        status = status_final(rc, fim, tudo_recusado(job["log"]))
         with LOCK:
             jobs = load_fila()
             for j in jobs:
@@ -308,8 +330,8 @@ def fila_html(msg=""):
         form += f"<p class='warn'>{html.escape(msg)}</p>"
     rows = []
     for j in reversed(jobs[-12:]):
-        st = {"fila": "na fila", "baixando": "baixando", "ok": "na cmr-auto", "parcial": "parcial", "falhou": "falhou"}[j["status"]]
-        cls = {"fila": "", "baixando": "run", "ok": "ok", "parcial": "bad", "falhou": "bad"}[j["status"]]
+        st = {"fila": "na fila", "baixando": "baixando", "ok": "na cmr-auto", "parcial": "parcial", "falhou": "falhou", "recusada": "recusada"}[j["status"]]
+        cls = {"fila": "", "baixando": "run", "ok": "ok", "parcial": "bad", "falhou": "bad", "recusada": "bad"}[j["status"]]
         resumo = j.get("resumo") or (resumo_do_log(j["log"]) if j["status"] == "baixando" else "")
         rows.append(f"<tr><td><span class='st {cls}'>{st}</span></td><td>{html.escape(j['playlist'])}</td><td>{rotulo_html(j)}<br><small>{html.escape(resumo)}</small></td><td><small>{html.escape(j.get('added', ''))}</small></td></tr>")
     table = "<table><tr><th>Estado</th><th>Pasta</th><th>Link / resultado</th><th>Entrou</th></tr>" + "".join(rows) + "</table>" if rows else "<p class='dim'>fila vazia</p>"

@@ -702,7 +702,7 @@ export interface TidalJob {
   id: string;
   url: string;
   playlist: string;
-  status: "fila" | "baixando" | "ok" | "parcial" | "falhou";
+  status: "fila" | "baixando" | "ok" | "parcial" | "falhou" | "recusada";
   added: string;
   resumo: string;
   inicio: string | null;

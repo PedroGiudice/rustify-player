@@ -14,12 +14,13 @@ describe("shortTidalLink", () => {
 });
 
 describe("tidalStatusLabel", () => {
-  it("mapeia os 5 estados para o rótulo em PT-BR da página web", () => {
+  it("mapeia os 6 estados para o rótulo em PT-BR da página web", () => {
     expect(tidalStatusLabel("fila")).toBe("na fila");
     expect(tidalStatusLabel("baixando")).toBe("baixando");
     expect(tidalStatusLabel("ok")).toBe("na cmr-auto");
     expect(tidalStatusLabel("parcial")).toBe("parcial");
     expect(tidalStatusLabel("falhou")).toBe("falhou");
+    expect(tidalStatusLabel("recusada")).toBe("recusada");
   });
 });
 
@@ -30,6 +31,7 @@ describe("tidalStatusTone", () => {
     expect(tidalStatusTone("ok")).toBe("ready");
     expect(tidalStatusTone("parcial")).toBe("warn");
     expect(tidalStatusTone("falhou")).toBe("err");
+    expect(tidalStatusTone("recusada")).toBe("err");
   });
 });
 

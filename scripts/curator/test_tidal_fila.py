@@ -416,12 +416,37 @@ class FilaEmDisco(unittest.TestCase):
                         "RECUSADAS 2 (lossy por dentro)\nENVIADAS 1 para h:Music; staging limpo\nFIM\n")
         r = tf.resumo_do_log(log)
         self.assertIn("1 novas, 1 já no acervo, 0 falhas de 4", r)
-        self.assertIn("2 recusadas (lossy por dentro)", r)
+        self.assertIn("2 recusadas (lossy por dentro, corte 16,0 kHz)", r)
         self.assertIn("1 na cmr-auto", r)
 
     def test_resumo_sem_recusadas_nao_menciona(self):
         log = self._log("MIX: M | 1 faixas\nNOVAS 0 | PULADAS 0 | FALHAS 0 | LETRAS 0 | relatório r\nRECUSADAS 0 (lossy por dentro)\nFIM\n")
         self.assertNotIn("recusadas", tf.resumo_do_log(log))
+
+    def test_resumo_traz_o_corte_da_recusa(self):
+        log = self._log("MIX: MC Rahell - Vai dar PT | 1 faixas\n  1 Vai dar PT RECUSADA (lossy por dentro, corte 15,9 kHz)\n"
+                        "NOVAS 0 | PULADAS 0 | FALHAS 0 | LETRAS 0 | relatório r\nRECUSADAS 1 (lossy por dentro)\nFIM\n")
+        self.assertIn("1 recusadas (lossy por dentro, corte 15,9 kHz)", tf.resumo_do_log(log))
+
+    def test_job_em_que_nada_chegou_e_tudo_foi_recusado_e_recusada(self):
+        # caso de 26/10: 1 faixa, recusada; o job dizia "ok" e o app mostrava "na cmr-auto" em verde
+        so_recusada = self._log("MIX: M | 1 faixas\n  1 X JÁ RECUSADA (lossy por dentro)\n"
+                                "NOVAS 0 | PULADAS 0 | FALHAS 0 | LETRAS 0 | relatório r\nRECUSADAS 1 (lossy por dentro)\nFIM\n")
+        self.assertTrue(tf.tudo_recusado(so_recusada))
+        self.assertEqual(tf.status_final(0, True, tf.tudo_recusado(so_recusada)), "recusada")
+        # recusada junto de faixa nova ou já no acervo: segue ok (a recusa fica no resumo)
+        mista = self._log("MIX: M | 2 faixas\n  1 A | Art | LOSSLESS 16/44100 3.0 MB em 5.0s -> a/b.flac\n"
+                          "  2 B RECUSADA (lossy por dentro, corte 16,0 kHz)\nNOVAS 1 | PULADAS 0 | FALHAS 0 | LETRAS 0 | relatório r\n"
+                          "RECUSADAS 1 (lossy por dentro)\nENVIADAS 1 para h:Music\nFIM\n")
+        self.assertFalse(tf.tudo_recusado(mista))
+        self.assertEqual(tf.status_final(0, True, tf.tudo_recusado(mista)), "ok")
+        ja_la = self._log("MIX: M | 2 faixas\n  1 A JÁ NO ACERVO (x)\n  2 B JÁ RECUSADA (lossy por dentro)\n"
+                          "NOVAS 0 | PULADAS 1 | FALHAS 0 | LETRAS 0 | relatório r\nRECUSADAS 1 (lossy por dentro)\nFIM\n")
+        self.assertFalse(tf.tudo_recusado(ja_la))
+        # sem RECUSADAS, ou sem FIM, nada muda
+        self.assertFalse(tf.tudo_recusado(self._log("MIX: M | 1 faixas\nNOVAS 0 | PULADAS 0 | FALHAS 0 | LETRAS 0 | r\nFIM\n")))
+        self.assertEqual(tf.status_final(0, False, True), "falhou")
+        self.assertEqual(tf.status_final(2, True, True), "parcial")
 
     def test_job_so_com_recusadas_termina_ok_e_o_baixador_leva_numpy(self):
         # recusada não muda o rc do baixador (0): o job fecha ok; rc 2 continua parcial

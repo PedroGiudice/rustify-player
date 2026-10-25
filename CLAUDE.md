@@ -96,6 +96,8 @@ RESERVADOS (sem serviço exposto a proteger); gatilho de reabertura na spec.
 ## Avaliação de design (Impeccable)
 
 Trabalho de UI passa pelo Impeccable; contexto em `PRODUCT.md` e `.impeccable/config.json`.
+Sistema visual documentado em `DESIGN.md` (tokens, papéis, regras nomeadas, componentes; sidecar
+`.impeccable/design.json`; gerado em 26/10/2026 do app real): tela nova e crítica partem dele.
 A tela renderizada é avaliada no app REAL da cmr-auto pela ponte
 (`scripts/impeccable/app_eval.sh capture|detect`), não num navegador: procedimento, motivo e
 pontos cegos em `.claude/rules/impeccable.md`.
@@ -655,7 +657,10 @@ COMMENT do FLAC (`source: tidal <tier>; ...`); não reintroduzir marca no caminh
   apagado, nada enviado, entra em `recusadas` do `mix_<id>.json` e no cache
   `~/tidal-out/recusadas.json` (chave = id da faixa; `JÁ RECUSADA` nas próximas rodadas; apagar a
   entrada reavalia). Recusada NÃO é falha (rc 0; `rc=2` segue só para "não enviadas"); o resumo
-  da fila mostra "n recusadas". A página do CEO (fila de links,
+  da fila mostra "n recusadas (lossy por dentro, corte X kHz)". Exceção (26/10): job em que NADA
+  chegou e tudo foi recusado termina `recusada` (`tudo_recusado` na fila; chip vermelho na página e no
+  app a partir do .deb seguinte à 0.2.96; o 0.2.96 mostra chip vazio + resumo), porque "na cmr-auto"
+  em verde fez o CEO procurar no acervo uma faixa que nunca chegou. A página do CEO (fila de links,
   `scripts/curator/tidal_fila.py`, serviço `rustify-tidal-fila` na VM, Funnel :10000, token em
   `~/.secrets/telemetria-token.txt`) chama ESSE script sem flag: cada link colado lá
   termina em `~/Music` da cmr-auto; estado `parcial` = alguma faixa não chegou, colar o

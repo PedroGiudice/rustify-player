@@ -1,0 +1,1269 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T23:42:01Z",
+  "title": "Design System: Rustify Player",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas (piso da tela)",
+        "canonical": "oklch(98.5% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--bg-canvas",
+        "surface": "desktop",
+        "reallyDark": "#050505"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper (superfície de trabalho)",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--bg-paper",
+        "surface": "desktop",
+        "reallyDark": "#0c0c0c"
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "Soft (1º degrau)",
+        "canonical": "oklch(97.3% 0.004 91)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#262523",
+          "#434240",
+          "#62615f",
+          "#838280",
+          "#a6a5a2",
+          "#cac9c6",
+          "#efeeeb"
+        ],
+        "cssVar": "--bg-soft",
+        "surface": "desktop",
+        "reallyDark": "#161616"
+      },
+      "sunken": {
+        "role": "neutral",
+        "displayName": "Sunken (abaixo do paper)",
+        "canonical": "oklch(99.1% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--bg-sunken",
+        "surface": "desktop",
+        "reallyDark": "#111111"
+      },
+      "tint": {
+        "role": "neutral",
+        "displayName": "Tint (2º degrau)",
+        "canonical": "oklch(97.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--bg-tint",
+        "surface": "desktop",
+        "reallyDark": "#1c1c1c"
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Faint (3º degrau)",
+        "canonical": "oklch(96.7% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--bg-faint",
+        "surface": "desktop",
+        "reallyDark": "#242424"
+      },
+      "carbon-1": {
+        "role": "neutral",
+        "displayName": "Carbono 1",
+        "canonical": "oklch(20.5% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-1",
+        "surface": "desktop",
+        "reallyDark": "#F0F0F0"
+      },
+      "carbon-2": {
+        "role": "neutral",
+        "displayName": "Carbono 2",
+        "canonical": "oklch(26.9% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-2",
+        "surface": "desktop",
+        "reallyDark": "#eaeaea"
+      },
+      "carbon-3": {
+        "role": "neutral",
+        "displayName": "Carbono 3",
+        "canonical": "oklch(37.1% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-3",
+        "surface": "desktop",
+        "reallyDark": "#b8b8b8"
+      },
+      "carbon-4": {
+        "role": "neutral",
+        "displayName": "Carbono 4",
+        "canonical": "oklch(43.9% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-4",
+        "surface": "desktop",
+        "reallyDark": "#b8b8b8"
+      },
+      "carbon-5": {
+        "role": "neutral",
+        "displayName": "Carbono 5",
+        "canonical": "oklch(55.6% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-5",
+        "surface": "desktop",
+        "reallyDark": "#808080"
+      },
+      "carbon-6": {
+        "role": "neutral",
+        "displayName": "Carbono 6",
+        "canonical": "oklch(56.6% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-6",
+        "surface": "desktop",
+        "reallyDark": "#808080"
+      },
+      "carbon-7": {
+        "role": "neutral",
+        "displayName": "Carbono 7",
+        "canonical": "oklch(75.7% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-7",
+        "surface": "desktop",
+        "reallyDark": "#6e6e6e"
+      },
+      "carbon-8": {
+        "role": "neutral",
+        "displayName": "Carbono 8",
+        "canonical": "oklch(87.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--fg-8",
+        "surface": "desktop",
+        "reallyDark": "#404040"
+      },
+      "line-1": {
+        "role": "neutral",
+        "displayName": "Linha 1",
+        "canonical": "oklch(94.3% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--line-1",
+        "surface": "desktop",
+        "reallyDark": "rgba(255,255,255,0.16)"
+      },
+      "line-2": {
+        "role": "neutral",
+        "displayName": "Linha 2",
+        "canonical": "oklch(92.2% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--line-2",
+        "surface": "desktop",
+        "reallyDark": "rgba(255,255,255,0.08)"
+      },
+      "line-3": {
+        "role": "neutral",
+        "displayName": "Linha 3",
+        "canonical": "oklch(94.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--line-3",
+        "surface": "desktop",
+        "reallyDark": "rgba(255,255,255,0.08)"
+      },
+      "accent-fg": {
+        "role": "primary",
+        "displayName": "Acento da capa (texto/ícone)",
+        "canonical": "oklch(54.6% 0.215 263)",
+        "tonalRamp": [
+          "#120065",
+          "#01008b",
+          "#0029b1",
+          "#1451d8",
+          "#3777ff",
+          "#599dff",
+          "#7cc3ff",
+          "#9feaff"
+        ],
+        "cssVar": "--blue-fg",
+        "surface": "desktop",
+        "reallyDark": "#997081"
+      },
+      "accent-ring": {
+        "role": "primary",
+        "displayName": "Acento da capa (anel/foco)",
+        "canonical": "oklch(62.3% 0.188 260)",
+        "tonalRamp": [
+          "#090059",
+          "#00037d",
+          "#0034a3",
+          "#0e59c9",
+          "#367df0",
+          "#59a2ff",
+          "#7dc7ff",
+          "#a1eeff"
+        ],
+        "cssVar": "--blue-ring",
+        "surface": "desktop",
+        "reallyDark": "#997081"
+      },
+      "accent-bg": {
+        "role": "primary",
+        "displayName": "Acento da capa (fundo)",
+        "canonical": "oklch(97.0% 0.014 255)",
+        "tonalRamp": [
+          "#070b11",
+          "#20262c",
+          "#3d434a",
+          "#5c6269",
+          "#7d838b",
+          "#9fa6ae",
+          "#c3cad2",
+          "#e8eff8"
+        ],
+        "cssVar": "--blue-bg",
+        "surface": "desktop",
+        "reallyDark": "rgba(153,112,129,0.12)"
+      },
+      "ok-fg": {
+        "role": "tertiary",
+        "displayName": "Sinal ok",
+        "canonical": "oklch(50.8% 0.105 166)",
+        "tonalRamp": [
+          "#001602",
+          "#003318",
+          "#005234",
+          "#007353",
+          "#369673",
+          "#5dba95",
+          "#82dfb9",
+          "#a8ffde"
+        ],
+        "cssVar": "--green-fg",
+        "surface": "desktop",
+        "reallyDark": "#809078"
+      },
+      "ok-ring": {
+        "role": "tertiary",
+        "displayName": "Sinal ok (anel)",
+        "canonical": "oklch(69.6% 0.149 162)",
+        "tonalRamp": [
+          "#001800",
+          "#00370a",
+          "#005828",
+          "#007947",
+          "#009d67",
+          "#25c189",
+          "#59e7ac",
+          "#84ffd1"
+        ],
+        "cssVar": "--green-ring",
+        "surface": "desktop",
+        "reallyDark": "#809078"
+      },
+      "ok-bg": {
+        "role": "tertiary",
+        "displayName": "Sinal ok (fundo)",
+        "canonical": "oklch(97.9% 0.021 166)",
+        "tonalRamp": [
+          "#040e09",
+          "#1b2823",
+          "#38463f",
+          "#57655e",
+          "#77867f",
+          "#9aa9a2",
+          "#bdcec6",
+          "#e2f3eb"
+        ],
+        "cssVar": "--green-bg",
+        "surface": "desktop",
+        "reallyDark": "rgba(128,144,120,0.12)"
+      },
+      "warn-fg": {
+        "role": "tertiary",
+        "displayName": "Sinal aviso",
+        "canonical": "oklch(55.5% 0.146 49)",
+        "tonalRamp": [
+          "#310000",
+          "#550000",
+          "#7a1b00",
+          "#9f4000",
+          "#c56323",
+          "#ed864b",
+          "#ffab70",
+          "#ffd094"
+        ],
+        "cssVar": "--amber-fg",
+        "surface": "desktop",
+        "reallyDark": "#908870"
+      },
+      "warn-ring": {
+        "role": "tertiary",
+        "displayName": "Sinal aviso (anel)",
+        "canonical": "oklch(76.9% 0.165 70)",
+        "tonalRamp": [
+          "#2e0000",
+          "#510000",
+          "#752600",
+          "#994900",
+          "#bf6b00",
+          "#e58f00",
+          "#ffb437",
+          "#ffd964"
+        ],
+        "cssVar": "--amber-ring",
+        "surface": "desktop",
+        "reallyDark": "#908870"
+      },
+      "warn-bg": {
+        "role": "tertiary",
+        "displayName": "Sinal aviso (fundo)",
+        "canonical": "oklch(98.7% 0.021 95)",
+        "tonalRamp": [
+          "#0e0b03",
+          "#282519",
+          "#454235",
+          "#656154",
+          "#868274",
+          "#a9a596",
+          "#cdc9ba",
+          "#f3efdf"
+        ],
+        "cssVar": "--amber-bg",
+        "surface": "desktop",
+        "reallyDark": "rgba(144,136,112,0.12)"
+      },
+      "err-fg": {
+        "role": "tertiary",
+        "displayName": "Sinal erro",
+        "canonical": "oklch(51.4% 0.198 17)",
+        "tonalRamp": [
+          "#3e0000",
+          "#660000",
+          "#8e0017",
+          "#b60036",
+          "#df3d56",
+          "#ff6577",
+          "#ff8b9a",
+          "#ffb1be"
+        ],
+        "cssVar": "--rose-fg",
+        "surface": "desktop",
+        "reallyDark": "#8b7575"
+      },
+      "err-ring": {
+        "role": "tertiary",
+        "displayName": "Sinal erro (anel)",
+        "canonical": "oklch(63.7% 0.208 25)",
+        "tonalRamp": [
+          "#410000",
+          "#690000",
+          "#920000",
+          "#bb0016",
+          "#e4393b",
+          "#ff625e",
+          "#ff8981",
+          "#ffb0a5"
+        ],
+        "cssVar": "--rose-ring",
+        "surface": "desktop",
+        "reallyDark": "#8b7575"
+      },
+      "err-bg": {
+        "role": "tertiary",
+        "displayName": "Sinal erro (fundo)",
+        "canonical": "oklch(97.1% 0.013 17)",
+        "tonalRamp": [
+          "#100909",
+          "#2b2323",
+          "#493f3f",
+          "#685e5e",
+          "#8a7f7f",
+          "#ada2a2",
+          "#d1c6c6",
+          "#f7ebeb"
+        ],
+        "cssVar": "--rose-bg",
+        "surface": "desktop",
+        "reallyDark": "rgba(139,117,117,0.12)"
+      },
+      "gl-canvas": {
+        "role": "neutral",
+        "displayName": "Canvas do fundo WebGL (preto puro)",
+        "canonical": "oklch(0.0% 0.000 0)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "surface": "desktop"
+      },
+      "s24-surface-lowest": {
+        "role": "neutral",
+        "displayName": "S24: surface lowest",
+        "canonical": "oklch(11.5% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--s-lowest",
+        "surface": "s24"
+      },
+      "s24-surface-base": {
+        "role": "neutral",
+        "displayName": "S24: surface base",
+        "canonical": "oklch(15.4% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--s-base",
+        "surface": "s24"
+      },
+      "s24-surface-low": {
+        "role": "neutral",
+        "displayName": "S24: surface low",
+        "canonical": "oklch(17.8% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--s-low",
+        "surface": "s24"
+      },
+      "s24-surface-container": {
+        "role": "neutral",
+        "displayName": "S24: surface container",
+        "canonical": "oklch(20.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--s-c",
+        "surface": "s24"
+      },
+      "s24-surface-high": {
+        "role": "neutral",
+        "displayName": "S24: surface high",
+        "canonical": "oklch(22.6% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--s-high",
+        "surface": "s24"
+      },
+      "s24-surface-highest": {
+        "role": "neutral",
+        "displayName": "S24: surface highest",
+        "canonical": "oklch(26.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--s-highest",
+        "surface": "s24"
+      },
+      "s24-text-1": {
+        "role": "neutral",
+        "displayName": "S24: text 1",
+        "canonical": "oklch(95.5% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--t1",
+        "surface": "s24"
+      },
+      "s24-text-2": {
+        "role": "neutral",
+        "displayName": "S24: text 2",
+        "canonical": "oklch(78.3% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--t2",
+        "surface": "s24"
+      },
+      "s24-text-3": {
+        "role": "neutral",
+        "displayName": "S24: text 3",
+        "canonical": "oklch(60.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--t3",
+        "surface": "s24"
+      },
+      "s24-text-4": {
+        "role": "neutral",
+        "displayName": "S24: text 4",
+        "canonical": "oklch(53.8% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--t4",
+        "surface": "s24"
+      },
+      "s24-divider": {
+        "role": "neutral",
+        "displayName": "S24: divider",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--div-subtle",
+        "surface": "s24"
+      },
+      "s24-divider-prominent": {
+        "role": "neutral",
+        "displayName": "S24: divider prominent",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--div-prom",
+        "surface": "s24"
+      },
+      "s24-accent": {
+        "role": "primary",
+        "displayName": "S24: acento do handoff",
+        "canonical": "oklch(59.2% 0.057 352)",
+        "tonalRamp": [
+          "#1b010d",
+          "#391828",
+          "#593545",
+          "#7b5464",
+          "#9e7586",
+          "#c297a8",
+          "#e8bbcd",
+          "#ffe0f2"
+        ],
+        "cssVar": "--accent",
+        "surface": "s24"
+      },
+      "s24-accent-container": {
+        "role": "primary",
+        "displayName": "S24: container do acento",
+        "canonical": "oklch(36.5% 0.034 353)",
+        "tonalRamp": [
+          "#16050c",
+          "#321e27",
+          "#513b44",
+          "#715963",
+          "#947a84",
+          "#b79da7",
+          "#dcc0cb",
+          "#ffe6f1"
+        ],
+        "cssVar": "--accent-c",
+        "surface": "s24"
+      },
+      "s24-on-accent": {
+        "role": "primary",
+        "displayName": "S24: sobre o acento",
+        "canonical": "oklch(14.5% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "cssVar": "--on-accent",
+        "surface": "s24"
+      },
+      "s24-ok": {
+        "role": "tertiary",
+        "displayName": "S24: sinal ok",
+        "canonical": "oklch(63.4% 0.040 135)",
+        "tonalRamp": [
+          "#040f01",
+          "#1c2915",
+          "#394732",
+          "#586750",
+          "#788870",
+          "#9bab92",
+          "#becfb6",
+          "#e3f5db"
+        ],
+        "cssVar": "--ok",
+        "surface": "s24"
+      },
+      "s24-warn": {
+        "role": "tertiary",
+        "displayName": "S24: sinal aviso",
+        "canonical": "oklch(62.7% 0.036 92)",
+        "tonalRamp": [
+          "#110a00",
+          "#2b240f",
+          "#49422c",
+          "#69614a",
+          "#8a826a",
+          "#ada58c",
+          "#d1c9af",
+          "#f7eed4"
+        ],
+        "cssVar": "--warn",
+        "surface": "s24"
+      },
+      "s24-err": {
+        "role": "tertiary",
+        "displayName": "S24: sinal erro",
+        "canonical": "oklch(58.3% 0.028 18)",
+        "tonalRamp": [
+          "#150607",
+          "#312020",
+          "#503c3c",
+          "#705b5b",
+          "#927c7c",
+          "#b69f9e",
+          "#dbc2c2",
+          "#ffe8e7"
+        ],
+        "cssVar": "--err",
+        "surface": "s24"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Só o título da faixa no Now Playing (desktop)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "h1 de cada vista; 28px no destaque da Stations."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Título de faixa, nome de station, item de navegação; 18px no hero-tile."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Texto corrente, campo de busca, abas (13–14px)."
+      },
+      "secondary": {
+        "displayName": "Secondary",
+        "purpose": "Artista, álbum, subtítulo, texto de chip, em carbono 5."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Eyebrow e título de seção em caixa-alta; único rótulo aceito."
+      },
+      "data": {
+        "displayName": "Data (mono)",
+        "purpose": "Todo número que muda: tempo, duração, kHz, contagem, tabular."
+      },
+      "s24-display": {
+        "displayName": "S24 Display (Fraunces)",
+        "purpose": "h1 de cada aba do S24."
+      },
+      "s24-title": {
+        "displayName": "S24 Title (Fraunces)",
+        "purpose": "Título da faixa no Now Playing do S24."
+      },
+      "s24-body": {
+        "displayName": "S24 Body (Inter)",
+        "purpose": "Tudo que se lê e toca no S24."
+      },
+      "s24-label": {
+        "displayName": "S24 Label (Inter)",
+        "purpose": "Eyebrow e aba da tabbar."
+      },
+      "s24-data": {
+        "displayName": "S24 Data (JetBrains Mono)",
+        "purpose": "Duração, tempos do seek, subtítulos técnicos."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-hairline",
+        "value": "0 1px 0 rgba(0,0,0,0.02)",
+        "purpose": "Hover de hero-tile e station card."
+      },
+      {
+        "name": "shadow-card",
+        "value": "0 1px 4px rgba(0,0,0,0.04)",
+        "purpose": "Card de letra em repouso. Really Dark: 0 1px 4px rgba(0,0,0,0.5)."
+      },
+      {
+        "name": "shadow-compact",
+        "value": "0 6px 18px rgba(0,0,0,0.05)",
+        "purpose": "Capa do Now Playing."
+      },
+      {
+        "name": "shadow-hover",
+        "value": "0 8px 24px rgba(0,0,0,0.06)",
+        "purpose": "Capa levantada no hover; painéis flutuantes (Tweaks). Really Dark: 0 8px 24px rgba(0,0,0,0.6)."
+      },
+      {
+        "name": "shadow-knob",
+        "value": "0 1px 2px rgba(0,0,0,0.18)",
+        "purpose": "Thumb de fader e slider."
+      },
+      {
+        "name": "ring-focus",
+        "value": "0 0 0 2px var(--blue-ring)",
+        "purpose": "Foco em campos (box-shadow)."
+      },
+      {
+        "name": "focus-outline",
+        "value": "2px solid var(--blue-ring)",
+        "purpose": "Foco de teclado (:focus-visible), offset 2px."
+      },
+      {
+        "name": "halo",
+        "value": "color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 80%), transparent)",
+        "purpose": "Anel difuso do ponto do eyebrow e do selo NOW PLAYING; --halo-alpha 0.10, tema regula em effects.halo."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Easing padrão de toda transição de estado."
+      },
+      {
+        "name": "dur-fast",
+        "value": "0.12s",
+        "purpose": "Microinteração (70–110 ms na régua do output style)."
+      },
+      {
+        "name": "dur-base",
+        "value": "0.15s",
+        "purpose": "Hover de botão, chip, linha, navegação."
+      },
+      {
+        "name": "dur-med",
+        "value": "0.18s",
+        "purpose": "Capa que sobe 2 px no hover de card."
+      },
+      {
+        "name": "view-fade",
+        "value": "0.25s",
+        "purpose": "Entrada de vista: fade + 6 px para cima."
+      },
+      {
+        "name": "bg-mode",
+        "value": "420ms",
+        "purpose": "Troca focused/ambient do fundo animado (opacity + filter)."
+      },
+      {
+        "name": "ink-lerp-tau",
+        "value": "350ms",
+        "purpose": "Lerp exponencial local da cor do fundo (rgbLerp); nunca transition de custom property no :root."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "np-stack",
+        "value": "1200px",
+        "purpose": "Now Playing empilha as colunas."
+      },
+      {
+        "name": "np-compact",
+        "value": "760px",
+        "purpose": "Capa do Now Playing cai para 160 px."
+      },
+      {
+        "name": "s24-width",
+        "value": "360px",
+        "purpose": "Largura do S24; 316 px úteis."
+      },
+      {
+        "name": "ceo-canvas",
+        "value": "1857x1048",
+        "purpose": "Canvas real do desktop do dono (1920x1080, zoom 1,15): medir aqui."
+      }
+    ],
+    "layout": {
+      "desktop": {
+        "titlebar-h": "32px",
+        "sidebar-w": "220px",
+        "sidebar-w-icons": "56px",
+        "playerbar-h": "72px",
+        "view-head-padding": "28px 40px 18px",
+        "view-body-padding": "28px 40px 56px",
+        "section-gap": "36px",
+        "row-height": "61px",
+        "row-columns": "40px 1fr 220px 120px 60px",
+        "card-grid": "repeat(auto-fill, minmax(176px, 1fr))",
+        "hero-grid": "1.8fr 1fr 1fr"
+      },
+      "s24": {
+        "tabbar-h": "56px",
+        "mini-h": "56px",
+        "side-gutter": "20px",
+        "section-gap": "22px",
+        "album-grid": "1fr 1fr",
+        "touch-target": "44px",
+        "np-cover": "214px",
+        "play-fab": "60px"
+      }
+    },
+    "themes": {
+      "mechanism": "Tema YAML em ~/.local/share/rustify-player/themes/*.yaml (na máquina do dono). yaml_key_to_css_prop (desktop.rs) mapeia surfaces/text/accent/signal/typography/effects + tones/glass/radius/shadows/motion/background para os tokens do :root; a BRIDGE espalha surfaces→bg-*, text→fg-1..8, accent.primary→blue-fg/ring, signal→green/amber/rose. load_theme valida WCAG (texto/canvas, texto/paper, accent/canvas, fg-1/tone-*) e corrige --bg-ink abaixo de 3:1.",
+      "precedence": "Ink do fundo: knob do Tweaks (dirty) > capa (adaptiveInk) > tema (background.ink) > :root. Acento: capa (adaptiveAccent) > tema > :root. Fonte da UI: knob fontUI do Tweaks > tema (typography.body) > Instrument Sans.",
+      "installed": [
+        "really-dark (em uso, 26/10/2026)",
+        "autumm",
+        "ice-cream-mint",
+        "theme-copper-default",
+        "theme-forest",
+        "theme-gray",
+        "theme-midnight-blue",
+        "theme-monochrome",
+        "theme-neon",
+        "theme-warm-amber",
+        "uvinha"
+      ],
+      "really-dark": {
+        "canvas": "#050505",
+        "paper": "#0c0c0c",
+        "sunken": "#111111",
+        "soft": "#161616",
+        "tint": "#1c1c1c",
+        "faint": "#242424",
+        "carbon-1": "#F0F0F0",
+        "carbon-2": "#eaeaea",
+        "carbon-3": "#b8b8b8",
+        "carbon-4": "#b8b8b8",
+        "carbon-5": "#808080",
+        "carbon-6": "#808080",
+        "carbon-7": "#6e6e6e",
+        "carbon-8": "#404040",
+        "line-1": "rgba(255,255,255,0.16)",
+        "line-2": "rgba(255,255,255,0.08)",
+        "line-3": "rgba(255,255,255,0.08)",
+        "accent-fg": "#997081",
+        "accent-ring": "#997081",
+        "accent-bg": "rgba(153,112,129,0.12)",
+        "ok-fg": "#809078",
+        "ok-ring": "#809078",
+        "ok-bg": "rgba(128,144,120,0.12)",
+        "warn-fg": "#908870",
+        "warn-ring": "#908870",
+        "warn-bg": "rgba(144,136,112,0.12)",
+        "err-fg": "#8b7575",
+        "err-ring": "#8b7575",
+        "err-bg": "rgba(139,117,117,0.12)"
+      }
+    },
+    "surfaces": {
+      "desktop": {
+        "fonts": "Instrument Sans 400–700 (src/assets/fonts/instrument-sans-*.woff2); --font-mono do sistema ou do tema",
+        "tokens": "src/styles/extractor-lab.css :root",
+        "icons": "Lucide (iconify bundle local) + ph:heart-fill"
+      },
+      "s24": {
+        "fonts": "Inter 400–700 + Fraunces 600 + JetBrains Mono (@fontsource, self-hosted)",
+        "tokens": "src/mobile/styles/tokens.css",
+        "icons": "Lucide"
+      }
+    },
+    "evidence": {
+      "captures": [
+        "Home",
+        "Now Playing",
+        "Stations",
+        "Crate (Buscar e Tidal)"
+      ],
+      "capturedAt": "2026-10-26 no app 0.2.96 da cmr-auto, tema really-dark, zoom 1,1, canvas 1866x1048, cena Tinta",
+      "note": "O app rodava com Baumans/Righteous pelos knobs fontUI/fontMono do Tweaks; o sistema documenta Instrument Sans (decisão do CEO, 26/10/2026)."
+    }
+  },
+  "components": [
+    {
+      "name": "Play (botão primário)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Play/pause da barra do player: círculo de 36 px, tinta invertida, traço 2,5 px. Hover sobe um degrau e cresce 4 %. Sem animação no gesto repetido.",
+      "html": "<button class=\"ds-btn-primary\" aria-label=\"Pausar\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"10\" y1=\"4\" x2=\"10\" y2=\"20\"/><line x1=\"14\" y1=\"4\" x2=\"14\" y2=\"20\"/></svg></button>",
+      "css": ".ds-btn-primary { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--fg-1, #171717); color: var(--bg-paper, #ffffff); display: inline-grid; place-items: center; cursor: pointer; transition: transform var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), background var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-btn-primary:hover { background: var(--fg-2, #262626); transform: scale(1.04); } .ds-btn-primary:focus-visible { outline: 2px solid var(--blue-ring, #3b82f6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botão secundário e quieto",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secundário: paper com borda de 1 px. Quieto: transparente até o hover; ligado (aria-pressed) em acento, distinto do hover.",
+      "html": "<div style=\"display:flex;gap:10px;align-items:center\"><button class=\"ds-btn-secondary\">Play station</button><button class=\"ds-btn-quiet\" aria-pressed=\"false\" aria-label=\"Shuffle\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-btn-quiet\" aria-pressed=\"true\" aria-label=\"Shuffle ligado\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-btn-quiet ds-like\" aria-pressed=\"true\" aria-label=\"Curtida\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/></svg></button></div>",
+      "css": ".ds-btn-secondary { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); font-size: 12.5px; font-weight: 500; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line-2, #e5e5e5); background: var(--bg-paper, #ffffff); color: var(--fg-2, #262626); cursor: pointer; transition: border-color var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), background var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-btn-secondary:hover { border-color: var(--fg-8, #d4d4d4); background: var(--bg-soft, #f7f6f3); } .ds-btn-quiet { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg-5, #737373); display: inline-grid; place-items: center; cursor: pointer; transition: color var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), background var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-btn-quiet:hover { color: var(--fg-1, #171717); background: var(--bg-soft, #f7f6f3); } .ds-btn-quiet[aria-pressed=\"true\"] { color: var(--blue-fg, #2563eb); } .ds-like[aria-pressed=\"true\"] { color: var(--rose-fg, #be123c); } .ds-btn-secondary:focus-visible, .ds-btn-quiet:focus-visible { outline: 2px solid var(--blue-ring, #3b82f6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Chip de filtro",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Pílula com borda de 1 px; selecionado inverte a tinta. Selo técnico mono ao lado (proveniência RÁDIO em acento).",
+      "html": "<div style=\"display:flex;gap:6px;align-items:center;flex-wrap:wrap\"><button class=\"ds-chip ds-chip--active\">Todas</button><button class=\"ds-chip\">Rap</button><button class=\"ds-chip\">Funk BR</button><span class=\"ds-badge\">FLAC 24/96</span><span class=\"ds-badge ds-badge--src\">RÁDIO</span></div>",
+      "css": ".ds-chip { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); font-size: 12px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: var(--bg-paper, #ffffff); color: var(--fg-4, #525252); border: 1px solid var(--line-2, #e5e5e5); cursor: pointer; transition: background var(--dur-base, 0.15s), color var(--dur-base, 0.15s), border-color var(--dur-base, 0.15s); } .ds-chip:hover { color: var(--fg-1, #171717); border-color: var(--fg-8, #d4d4d4); } .ds-chip--active, .ds-chip--active:hover { background: var(--fg-1, #171717); color: var(--bg-paper, #ffffff); border-color: var(--fg-1, #171717); } .ds-chip:focus-visible { outline: 2px solid var(--blue-ring, #3b82f6); outline-offset: 2px; } .ds-badge { display: inline-block; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10px; color: var(--fg-5, #737373); background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); padding: 2px 7px; border-radius: 4px; font-variant-numeric: tabular-nums; } .ds-badge--src { font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--blue-fg, #2563eb); border-color: color-mix(in srgb, var(--blue-fg, #2563eb) 35%, transparent); padding: 0.5px 4px; }"
+    },
+    {
+      "name": "Linha de faixa",
+      "kind": "custom",
+      "refersTo": "track-row",
+      "description": "Linha densa de 61 px: capa 40, título 13.5/600 + subtítulo 12, hora relativa e duração em mono tabular. Faixa atual com borda esquerda de 2 px e título no acento.",
+      "html": "<div class=\"ds-rows\"><div class=\"ds-row ds-row--current\"><div class=\"ds-row__cover\"></div><div class=\"ds-row__meta\"><div class=\"ds-row__title\">Machine Gun Funk</div><div class=\"ds-row__sub\">The Notorious B.I.G. · Ready To Die</div></div><div class=\"ds-row__when\">1 d ago</div><div class=\"ds-row__time\">4:16</div></div><div class=\"ds-row\"><div class=\"ds-row__cover\"></div><div class=\"ds-row__meta\"><div class=\"ds-row__title\">1999 WILDFIRE</div><div class=\"ds-row__sub\">BROCKHAMPTON · 1999 WILDFIRE</div></div><div class=\"ds-row__when\">1 d ago</div><div class=\"ds-row__time\">4:11</div></div></div>",
+      "css": ".ds-rows { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); display: flex; flex-direction: column; max-width: 640px; } .ds-row { display: grid; grid-template-columns: 40px 1fr 120px 60px; gap: 14px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line-3, #ebebeb); cursor: pointer; transition: background var(--dur-base, 0.15s); } .ds-row:hover { background: var(--bg-soft, #f7f6f3); } .ds-row--current { border-left: 2px solid var(--blue-ring, #3b82f6); padding-left: 10px; } .ds-row--current .ds-row__title { color: var(--blue-fg, #2563eb); } .ds-row__cover { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line-2, #e5e5e5); background: linear-gradient(135deg, var(--bg-tint, #f5f5f5), var(--bg-faint, #f4f4f4)); } .ds-row__meta { min-width: 0; line-height: 1.3; } .ds-row__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1, #171717); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-row__sub { font-size: 12px; color: var(--fg-5, #737373); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-row__when { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-6, #767676); } .ds-row__time { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11.5px; color: var(--fg-4, #525252); text-align: right; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Card (hero-tile / station)",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Paper com borda de 1 px e raio 12. Eyebrow em caixa-alta, título 18/600, meta em mono. Hover: borda carbono 8; o CTA de play só aparece no hover.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card__eyebrow\"><i class=\"ds-dot\"></i>Pick up where you left off</div><div class=\"ds-card__title\">Machine Gun Funk · The Notorious B.I.G.</div><div class=\"ds-card__sub\">04:15 · ready to resume</div><span class=\"ds-card__cta\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"6 3 20 12 6 21 6 3\"/></svg></span></div>",
+      "css": ".ds-card { position: relative; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); border-radius: 12px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 6px; min-height: 112px; max-width: 420px; cursor: pointer; transition: border-color var(--dur-base, 0.15s), box-shadow var(--dur-base, 0.15s); } .ds-card:hover { border-color: var(--fg-8, #d4d4d4); box-shadow: 0 1px 0 rgba(0,0,0,0.02); } .ds-card__eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5, #737373); display: flex; align-items: center; gap: 7px; } .ds-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-ring, #3b82f6); box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring, #3b82f6) 8%, transparent); } .ds-card__title { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; color: var(--fg-1, #171717); margin-top: 4px; line-height: 1.25; } .ds-card__sub { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11.5px; color: var(--fg-5, #737373); margin-top: auto; font-variant-numeric: tabular-nums; } .ds-card__cta { position: absolute; top: 16px; right: 16px; width: 26px; height: 26px; border-radius: 50%; background: var(--fg-1, #171717); color: var(--bg-paper, #ffffff); display: grid; place-items: center; opacity: 0; transition: opacity var(--dur-base, 0.15s); } .ds-card__cta svg { width: 12px; height: 12px; } .ds-card:hover .ds-card__cta { opacity: 1; }"
+    },
+    {
+      "name": "Campo de busca",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "40 px, paper, borda 1 px, raio 10, lupa Lucide de 16 px à esquerda e kbd à direita. Foco: borda carbono 8 + anel de 2 px no acento.",
+      "html": "<label class=\"ds-search\"><span class=\"ds-search__icon\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg></span><input class=\"ds-search__input\" placeholder=\"Buscar no Soulseek e SoundCloud, ou colar link do Bandcamp\"><kbd class=\"ds-search__kbd\">Enter</kbd></label>",
+      "css": ".ds-search { position: relative; display: block; max-width: 560px; height: 40px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-search__icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--fg-6, #767676); pointer-events: none; display: inline-flex; } .ds-search__input { width: 100%; height: 40px; box-sizing: border-box; padding: 0 70px 0 37px; background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); border-radius: 10px; font: inherit; font-size: 13.5px; font-weight: 500; color: var(--fg-1, #171717); outline: 0; transition: border-color var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), box-shadow var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-search__input::placeholder { color: var(--fg-6, #767676); font-weight: 400; } .ds-search__input:focus { border-color: var(--fg-8, #d4d4d4); box-shadow: 0 0 0 2px var(--blue-ring, #3b82f6); } .ds-search__kbd { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10px; color: var(--fg-6, #767676); background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); padding: 1px 6px; border-radius: 4px; }"
+    },
+    {
+      "name": "Seek e slider",
+      "kind": "custom",
+      "refersTo": "track-row",
+      "description": "Trilho de 3 px em line-2, preenchimento carbono 3 (carbono 1 no hover), thumb de 10 px só no hover/foco; área de clique de 16 px. Tempos em mono tabular de cada lado.",
+      "html": "<div class=\"ds-seek\"><span class=\"ds-seek__time\">1:12</span><div class=\"ds-progress\" tabindex=\"0\" role=\"slider\" aria-valuenow=\"28\"><div class=\"ds-progress__fill\" style=\"width:28%\"></div><div class=\"ds-progress__thumb\" style=\"left:28%\"></div></div><span class=\"ds-seek__time\">4:15</span></div>",
+      "css": ".ds-seek { display: grid; grid-template-columns: 42px 1fr 42px; gap: 10px; align-items: center; max-width: 560px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-seek__time { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-5, #737373); font-variant-numeric: tabular-nums; text-align: center; } .ds-progress { position: relative; height: 3px; background: var(--line-2, #e5e5e5); border-radius: 999px; cursor: pointer; outline: 0; } .ds-progress::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 16px; transform: translateY(-50%); } .ds-progress__fill { height: 100%; background: var(--fg-3, #404040); border-radius: inherit; transition: background var(--dur-base, 0.15s); } .ds-progress:hover .ds-progress__fill, .ds-progress:focus-visible .ds-progress__fill { background: var(--fg-1, #171717); } .ds-progress__thumb { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: var(--fg-1, #171717); transform: translate(-50%, -50%); opacity: 0; transition: opacity var(--dur-base, 0.15s); box-shadow: 0 1px 2px rgba(0,0,0,0.18); } .ds-progress:hover .ds-progress__thumb, .ds-progress:focus-visible .ds-progress__thumb { opacity: 1; }"
+    },
+    {
+      "name": "Segmented",
+      "kind": "custom",
+      "refersTo": "segmented",
+      "description": "Trilho tint com borda e raio 8; botão ativo sobe para paper com sombra de 0,04. Com muitas opções, quebra linha.",
+      "html": "<div class=\"ds-segmented\" role=\"radiogroup\"><button role=\"radio\" aria-checked=\"false\">Off</button><button role=\"radio\" aria-checked=\"true\" class=\"ds-active\">Speed</button><button role=\"radio\" aria-checked=\"false\">Pulse</button></div>",
+      "css": ".ds-segmented { display: inline-flex; gap: 2px; padding: 2px; background: var(--bg-tint, #f5f5f5); border: 1px solid var(--line-2, #e5e5e5); border-radius: 8px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-segmented button { padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 500; border-radius: 5px; border: 0; background: transparent; color: var(--fg-5, #737373); cursor: pointer; transition: background var(--dur-base, 0.15s), color var(--dur-base, 0.15s); } .ds-segmented button:hover { color: var(--fg-1, #171717); } .ds-segmented .ds-active { background: var(--bg-paper, #ffffff); color: var(--fg-1, #171717); box-shadow: 0 1px 2px rgba(0,0,0,0.04); } .ds-segmented button:focus-visible { outline: 2px solid var(--blue-ring, #3b82f6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Navegação lateral",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Rótulo de seção 10/700 caixa-alta; item 7x12 px com ícone Lucide 16 px, 13.5/500; hover soft; ativo faint e 600. Atalho em kbd mono.",
+      "html": "<nav class=\"ds-nav\"><div class=\"ds-nav__label\">Library</div><a class=\"ds-nav__item ds-nav__item--active\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/><polyline points=\"9 22 9 12 15 12 15 22\"/></svg><span>Home</span></a><a class=\"ds-nav__item\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><span>Search</span><kbd>⌘K</kbd></a><a class=\"ds-nav__item\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22v-9\"/><path d=\"M15.17 2.21a1.67 1.67 0 0 1 1.63 0L21 4.57a1.93 1.93 0 0 1 0 3.36L8.82 14.79a1.655 1.655 0 0 1-1.64 0L3 12.43a1.93 1.93 0 0 1 0-3.36z\"/><path d=\"M20 13v3.87a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13\"/><path d=\"M21 12.43a1.93 1.93 0 0 0 0-3.36L8.83 2.2a1.64 1.64 0 0 0-1.63 0L3 4.57a1.93 1.93 0 0 0 0 3.36l12.18 6.86a1.636 1.636 0 0 0 1.63 0z\"/></svg><span>Crate</span></a><a class=\"ds-nav__item\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.9 19.1C1 15.2 1 8.8 4.9 4.9\"/><path d=\"M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/><path d=\"M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5\"/><path d=\"M19.1 4.9C23 8.8 23 15.1 19.1 19\"/></svg><span>Stations</span></a></nav>",
+      "css": ".ds-nav { width: 200px; padding: 10px; background: var(--bg-paper, #ffffff); border-right: 1px solid var(--line-2, #e5e5e5); display: flex; flex-direction: column; gap: 1px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-nav__label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--fg-5, #737373); text-transform: uppercase; padding: 0 12px 6px; } .ds-nav__item { display: flex; align-items: center; gap: 11px; padding: 7px 12px; border-radius: 8px; color: var(--fg-3, #404040); font-size: 13.5px; font-weight: 500; text-decoration: none; transition: background var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), color var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-nav__item svg { opacity: 0.85; flex: none; } .ds-nav__item:hover { background: var(--bg-soft, #f7f6f3); color: var(--fg-1, #171717); } .ds-nav__item--active { background: var(--bg-faint, #f4f4f4); color: var(--fg-1, #171717); font-weight: 600; } .ds-nav__item kbd { margin-left: auto; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10px; color: var(--fg-6, #767676); background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); padding: 1px 6px; border-radius: 4px; } .ds-nav__item:focus-visible { outline: 2px solid var(--blue-ring, #3b82f6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Barra do player",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "Componente-assinatura do desktop: 72 px, três colunas; capa 44, título 13/600 e chip de proveniência; transporte sobre seek de 3 px; pílula técnica em mono à direita.",
+      "html": "<div class=\"ds-pb\"><div class=\"ds-pb__left\"><div class=\"ds-pb__cover\"></div><div class=\"ds-pb__meta\"><div class=\"ds-pb__title\">Machine Gun Funk</div><div class=\"ds-pb__artist\"><span class=\"ds-pb__src\">Rádio</span>The Notorious B.I.G. · Ready To Die</div></div><button class=\"ds-pb__icon\" aria-label=\"Curtir\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/></svg></button></div><div class=\"ds-pb__center\"><div class=\"ds-pb__transport\"><button class=\"ds-pb__icon\" aria-label=\"Shuffle\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-pb__icon\" aria-label=\"Anterior\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"19 20 9 12 19 4 19 20\"/><line x1=\"5\" y1=\"19\" x2=\"5\" y2=\"5\"/></svg></button><button class=\"ds-pb__play\" aria-label=\"Pausar\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"10\" y1=\"4\" x2=\"10\" y2=\"20\"/><line x1=\"14\" y1=\"4\" x2=\"14\" y2=\"20\"/></svg></button><button class=\"ds-pb__icon\" aria-label=\"Próxima\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 4 15 12 5 20 5 4\"/><line x1=\"19\" y1=\"5\" x2=\"19\" y2=\"19\"/></svg></button></div><div class=\"ds-pb__seek\"><span>0:00</span><div class=\"ds-pb__track\"><i style=\"width:0%\"></i></div><span>4:15</span></div></div><div class=\"ds-pb__right\"><span class=\"ds-pb__tech\"><i class=\"ds-pb__led\"></i>FLAC 24/96 · EQ · LIM</span></div></div>",
+      "css": ".ds-pb { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); height: 72px; background: var(--bg-paper, #ffffff); border-top: 1px solid var(--line-2, #e5e5e5); display: grid; grid-template-columns: minmax(200px,1fr) 1.4fr minmax(160px,1fr); align-items: center; padding: 0 16px; gap: 24px; box-sizing: border-box; } .ds-pb__left { display: flex; align-items: center; gap: 12px; min-width: 0; } .ds-pb__cover { width: 44px; height: 44px; flex: none; border-radius: 8px; border: 1px solid var(--line-2, #e5e5e5); background: linear-gradient(135deg, var(--bg-tint, #f5f5f5), var(--bg-faint, #f4f4f4)); } .ds-pb__meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; } .ds-pb__title { font-size: 13px; font-weight: 600; color: var(--fg-1, #171717); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-pb__artist { font-size: 12px; color: var(--fg-5, #737373); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-pb__src { display: inline-block; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--blue-fg, #2563eb); border: 1px solid color-mix(in srgb, var(--blue-fg, #2563eb) 35%, transparent); border-radius: 4px; padding: 0.5px 4px; margin-right: 7px; vertical-align: 1.5px; line-height: 1.25; } .ds-pb__icon { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg-5, #737373); display: inline-grid; place-items: center; cursor: pointer; transition: color var(--dur-base, 0.15s), background var(--dur-base, 0.15s); } .ds-pb__icon:hover { color: var(--fg-1, #171717); background: var(--bg-soft, #f7f6f3); } .ds-pb__center { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; } .ds-pb__transport { display: flex; align-items: center; justify-content: center; gap: 4px; } .ds-pb__play { width: 36px; height: 36px; border-radius: 50%; border: 0; margin: 0 6px; background: var(--fg-1, #171717); color: var(--bg-paper, #ffffff); display: inline-grid; place-items: center; cursor: pointer; transition: transform var(--dur-base, 0.15s), background var(--dur-base, 0.15s); } .ds-pb__play:hover { background: var(--fg-2, #262626); transform: scale(1.04); } .ds-pb__seek { display: grid; grid-template-columns: 42px 1fr 42px; gap: 10px; align-items: center; } .ds-pb__seek span { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-5, #737373); font-variant-numeric: tabular-nums; text-align: center; } .ds-pb__track { height: 3px; background: var(--line-2, #e5e5e5); border-radius: 999px; position: relative; } .ds-pb__track i { display: block; height: 100%; background: var(--fg-3, #404040); border-radius: inherit; } .ds-pb__right { display: flex; justify-content: flex-end; } .ds-pb__tech { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1px solid var(--line-2, #e5e5e5); border-radius: 8px; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10.5px; color: var(--fg-4, #525252); font-variant-numeric: tabular-nums; } .ds-pb__led { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-fg, #2563eb); }"
+    },
+    {
+      "name": "Painel Tweaks",
+      "kind": "custom",
+      "refersTo": "tweaks-panel",
+      "description": "Painel flutuante de 280 px: cabeçalho 13/600, rótulo de knob 11/600 caixa-alta com valor à direita, controle, dica de uma linha. Referência canônica de todo knob.",
+      "html": "<div class=\"ds-tweaks\"><div class=\"ds-tweaks__header\"><span class=\"ds-tweaks__title\">Tweaks</span><button class=\"ds-tweaks__close\" aria-label=\"Fechar\">×</button></div><div class=\"ds-tweaks__body\"><div class=\"ds-tweaks__row\"><div class=\"ds-tweaks__label\">Escala <span class=\"ds-tweaks__val\">1,10</span></div><input class=\"ds-tweaks__range\" type=\"range\" min=\"0.8\" max=\"1.4\" step=\"0.05\" value=\"1.1\"></div><div class=\"ds-tweaks__divider\"><span>Fundo</span></div><div class=\"ds-tweaks__row\"><div class=\"ds-tweaks__label\">Motor</div><div class=\"ds-tweaks__seg\"><button>2D</button><button class=\"ds-active\">WebGL</button></div><div class=\"ds-tweaks__hint\">Um motor por vez; se o WebGL falhar, o app volta ao 2D sozinho.</div></div></div></div>",
+      "css": ".ds-tweaks { width: 280px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.06); overflow: hidden; } .ds-tweaks__header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line-2, #e5e5e5); } .ds-tweaks__title { font-weight: 600; font-size: 13px; color: var(--fg-1, #171717); } .ds-tweaks__close { width: 22px; height: 22px; border-radius: 5px; border: 0; background: transparent; color: var(--fg-5, #737373); cursor: pointer; font-size: 16px; line-height: 1; } .ds-tweaks__close:hover { background: var(--bg-tint, #f5f5f5); color: var(--fg-1, #171717); } .ds-tweaks__body { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; } .ds-tweaks__row { display: flex; flex-direction: column; gap: 6px; } .ds-tweaks__label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--fg-3, #404040); text-transform: uppercase; letter-spacing: 0.06em; } .ds-tweaks__val { font-weight: 400; color: var(--fg-5, #737373); text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; } .ds-tweaks__range { width: 100%; height: 22px; accent-color: var(--fg-1, #171717); } .ds-tweaks__divider { display: flex; align-items: center; gap: 8px; margin: 4px 0 2px; } .ds-tweaks__divider::before, .ds-tweaks__divider::after { content: ''; flex: 1; height: 1px; background: var(--line-2, #e5e5e5); } .ds-tweaks__divider span { font-size: 10px; font-weight: 700; color: var(--fg-6, #767676); text-transform: uppercase; letter-spacing: 0.06em; } .ds-tweaks__seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--bg-tint, #f5f5f5); border: 1px solid var(--line-2, #e5e5e5); border-radius: 8px; align-self: flex-start; } .ds-tweaks__seg button { padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 500; border-radius: 5px; border: 0; background: transparent; color: var(--fg-5, #737373); cursor: pointer; } .ds-tweaks__seg .ds-active { background: var(--bg-paper, #ffffff); color: var(--fg-1, #171717); box-shadow: 0 1px 2px rgba(0,0,0,0.04); } .ds-tweaks__hint { font-size: 11px; color: var(--fg-5, #737373); line-height: 1.4; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A Sala de Escuta: moldura quieta, mesa de estúdio",
+    "overview": "O Rustify é a sala de escuta de um dono só. A música é a única coisa iluminada: capa, som e letra dão a cor e o movimento, e a interface é a moldura escura e quieta em volta, que recua para deixar o quadro aparecer. Dentro dessa moldura há uma mesa de estúdio: leituras em mono (kHz, bit, LUFS, FLAC), listas densas para varrer o acervo, números tabulares e controles que medem em vez de enfeitar. Os três nomes descrevem o mesmo sistema visto de três distâncias: o quadro, a sala, a mesa.\n\nO sistema é quieto, denso e preciso. Quieto porque nada na moldura compete com a capa; a única ousadia permitida por tela é a que o Now Playing já tem (o fundo animado e a capa). Denso porque o dono passa o dia dentro do app e quer ver muito por tela: linhas de 61 px, duas linhas de texto por faixa, meta técnica sempre à vista. Preciso porque todo número que muda usa algarismos tabulares, toda borda tem 1 px, toda elevação é um degrau de luminância, e cada cor tem um papel nomeado.\n\nA cor não pertence à interface: pertence ao tema YAML e à capa. O `:root` do CSS guarda só o repouso; o tema reescreve as escalas, e a faixa tocando reescreve o ink do fundo e o acento (adaptiveInk/adaptiveAccent). Por isso este documento descreve papéis e estrutura, com os valores do `:root` como ponto de partida, nunca como paleta.\n\nRejeições confirmadas pelo CEO: Nébula com buffer reduzido (borrada), textura fina repetida no fundo (moiré, retícula), fitas genéricas, rótulo técnico que o dono não interpreta (\"Apple GPU\"), animação de custom property no `:root`.",
+    "keyCharacteristics": [
+      "Duas superfícies, uma linguagem: desktop (Instrument Sans, grade com barra lateral e barra do player) e S24 (Inter + Fraunces, tabbar e mini player).",
+      "Elevação por luminância, sem sombra estrutural; bordas de 1 px fazem o recorte.",
+      "Um acento por tela, derivado da capa quando ela tem cor; a moldura fica acromática.",
+      "Número que muda é tabular e em mono; rótulo é o último recurso.",
+      "Fundo animado reativo ao áudio como assinatura, sobre canvas preto puro.",
+      "Controles precisos em repouso, táteis ao toque, invisíveis quando secundários."
+    ],
+    "rules": [
+      {
+        "name": "A Regra da Moldura Quieta",
+        "body": "A interface é acromática. Cor de verdade só entra por três portas: a capa (acento e ink), o tema (quem define as escalas) e o sinal (ok/aviso/erro, apenas em estado). Nenhum componente fixa cor própria: valor solto onde existe token é defeito.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra do Acento Único",
+        "body": "Um acento por tela. Capa sem cor de verdade cai no acento do tema, nunca num acento forçado. Direção dada pelo CEO em 26/10/2026: sem música tocando, o repouso ideal é neutro (preto e branco); a cor chega com a faixa. O Really Dark ainda declara #997081 como acento de repouso; alinhar é edição de tema (ver Don'ts).",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra do Piso",
+        "body": "4,5:1 para texto, 3:1 para texto grande, controles e para o ink do fundo, medidos no pior ponto do fundo real (capa e fundo animado). O checker do tema (`load_theme`) e o `validate.py` reprovam o que falha.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra dos Três Tamanhos",
+        "body": "Por tela, no máximo 3 tamanhos e 2 pesos. Ênfase primeiro por cor (carbono 1 contra 5) e peso (600 contra 400); tamanho por último. Muitas vezes basta apagar o entorno.",
+        "section": "typography"
+      },
+      {
+        "name": "A Regra do Número Tabular",
+        "body": "Todo número que muda (tempo, duração, contagem, nº de faixa, kHz, LUFS) vai em `--font-mono` com `tabular-nums`. Números não dançam.",
+        "section": "typography"
+      },
+      {
+        "name": "A Regra do Rótulo por Último",
+        "body": "\"12 faixas\", não \"Faixas: 12\". Eyebrow em caixa-alta é o único rótulo aceito, e só acima de um bloco.",
+        "section": "typography"
+      },
+      {
+        "name": "A Regra do Piso de 11",
+        "body": "Texto que se lê fica em 11 px ou mais (12,1 px com o zoom 1,1 do dono). Abaixo disso só mono decorativo já existente (Hz do fader, selo de origem do S24), que é dívida, não licença.",
+        "section": "typography"
+      },
+      {
+        "name": "A Regra da Luminância",
+        "body": "Elevação é um degrau de tom e uma borda de 1 px. Sombra só em resposta a estado (hover) ou em painel que flutua sobre a vista.",
+        "section": "elevation"
+      },
+      {
+        "name": "A Regra do Vidro Barato",
+        "body": "Vidro é tom + alpha (`rgba(var(--glass-tint), var(--glass-alpha))`). `backdrop-filter` só em painel pequeno e flutuante (card de letra); nunca em tela cheia sobre o canvas animado, que custa repaint por quadro no WebKitGTK.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "consumir token (`--fg-*`, `--bg-*`, `--line-*`, `--radius-*`, `--dur-*`, `--ease-out`) em todo componente; se o token falta, crie no `:root` e exponha ao tema (`yaml_key_to_css_prop`), nunca fixe no componente.",
+      "usar `--blue-fg`/`--blue-ring`/`--blue-bg` (ou `--primary`) para \"ligado\", \"atual\", \"foco\" e \"station\": é o acento que segue tema e capa.",
+      "`font-variant-numeric: tabular-nums` e `--font-mono` em todo número que muda.",
+      "desenhar componente novo com os estados vazio, carregando e erro, e com atalho de teclado no desktop (o Crate vazio é o modelo: ícone de 24 px, título 14/600, dica 13 e a sequência de teclas em `kbd`).",
+      "diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).",
+      "`prefers-reduced-motion`: versão calma, não tela morta (as animações `vu`, `pulse` e `sel-bar` já desligam; o fundo tem `Speed = 0`).",
+      "medir contraste no pior ponto da captura real (capa e fundo animado), porque o detector só mede sobre fundo sólido.",
+      "verificar a mudança visual na captura do app real (`scripts/impeccable/app_eval.sh capture`), não só no código."
+    ],
+    "donts": [
+      "declarar `transition` de custom property no `:root` nem animar `--bg-ink`/`--primary` por CSS: restyle da árvore inteira por quadro no WebKitGTK (medido: 60 → 29 fps). As vars saltam; a suavidade é local (`rgbLerp` nos canvases, transition nas propriedades concretas).",
+      "introduzir terceira família tipográfica, fonte por CDN, ícone fora do Lucide (única exceção: coração cheio do Phosphor) nem ícone pequeno ampliado.",
+      "usar cor crua (`#3b82f6`, `rgba(59,130,246,…)`, `#fff` sobre acento): use `--blue-ring` com `--halo-alpha` e `--on-primary`.",
+      "usar sombra para elevar superfície em repouso, nem `backdrop-filter` em tela cheia sobre o canvas animado.",
+      "\"corrigir\" o canvas do WebGL para quase-preto: é #000 por decisão.",
+      "empilhar mais de 3 tamanhos e 2 pesos numa tela, nem usar sobretítulo espaçado além do eyebrow, mono decorativo em dado que não muda, seta \"→\" em botão, palavra destacada no título ou gradiente roxo.",
+      "texto abaixo de 11 px em tela nova (achado do detector na Home: \"RES\" e rótulos dos hero-tiles abaixo do piso; h1 seguido de h3 na hierarquia de cabeçalhos).",
+      "fixar acento colorido de repouso em tema novo: o repouso ideal é neutro e a cor vem da capa (direção do CEO). O Really Dark em uso ainda declara #997081; alinhar é tarefa do `theme-maker`, não de componente.",
+      "reoferecer o que o CEO descartou: Nébula borrada, texturas finas repetidas, fitas."
+    ]
+  }
+}

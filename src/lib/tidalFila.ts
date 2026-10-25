@@ -23,12 +23,14 @@ export function tidalStatusLabel(status: TidalJob["status"]): string {
     case "ok": return "na cmr-auto";
     case "parcial": return "parcial";
     case "falhou": return "falhou";
+    case "recusada": return "recusada";
   }
 }
 
 /** Classe de tom do chip (`.crate-pill--*`, extractor-lab.css) por estado:
     "fila" fica neutro (sub), "baixando" em andamento (live), "ok" pronto
-    (ready), "parcial"/"falhou" precisam de atenção (warn/err). */
+    (ready), "parcial"/"falhou" precisam de atenção (warn/err); "recusada" =
+    nada chegou, tudo lossy por dentro (err: o CEO procurava a faixa no acervo). */
 export function tidalStatusTone(status: TidalJob["status"]): "sub" | "live" | "ready" | "warn" | "err" {
   switch (status) {
     case "fila": return "sub";
@@ -36,6 +38,7 @@ export function tidalStatusTone(status: TidalJob["status"]): "sub" | "live" | "r
     case "ok": return "ready";
     case "parcial": return "warn";
     case "falhou": return "err";
+    case "recusada": return "err";
   }
 }
 
