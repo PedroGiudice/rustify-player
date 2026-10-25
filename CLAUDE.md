@@ -668,6 +668,16 @@ COMMENT do FLAC (`source: tidal <tier>; ...`); não reintroduzir marca no caminh
   removidas em 13/10). Gotcha pago: `pgrep -f` num laço de
   fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
   `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
+- **Vigia dos endpoints da VM com e-mail (26/10, `scripts/ops/vm_health_alert.py`)**: timer de usuário
+  `rustify-health.timer` (5 min) sonda as URLs que o APP usa (fila `100.64.242.118:8470`, MERT pelo
+  Serve `:8448/health`, letra `:3939/api/health`), reconfirma a falha 5 s depois e manda e-mail pelo
+  Resend (chave em `~/.secrets/resend-api-key.txt`, a mesma do extractor-lab; remetente
+  `no-reply@aidvlabs.com`; destino `RUSTIFY_ALERT_TO`, padrão o Gmail do CEO) SÓ na transição
+  caiu/voltou, com o quadro inteiro e o `systemctl --user restart <unit>` de cada um fora. Estado em
+  `~/.local/state/rustify-health/state.json` (sem o token). `--status` imprime, `--teste` envia um
+  e-mail com o quadro. Gotchas: o Cloudflare do Resend devolve 403 "error code 1010" sem User-Agent
+  próprio; a VM inteira fora não gera e-mail (quem avisaria é ela). Testes:
+  `python3 -m unittest scripts/ops/test_vm_health_alert.py` (rodar de `scripts/ops`).
 - **Fila: como subir e o que ela expõe (desde 0.2.91, 14/10; serviço systemd desde 26/10)**. A
   fila é o serviço de usuário `rustify-tidal-fila.service` (`~/.config/systemd/user/`, enabled,
   `Restart=on-failure`, log em `~/tidal-out/logs/tidal_fila.log`): `systemctl --user restart
