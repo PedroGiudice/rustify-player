@@ -656,17 +656,20 @@ COMMENT do FLAC (`source: tidal <tier>; ...`); não reintroduzir marca no caminh
   `~/tidal-out/recusadas.json` (chave = id da faixa; `JÁ RECUSADA` nas próximas rodadas; apagar a
   entrada reavalia). Recusada NÃO é falha (rc 0; `rc=2` segue só para "não enviadas"); o resumo
   da fila mostra "n recusadas". A página do CEO (fila de links,
-  `scripts/curator/tidal_fila.py`, tmux `telemetria` na VM, Funnel :10000, token em
+  `scripts/curator/tidal_fila.py`, serviço `rustify-tidal-fila` na VM, Funnel :10000, token em
   `~/.secrets/telemetria-token.txt`) chama ESSE script sem flag: cada link colado lá
   termina em `~/Music` da cmr-auto; estado `parcial` = alguma faixa não chegou, colar o
   link de novo reenvia. Única cópia do script é a do repo (as de `~/tidal-out` foram
   removidas em 13/10). Gotcha pago: `pgrep -f` num laço de
   fila casa com a linha de comando do SERVIDOR tmux (que guarda o argv do primeiro
   `new-session`) e a fila nunca dispara; conferir por pid do python, não por padrão.
-- **Fila: como subir e o que ela expõe (desde 0.2.91, 14/10)**. A fila importa o tidalapi para a
-  busca: subir SEMPRE com `uv run --with tidalapi --with mutagen --with numpy python3
-  /home/opc/rustify-player/scripts/curator/tidal_fila.py 2>&1 | tee -a ~/tidal-out/logs/tidal_fila.log`
-  dentro do tmux `telemetria` (sessão com zsh; Ctrl+C e rodar de novo no mesmo pane). Com
+- **Fila: como subir e o que ela expõe (desde 0.2.91, 14/10; serviço systemd desde 26/10)**. A
+  fila é o serviço de usuário `rustify-tidal-fila.service` (`~/.config/systemd/user/`, enabled,
+  `Restart=on-failure`, log em `~/tidal-out/logs/tidal_fila.log`): `systemctl --user restart
+  rustify-tidal-fila` para reiniciar. Até 25/10 ela vivia num tmux `telemetria` e morreu no reboot
+  da VM de 22/10 (kernel novo) sem ninguém notar: a aba Tidal do Crate ficou 4 dias em "fila
+  indisponível" (CMR-296, endpoint da VM sem alarme). Não subir à mão em paralelo (a porta 8470
+  fica presa). O `ExecStart` usa `uv run --with tidalapi --with mutagen --with numpy`: com
   `python3` puro a fila sobe, mas a busca responde 503. Rotas sob `/<token>/api/`: `fila`
   (GET; POST `{url, playlist}` ou `{faixas, titulo, origem, playlist}`, máx. 200 ids),
   `fila/<id>/reenviar` (POST, refaz uma seleção parcial/falha), `busca?q=`, `artista/<id>`,
