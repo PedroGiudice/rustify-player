@@ -563,6 +563,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   cursor: pointer;
   position: relative;
   overflow: hidden;
+  /* <button>: sem isto o texto herda o centro do botão (eyebrow à esquerda,
+     título e sub centralizados). */
+  text-align: left;
+  align-items: flex-start;
   transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
 .hero-tile:hover { border-color: var(--fg-8); box-shadow: var(--shadow-hairline); }
@@ -575,31 +579,33 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  filter: blur(2px) brightness(0.92);
+  filter: blur(2px) brightness(0.75);
   transform: scale(1.12);
   z-index: 0;
   pointer-events: none;
 }
-.hero-tile--has-cover { color: #ffffff; }
+.hero-tile--has-cover { color: var(--on-scrim); }
 .hero-tile--has-cover::after {
-  /* Gradient overlay: bottom-left mais escuro pra texto, top-right transparente. */
+  /* Scrim que segura 4,5:1 até sobre capa branca (Regra do Piso): a ponta
+     mais clara fica em 0,58, não em 0,15, porque título e sub ocupam o card
+     inteiro na largura e a capa clara caía exatamente sob eles. */
   content: "";
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(135deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.15) 100%);
+    linear-gradient(135deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.58) 100%);
   z-index: 1;
   pointer-events: none;
 }
 .hero-tile--has-cover > *:not(.hero-tile__bg) { position: relative; z-index: 2; }
-.hero-tile--has-cover .hero-tile__eyebrow { color: rgba(255,255,255,0.78); }
-.hero-tile--has-cover .hero-tile__title  { color: #ffffff; }
-.hero-tile--has-cover .hero-tile__sub    { color: rgba(255,255,255,0.74); }
+.hero-tile--has-cover .hero-tile__eyebrow { color: var(--on-scrim-2); }
+.hero-tile--has-cover .hero-tile__title  { color: var(--on-scrim); }
+.hero-tile--has-cover .hero-tile__sub    { color: var(--on-scrim-2); }
 /* Fundo branco literal (o tile com capa assume overlay escuro): o icone
    precisa de tinta escura literal. var(--fg-1) e quase branco nos temas
    escuros e sumia no botao. */
-.hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: #111111; }
-.hero-tile--has-cover .hero-tile__eyebrow .dot { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); }
+.hero-tile--has-cover .hero-tile__cta    { background: var(--on-scrim); color: #111111; }
+.hero-tile--has-cover .hero-tile__eyebrow .dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--on-scrim) 18%, transparent); }
 .hero-tile__eyebrow {
   font-size: var(--fs-label); font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
@@ -621,6 +627,19 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   margin-top: auto;
   font-variant-numeric: tabular-nums;
 }
+/* Descoberta do dia: o sub é frase (artista · motivo), não dado; sai do mono
+   e fica numa linha só. */
+.hero-tile__sub--reason {
+  font-family: inherit;
+  align-self: stretch;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hero-tile--discovery .hero-tile__title {
+  align-self: stretch;
+  padding-right: 34px; /* não passa por baixo do CTA */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .hero-tile__cta {
   position: absolute; top: 16px; right: 16px;
   width: 26px; height: 26px;
@@ -632,7 +651,18 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .hero-tile:hover .hero-tile__cta { opacity: 1; }
 .hero-tile__cta iconify-icon { width: 12px; height: 12px; }
 
-.row-list { display: flex; flex-direction: column; }
+/* Vidro barato (o mesmo da .tracks): tom + alpha, sem backdrop-filter, para
+   o texto não sumir quando o fundo animado passa claro atrás da lista. */
+.row-list {
+  display: flex; flex-direction: column;
+  background: rgba(var(--glass-tint), calc(var(--glass-alpha) - 0.07));
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+.row-list > .section__head { padding: 12px 12px 0; margin-bottom: 4px; }
+.row-list__rows { display: flex; flex-direction: column; }
+.row-list .row:last-child { border-bottom: 0; }
 .row {
   display: grid;
   grid-template-columns: 40px 1fr 220px 120px 60px;
@@ -655,6 +685,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row__tech  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
 .row__when  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
 .row__time  { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-4); text-align: right; font-variant-numeric: tabular-nums; }
+/* Linha sem coluna de álbum (Home, History): hora encostada na duração, em
+   vez de cair na coluna de 220 px e deixar ~600 px de vazio depois do título. */
+.row--no-album { grid-template-columns: 40px minmax(0, 1fr) auto auto; }
+.row--no-album .row__when { min-width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
 /* Linha informativa, sem acao (aba Genres da Library): coluna unica.
    Com o grid de 5 colunas do .row, o unico filho caia na coluna de
    40px e o nome truncava; pointer e hover prometiam um clique que

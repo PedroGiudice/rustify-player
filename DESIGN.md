@@ -553,8 +553,10 @@ aparece no hover ou no foco de teclado.
 ### Cards / Containers
 - **Corner Style:** 12 px (`--radius-xl`); capa interna 14 px.
 - **Background:** paper com borda `--line-2`; o tile em destaque usa soft; o
-  hero-tile com capa põe a imagem com `blur(2px) brightness(0.92)` e um
-  gradiente preto (0,72 → 0,15) para o texto ficar branco literal.
+  hero-tile com capa (retomada e descoberta do dia) põe a imagem com
+  `blur(2px) brightness(0.75)` e um scrim preto (0,72 → 0,58) que segura
+  4,5:1 até sobre capa branca; o texto vai em `--on-scrim` (título) e
+  `--on-scrim-2` (eyebrow e sub), alinhado à esquerda.
 - **Shadow Strategy:** nenhuma em repouso; capa sobe 2 px com `--shadow-hover`
   em `--dur-med` (180 ms).
 - **Internal Padding:** `16px 18px 14px` (hero-tile), `14px 14px 12px` (station

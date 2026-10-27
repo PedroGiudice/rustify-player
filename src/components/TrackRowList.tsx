@@ -55,6 +55,8 @@ export function TrackRowList(props: TrackRowListProps) {
         qrow: isCompact(),
         "qrow--current": isCompact() && isCurrent(),
         row: !isCompact(),
+        // Home e History: título, hora e duração, sem coluna de álbum.
+        "row--no-album": !isCompact() && props.whenText !== undefined,
         "is-current": !isCompact() && isCurrent(),
         "is-selected": selected(),
         "is-sel-mode": selectable() && selectionActive(),

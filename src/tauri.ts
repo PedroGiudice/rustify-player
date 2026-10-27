@@ -184,7 +184,15 @@ export const libListHistory = (limit?: number) => invoke<Track[]>("lib_list_hist
 export const libSnapshot = () => invoke<any>("lib_snapshot");
 export const libListGenres = () => invoke<any[]>("lib_list_genres");
 export const libShuffle = (limit?: number) => invoke<Track[]>("lib_shuffle", { limit: limit ?? 50 });
-export const libRecommendations = () => invoke<any>("lib_recommendations");
+/** `library_indexer::Recommendations` (query.rs). `discover` = perto do gosto
+    (likes + mais tocadas) e nunca tocada; `based_on_top` = perto das mais
+    tocadas, já tocada ou não. Cada lista tem até 10 faixas. */
+export interface Recommendations {
+  most_played: Track[];
+  based_on_top: Track[];
+  discover: Track[];
+}
+export const libRecommendations = () => invoke<Recommendations>("lib_recommendations");
 export const libRescan = () => invoke<void>("lib_rescan");
 export const libSearch = (query: string, limit?: number) => invoke<any>("lib_search", { query, limit: limit ?? 8 });
 export const libSemanticSearch = (query: string, limit?: number) => invoke<any[]>("lib_semantic_search", { query, limit: limit ?? 5 });
