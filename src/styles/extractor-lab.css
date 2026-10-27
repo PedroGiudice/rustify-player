@@ -2839,15 +2839,18 @@ html { --glow: 0; }
    STATIONS — feature card + seed grid
    ════════════════════════════════════════════════════════════ */
 .st-feature {
+  position: relative;
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
-  padding: 22px 26px;
+  padding: 18px 24px;
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 32px;
+  gap: 24px;
   align-items: center;
 }
+/* Estado vazio: só a coluna de texto, sem retrato. */
+.st-feature--solo { grid-template-columns: minmax(0, 1fr); }
 .st-feature__eyebrow {
   font-size: var(--fs-label); font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
@@ -2875,11 +2878,14 @@ html { --glow: 0; }
   color: var(--fg-1);
   margin: 0 0 6px;
   line-height: 1.05;
+  text-wrap: balance;
 }
+/* Sem dica (repetiria o nome), o CTA não cola no título. */
+.st-feature__title + .st-feature__cta { margin-top: 8px; }
 .st-feature__hint {
   font-size: 13px;
   color: var(--fg-5);
-  margin: 0 0 16px;
+  margin: 0 0 14px;
   max-width: 50ch;
   line-height: 1.5;
 }
@@ -2926,18 +2932,93 @@ html { --glow: 0; }
 }
 .st-feature__cta:hover { background: var(--fg-2); }
 .st-feature__cta iconify-icon { width: 12px; height: 12px; }
+/* Retrato da station: capas das faixas-semente em leque (seed) ou as
+   palavras do clima (mood). Sem moldura própria: já está dentro do card. */
 .st-feature__visual {
-  align-self: stretch;
-  border-radius: var(--radius-lg);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.st-fan {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-fan__item {
   position: relative;
+  z-index: var(--fan-z, 1);
+  flex: none;
+  width: var(--fan-size, 54px);
+  height: var(--fan-size, 54px);
+  margin-left: -12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-2);
   overflow: hidden;
-  min-height: 180px;
-  background: var(--bg-sunken);
+  /* Recorte na cor do card entre capas sobrepostas (não é elevação). */
+  box-shadow: 0 0 0 2px var(--bg-paper);
+  transform: rotate(var(--fan-rot, 0deg));
+}
+.st-fan__item:first-child { margin-left: 0; }
+.st-fan__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.st-fan__ph {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.st-fan__ph iconify-icon,
+.st-fan__solo iconify-icon {
+  width: 40%; height: 40%;
+  color: var(--fg-2);
+  opacity: 0.55;
+}
+.st-fan__solo {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line-2);
   display: grid;
   place-items: center;
 }
-.st-feature__visual canvas { width: 100%; height: 100%; display: block; }
+.st-feature__words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.st-feature__word {
+  padding: 5px 11px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-2);
+  background: var(--bg-soft);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+}
+.st-feature__caption {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--fg-5);
+  text-align: center;
+}
+/* Apagar no destaque: canto superior, mesma regra de aparecer só no
+   hover/foco dos cards. */
+.st-feature__delete.st-card__delete { top: 10px; bottom: auto; right: 12px; }
+.st-feature:hover .st-feature__delete,
+.st-feature:focus-within .st-feature__delete { opacity: 1; }
 
 /* Painel de criacao de mood station (chips multi-select + genero + nome) */
 .st-mood-create {
@@ -2980,6 +3061,7 @@ html { --glow: 0; }
 .st-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  grid-auto-rows: 1fr;
   gap: 14px;
 }
 .st-card {
@@ -3019,6 +3101,16 @@ html { --glow: 0; }
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--fg-1);
+}
+/* Nome longo (mood com vários climas) para em 2 linhas; o title do botão
+   traz o nome inteiro. O clamp fica no span: botão não aceita -webkit-box. */
+.st-card__name-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 /* O nome é o botão de tocar (irmão do de apagar, nenhum controle aninhado
    em outro). O ::after estende a área de clique ao card inteiro e carrega o
@@ -3075,7 +3167,8 @@ html { --glow: 0; }
   font-size: var(--fs-label);
   letter-spacing: -0.01em;
   cursor: pointer;
-  opacity: 0.35;
+  /* Secundário: invisível em repouso, aparece no hover e no foco. */
+  opacity: 0;
   transition: opacity var(--dur-base), color var(--dur-base),
     border-color var(--dur-base), background var(--dur-base);
 }
@@ -3083,6 +3176,9 @@ html { --glow: 0; }
 .st-card:focus-within .st-card__delete,
 .st-card__delete:focus-visible { opacity: 1; }
 .st-card__delete:hover { color: var(--rose-fg); }
+@media (hover: none) {
+  .st-card__delete { opacity: 1; }
+}
 .st-card__delete iconify-icon { width: 13px; height: 13px; }
 .st-card__delete.is-armed {
   opacity: 1;
