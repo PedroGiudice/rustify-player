@@ -8,7 +8,11 @@
        não compila, contexto perdido) vira glStatus.ok = false e o
        App reassume o 2D — tela preta nunca;
      - paleta: alvo amostrado a ~3 Hz, corrente interpolada por quadro
-       (lerp local; animar custom property no :root é proibido);
+       (lerp local; animar custom property no :root é proibido). O tau
+       do lerp segue --bg-ink-morph, como no 2D: troca de faixa responde
+       em ~1 s, o ciclo da paleta da capa (bgInkCycle) migra em ~10 s;
+     - transição: a cena entra por dissolução (gl/engine.ts) quando
+       `transitions()` permite — a medição de cenas troca seco;
      - sinal: gl/signal.ts por quadro;
      - fps medido 1x/s em glStatus (o gate da feature) e a cena de
        fato montada em glActiveScene (a medição espera por ela).
@@ -20,9 +24,17 @@ import type { GlPalette, Rgb } from "./palette";
 import { createGlSignal, stepGlSignal, type FftBands, type GlCfg } from "./signal";
 import { stepRgbLerp } from "../lib/rgbLerp";
 
-/** Tau (s) do morph de cor — mesmo do SpectrumCanvas: troca de faixa
-    responde rápido, ciclo de paleta é deriva ambiental. */
-const INK_TAU = 0.35;
+/** Tau (s) padrão do morph de cor — mesmo do SpectrumCanvas: troca de
+    faixa responde rápido. O ciclo da paleta anuncia um tau longo em
+    --bg-ink-morph (lib/adaptiveInk.ts) e o host o segue (morphTau). */
+export const INK_TAU = 0.35;
+/** Teto do tau lido (s): valor estranho na var nunca congela a cor. */
+const INK_TAU_MAX = 10;
+
+/** Tau efetivo do morph: o anunciado, se for um número válido; senão o padrão. */
+export function inkMorphTau(raw: number | null | undefined): number {
+  return typeof raw === "number" && raw > 0 && raw <= INK_TAU_MAX ? raw : INK_TAU;
+}
 
 /** De quantos em quantos quadros reamostrar as CSS vars (getComputedStyle
     é caro; ~3x/s basta e é a cadência que o 2D já usa). */
@@ -42,6 +54,13 @@ export interface GlHostOptions {
   bands: (nowMs: number) => FftBands & { fresh: boolean };
   /** Gancho no início de cada quadro (o mock de FFT do mobile). */
   beforeFrame?: () => void;
+  /** Tau (s) anunciado para o morph de cor, lido junto da paleta (~3 Hz).
+      Ausente ou inválido = INK_TAU. */
+  morphTau?: () => number | null;
+  /** Troca de cena com dissolução? Ausente = sempre. */
+  transitions?: () => boolean;
+  /** Versão calma (reduzir animação): a transição só dissolve. */
+  calm?: () => boolean;
 }
 
 /** Sobe o motor no canvas. Devolve a função de desmonte. */
@@ -72,7 +91,7 @@ export function startGlHost(o: GlHostOptions): () => void {
 
   const mountScene = (key: SceneKey): boolean => {
     try {
-      eng.setScene(key);
+      eng.setScene(key, o.transitions ? o.transitions() : true);
     } catch (e) {
       fail(e instanceof Error ? e.message : String(e), e);
       return false;
@@ -88,6 +107,7 @@ export function startGlHost(o: GlHostOptions): () => void {
     soft: { ...tgt.soft },
   };
   eng.setPalette(cur);
+  let inkTau = inkMorphTau(o.morphTau?.());
 
   const measure = () => {
     const r = o.canvas.getBoundingClientRect();
@@ -121,15 +141,21 @@ export function startGlHost(o: GlHostOptions): () => void {
     const dt = Math.max(0, Math.min(0.1, (nowMs - lastMs) * 0.001));
     lastMs = nowMs;
 
-    if (++tick % VAR_SAMPLE_EVERY === 0) tgt = o.palette();
-    stepRgbLerp(cur.canvas as Rgb, tgt.canvas, dt, INK_TAU);
-    stepRgbLerp(cur.ink as Rgb, tgt.ink, dt, INK_TAU);
-    stepRgbLerp(cur.ink2 as Rgb, tgt.ink2, dt, INK_TAU);
-    stepRgbLerp(cur.soft as Rgb, tgt.soft, dt, INK_TAU);
+    if (++tick % VAR_SAMPLE_EVERY === 0) {
+      tgt = o.palette();
+      inkTau = inkMorphTau(o.morphTau?.());
+    }
+    stepRgbLerp(cur.canvas as Rgb, tgt.canvas, dt, inkTau);
+    stepRgbLerp(cur.ink as Rgb, tgt.ink, dt, inkTau);
+    stepRgbLerp(cur.ink2 as Rgb, tgt.ink2, dt, inkTau);
+    stepRgbLerp(cur.soft as Rgb, tgt.soft, dt, inkTau);
     eng.setPalette(cur);
 
     const b = o.bands(nowMs);
-    stepGlSignal(sig, dt, b.fresh, b, o.cfg());
+    const cfg = o.cfg();
+    stepGlSignal(sig, dt, b.fresh, b, cfg);
+    // Calma ou Speed = 0: a transição não avança o retrato.
+    const still = (o.calm?.() ?? false) || !(cfg.speed > 0);
 
     const want = o.scene();
     if (eng.sceneKey !== want) {
@@ -137,7 +163,7 @@ export function startGlHost(o: GlHostOptions): () => void {
       setGlActiveScene(eng.sceneKey);
     }
     try {
-      eng.frame(sig, dt);
+      eng.frame(sig, dt, still);
     } catch (e) {
       // Erro de cena em tempo de execução: 2D em vez de imagem congelada.
       fail(e instanceof Error ? e.message : String(e), e);

@@ -9,7 +9,8 @@
    gl/host.ts, o mesmo do mobile.
 
    Ligado/desligado pelo Tweaks (bgEngine) ou pela medição de cenas
-   (glSceneOverride). Os dois motores nunca rodam juntos: App.tsx
+   (glSceneOverride). Ao ligar, o fundo nasce do preto; trocar de cena
+   dissolve uma na outra (gl/engine.ts, transição). Os dois motores nunca rodam juntos: App.tsx
    monta UM dos dois, então só existe um rAF e um contexto GL vivos.
 
    Degradação: sem WebGL2, shader que não compila ou contexto
@@ -68,6 +69,9 @@ export function GlBackground() {
     });
     spectrumSubscribe().catch(() => {});
 
+    // Tau do morph de cor anunciado pelo ciclo da paleta (--bg-ink-morph),
+    // lido no MESMO getComputedStyle da paleta.
+    let morphTau: number | null = null;
     const stop = startGlHost({
       canvas,
       tag: "[gl]",
@@ -76,8 +80,14 @@ export function GlBackground() {
       // leituras agrupadas no mesmo tick (mesmo cuidado do SpectrumCanvas).
       palette: () => {
         const cs = getComputedStyle(document.documentElement);
+        const im = parseFloat(cs.getPropertyValue("--bg-ink-morph"));
+        morphTau = Number.isFinite(im) ? im : null;
         return readGlPalette((name) => cs.getPropertyValue(name).trim());
       },
+      morphTau: () => morphTau,
+      // A medição de cenas troca seco: a dissolução entraria na conta.
+      transitions: () => glSceneOverride() === null,
+      calm: () => bgCalm(tweaks()),
       cfg: cfgFromTweaks,
       bands: (nowMs) => {
         bands.fresh = lastFftAt !== 0 && nowMs - lastFftAt < FFT_STALE_MS;

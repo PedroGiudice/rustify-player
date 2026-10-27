@@ -295,7 +295,23 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   20/09, paridade com o 2D — a Nebula mistura o canvas no shader inteiro
   e o cinza do tema virava veu na cena). Morph de cor por lerp local
   (`rgbLerp`) — a proibicao de animar custom property no `:root`
-  continua valendo.
+  continua valendo. Desde 27/10 o host GL segue `--bg-ink-morph` como o
+  2D (`inkMorphTau` em `gl/host.ts`): troca de faixa em ~1 s, ciclo da
+  paleta (`bgInkCycle`) migra em ~10 s; antes o WebGL ignorava a var e o
+  ciclo saltava em 350 ms.
+- Movimento (overdrive Impeccable, 27/10): trocar de cena DISSOLVE em
+  1,4 s (retrato da cena que sai, redesenhado com dt 0, some por cima da
+  nova avançando 6% para a câmera; `gl/engine.ts`, `setScene(key, true)`)
+  e o motor ao ligar nasce do preto em 1,8 s. A cena nova roda por baixo
+  desde o 1º quadro; troca em rajada não recaptura; calma ou Speed = 0 =
+  só dissolve. A medição de cenas troca seco (`transitions` do host), e o
+  `scripts/gl-bench` mede o custo do véu com `xfade`. Poeira e Órbitas
+  reagem RELATIVO à faixa (swell/midLift/highLift/pulse + `level` pouco)
+  com o kick como EVENTO (`gl/kick.ts`: gatilho com histerese e no máximo
+  ~2,9/s, `surge`, memória do pulso no relógio virtual): na Poeira uma
+  frente de luz corre para o fundo, na Órbitas uma onda desce o túnel. A
+  Órbitas passou a andar no relógio virtual (antes o túnel ignorava o
+  Speed). Médias de brilho travadas no replay real (`scenes.test.ts`).
 - Falha de contexto WebGL nao deixa tela preta: `glStatus.ok === false` e
   o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
   motor chama `resetGlStatus()`.

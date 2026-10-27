@@ -635,7 +635,11 @@ Canvas único no shell, dois motores (2D: 18 formas x 5 renderizadores; WebGL2:
 cenas Poeira, Relevo, Órbitas, Nébula, Tinta, Riso, Lorem, Mandala), sempre um
 só montado. Lê `--bg-ink-rgb`, `--primary` e `--fg-5` para a paleta; canvas
 preto puro. Reação relativa à média da faixa, amortecida; nunca mais de 3
-flashes por segundo; `Speed = 0` no Tweaks para. Critério de aceite: 60 fps
+flashes por segundo; `Speed = 0` no Tweaks para. No WebGL a troca de cena
+dissolve em 1,4 s (a cena que sai avança 6% e some por cima da nova; só
+dissolve na versão calma) e o motor nasce do preto ao ligar; o kick é um
+gesto que atravessa o espaço (frente de luz na Poeira, onda que desce o
+túnel na Órbitas), nunca um clarão da tela inteira. Critério de aceite: 60 fps
 medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
 20 ms.
 

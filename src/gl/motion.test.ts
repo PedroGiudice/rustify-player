@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceDustTravel, DUST_DEPTH } from "./motion";
+import { advanceDustTravel, DUST_DEPTH, DUST_V_MAX, DUST_V_MIN } from "./motion";
 import { createGlSignal, stepGlSignal, DEFAULT_GL_CFG } from "./signal";
 
 /* CMR-267: a Poeira fazia p.z = mod(p.z + uTime*(3+4*uMid)), então a
@@ -28,7 +28,7 @@ describe("advanceDustTravel", () => {
       const mid = 0.35 + 0.15 * Math.sin(frame * 1.7);
       const prevClock = sig.clock;
       stepGlSignal(sig, dt, true, { low: 0.3, mid, high: 0.2 }, cfg);
-      const next = advanceDustTravel(travel, sig.clock - prevClock, sig.mid);
+      const next = advanceDustTravel(travel, sig.clock - prevClock, sig.midLift, sig.pulse);
       speeds.push(wrappedDelta(travel, next) / dt);
       travel = next;
     }
@@ -48,7 +48,7 @@ describe("advanceDustTravel", () => {
     for (let i = 0; i < 300; i++) {
       const prevClock = sig.clock;
       stepGlSignal(sig, 1 / 60, true, { low: 0.8, mid: 0.9, high: 0.5 }, cfg);
-      travel = advanceDustTravel(travel, sig.clock - prevClock, sig.mid);
+      travel = advanceDustTravel(travel, sig.clock - prevClock, sig.midLift, 1);
     }
     expect(travel).toBe(12);
   });
@@ -62,5 +62,12 @@ describe("advanceDustTravel", () => {
 
   it("ignora delta de relógio negativo", () => {
     expect(advanceDustTravel(5, -1, 0.5)).toBe(5);
+  });
+
+  it("médios acima da média e o kick (surge) aceleram, com teto em DUST_V_MAX", () => {
+    expect(advanceDustTravel(0, 1, 0, 0)).toBeCloseTo(DUST_V_MIN, 9);
+    expect(advanceDustTravel(0, 1, 1, 0)).toBeGreaterThan(DUST_V_MIN + 2);
+    expect(advanceDustTravel(0, 1, 0, 1)).toBeGreaterThan(DUST_V_MIN + 2);
+    expect(advanceDustTravel(0, 1, 1, 1)).toBeCloseTo(DUST_V_MAX, 9);
   });
 });

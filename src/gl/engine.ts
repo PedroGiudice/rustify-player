@@ -20,6 +20,19 @@
    glStatus.ok = false e o App volta ao fundo 2D — tela preta
    nunca.
 
+   Transição (overdrive, 27/10): trocar de cena não é mais um corte
+   seco. setScene(key, true) desenha a cena que sai UMA última vez
+   num retrato (textura do tamanho da tela), libera a cena e monta a
+   nova; durante XFADE_SCENE_S o retrato se dissolve por cima da cena
+   nova enquanto avança 6% para a câmera (a cena antiga "passa por
+   trás" da nova). O primeiro setScene com fade (motor ligando, app
+   abrindo) nasce do preto em XFADE_START_S. Custo: um passe de tela
+   cheia com uma leitura de textura, só enquanto a transição dura; o
+   retrato é liberado no fim. Versão calma (still: reduzir animação ou
+   Speed = 0): só a dissolução, sem o avanço. A cena nova já roda por
+   baixo desde o primeiro quadro: nada espera a transição, e o som
+   nunca passa por aqui.
+
    Contrato das cenas: gl/scene.ts. Registro: gl/registry.ts.
    ============================================================ */
 
@@ -54,6 +67,44 @@ void main(){
   outColor=vec4(dither(c),1.0);
 }`;
 
+/* ---------- transição ---------- */
+
+/** Dissolução entre cenas (s). Transição de fundo = segundos (rustify-cto,
+    Movimento); 1,4 s deixa ver as duas cenas sem virar espera. */
+export const XFADE_SCENE_S = 1.4;
+/** Chegada do motor, do preto (s): o fundo "acende" ao abrir o app. */
+export const XFADE_START_S = 1.8;
+/** Quanto o retrato da cena que sai avança para a câmera (fração). */
+export const XFADE_ZOOM = 0.06;
+
+/** Retrato da cena que sai, por cima da nova: amostra com zoom em torno
+    do centro e escurece um pouco enquanto some. */
+const XFADE_SNAP_FS = HEAD + `
+uniform sampler2D uTex; uniform vec2 uRes; uniform float uAlpha,uZoom,uDim;
+out vec4 outColor;
+void main(){
+  vec2 uv=(gl_FragCoord.xy/uRes-0.5)/uZoom+0.5;
+  outColor=vec4(texture(uTex,uv).rgb*uDim,uAlpha);
+}`;
+
+/** Véu de cor sólida (o canvas preto) para a chegada do motor. */
+const XFADE_SOLID_FS = HEAD + `
+uniform vec3 uColor; uniform float uAlpha;
+out vec4 outColor;
+void main(){ outColor=vec4(uColor,uAlpha); }`;
+
+const smoother = (x: number) => x * x * x * (x * (x * 6 - 15) + 10);
+
+/** Curva da transição no progresso p (0..1): alfa do que sai, zoom e
+    escurecimento do retrato. `still` (calma, Speed = 0): sem zoom. */
+export function xfadeAt(p: number, still: boolean): { alpha: number; zoom: number; dim: number } {
+  const t = p > 0 ? (p < 1 ? p : 1) : 0;
+  const e = smoother(t);
+  // Ease-out cúbico no avanço: o retrato arranca e desacelera.
+  const go = 1 - (1 - t) * (1 - t) * (1 - t);
+  return { alpha: 1 - e, zoom: still ? 1 : 1 + XFADE_ZOOM * go, dim: 1 - 0.25 * e };
+}
+
 /** Meio degrau de 8 bits: mudança de paleta menor que isso não avisa a cena. */
 const PALETTE_EPS = 0.5 / 255;
 
@@ -62,6 +113,9 @@ export interface GlEngineOptions {
   onLost?: (reason: string) => void;
   /** Registro de cenas. Padrão: gl/registry.ts. */
   scenes?: Readonly<Record<string, SceneDef>>;
+  /** Escala do tempo da transição (padrão 1). O bench usa ~0 para medir
+      a cena COM o véu da dissolução ativo o tempo todo. */
+  fadeTimeScale?: number;
 }
 
 export class GlEngine {
@@ -70,8 +124,11 @@ export class GlEngine {
   private readonly canvas: HTMLCanvasElement;
   private readonly scenes: Readonly<Record<string, SceneDef>>;
   private readonly onLostCb?: (reason: string) => void;
+  private readonly fadeTimeScale: number;
   private readonly ctx: SceneCtx;
   private readonly composite: Program;
+  private readonly fadeSnap: Program;
+  private readonly fadeSolid: Program;
   private readonly emptyVao: WebGLVertexArrayObject;
 
   private key: SceneKey | null = null;
@@ -84,6 +141,17 @@ export class GlEngine {
   private outH = 1;
   private lost = false;
   private disposed = false;
+
+  /** Framebuffer final da cena: a tela (null) ou o retrato da transição. */
+  private target: WebGLFramebuffer | null = null;
+  /** Retrato da cena que saiu (vivo só durante a dissolução). */
+  private snap: Target | null = null;
+  /** Transição em curso: 0 = nenhuma, 1 = do preto, 2 = do retrato. */
+  private fadeKind: 0 | 1 | 2 = 0;
+  private fadeT = 0;
+  private fadeDur = 1;
+  /** Último sinal desenhado (o retrato redesenha a cena com ele). */
+  private lastSig: GlSignal | null = null;
 
   /** Paleta em float, mutada no lugar (as cenas leem por referência). */
   readonly pal: ScenePalette = {
@@ -101,6 +169,7 @@ export class GlEngine {
     this.canvas = canvas;
     this.scenes = opts.scenes ?? SCENES;
     this.onLostCb = opts.onLost;
+    this.fadeTimeScale = opts.fadeTimeScale ?? 1;
     const gl = canvas.getContext("webgl2", CONTEXT_ATTRS) as WebGL2RenderingContext | null;
     if (!gl) throw new Error("WebGL2 indisponível neste navegador");
     this.gl = gl;
@@ -115,6 +184,8 @@ export class GlEngine {
       if (!vao) throw new Error("WebGL2 sem vertex array object (contexto perdido?)");
       this.emptyVao = vao;
       this.composite = makeProgram(gl, VS_TRI, COMPOSITE_FS, { label: "composite" });
+      this.fadeSnap = makeProgram(gl, VS_TRI, XFADE_SNAP_FS, { label: "xfade" });
+      this.fadeSolid = makeProgram(gl, VS_TRI, XFADE_SOLID_FS, { label: "xfade-solid" });
     } catch (e) {
       // Motor que não subiu devolve o contexto na hora (teto de contextos).
       canvas.removeEventListener("webglcontextlost", this.handleLost);
@@ -154,15 +225,26 @@ export class GlEngine {
     }
   }
 
+  /** Transição em curso (0..1) ou null — diagnóstico e testes. */
+  get transition(): { kind: "start" | "scene"; progress: number } | null {
+    if (!this.fadeKind) return null;
+    return { kind: this.fadeKind === 1 ? "start" : "scene", progress: Math.min(1, this.fadeT / this.fadeDur) };
+  }
+
   /**
    * Monta a cena `key`, liberando a anterior. Idempotente para a mesma
    * chave — inclusive depois de uma falha: a cena que não compilou não é
    * recompilada a cada quadro.
+   *
+   * `fade`: dissolve a partir da cena atual (retrato) ou, sem cena
+   * desenhada ainda, nasce do preto. Falso = corte seco (bench, medição).
    * @throws com a mensagem do driver se a cena não montar.
    */
-  setScene(key: SceneKey): void {
+  setScene(key: SceneKey, fade = false): void {
     if (this.disposed) return;
     if (key === this.key) return;
+    if (fade && !this.lost) this.beginFade();
+    else this.endFade();
     this.dropScene();
     this.key = key;
     const def = this.scenes[key];
@@ -202,12 +284,30 @@ export class GlEngine {
     this.h = Math.max(1, Math.round(h));
     if (this.canvas.width !== this.w) this.canvas.width = this.w;
     if (this.canvas.height !== this.h) this.canvas.height = this.h;
+    // Retrato de outro tamanho não serve: a dissolução vira véu preto.
+    if (this.snap && (this.snap.w !== this.w || this.snap.h !== this.h)) {
+      this.snap.dispose();
+      this.snap = null;
+      if (this.fadeKind === 2) this.fadeKind = 1;
+    }
     this.layout();
     this.scene?.resize(this.outW, this.outH);
   }
 
-  frame(sig: GlSignal, dt: number): void {
+  /**
+   * Desenha um quadro. `still` = versão calma (reduzir animação) ou
+   * Speed = 0: a transição só dissolve, sem o avanço do retrato.
+   */
+  frame(sig: GlSignal, dt: number, still = false): void {
     if (this.lost || this.disposed) return;
+    this.lastSig = sig;
+    this.drawScene(sig, dt);
+    if (this.fadeKind) this.drawFade(dt, still);
+  }
+
+  /** Cena atual no framebuffer final (this.target), com o composite do
+      buffer reduzido se houver. */
+  private drawScene(sig: GlSignal, dt: number): void {
     const gl = this.gl;
     gl.bindVertexArray(null);
     gl.disable(gl.BLEND);
@@ -237,7 +337,11 @@ export class GlEngine {
     try {
       this.rt?.dispose();
       this.rt = null;
+      this.snap?.dispose();
+      this.snap = null;
       this.composite.dispose();
+      this.fadeSnap.dispose();
+      this.fadeSolid.dispose();
       gl.deleteVertexArray(this.emptyVao);
     } catch { /* contexto já perdido */ }
     this.canvas.removeEventListener("webglcontextlost", this.handleLost);
@@ -257,7 +361,7 @@ export class GlEngine {
 
   private bindOutput(): void {
     const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt ? this.rt.fb : null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt ? this.rt.fb : this.target);
     gl.viewport(0, 0, this.outW, this.outH);
   }
 
@@ -271,7 +375,7 @@ export class GlEngine {
   private compose(): void {
     const gl = this.gl;
     const rt = this.rt!;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.target);
     gl.viewport(0, 0, this.w, this.h);
     gl.disable(gl.BLEND);
     this.composite.use();
@@ -301,6 +405,86 @@ export class GlEngine {
     }
     this.outW = want.w;
     this.outH = want.h;
+  }
+
+  /** Começa a transição: retrato da cena atual se ela já desenhou algum
+      quadro; senão (motor ligando, cena anterior falhou) nasce do preto. */
+  private beginFade(): void {
+    // Troca em rajada (cliques seguidos no Tweaks): enquanto o véu ainda
+    // cobre mais da metade, ele segue cobrindo a troca nova. Recapturar
+    // aqui faria o retrato antigo sumir de uma vez (um estalo).
+    if (this.fadeKind && this.fadeT < 0.5 * this.fadeDur) return;
+    const sig = this.lastSig;
+    if (this.scene && sig) {
+      try {
+        if (!this.snap || this.snap.w !== this.w || this.snap.h !== this.h) {
+          this.snap?.dispose();
+          this.snap = null;
+          this.snap = makeTarget(this.gl, this.w, this.h);
+        }
+        // Mesmo sinal do quadro que está na tela e dt 0: as cenas com
+        // estado próprio não avançam, o retrato é o último quadro visto.
+        this.target = this.snap.fb;
+        this.drawScene(sig, 0);
+        this.fadeKind = 2;
+        this.fadeDur = XFADE_SCENE_S;
+        this.fadeT = 0;
+        return;
+      } catch {
+        // Sem memória para o retrato (ou cena que falhou no redesenho):
+        // a transição ainda acontece, do preto.
+        this.snap?.dispose();
+        this.snap = null;
+      } finally {
+        this.target = null;
+      }
+    }
+    this.fadeKind = 1;
+    this.fadeDur = this.scene ? XFADE_SCENE_S : XFADE_START_S;
+    this.fadeT = 0;
+  }
+
+  private endFade(): void {
+    this.fadeKind = 0;
+    this.snap?.dispose();
+    this.snap = null;
+  }
+
+  /** Véu da transição por cima da cena nova, na tela. */
+  private drawFade(dt: number, still: boolean): void {
+    const gl = this.gl;
+    this.fadeT += dt > 0 ? dt * this.fadeTimeScale : 0;
+    const p = this.fadeT / this.fadeDur;
+    if (p >= 1) {
+      this.endFade();
+      return;
+    }
+    const k = xfadeAt(p, still);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.w, this.h);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    if (this.fadeKind === 2 && this.snap) {
+      const prog = this.fadeSnap;
+      prog.use();
+      prog.v2("uRes", this.w, this.h);
+      prog.f("uAlpha", k.alpha);
+      prog.f("uZoom", k.zoom);
+      prog.f("uDim", k.dim);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.snap.tex);
+      prog.i("uTex", 0);
+      this.fullscreen();
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    } else {
+      const prog = this.fadeSolid;
+      prog.use();
+      prog.v3("uColor", this.pal.canvas);
+      prog.f("uAlpha", k.alpha);
+      this.fullscreen();
+    }
+    gl.disable(gl.BLEND);
   }
 
   private dropScene(): void {

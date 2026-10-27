@@ -19,7 +19,7 @@ export const SCENE_META = [
   {
     key: "dust",
     label: "Poeira",
-    hint: "Partículas com profundidade: graves inflam e acendem, médios aceleram a deriva",
+    hint: "Partículas com profundidade: cada kick lança uma frente de luz que corre para o fundo, médios aceleram o fluxo",
   },
   {
     key: "relief",
@@ -29,7 +29,7 @@ export const SCENE_META = [
   {
     key: "orbits",
     label: "Órbitas",
-    hint: "Túnel de anéis: graves dilatam, agudos acendem",
+    hint: "Túnel de anéis: cada kick desce o túnel como uma onda, graves aceleram, agudos acendem",
   },
   {
     key: "nebula",
