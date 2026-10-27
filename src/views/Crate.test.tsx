@@ -579,6 +579,41 @@ describe("Crate — evento slsk-jobs", () => {
     const buttons = Array.from(row.querySelectorAll("button")).map((b) => b.textContent ?? "");
     expect(buttons.some((t) => t.includes("Tocar"))).toBe(true);
   });
+
+  it("linha pronta (B8): diz que está no acervo, o veredito do portão espectral e a pasta; Tocar é o primário", async () => {
+    vi.mocked(tauriApi.libGetTracksByIds).mockResolvedValue([
+      { id: "777", title: "Sicko Mode", artist_name: "Travis Scott", album_title: null, album_cover_path: null, album_year: null, duration_ms: 0, path: "", lrc_path: null, quality_class: "sem_corte" } as Track,
+    ]);
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => { emit = cb; return () => {}; });
+    const g = group({ suggested_dest: "Rap & Hip-Hop" });
+    const { container } = await searchAndRender([g]);
+    const baixar = Array.from(container.querySelector(".crate-row")!.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Baixar"),
+    )!;
+    fireEvent.click(baixar);
+    await waitFor(() => expect(tauriApi.slskDownload).toHaveBeenCalled());
+    await waitFor(() => expect(emit).not.toBeNull());
+    emit!([{
+      job_id: "job1",
+      source: { kind: "soulseek", username: "peer_a", remote_filename: g.best.filename, size: g.best.size },
+      meta: { artist: "", title: "", album: "", year: null, label: null },
+      artwork_url: null, format_in: null, tracks: 1, display: "Sicko Mode",
+      dest_playlist: "Rap & Hip-Hop",
+      state: { kind: "ready", track_id: "777" },
+      quality_label: "FLAC 16/44", alternates: [], tried_source_ids: [], created_at: 0, attempt: 1,
+    }]);
+    const row = await waitFor(() => {
+      const r = container.querySelector<HTMLElement>(".crate-row[data-state=ready]");
+      expect(r).toBeTruthy();
+      return r!;
+    });
+    await waitFor(() => expect(row.textContent).toContain("conferida, sem corte"));
+    expect(row.textContent).toContain("no acervo");
+    expect(row.textContent).toContain("em Rap & Hip-Hop");
+    const tocar = within(row).getByRole("button", { name: /Tocar/ });
+    expect(tocar.classList.contains("crate-btn--primary")).toBe(true);
+  });
 });
 
 describe("Crate — Abrir pasta (estado manual, plugin-opener)", () => {
@@ -1243,7 +1278,7 @@ describe("Crate: SoundCloud", () => {
     mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "no_token", ffmpeg: true, uv: false, bandcamp_identity: false, tidal: "token_ok" });
     mocks.slskJobs.mockResolvedValue([job({ job_id: "j", source: { kind: "sound_cloud", track_id: 1, permalink_url: "https://soundcloud.com/a/b" }, display: "DJ Arana - Festa", state: { kind: "downloading", pct: 40, bps: 1000, eta_s: 3 } })]);
     render(() => <Crate />);
-    expect(await screen.findByText(/SoundCloud: sem token/)).toBeInTheDocument();
+    expect(await screen.findByText(/SoundCloud sem token/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
     expect(await screen.findByText("SoundCloud", { selector: ".crate-origin" })).toBeInTheDocument();
     expect(screen.getByText("soundcloud.com/a/b")).toBeInTheDocument();
@@ -1440,15 +1475,24 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     expect(mocks.slskSearch).not.toHaveBeenCalled();
   });
 
-  it("linha do Soulseek na busca ganha o badge de origem; status das fontes separa SoundCloud e ffmpeg", async () => {
+  it("linha do Soulseek na busca ganha o badge de origem; só a fonte com problema vira chip (B13)", async () => {
     mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "token_ok", ffmpeg: false, uv: true, bandcamp_identity: false, tidal: "token_ok" });
     const { container } = await searchAndRender([group()]);
     expect(within(container.querySelector(".crate-row") as HTMLElement).getByText("Soulseek", { selector: ".crate-origin" })).toBeInTheDocument();
-    await waitFor(() => expect(container.querySelectorAll(".crate-src-status")).toHaveLength(2));
-    const [sc, ff] = Array.from(container.querySelectorAll(".crate-src-status"));
-    expect(sc.getAttribute("data-on")).toBe("true");
-    expect(ff.getAttribute("data-on")).toBe("false");
-    expect(ff.textContent).toContain("ffmpeg: ausente");
+    await waitFor(() => expect(container.querySelectorAll(".crate-src-status")).toHaveLength(1));
+    const ff = container.querySelector(".crate-src-status")!;
+    expect(ff.getAttribute("data-tone")).toBe("amber");
+    expect(ff.textContent).toContain("conversor ausente");
+    expect(container.querySelector("#crate-sources")!.getAttribute("title")).toContain("SoundCloud: token ok");
+  });
+
+  it("com todas as fontes em ordem, um ponto só: 'fontes ok', detalhe no title (B13)", async () => {
+    const { container } = render(() => <Crate />);
+    await waitFor(() => expect(container.querySelector("#crate-sources")!.textContent).toContain("fontes ok"));
+    expect(container.querySelectorAll(".crate-src-status")).toHaveLength(0);
+    const title = container.querySelector("#crate-sources")!.getAttribute("title") ?? "";
+    expect(title).toContain("Soulseek: conectado");
+    expect(title).toContain("Conversor (ffmpeg): pronto");
   });
 });
 

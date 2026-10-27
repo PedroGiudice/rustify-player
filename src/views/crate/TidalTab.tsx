@@ -372,7 +372,7 @@ function ArtistView(props: {
       </header>
 
       <Show when={err()}>
-        <div class="crate-banner" data-tone="amber" role="alert">
+        <div class="crate-banner" data-tone="rose" role="alert">
           <Icon name={ICONS.alert} size={15} />
           <p>{err()}</p>
           <span class="crate-banner__sp" />
@@ -546,7 +546,7 @@ function PreviewView(props: {
       </header>
 
       <Show when={err()}>
-        <div class="crate-banner" data-tone="amber" role="alert">
+        <div class="crate-banner" data-tone="rose" role="alert">
           <Icon name={ICONS.alert} size={15} />
           <p>{err()}</p>
           <span class="crate-banner__sp" />
@@ -621,6 +621,8 @@ function PreviewView(props: {
 }
 
 // ── aba ────────────────────────────────────────────────────────────
+/** Mesmo texto de `OFFLINE_MSG` em src-tauri/src/slsk/tidal_fila.rs (fallback quando o erro vem vazio). */
+const FILA_OFFLINE = "A fila da Tidal na VM não respondeu. Sem ela não dá para baixar.";
 type SectionKey = "faixas" | "albuns" | "artistas" | "playlists";
 const TOP_SECTION: Record<string, SectionKey> = { faixa: "faixas", album: "albuns", artista: "artistas", playlist: "playlists" };
 
@@ -822,6 +824,14 @@ export default function TidalTab(props: Props) {
     return !!r && !r.faixas.length && !r.albuns.length && !r.artistas.length && !r.playlists.length;
   };
   const activeJobs = () => props.jobs.filter((j) => j.status === "fila" || j.status === "baixando").length;
+  /** A fila da VM não respondeu: um banner só (a busca passa pela mesma fila), campo apagado. */
+  const offline = () => props.load === "error";
+  const locked = () => props.tokenMissing || offline();
+  /** "Tentar de novo" do banner da fila: refaz o poll e, se havia texto de busca, a última busca. */
+  function retryFila() {
+    props.refresh();
+    if (kind() === "text") void runSearch(text().trim());
+  }
 
   const destPicker = () => (
     <DestPicker
@@ -829,7 +839,7 @@ export default function TidalTab(props: Props) {
       dest={dest()}
       custom={customDest()}
       customName={customName()}
-      disabled={props.tokenMissing}
+      disabled={locked()}
       setDest={setDest}
       setCustom={setCustomDest}
       setCustomName={setCustomName}
@@ -841,14 +851,14 @@ export default function TidalTab(props: Props) {
       <form class="crate-tidal-form" onSubmit={(e) => void onSubmit(e)}>
         <div class="crate-tidal-form__row">
           <div class="tdl-field" data-busy={searchState() === "loading" ? "true" : undefined}>
-            <Icon name={ICONS.search} size={14} />
+            <Icon name={ICONS.search} size={16} />
             <input
               type="text"
               class="crate-tidal-input tdl-field__input"
               placeholder="Busque faixa, álbum, artista ou playlist, ou cole um link da Tidal"
               aria-label="Buscar na Tidal ou colar link"
               value={text()}
-              disabled={props.tokenMissing}
+              disabled={locked()}
               onInput={(e) => onInput(e.currentTarget.value)}
               onKeyDown={onInputKey}
               autocomplete="off"
@@ -863,7 +873,7 @@ export default function TidalTab(props: Props) {
             type="submit"
             class="crate-btn crate-btn--primary"
             disabled={
-              props.tokenMissing || submitting()
+              locked() || submitting()
               || (kind() === "link" ? !resolvedDest() : kind() !== "text")
             }
           >
@@ -892,12 +902,12 @@ export default function TidalTab(props: Props) {
         </div>
       </Show>
 
-      <Show when={props.load === "error"}>
-        <div class="crate-banner" data-tone="amber">
+      <Show when={offline()}>
+        <div class="crate-banner" data-tone="rose" role="alert" title="Endereço da fila e motivo no log do app">
           <Icon name={ICONS.alert} size={15} />
-          <p>{props.loadError ?? "fila indisponível (VM fora?)"}</p>
+          <p>{props.loadError ?? FILA_OFFLINE}</p>
           <span class="crate-banner__sp" />
-          <button type="button" class="crate-banner__act" onClick={props.refresh}>Tentar de novo</button>
+          <button type="button" class="crate-banner__act" onClick={retryFila}>Tentar de novo</button>
         </div>
       </Show>
 
@@ -942,8 +952,8 @@ export default function TidalTab(props: Props) {
               <button type="button" class="tdl-linkbtn" onClick={clearAll}>Ver a fila</button>
             </p>
           </Show>
-          <Show when={searchState() === "error"}>
-            <div class="crate-banner" data-tone="amber" role="alert">
+          <Show when={searchState() === "error" && !offline()}>
+            <div class="crate-banner" data-tone="rose" role="alert">
               <Icon name={ICONS.alert} size={15} />
               <p>{searchError()}</p>
               <span class="crate-banner__sp" />

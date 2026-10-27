@@ -41,7 +41,7 @@ import {
 } from "../tauri";
 import { guessFromSoundCloud, cleanTitle, type MetaGuess } from "../lib/trackMetaGuess";
 import { dedupMatch } from "../lib/dedup";
-import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest } from "../store/crate";
+import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen } from "../store/crate";
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -298,6 +298,65 @@ function candidateQuality(c: Candidate, fallback: string): string {
   return fallback;
 }
 
+export type SourceIssue = { key: "rede" | "soundcloud" | "conversor"; label: string; tone: "amber" | "rose"; detail: string };
+
+/** Fontes com problema, na ordem da busca (rede, SoundCloud, conversor). Estado
+    ainda não lido não vira problema. */
+export function sourceIssuesOf(net: SlskStatus | null, st: SourcesStatus | null): SourceIssue[] {
+  const out: SourceIssue[] = [];
+  if (net && !net.network_connected) {
+    out.push({ key: "rede", label: "Soulseek fora da rede", tone: "rose", detail: "O slskd não está conectado à rede Soulseek: a busca não devolve nada." });
+  }
+  if (st?.soundcloud === "no_token") {
+    out.push({ key: "soundcloud", label: "SoundCloud sem token", tone: "amber", detail: "Sem o token do SoundCloud só o stream transcodificado aparece; o original não baixa." });
+  } else if (st?.soundcloud === "api_down") {
+    out.push({ key: "soundcloud", label: "SoundCloud fora do ar", tone: "rose", detail: "A API do SoundCloud não respondeu." });
+  }
+  if (st && !st.ffmpeg) {
+    out.push({ key: "conversor", label: "conversor ausente", tone: "amber", detail: "ffmpeg não encontrado: o original do SoundCloud não vira FLAC." });
+  }
+  return out;
+}
+
+/** Detalhe de todas as fontes, para o title do grupo. */
+export function sourcesDetailOf(net: SlskStatus | null, st: SourcesStatus | null): string {
+  const rede = net ? (net.network_connected ? "conectado" : "fora da rede") : "verificando";
+  const sc = !st ? "verificando" : st.soundcloud === "token_ok" ? "token ok" : st.soundcloud === "no_token" ? "sem token" : "fora do ar";
+  const conv = !st ? "verificando" : st.ffmpeg ? "pronto" : "ausente";
+  return `Soulseek: ${rede} · SoundCloud: ${sc} · Conversor (ffmpeg): ${conv}`;
+}
+
+/** Veredito do portão espectral da faixa pronta, lido do acervo (o ingest grava
+    `quality_class`). Cache por track_id: a linha pronta não muda de faixa. */
+const readyVerdictCache = new Map<string, string | null>();
+function verdictText(t: Track | undefined): string | null {
+  switch (t?.quality_class) {
+    case "sem_corte": return "conferida, sem corte";
+    case "hires_de_cd": return "conferida, qualidade de CD";
+    default: return null; // não medida: não afirmar o que não se sabe
+  }
+}
+function ReadyVerdict(props: { trackId: string }): JSX.Element {
+  const [text, setText] = createSignal<string | null>(readyVerdictCache.get(props.trackId) ?? null);
+  onMount(() => {
+    if (readyVerdictCache.has(props.trackId)) return;
+    let alive = true;
+    onCleanup(() => { alive = false; });
+    libGetTracksByIds([props.trackId])
+      .then((ts) => {
+        const v = verdictText(ts[0]);
+        readyVerdictCache.set(props.trackId, v);
+        if (alive) setText(v);
+      })
+      .catch(() => {});
+  });
+  return (
+    <Show when={text()}>
+      {(t) => <span class="crate-st-txt--ready" title="Medido no conteúdo pelo portão espectral: não é MP3 disfarçado.">{t()}</span>}
+    </Show>
+  );
+}
+
 async function playById(trackId: string) {
   try {
     const tracks = await libGetTracksByIds([trackId]);
@@ -453,9 +512,12 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
 
         <Show when={props.state === "ready"}>
           <span class="crate-pill crate-pill--ready">
-            <Icon name={ICONS.check} size={10} /> pronta
+            <Icon name={ICONS.check} size={10} /> no acervo
           </span>
-          <span class="crate-st-txt--ready">em {j()?.dest_playlist ?? props.dest ?? "—"}</span>
+          <Show when={j()?.state.kind === "ready" ? (j()!.state as { track_id: string }).track_id : null}>
+            {(id) => <ReadyVerdict trackId={id()} />}
+          </Show>
+          <span class="crate-st-dim">em {j()?.dest_playlist ?? props.dest ?? "—"}</span>
         </Show>
 
         <Show when={props.state === "rejected"}>
@@ -720,7 +782,7 @@ function CrateRow(props: {
           <Show when={state() === "ready"}>
             <button
               type="button"
-              class="crate-btn"
+              class="crate-btn crate-btn--primary"
               onClick={(e) => {
                 e.stopPropagation();
                 if (props.job && props.job.state.kind === "ready") playById(props.job.state.track_id);
@@ -860,7 +922,7 @@ function CrateJobRow(props: {
           <Show when={props.job.state.kind === "ready"}>
             <button
               type="button"
-              class="crate-btn"
+              class="crate-btn crate-btn--primary"
               onClick={() => { if (props.job.state.kind === "ready") playById(props.job.state.track_id); }}
             >
               <Icon name={ICONS.play} size={12} /> Tocar
@@ -991,7 +1053,7 @@ function ScRow(props: {
           <Show when={state() === "ready"}>
             <button
               type="button"
-              class="crate-btn"
+              class="crate-btn crate-btn--primary"
               onClick={() => { if (props.job && props.job.state.kind === "ready") playById(props.job.state.track_id); }}
             >
               <Icon name={ICONS.play} size={12} /> Tocar
@@ -1447,11 +1509,12 @@ export default function Crate(props: { param?: string | null }) {
     el?.focus();
   }
 
-  const scStatusLabel = () => {
-    const st = sourcesStatus();
-    if (!st) return "verificando…";
-    return st.soundcloud === "token_ok" ? "token ok" : st.soundcloud === "no_token" ? "sem token" : "API indisponível";
-  };
+  /** Fontes da aba Buscar (A12/B13): com tudo em ordem, um ponto "fontes ok" e
+      o detalhe no title; a fonte com problema volta sozinha como chip.
+      Âmbar = falta configurar (token, conversor); rosa = fora do ar. */
+  const sourceIssues = createMemo(() => sourceIssuesOf(status(), sourcesStatus()));
+  const sourcesReady = () => status() != null && sourcesStatus() != null;
+  const sourcesDetail = () => sourcesDetailOf(status(), sourcesStatus());
 
   // ── Tidal ──────────────────────────────────────────────────────
   function refreshTidal() {
@@ -1718,6 +1781,10 @@ export default function Crate(props: { param?: string | null }) {
     void doSearch();
   }, { defer: true }));
 
+  // Crate aberto = chegadas vistas (B8): o aviso da barra lateral some e não
+  // acumula enquanto a view está montada.
+  createEffect(() => { if (newArrivalsCount() > 0) markArrivalsSeen(); });
+
   onMount(() => {
     bootCrateStore();
     libListFolders().then(setFolders).catch(() => {});
@@ -1769,7 +1836,9 @@ export default function Crate(props: { param?: string | null }) {
           <Show when={libraryCount() > 0}>
             <span><b>{libraryCount().toLocaleString("pt-BR")}</b> no acervo</span>
           </Show>
-          <span><b>{activeCount()}</b> baixando</span>
+          <Show when={activeCount() > 0}>
+            <span><b>{activeCount()}</b> baixando</span>
+          </Show>
         </div>
       </header>
 
@@ -1867,26 +1936,27 @@ export default function Crate(props: { param?: string | null }) {
               </span>
             </button>
 
-            <span class="crate-net-status" data-on={status()?.network_connected ? "true" : "false"}>
-              <span class="crate-net-status__dot" />
-              {status() ? (status()!.network_connected ? "rede ok" : "fora da rede") : "verificando…"}
-            </span>
-
-            {/* Status das fontes novas (spec §5.4), um indicador por
-                dependência; o do SoundCloud é o alvo do "ver status" do
-                card quando falta o token. */}
-            <span
-              id="crate-sources"
-              class="crate-net-status crate-src-status"
-              tabindex="-1"
-              data-on={sourcesStatus()?.soundcloud === "token_ok" ? "true" : "false"}
-            >
-              <span class="crate-net-status__dot" />
-              SoundCloud: {scStatusLabel()}
-            </span>
-            <span class="crate-net-status crate-src-status" data-on={sourcesStatus()?.ffmpeg ? "true" : "false"}>
-              <span class="crate-net-status__dot" />
-              ffmpeg: {sourcesStatus() ? (sourcesStatus()!.ffmpeg ? "ok" : "ausente") : "…"}
+            {/* Status das fontes (spec §5.4). O grupo é o alvo do "ver status"
+                do card quando falta o token do SoundCloud. */}
+            <span id="crate-sources" class="crate-sources-status" tabindex="-1" title={sourcesDetail()}>
+              <Show
+                when={sourceIssues().length > 0}
+                fallback={
+                  <span class="crate-net-status" data-on={sourcesReady() ? "true" : "pending"}>
+                    <span class="crate-net-status__dot" />
+                    {sourcesReady() ? "fontes ok" : "verificando fontes…"}
+                  </span>
+                }
+              >
+                <For each={sourceIssues()}>
+                  {(it) => (
+                    <span class="crate-net-status crate-src-status" data-on="false" data-tone={it.tone} title={it.detail}>
+                      <span class="crate-net-status__dot" />
+                      {it.label}
+                    </span>
+                  )}
+                </For>
+              </Show>
             </span>
 
             <DestChip
@@ -2087,11 +2157,11 @@ export default function Crate(props: { param?: string | null }) {
           <Show when={!searchId() && !searching() && scState() === "idle"}>
             <div class="crate-empty-wrap">
               <div class="crate-empty">
-                <Icon name={ICONS.packageOpen} size={26} />
-                <h3>Nada buscado ainda</h3>
-                <p>A busca só dispara no Enter — o Crate nunca busca enquanto você digita.</p>
+                <Icon name={ICONS.packageOpen} size={24} />
+                <h3>Busque uma música ou cole um link</h3>
+                <p>A busca roda quando você aperta Enter, para não pesar a rede Soulseek.</p>
                 <div class="crate-empty__hintline">
-                  <kbd class="crate-kbd">{modCombo("K")}</kbd> → digite → <kbd class="crate-kbd">Procurar na rede</kbd>
+                  <kbd class="crate-kbd">Enter</kbd> busca aqui · <kbd class="crate-kbd">{modCombo("K")}</kbd> busca de qualquer tela
                 </div>
               </div>
             </div>

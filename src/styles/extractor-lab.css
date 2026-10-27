@@ -3673,9 +3673,11 @@ html { --glow: 0; }
 /* ── toolbar ─────────────────────────────────────────────────── */
 .crate-toolbar {
   display: flex; align-items: center; gap: 10px;
+  justify-content: flex-start; /* o space-between do .coll-toolbar espalhava os status (A12) */
   padding: 18px 40px 0;
   flex-wrap: wrap;
 }
+.crate-toolbar .crate-dest { margin-left: auto; }
 .crate-search {
   position: relative;
   flex: 1; min-width: 240px; max-width: 560px;
@@ -3747,20 +3749,41 @@ html { --glow: 0; }
   transition: stroke-dashoffset 1s linear;
 }
 
+/* Status das fontes (A12/B13): em ordem, só um ponto e "fontes ok", sem
+   borda nem fundo (não é botão). A fonte com problema volta como chip com
+   borda no tom do sinal: âmbar = falta configurar, rosa = fora do ar. */
+.crate-sources-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 40px;
+  border-radius: var(--radius-lg);
+}
 .crate-net-status {
   display: inline-flex; align-items: center; gap: 7px;
-  height: 40px; padding: 0 12px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-lg);
-  background: var(--bg-paper);
-  font-size: 11.5px; font-weight: 500;
-  color: var(--fg-4);
+  padding: 0 4px;
+  font-size: 12px; font-weight: 500;
+  color: var(--fg-5);
   white-space: nowrap;
 }
-.crate-net-status[data-on="false"] { color: var(--fg-6); }
 .crate-net-status__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.crate-net-status[data-on="true"]  .crate-net-status__dot { background: var(--green-ring); }
-.crate-net-status[data-on="false"] .crate-net-status__dot { background: var(--fg-7); }
+.crate-net-status[data-on="true"]    .crate-net-status__dot { background: var(--green-ring); }
+.crate-net-status[data-on="pending"] .crate-net-status__dot,
+.crate-net-status[data-on="false"]   .crate-net-status__dot { background: var(--fg-7); }
+.crate-net-status[data-tone] {
+  height: 28px; padding: 0 10px;
+  border: 1px solid;
+  border-radius: var(--radius-pill);
+  color: var(--fg-2);
+}
+.crate-net-status[data-tone="amber"] {
+  background: color-mix(in srgb, var(--amber-ring) 10%, var(--bg-paper));
+  border-color: color-mix(in srgb, var(--amber-ring) 40%, var(--bg-paper));
+}
+.crate-net-status[data-tone="amber"] .crate-net-status__dot { background: var(--amber-ring); }
+.crate-net-status[data-tone="rose"] {
+  background: color-mix(in srgb, var(--rose-ring) 10%, var(--bg-paper));
+  border-color: color-mix(in srgb, var(--rose-ring) 40%, var(--bg-paper));
+}
+.crate-net-status[data-tone="rose"] .crate-net-status__dot { background: var(--rose-ring); }
 
 /* ── destino (toolbar e por linha) ───────────────────────────── */
 .crate-dest { position: relative; }
@@ -3847,6 +3870,13 @@ html { --glow: 0; }
 }
 .crate-banner[data-tone="amber"] iconify-icon { color: var(--amber-fg); }
 .crate-banner[data-tone="amber"] .crate-banner__sub { color: var(--fg-4); }
+/* Falha (fila fora, busca que não voltou): rosa é erro; âmbar fica para aviso. */
+.crate-banner[data-tone="rose"] {
+  background: color-mix(in srgb, var(--rose-ring) 10%, var(--bg-paper));
+  border-color: color-mix(in srgb, var(--rose-ring) 28%, var(--bg-paper));
+  color: var(--fg-2);
+}
+.crate-banner[data-tone="rose"] iconify-icon { color: var(--rose-fg); }
 .crate-banner__dim { color: var(--fg-5); }
 .crate-banner__act {
   display: inline-flex; align-items: center; gap: 5px;
@@ -4304,19 +4334,21 @@ html { --glow: 0; }
 .crate-tidal-form__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .crate-tidal-input,
 .crate-tidal-select {
-  height: 34px; padding: 0 12px;
+  height: 40px; padding: 0 12px;
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   outline: 0;
-  font-size: 12.5px; color: var(--fg-1);
+  font-size: 13.5px; color: var(--fg-1);
   letter-spacing: -0.005em;
   min-width: 0;
 }
 .crate-tidal-input { flex: 1 1 360px; }
 .crate-tidal-input::placeholder { color: var(--fg-6); }
 .crate-tidal-input:focus,
-.crate-tidal-select:focus { border-color: var(--fg-7); box-shadow: var(--ring-focus); }
+.crate-tidal-select:focus { border-color: var(--fg-8); box-shadow: var(--ring-focus); }
+/* Botão do formulário na altura do campo (40 px), como o Buscar da outra aba. */
+.crate-tidal-form__row > .crate-btn { height: 40px; padding: 0 18px; border-radius: var(--radius-lg); font-size: 13px; }
 .crate-tidal-input:disabled,
 .crate-tidal-select:disabled { opacity: 0.55; cursor: default; }
 .select-shell--tidal { flex: 0 1 200px; }
@@ -4437,18 +4469,40 @@ html { --glow: 0; }
    13,5/600 título, 12/400 secundário, 11,5 tabular-nums números.
    Um acento só (--blue-ring): caixa marcada e anel de foco. */
 .tdl-field {
-  position: relative; flex: 1 1 360px; min-width: 0;
+  position: relative; flex: 1 1 360px; min-width: 0; max-width: 560px;
   display: flex; align-items: center;
 }
+/* Busca em andamento (A2): faixa de 2 px no acento correndo na base do
+   campo, dentro da borda e longe dos cantos arredondados. Anima só
+   background-position de um gradiente (sem layout, sem custom property);
+   some quando a busca volta (data-busy sai). */
+.tdl-field[data-busy="true"]::after {
+  content: "";
+  position: absolute; bottom: 1px;
+  left: var(--radius-lg); right: var(--radius-lg);
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0 40%, var(--blue-ring) 40% 60%, transparent 60% 100%);
+  background-size: 300% 100%;
+  animation: tdl-busy 1.1s var(--ease-out) infinite;
+  pointer-events: none;
+}
+@keyframes tdl-busy {
+  from { background-position: 100% 0; }
+  to   { background-position: 0% 0; }
+}
+
+/* Mesma medida do campo da aba Buscar (.crate-search): lupa de 16 px a 13 px
+   da borda, texto 13,5/500, placeholder 400. */
 .tdl-field > iconify-icon {
-  position: absolute; left: 11px; width: 14px; height: 14px;
+  position: absolute; left: 13px; width: 16px; height: 16px;
   color: var(--fg-6); pointer-events: none;
 }
 .tdl-field .tdl-field__input {
   flex: 1 1 auto; width: 100%;
-  padding-left: 32px; padding-right: 84px;
-  font-size: 13.5px;
+  padding-left: 37px; padding-right: 84px;
+  font-size: 13.5px; font-weight: 500;
 }
+.tdl-field .tdl-field__input::placeholder { font-weight: 400; }
 /* "buscando…" dentro do campo: não empurra nada, não pula o layout. */
 .tdl-field__state {
   position: absolute; right: 12px;
@@ -4594,6 +4648,9 @@ html { --glow: 0; }
   .np-mini__vu span:nth-child(3) { height: 4px; }
 
   .np__lyrics-rail { transition: none; }
+
+  /* Busca da Tidal: barra parada (estática) enquanto busca. */
+  .tdl-field[data-busy="true"]::after { animation: none; background-position: 50% 0; }
 
   /* Gaveta e paleta: só opacidade, sem deslocamento. */
   .queue-drawer { opacity: 0; }

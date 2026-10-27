@@ -18,7 +18,7 @@ vi.mock("../tauri", () => ({
 }));
 
 import * as ipc from "../tauri";
-import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, __resetForTests } from "./crate";
+import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen, __resetForTests } from "./crate";
 
 function job(id: string, kind: DownloadJob["state"]["kind"], extra: Record<string, unknown> = {}): DownloadJob {
   return {
@@ -117,6 +117,28 @@ describe("activeCount", () => {
   it("zero jobs -> activeCount 0", async () => {
     await bootCrateStore();
     expect(activeCount()).toBe(0);
+  });
+});
+
+describe("newArrivalsCount (B8)", () => {
+  it("conta só o que ficou pronto depois do boot e zera ao abrir o Crate", async () => {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(ipc.slskJobs).mockResolvedValue([job("velho", "ready", { track_id: "1" })]);
+    vi.mocked(ipc.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    await bootCrateStore();
+    expect(newArrivalsCount()).toBe(0); // pronto antes do boot não é chegada
+    emit!([job("velho", "ready", { track_id: "1" }), job("a", "indexing")]);
+    expect(newArrivalsCount()).toBe(0);
+    emit!([job("velho", "ready", { track_id: "1" }), job("a", "ready", { track_id: "2" })]);
+    emit!([job("velho", "ready", { track_id: "1" }), job("a", "ready", { track_id: "2" })]);
+    expect(newArrivalsCount()).toBe(1); // o mesmo job não conta duas vezes
+    markArrivalsSeen();
+    expect(newArrivalsCount()).toBe(0);
+    emit!([job("a", "ready", { track_id: "2" }), job("b", "ready", { track_id: "3" })]);
+    expect(newArrivalsCount()).toBe(1);
   });
 });
 

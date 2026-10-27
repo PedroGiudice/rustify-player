@@ -36,7 +36,38 @@ const NON_TERMINAL_KINDS = new Set<DownloadJob["state"]["kind"]>([
 // notificam.
 const [board, setBoard] = createStore<{ list: DownloadJob[] }>({ list: [] });
 
+// ── Chegadas (B8): faixas que ficaram prontas desde a última abertura do Crate ──
+// O badge de `activeCount` some quando o job termina; este contador fica até o
+// dono abrir o Crate, para a barra lateral avisar que algo novo entrou no
+// acervo. Jobs já prontos no snapshot do boot não contam (são de antes).
+let knownReady = new Set<string>();
+let hydrated = false;
+const [arrivals, setArrivals] = createSignal<ReadonlySet<string>>(new Set());
+
+/** Ids de job que viraram `ready` agora e não estavam prontos antes. */
+export function newlyReady(known: ReadonlySet<string>, next: DownloadJob[]): string[] {
+  return next.filter((j) => j.state.kind === "ready" && !known.has(j.job_id)).map((j) => j.job_id);
+}
+
+function trackArrivals(next: DownloadJob[]): void {
+  const fresh = newlyReady(knownReady, next);
+  knownReady = new Set(next.filter((j) => j.state.kind === "ready").map((j) => j.job_id));
+  if (!hydrated) { hydrated = true; return; }
+  if (fresh.length) setArrivals((a) => new Set([...a, ...fresh]));
+}
+
+/** Faixas novas no acervo desde a última vez que o Crate foi aberto. */
+export const newArrivalsCount = (): number => arrivals().size;
+/** Mesmo contador, nome usado pela barra lateral. */
+export const newArrivals = newArrivalsCount;
+
+/** O Crate está aberto: o dono já está vendo as chegadas. */
+export function markArrivalsSeen(): void {
+  if (arrivals().size) setArrivals(new Set<string>());
+}
+
 function setJobsSignal(next: DownloadJob[]): void {
+  trackArrivals(next);
   setBoard("list", reconcile(next, { key: "job_id" }));
 }
 
@@ -44,31 +75,6 @@ export const jobs = (): DownloadJob[] => board.list;
 
 export function activeCount(): number {
   return board.list.filter((j) => NON_TERMINAL_KINDS.has(j.state.kind)).length;
-}
-
-// ── Chegadas não vistas (B8 da avaliação Impeccable de 26/10) ──
-// Faixa que fica `ready` com o dono fora do Crate acende um ponto no item
-// da barra lateral ("n faixas novas no acervo") até ele abrir o Crate. Só
-// conta o que chegou NESTA sessão: o board reidratado no boot entra como
-// visto (senão todo download antigo acenderia o ponto a cada abertura).
-// Cada job `ready` é uma faixa (o estado carrega um único track_id).
-const [seenReady, setSeenReady] = createSignal<ReadonlySet<string>>(new Set());
-
-const readyIds = (): string[] =>
-  board.list.filter((j) => j.state.kind === "ready").map((j) => j.job_id);
-
-export function newArrivals(): number {
-  const seen = seenReady();
-  return readyIds().filter((id) => !seen.has(id)).length;
-}
-
-/** Marca como vistas todas as faixas prontas do board. Chamado enquanto a
-    rota é /crate (Sidebar.tsx). */
-export function markArrivalsSeen(): void {
-  const seen = seenReady();
-  const fresh = readyIds().filter((id) => !seen.has(id));
-  if (fresh.length === 0) return;
-  setSeenReady(new Set([...seen, ...fresh]));
 }
 
 let booted = false;
@@ -80,7 +86,6 @@ export async function bootCrateStore(): Promise<void> {
   booted = true;
   try {
     setJobsSignal(await slskJobs());
-    markArrivalsSeen();
   } catch (e) {
     console.error("[crate] slskJobs falhou no boot:", e);
   }
@@ -116,5 +121,7 @@ export function saveLastDest(dest: string): void {
 export function __resetForTests(): void {
   booted = false;
   setJobsSignal([]);
-  setSeenReady(new Set<string>());
+  knownReady = new Set();
+  hydrated = false;
+  setArrivals(new Set<string>());
 }
