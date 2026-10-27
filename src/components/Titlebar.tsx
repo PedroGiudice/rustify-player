@@ -18,6 +18,7 @@
 import { Show, onMount } from "solid-js";
 import { route } from "../router";
 import { mountResources, toggleResources } from "../js/components/resources.js";
+import { Icon } from "./Icon";
 
 const TRAFFIC = {
   red:    "#ff5f57",
@@ -46,7 +47,7 @@ async function handleMaximize() {
 
 export function Titlebar() {
   // Monta o overlay de Resources (HUD) — o overlay vive fora do shell,
-  // injetado no body. O botao RES abaixo apenas toggla.
+  // injetado no body. O botao de Recursos abaixo apenas toggla.
   onMount(() => {
     try { mountResources(); } catch (e) { console.warn("[titlebar] mountResources failed:", e); }
   });
@@ -86,7 +87,7 @@ export function Titlebar() {
       </div>
 
       <span class="titlebar__text">
-        rustify-player {import.meta.env.DEV && <span class="titlebar__dim">· dev</span>}
+        Rustify Player {import.meta.env.DEV && <span class="titlebar__dim">· dev</span>}
       </span>
 
       <Show when={showBack()}>
@@ -97,7 +98,7 @@ export function Titlebar() {
           title="Voltar"
           onClick={() => window.history.back()}
         >
-          ←
+          <Icon name="lucide:arrow-left" size={14} />
         </button>
       </Show>
 
@@ -106,11 +107,12 @@ export function Titlebar() {
       <button
         type="button"
         class="titlebar__res no-drag"
-        aria-label="Resources"
-        title="Resources (Ctrl+R)"
+        aria-label="Recursos (Ctrl+R)"
+        title="Recursos (Ctrl+R)"
         onClick={() => toggleResources()}
       >
-        RES
+        {/* Era "RES" em mono 10 px (A14): o HUD de recursos (CPU, memória). */}
+        <Icon name="lucide:activity" size={14} />
       </button>
     </header>
   );

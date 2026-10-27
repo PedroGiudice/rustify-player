@@ -11,24 +11,23 @@
      - postMessage opening cmd palette via custom event
    ============================================================ */
 
-import { For, Index, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Index, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
-import { activeCount } from "../store/crate";
+import { activeCount, markArrivalsSeen, newArrivals } from "../store/crate";
 import { tweaks, tweaksOpen } from "../store/tweaks";
 import { Icon, ICONS } from "./Icon";
 import { modCombo } from "../lib/keyboard";
 import { CoverArt } from "./CoverArt";
 import { coverUrl } from "../tauri";
-import logoCassette from "../assets/logo-cassette.png";
 
 const PRIMARY = [
-  { route: "/home",    icon: ICONS.home,    label: "Home" },
+  { route: "/home",    icon: ICONS.home,    label: "Home", shortcut: "H" },
   { route: "/search",  icon: ICONS.search,  label: "Search", kbd: modCombo("K"), action: "search" as const },
   // Logo abaixo de Search (spec §4.1): é busca, só que além do acervo.
   // Badge de jobs ativos (não-terminais) via store/crate — some em 0.
   { route: "/crate",   icon: ICONS.packageOpen, label: "Crate" },
-  { route: "/library", icon: ICONS.library, label: "Library" },
+  { route: "/library", icon: ICONS.library, label: "Library", shortcut: "L" },
 ];
 
 const COLECOES = [
@@ -43,6 +42,37 @@ const FOOTER = [
 
 /** Tiny event used by the search nav item to open the command palette. */
 export const SEARCH_EVENT = "rustify:open-palette";
+
+/** Marca da barra lateral: o cassete do ícone do app (src-tauri/icons)
+    redesenhado em traço, na cor do texto (.brand__mark). Monocromático
+    por decisão do CEO (26/10): a etiqueta ferrugem do ícone seria uma cor
+    fixa fora das três portas da Regra da Moldura Quieta. */
+function BrandMark() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      role="img"
+      aria-label="Rustify"
+    >
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <circle cx="8" cy="9.5" r="1.75" />
+      <circle cx="16" cy="9.5" r="1.75" />
+      <rect x="5.5" y="13.75" width="13" height="2.5" rx="0.6" />
+    </svg>
+  );
+}
+
+/** "1 faixa nova no acervo" / "n faixas novas no acervo". */
+export function arrivalsText(n: number): string {
+  return n === 1 ? "1 faixa nova no acervo" : `${n} faixas novas no acervo`;
+}
 
 export function Sidebar() {
   const [vu, setVu] = createSignal([4, 7, 10]);
@@ -66,7 +96,29 @@ export function Sidebar() {
   // No modo icons o rótulo sai da tela (fica só para leitor de tela):
   // o tooltip é a única dica do que cada ícone faz. No modo labels
   // seria redundante com o texto visível.
-  const tip = (label: string) => (tweaks().sidebar === "icons" ? label : undefined);
+  // Tooltip próprio (B23): o title nativo do GTK demora e não mostra o
+  // atalho. .nav-tip aparece após 400 ms de hover ou no foco de teclado;
+  // aria-hidden, porque o nome acessível já vem do rótulo escondido.
+  const iconsMode = () => tweaks().sidebar === "icons";
+  function NavTip(props: { label: string; kbd?: string; note?: string }) {
+    return (
+      <Show when={iconsMode()}>
+        <span class="nav-tip" aria-hidden="true">
+          <span>{props.label}</span>
+          {props.kbd && <kbd class="nav-tip__kbd">{props.kbd}</kbd>}
+          {props.note && <span class="nav-tip__note">{props.note}</span>}
+        </span>
+      </Show>
+    );
+  }
+
+  // Chegadas do Crate (B8): abrir o Crate apaga o ponto; o efeito também
+  // reage a faixa que chega com o Crate já aberto.
+  createEffect(() => {
+    if (route().path === "/crate" && newArrivals() > 0) markArrivalsSeen();
+  });
+  const showArrivals = (r: string) =>
+    r === "/crate" && activeCount() === 0 && newArrivals() > 0;
 
   function handleNavClick(e: MouseEvent, item: { route: string; action?: "search" }) {
     e.preventDefault();
@@ -81,10 +133,7 @@ export function Sidebar() {
     <aside class="sidebar" data-screen-label="Sidebar">
       <div class="brand">
         <div class="brand__mark">
-          {/* Logo do app (Cassette · Paper Outline). PNG importado direto pra
-              Vite resolver o asset com hash. Substitui o lucide:flask-conical
-              que era placeholder. */}
-          <img src={logoCassette} alt="Rustify" width="20" height="20" />
+          <BrandMark />
         </div>
         <div class="brand__word">Rustify</div>
         <div class="brand__dot" title="Bit-perfect output" />
@@ -97,7 +146,6 @@ export function Sidebar() {
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
               aria-current={current(item.route)}
               href={`#${item.route}`}
-              title={tip(item.label)}
               onClick={(e) => handleNavClick(e, item)}
             >
               <Icon name={item.icon} size={16} />
@@ -106,6 +154,16 @@ export function Sidebar() {
               <Show when={item.route === "/crate" && activeCount() > 0}>
                 <span class="nav-item__badge">{activeCount()}</span>
               </Show>
+              <Show when={showArrivals(item.route)}>
+                <span class="nav-item__new" role="status" title={arrivalsText(newArrivals())}>
+                  <span class="nav-item__new-text">{arrivalsText(newArrivals())}</span>
+                </span>
+              </Show>
+              <NavTip
+                label={item.label}
+                kbd={item.kbd ?? item.shortcut}
+                note={showArrivals(item.route) ? arrivalsText(newArrivals()) : undefined}
+              />
             </a>
           )}
         </For>
@@ -119,11 +177,11 @@ export function Sidebar() {
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
               aria-current={current(item.route)}
               href={`#${item.route}`}
-              title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
             >
               <Icon name={item.icon} size={16} />
               <span>{item.label}</span>
+              <NavTip label={item.label} />
             </a>
           )}
         </For>
@@ -170,12 +228,12 @@ export function Sidebar() {
           class={`nav-item${isActive("/now-playing") ? " active" : ""}`}
           aria-current={current("/now-playing")}
           href="#/now-playing"
-          title={tip("Now Playing")}
           onClick={(e) => { e.preventDefault(); navigate("/now-playing"); }}
         >
           <Icon name={ICONS.music} size={16} />
           <span>Now Playing</span>
           <span class="nav-item__kbd">N</span>
+          <NavTip label="Now Playing" kbd="N" />
         </a>
 
         <For each={FOOTER}>
@@ -184,11 +242,11 @@ export function Sidebar() {
               class={`nav-item${isActive(item.route) ? " active" : ""}`}
               aria-current={current(item.route)}
               href={`#${item.route}`}
-              title={tip(item.label)}
               onClick={(e) => { e.preventDefault(); navigate(item.route); }}
             >
               <Icon name={item.icon} size={16} />
               <span>{item.label}</span>
+              <NavTip label={item.label} />
             </a>
           )}
         </For>
@@ -203,10 +261,11 @@ export function Sidebar() {
           onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
           aria-controls="tweaks-panel"
           aria-expanded={tweaksOpen() ? "true" : "false"}
-          title="Tweaks (appearance, background, loudness)"
+          title={iconsMode() ? undefined : "Tweaks (appearance, background, loudness)"}
         >
           <Icon name={ICONS.bolt} size={16} />
           <span>Tweaks</span>
+          <NavTip label="Tweaks" />
         </button>
       </div>
     </aside>
