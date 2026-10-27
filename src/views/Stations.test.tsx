@@ -1,8 +1,9 @@
 /* ============================================================
    Stations.test.tsx — Testes da view de stations.
-   Cobre: feature card (.st-feature) com eyebrow, titulo grande,
-   chips de seeds, CTA preto; canvas <StationViz />; grid de 6
-   st-cards sem nenhum selo "Live" (a tela não sabe o que está no ar).
+   Cobre: feature card (.st-feature) com eyebrow, titulo grande, CTA
+   preto e o retrato da station (leque de capas das sementes ou palavras
+   do clima); grade sem o destaque e sem nenhum selo "Live" (a tela não
+   sabe o que está no ar); textos que repetem o nome não aparecem.
 
    Utiliza mock do window.__TAURI__ para simular o backend Rust
    sem precisar do runtime Tauri.
@@ -24,6 +25,7 @@ vi.mock("../tauri", async (importOriginal) => {
     libPlayStation: vi.fn(async () => []),
     libCreateStation: vi.fn(async () => null),
     libDeleteStation: vi.fn(async () => true),
+    libGetTracksByIds: vi.fn(async () => []),
     libMoodVocabulary: vi.fn(async () => ({
       moods: ["dark", "uplifting", "chill"],
       activities: ["workout", "study"],
@@ -149,7 +151,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-import Stations, { SeedChips, StationCard } from "./Stations";
+import Stations, { SeedMosaic, StationCard, repeatsName, moodWords } from "./Stations";
 import { createSignal } from "solid-js";
 import { fireEvent, waitFor } from "@solidjs/testing-library";
 import { player, setQueue } from "../store/player";
@@ -204,14 +206,32 @@ describe("Stations view", () => {
     expect(seeds.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("feature card contem canvas (StationViz wrapper visual)", async () => {
+  it("destaque seed mostra as capas das sementes em leque, na ordem das sementes (B1)", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    // O backend devolve fora de ordem; a 2 sem capa.
+    vi.mocked(tauriApi.libGetTracksByIds).mockImplementation(async () => [
+      { ...STATION_TRACKS[0], id: "3", title: "T3", artist_name: "A3", album_cover_path: "/c/3.jpg" },
+      { ...STATION_TRACKS[0], id: "1", title: "T1", artist_name: "A1", album_cover_path: "/c/1.jpg" },
+      { ...STATION_TRACKS[0], id: "2", title: "T2", artist_name: null, album_cover_path: null },
+    ]);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+      vi.mocked(tauriApi.libGetTracksByIds).mockImplementation(async () => []);
+    });
     const { container } = render(() => <Stations />);
     await waitFor(() => {
-      const visual = container.querySelector(".st-feature__visual");
-      expect(visual).toBeTruthy();
+      expect(container.querySelectorAll(".st-feature .st-fan__item img").length).toBe(2);
     });
-    const visual = container.querySelector(".st-feature__visual");
-    expect(visual!.querySelector("canvas")).toBeTruthy();
+    expect(vi.mocked(tauriApi.libGetTracksByIds)).toHaveBeenCalledWith(["1", "2", "3"]);
+    const items = container.querySelectorAll(".st-feature .st-fan__item");
+    expect(items.length).toBe(3);
+    expect(items[0].querySelector("img")!.getAttribute("alt")).toBe("T1 — A1");
+    expect(items[1].querySelector("img")).toBeNull();
+    expect(items[1].getAttribute("title")).toBe("T2");
+    expect(items[2].querySelector("img")!.getAttribute("src")).toBe("/c/3.jpg");
+    expect(container.querySelector(".st-feature__caption")!.textContent).toBe("nasce destas 3 faixas");
+    // Sem o canvas antigo de pontos sorteados.
+    expect(container.querySelector(".st-feature canvas")).toBeNull();
   });
 
   it("renderiza grid com 6 st-cards quando backend retorna 6 stations", async () => {
@@ -234,9 +254,12 @@ describe("Stations view", () => {
       vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
     });
     const { container } = render(() => <Stations />);
+    // A primeira station está no destaque e sai da grade (B1).
     await waitFor(() => {
-      expect(container.querySelectorAll(".st-card").length).toBe(6);
+      expect(container.querySelectorAll(".st-card").length).toBe(5);
     });
+    expect(container.querySelector(".st-grid")!.textContent).not.toContain(MOCK_STATIONS[0].name);
+    expect(container.querySelector(".st-feature__title")!.textContent).toBe(MOCK_STATIONS[0].name);
     expect(container.querySelector(".st-card__live")).toBeNull();
     expect(container.textContent).not.toMatch(/Live|streaming now/);
     expect(container.querySelector(".st-feature__eyebrow")?.textContent).toBe("Most played");
@@ -291,8 +314,8 @@ describe("Stations view", () => {
       vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
     });
     const { container, getByText } = render(() => <Stations />);
-    await waitFor(() => expect(container.querySelectorAll(".st-card").length).toBe(6));
-    const card = container.querySelectorAll<HTMLElement>(".st-card")[1];
+    await waitFor(() => expect(container.querySelectorAll(".st-card").length).toBe(5));
+    const card = container.querySelectorAll<HTMLElement>(".st-card")[0];
     // Tocar é um <button> de verdade (Enter/Espaço nativos), irmão do de
     // apagar — o card em si não é mais role=button (revisão da fase 0).
     const play = card.querySelector<HTMLButtonElement>(".st-card__play")!;
@@ -333,15 +356,39 @@ describe("Stations view", () => {
     expect((container.querySelector(".st-feature")?.textContent ?? "")).toContain("Stations aparecem aqui");
   });
 
-  it("moldura .st-feature__visual nao aparece aninhada (dedup do StationViz)", async () => {
+  it("destaque mood mostra as palavras do clima, sem buscar capas (B1)", async () => {
+    const mood = MOCK_STATIONS[4];
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => [mood, ...MOCK_STATIONS.slice(0, 4)]);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
     const { container } = render(() => <Stations />);
     await waitFor(() => {
-      expect(container.querySelector(".st-feature__visual")).toBeTruthy();
+      expect(container.querySelectorAll(".st-feature__word").length).toBe(2);
     });
-    // Antes o StationViz renderizava um segundo div com a mesma classe
-    // dentro do wrapper do LazyStationViz — borda/bg/radius duplicados.
-    expect(container.querySelectorAll(".st-feature__visual .st-feature__visual").length).toBe(0);
-    expect(container.querySelector(".st-feature__visual canvas")).toBeTruthy();
+    const ws = Array.from(container.querySelectorAll(".st-feature__word")).map((w) => w.textContent);
+    expect(ws).toEqual(["minimal", "electronic"]);
+    expect(container.querySelector(".st-feature__caption")!.textContent).toBe("nasce destas palavras");
+    expect(container.querySelector(".st-fan")).toBeNull();
+    expect(vi.mocked(tauriApi.libGetTracksByIds)).not.toHaveBeenCalled();
+  });
+
+  it("o destaque também se apaga (fora da grade, é o único lugar)", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
+    const { container } = render(() => <Stations />);
+    await waitFor(() => {
+      expect(container.querySelector(".st-feature .st-feature__delete")).toBeTruthy();
+    });
+    const btn = container.querySelector(".st-feature .st-feature__delete") as HTMLButtonElement;
+    fireEvent.click(btn);
+    expect(vi.mocked(tauriApi.libPlayStation)).not.toHaveBeenCalled();
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(vi.mocked(tauriApi.libDeleteStation)).toHaveBeenCalledWith("midnight-1");
+    });
   });
 });
 
@@ -440,19 +487,49 @@ describe("New from current track usa a track atual como seed (fix: stub)", () =>
   });
 });
 
-describe("SeedChips (reatividade sob parent nao-keyed)", () => {
-  it("re-deriva label/tone/icon quando props.station muda in-place", () => {
-    const [station, setStation] = createSignal<Station>(MOCK_STATIONS[0]);
-    const { container } = render(() => <SeedChips station={station()} />);
-    const chip = () => container.querySelector(".st-seed-chip");
-    expect(chip()!.textContent).toContain("ambient · drone · sleepless");
-    expect(chip()!.querySelector(".st-seed-chip__cover")!.classList.contains("tone-lavender")).toBe(true);
+describe("Texto que repete o nome (A10)", () => {
+  it("compara palavras sem acento, caixa ou pontuação", () => {
+    expect(repeatsName("chill romance", "chill · romance")).toBe(true);
+    expect(repeatsName("Calmo · ROMÂNTICO", "calmo romantico")).toBe(true);
+    expect(repeatsName("", "x")).toBe(true);
+    expect(repeatsName("chill romance funk soul", "chill · romance")).toBe(false);
+    expect(repeatsName("gerada a partir das suas tracks favoritas", "Your Mix")).toBe(false);
+  });
 
-    // Simula o refetch trocando a station sem remontar o componente —
-    // com chips como const congelados, o label/tone ficariam na antiga.
-    setStation(MOCK_STATIONS[1]);
-    expect(chip()!.textContent).toContain("modern classical · acoustic · low tempo");
-    expect(chip()!.querySelector(".st-seed-chip__cover")!.classList.contains("tone-bone")).toBe(true);
+  it("palavras do clima saem da query na ordem, sem repetir", () => {
+    expect(moodWords("dark  workout dark")).toEqual(["dark", "workout"]);
+    expect(moodWords(null)).toEqual([]);
+  });
+});
+
+describe("SeedMosaic", () => {
+  afterEach(() => {
+    vi.mocked(tauriApi.libGetTracksByIds).mockImplementation(async () => []);
+  });
+
+  it("mais de 5 sementes: mostra 5 e diz quantas são no total", async () => {
+    const st = { ...MOCK_STATIONS[0], seed_track_ids: ["1", "2", "3", "4", "5", "6", "7"] };
+    vi.mocked(tauriApi.libGetTracksByIds).mockImplementation(async (ids: string[]) =>
+      ids.map((id) => ({ ...STATION_TRACKS[0], id, title: `T${id}`, album_cover_path: `/c/${id}.jpg` })),
+    );
+    const { container } = render(() => <SeedMosaic station={st} />);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".st-fan__item img").length).toBe(5);
+    });
+    expect(vi.mocked(tauriApi.libGetTracksByIds)).toHaveBeenCalledWith(["1", "2", "3", "4", "5"]);
+    expect(container.querySelector(".st-feature__caption")!.textContent).toBe("nasce de 7 faixas; aqui, 5 delas");
+    // A do centro é a maior e fica por cima.
+    const center = container.querySelectorAll<HTMLElement>(".st-fan__item")[2];
+    expect(center.style.getPropertyValue("--fan-size")).toBe("64px");
+    expect(center.style.getPropertyValue("--fan-z")).toBe("10");
+  });
+
+  it("sementes fora do acervo: cai no ícone da station, sem legenda", async () => {
+    const { container } = render(() => <SeedMosaic station={MOCK_STATIONS[0]} />);
+    await waitFor(() => {
+      expect(container.querySelector(".st-fan__solo")).toBeTruthy();
+    });
+    expect(container.querySelector(".st-feature__caption")).toBeNull();
   });
 });
 
@@ -590,7 +667,25 @@ describe("StationCard (reatividade de seedLine e estado armado)", () => {
   it("seed de uma faixa usa singular (motor-v7)", () => {
     const st = { ...MOCK_STATIONS[0], seed_track_ids: ["1"] };
     const { container } = render(() => <StationCard station={st} onResume={() => {}} />);
-    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("seed · 1 track");
+    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("1 faixa-semente");
+  });
+
+  it("descrição que só repete o nome some; a que acrescenta fica (A10)", () => {
+    const repete = { ...MOCK_STATIONS[4], name: "chill · romance", desc: "chill romance", query: "chill romance" };
+    const { container, unmount } = render(() => <StationCard station={repete} onResume={() => {}} />);
+    expect(container.querySelector(".st-card__desc")).toBeNull();
+    expect(container.textContent!.match(/chill/g)!.length).toBe(1);
+    unmount();
+    const { container: c2 } = render(() => <StationCard station={MOCK_STATIONS[0]} onResume={() => {}} />);
+    expect(c2.querySelector(".st-card__desc")!.textContent).toBe(MOCK_STATIONS[0].desc);
+  });
+
+  it("nome longo leva o nome inteiro no title do botão (clamp de 2 linhas no CSS)", () => {
+    const st = { ...MOCK_STATIONS[0], name: "dark · uplifting · chill · workout · study" };
+    const { container } = render(() => <StationCard station={st} onResume={() => {}} />);
+    const play = container.querySelector(".st-card__play")!;
+    expect(play.getAttribute("title")).toBe(st.name);
+    expect(play.querySelector(".st-card__name-text")!.textContent).toBe(st.name);
   });
 
   it("botao de apagar exige confirmacao e nao dispara o play do card", () => {
@@ -645,8 +740,8 @@ describe("StationCard (reatividade de seedLine e estado armado)", () => {
     const { container } = render(() => (
       <StationCard station={st()} onResume={() => {}} />
     ));
-    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("seed · 3 tracks");
-    setSt(MOCK_STATIONS[4]); // mood, query "minimal electronic"
-    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("mood · minimal electronic");
+    expect(container.querySelector(".st-card__seed-line")!.textContent).toBe("3 faixas-semente");
+    setSt(MOCK_STATIONS[4]); // mood: a linha de semente não existe
+    expect(container.querySelector(".st-card__seed-line")).toBeNull();
   });
 });

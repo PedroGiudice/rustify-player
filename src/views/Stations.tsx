@@ -1,20 +1,14 @@
 /* ============================================================
    views/Stations.tsx — Smart radio stations, hi-fi.
 
-   Recriacao da tela do mockup `Rustify ExtractorLab.html`
-   (data-screen="stations"). Feature card (a station mais tocada:
-   lib_list_stations ordena por played desc) + titulo grande + chips
-   de seeds + CTA preto + canvas <StationViz />. Grid de stations
-   carregado via lib_list_stations do backend. Nada aqui afirma que
+   Destaque (a station mais tocada: lib_list_stations ordena por played
+   desc) com título, CTA e o retrato da station: as capas das faixas-
+   semente em leque (seed) ou as palavras do clima (mood). O destaque
+   sai da grade logo abaixo, que lista as demais. Nada aqui afirma que
    uma station esta tocando: a tela nao consulta isso.
-
-   StationViz so monta o canvas quando o feature card esta visivel
-   no viewport (IntersectionObserver) — evita gastar CPU com RAF
-   quando o usuario scrollou pra fora.
    ============================================================ */
 
-import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { StationViz } from "../components/dsp/StationViz";
+import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { Icon, ICONS } from "../components/Icon";
 import {
   libListStations,
@@ -22,7 +16,10 @@ import {
   libCreateStation,
   libDeleteStation,
   libMoodVocabulary,
+  libGetTracksByIds,
+  coverUrl,
   Station,
+  Track,
 } from "../tauri";
 import { player, setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
@@ -47,41 +44,6 @@ type Tone =
   | "tone-paper"
   | "tone-bone";
 
-// ── Wrapper que so renderiza StationViz quando esta no viewport ──
-// Dono unico da moldura .st-feature__visual: o StationViz devolve so o
-// <canvas>, entao visivel e fallback compartilham a mesma moldura.
-function LazyStationViz() {
-  let host!: HTMLDivElement;
-  const [visible, setVisible] = createSignal(true);
-  let obs: IntersectionObserver | null = null;
-
-  onMount(() => {
-    if (typeof IntersectionObserver === "undefined") return;
-    obs = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) setVisible(e.isIntersecting);
-      },
-      { threshold: 0.05 },
-    );
-    obs.observe(host);
-  });
-
-  onCleanup(() => {
-    if (obs) {
-      obs.disconnect();
-      obs = null;
-    }
-  });
-
-  return (
-    <div ref={host} class="st-feature__visual">
-      <Show when={visible()} fallback={<canvas aria-hidden="true" />}>
-        <StationViz />
-      </Show>
-    </div>
-  );
-}
-
 // ── Formata tempo relativo (timestamp Unix em segundos) ──────────
 function formatRelative(ts: number | null): string {
   if (!ts) return "—";
@@ -93,93 +55,47 @@ function formatRelative(ts: number | null): string {
   return `${Math.floor(diff / 604800)} sem`;
 }
 
-// ── Seed chip de uma station (exibe seeds via nome da tone) ──────
-// Exportado para testes (regressao de reatividade sob parent nao-keyed).
-export function SeedChips(props: { station: Station }) {
-  // Exibe nome + icone da station como chips de seed (MVP: 1 chip por station).
-  // Accessor (nao const): FeatureCard vive sob <Show> nao-keyed, entao a
-  // mesma instancia sobrevive a refetch() — os chips precisam re-derivar
-  // quando props.station muda.
-  const chips = (): { label: string; tone: Tone; icon: string }[] => [
-    {
-      label: props.station.desc || props.station.name,
-      tone: (props.station.tone as Tone) || "tone-lavender",
-      icon: props.station.icon || "lucide:radio",
-    },
-  ];
-  return (
-    <For each={chips()}>
-      {(c) => (
-        <span class="st-seed-chip">
-          <span class={`st-seed-chip__cover ${c.tone}`}>
-            {/* @ts-ignore */}
-            <iconify-icon icon={c.icon} noobserver />
-          </span>
-          {c.label}
-        </span>
-      )}
-    </For>
-  );
+// ── Texto que repete o nome não aparece de novo ──────────────────
+// "chill · romance" e "chill romance" são a mesma coisa para quem lê:
+// compara as palavras (sem acento, caixa ou pontuação). Repete = todas as
+// palavras do texto já estão no nome.
+function words(s: string | null | undefined): string[] {
+  return (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
 }
 
-// ── Feature card — primeira station (mais tocada) ────────────────
-function FeatureCard(props: {
-  station: Station;
-  onResume: (id: string) => void;
-}) {
-  return (
-    <section class="st-feature">
-      <div>
-        <Show when={props.station.stats.played > 0}>
-          <div class="st-feature__eyebrow">Most played</div>
-        </Show>
-        <h2 class="st-feature__title">{props.station.name}</h2>
-        <p class="st-feature__hint">
-          {props.station.desc ||
-            "Smart station gerada a partir de seeds e embeddings Qdrant."}
-        </p>
-        <div class="st-feature__seeds">
-          <SeedChips station={props.station} />
-        </div>
-        <button
-          class="st-feature__cta"
-          type="button"
-          onClick={() => props.onResume(props.station.id)}
-        >
-          {/* @ts-ignore */}
-          <iconify-icon icon="lucide:play" noobserver />
-          Play station
-        </button>
-      </div>
-      <LazyStationViz />
-    </section>
-  );
+export function repeatsName(
+  text: string | null | undefined,
+  ...names: (string | null | undefined)[]
+): boolean {
+  const t = words(text);
+  if (t.length === 0) return true;
+  const known = new Set(names.flatMap(words));
+  return t.every((w) => known.has(w));
 }
 
-// ── Station card individual ──────────────────────────────────────
-// Exportado para testes (regressao de reatividade de seedLine).
-export function StationCard(props: {
+/** Palavras do clima de uma mood station, na ordem da query, sem repetir. */
+export function moodWords(query: string | null | undefined): string[] {
+  return Array.from(new Set((query ?? "").split(/\s+/).filter(Boolean)));
+}
+
+// ── Apagar station: 1o clique arma, 2o confirma ──────────────────
+// Exclusao e destrutiva e o card inteiro dispara play: desarma sozinho em
+// 4s pra nao ficar uma bomba engatilhada esperando um clique distraido.
+//
+// O estado guarda o ID da station, nao um booleano: o <For> do grid nao e
+// keyed, entao a MESMA instancia do card recebe outra station quando a lista
+// muda (o refetch pos-delete faz exatamente isso). Com booleano, o card
+// ficava armado e o clique seguinte apagava a station ERRADA.
+function DeleteStationButton(props: {
   station: Station;
-  onResume: (id: string) => void;
   onDelete?: (id: string) => void;
+  class?: string;
 }) {
-  // Sem destructuring de props (quebra reatividade no Solid): station pode
-  // trocar sob a mesma row.
-  const seedLine = () => {
-    if (props.station.kind !== "seed") return `mood · ${props.station.query ?? ""}`;
-    const n = props.station.seed_track_ids.length;
-    return `seed · ${n} ${n === 1 ? "track" : "tracks"}`;
-  };
-
-  // Exclusao e destrutiva e o card inteiro dispara play: 1o clique arma,
-  // 2o confirma. Desarma sozinho em 4s pra nao ficar uma bomba engatilhada
-  // esperando um clique distraido.
-  //
-  // O estado guarda o ID da station, nao um booleano: o <For> do grid nao e
-  // keyed, entao a MESMA instancia do card recebe outra station quando a lista
-  // muda (o refetch pos-delete faz exatamente isso). Com booleano, o card
-  // ficava armado e o clique seguinte apagava a station ERRADA — mesmo motivo
-  // pelo qual isFirst/seedLine derivam de props em vez de const.
   const [armedId, setArmedId] = createSignal<string | null>(null);
   const armed = () => armedId() === props.station.id;
   let disarmTimer: ReturnType<typeof setTimeout> | undefined;
@@ -197,29 +113,199 @@ export function StationCard(props: {
     props.onDelete?.(props.station.id);
   }
 
+  return (
+    <button
+      type="button"
+      class={`st-card__delete${props.class ? ` ${props.class}` : ""}${armed() ? " is-armed" : ""}`}
+      title={armed() ? "Clique de novo para apagar" : "Apagar station"}
+      aria-label={armed() ? `Confirmar exclusao de ${props.station.name}` : `Apagar ${props.station.name}`}
+      onClick={handleDeleteClick}
+    >
+      <Show
+        when={armed()}
+        fallback={
+          /* @ts-ignore */
+          <iconify-icon icon="lucide:trash-2" noobserver />
+        }
+      >
+        Apagar?
+      </Show>
+    </button>
+  );
+}
+
+// ── Leque das capas das faixas-semente ───────────────────────────
+// Até 5 capas, a do centro maior e por cima; as de fora menores e giradas.
+// Exportado para testes.
+const FAN_MAX = 5;
+
+export function SeedMosaic(props: { station: Station }) {
+  const ids = () => props.station.seed_track_ids.slice(0, FAN_MAX);
+  // Uma chamada por destaque. A ordem é a das sementes, não a do backend.
+  const [tracks] = createResource(
+    () => ids().join(","),
+    async (key): Promise<Track[]> => {
+      if (!key) return [];
+      const want = key.split(",");
+      const got = (await libGetTracksByIds(want)) ?? [];
+      const byId = new Map(got.map((t) => [String(t.id), t]));
+      return want.map((id) => byId.get(id)).filter((t): t is Track => !!t);
+    },
+  );
+  // Enquanto carrega, as vagas já ocupam o lugar (sem salto de layout).
+  const slots = (): (Track | null)[] =>
+    tracks.loading ? ids().map(() => null) : (tracks() ?? []);
+  const total = () => props.station.seed_track_ids.length;
+
+  function slotStyle(i: number, n: number) {
+    const c = (n - 1) / 2;
+    const d = Math.abs(i - c);
+    return {
+      "--fan-size": `${Math.round(64 - d * 10)}px`,
+      "--fan-rot": `${((i - c) * 5).toFixed(1)}deg`,
+      "--fan-z": String(10 - Math.round(d * 2)),
+    };
+  }
+
+  const caption = () => {
+    const shown = slots().length;
+    if (total() > shown) return `nasce de ${total()} faixas; aqui, ${shown} delas`;
+    return shown === 1 ? "nasce desta faixa" : `nasce destas ${shown} faixas`;
+  };
+
+  return (
+    <Show
+      when={slots().length > 0}
+      fallback={
+        <div class={`st-fan__solo ${props.station.tone}`} aria-hidden="true">
+          {/* @ts-ignore */}
+          <iconify-icon icon={props.station.icon || "lucide:radio"} noobserver />
+        </div>
+      }
+    >
+      <ul class="st-fan" aria-label="Faixas-semente">
+        <For each={slots()}>
+          {(t, i) => {
+            const label = () => (t ? [t.title, t.artist_name].filter(Boolean).join(" — ") : "");
+            const src = () => (t ? coverUrl(t.album_cover_path) : null);
+            return (
+              <li
+                class={`st-fan__item${src() ? "" : ` ${props.station.tone}`}`}
+                style={slotStyle(i(), slots().length)}
+                title={label() || undefined}
+              >
+                <Show
+                  when={src()}
+                  fallback={
+                    <span
+                      class="st-fan__ph"
+                      role={label() ? "img" : undefined}
+                      aria-label={label() || undefined}
+                    >
+                      {/* @ts-ignore */}
+                      <iconify-icon icon={ICONS.tracks} noobserver />
+                    </span>
+                  }
+                >
+                  {(u) => <img src={u()} alt={label()} loading="lazy" decoding="async" />}
+                </Show>
+              </li>
+            );
+          }}
+        </For>
+      </ul>
+      <p class="st-feature__caption">{caption()}</p>
+    </Show>
+  );
+}
+
+// ── Palavras do clima (mood station) ─────────────────────────────
+export function MoodWords(props: { station: Station }) {
+  const list = () => moodWords(props.station.query || props.station.desc);
+  return (
+    <Show when={list().length > 0}>
+      <ul class="st-feature__words" aria-label="Clima">
+        <For each={list()}>{(w) => <li class="st-feature__word">{w}</li>}</For>
+      </ul>
+      <p class="st-feature__caption">nasce destas palavras</p>
+    </Show>
+  );
+}
+
+// ── Feature card — primeira station (mais tocada) ────────────────
+function FeatureCard(props: {
+  station: Station;
+  onResume: (id: string) => void;
+  onDelete?: (id: string) => void;
+}) {
+  // A dica some quando só repete o nome (ou o clima, que já aparece ao lado).
+  const hint = () => {
+    const d = props.station.desc;
+    return repeatsName(d, props.station.name, props.station.query) ? null : d;
+  };
+  return (
+    <section class="st-feature">
+      {/* Fora da grade, o destaque é o único lugar de apagar esta station. */}
+      <DeleteStationButton
+        station={props.station}
+        onDelete={props.onDelete}
+        class="st-feature__delete"
+      />
+      <div>
+        <Show when={props.station.stats.played > 0}>
+          <div class="st-feature__eyebrow">Most played</div>
+        </Show>
+        <h2 class="st-feature__title">{props.station.name}</h2>
+        <Show when={hint()}>
+          <p class="st-feature__hint">{hint()}</p>
+        </Show>
+        <button
+          class="st-feature__cta"
+          type="button"
+          onClick={() => props.onResume(props.station.id)}
+        >
+          {/* @ts-ignore */}
+          <iconify-icon icon="lucide:play" noobserver />
+          Play station
+        </button>
+      </div>
+      <div class="st-feature__visual">
+        <Show
+          when={props.station.kind === "mood"}
+          fallback={<SeedMosaic station={props.station} />}
+        >
+          <MoodWords station={props.station} />
+        </Show>
+      </div>
+    </section>
+  );
+}
+
+// ── Station card individual ──────────────────────────────────────
+// Exportado para testes (regressao de reatividade de seedLine).
+export function StationCard(props: {
+  station: Station;
+  onResume: (id: string) => void;
+  onDelete?: (id: string) => void;
+}) {
+  // Sem destructuring de props (quebra reatividade no Solid): station pode
+  // trocar sob a mesma row.
+  const seedLine = () => {
+    if (props.station.kind !== "seed") return null;
+    const n = props.station.seed_track_ids.length;
+    return `${n} ${n === 1 ? "faixa-semente" : "faixas-semente"}`;
+  };
+  // A descrição só aparece quando diz algo além do nome.
+  const desc = () =>
+    repeatsName(props.station.desc, props.station.name) ? null : props.station.desc;
+
   // Tocar é um <button> próprio (o nome da station), irmão do de apagar: o
   // card como role=button deixava o apagar aninhado, e filhos de role=button
   // são apresentacionais (o Orca não anunciava o apagar). O ::after do botão
   // estende a área de clique ao card inteiro (extractor-lab.css).
   return (
     <div class="st-card">
-      <button
-        type="button"
-        class={`st-card__delete${armed() ? " is-armed" : ""}`}
-        title={armed() ? "Clique de novo para apagar" : "Apagar station"}
-        aria-label={armed() ? `Confirmar exclusao de ${props.station.name}` : `Apagar ${props.station.name}`}
-        onClick={handleDeleteClick}
-      >
-        <Show
-          when={armed()}
-          fallback={
-            /* @ts-ignore */
-            <iconify-icon icon="lucide:trash-2" noobserver />
-          }
-        >
-          Apagar?
-        </Show>
-      </button>
+      <DeleteStationButton station={props.station} onDelete={props.onDelete} />
       <div class="st-card__top">
         <div class={`st-card__cover ${props.station.tone}`}>
           {/* @ts-ignore */}
@@ -230,14 +316,19 @@ export function StationCard(props: {
             type="button"
             class="st-card__name st-card__play"
             aria-label={`Tocar station ${props.station.name}`}
+            title={props.station.name}
             onClick={() => props.onResume(props.station.id)}
           >
-            {props.station.name}
+            <span class="st-card__name-text">{props.station.name}</span>
           </button>
-          <span class="st-card__seed-line">{seedLine()}</span>
+          <Show when={seedLine()}>
+            <span class="st-card__seed-line">{seedLine()}</span>
+          </Show>
         </div>
       </div>
-      <p class="st-card__desc">{props.station.desc}</p>
+      <Show when={desc()}>
+        <p class="st-card__desc">{desc()}</p>
+      </Show>
       <div class="st-card__stats">
         <span>{props.station.stats.played} played</span>
         {/* match_avg é declarado mas nunca escrito pelo backend: sem slot
@@ -445,7 +536,7 @@ export default function Stations() {
         <div>
           <h1>Stations</h1>
           <p class="view__head-hint">
-            Smart radio — geradas a partir de seeds e embeddings (qdrant).
+            Rádios montadas a partir do que você ouve.
           </p>
         </div>
         <div class="view__stats">
@@ -466,7 +557,7 @@ export default function Stations() {
         <Show
           when={(stations()?.length ?? 0) > 0}
           fallback={
-            <section class="st-feature">
+            <section class="st-feature st-feature--solo">
               <div>
                 <div class="st-feature__eyebrow">
                   <span class="dot" />
@@ -504,13 +595,13 @@ export default function Stations() {
                   </span>
                 </div>
               </div>
-              <LazyStationViz />
             </section>
           }
         >
           <FeatureCard
             station={stations()![0]}
             onResume={handleResume}
+            onDelete={handleDelete}
           />
         </Show>
 
@@ -573,7 +664,8 @@ export default function Stations() {
                 </For>
               }
             >
-              <For each={stations()}>
+              {/* A primeira já está no destaque: a grade lista as demais. */}
+              <For each={stations()!.slice(1)}>
                 {(s) => (
                   <StationCard
                     station={s}
