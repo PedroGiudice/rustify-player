@@ -245,8 +245,13 @@ fn host_port(cfg: &SourcesConfig) -> &str {
 
 const SEM_TOKEN: &str = "token da fila indisponível (veja o status das fontes)";
 
+/// Texto da tela quando a fila não responde. Host e porta ficam só no log:
+/// o dono não interpreta IP, e a mesma frase serve à lista e à busca.
+pub(crate) const OFFLINE_MSG: &str = "A fila da Tidal na VM não respondeu. Sem ela não dá para baixar.";
+
 fn offline_msg(cfg: &SourcesConfig) -> String {
-    format!("fila indisponível (VM fora? {})", host_port(cfg))
+    tracing::warn!(host = %host_port(cfg), "tidal-fila: sem resposta da fila");
+    OFFLINE_MSG.to_string()
 }
 
 /// Lista os jobs e as pastas conhecidas pela fila. Nunca bloqueia além do
@@ -522,6 +527,15 @@ mod tests {
         assert!(endpoint(&c, "SEGREDO123").ends_with("/SEGREDO123/api/fila"));
         assert!(!host_port(&c).contains("SEGREDO123"));
         assert!(!offline_msg(&c).contains("SEGREDO123"));
+    }
+
+    #[test]
+    fn mensagem_de_fila_fora_sem_ip() {
+        let c = cfg();
+        let m = offline_msg(&c);
+        assert!(!m.contains("10.0.0.1"));
+        assert!(!m.contains("8470"));
+        assert_eq!(m, OFFLINE_MSG);
     }
 
     #[test]

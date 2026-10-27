@@ -11,6 +11,7 @@
    no-op depois da primeira vez.
    ============================================================ */
 
+import { createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { slskJobs, onSlskJobs, type DownloadJob } from "../tauri";
 
@@ -35,7 +36,36 @@ const NON_TERMINAL_KINDS = new Set<DownloadJob["state"]["kind"]>([
 // notificam.
 const [board, setBoard] = createStore<{ list: DownloadJob[] }>({ list: [] });
 
+// ── Chegadas (B8): faixas que ficaram prontas desde a última abertura do Crate ──
+// O badge de `activeCount` some quando o job termina; este contador fica até o
+// dono abrir o Crate, para a barra lateral avisar que algo novo entrou no
+// acervo. Jobs já prontos no snapshot do boot não contam (são de antes).
+let knownReady = new Set<string>();
+let hydrated = false;
+const [arrivals, setArrivals] = createSignal<ReadonlySet<string>>(new Set());
+
+/** Ids de job que viraram `ready` agora e não estavam prontos antes. */
+export function newlyReady(known: ReadonlySet<string>, next: DownloadJob[]): string[] {
+  return next.filter((j) => j.state.kind === "ready" && !known.has(j.job_id)).map((j) => j.job_id);
+}
+
+function trackArrivals(next: DownloadJob[]): void {
+  const fresh = newlyReady(knownReady, next);
+  knownReady = new Set(next.filter((j) => j.state.kind === "ready").map((j) => j.job_id));
+  if (!hydrated) { hydrated = true; return; }
+  if (fresh.length) setArrivals((a) => new Set([...a, ...fresh]));
+}
+
+/** Faixas novas no acervo desde a última vez que o Crate foi aberto. */
+export const newArrivalsCount = (): number => arrivals().size;
+
+/** O Crate está aberto: o dono já está vendo as chegadas. */
+export function markArrivalsSeen(): void {
+  if (arrivals().size) setArrivals(new Set<string>());
+}
+
 function setJobsSignal(next: DownloadJob[]): void {
+  trackArrivals(next);
   setBoard("list", reconcile(next, { key: "job_id" }));
 }
 
@@ -89,4 +119,7 @@ export function saveLastDest(dest: string): void {
 export function __resetForTests(): void {
   booted = false;
   setJobsSignal([]);
+  knownReady = new Set();
+  hydrated = false;
+  setArrivals(new Set<string>());
 }

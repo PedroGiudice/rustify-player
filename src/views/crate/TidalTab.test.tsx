@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent, waitFor, screen } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import type { TidalSearch, TidalTrack, TidalPreview, TidalJob, TidalAlbum, TidalArtistPage, Track } from "../../tauri";
 
 vi.mock("../../tauri", async (importOriginal) => {
@@ -263,5 +264,41 @@ describe("TidalTab", () => {
     await waitFor(() => expect(screen.queryByText("Mitsubishi")).toBeNull());
     expect(screen.getByText("EP 25")).toBeTruthy();
     expect(mocks.crateTidalArtist).toHaveBeenCalledTimes(1);
+  });
+
+  it("fila fora com busca que falhou: um banner só, rosa, sem IP; campo e seletor apagados (A2)", async () => {
+    const OFF = "A fila da Tidal na VM não respondeu. Sem ela não dá para baixar.";
+    mocks.crateTidalSearch.mockRejectedValue(OFF);
+    const [load, setLoad] = createSignal<"loading" | "loaded" | "error">("loaded");
+    const refresh = vi.fn();
+    render(() => (
+      <TidalTab jobs={[]} pastas={["Rap & Hip-Hop"]} load={load()} loadError={load() === "error" ? OFF : null} refresh={refresh} tokenMissing={false} />
+    ));
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    // Com a lista carregada, o erro da busca aparece (o 503 "Tidal ocupada" não pode sumir).
+    await waitFor(() => expect(document.querySelectorAll(".crate-banner")).toHaveLength(1));
+    setLoad("error");
+    await waitFor(() => expect(field().disabled).toBe(true));
+    const banners = document.querySelectorAll(".crate-banner");
+    expect(banners).toHaveLength(1);
+    expect(banners[0].getAttribute("data-tone")).toBe("rose");
+    expect(banners[0].textContent).toContain("não respondeu");
+    expect(banners[0].textContent).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
+    expect((document.querySelector(".crate-tidal-select") as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.crateTidalSearch).toHaveBeenCalledTimes(2); // refaz a última busca junto
+  });
+
+  it("busca em andamento marca o campo (barra de progresso) e desmarca ao voltar (A2)", async () => {
+    let solta!: (v: TidalSearch) => void;
+    mocks.crateTidalSearch.mockImplementationOnce(() => new Promise((res) => { solta = res; }));
+    renderTab();
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    await waitFor(() => expect(document.querySelector(".tdl-field")!.getAttribute("data-busy")).toBe("true"));
+    solta(busca("orochi", [faixa(1, "Mitsubishi")]));
+    await waitFor(() => expect(document.querySelector(".tdl-field")!.hasAttribute("data-busy")).toBe(false));
   });
 });
