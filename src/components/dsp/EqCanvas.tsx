@@ -3,14 +3,18 @@
    de spectrum REAL pos-DSP (RTA 1/3 oitava com peak-hold).
 
    Camadas (ordem z de baixo pra cima):
-     1. Grid horizontal hairline
-     2. Linha 0 dB stronger
-     3. Ticks verticais por decada
+     1. Grid horizontal hairline (--line-2)
+     2. Linha 0 dB stronger (--fg-8)
+     3. Ticks verticais por decada (--line-3)
      4. Spectrum bars (bg-ink 22% alpha) — quando overlay+playing
      5. Spectrum peaks (bg-ink 55% alpha, hairline horizontal)
-     6. Fill carbono 5% abaixo da curva
-     7. Stroke carbono 72% da curva
-     8. Dots por banda
+     6. Fill --fg-1 a 5% abaixo da curva
+     7. Stroke --fg-1 a 72% da curva
+     8. Dots por banda (--fg-2 usada, --fg-5 parada, acento na ativa
+        com anel na cor do fundo do quadro)
+
+   Cores vêm dos tokens do tema (lib/canvasInk), lidas no mount e de
+   novo quando o tema ou o acento mudam; nunca por quadro.
 
    Spectrum data: subscribe ao evento Tauri `audio-fft` (60 Hz,
    pos-DSP via PipeWire monitor). Estado vive em refs (Float32Array
@@ -23,6 +27,7 @@ import { sampleCurve, pickDbRange, DB_RANGES } from "./eq-response";
 import { tweaks } from "../../store/tweaks";
 import { player } from "../../store/player";
 import { stepRgbLerp, type Rgb } from "../../lib/rgbLerp";
+import { readCanvasInk, watchCanvasInk, type InkSpec } from "../../lib/canvasInk";
 import { onAudioFft, spectrumSubscribe, spectrumUnsubscribe, type FftPayload } from "../../tauri";
 import {
   ISO_CENTERS,
@@ -80,6 +85,19 @@ function fmtDbLabel(v: number): string {
 
 const DEFAULT_SAMPLE_RATE = 48000;
 
+/** Tokens do quadro. Fallback = valor de repouso do :root (tema claro). */
+const EQ_INK: InkSpec<"grid" | "zero" | "tick" | "curve" | "dotUsed" | "dotIdle" | "accent" | "ring"> = {
+  grid: { token: "--line-2", fallback: "#e5e5e5" },
+  zero: { token: "--fg-8", fallback: "#d4d4d4" },
+  tick: { token: "--line-3", fallback: "#ebebeb" },
+  curve: { token: "--fg-1", fallback: "#171717" },
+  dotUsed: { token: "--fg-2", fallback: "#262626" },
+  dotIdle: { token: "--fg-5", fallback: "#737373" },
+  accent: { token: "--blue-ring", fallback: "#3b82f6" },
+  // O quadro (.eq-canvas-wrap) é --bg-sunken: o anel recorta o ponto dele.
+  ring: { token: "--bg-sunken", fallback: "#fcfcfc" },
+};
+
 function freqToX(hz: number, padX: number, innerW: number): number {
   const u = (Math.log10(hz) - LOG_MIN) / LOG_SPAN;
   return padX + u * innerW;
@@ -111,6 +129,11 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   let inkSampled = false;
   let inkMorphTau = 0.35;
   let inkTick = 0;
+
+  // Tinta estática do quadro (grade, curva, pontos): relida só quando o
+  // tema ou o acento mudam (watchCanvasInk marca sujo; o draw seguinte relê).
+  let ink = {} as Record<keyof typeof EQ_INK, string>;
+  let inkDirty = true; // primeiro draw lê
 
   function sampleInkTarget() {
     const cs = getComputedStyle(document.documentElement);
@@ -302,12 +325,18 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     const mid = h / 2;
     const innerW = w - PAD_X - PAD_X_RIGHT;
 
+    if (inkDirty) {
+      ink = readCanvasInk(canvasEl.parentElement, EQ_INK);
+      inkDirty = false;
+    }
+
     ctx.clearRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
 
     // ── Grid hairline horizontal ──
     // Nos mesmos valores dos rótulos do eixo Y (±R e ±R/2): a posição em
     // px independe da escala R (ver dbToY da curva).
-    ctx.strokeStyle = "rgba(0,0,0,0.05)";
+    ctx.strokeStyle = ink.grid;
     ctx.lineWidth = 1;
     for (const frac of [-1, -0.5, 0.5, 1]) {
       const y = mid - frac * (h / 2) * 0.9 + 0.5;
@@ -317,14 +346,14 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
       ctx.stroke();
     }
     // Linha 0 dB stronger
-    ctx.strokeStyle = "rgba(0,0,0,0.10)";
+    ctx.strokeStyle = ink.zero;
     ctx.beginPath();
     ctx.moveTo(PAD_X, mid + 0.5);
     ctx.lineTo(PAD_X + innerW, mid + 0.5);
     ctx.stroke();
 
     // ── Ticks verticais por decada ──
-    ctx.strokeStyle = "rgba(0,0,0,0.04)";
+    ctx.strokeStyle = ink.tick;
     for (const hz of DECADES) {
       const x = freqToX(hz, PAD_X, innerW) + 0.5;
       ctx.beginPath();
@@ -407,9 +436,11 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
       sampleY[i] = dbToY(sampleDb[i]);
     }
 
-    // Fill carbono 5% (curva fechada até a linha 0 dB). Path direto no
-    // contexto — evita alocar Path2D por frame.
-    ctx.fillStyle = "rgba(23,23,23,0.05)";
+    // Fill --fg-1 a 5% (curva fechada até a linha 0 dB). Path direto no
+    // contexto — evita alocar Path2D por frame. Alpha por globalAlpha: o
+    // token pode vir em qualquer formato de cor.
+    ctx.fillStyle = ink.curve;
+    ctx.globalAlpha = 0.05;
     ctx.beginPath();
     ctx.moveTo(sampleX[0], sampleY[0]);
     for (let i = 1; i <= CURVE_STEPS; i++) ctx.lineTo(sampleX[i], sampleY[i]);
@@ -418,8 +449,9 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     ctx.closePath();
     ctx.fill();
 
-    // Stroke carbono 72% (curva aberta).
-    ctx.strokeStyle = "rgba(23,23,23,0.72)";
+    // Stroke --fg-1 a 72% (curva aberta).
+    ctx.strokeStyle = ink.curve;
+    ctx.globalAlpha = 0.72;
     ctx.lineWidth = 1.4;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -427,6 +459,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     ctx.moveTo(sampleX[0], sampleY[0]);
     for (let i = 1; i <= CURVE_STEPS; i++) ctx.lineTo(sampleX[i], sampleY[i]);
     ctx.stroke();
+    ctx.globalAlpha = 1;
 
     // Dots por banda
     const active = props.activeBand;
@@ -438,19 +471,23 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
       const used = b.gain_db !== 0;
       ctx.beginPath();
       ctx.arc(x, y, isActive ? 4 : used ? 3 : 2, 0, Math.PI * 2);
-      ctx.fillStyle = isActive
-        ? "rgba(37,99,235,1)"
-        : used
-          ? "rgba(23,23,23,0.78)"
-          : "rgba(115,115,115,0.45)";
+      ctx.fillStyle = isActive ? ink.accent : used ? ink.dotUsed : ink.dotIdle;
+      ctx.globalAlpha = isActive || used ? 1 : 0.6;
       ctx.fill();
+      ctx.globalAlpha = 1;
       if (isActive) {
-        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.strokeStyle = ink.ring;
         ctx.lineWidth = 1.4;
         ctx.stroke();
       }
     }
   }
+
+  const stopInkWatch = watchCanvasInk(() => {
+    inkDirty = true;
+    // Parado, nada redesenha sozinho: aplica a tinta nova já.
+    if (rafId === 0) draw();
+  });
 
   onMount(() => {
     if (typeof ResizeObserver !== "undefined") {
@@ -464,6 +501,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
 
   onCleanup(() => {
     observer?.disconnect();
+    stopInkWatch();
     stopLoop();
     dropFftListener();
   });
