@@ -31,6 +31,7 @@ import {
   RELIEF_LINES,
   reliefHasSurface,
   glStatus,
+  glActiveScene,
   resetGlStatus,
   SCENE_HINTS,
   SCENE_KEYS,
@@ -171,6 +172,9 @@ function EngineRow() {
 /** Seleção da cena + o que o motor está entregando de fato (driver e
     fps medidos no app). O fps é o gate da feature: o critério é 60 na
     cmr-auto, e "Medir cenas" mede todas de uma vez. */
+/** Critério do CEO (26/09): média >= 58 fps medidos no app. */
+const GL_FPS_OK = 58;
+
 function GlSection() {
   return (
     <>
@@ -200,8 +204,18 @@ function GlSection() {
         <ReliefControls />
       </Show>
       <Show when={glStatus().ok === true}>
-        <div class="tweaks__hint">
-          {glStatus().renderer} · {glStatus().fps} fps
+        {/* O nome do renderer vem mascarado pelo WebKitGTK ("Apple GPU"
+            até na Intel) e não diz nada: fica só no title, para
+            diagnóstico. Na tela, o que se interpreta: a cena que o motor
+            está desenhando e o fps medido, com o ponto no critério de 58. */}
+        <div class="tweaks__hint tweaks__gl-status" title={glStatus().renderer || undefined}>
+          <span
+            class="tweaks__gl-dot"
+            classList={{ "tweaks__gl-dot--low": glStatus().fps < GL_FPS_OK }}
+            aria-hidden="true"
+          />
+          <span>WebGL · {SCENE_LABELS[glActiveScene() ?? tweaks().bgScene]}</span>
+          <span class="tweaks__gl-fps">{glStatus().fps} fps</span>
         </div>
       </Show>
       <Show when={glStatus().ok === false}>

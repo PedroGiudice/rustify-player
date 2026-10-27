@@ -26,6 +26,7 @@ import {
   DEFAULTS,
   applyTweaks,
   bgKnobs,
+  bgCalm,
   flushTweaks,
   loadTweaks,
   updateTweak,
@@ -442,5 +443,27 @@ describe("estilo do Relevo", () => {
     updateTweak("reliefLines", "ridges");
     expect(glReliefStyle().lines).toBe("ridges");
     resetTweaks();
+  });
+});
+
+describe("reduzir movimento: fundo calmo (A16)", () => {
+  it("preferência ligada e knobs no padrão: velocidade x0,25 e beat-sync desligado", () => {
+    expect(bgCalm(DEFAULTS, true)).toBe(true);
+    const k = bgKnobs(DEFAULTS, true);
+    expect(k.speed).toBeCloseTo(DEFAULTS.bgSpeed * 0.25);
+    expect([k.beatSync, k.beatMode]).toEqual([0, 0]);
+    // As bandas seguem reagindo: calma, não tela morta.
+    expect(k).toMatchObject({ bassGain: DEFAULTS.bgBassGain, midGain: DEFAULTS.bgMidGain });
+  });
+
+  it("knob de movimento tocado: a escolha explícita vence a preferência", () => {
+    expect(bgCalm({ ...DEFAULTS, bgSpeed: 1.5 }, true)).toBe(false);
+    expect(bgCalm({ ...DEFAULTS, bgBeatMode: "pulse" }, true)).toBe(false);
+    expect(bgCalm({ ...DEFAULTS, bgBeatDepth: 0.85 }, true)).toBe(false);
+  });
+
+  it("preferência desligada: nada muda", () => {
+    expect(bgCalm(DEFAULTS, false)).toBe(false);
+    expect(bgKnobs(DEFAULTS, false)).toEqual(bgKnobs(DEFAULTS));
   });
 });

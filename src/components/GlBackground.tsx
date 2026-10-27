@@ -24,18 +24,18 @@
 
 import { onCleanup, onMount } from "solid-js";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
-import { tweaks } from "../store/tweaks";
+import { bgCalm, tweaks } from "../store/tweaks";
 import { startGlHost } from "../gl/host";
 import { glSceneOverride } from "../gl/meta";
 import { readGlPalette } from "../gl/palette";
-import type { GlCfg } from "../gl/signal";
+import { calmGlCfg, type GlCfg } from "../gl/signal";
 
 /** Tempo (ms) sem frame de FFT antes de considerar o stream parado. */
 const FFT_STALE_MS = 250;
 
 function cfgFromTweaks(): GlCfg {
   const t = tweaks();
-  return {
+  const cfg: GlCfg = {
     bassGain: t.bgBassGain,
     midGain: t.bgMidGain,
     trebleGain: t.bgTrebleGain,
@@ -44,6 +44,8 @@ function cfgFromTweaks(): GlCfg {
     beatMode: t.bgBeatMode,
     beatDepth: t.bgBeatDepth,
   };
+  // Reduzir movimento do sistema: versão calma (A16, store/tweaks.ts bgCalm).
+  return bgCalm(t) ? calmGlCfg(cfg) : cfg;
 }
 
 export function GlBackground() {

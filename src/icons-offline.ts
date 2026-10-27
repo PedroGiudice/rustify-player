@@ -6,14 +6,19 @@
    de CDN deixava TODOS os <iconify-icon> invisíveis quando a rede caía.
 
    Importado pelo entry (main.tsx) ANTES do primeiro render. Registra o
-   custom element <iconify-icon> + a coleção lucide inteira (com aliases,
-   ex: more-horizontal -> ellipsis) + o único ícone ph usado (heart-fill),
-   hardcoded para não bundlar a coleção ph inteira (~4 MB).
+   custom element <iconify-icon> + o SUBCONJUNTO Lucide que o código usa
+   (src/icons-subset.json, gerado por scripts/gen-icons.mjs a cada
+   `npm run build`, com aliases, ex: more-horizontal -> ellipsis) + o
+   único ícone ph usado (heart-fill), hardcoded para não bundlar a
+   coleção ph inteira (~4 MB). A coleção Lucide inteira custava 566 KB de
+   JSON no boot para ~60 ícones (A25). Ícone novo: escrever o nome
+   inteiro como texto (`lucide:<nome>`) e rodar o script; nome montado
+   em tempo de execução não entra no subconjunto e vira quadrado vazio.
    ============================================================ */
 
 import "iconify-icon"; // registra o custom element <iconify-icon>
 import { addCollection, addIcon } from "iconify-icon";
-import lucide from "@iconify-json/lucide/icons.json";
+import lucide from "./icons-subset.json";
 
 addCollection(lucide as Parameters<typeof addCollection>[0]);
 

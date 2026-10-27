@@ -1750,6 +1750,22 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   font-size: 11px; color: var(--fg-5); line-height: 1.4;
   margin: -2px 0 2px;
 }
+/* Estado do motor WebGL: cena desenhada + fps medido (A13). O ponto
+   segue o critério de 58 fps; o número é mono tabular porque muda 1x/s. */
+.tweaks__gl-status { display: flex; align-items: center; gap: 6px; }
+.tweaks__gl-dot {
+  width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: var(--green-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent);
+}
+.tweaks__gl-dot--low {
+  background: var(--amber-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-ring) calc(var(--halo-alpha) * 160%), transparent);
+}
+.tweaks__gl-fps {
+  margin-left: auto; color: var(--fg-3);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
 /* Seletor de cena do fundo WebGL: com muitas cenas o segmented quebra
    linha em vez de estourar a largura do painel. */
 .segmented--wrap { display: flex; flex-wrap: wrap; }
