@@ -8,6 +8,7 @@
 import { createSignal, createEffect, untrack } from "solid-js";
 import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
 import { ensureInkContrast } from "../lib/color";
+import { CALM_SPEED } from "../gl/signal";
 import {
   glReliefStyle,
   isSceneKey,
@@ -271,15 +272,53 @@ export interface BgKnobs {
   beatDepth: number;
 }
 
-export function bgKnobs(s: TweaksState): BgKnobs {
+// ── Reduzir movimento (A16) ───────────────────────────────────
+// "Reduzir animações" do sistema deixa o fundo CALMO, não parado: relógio
+// a CALM_SPEED e beat-sync desligado (gl/signal.ts calmGlCfg; o 2D recebe
+// o mesmo pelos bgKnobs). Só vale com os knobs de movimento do fundo no
+// padrão: quem mexeu em Velocidade ou Beat no Tweaks escolheu o movimento,
+// e a escolha explícita vence a preferência do sistema. Sem matchMedia
+// (testes, WebKitGTK que não expõe a preferência) o sinal fica falso e
+// nada muda.
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+function initReducedMotion(): boolean {
+  try {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    const mq = window.matchMedia(REDUCED_MOTION_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    if (typeof mq.addEventListener === "function") mq.addEventListener("change", onChange);
+    return mq.matches;
+  } catch {
+    return false;
+  }
+}
+
+const [reducedMotion, setReducedMotion] = createSignal(false);
+setReducedMotion(initReducedMotion());
+export { reducedMotion, setReducedMotion };
+
+/** Fundo em versão calma: preferência do sistema ligada e knobs de
+    movimento do fundo intocados (no valor padrão). */
+export function bgCalm(s: TweaksState, reduced: boolean = reducedMotion()): boolean {
+  return (
+    reduced &&
+    s.bgSpeed === DEFAULTS.bgSpeed &&
+    s.bgBeatMode === DEFAULTS.bgBeatMode &&
+    s.bgBeatDepth === DEFAULTS.bgBeatDepth
+  );
+}
+
+export function bgKnobs(s: TweaksState, calm: boolean = bgCalm(s)): BgKnobs {
+  const beatMode = calm ? "off" : s.bgBeatMode;
   return {
     bassGain: s.bgBassGain,
     midGain: s.bgMidGain,
     trebleGain: s.bgTrebleGain,
     smoothing: s.bgSmoothing,
-    speed: s.bgSpeed,
-    beatSync: s.bgBeatMode !== "off" ? 1 : 0,
-    beatMode: s.bgBeatMode === "speed" ? 1 : s.bgBeatMode === "pulse" ? 2 : 0,
+    speed: calm ? s.bgSpeed * CALM_SPEED : s.bgSpeed,
+    beatSync: beatMode !== "off" ? 1 : 0,
+    beatMode: beatMode === "speed" ? 1 : beatMode === "pulse" ? 2 : 0,
     beatDepth: s.bgBeatDepth,
   };
 }

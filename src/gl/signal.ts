@@ -86,6 +86,20 @@ export const DEFAULT_GL_CFG: GlCfg = {
   beatDepth: 0.55,
 };
 
+/* ---------- versão calma (prefers-reduced-motion, A16) ----------
+   Calma, não tela morta: o fundo segue respirando com as bandas
+   (swell/midLift/zonas da Tinta), mas devagar e sem nada que salte.
+     - velocidade do relógio x CALM_SPEED — só a DERIVADA muda (o relógio
+       é integrado em stepGlSignal), nunca `uTime * sinal`;
+     - beat-sync desligado: zera o kick (`beat`), o pulso (`pulse`), o
+       empurrão do modo speed e, por consequência, as ondas da Lorem
+       (disparadas pelo pulso). */
+export const CALM_SPEED = 0.25;
+
+export function calmGlCfg(cfg: GlCfg): GlCfg {
+  return { ...cfg, speed: cfg.speed * CALM_SPEED, beatMode: "off" };
+}
+
 export interface GlSignal {
   /** Envelopes por banda, 0..1, já com gain e smoothing. */
   low: number;

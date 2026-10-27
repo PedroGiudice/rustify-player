@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createGlSignal, stepGlSignal, DEFAULT_GL_CFG, type GlCfg } from "./signal";
+import { createGlSignal, stepGlSignal, calmGlCfg, CALM_SPEED, DEFAULT_GL_CFG, type GlCfg } from "./signal";
 
 const cfg = (over: Partial<GlCfg> = {}): GlCfg => ({ ...DEFAULT_GL_CFG, ...over });
 
@@ -268,5 +268,27 @@ describe("reação relativa (swell / pulse / midLift / level)", () => {
     const half = peakWith(cfg({ ...pulseCfg, beatDepth: 0.5 }));
     expect(full).toBeGreaterThan(0.8);
     expect(half).toBeCloseTo(full / 2, 1);
+  });
+});
+
+describe("calmGlCfg (reduzir movimento, A16)", () => {
+  it("relógio a CALM_SPEED e sem kick, pulso nem empurrão de beat", () => {
+    const calm = calmGlCfg(DEFAULT_GL_CFG);
+    expect(calm.speed).toBeCloseTo(DEFAULT_GL_CFG.speed * CALM_SPEED);
+    expect(calm.beatMode).toBe("off");
+    const a = createGlSignal();
+    const b = createGlSignal();
+    // Kick forte alternado: no padrão há beat/pulse; na calma, zero.
+    for (let i = 0; i < 240; i++) {
+      const raw = { low: i % 30 < 3 ? 0.95 : 0.3, mid: 0.4, high: 0.2 };
+      stepGlSignal(a, 1 / 60, true, raw, DEFAULT_GL_CFG);
+      stepGlSignal(b, 1 / 60, true, raw, calm);
+    }
+    expect(b.beat).toBe(0);
+    expect(b.pulse).toBe(0);
+    expect(b.clock).toBeCloseTo(4 * CALM_SPEED, 5);
+    expect(a.clock).toBeGreaterThan(b.clock);
+    // Bandas seguem vivas: não é tela morta.
+    expect(b.low).toBeGreaterThan(0);
   });
 });
