@@ -11,6 +11,9 @@ import type { LyricLine } from "../tauri";
 
 const h = vi.hoisted(() => ({
   libGetLyrics: vi.fn(),
+  libListHistory: vi.fn(),
+  playAlone: vi.fn(),
+  shuffleAll: vi.fn(),
   navigate: vi.fn(),
   setTweaksOpen: vi.fn(),
   shapePrev: vi.fn(),
@@ -45,7 +48,13 @@ vi.mock("../store/contextMenu", () => ({
 
 vi.mock("../tauri", () => ({
   libGetLyrics: (id: string) => h.libGetLyrics(id),
+  libListHistory: (limit: number) => h.libListHistory(limit),
   coverUrl: (p: string | null) => p ?? "",
+}));
+
+vi.mock("../lib/quickPlay", () => ({
+  playAlone: (t: unknown) => h.playAlone(t),
+  shuffleAll: () => h.shuffleAll(),
 }));
 
 vi.mock("../router", () => ({ navigate: h.navigate }));
@@ -56,7 +65,7 @@ vi.mock("../components/CoverArt", () => ({
 
 vi.mock("../components/Icon", () => ({
   Icon: () => <span />,
-  ICONS: { settings: "settings", more: "more", expand: "expand", shrink: "shrink", chevronLeft: "cl", chevronRight: "cr" },
+  ICONS: { settings: "settings", more: "more", expand: "expand", shrink: "shrink", chevronLeft: "cl", chevronRight: "cr", play: "play", shuffle: "shuffle" },
 }));
 
 vi.mock("../components/SpectrumCanvas", () => ({
@@ -101,6 +110,8 @@ beforeEach(() => {
   };
   setPlayer({ currentTrack: null, positionSecs: 0 });
   h.libGetLyrics.mockReset();
+  h.libListHistory.mockReset();
+  h.libListHistory.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -163,6 +174,21 @@ describe("NowPlaying — linhas da letra (np-4, nowplaying-v2)", () => {
     const lines = container.querySelectorAll(".np__lyric");
     expect(lines[0].classList.contains("is-header")).toBe(true);
     expect(lines[1].classList.contains("is-header")).toBe(false);
+  });
+
+  // A3: antes do primeiro verso nada era "próxima" e o card inteiro ficava no
+  // tom mais apagado; as três primeiras linhas já se leem como o que vem.
+  it("letra sincronizada antes do primeiro verso: as três primeiras linhas são próximas", async () => {
+    setPlayer("positionSecs", 0);
+    const { container } = await renderWith([
+      { t: 5, line: "um" },
+      { t: 6, line: "dois" },
+      { t: 7, line: "três" },
+      { t: 8, line: "quatro" },
+    ]);
+    const lines = [...container.querySelectorAll(".np__lyric")];
+    expect(lines.map((l) => l.classList.contains("is-near"))).toEqual([true, true, true, false]);
+    expect(container.querySelector(".np__lyric.is-active")).toBeNull();
   });
 
   it("linha vazia do LRC (interlúdio) aparece como reticências, não como parágrafo vazio", async () => {
@@ -417,5 +443,193 @@ describe("NowPlaying — botão de ajustes do fundo (np-7)", () => {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     expect(scrollTop).toBe(40 + 420);
     body.remove();
+  });
+});
+
+// A3 (26/10/2026): com o WebGL, o card media só contra o preto e a letra
+// ficava a 1,9-2,6:1 quando a Tinta passava rosa atrás do vidro. A medição
+// passa a incluir as tintas que a cena pinta (--bg-ink-rgb e --primary).
+describe("NowPlaying — contraste da letra contra as tintas do WebGL (A3)", () => {
+  const root = document.documentElement;
+  const glassOn = (r: number, g: number, b: number) =>
+    glassSurface({ backdrop: { r, g, b }, alpha: 0.193, brightness: 0.82 });
+
+  afterEach(() => {
+    root.style.removeProperty("--bg-ink-rgb");
+    root.style.removeProperty("--primary");
+    setTweaks({ lyricsVisible: true, bgEngine: "2d" });
+    resetGlStatus();
+  });
+
+  async function cardVar(name: string): Promise<{ get: () => string }> {
+    h.libGetLyrics.mockResolvedValue([{ t: 1, line: "linha" }]);
+    setPlayer({ currentTrack: track("A") });
+    const { container } = render(() => <NowPlaying />);
+    const get = () => (container.querySelector(".np__lyrics-card") as HTMLElement | null)?.style.getPropertyValue(name) ?? "";
+    await waitFor(() => expect(get()).not.toBe(""));
+    return { get };
+  }
+
+  it("mede contra o vidro sobre o ink rosa, não só sobre o preto", async () => {
+    root.style.setProperty("--bg-ink-rgb", "232, 143, 176");
+    root.style.setProperty("--primary", "#2a2a2a");
+    setTweaks({ lyricsVisible: true, bgEngine: "webgl" });
+    setGlStatus({ ok: true, renderer: "x", error: "", fps: 60 });
+    const expected = lyricsInk([glassOn(0, 0, 0), glassOn(232, 143, 176), glassOn(42, 42, 42)]);
+    const { get } = await cardVar("--fg-5");
+    expect(get()).toBe(expected["--fg-5"]);
+    expect(get()).not.toBe(LYRICS_DESIGN_INK["--fg-5"]);
+  });
+
+  it("re-mede quando o store avisa que a capa trocou ink ou accent (rustify:ink-applied)", async () => {
+    root.style.setProperty("--bg-ink-rgb", "40, 40, 40");
+    root.style.setProperty("--primary", "#303030");
+    setTweaks({ lyricsVisible: true, bgEngine: "webgl" });
+    setGlStatus({ ok: true, renderer: "x", error: "", fps: 60 });
+    const { get } = await cardVar("--fg-5");
+    const before = lyricsInk([glassOn(0, 0, 0), glassOn(40, 40, 40), glassOn(48, 48, 48)]);
+    expect(get()).toBe(before["--fg-5"]);
+
+    root.style.setProperty("--primary", "#e88fb0");
+    window.dispatchEvent(new Event("rustify:ink-applied"));
+    const expected = lyricsInk([glassOn(0, 0, 0), glassOn(40, 40, 40), glassOn(232, 143, 176)]);
+    await waitFor(() => expect(get()).toBe(expected["--fg-5"]));
+  });
+});
+
+// A4: o título não passa mais por baixo do card de letra. A posição do card
+// é do dono e não muda; o bloco do título encolhe até a borda do card.
+describe("NowPlaying — o título cede ao card de letra (A4)", () => {
+  type R = { left: number; top: number; width: number; height: number };
+  function mockLayout(np: R) {
+    const rects: Record<string, R> = {
+      np,
+      np__left: { left: 40, top: 32, width: 880, height: 200 },
+      np__meta: { left: 268, top: 32, width: 652, height: 200 },
+    };
+    return vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const key = Object.keys(rects).find((k) => this.classList.contains(k));
+      const r = key ? rects[key] : { left: 0, top: 0, width: 0, height: 0 };
+      return {
+        ...r, x: r.left, y: r.top, right: r.left + r.width, bottom: r.top + r.height, toJSON() {},
+      } as DOMRect;
+    });
+  }
+
+  async function renderCard() {
+    h.libGetLyrics.mockResolvedValue([{ t: 1, line: "linha" }]);
+    setPlayer({ currentTrack: track("A") });
+    const r = render(() => <NowPlaying />);
+    await waitFor(() => expect(r.container.querySelector(".np__lyrics-card")).not.toBeNull());
+    return {
+      left: r.container.querySelector(".np__left") as HTMLElement,
+      card: r.container.querySelector(".np__lyrics-card") as HTMLElement,
+    };
+  }
+
+  it("card salvo em cima do título: o bloco recua até a borda do card, e o card fica onde estava", async () => {
+    const rect = mockLayout({ left: 0, top: 0, width: 1400, height: 900 });
+    localStorage.setItem("rustify-lyrics-card", JSON.stringify({ x: 600, y: 32, w: 380, h: 460 }));
+    const { left, card } = await renderCard();
+    await waitFor(() => expect(left.style.maxWidth).toBe(`${600 - 40 - 28}px`));
+    expect(card.style.left).toBe("600px");
+    expect(card.style.top).toBe("32px");
+    rect.mockRestore();
+  });
+
+  it("card salvo abaixo do título: nada muda", async () => {
+    const rect = mockLayout({ left: 0, top: 0, width: 1400, height: 900 });
+    localStorage.setItem("rustify-lyrics-card", JSON.stringify({ x: 600, y: 300, w: 380, h: 460 }));
+    const { left } = await renderCard();
+    expect(left.style.maxWidth).toBe("");
+    rect.mockRestore();
+  });
+
+  it("coluna do título nunca fica abaixo de 280 px, mesmo com o card colado na capa", async () => {
+    const rect = mockLayout({ left: 0, top: 0, width: 1400, height: 900 });
+    localStorage.setItem("rustify-lyrics-card", JSON.stringify({ x: 120, y: 32, w: 380, h: 460 }));
+    const { left } = await renderCard();
+    await waitFor(() => expect(left.style.maxWidth).toBe(`${268 - 40 + 280}px`));
+    rect.mockRestore();
+  });
+
+  it("primeira abertura com coluna livre: o card nasce à direita do bloco do título", async () => {
+    const rect = mockLayout({ left: 0, top: 0, width: 1400, height: 900 });
+    const { left, card } = await renderCard();
+    expect(card.style.left).toBe(`${1400 - 40 - 380}px`);
+    expect(card.style.top).toBe("32px");
+    expect(left.style.maxWidth).toBe("");
+    rect.mockRestore();
+  });
+
+  it("primeira abertura sem coluna livre: o card nasce embaixo do bloco do título", async () => {
+    const rect = mockLayout({ left: 0, top: 0, width: 1100, height: 900 });
+    const { left, card } = await renderCard();
+    expect(card.style.left).toBe("40px");
+    expect(card.style.top).toBe(`${32 + 200 + 24}px`);
+    expect(left.style.maxWidth).toBe("");
+    rect.mockRestore();
+  });
+
+  it("título longo para em 3 linhas e guarda o texto inteiro no title", () => {
+    h.libGetLyrics.mockResolvedValue([]);
+    const long = "Um título de faixa comprido demais para caber em três linhas grandes";
+    setPlayer({ currentTrack: track("A", { title: long }) });
+    const { container } = render(() => <NowPlaying />);
+    const title = container.querySelector(".np__title") as HTMLElement;
+    expect(title.classList.contains("np__title--long")).toBe(true);
+    expect(title.getAttribute("title")).toBe(long);
+  });
+});
+
+// A11: o inline-flex comia o espaço do JSX ("96kHz", "SinkPipeWire") e o
+// PipeWire aparecia duas vezes (selo acima do título e ficha).
+describe("NowPlaying — ficha técnica (A11)", () => {
+  it("palavras separadas, em português, e PipeWire uma vez só", () => {
+    h.libGetLyrics.mockResolvedValue([]);
+    setPlayer({
+      currentTrack: track("A"),
+      techInfo: { format: "FLAC", bitDepth: 24, sampleRate: 96000, channels: 2 },
+    });
+    const { container } = render(() => <NowPlaying />);
+    const spans = [...container.querySelectorAll(".np__specs > span")].map((s) => s.textContent);
+    expect(spans).toContain("96 kHz");
+    expect(spans).toContain("24 bits");
+    expect(spans).toContain("estéreo");
+    expect(spans).toContain("Saída PipeWire");
+    expect(container.textContent!.match(/PipeWire/g)).toHaveLength(1);
+    setPlayer("techInfo", { format: "—", bitDepth: null, sampleRate: null, channels: null });
+  });
+});
+
+// A20: sem música, o Now Playing dizia "Nothing playing" a 76 px, com "—" em
+// artista e álbum e o selo pulsando, sem caminho nenhum.
+describe("NowPlaying — sem música (A20)", () => {
+  it("diz em português o que fazer e oferece retomar a última faixa ou o aleatório", async () => {
+    const last = track("Z", { title: "Última Ouvida" });
+    h.libListHistory.mockResolvedValue([last]);
+    setPlayer({ currentTrack: null });
+    const { container, findByText } = render(() => <NowPlaying />);
+
+    expect(container.querySelector(".np__title")?.textContent).toBe("Nada tocando");
+    expect(container.textContent).not.toContain("—");
+    expect(container.querySelector(".np__tag-playing")).toBeNull();
+    expect(container.querySelector(".np__specs")).toBeNull();
+
+    const resume = (await findByText("Continuar “Última Ouvida”")).closest("button")!;
+    expect(h.libListHistory).toHaveBeenCalledWith(1);
+    resume.click();
+    expect(h.playAlone).toHaveBeenCalledWith(last);
+
+    (await findByText("Aleatório no acervo")).closest("button")!.click();
+    expect(h.shuffleAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem histórico, só o aleatório", async () => {
+    h.libListHistory.mockResolvedValue([]);
+    setPlayer({ currentTrack: null });
+    const { container, findByText } = render(() => <NowPlaying />);
+    await findByText("Aleatório no acervo");
+    expect(container.querySelectorAll(".np__action")).toHaveLength(1);
   });
 });

@@ -6,7 +6,7 @@
 import { createResource, For, Show } from "solid-js";
 import {
   libSnapshot, libListHistory, libGetAlbums, libRecommendations,
-  libShuffle, libGetTracksByAlbum, coverUrl,
+  libGetTracksByAlbum, coverUrl,
   type Track, type Album,
 } from "../tauri";
 import { setQueue, player } from "../store/player";
@@ -16,6 +16,7 @@ import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { TrackRowList } from "../components/TrackRowList";
 import { fmtDur, relTime } from "../lib/format";
+import { shuffleAll } from "../lib/quickPlay";
 
 export default function Home() {
   const [data] = createResource(async () => {
@@ -36,11 +37,6 @@ export default function Home() {
       recs,
     };
   });
-
-  async function shuffleAll() {
-    const tracks = await libShuffle(50);
-    if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
-  }
 
   async function playAlbum(albumTitle: string) {
     const tracks = await libGetTracksByAlbum(albumTitle);
