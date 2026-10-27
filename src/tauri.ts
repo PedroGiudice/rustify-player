@@ -28,6 +28,17 @@ export interface Track {
       ainda não medida. Ver `lib/quality.ts`. */
   quality_class?: QualityClass | null;
   quality_cutoff_hz?: number | null;
+  /** Só nas faixas que o rádio escolheu (`lib_autoplay_next`, desktop) com a
+      mistura conhecida/descoberta ativa. O S24 não manda. */
+  autoplay_pick?: AutoplayPick | null;
+}
+
+/** `AutoplayPick` de `desktop.rs`: por que o rádio escolheu a faixa. */
+export interface AutoplayPick {
+  kind: "known" | "discovery";
+  /** Vezes ouvida até o fim. */
+  ended: number;
+  liked: boolean;
 }
 
 /** `library_indexer::spectral::QualityClass`. */

@@ -26,6 +26,7 @@ import {
 import { player, setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { startRadioSession, registerSeen } from "../store/radioSession";
+import { relTime } from "../lib/format";
 
 // Lote inicial reduzido (Fase 2 do session-awareness): a station vira fila
 // incremental — o topup (PlayerBar.tsx topUpStation) busca mais conforme a
@@ -79,17 +80,6 @@ function LazyStationViz() {
       </Show>
     </div>
   );
-}
-
-// ── Formata tempo relativo (timestamp Unix em segundos) ──────────
-function formatRelative(ts: number | null): string {
-  if (!ts) return "—";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "agora";
-  if (diff < 3600) return `${Math.floor(diff / 60)} m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} h`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)} d`;
-  return `${Math.floor(diff / 604800)} sem`;
 }
 
 // ── Seed chip de uma station (exibe seeds via nome da tone) ──────
@@ -244,7 +234,11 @@ export function StationCard(props: {
         <Show when={props.station.stats.match_avg != null}>
           <span>{`${Math.round(props.station.stats.match_avg! * 100)}% match`}</span>
         </Show>
-        <span>last: {formatRelative(props.station.stats.last_played_at)}</span>
+        <span>
+          {props.station.stats.last_played_at
+            ? `tocou ${relTime(props.station.stats.last_played_at)}`
+            : "nunca tocou"}
+        </span>
       </div>
     </div>
   );
