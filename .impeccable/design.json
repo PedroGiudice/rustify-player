@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T23:42:01Z",
+  "generatedAt": "2026-10-27T01:58:00Z",
   "title": "Design System: Rustify Player",
   "extensions": {
     "colorMeta": {
@@ -542,6 +542,38 @@
         ],
         "surface": "desktop"
       },
+      "on-scrim": {
+        "role": "neutral",
+        "displayName": "Sobre scrim (texto em capa escurecida)",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "surface": "desktop"
+      },
+      "on-scrim-2": {
+        "role": "neutral",
+        "displayName": "Sobre scrim, secundário",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ],
+        "surface": "desktop"
+      },
       "s24-surface-lowest": {
         "role": "neutral",
         "displayName": "S24: surface lowest",
@@ -944,8 +976,23 @@
     "motion": [
       {
         "name": "ease-out",
-        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
-        "purpose": "Easing padrão de toda transição de estado."
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Easing de entrada e de estado (desacelera); tema troca em motion.ease."
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.4, 0, 1, 1)",
+        "purpose": "Saída: fechar gaveta e paleta (motion.ease-in)."
+      },
+      {
+        "name": "dur-screen",
+        "value": "0.36s",
+        "purpose": "Troca de tela e trilho da letra (motion.screen)."
+      },
+      {
+        "name": "like-pulse",
+        "value": "240ms",
+        "purpose": "Pulso único ao curtir (scale 1 → 1,22 → 1), nunca ao descurtir."
       },
       {
         "name": "dur-fast",
@@ -1230,7 +1277,7 @@
       },
       {
         "name": "A Regra do Piso de 11",
-        "body": "Texto que se lê fica em 11 px ou mais (12,1 px com o zoom 1,1 do dono). Abaixo disso só mono decorativo já existente (Hz do fader, selo de origem do S24), que é dívida, não licença.",
+        "body": "Texto que se lê fica em 11 px ou mais (12,1 px com o zoom 1,1 do dono), via `--fs-label` (11 px) nos rótulos pequenos. Abaixo disso só mono decorativo já existente (Hz do fader, selo de origem do S24), que é dívida, não licença.",
         "section": "typography"
       },
       {
@@ -1250,7 +1297,7 @@
       "`font-variant-numeric: tabular-nums` e `--font-mono` em todo número que muda.",
       "desenhar componente novo com os estados vazio, carregando e erro, e com atalho de teclado no desktop (o Crate vazio é o modelo: ícone de 24 px, título 14/600, dica 13 e a sequência de teclas em `kbd`).",
       "diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).",
-      "`prefers-reduced-motion`: versão calma, não tela morta (as animações `vu`, `pulse` e `sel-bar` já desligam; o fundo tem `Speed = 0`).",
+      "`prefers-reduced-motion`: versão calma, não tela morta. O bloco único no fim do CSS desliga rota, pulsos, VU, gaveta e paleta; o fundo anda a 1/4 da velocidade sem kick (`bgCalm` em `store/tweaks.ts`).",
       "medir contraste no pior ponto da captura real (capa e fundo animado), porque o detector só mede sobre fundo sólido.",
       "verificar a mudança visual na captura do app real (`scripts/impeccable/app_eval.sh capture`), não só no código."
     ],
@@ -1261,8 +1308,8 @@
       "usar sombra para elevar superfície em repouso, nem `backdrop-filter` em tela cheia sobre o canvas animado.",
       "\"corrigir\" o canvas do WebGL para quase-preto: é #000 por decisão.",
       "empilhar mais de 3 tamanhos e 2 pesos numa tela, nem usar sobretítulo espaçado além do eyebrow, mono decorativo em dado que não muda, seta \"→\" em botão, palavra destacada no título ou gradiente roxo.",
-      "texto abaixo de 11 px em tela nova (achado do detector na Home: \"RES\" e rótulos dos hero-tiles abaixo do piso; h1 seguido de h3 na hierarquia de cabeçalhos).",
-      "fixar acento colorido de repouso em tema novo: o repouso ideal é neutro e a cor vem da capa (direção do CEO). O Really Dark em uso ainda declara #997081; alinhar é tarefa do `theme-maker`, não de componente.",
+      "texto abaixo de 11 px em tela nova: use `--fs-label`. (Os achados de 25/10 na Home, \"RES\" e eyebrows, foram corrigidos na leva de 26/10.)",
+      "fixar acento colorido de repouso em tema novo: o repouso ideal é neutro e a cor vem da capa (direção do CEO). O Really Dark passou a #d6d6d6 em 26/10/2026 (CMR-328).",
       "reoferecer o que o CEO descartou: Nébula borrada, texturas finas repetidas, fitas."
     ]
   }

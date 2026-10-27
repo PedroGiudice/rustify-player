@@ -35,6 +35,8 @@ colors:
   err-ring: "#ef4444"
   err-bg: "#fef2f2"
   gl-canvas: "#000000"
+  on-scrim: "#ffffff"
+  on-scrim-2: "rgba(255, 255, 255, 0.88)"
   # S24 (src/mobile/styles/tokens.css): tema escuro fixo do handoff mobile.
   s24-surface-lowest: "#050505"
   s24-surface-base: "#0c0c0c"
@@ -328,6 +330,9 @@ regido por tema.
 - **Tons pastéis** (`--tone-{mint,sky,peach,rose,lavender,butter,bone,paper}-bg/border`):
   fundo e borda de capas sem imagem. No repouso são pastéis claros; o tema
   escuro os re-ancora no canvas (#171c1a …).
+- **Sobre scrim** (`--on-scrim` #ffffff, `--on-scrim-2` 88 %): texto sobre capa
+  escurecida (hero-tile de retomada e de descoberta). Única cor branca literal
+  do sistema, e só sobre scrim preto.
 - **Canvas do fundo WebGL** (`GL_CANVAS` #000000): preto puro fixo, não vem do
   tema (decisão do CEO, 20/09/2026).
 - **Ink do fundo** (`--bg-ink` / `--bg-ink-rgb`, repouso #171717): a cor das
@@ -427,7 +432,7 @@ Números não dançam.
 caixa-alta é o único rótulo aceito, e só acima de um bloco.
 
 **A Regra do Piso de 11.** Texto que se lê fica em 11 px ou mais (12,1 px com
-o zoom 1,1 do dono). Abaixo disso só mono decorativo já existente (Hz do
+o zoom 1,1 do dono), via `--fs-label` (11 px) nos rótulos pequenos. Abaixo disso só mono decorativo já existente (Hz do
 fader, selo de origem do S24), que é dívida, não licença.
 
 ## Layout
@@ -540,7 +545,12 @@ aparece no hover ou no foco de teclado.
 - **Focus:** `--focus-outline` (2 px sólido `--blue-ring`, offset 2 px) para
   teclado; `--ring-focus` (box-shadow 0 0 0 2px) em campos.
 - **Transições:** `background`/`color`/`border-color` em `--dur-base` (150 ms)
-  com `--ease-out`; nunca animar play/pause ou próxima.
+  com `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`, desacelera de verdade);
+  saída (fechar gaveta, paleta) com `--ease-in` (`cubic-bezier(0.4, 0, 1, 1)`);
+  troca de tela e trilho da letra em `--dur-screen` (360 ms). Toque afunda
+  chip (0,96), item de navegação (0,98) e hero-tile (0,995) via `:active`;
+  nunca animar play/pause ou próxima. Curtir pulsa uma vez (1 → 1,22 → 1 em
+  240 ms), só ao curtir.
 
 ### Chips
 - **Style:** pílula, fundo paper, borda `--line-2`, texto carbono 4 em 12/500,
@@ -582,6 +592,10 @@ aparece no hover ou no foco de teclado.
   Com muitas opções, quebra linha (`--wrap`).
 - **Color input** (`.tweaks__color`): swatch com raio pequeno dentro do mesmo
   campo.
+- **Select nativo:** `appearance: none`, fundo paper, texto carbono 1, chevron
+  Lucide de 14 px em carbono 5 (`.select-shell`); `applyTheme` grava
+  `color-scheme` pela luminância do paper, para lista, barras de rolagem e
+  caret seguirem o tema.
 
 ### Navigation
 - **Sidebar (desktop):** paper com borda direita; marca de 22 px e nome 15/600;
@@ -639,8 +653,9 @@ medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
   com atalho de teclado no desktop (o Crate vazio é o modelo: ícone de 24 px,
   título 14/600, dica 13 e a sequência de teclas em `kbd`).
 - **Do** diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).
-- **Do** `prefers-reduced-motion`: versão calma, não tela morta (as animações
-  `vu`, `pulse` e `sel-bar` já desligam; o fundo tem `Speed = 0`).
+- **Do** `prefers-reduced-motion`: versão calma, não tela morta. O bloco único
+  no fim do CSS desliga rota, pulsos, VU, gaveta e paleta; o fundo anda a 1/4
+  da velocidade sem kick (`bgCalm` em `store/tweaks.ts`).
 - **Do** medir contraste no pior ponto da captura real (capa e fundo animado),
   porque o detector só mede sobre fundo sólido.
 - **Do** verificar a mudança visual na captura do app real
@@ -662,11 +677,10 @@ medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
 - **Don't** empilhar mais de 3 tamanhos e 2 pesos numa tela, nem usar
   sobretítulo espaçado além do eyebrow, mono decorativo em dado que não muda,
   seta "→" em botão, palavra destacada no título ou gradiente roxo.
-- **Don't** texto abaixo de 11 px em tela nova (achado do detector na Home:
-  "RES" e rótulos dos hero-tiles abaixo do piso; h1 seguido de h3 na hierarquia
-  de cabeçalhos).
+- **Don't** texto abaixo de 11 px em tela nova: use `--fs-label`. (Os achados
+  de 25/10 na Home, "RES" e eyebrows, foram corrigidos na leva de 26/10.)
 - **Don't** fixar acento colorido de repouso em tema novo: o repouso ideal é
-  neutro e a cor vem da capa (direção do CEO). O Really Dark em uso ainda
-  declara #997081; alinhar é tarefa do `theme-maker`, não de componente.
+  neutro e a cor vem da capa (direção do CEO). O Really Dark passou a #d6d6d6
+  em 26/10/2026 (CMR-328).
 - **Don't** reoferecer o que o CEO descartou: Nébula borrada, texturas finas
   repetidas, fitas.

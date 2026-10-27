@@ -102,6 +102,27 @@ A tela renderizada é avaliada no app REAL da cmr-auto pela ponte
 (`scripts/impeccable/app_eval.sh capture|detect`), não num navegador: procedimento, motivo e
 pontos cegos em `.claude/rules/impeccable.md`.
 
+Avaliação completa de 26/10/2026 (17 comandos em modo proposta, consolidada em
+`docs/contexto/26102026-impeccable-avaliacao.md`: critique 27/40, audit 12/20) e leva 1
+(v0.2.97) com a lista A inteira mais B1/B5/B7/B8/B9/B13/B23. O que ela deixou de persistente:
+- `applyTheme` grava `color-scheme` pela luminância de `--bg-paper`; selects nativos passam por
+  `.select-shell` (`appearance: none` + chevron Lucide). `--ease-out` desacelera de verdade
+  (`cubic-bezier(0.16,1,0.3,1)`); `--ease-in` e `--dur-screen` (tema: `motion.ease-in/screen`);
+  `--fs-label` (11 px) é o piso dos rótulos; `--on-scrim[-2]` é o texto sobre capa escurecida.
+- Bloco único de `prefers-reduced-motion` no fim do `extractor-lab.css`; o fundo fica calmo
+  (`bgCalm` em `store/tweaks.ts`, `CALM_SPEED` em `gl/signal.ts`), não morto.
+- Ícones: o boot registra só `src/icons-subset.json` (65), gerado por `node scripts/gen-icons.mjs`
+  (varre `src/`; teste `icons-subset.test.ts` acusa ícone usado e não listado). Ícone novo no
+  código = rodar o script antes do commit.
+- `lib_autoplay_next` devolve `autoplay_pick` opcional (`known`/`discovery`); o chip da barra diz
+  "rádio · descoberta". `src/lib/format.ts`: `relTime` em PT-BR e `fmtDur` truncando, únicas.
+- Home: descoberta do dia (`libRecommendations` `discover[0]`), card de retomada com estado real,
+  lista com vidro; Stations: leque de capas das sementes (StationViz removido); Now Playing: letra
+  medida contra o pior fundo (`lyricsInk.ts`), título cede ao card, estado vazio com ações
+  (`src/lib/quickPlay.ts`); Crate: um banner só, ponto "fontes ok", chegadas na barra lateral
+  (`newArrivals` em `store/crate.ts`). Pendentes da avaliação: leva 2 (A24 PT-BR, A27 tokens de
+  espaçamento), S24 (A26), B2/B6/B10-B12 (medição ou protótipo antes).
+
 ## TweaksPanel e o hub de customizacao
 
 O painel **Tweaks** (sidebar bottom-left, atalho via evento
@@ -972,6 +993,11 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   (spec §6: NYP/free por `bcdl-free`, pago abre a página e espera a compra).
 
 ## Mover para playlist (CMR-298)
+
+Em 26/10/2026 o CEO mesclou "Rap & Trap Brasileiro" (189 faixas) em "Rap & Hip-Hop" pelo
+mover do app via ponte (lotes de 10, auditoria `move_audit.py` 189/189): a separação por
+gênero segue só como dado (CMR-300, `docs/contexto/14102026-rap-br-*`), não como playlist.
+O S24 fica com os ids antigos dessas 189 até reexportar o manifest.
 
 Playlist = pasta de 1º nível em `~/Music` e o id da faixa é o hash do caminho
 (`path_to_id`): um `mv` cru vira Remove + Create no watcher e o ponto novo nasce
