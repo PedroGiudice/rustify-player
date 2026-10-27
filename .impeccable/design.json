@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-27T01:58:00Z",
+  "generatedAt": "2026-10-27T14:38:32Z",
   "title": "Design System: Rustify Player",
   "extensions": {
     "colorMeta": {
@@ -990,6 +990,26 @@
         "purpose": "Troca de tela e trilho da letra (motion.screen)."
       },
       {
+        "name": "dur-enter",
+        "value": "0.24s",
+        "purpose": "Entrada de painel, troca de faixa (capa, título), card de letra (motion.enter)."
+      },
+      {
+        "name": "dur-press",
+        "value": "0.08s",
+        "purpose": "Toque que afunda chip, item de navegação e hero-tile (motion.press)."
+      },
+      {
+        "name": "stagger-step",
+        "value": "0.03s",
+        "purpose": "Escalonamento de hero-tiles e cards de station na entrada da vista, teto de 7 passos (motion.stagger)."
+      },
+      {
+        "name": "scene-xfade",
+        "value": "1.4s",
+        "purpose": "Dissolução entre cenas do fundo WebGL; 1,8 s do preto ao ligar o motor."
+      },
+      {
         "name": "like-pulse",
         "value": "240ms",
         "purpose": "Pulso único ao curtir (scale 1 → 1,22 → 1), nunca ao descurtir."
@@ -1007,27 +1027,12 @@
       {
         "name": "dur-med",
         "value": "0.18s",
-        "purpose": "Capa que sobe 2 px no hover de card; saída de painel (com ease-in); linha atual e seleção acendendo; capa da grade aparecendo."
-      },
-      {
-        "name": "dur-enter",
-        "value": "0.24s",
-        "purpose": "Entrada de componente: Tweaks, fila, paleta, diálogo, card de letra, troca de conteúdo na troca de faixa (motion.enter)."
-      },
-      {
-        "name": "dur-press",
-        "value": "0.08s",
-        "purpose": "Toque que afunda (:active) em chip, nav, hero-tile e botões quietos; nunca no transporte (motion.press)."
-      },
-      {
-        "name": "stagger-step",
-        "value": "30ms",
-        "purpose": "Escalonamento de hero-tiles e cards de station na entrada da vista, teto de 7 passos (motion.stagger)."
+        "purpose": "Capa que sobe 2 px no hover de card."
       },
       {
         "name": "view-fade",
-        "value": "var(--dur-screen)",
-        "purpose": "Entrada de vista: fade + 6 px para cima, em toda rota."
+        "value": "0.25s",
+        "purpose": "Entrada de vista: fade + 6 px para cima."
       },
       {
         "name": "bg-mode",
@@ -1312,7 +1317,7 @@
       "`font-variant-numeric: tabular-nums` e `--font-mono` em todo número que muda.",
       "desenhar componente novo com os estados vazio, carregando e erro, e com atalho de teclado no desktop (o Crate vazio é o modelo: ícone de 24 px, título 14/600, dica 13 e a sequência de teclas em `kbd`).",
       "diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).",
-      "`prefers-reduced-motion`: versão calma, não tela morta. O bloco único no fim do CSS desliga rota, pulsos, VU, gaveta e paleta; o fundo anda a 1/4 da velocidade sem kick (`bgCalm` em `store/tweaks.ts`).",
+      "`prefers-reduced-motion`: versão calma, não tela morta. O bloco único no fim do CSS desliga rota, pulsos, VU e escalonamento; gaveta, paleta, Tweaks, card de letra e troca de faixa ficam só com opacidade (nada desliza); crossfade da capa, estados e linha atual seguem, porque são só opacidade e cor. O fundo anda a 1/4 da velocidade sem kick (`bgCalm` em `store/tweaks.ts`).",
       "medir contraste no pior ponto da captura real (capa e fundo animado), porque o detector só mede sobre fundo sólido.",
       "verificar a mudança visual na captura do app real (`scripts/impeccable/app_eval.sh capture`), não só no código."
     ],
