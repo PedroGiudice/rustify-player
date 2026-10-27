@@ -25,6 +25,7 @@
    ============================================================ */
 
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { Icon, ICONS } from "../components/Icon";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan,
@@ -281,6 +282,7 @@ export default function Settings() {
                 fallback={<span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)" }}>loading…</span>}
               >
                 {(t) => (
+                  <span class="select-shell">
                   <select
                     class="set-folder-btn"
                     value={activeTheme()}
@@ -291,6 +293,8 @@ export default function Settings() {
                       {(theme) => <option value={theme.filename}>{theme.name}</option>}
                     </For>
                   </select>
+                  <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
+                  </span>
                 )}
               </Show>
             </div>

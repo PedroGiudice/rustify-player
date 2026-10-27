@@ -281,6 +281,7 @@ function DestPicker(props: {
 }) {
   return (
     <>
+      <span class="select-shell select-shell--tidal">
       <select
         class="crate-tidal-select"
         aria-label="Pasta de destino em ~/Music"
@@ -304,6 +305,8 @@ function DestPicker(props: {
         <For each={props.pastas}>{(p) => <option value={p}>{p}</option>}</For>
         <option value="__nova__">outra pasta...</option>
       </select>
+      <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
+      </span>
       <Show when={props.custom}>
         <input
           type="text"

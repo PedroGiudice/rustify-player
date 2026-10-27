@@ -1106,3 +1106,16 @@
 .np .npmeta__link:active {
   color: var(--accent);
 }
+
+/* Reduzir movimento (A16, paridade com o desktop): nada desliza nem
+   quica; folhas e toasts aparecem sem deslocamento. O fundo animado
+   acalma pelo sinal, não por CSS. */
+@media (prefers-reduced-motion: reduce) {
+  .screen { animation: none; }
+  .np,
+  .np .lrail,
+  .np[data-lyr] .cover,
+  .sheet .panel { transition: none; }
+  .toast { transition: opacity 0.18s linear; }
+  .app-bg { transition: opacity 0.18s linear; }
+}

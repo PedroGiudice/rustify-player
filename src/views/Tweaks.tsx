@@ -15,6 +15,7 @@
 import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import { pushEscLayer } from "../lib/escLayers";
+import { Icon, ICONS } from "../components/Icon";
 import {
   tweaks,
   tweaksOpen,
@@ -73,6 +74,7 @@ function FontSelect(props: {
   return (
     <div class="tweaks__row">
       <span class="tweaks__label">{props.label}</span>
+      <span class="select-shell select-shell--block">
       <select
         class="tweaks__select"
         value={tweaks()[props.key]}
@@ -83,6 +85,8 @@ function FontSelect(props: {
           {(f) => <option value={f}>{f}</option>}
         </For>
       </select>
+      <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
+      </span>
     </div>
   );
 }

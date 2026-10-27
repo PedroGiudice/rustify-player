@@ -4,6 +4,8 @@
    Os nomes dos comandos são EXATAMENTE os do backend Rust.
    ============================================================ */
 
+import { cssColorToRgb, relLuminance } from "./lib/color";
+
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -358,6 +360,20 @@ export function clearThemeVars() {
   const root = document.documentElement;
   for (const prop of Object.keys(_themeVars ?? {})) root.style.removeProperty(prop);
   _themeVars = null;
+  root.style.removeProperty("color-scheme");
+}
+
+/** Esquema de cor nativo pela luminância do paper: 'dark' quando o paper
+    contrasta mais com branco do que com preto (luminância < 0,179). É o
+    que faz o WebKitGTK pintar escuros a lista aberta do <select>, as
+    barras de rolagem e o caret num tema escuro. null = cor ilegível. */
+export function colorSchemeFor(paper: string | undefined | null): "dark" | "light" | null {
+  const rgb = paper ? cssColorToRgb(paper) : null;
+  if (!rgb) return null;
+  const h = (n: number) => n.toString(16).padStart(2, "0");
+  const y = relLuminance(`#${h(rgb.r)}${h(rgb.g)}${h(rgb.b)}`);
+  if (y == null) return null;
+  return y < 0.179 ? "dark" : "light";
 }
 
 export function applyTheme(vars: Record<string, string>) {
@@ -372,6 +388,10 @@ export function applyTheme(vars: Record<string, string>) {
   for (const [prop, val] of Object.entries(vars)) {
     root.style.setProperty(prop, val);
   }
+  // Sem --bg-paper declarado, o paper é o do :root (claro): cai no CSS.
+  const scheme = colorSchemeFor(vars["--bg-paper"]);
+  if (scheme) root.style.setProperty("color-scheme", scheme);
+  else root.style.removeProperty("color-scheme");
   // Tema aplicado sobrescreve inline vars que Tweaks/adaptive ink também
   // controlam. O listener em store/tweaks.ts re-asserta os overrides do
   // usuário e re-resolve o ink (usuário > capa > tema). CustomEvent evita

@@ -15,6 +15,7 @@
 
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { StationViz } from "../components/dsp/StationViz";
+import { Icon, ICONS } from "../components/Icon";
 import {
   libListStations,
   libPlayStation,
@@ -339,6 +340,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
         </div>
       </div>
       <div class="st-mood-create__row">
+        <span class="select-shell">
         <select
           class="st-mood-create__genre"
           aria-label="Gênero"
@@ -350,6 +352,8 @@ function MoodStationCreator(props: { onCreated: () => void }) {
             {(g) => <option value={g}>{g}</option>}
           </For>
         </select>
+        <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
+        </span>
         <input
           class="st-mood-create__name"
           type="text"

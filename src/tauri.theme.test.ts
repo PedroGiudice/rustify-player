@@ -60,6 +60,31 @@ describe("applyTheme", () => {
   });
 });
 
+describe("color-scheme pelo paper do tema", () => {
+  it("paper escuro escreve color-scheme dark; claro, light", () => {
+    T.applyTheme({ "--bg-paper": "#0c0c0c" });
+    expect(html().style.getPropertyValue("color-scheme")).toBe("dark");
+    T.applyTheme({ "--bg-paper": "#ffffff" });
+    expect(html().style.getPropertyValue("color-scheme")).toBe("light");
+  });
+
+  it("tema sem paper e volta ao Default deixam o CSS decidir", () => {
+    T.applyTheme({ "--bg-paper": "rgb(12, 12, 12)" });
+    expect(html().style.getPropertyValue("color-scheme")).toBe("dark");
+    T.applyTheme({ "--fg-1": "#eeeeee" });
+    expect(html().style.getPropertyValue("color-scheme")).toBe("");
+    T.applyTheme({ "--bg-paper": "#0c0c0c" });
+    T.clearThemeVars();
+    expect(html().style.getPropertyValue("color-scheme")).toBe("");
+  });
+
+  it("colorSchemeFor ignora valor ilegível", () => {
+    expect(T.colorSchemeFor("var(--x)")).toBeNull();
+    expect(T.colorSchemeFor("#767676")).toBe("light");
+    expect(T.colorSchemeFor("#5a5a5a")).toBe("dark");
+  });
+});
+
 describe("clearThemeVars (volta ao Default)", () => {
   it("remove as vars do tema ativo e preserva o resto do style inline", () => {
     html().style.setProperty("--bg-ink-morph", "4000ms");

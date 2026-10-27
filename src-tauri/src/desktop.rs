@@ -1212,6 +1212,8 @@ fn yaml_key_to_css_prop(key: &str) -> Option<String> {
         "motion-base" => Some("--dur-base"),
         "motion-med" => Some("--dur-med"),
         "motion-ease" => Some("--ease-out"),
+        "motion-ease-in" => Some("--ease-in"),
+        "motion-screen" => Some("--dur-screen"),
         _ => None,
     };
     if let Some(prop) = legacy {
@@ -4766,6 +4768,8 @@ motion:
   base: '180ms'
   med: '260ms'
   ease: 'cubic-bezier(.2,.8,.2,1)'
+  ease-in: 'cubic-bezier(.5,0,1,1)'
+  screen: '320ms'
 
 background:
   ink: '#171717'
@@ -4792,6 +4796,8 @@ typography:
         assert_eq!(vars["--dur-base"], "180ms");
         assert_eq!(vars["--dur-med"], "260ms");
         assert_eq!(vars["--ease-out"], "cubic-bezier(.2,.8,.2,1)");
+        assert_eq!(vars["--ease-in"], "cubic-bezier(.5,0,1,1)");
+        assert_eq!(vars["--dur-screen"], "320ms");
         assert_eq!(vars["--bg-ink"], "#171717");
         assert_eq!(vars["--halo-alpha"], "0.12");
     }

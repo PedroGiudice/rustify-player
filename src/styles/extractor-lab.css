@@ -136,18 +136,38 @@
      hierarquia relativa entre os halos. */
   --halo-alpha: 0.10;
 
-  /* Motion */
-  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Motion. --ease-out desacelera de verdade (expo-out): a antiga
+     cubic-bezier(0.4,0,0.2,1) era a ease-in-out do Material e arrancava
+     devagar. --ease-in só para saídas (gaveta e paleta fechando).
+     Valores estáticos: nunca transition de custom property aqui. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:  cubic-bezier(0.4, 0, 1, 1);
   /* Tematizável (motion.fast no YAML -> --dur-fast, desktop.rs). Era
      consumido sem nunca ser definido: transition com duração inválida. */
   --dur-fast: 0.12s;
   --dur-base: 0.15s;
   --dur-med:  0.18s;
+  /* Movimento de tela (trilho da letra, entradas grandes): teto de 500 ms. */
+  --dur-screen: 0.36s;
+
+  /* Type scale: piso de leitura (Regra do Piso de 11). Rótulos, eyebrows,
+     kbd e rodapés funcionais não descem disso. */
+  --fs-label: 11px;
+
+  /* Texto sobre scrim escuro (capa com gradiente preto por cima): branco
+     literal em dois degraus, independente do tema, porque o scrim é
+     sempre escuro. */
+  --on-scrim:   #ffffff;
+  --on-scrim-2: rgba(255, 255, 255, 0.88);
 
   /* Layout */
   --sidebar-w:   220px;
   --playerbar-h: 72px;
   --titlebar-h:  32px;
+
+  /* Repouso é claro; applyTheme (src/tauri.ts) troca para dark pela
+     luminância do --bg-paper do tema (lista do <select>, scrollbars, caret). */
+  color-scheme: light;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -168,6 +188,37 @@ html, body {
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 input { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
+
+/* Selects nativos no tema. Sem appearance:none o WebKitGTK pinta o
+   combobox claro do GTK (texto do tema sobre caixa branca: 1,04:1 na aba
+   Tidal). O chevron é um ícone Lucide no .select-shell, em --fg-5, para
+   seguir o tema; a lista aberta segue o color-scheme do <html>. */
+select.crate-tidal-select,
+select.tweaks__select,
+select.st-mood-create__genre,
+select.set-folder-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: var(--bg-paper);
+  color: var(--fg-1);
+  padding-right: 28px;
+  cursor: pointer;
+}
+select option { background: var(--bg-paper); color: var(--fg-1); }
+.select-shell {
+  position: relative;
+  display: inline-flex; align-items: center;
+  min-width: 0; max-width: 100%;
+}
+.select-shell > select { flex: 1 1 auto; min-width: 0; }
+.select-shell--block { display: flex; width: 100%; }
+.select-shell__chev {
+  position: absolute; right: 9px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--fg-5);
+  pointer-events: none;
+}
+.select-shell:has(select:disabled) .select-shell__chev { opacity: 0.55; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
@@ -310,7 +361,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   padding: 0 9px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--fg-5);
@@ -551,7 +602,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .hero-tile--has-cover .hero-tile__cta    { background: #ffffff; color: #111111; }
 .hero-tile--has-cover .hero-tile__eyebrow .dot { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); }
 .hero-tile__eyebrow {
-  font-size: 10.5px; font-weight: 700;
+  font-size: var(--fs-label); font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5);
   display: flex; align-items: center; gap: 7px;
@@ -875,8 +926,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .np__lyrics-resize:hover { opacity: 1; }
 
 .np__lyrics-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
-.np__lyrics-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
-.np__lyrics-source { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-6); }
+.np__lyrics-label { font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
+.np__lyrics-source { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-6); }
 .np__lyrics-rail { display: flex; flex-direction: column; gap: 16px; transition: transform 600ms var(--ease-out); }
 .np__lyric {
   font-size: 17px; font-weight: 500;
@@ -1238,9 +1289,13 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   overflow: hidden;
   transform: translateY(-6px) scale(0.99);
   opacity: 0;
+  /* Fechar acelera para fora (--ease-in); abrir desacelera (--ease-out). */
+  transition: transform var(--dur-med) var(--ease-in), opacity var(--dur-base) var(--ease-in);
+}
+.palette-scrim[data-open="true"] .palette {
+  transform: none; opacity: 1;
   transition: transform var(--dur-med) var(--ease-out), opacity var(--dur-base) var(--ease-out);
 }
-.palette-scrim[data-open="true"] .palette { transform: none; opacity: 1; }
 .palette__input-row {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 18px;
@@ -1257,14 +1312,14 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .palette__input::placeholder { color: var(--fg-6); font-weight: 400; }
 .palette__esc {
-  font-family: var(--font-mono); font-size: 10px;
+  font-family: var(--font-mono); font-size: var(--fs-label);
   color: var(--fg-6);
   padding: 1px 6px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-sm);
 }
 .palette__list { overflow-y: auto; padding: 6px 6px 12px; }
-.palette__section { padding: 10px 14px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
+.palette__section { padding: 10px 14px 4px; font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
 .palette__error { padding: 10px 14px 4px; font-family: var(--font-mono); font-size: 11px; color: var(--rose-fg); }
 /* A região viva fica montada vazia. Some só o padding: display:none a
    tiraria da árvore de acessibilidade e a falha voltaria a ser inserção
@@ -1292,12 +1347,12 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .palette__item-text { min-width: 0; }
 .palette__item-title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette__item-sub   { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.palette__item-hint  { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-6); }
+.palette__item-hint  { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-6); }
 .palette__footer {
   border-top: 1px solid var(--line-2);
   padding: 8px 14px;
   display: flex; justify-content: space-between;
-  font-family: var(--font-mono); font-size: 10.5px;
+  font-family: var(--font-mono); font-size: var(--fs-label);
   color: var(--fg-5); gap: 12px; flex-wrap: wrap;
   background: var(--bg-soft);
 }
@@ -1327,10 +1382,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   box-shadow: -16px 0 32px rgba(0,0,0,0.06);
   z-index: 95;
   transform: translateX(100%);
-  transition: transform 280ms var(--ease-out);
+  transition: transform 280ms var(--ease-in);
   display: flex; flex-direction: column;
 }
-.queue-drawer[data-open="true"] { transform: none; }
+.queue-drawer[data-open="true"] { transform: none; transition: transform 280ms var(--ease-out); }
 
 .queue-drawer__head {
   padding: 18px; border-bottom: 1px solid var(--line-2);
@@ -1784,8 +1839,19 @@ html { --glow: 0; }
 .pb-like:active,
 .tog:active,
 .segmented button:active,
-.sm-toggle:active {
+.sm-toggle:active,
+.chip:active {
   transform: scale(0.96);
+  transition: transform 0.08s var(--ease-out, ease-out);
+}
+/* Alvos grandes cedem menos: o tile mal afunda, o item de navegação
+   recua um pouco. Transporte (play, anterior, próxima) fica de fora. */
+.nav-item:active {
+  transform: scale(0.98);
+  transition: transform 0.08s var(--ease-out, ease-out);
+}
+.hero-tile:active {
+  transform: scale(0.995);
   transition: transform 0.08s var(--ease-out, ease-out);
 }
 
@@ -2209,7 +2275,7 @@ html { --glow: 0; }
   gap: 3px;
 }
 .select-control__label {
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2654,7 +2720,7 @@ html { --glow: 0; }
   align-items: center;
 }
 .st-feature__eyebrow {
-  font-size: 10.5px; font-weight: 700;
+  font-size: var(--fs-label); font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--blue-fg);
   display: flex; align-items: center; gap: 7px;
@@ -2877,7 +2943,7 @@ html { --glow: 0; }
   background: transparent;
   color: var(--fg-5);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-label);
   letter-spacing: -0.01em;
   cursor: pointer;
   opacity: 0.35;
@@ -4148,7 +4214,7 @@ html { --glow: 0; }
 .crate-tidal-select:focus { border-color: var(--fg-7); box-shadow: var(--ring-focus); }
 .crate-tidal-input:disabled,
 .crate-tidal-select:disabled { opacity: 0.55; cursor: default; }
-.crate-tidal-select { flex: 0 1 200px; }
+.select-shell--tidal { flex: 0 1 200px; }
 .crate-tidal-input--dest { flex: 0 1 200px; }
 .crate-tidal-form__err { font-size: 12px; color: var(--rose-fg); margin: 0; }
 
@@ -4402,3 +4468,52 @@ html { --glow: 0; }
 }
 .tdl-jobtitle { font-size: 12px; font-weight: 600; color: var(--fg-2); }
 .tdl-jobtitle .tdl-num { margin-left: 6px; }
+
+/* ────────────────────────────────────────────────────────────
+   REDUZIR MOVIMENTO (bloco único, A16). Com a preferência do sistema
+   ligada: nada desliza, pulsa ou quica; o que precisa aparecer aparece
+   por opacidade curta. Os três blocos locais antigos (.npi, eyebrow da
+   Stations, .sel-bar) seguem valendo; este cobre o resto. O fundo
+   animado (WebGL/2D) acalma pelo sinal, não por CSS.
+   ──────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .view,
+  .track-ctx-menu,
+  .np__tag-playing .dot,
+  .st-feature__eyebrow .dot,
+  .sel-bar { animation: none; }
+
+  /* VU do mini player: barras paradas em alturas diferentes. */
+  .np-mini__vu span { animation: none; height: 6px; }
+  .np-mini__vu span:nth-child(2) { height: 10px; }
+  .np-mini__vu span:nth-child(3) { height: 4px; }
+
+  .np__lyrics-rail { transition: none; }
+
+  /* Gaveta e paleta: só opacidade, sem deslocamento. */
+  .queue-drawer { opacity: 0; }
+  .queue-drawer,
+  .queue-drawer[data-open="true"] { transition: opacity var(--dur-base) linear; }
+  .queue-drawer[data-open="true"] { opacity: 1; }
+  .palette,
+  .palette-scrim[data-open="true"] .palette {
+    transform: none;
+    transition: opacity var(--dur-base) linear;
+  }
+
+  /* Fundo: troca focused/ambient sem a rampa de 420 ms no filtro. */
+  .app-bg { transition: opacity var(--dur-base) linear; }
+
+  /* Hover que levanta e toque que afunda viram só tom. */
+  .card:hover .card__cover,
+  .pl-card:hover .pl-card__pin,
+  .pb-btn--primary:hover,
+  .pb-icon-btn:active,
+  .pb-like:active,
+  .tog:active,
+  .segmented button:active,
+  .sm-toggle:active,
+  .chip:active,
+  .nav-item:active,
+  .hero-tile:active { transform: none; }
+}
