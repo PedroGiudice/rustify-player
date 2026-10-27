@@ -9,22 +9,65 @@
    e na cena Relevo , . ciclam o estilo de linhas (reliefLines).
    ============================================================ */
 
-import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
 import { player } from "../store/player";
 import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { useRenderer, useShape } from "../components/SpectrumCanvas";
-import { libGetLyrics, coverUrl, type LyricLine } from "../tauri";
+import { libGetLyrics, libListHistory, coverUrl, type LyricLine, type Track } from "../tauri";
 import { tweaks, setTweaksOpen, updateTweak } from "../store/tweaks";
 import { RELIEF_LINE_KEYS, glEngineWanted, glStatus } from "../gl/meta";
-import { GL_CANVAS } from "../gl/palette";
+import { GL_CANVAS, parseColor, type Rgb } from "../gl/palette";
 import { cssColorToRgb } from "../lib/color";
 import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
 import { navigate } from "../router";
 import { isTypingContext } from "../lib/keyboard";
 import { openTrackMenu } from "../store/contextMenu";
 import { qualityBadge } from "../lib/quality";
+import { playAlone, shuffleAll } from "../lib/quickPlay";
+
+/** Acima disto o título do Now Playing para em 3 linhas (np__title--long). */
+const LONG_TITLE = 40;
+
+/** Now Playing sem faixa (A20): o que fazer em vez de um título vazio. */
+function EmptyMeta() {
+  // Só busca com o Now Playing vazio. initialValue + .latest: ler o resource
+  // pendente ligaria o Suspense do router e derrubaria a view.
+  const [history] = createResource(
+    () => (player.currentTrack ? null : "vazio"),
+    async () => {
+      try { return await libListHistory(1); } catch { return [] as Track[]; }
+    },
+    { initialValue: [] as Track[] },
+  );
+  const last = () => history.latest[0];
+  return (
+    <div class="np__empty">
+      <h1 class="np__title np__title--empty">Nada tocando</h1>
+      <p class="np__empty-hint">Retome a última faixa ou deixe o acervo escolher.</p>
+      <div class="np__empty-actions">
+        <Show when={last()}>
+          {(t) => (
+            <button
+              type="button"
+              class="np__action np__action--primary"
+              title={t().artist_name ? `${t().title} · ${t().artist_name}` : t().title}
+              onClick={() => playAlone(t())}
+            >
+              <Icon name={ICONS.play} size={14} />
+              <span class="np__action-label">Continuar “{t().title}”</span>
+            </button>
+          )}
+        </Show>
+        <button type="button" class="np__action" onClick={() => void shuffleAll()}>
+          <Icon name={ICONS.shuffle} size={14} />
+          <span class="np__action-label">Aleatório no acervo</span>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function NowPlaying() {
   // Selo da capa e ficha técnica: a qualidade medida no conteúdo vence o "24/44" do arquivo.
@@ -135,7 +178,9 @@ export default function NowPlaying() {
 
   // ── Contraste do card: a escala de texto segue a luminância REAL do
   // vidro (lib/lyricsInk.ts). Atrás do card está o canvas do tema no
-  // fundo 2D e o preto fixo no WebGL; alpha/brightness vêm do slider
+  // fundo 2D; no WebGL, o preto fixo E as tintas que a cena pinta por cima
+  // dele (--bg-ink-rgb e --primary, as mesmas de gl/palette.ts): cada tom
+  // passa contra o vidro sobre as três (A3). Alpha/brightness vêm do slider
   // Lyrics glass (ou do tema, ou dos fallbacks do CSS). Re-mede quando o
   // store de Tweaks avisa que escreveu as vars do vidro
   // (rustify:tweaks-applied), e não no signal: a escrita do store roda num
@@ -144,29 +189,42 @@ export default function NowPlaying() {
   // Sem getComputedStyle na medição (cfg-15): durante o arrasto ela roda
   // por quadro, logo depois de o store escrever no :root, e forçaria o
   // recálculo de estilo da árvore. As vars do vidro só existem inline no
-  // <html> (store ou tema; o CSS só tem os fallbacks), e o --bg-canvas
-  // também é inline quando há tema — sem tema vem do :root do CSS, que só
-  // muda com rustify:theme-applied, então é lido uma vez por tema.
+  // <html> (store ou tema; o CSS só tem os fallbacks). --bg-canvas,
+  // --bg-ink-rgb e --primary também são inline quando há tema ou capa —
+  // sem eles vêm do :root do CSS, que só muda com rustify:theme-applied,
+  // então são lidos uma vez por tema.
   const [ink, setInk] = createSignal<Partial<Record<LyricsInkVar, string>>>({});
-  let sheetCanvas: string | null = null;
+  const sheetVars = new Map<string, string>();
   const inlineVar = (name: string) => document.documentElement.style.getPropertyValue(name).trim();
-  function canvasColor(): string {
-    const inline = inlineVar("--bg-canvas");
+  function rootVar(name: string): string {
+    const inline = inlineVar(name);
     if (inline) return inline;
-    sheetCanvas ??= getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim();
-    return sheetCanvas;
+    let v = sheetVars.get(name);
+    if (v === undefined) {
+      v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      sheetVars.set(name, v);
+    }
+    return v;
   }
   function measureInk() {
     const html = document.documentElement;
-    const backdrop = glActive() ? GL_CANVAS : cssColorToRgb(canvasColor());
-    if (!backdrop) { setInk({}); return; }
     const alpha = parseFloat(inlineVar("--lyrics-bg-alpha"));
     const brightness = parseFloat(inlineVar("--lyrics-bg-brightness"));
-    setInk(lyricsInk(glassSurface({
+    const glass = (backdrop: Rgb) => glassSurface({
       backdrop,
       alpha: Number.isFinite(alpha) ? alpha : 0.193,
       brightness: html.dataset.lyricsSolid === "on" ? null : Number.isFinite(brightness) ? brightness : 0.82,
-    })));
+    });
+    if (glActive()) {
+      const paints = ["--bg-ink-rgb", "--primary"]
+        .map((name) => parseColor(rootVar(name)))
+        .filter((c): c is Rgb => c !== null);
+      setInk(lyricsInk([GL_CANVAS, ...paints].map(glass)));
+      return;
+    }
+    const backdrop = cssColorToRgb(rootVar("--bg-canvas"));
+    if (!backdrop) { setInk({}); return; }
+    setInk(lyricsInk(glass(backdrop)));
   }
   let inkRaf = 0;
   const scheduleInk = () => {
@@ -178,16 +236,21 @@ export default function NowPlaying() {
     scheduleInk();
   });
   const onThemeApplied = () => {
-    sheetCanvas = null;
+    sheetVars.clear();
     scheduleInk();
   };
+  // Capa nova muda ink e accent (adaptiveInk/adaptiveAccent): o store avisa
+  // depois de escrever. Só o WebGL mede contra eles.
+  const onInkApplied = () => { if (glActive()) scheduleInk(); };
   onMount(() => {
     window.addEventListener("rustify:tweaks-applied", scheduleInk);
     window.addEventListener("rustify:theme-applied", onThemeApplied);
+    window.addEventListener("rustify:ink-applied", onInkApplied);
     onCleanup(() => {
       cancelAnimationFrame(inkRaf);
       window.removeEventListener("rustify:tweaks-applied", scheduleInk);
       window.removeEventListener("rustify:theme-applied", onThemeApplied);
+      window.removeEventListener("rustify:ink-applied", onInkApplied);
     });
   });
 
@@ -201,29 +264,92 @@ export default function NowPlaying() {
   let railViewportEl!: HTMLDivElement;
   let cardEl!: HTMLElement;
   let npEl!: HTMLDivElement;
+  let leftEl!: HTMLDivElement;
+  let metaEl!: HTMLDivElement;
+
+  const longTitle = () => (player.currentTrack?.title?.length ?? 0) > LONG_TITLE;
+  const cardShown = createMemo(() => !!tweaks().lyricsVisible && lyrics().length > 0);
+
+  // ── O título cede ao card (A4) ──
+  // A posição do card é do dono (salva no arraste); quem se ajusta é o
+  // título: com o card em cima do bloco capa + título, o .np__left encolhe
+  // até a borda do card e o text-wrap: balance quebra o título em linhas.
+  // Mede ao soltar o arraste/resize, no resize do .np e do bloco (troca de
+  // faixa, fonte) e quando o card aparece ou some — nunca por quadro.
+  const LEFT_MAX = 880; // max-width do .np__left em extractor-lab.css
+  const TITLE_GAP = 28; // mesmo respiro do gap capa/título
+  const TITLE_MIN = 280; // largura mínima da coluna do título
+
+  /** Bloco capa + título em coordenadas do .np; `natural` é a largura sem
+      o ajuste (o max-width do CSS ou o que couber no .np). */
+  function titleBlock() {
+    const np = npEl.getBoundingClientRect();
+    const l = leftEl.getBoundingClientRect();
+    const left = l.left - np.left;
+    return {
+      left,
+      top: l.top - np.top,
+      bottom: l.bottom - np.top,
+      metaOffset: metaEl.getBoundingClientRect().left - l.left,
+      natural: Math.min(LEFT_MAX, np.width - 2 * left),
+    };
+  }
+
+  function fitTitle() {
+    if (!npEl || !leftEl || !metaEl) return;
+    const b = box();
+    const t = titleBlock();
+    const covers = cardShown()
+      && b.y < t.bottom && b.y + b.h > t.top
+      && b.x < t.left + t.natural && b.x + b.w > t.left;
+    if (!covers) {
+      leftEl.style.removeProperty("max-width");
+      return;
+    }
+    const room = b.x - t.left - TITLE_GAP;
+    const width = Math.min(LEFT_MAX, Math.max(t.metaOffset + TITLE_MIN, room));
+    leftEl.style.maxWidth = `${Math.round(width)}px`;
+  }
+
+  /** Primeira abertura, sem caixa salva: o card nasce na coluna livre à
+      direita do bloco do título; sem ela, embaixo do bloco; sem espaço
+      nenhum, no canto direito de sempre (e o título cede). */
+  function firstBox(np: DOMRect): Box {
+    const t = titleBlock();
+    const colX = t.left + t.natural + TITLE_GAP;
+    const colW = np.width - t.left - colX;
+    if (colW >= MIN_W) {
+      const w = Math.min(DEFAULT_W, colW);
+      return { x: np.width - t.left - w, y: 32, w, h: DEFAULT_H };
+    }
+    const belowY = t.bottom + 24;
+    const belowH = np.height - belowY - 24;
+    if (belowH >= MIN_H) {
+      return { x: t.left, y: belowY, w: DEFAULT_W, h: Math.min(DEFAULT_H, belowH) };
+    }
+    return { x: Math.max(0, np.width - DEFAULT_W - 40), y: 32, w: DEFAULT_W, h: DEFAULT_H };
+  }
 
   onMount(() => {
-    // Calculo do default — alinhado a direita do np, top 32px (igual ao layout antigo)
     const rect = npEl.getBoundingClientRect();
-    const stored = loadBox();
-    const initial = stored ?? {
-      x: Math.max(0, rect.width - DEFAULT_W - 40),
-      y: 32,
-      w: DEFAULT_W,
-      h: DEFAULT_H,
-    };
-    setBox(clamp(initial, rect.width, rect.height));
+    setBox(clamp(loadBox() ?? firstBox(rect), rect.width, rect.height));
+    fitTitle();
 
     // Reclamp quando o .np muda de tamanho — não só no resize da janela:
     // cinema e sidebar em ícones mudam --sidebar-w sem evento de janela, e
     // o card ficava cortado pelo overflow do .np (alça de resize escondida).
+    // O bloco do título também é observado: título novo ou fonte trocada
+    // mudam a altura dele, e o ajuste do título depende disso.
     const ro = new ResizeObserver(() => {
       const r = npEl.getBoundingClientRect();
       setBox((b) => clamp(b, r.width, r.height));
+      fitTitle();
     });
     ro.observe(npEl);
+    ro.observe(leftEl);
     onCleanup(() => ro.disconnect());
   });
+  createEffect(on(cardShown, () => fitTitle(), { defer: true }));
 
   function startDrag(e: MouseEvent) {
     // Ignora se clicou no botao "x" ou resize handle (caso adicionados depois)
@@ -262,6 +388,7 @@ export default function NowPlaying() {
       document.removeEventListener("mouseup", onUp);
       setInteracting(false);
       saveBox(box());
+      fitTitle();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
@@ -298,33 +425,38 @@ export default function NowPlaying() {
       document.removeEventListener("mouseup", onUp);
       setInteracting(false);
       saveBox(box());
+      fitTitle();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
 
-  // Auto-scroll: centro do RAIL VIEWPORT, nao do card todo (header sticky nao conta)
-  onMount(() => {
-    const apply = () => {
-      const i = activeLine();
-      if (!railEl || !railViewportEl) return;
-      if (i < 0) {
-        // Sem linha ativa (letra não sincronizada, ou faixa sem letra): zera o
-        // deslocamento — senão o rail herda o offset da faixa anterior e o
-        // texto nasce cortado.
-        if (railEl.style.transform) railEl.style.transform = "";
-        return;
-      }
-      const line = railEl.children[i] as HTMLElement | undefined;
-      if (!line) return;
-      const offset = line.offsetTop + line.offsetHeight / 2 - railViewportEl.clientHeight / 2;
-      railEl.style.transform = `translateY(${-Math.max(0, offset)}px)`;
-    };
-    let raf = 0;
-    const tick = () => { apply(); raf = requestAnimationFrame(tick); };
-    raf = requestAnimationFrame(tick);
-    onCleanup(() => cancelAnimationFrame(raf));
-  });
+  // Auto-scroll: centro do RAIL VIEWPORT, nao do card todo (header sticky nao conta).
+  // Mede só quando a linha ativa ou a letra mudam, e quando o viewport muda
+  // de tamanho (ResizeObserver no ref) — antes era um rAF eterno lendo
+  // offsetTop a cada quadro (A22).
+  function placeRail() {
+    if (!railEl || !railViewportEl) return;
+    const i = activeLine();
+    if (i < 0) {
+      // Sem linha ativa (letra não sincronizada, antes do primeiro verso ou
+      // faixa sem letra): zera o deslocamento — senão o rail herda o offset
+      // da faixa anterior e o texto nasce cortado.
+      if (railEl.style.transform) railEl.style.transform = "";
+      return;
+    }
+    const line = railEl.children[i] as HTMLElement | undefined;
+    if (!line) return;
+    const offset = line.offsetTop + line.offsetHeight / 2 - railViewportEl.clientHeight / 2;
+    railEl.style.transform = `translateY(${-Math.max(0, offset)}px)`;
+  }
+  createEffect(on([activeLine, lyrics], placeRail));
+  function attachViewport(el: HTMLDivElement) {
+    railViewportEl = el;
+    const ro = new ResizeObserver(placeRail);
+    ro.observe(el);
+    onCleanup(() => ro.disconnect());
+  }
 
   // Keyboard: [ ] cicla shape e , . cicla renderer (fundo 2D); com o
   // WebGL na cena Relevo, , . ciclam o estilo de linhas (com volta);
@@ -375,7 +507,7 @@ export default function NowPlaying() {
         </div>
 
         <div class="np__chrome">
-          <div class="np__left">
+          <div class="np__left" ref={leftEl!}>
             <Show
               when={player.currentTrack}
               fallback={
@@ -397,72 +529,79 @@ export default function NowPlaying() {
               )}
             </Show>
 
-            <div class="np__meta">
-              <div class="np__tags">
-                <span class="np__tag-playing"><span class="dot" />Now Playing</span>
-                <span class="np__tag-source"><b>Local</b> · PipeWire</span>
-              </div>
-              <h1 class="np__title">{player.currentTrack?.title ?? "Nothing playing"}</h1>
-              {/* Artista e álbum levam à página DA entidade (mesmas rotas do
-                  menu de contexto e da paleta), não à grade genérica; são
-                  <button> pra entrarem na ordem de Tab. */}
-              <Show when={player.currentTrack?.artist_name} fallback={<p class="np__artist">—</p>}>
-                {(name) => (
-                  <button
-                    type="button"
-                    class="np__artist"
-                    onClick={() => navigate(`/artist/${encodeURIComponent(name())}`)}
-                  >
-                    {name()}
-                  </button>
-                )}
-              </Show>
-              <Show when={player.currentTrack?.album_title} fallback={<p class="np__album">—</p>}>
-                {(title) => (
-                  <button
-                    type="button"
-                    class="np__album"
-                    onClick={() => navigate(`/album/${encodeURIComponent(title())}`)}
-                  >
-                    {title()}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
-                  </button>
-                )}
-              </Show>
+            <div class="np__meta" ref={metaEl!}>
+              <Show when={player.currentTrack} fallback={<EmptyMeta />}>
+                <div class="np__tags">
+                  <span class="np__tag-playing"><span class="dot" />Now Playing</span>
+                </div>
+                <h1
+                  class="np__title"
+                  classList={{ "np__title--long": longTitle() }}
+                  title={longTitle() ? player.currentTrack?.title : undefined}
+                >
+                  {player.currentTrack?.title}
+                </h1>
+                {/* Artista e álbum levam à página DA entidade (mesmas rotas do
+                    menu de contexto e da paleta), não à grade genérica; são
+                    <button> pra entrarem na ordem de Tab. */}
+                <Show when={player.currentTrack?.artist_name} fallback={<p class="np__artist">—</p>}>
+                  {(name) => (
+                    <button
+                      type="button"
+                      class="np__artist"
+                      onClick={() => navigate(`/artist/${encodeURIComponent(name())}`)}
+                    >
+                      {name()}
+                    </button>
+                  )}
+                </Show>
+                <Show when={player.currentTrack?.album_title} fallback={<p class="np__album">—</p>}>
+                  {(title) => (
+                    <button
+                      type="button"
+                      class="np__album"
+                      onClick={() => navigate(`/album/${encodeURIComponent(title())}`)}
+                    >
+                      {title()}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
+                    </button>
+                  )}
+                </Show>
 
-              <Show when={player.techInfo.sampleRate}>
-                <div class="np__specs">
-                  <span><b>{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}</b> kHz</span>
-                  {/* Faixa com qualidade medida diferente do arquivo (MP3 disfarçado,
-                      upsample de CD): o rótulo real no lugar do "24-bit". */}
-                  <Show when={badge().title} fallback={<span><b>{player.techInfo.bitDepth}</b>-bit</span>}>
-                    <span title={badge().title ?? undefined}><b>{badge().label}</b></span>
-                  </Show>
-                  <span>{player.techInfo.format}</span>
-                  <span>{player.techInfo.channels === 1 ? "mono" : "stereo"}</span>
-                </div>
-                <div class="np__specs np__specs--line2">
-                  <span>Sink <b>PipeWire</b></span>
-                  <Show
-                    when={!dsp.bypass && (dsp.eq.enabled || dsp.limiter.enabled || dsp.bass.enabled)}
-                    fallback={<span>DSP <b>{dsp.bypass ? "BYPASS" : "OFF"}</b></span>}
-                  >
-                    <span>
-                      DSP{" "}
-                      <b>
-                        {[
-                          dsp.eq.enabled ? "EQ" : null,
-                          dsp.limiter.enabled ? "LIM" : null,
-                          dsp.bass.enabled ? "BASS" : null,
-                        ].filter(Boolean).join(" · ")}
-                      </b>
-                    </span>
-                  </Show>
-                </div>
+                <Show when={player.techInfo.sampleRate}>
+                  <div class="np__specs">
+                    <span><b>{Math.round((player.techInfo.sampleRate ?? 0) / 1000)}</b> kHz</span>
+                    {/* Faixa com qualidade medida diferente do arquivo (MP3 disfarçado,
+                        upsample de CD): o rótulo real no lugar do "24 bits". */}
+                    <Show when={badge().title} fallback={<span><b>{player.techInfo.bitDepth}</b> bits</span>}>
+                      <span title={badge().title ?? undefined}><b>{badge().label}</b></span>
+                    </Show>
+                    <span>{player.techInfo.format}</span>
+                    <span>{player.techInfo.channels === 1 ? "mono" : "estéreo"}</span>
+                  </div>
+                  <div class="np__specs np__specs--line2">
+                    <span>Saída <b>PipeWire</b></span>
+                    <Show
+                      when={!dsp.bypass && (dsp.eq.enabled || dsp.limiter.enabled || dsp.bass.enabled)}
+                      fallback={<span>DSP <b>{dsp.bypass ? "BYPASS" : "OFF"}</b></span>}
+                    >
+                      <span>
+                        DSP
+                        <b>
+                          {[
+                            dsp.eq.enabled ? "EQ" : null,
+                            dsp.limiter.enabled ? "LIM" : null,
+                            dsp.bass.enabled ? "BASS" : null,
+                          ].filter(Boolean).join(" · ")}
+                        </b>
+                      </span>
+                    </Show>
+                  </div>
+                </Show>
               </Show>
             </div>
           </div>
 
-          <Show when={tweaks().lyricsVisible && lyrics().length > 0}>
+          <Show when={cardShown()}>
             <aside
               class="np__lyrics-card np__lyrics-card--floating"
               classList={{ "is-interacting": interacting() }}
@@ -489,17 +628,19 @@ export default function NowPlaying() {
               <div
                 class="np__lyrics-viewport"
                 classList={{ "is-unsynced": !isSynced() }}
-                ref={railViewportEl!}
+                ref={attachViewport}
               >
                 <div class="np__lyrics-rail" ref={railEl!}>
                   <For each={lyrics()}>
                     {(line, i) => {
-                      // Sem linha ativa (a = -1, letra não sincronizada) não
-                      // há "próxima": sem o guarda, a linha 0 virava is-near.
+                      // Sem linha ativa (a = -1) só há "próxima" na letra
+                      // sincronizada antes do primeiro verso: as três primeiras
+                      // linhas já se leem como o que vem (A3). Na letra sem
+                      // sincronismo nenhuma linha é próxima.
                       const base = line.header ? "np__lyric is-header" : "np__lyric";
                       const cls = () => {
                         const a = activeLine();
-                        if (a < 0) return base;
+                        if (a < 0) return isSynced() && i() < 3 ? `${base} is-near` : base;
                         if (i() === a) return `${base} is-active`;
                         if (Math.abs(i() - a) === 1) return `${base} is-near`;
                         return base;

@@ -796,8 +796,6 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   animation: pulse 1.4s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
-.np__tag-source { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
-.np__tag-source b { color: var(--fg-2); font-weight: 600; }
 
 .np__title {
   font-size: clamp(48px, 5.4vw, 76px);
@@ -806,6 +804,19 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   color: var(--fg-1);
   margin: 0 0 8px;
   text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+/* Título longo (mais de 40 caracteres, NowPlaying.tsx): para em 3 linhas,
+   o texto inteiro fica no title. Só nele: o line-clamp exige -webkit-box,
+   que pode desligar o balance no WebKitGTK, e o overflow recortaria os
+   descendentes da última linha (line-height 0,98), daí o respiro embaixo. */
+.np__title--long {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  padding-bottom: 0.1em;
+  margin-bottom: calc(8px - 0.1em);
 }
 /* Artista/álbum são <button> quando há faixa (link pra entidade) e <p>
    no placeholder "—", que não promete clique. */
@@ -835,7 +846,9 @@ button.np__album:focus-visible { color: var(--fg-2); }
   line-height: 1.8;
   font-variant-numeric: tabular-nums;
 }
-.np__specs > span { display: inline-flex; align-items: center; }
+/* inline-flex descarta o espaço do JSX entre <b> e o texto: o gap o devolve
+   ("96 kHz", "Saída PipeWire", "DSP EQ · LIM"). */
+.np__specs > span { display: inline-flex; align-items: center; gap: 0.3em; }
 .np__specs > span + span::before {
   content: ''; display: inline-block;
   width: 3px; height: 3px;
@@ -846,6 +859,34 @@ button.np__album:focus-visible { color: var(--fg-2); }
 .np__specs b { font-weight: 600; color: var(--fg-2); }
 .np__specs em { font-style: normal; font-weight: 600; color: var(--green-fg); }
 .np__specs--line2 { margin-top: 2px; color: var(--fg-5); }
+
+/* Now Playing sem faixa (A20): título no tamanho do h1 de vista, uma dica
+   e duas ações (retomar a última faixa, aleatório no acervo). */
+.np__title--empty {
+  font-size: 22px; line-height: 1.2;
+  letter-spacing: -0.015em;
+  margin: 0 0 6px;
+}
+.np__empty-hint { font-size: 13px; color: var(--fg-5); margin: 0 0 18px; }
+.np__empty-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.np__action {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 36px; max-width: 100%;
+  padding: 0 16px 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-2);
+  background: var(--bg-paper);
+  color: var(--fg-2);
+  font-size: 13px; font-weight: 600;
+  transition: background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out);
+}
+.np__action:hover { border-color: var(--fg-8); background: var(--bg-soft); color: var(--fg-1); }
+.np__action iconify-icon { flex: none; width: 14px; height: 14px; }
+.np__action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np__action--primary { background: var(--fg-1); border-color: var(--fg-1); color: var(--bg-paper); }
+.np__action--primary:hover { background: var(--fg-2); border-color: var(--fg-2); color: var(--bg-paper); }
 
 .np__lyrics-card {
   align-self: stretch;
@@ -902,7 +943,6 @@ button.np__album:focus-visible { color: var(--fg-2); }
   --fg-4: #b6b1a5;
   --fg-5: #8a857a;
   --fg-6: #6f6a60;
-  --fg-7: #565248;
 }
 /* Durante drag/resize, suspende o backdrop-filter — recalcular blur +
    saturate + brightness por cima do spectrum animado a cada frame
@@ -960,12 +1000,15 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 
 .np__lyrics-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
 .np__lyrics-label { font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-5); }
-.np__lyrics-source { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-6); }
-.np__lyrics-rail { display: flex; flex-direction: column; gap: 16px; transition: transform 600ms var(--ease-out); }
+.np__lyrics-source { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-5); }
+.np__lyrics-rail { display: flex; flex-direction: column; gap: 16px; transition: transform var(--dur-screen) var(--ease-out); }
+/* Linha distante em --fg-5 (A3): o --fg-7 é decorativo e ficava a 1,9-2,6:1
+   sobre a Tinta. A escala do card garante 4,5:1 e um degrau visível até a
+   próxima e a ativa (lib/lyricsInk.ts). */
 .np__lyric {
   font-size: 17px; font-weight: 500;
   line-height: 1.28; letter-spacing: -0.012em;
-  color: var(--fg-7);
+  color: var(--fg-5);
   transition: color 400ms var(--ease-out);
   margin: 0;
 }
@@ -976,7 +1019,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .np__lyrics-viewport.is-unsynced .np__lyric { color: var(--fg-2); }
 /* Cabeçalho de seção ([Chorus]): rótulo, não verso (paridade com o mobile). */
 .np__lyrics-rail .np__lyric.is-header {
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 600;
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5);
 }

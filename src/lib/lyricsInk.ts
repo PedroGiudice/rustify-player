@@ -16,11 +16,18 @@
      - superfície clara → a mesma escala espelhada (escura), descendo
        até o piso.
    A cor de desenho fica intocada sempre que já passa.
+
+   Com o fundo WebGL o vidro não tem UMA cor atrás: a cena pinta ink e
+   ink2 sobre o preto (A3, 26/10/2026: medir só contra o preto deixava a
+   letra a 1,9-2,6:1 quando a Tinta passava rosa). O NowPlaying entrega
+   as superfícies plausíveis e cada tom tem de passar contra todas: texto
+   claro se mede contra o vidro mais claro, texto escuro contra o mais
+   escuro.
    ============================================================ */
 
 import { contrastRatio, hexToHsl, hslToHex, relLuminance } from "./color";
 
-export type LyricsInkVar = "--fg-1" | "--fg-2" | "--fg-4" | "--fg-5" | "--fg-6" | "--fg-7";
+export type LyricsInkVar = "--fg-1" | "--fg-2" | "--fg-4" | "--fg-5" | "--fg-6";
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -31,7 +38,6 @@ export const LYRICS_DESIGN_INK: Readonly<Record<LyricsInkVar, string>> = {
   "--fg-4": "#b6b1a5",
   "--fg-5": "#8a857a",
   "--fg-6": "#6f6a60",
-  "--fg-7": "#565248",
 };
 
 /** Piso de contraste contra o vidro, por papel no card. */
@@ -39,10 +45,18 @@ export const LYRICS_MIN_RATIO: Readonly<Record<LyricsInkVar, number>> = {
   "--fg-1": 4.5, // linha ativa (parte do extremo da escala, fica bem acima)
   "--fg-2": 4.5, // letra corrida sem sincronismo
   "--fg-4": 4.5, // próxima linha
-  "--fg-5": 4.5, // rótulo "Lyrics" e cabeçalhos de seção
-  "--fg-6": 3, // fonte ("aligned") e alça de resize
-  "--fg-7": 3, // linhas inativas
+  // Linhas distantes, cabeçalho do card ("Lyrics", "aligned") e de seção.
+  // A linha distante bastaria 3:1, mas divide o tom com rótulos de 11 px.
+  "--fg-5": 4.5,
+  "--fg-6": 3, // alça de resize (não é texto)
 };
+
+/** Tons das linhas da letra, do mais apagado ao mais forte. */
+const LINE_CHAIN: readonly LyricsInkVar[] = ["--fg-5", "--fg-4", "--fg-1"];
+/** Ordem de cálculo: a cadeia das linhas primeiro, de baixo para cima. */
+const INK_ORDER: readonly LyricsInkVar[] = ["--fg-5", "--fg-4", "--fg-1", "--fg-2", "--fg-6"];
+/** Distância mínima de contraste entre degraus da cadeia (razão). */
+const LINE_STEP = 1.2;
 
 /** Tinta do vidro (extractor-lab.css, .np__lyrics-card--floating). */
 export const LYRICS_TINT: Readonly<Rgb> = { r: 15, g: 17, b: 16 };
@@ -86,23 +100,39 @@ function walk(h: number, s: number, l: number, dir: 1 | -1, baseY: number, targe
   }
 }
 
-/** Escala de texto do card para uma superfície de vidro. */
-export function lyricsInk(surface: Rgb): Record<LyricsInkVar, string> {
-  const surfaceHex = toHex(surface);
-  const baseY = relLuminance(surfaceHex) ?? 0;
-  const lightText = baseY < 0.18;
+/** Escala de texto do card para uma superfície de vidro, ou para várias
+    (fundo WebGL): o lado do texto sai da mais escura (havendo vidro
+    escuro, o texto é claro) e o piso se mede contra a que mais o aperta. */
+export function lyricsInk(surfaces: Rgb | Rgb[]): Record<LyricsInkVar, string> {
+  const list = Array.isArray(surfaces) ? surfaces : [surfaces];
+  const hexes = list.map(toHex);
+  const ys = hexes.map((h) => relLuminance(h) ?? 0);
+  const lightText = Math.min(...ys) < 0.18;
+  // Texto claro perde contraste no vidro mais claro; escuro, no mais escuro.
+  const pick = ys.indexOf(lightText ? Math.max(...ys) : Math.min(...ys));
+  const surfaceHex = hexes[pick];
+  const baseY = ys[pick];
   const surfaceL = hexToHsl(surfaceHex)?.l ?? 0;
   const out = {} as Record<LyricsInkVar, string>;
-  for (const v of Object.keys(LYRICS_DESIGN_INK) as LyricsInkVar[]) {
+  const ratioOf = (hex: string) => contrastRatio(relLuminance(hex) ?? 0, baseY);
+  // Distante → próxima → ativa: com o piso de 4,5:1 nas três, o vidro claro
+  // as achatava no mesmo tom (a próxima chegava a ficar abaixo da distante).
+  // Cada degrau da cadeia mira pelo menos LINE_STEP vezes o anterior.
+  let prev = 0;
+  for (const v of INK_ORDER) {
+    const target = LINE_CHAIN.includes(v)
+      ? Math.max(LYRICS_MIN_RATIO[v], prev * LINE_STEP)
+      : LYRICS_MIN_RATIO[v];
     const hsl = hexToHsl(LYRICS_DESIGN_INK[v])!;
     if (lightText) {
-      out[v] = walk(hsl.h, hsl.s, hsl.l, 1, baseY, LYRICS_MIN_RATIO[v]);
+      out[v] = walk(hsl.h, hsl.s, hsl.l, 1, baseY, target);
     } else {
       // Espelho da escala, começando sempre do lado escuro da superfície
       // (um tom claro espelhado podia nascer mais claro que o vidro).
       const start = Math.max(0, Math.min(1 - hsl.l, surfaceL - 0.02));
-      out[v] = walk(hsl.h, hsl.s, Math.round(start * 100) / 100, -1, baseY, LYRICS_MIN_RATIO[v]);
+      out[v] = walk(hsl.h, hsl.s, Math.round(start * 100) / 100, -1, baseY, target);
     }
+    if (LINE_CHAIN.includes(v)) prev = ratioOf(out[v]);
   }
   return out;
 }

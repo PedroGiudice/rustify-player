@@ -429,7 +429,7 @@ function applyAccentResolved(s: TweaksState = state()) {
   const a = s.adaptiveAccent ? _adaptiveAccent : null;
   if (a) {
     const { r, g, b } = hexToRgb(a.accent);
-    writeVar("--primary", a.accent);
+    if (writeVar("--primary", a.accent)) announceInk();
     writeVar("--primary-container", a.container);
     writeVar("--primary-fixed-dim", a.container);
     writeVar("--on-primary", a.on);
@@ -440,7 +440,16 @@ function applyAccentResolved(s: TweaksState = state()) {
     return;
   }
   // Restaura o accent do tema ativo; sem tema, remove (caem os :root).
-  for (const name of ACCENT_VARS) writeThemeVar(name, null);
+  for (const name of ACCENT_VARS) {
+    if (writeThemeVar(name, null) && name === "--primary") announceInk();
+  }
+}
+
+/** Aviso para quem MEDE contra as tintas do fundo (o card de letras com o
+    WebGL: a cena pinta --bg-ink e --primary atrás do vidro). Só quando o
+    valor mudou de fato: uma medição por troca de capa, nunca por quadro. */
+function announceInk() {
+  window.dispatchEvent(new Event("rustify:ink-applied"));
 }
 
 /** Piso de visibilidade (não-texto WCAG). O deriveInk da capa mira 4:1 por
@@ -478,7 +487,7 @@ function applyInkResolved(s: TweaksState = state()) {
   const target = resolveInk(s);
   const to = hexToRgb(target);
   writeVar("--bg-ink", target);
-  writeVar("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`);
+  if (writeVar("--bg-ink-rgb", `${to.r}, ${to.g}, ${to.b}`)) announceInk();
 }
 
 /** Tudo de que o ink resolvido depende. applyTweaks só re-resolve quando

@@ -58,11 +58,17 @@ vi.mock("../tauri", () => ({
   getState: vi.fn().mockResolvedValue({ current_track: null, current_library_track: null, is_playing: false }),
   getTrackColor: vi.fn().mockResolvedValue(""),
   libGetLyrics: vi.fn().mockResolvedValue([]),
+  libListHistory: vi.fn().mockResolvedValue([]),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
 vi.mock("../router", () => ({
   navigate: vi.fn(),
+}));
+
+vi.mock("../lib/quickPlay", () => ({
+  playAlone: vi.fn(),
+  shuffleAll: vi.fn(),
 }));
 
 vi.mock("../components/CoverArt", () => ({
