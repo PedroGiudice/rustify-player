@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { startGlHost } from "./host";
+import { INK_TAU, inkMorphTau, startGlHost } from "./host";
 import { glActiveScene, glStatus, resetGlStatus, setGlActiveScene, type SceneKey } from "./meta";
 import { DEFAULT_GL_CFG } from "./signal";
 import type { GlPalette } from "./palette";
@@ -99,5 +99,17 @@ describe("startGlHost", () => {
     host(canvas, () => "relief");
     fire("webglcontextlost");
     expect(glStatus()).toMatchObject({ ok: false, error: expect.stringMatching(/perdido/) });
+  });
+});
+
+describe("inkMorphTau: o tau do morph de cor segue --bg-ink-morph", () => {
+  it("valor anunciado pelo ciclo da paleta vale; ausente ou absurdo cai no padrão", () => {
+    expect(inkMorphTau(3.5)).toBe(3.5); // ciclo da paleta (lib/adaptiveInk.ts)
+    expect(inkMorphTau(null)).toBe(INK_TAU);
+    expect(inkMorphTau(undefined)).toBe(INK_TAU);
+    expect(inkMorphTau(0)).toBe(INK_TAU);
+    expect(inkMorphTau(-1)).toBe(INK_TAU);
+    expect(inkMorphTau(Number.NaN)).toBe(INK_TAU);
+    expect(inkMorphTau(4000)).toBe(INK_TAU); // "4000ms" lido por parseFloat
   });
 });

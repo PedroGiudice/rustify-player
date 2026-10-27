@@ -43,6 +43,9 @@
      cfg=ceo|default
                   cfg do sinal no replay: ceo (padrão, a que o CEO usa)
                   ou os defaults do app. Sem replay, sempre os defaults.
+     xfade        mede cada cena COM a dissolução de troca de cena ativa
+                  o quadro inteiro (retrato da cena anterior por cima,
+                  gl/engine.ts): o custo extra da transição, por cena.
 
    O shot e a fração de pixels acesos saem de um quadro num instante
    FIXO do sinal simulado (SHOT_T), igual para todas as cenas e
@@ -206,6 +209,7 @@ async function run(): Promise<void> {
   const q = QS;
   const only = q.get("scenes")?.split(",").filter(Boolean);
   const wantFull = q.has("full");
+  const xfade = q.has("xfade");
   const shots = q.has("shots");
   const settle = Math.max(0, Math.min(60, Number(q.get("settle") ?? 0) || 0));
   const reliefQ = q.get("relief");
@@ -298,7 +302,7 @@ async function run(): Promise<void> {
     ua: navigator.userAgent,
     renderer: "",
     size: `${W}x${H}`,
-    method: `${WARM} de aquecimento + ${BATCHES}x${PER_BATCH} quadros, readPixels por lote; ms = mediana dos lotes`,
+    method: `${WARM} de aquecimento + ${BATCHES}x${PER_BATCH} quadros, readPixels por lote; ms = mediana dos lotes${q.has("xfade") ? "; com a dissolução ativa" : ""}`,
     results: [],
   };
   if (replay)
@@ -313,7 +317,7 @@ async function run(): Promise<void> {
   canvas.height = H;
   let engine: GlEngine;
   try {
-    engine = new GlEngine(canvas, { scenes: registry });
+    engine = new GlEngine(canvas, { scenes: registry, fadeTimeScale: xfade ? 1e-6 : 1 });
   } catch (e) {
     out.error = e instanceof Error ? e.message : String(e);
     await finish(out);
@@ -326,6 +330,18 @@ async function run(): Promise<void> {
   const one = new Uint8Array(4);
   const full = new Uint8Array(W * H * 4);
 
+  // xfade: uma cena anterior desenhada (o retrato sai dela) e, a partir
+  // daí, toda cena entra com setScene(…, true) — o véu não termina.
+  if (xfade && plan.length) {
+    const prev = SCENE_KEYS.find((k) => k !== plan[0].key) ?? plan[0].key;
+    try {
+      engine.setScene(prev as SceneKey);
+      engine.frame(createGlSignal(), DT);
+    } catch (e) {
+      log(`  xfade: cena anterior ${prev} falhou: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   for (const { key, label, relief, shot } of plan) {
     const r: SceneResult = { key, label, ms: null, min: null, max: null, out: "", lit: null, glError: 0, error: null };
     if (relief) r.variant = variantName(relief);
@@ -336,7 +352,7 @@ async function run(): Promise<void> {
     // (que absorve a compilação da variante nova).
     setGlReliefOverride(relief ?? null);
     try {
-      engine.setScene(key as SceneKey);
+      engine.setScene(key as SceneKey, xfade);
     } catch (e) {
       r.error = e instanceof Error ? e.message : String(e);
       log(`  ERRO: ${r.error}`);
