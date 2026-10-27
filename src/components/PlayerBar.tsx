@@ -37,6 +37,7 @@ import { QUEUE_EVENT } from "./QueueDrawer";
 import { navigate } from "../router";
 import { describeFile, qualityBadge } from "../lib/quality";
 import { fmtDur } from "../lib/format";
+import { createSwapKey } from "../lib/motion";
 
 // Re-export para que outros call-sites possam importar daqui.
 export { CMD_PALETTE_EVENT };
@@ -468,6 +469,10 @@ export function PlayerBar() {
   // isso (B7). Sem autoplay_pick (seed, camadas 2/3, S24): "rádio" puro.
   const srcPick = () =>
     player.queueSource?.kind === "radio" ? player.currentTrack?.autoplay_pick ?? null : null;
+  // Troca de faixa calma: título/artista e pílula aparecem por opacidade
+  // (data-swap). Em rajada de pulos, corte seco. Os botões não animam.
+  const swapKey = createSwapKey(() => player.currentTrack?.id);
+
   const srcLabel = () =>
     srcPick()?.kind === "discovery" ? "rádio · descoberta" : queueSourceLabel(player.queueSource?.kind);
   const srcTitle = () =>
@@ -496,12 +501,14 @@ export function PlayerBar() {
               size="sm"
               class="pb-cover"
               style={{ width: "44px", height: "44px" }}
+              crossfade
             />
           )}
         </Show>
 
         <div
           class="pb-meta"
+          data-swap={swapKey()}
           onClick={() => navigate("/now-playing")}
           onContextMenu={(e) => {
             // Mesmo menu Solid das linhas de faixa e do "More" do Now
@@ -679,6 +686,7 @@ export function PlayerBar() {
         <Show when={player.techInfo.format && player.techInfo.format !== "—"}>
           <div
             class="pb-tech"
+            data-swap={swapKey()}
             classList={{ "pb-tech--lossy": badge().lossy, "pb-tech--unmeasured": badge().unmeasured }}
             id="pb-tech"
             title={techTitle()}

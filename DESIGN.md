@@ -546,11 +546,27 @@ aparece no hover ou no foco de teclado.
   teclado; `--ring-focus` (box-shadow 0 0 0 2px) em campos.
 - **Transições:** `background`/`color`/`border-color` em `--dur-base` (150 ms)
   com `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`, desacelera de verdade);
-  saída (fechar gaveta, paleta) com `--ease-in` (`cubic-bezier(0.4, 0, 1, 1)`);
-  troca de tela e trilho da letra em `--dur-screen` (360 ms). Toque afunda
-  chip (0,96), item de navegação (0,98) e hero-tile (0,995) via `:active`;
-  nunca animar play/pause ou próxima. Curtir pulsa uma vez (1 → 1,22 → 1 em
-  240 ms), só ao curtir.
+  toda transição do CSS declara a curva (sem curva o navegador usa `ease`).
+  Toque afunda chip (0,96), item de navegação (0,98) e hero-tile (0,995) via
+  `:active` em `--dur-press` (80 ms); nunca animar play/pause, anterior,
+  próxima nem seek. Curtir pulsa uma vez (1 → 1,22 → 1 em 240 ms), só ao
+  curtir.
+- **Movimento (vocabulário único, 27/10/2026):** só `opacity` e `transform`.
+  Vista entra em `--dur-screen` (360 ms, sobe 6 px) em toda rota. Painel
+  (Tweaks, fila, paleta, diálogo Mover, card de letra) entra em `--dur-enter`
+  (240 ms, `--ease-out`) e sai em `--dur-med` (180 ms, `--ease-in`): sai mais
+  rápido do que entra; paleta e Tweaks ficam montados e invisíveis
+  (`visibility`) para a saída animar. Troca de faixa anima o CONTEÚDO, nunca o
+  controle: capa com crossfade (a anterior por baixo até a nova carregar),
+  título/artista e pílula técnica aparecendo em 240 ms (`data-swap`), só se a
+  troca anterior foi há 1,5 s ou mais (`lib/motion.ts`); em rajada de pulos,
+  corte seco. Faixa atual e seleção acendem a borda de 2 px que toda linha já
+  tem (transparente), sem empurrar o conteúdo. Aba ativa abre o sublinhado do
+  centro. Estado vazio, erro e aviso aparecem por opacidade (180 ms); capa
+  das grades aparece por opacidade quando carrega. Escalonamento só em
+  conjunto pequeno e fixo na entrada da vista (hero-tiles, cards de station,
+  `--stagger-step` 30 ms, teto de 7 passos); lista de faixas nunca escalona.
+  Tema troca as durações em `motion.fast/base/med/screen/enter/press/stagger`.
 
 ### Chips
 - **Style:** pílula, fundo paper, borda `--line-2`, texto carbono 4 em 12/500,
@@ -654,8 +670,11 @@ medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
   título 14/600, dica 13 e a sequência de teclas em `kbd`).
 - **Do** diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).
 - **Do** `prefers-reduced-motion`: versão calma, não tela morta. O bloco único
-  no fim do CSS desliga rota, pulsos, VU, gaveta e paleta; o fundo anda a 1/4
-  da velocidade sem kick (`bgCalm` em `store/tweaks.ts`).
+  no fim do CSS desliga rota, pulsos, VU e escalonamento; gaveta, paleta,
+  Tweaks, card de letra e troca de faixa ficam só com opacidade (nada
+  desliza); crossfade da capa, estados e linha atual seguem, porque são só
+  opacidade e cor. O fundo anda a 1/4 da velocidade sem kick (`bgCalm` em
+  `store/tweaks.ts`).
 - **Do** medir contraste no pior ponto da captura real (capa e fundo animado),
   porque o detector só mede sobre fundo sólido.
 - **Do** verificar a mudança visual na captura do app real

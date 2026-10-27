@@ -62,6 +62,11 @@ LEGACY = {
     "motion-base": "--dur-base",
     "motion-med": "--dur-med",
     "motion-ease": "--ease-out",
+    "motion-ease-in": "--ease-in",
+    "motion-screen": "--dur-screen",
+    "motion-enter": "--dur-enter",
+    "motion-press": "--dur-press",
+    "motion-stagger": "--stagger-step",
 }
 # tones-*/shadows-* replicam o strip_prefix open-ended do Rust (qualquer
 # nome passa; TONE_NAMES fica só pros pares de contraste). radius-* cai na

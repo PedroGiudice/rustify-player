@@ -9,6 +9,7 @@
    ============================================================ */
 
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEnterWindow } from "../lib/motion";
 import { Icon, ICONS } from "../components/Icon";
 import {
   libListStations,
@@ -463,6 +464,9 @@ function MoodStationCreator(props: { onCreated: () => void }) {
 // ── View principal ───────────────────────────────────────────────
 export default function Stations() {
   const [stations, { refetch }] = createResource(libListStations);
+  // Cards escalonam só na entrada da vista: o refetch depois de tocar recria
+  // todos (For por referência) e não pode fazê-los subir de novo.
+  const entering = createEnterWindow();
   const [moodPanelOpen, setMoodPanelOpen] = createSignal(false);
 
   async function handleResume(id: string) {
@@ -629,13 +633,13 @@ export default function Stations() {
               }}
             />
           </Show>
-          <div class="st-grid">
+          <div class="st-grid" data-enter={entering() ? "" : undefined}>
             <Show
               when={(stations()?.length ?? 0) > 0}
               fallback={
                 <For each={Array.from({ length: 6 })}>
                   {() => (
-                    <div class="st-card" style={{ opacity: "0.35" }}>
+                    <div class="st-card st-card--ph" style={{ opacity: "0.35" }}>
                       <div class="st-card__top">
                         <div class="st-card__cover tone-lavender">
                           {/* @ts-ignore */}

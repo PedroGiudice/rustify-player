@@ -25,6 +25,7 @@ import { navigate } from "../router";
 import { isTypingContext } from "../lib/keyboard";
 import { openTrackMenu } from "../store/contextMenu";
 import { qualityBadge } from "../lib/quality";
+import { createSwapKey } from "../lib/motion";
 import { playAlone, shuffleAll } from "../lib/quickPlay";
 
 /** Acima disto o título do Now Playing para em 3 linhas (np__title--long). */
@@ -72,6 +73,9 @@ function EmptyMeta() {
 export default function NowPlaying() {
   // Selo da capa e ficha técnica: a qualidade medida no conteúdo vence o "24/44" do arquivo.
   const badge = () => qualityBadge(player.techInfo, player.currentTrack);
+  // Troca de faixa calma: o bloco título/artista/ficha aparece subindo 3 px
+  // (data-swap) e a capa faz crossfade (CoverArt). Em rajada, corte seco.
+  const swapKey = createSwapKey(() => player.currentTrack?.id);
   const shape = useShape();
   const renderer = useRenderer();
   // Shape/renderer só existem no fundo 2D. Com as cenas WebGL montadas
@@ -521,6 +525,7 @@ export default function NowPlaying() {
                   size="lg"
                   class="np__cover"
                   style={{ width: "200px", height: "200px" }}
+                  crossfade
                 >
                   <Show when={player.techInfo.sampleRate}>
                     <span class="badge-fmt" title={badge().title ?? undefined}>{badge().label}</span>
@@ -529,7 +534,7 @@ export default function NowPlaying() {
               )}
             </Show>
 
-            <div class="np__meta" ref={metaEl!}>
+            <div class="np__meta" ref={metaEl!} data-swap={swapKey()}>
               <Show when={player.currentTrack} fallback={<EmptyMeta />}>
                 <div class="np__tags">
                   <span class="np__tag-playing"><span class="dot" />Now Playing</span>
