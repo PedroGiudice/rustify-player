@@ -156,6 +156,8 @@ describe("Sidebar: gatilho do Tweaks", () => {
 describe("Sidebar — modo icons (shell-22)", () => {
   afterEach(() => updateTweak("sidebar", "labels"));
 
+  // B23: o tooltip é o .nav-tip próprio (400 ms, com atalho), não o title
+  // nativo, que demora e apareceria em dobro.
   it("no modo icons todo item de navegação tem tooltip com o rótulo", () => {
     updateTweak("sidebar", "icons");
     const { container } = render(() => <Sidebar />);
@@ -164,9 +166,24 @@ describe("Sidebar — modo icons (shell-22)", () => {
     for (const el of items) {
       const label = el.querySelector("span:not(.nav-item__kbd):not(.nav-item__badge)")?.textContent;
       expect(label).toBeTruthy();
-      // O Tweaks tem title próprio ("Tweaks (appearance, background, loudness)").
-      expect(el.getAttribute("title")?.startsWith(label!)).toBe(true);
+      const tip = el.querySelector(".nav-tip");
+      expect(tip?.getAttribute("aria-hidden")).toBe("true");
+      expect(tip?.textContent?.startsWith(label!)).toBe(true);
+      expect(el.getAttribute("title")).toBeNull();
     }
+  });
+
+  it("o tooltip mostra o atalho do item (Ctrl+K, H, L, N)", () => {
+    updateTweak("sidebar", "icons");
+    const { container } = render(() => <Sidebar />);
+    const kbdOf = (label: string) =>
+      Array.from(container.querySelectorAll<HTMLElement>(".nav-item"))
+        .find((el) => el.querySelector(".nav-tip")?.textContent?.startsWith(label))
+        ?.querySelector(".nav-tip__kbd")?.textContent;
+    expect(kbdOf("Search")).toBe("Ctrl+K");
+    expect(kbdOf("Home")).toBe("H");
+    expect(kbdOf("Library")).toBe("L");
+    expect(kbdOf("Now Playing")).toBe("N");
   });
 
   it("no modo labels o rótulo está visível e não há tooltip redundante", () => {
@@ -175,6 +192,58 @@ describe("Sidebar — modo icons (shell-22)", () => {
     const crate = Array.from(container.querySelectorAll<HTMLElement>(".nav-item"))
       .find((el) => el.textContent?.includes("Crate"))!;
     expect(crate.getAttribute("title")).toBeNull();
+    expect(container.querySelector(".nav-tip")).toBeNull();
+  });
+});
+
+// B8: faixa que chega com o dono fora do Crate acende um ponto até ele
+// abrir o Crate. O board reidratado no boot não conta.
+describe("Sidebar — chegadas do Crate (B8)", () => {
+  afterEach(() => {
+    window.location.hash = "";
+    window.dispatchEvent(new Event("hashchange"));
+  });
+
+  async function setup(initial: DownloadJob[] = []) {
+    let emit: ((jobs: DownloadJob[]) => void) | null = null;
+    vi.mocked(tauriApi.slskJobs).mockResolvedValueOnce(initial);
+    vi.mocked(tauriApi.onSlskJobs).mockImplementation(async (cb) => {
+      emit = cb;
+      return () => {};
+    });
+    const r = render(() => <Sidebar />);
+    await bootCrateStore();
+    const crate = () =>
+      Array.from(r.container.querySelectorAll<HTMLElement>(".nav-item"))
+        .find((el) => el.textContent?.includes("Crate"))!;
+    return { emit: (j: DownloadJob[]) => emit!(j), crate };
+  }
+
+  it("faixa pronta nesta sessão acende o ponto com o texto; abrir o Crate apaga", async () => {
+    const { emit, crate } = await setup();
+    emit([job("a", "downloading")]);
+    expect(crate().querySelector(".nav-item__new")).toBeFalsy();
+
+    emit([job("a", "ready"), job("b", "ready")]);
+    const dot = crate().querySelector(".nav-item__new")!;
+    expect(dot).toBeTruthy();
+    expect(dot.getAttribute("title")).toBe("2 faixas novas no acervo");
+
+    window.location.hash = "#/crate";
+    window.dispatchEvent(new Event("hashchange"));
+    expect(crate().querySelector(".nav-item__new")).toBeFalsy();
+  });
+
+  it("o que já estava pronto no boot não acende", async () => {
+    const { crate } = await setup([job("old", "ready")]);
+    expect(crate().querySelector(".nav-item__new")).toBeFalsy();
+  });
+
+  it("com download em andamento o contador manda, sem ponto", async () => {
+    const { emit, crate } = await setup();
+    emit([job("a", "ready"), job("b", "downloading")]);
+    expect(crate().querySelector(".nav-item__badge")?.textContent).toBe("1");
+    expect(crate().querySelector(".nav-item__new")).toBeFalsy();
   });
 });
 

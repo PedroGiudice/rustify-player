@@ -11,6 +11,7 @@
    no-op depois da primeira vez.
    ============================================================ */
 
+import { createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { slskJobs, onSlskJobs, type DownloadJob } from "../tauri";
 
@@ -45,6 +46,31 @@ export function activeCount(): number {
   return board.list.filter((j) => NON_TERMINAL_KINDS.has(j.state.kind)).length;
 }
 
+// ── Chegadas não vistas (B8 da avaliação Impeccable de 26/10) ──
+// Faixa que fica `ready` com o dono fora do Crate acende um ponto no item
+// da barra lateral ("n faixas novas no acervo") até ele abrir o Crate. Só
+// conta o que chegou NESTA sessão: o board reidratado no boot entra como
+// visto (senão todo download antigo acenderia o ponto a cada abertura).
+// Cada job `ready` é uma faixa (o estado carrega um único track_id).
+const [seenReady, setSeenReady] = createSignal<ReadonlySet<string>>(new Set());
+
+const readyIds = (): string[] =>
+  board.list.filter((j) => j.state.kind === "ready").map((j) => j.job_id);
+
+export function newArrivals(): number {
+  const seen = seenReady();
+  return readyIds().filter((id) => !seen.has(id)).length;
+}
+
+/** Marca como vistas todas as faixas prontas do board. Chamado enquanto a
+    rota é /crate (Sidebar.tsx). */
+export function markArrivalsSeen(): void {
+  const seen = seenReady();
+  const fresh = readyIds().filter((id) => !seen.has(id));
+  if (fresh.length === 0) return;
+  setSeenReady(new Set([...seen, ...fresh]));
+}
+
 let booted = false;
 
 /** Re-hidrata via slskJobs() e assina slsk-jobs. Idempotente — chamadas
@@ -54,6 +80,7 @@ export async function bootCrateStore(): Promise<void> {
   booted = true;
   try {
     setJobsSignal(await slskJobs());
+    markArrivalsSeen();
   } catch (e) {
     console.error("[crate] slskJobs falhou no boot:", e);
   }
@@ -89,4 +116,5 @@ export function saveLastDest(dest: string): void {
 export function __resetForTests(): void {
   booted = false;
   setJobsSignal([]);
+  setSeenReady(new Set<string>());
 }

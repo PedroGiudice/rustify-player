@@ -347,28 +347,27 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   border-radius: var(--radius-sm);
   color: var(--fg-4);
   cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .nav-back:hover { background: var(--bg-tint); color: var(--fg-1); }
+.nav-back:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 
-/* RES — toggle do Resources HUD (overlay vive fora do shell) */
+/* Toggle do HUD de Recursos (overlay vive fora do shell). Ícone Lucide
+   no lugar do "RES" em mono 10 px (A14). */
 .titlebar__res {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 22px;
   height: 22px;
-  padding: 0 9px;
+  padding: 0;
   border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--fs-label);
-  font-weight: 600;
-  letter-spacing: 0.08em;
   color: var(--fg-5);
   cursor: pointer;
-  transition: background var(--dur-base), color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .titlebar__res:hover { background: var(--bg-tint); color: var(--fg-1); }
+.titlebar__res:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 
 /* ────────────────────────────────────────────────────────────
    SIDEBAR
@@ -383,13 +382,13 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px; }
 .brand__mark { width: 22px; height: 22px; display: grid; place-items: center; color: var(--fg-1); }
-.brand__mark iconify-icon { width: 20px; height: 20px; }
+.brand__mark svg { width: 20px; height: 20px; display: block; }
 .brand__word { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg-1); }
 .brand__dot { margin-left: auto; margin-right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--green-ring); }
 
 .sidebar__section { display: flex; flex-direction: column; gap: 1px; }
 .sidebar__label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.08em;
   color: var(--fg-5); text-transform: uppercase;
   padding: 0 12px 6px;
 }
@@ -412,7 +411,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .nav-item iconify-icon { width: 16px; height: 16px; flex: none; opacity: 0.85; }
 .nav-item__kbd {
   margin-left: auto;
-  font-family: var(--font-mono); font-size: 10px;
+  font-family: var(--font-mono); font-size: var(--fs-label);
   color: var(--fg-6);
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
@@ -1764,7 +1763,7 @@ html[data-sidebar="icons"] .nav-item__kbd { display: none; }
    (leitor de tela anunciava link sem nome). O tooltip vem do title que
    o Sidebar.tsx poe neste modo. O contador do Crate fica de fora do
    filtro: some-lo escondia os downloads ativos. */
-html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge) {
+html[data-sidebar="icons"] .nav-item > span:not(.nav-item__kbd):not(.nav-item__badge):not(.nav-item__new):not(.nav-tip) {
   position: absolute;
   width: 1px; height: 1px;
   margin: -1px; padding: 0; border: 0;
@@ -1783,10 +1782,63 @@ html[data-sidebar="icons"] .nav-item__badge {
   margin: 0;
   min-width: 15px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: var(--fs-label);
   line-height: 14px;
 }
 html[data-sidebar="icons"] .np-mini { display: none; }
+/* Ponto de chegada do Crate: no canto, como o contador. */
+html[data-sidebar="icons"] .nav-item__new {
+  position: absolute; top: 5px; right: 7px;
+  margin: 0;
+}
+
+/* Tooltip do modo só-ícones (B23): rótulo + atalho, 400 ms de espera no
+   hover, imediato no foco de teclado. Inverso da tinta, como o botão
+   primário. Só o modo icons monta o .nav-tip (Sidebar.tsx). */
+.nav-tip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  z-index: 10;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 9px;
+  border-radius: var(--radius-md);
+  background: var(--fg-1);
+  color: var(--bg-paper);
+  font-size: 12px; font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.nav-item:hover > .nav-tip {
+  opacity: 1;
+  transform: translate(0, -50%);
+  transition-delay: 400ms;
+}
+.nav-item:focus-visible > .nav-tip {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+.nav-tip__kbd,
+.nav-tip__note {
+  color: color-mix(in srgb, var(--bg-paper) 72%, transparent);
+}
+.nav-tip__kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-tip,
+  .nav-item:hover > .nav-tip,
+  .nav-item:focus-visible > .nav-tip {
+    transform: translate(0, -50%);
+    transition: opacity var(--dur-base) linear;
+  }
+  .nav-item:hover > .nav-tip { transition-delay: 400ms; }
+}
 
 /* ── data-type="mono": substitui font-sans por font-mono ─────── */
 html[data-type="mono"] { --font-sans: var(--font-mono); }
@@ -3552,12 +3604,31 @@ html { --glow: 0; }
 
 .nav-item__badge {
   margin-left: auto;
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 600;
   color: var(--blue-fg);
   background: var(--blue-bg);
   border: 1px solid color-mix(in srgb, var(--blue-ring) 30%, transparent);
   padding: 1px 7px; border-radius: var(--radius-pill);
   min-width: 18px; text-align: center;
+}
+
+/* Chegada no acervo (B8): faixa pronta com o dono fora do Crate. Ponto
+   de 6 px no acento; o texto ("n faixas novas no acervo") vai no title,
+   no tooltip do modo icons e para o leitor de tela. */
+.nav-item__new {
+  margin-left: auto;
+  width: 6px; height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--blue-ring);
+}
+.nav-item__new-text {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* A view Crate desenha suas próprias faixas horizontais (toolbar,
