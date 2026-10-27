@@ -149,6 +149,16 @@
   --dur-med:  0.18s;
   /* Movimento de tela (trilho da letra, entradas grandes): teto de 500 ms. */
   --dur-screen: 0.36s;
+  /* Entrada de componente: painel abrindo (Tweaks, fila, paleta, diálogo),
+     card de letra, troca de conteúdo na troca de faixa. A saída do mesmo
+     componente usa --dur-med com --ease-in (sai mais rápido do que entra). */
+  --dur-enter: 0.24s;
+  /* Toque que afunda (:active): microinteração, abaixo de --dur-fast. */
+  --dur-press: 0.08s;
+  /* Escalonamento de conjuntos pequenos e fixos na entrada da vista
+     (hero-tiles, cards de station). Teto: 7 passos, ~210 ms. Lista longa
+     de faixas nunca escalona. */
+  --stagger-step: 30ms;
 
   /* Type scale: piso de leitura (Regra do Piso de 11). Rótulos, eyebrows,
      kbd e rodapés funcionais não descem disso. */
@@ -329,7 +339,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   outline: none;
   display: inline-block;
   box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18);
-  transition: transform var(--dur-base), filter var(--dur-base);
+  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out);
 }
 .tl-dot:hover { filter: brightness(1.05); }
 /* O outline:none acima tirava o foco de teclado dos botões da janela. */
@@ -434,7 +444,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   background: var(--bg-soft);
   border: 1px solid var(--line-2);
   cursor: pointer;
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
 }
 .np-mini:hover { background: var(--bg-tint); }
 .np-mini__meta { min-width: 0; flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
@@ -452,7 +462,10 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 /* ────────────────────────────────────────────────────────────
    VIEW HEADER (compartilhado)
    ──────────────────────────────────────────────────────────── */
-.view { height: 100%; overflow: auto; animation: fade-in 0.25s var(--ease-out); }
+/* Entrada de vista: mesma frase em toda rota (Home, Now Playing, Crate,
+   Stations, Settings...): sobe 6 px e aparece, desacelerando. Com --ease-out
+   (expo) quase todo o percurso acontece nos primeiros ~100 ms. */
+.view { height: 100%; overflow: auto; animation: fade-in var(--dur-screen) var(--ease-out); }
 .view::-webkit-scrollbar { width: 10px; }
 .view::-webkit-scrollbar-thumb { background: var(--bg-tint); border-radius: 999px; border: 2px solid var(--bg-canvas); }
 .view::-webkit-scrollbar-track { background: transparent; }
@@ -463,6 +476,67 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
+
+/* ────────────────────────────────────────────────────────────
+   MOVIMENTO — vocabulário único (leva animate, 27/10/2026)
+   Só opacity e transform. Entrada desacelera (--ease-out), saída acelera
+   (--ease-in) e é mais curta. Gesto repetido não anima: play/pause,
+   anterior, próxima e seek ficam sem efeito; o que anima na troca de
+   faixa é o CONTEÚDO (capa, título, pílula), e só fora de rajada de
+   pulos (lib/motion.ts). Lista longa de faixas não escalona.
+   ──────────────────────────────────────────────────────────── */
+/* Estado que aparece (vazio, erro, aviso, carregado): só opacidade. */
+@keyframes state-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* Item de conjunto pequeno que entra com a vista (hero-tile, station). */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+/* Painel que desce do topo (paleta, diálogo). */
+@keyframes panel-drop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+/* Painel que sobe sobre o conteúdo (card de letra). */
+@keyframes panel-rise-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+/* Troca de conteúdo: dois nomes idênticos por variante para a animação
+   recomeçar a cada troca (data-swap alterna "a"/"b"; "off" = corte seco). */
+@keyframes swap-rise-a { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes swap-rise-b { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes swap-fade-a { from { opacity: 0; } to { opacity: 1; } }
+@keyframes swap-fade-b { from { opacity: 0; } to { opacity: 1; } }
+[data-swap="a"] { animation: swap-rise-a var(--dur-enter) var(--ease-out); }
+[data-swap="b"] { animation: swap-rise-b var(--dur-enter) var(--ease-out); }
+/* Pílula e capa trocam só por opacidade (deslocar um selo lê como erro). */
+.pb-tech[data-swap="a"],
+.cover__img[data-swap="a"] { animation-name: swap-fade-a; }
+.pb-tech[data-swap="b"],
+.cover__img[data-swap="b"] { animation-name: swap-fade-b; }
+
+.empty-state,
+.crate-empty,
+.crate-banner,
+.palette__error,
+.move-dlg__msg { animation: state-in var(--dur-med) var(--ease-out); }
+
+/* Entrada escalonada: Home (hero-tiles, montam uma vez com os dados) e
+   Stations (cards; só na janela de entrada da vista, data-enter, porque o
+   refetch depois de tocar recria os cards e não pode reescalonar). */
+.hero-grid > .hero-tile,
+.st-grid[data-enter] > .st-card:not(.st-card--ph) { animation: rise-in var(--dur-enter) var(--ease-out) backwards; }
+:is(.hero-grid, .st-grid) > :nth-child(2) { animation-delay: var(--stagger-step); }
+:is(.hero-grid, .st-grid) > :nth-child(3) { animation-delay: calc(var(--stagger-step) * 2); }
+:is(.hero-grid, .st-grid) > :nth-child(4) { animation-delay: calc(var(--stagger-step) * 3); }
+:is(.hero-grid, .st-grid) > :nth-child(5) { animation-delay: calc(var(--stagger-step) * 4); }
+:is(.hero-grid, .st-grid) > :nth-child(6) { animation-delay: calc(var(--stagger-step) * 5); }
+:is(.hero-grid, .st-grid) > :nth-child(7) { animation-delay: calc(var(--stagger-step) * 6); }
+:is(.hero-grid, .st-grid) > :nth-child(n+8) { animation-delay: calc(var(--stagger-step) * 7); }
 
 .view__head {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -528,6 +602,15 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   border: 1px solid var(--line-2);
 }
 .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Troca de capa (barra e Now Playing, CoverArt crossfade): a capa anterior
+   fica por baixo até a nova carregar e terminar de aparecer. A de cima é
+   posicionada (sem z-index) para pintar depois da de baixo pela ordem do
+   DOM; o selo de formato, que vem depois, continua por cima das duas. */
+.cover .cover__under { position: absolute; inset: 0; }
+.cover__img--over { position: relative; }
+/* Capa das grades (Álbuns, Artistas): aparece por opacidade quando o
+   arquivo chega, em vez de pular de vazio para pronta. */
+.card__cover .cover__img[data-loaded] { animation: state-in var(--dur-med) var(--ease-out); }
 .cover--fallback { background: var(--bg-soft); }
 .cover__cassette {
   width: 78% !important;
@@ -567,7 +650,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
      título e sub centralizados). */
   text-align: left;
   align-items: flex-start;
-  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
 }
 .hero-tile:hover { border-color: var(--fg-8); box-shadow: var(--shadow-hairline); }
 .hero-tile--feature { background: var(--bg-soft); min-height: 160px; }
@@ -646,7 +729,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   border-radius: 50%;
   background: var(--fg-1); color: var(--bg-paper);
   display: grid; place-items: center;
-  opacity: 0; transition: opacity var(--dur-base);
+  opacity: 0; transition: opacity var(--dur-base) var(--ease-out);
 }
 .hero-tile:hover .hero-tile__cta { opacity: 1; }
 .hero-tile__cta iconify-icon { width: 12px; height: 12px; }
@@ -667,20 +750,26 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   display: grid;
   grid-template-columns: 40px 1fr 220px 120px 60px;
   gap: 14px; align-items: center;
-  padding: 10px 12px;
+  /* A borda de 2 px da faixa atual existe em toda linha, transparente:
+     ficar "atual" acende a cor em vez de empurrar o conteúdo 2 px. */
+  padding: 10px 12px 10px 10px;
+  border-left: 2px solid transparent;
   border-bottom: 1px solid var(--line-3);
   cursor: pointer;
-  transition: background var(--dur-base);
+  transition:
+    background var(--dur-base) var(--ease-out),
+    border-left-color var(--dur-med) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
   contain: layout style;
   content-visibility: auto;
   contain-intrinsic-size: auto 61px;
 }
 .row:hover { background: var(--bg-soft); }
-.row.is-current { border-left: 2px solid var(--blue-ring); padding-left: 10px; }
+.row.is-current { border-left-color: var(--blue-ring); }
 .row.is-current .row__title { color: var(--blue-fg); }
 .row__cover { width: 40px; height: 40px; }
 .row__meta { min-width: 0; line-height: 1.3; }
-.row__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--dur-med) var(--ease-out); }
 .row__sub   { font-size: 12px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row__tech  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
 .row__when  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-6); }
@@ -701,7 +790,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .card__cover {
   aspect-ratio: 1;
   margin-bottom: 12px;
-  transition: transform var(--dur-med), box-shadow var(--dur-med);
+  transition: transform var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out);
 }
 .card:hover .card__cover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
 .card__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0 0 2px; }
@@ -714,7 +803,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   background: var(--fg-1); color: var(--bg-paper);
   display: grid; place-items: center;
   opacity: 0; transform: translateY(4px);
-  transition: opacity var(--dur-base), transform var(--dur-base);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
 }
 .card:hover .card__play { opacity: 1; transform: none; }
 /* Só no hover, o Tab parava num botão invisível (ds-1). Sem
@@ -827,6 +916,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   color: var(--fg-2);
   width: fit-content;
   margin: 0 0 2px;
+  transition: color var(--dur-base) var(--ease-out);
 }
 button.np__artist:hover,
 button.np__artist:focus-visible { color: var(--fg-1); text-decoration: underline; text-decoration-color: var(--fg-7); text-underline-offset: 4px; }
@@ -835,6 +925,7 @@ button.np__artist:focus-visible { color: var(--fg-1); text-decoration: underline
   font-family: var(--font-mono); font-size: 12px;
   color: var(--fg-5);
   width: fit-content; margin: 0 0 22px;
+  transition: color var(--dur-base) var(--ease-out);
 }
 button.np__album:hover,
 button.np__album:focus-visible { color: var(--fg-2); }
@@ -935,6 +1026,9 @@ button.np__album:focus-visible { color: var(--fg-2); }
   box-shadow:
     0 12px 48px -16px rgba(0, 0, 0, 0.45),
     0 2px 8px -2px rgba(0, 0, 0, 0.28);
+  /* Aparece (ligar a letra, letra que chega) subindo 6 px: uma vez por
+     montagem, opacity + transform; o backdrop-filter não é animado. */
+  animation: panel-rise-in var(--dur-enter) var(--ease-out);
   /* Escala de desenho do texto (vidro escuro). É só o fallback: o
      NowPlaying reescreve --fg-* inline a partir da luminância real do
      vidro (lib/lyricsInk.ts) — sobre canvas claro o texto vira escuro. */
@@ -994,7 +1088,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
     linear-gradient(135deg, transparent 50%, var(--fg-6) 50%, var(--fg-6) 60%, transparent 60%, transparent 70%, var(--fg-6) 70%, var(--fg-6) 80%, transparent 80%);
   border-bottom-right-radius: var(--radius-xl);
   opacity: 0.5;
-  transition: opacity var(--dur-base);
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 .np__lyrics-resize:hover { opacity: 1; }
 
@@ -1009,7 +1103,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   font-size: 17px; font-weight: 500;
   line-height: 1.28; letter-spacing: -0.012em;
   color: var(--fg-5);
-  transition: color 400ms var(--ease-out);
+  transition: color var(--dur-screen) var(--ease-out);
   margin: 0;
 }
 .np__lyric.is-near   { color: var(--fg-4); }
@@ -1036,7 +1130,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   color: var(--fg-5);
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
-  transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 .np__corner button:hover { background: var(--bg-soft); color: var(--fg-1); border-color: var(--fg-8); }
 .np__corner button iconify-icon { width: 14px; height: 14px; }
@@ -1086,14 +1180,20 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   font-size: 13px; font-weight: 500;
   color: var(--fg-5);
   position: relative; cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out);
 }
 .tab:hover { color: var(--fg-2); }
 .tab.active { color: var(--fg-1); font-weight: 600; }
-.tab.active::after {
+/* Sublinhado existe em toda aba, recolhido: a aba que fica ativa o abre do
+   centro (transform), a que deixa de ser o recolhe. */
+.tab::after {
   content: ''; position: absolute;
   left: 14px; right: 14px; bottom: -1px;
   height: 2px; background: var(--fg-1);
+  transform: scaleX(0);
+  transition: transform var(--dur-med) var(--ease-out);
 }
+.tab.active::after { transform: none; }
 .tab__count { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-6); margin-left: 6px; font-weight: 400; }
 
 .toolbar { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -1105,7 +1205,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   color: var(--fg-4);
   border: 1px solid var(--line-2);
   cursor: pointer;
-  transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 .chip:hover { color: var(--fg-1); border-color: var(--fg-8); }
 .chip.active {
@@ -1171,7 +1271,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   cursor: pointer;
 }
 /* Fundo (hover, foco, atual) nas celulas, que ja carregam o separador. */
-.tracks__row > div { transition: background var(--dur-base); }
+.tracks__row > div { transition: background var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
 .tracks__row:hover > div { background: var(--bg-soft); }
 /* Foco de teclado (ds-1): o anel global (--focus-outline) na propria
    linha, por dentro — .tracks corta o que passa da borda. */
@@ -1180,6 +1280,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Depois do hover e com a mesma especificidade: o hover nao apaga o
    destaque da faixa atual. */
 .tracks__row.tracks__row--current > div { background: var(--blue-bg); }
+.tracks__title b { transition: color var(--dur-med) var(--ease-out); }
 .tracks__row--current .tracks__title b { color: var(--blue-fg); }
 .tracks__idx { color: var(--fg-6); font-family: var(--font-mono); font-size: 11px; justify-content: center; }
 .tracks__cover { padding: 6px 0 6px 10px !important; }
@@ -1259,7 +1360,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   border-radius: var(--radius-md);
   display: grid; place-items: center;
   color: var(--fg-5);
-  transition: color var(--dur-base), background var(--dur-base);
+  transition: color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
 }
 .pb-icon-btn:hover, .pb-btn:hover { color: var(--fg-1); background: var(--bg-soft); }
 /* Ligado precisa ser diferente de hover: com os dois em --fg-1, clicar
@@ -1291,7 +1392,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--fg-1);
   color: var(--bg-paper);   /* inverso do fg — iconify-icon herda via currentColor */
   margin: 0 6px;
-  transition: transform var(--dur-base), background var(--dur-base);
+  transition: transform var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
 }
 .pb-btn--primary:hover { background: var(--fg-2); transform: scale(1.04); color: var(--bg-paper); }
 .pb-btn--primary iconify-icon {
@@ -1313,7 +1414,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .progress__fill {
   height: 100%; background: var(--fg-3); border-radius: inherit;
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
 }
 /* Área de clique de 16px sem mexer no trilho de 3px: o pseudo-elemento
    pertence ao .progress, então o ponteiro sobre ele cai no mesmo
@@ -1331,7 +1432,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   width: 10px; height: 10px;
   border-radius: 50%; background: var(--fg-1);
   transform: translate(-50%, -50%);
-  opacity: 0; transition: opacity var(--dur-base);
+  opacity: 0; transition: opacity var(--dur-base) var(--ease-out);
 }
 .progress:hover .progress__thumb,
 .progress:focus-visible .progress__thumb { opacity: 1; }
@@ -1345,7 +1446,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   font-family: var(--font-mono); font-size: 10.5px;
   color: var(--fg-4);
   cursor: pointer;
-  transition: background var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 .pb-tech:hover { background: var(--bg-soft); border-color: var(--fg-8); }
 .pb-tech__sep { color: var(--fg-7); }
@@ -1365,13 +1466,25 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   position: fixed; inset: 0;
   background: rgba(23,23,23,0.20);
   z-index: 100;
-  display: none;
+  /* Fechada fica montada e invisível (não display:none): com display:none
+     nenhuma transição roda, e a paleta abria e fechava num salto. A
+     visibility só vira hidden depois que a saída termina. */
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
   align-items: flex-start; justify-content: center;
   padding-top: 14vh;
   opacity: 0;
-  transition: opacity var(--dur-med) var(--ease-out);
+  transition: opacity var(--dur-med) var(--ease-in), visibility 0s linear var(--dur-med);
 }
-.palette-scrim[data-open="true"] { display: flex; opacity: 1; }
+.palette-scrim[data-open="true"] {
+  visibility: visible; pointer-events: auto; opacity: 1;
+  transition: opacity var(--dur-enter) var(--ease-out), visibility 0s;
+}
+/* Diálogo que já nasce aberto (Mover para playlist): sem estado anterior
+   não há transição, então a entrada é por keyframe; fecha desmontando. */
+.palette-scrim--mount { animation: state-in var(--dur-enter) var(--ease-out); }
+.palette-scrim--mount .palette { animation: panel-drop-in var(--dur-enter) var(--ease-out); }
 .palette {
   width: min(640px, 92vw); max-height: 64vh;
   background: var(--bg-paper);
@@ -1387,7 +1500,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .palette-scrim[data-open="true"] .palette {
   transform: none; opacity: 1;
-  transition: transform var(--dur-med) var(--ease-out), opacity var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-enter) var(--ease-out), opacity var(--dur-enter) var(--ease-out);
 }
 .palette__input-row {
   display: flex; align-items: center; gap: 12px;
@@ -1463,9 +1576,9 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h); left: 0;
   background: rgba(23,23,23,0.16);
   z-index: 90; opacity: 0; pointer-events: none;
-  transition: opacity 200ms var(--ease-out);
+  transition: opacity var(--dur-med) var(--ease-in);
 }
-.queue-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+.queue-scrim[data-open="true"] { opacity: 1; pointer-events: auto; transition: opacity var(--dur-enter) var(--ease-out); }
 
 .queue-drawer {
   position: fixed; top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h);
@@ -1475,10 +1588,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   box-shadow: -16px 0 32px rgba(0,0,0,0.06);
   z-index: 95;
   transform: translateX(100%);
-  transition: transform 280ms var(--ease-in);
+  /* Sai acelerando em --dur-med; entra desacelerando em --dur-enter. */
+  transition: transform var(--dur-med) var(--ease-in);
   display: flex; flex-direction: column;
 }
-.queue-drawer[data-open="true"] { transform: none; transition: transform 280ms var(--ease-out); }
+.queue-drawer[data-open="true"] { transform: none; transition: transform var(--dur-enter) var(--ease-out); }
 
 .queue-drawer__head {
   padding: 18px; border-bottom: 1px solid var(--line-2);
@@ -1610,7 +1724,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   border: 1px solid var(--line-2);
   position: relative;
   cursor: pointer;
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
 }
 .toggle::after {
   content: ''; position: absolute;
@@ -1619,7 +1733,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   border-radius: 50%;
   background: var(--bg-paper);
   box-shadow: var(--shadow-knob);
-  transition: transform var(--dur-base);
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .toggle[aria-pressed="true"] { background: var(--fg-1); }
 .toggle[aria-pressed="true"]::after { transform: translateX(13px); }
@@ -1662,7 +1776,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   font-size: 12px; font-weight: 500;
   border-radius: var(--radius-sm);
   color: var(--fg-5);
-  transition: background var(--dur-base), color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .segmented button:hover { color: var(--fg-1); }
 
@@ -1679,11 +1793,28 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-hover);
   z-index: 50;
-  display: none;
+  /* Montado e invisível quando fechado (ver .palette-scrim): abre crescendo
+     do canto do botão, fecha acelerando para o mesmo canto. */
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px) scale(0.985);
+  transform-origin: bottom right;
   overflow: hidden;
   flex-direction: column;
+  transition:
+    opacity var(--dur-med) var(--ease-in),
+    transform var(--dur-med) var(--ease-in),
+    visibility 0s linear var(--dur-med);
 }
-.tweaks.is-visible { display: flex; }
+.tweaks.is-visible {
+  visibility: visible; pointer-events: auto; opacity: 1; transform: none;
+  transition:
+    opacity var(--dur-enter) var(--ease-out),
+    transform var(--dur-enter) var(--ease-out),
+    visibility 0s;
+}
 .tweaks__header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 14px;
@@ -1742,7 +1873,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--bg-tint); border: 1px solid var(--line-2);
   border-radius: var(--radius-sm); font-size: 11.5px; font-weight: 500;
   color: var(--fg-4); cursor: pointer; width: 100%;
-  transition: background var(--dur-base), color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .tweaks__reset:hover { background: var(--line-2); color: var(--fg-2); }
 /* Hint de uma linha sob um knob (mesma família do .set-row__hint). */
@@ -1826,7 +1957,7 @@ html[data-density="compact"] .nav-item { padding: 5px 10px; }
 html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
 html[data-density="compact"] .tabs { padding: 0 24px; }
 html[data-density="compact"] .tab { padding: 8px 12px; }
-html[data-density="compact"] .tab.active::after { left: 12px; right: 12px; }
+html[data-density="compact"] .tab::after { left: 12px; right: 12px; }
 /* .crate-body desenha o proprio espacamento (padding/gap 0) com gutters
    de 40px: o cabecalho do Crate mantem o gutter lateral pra alinhar. */
 html[data-density="compact"] .view__body:not(.crate-body) { padding: 16px 24px 32px; gap: 20px; }
@@ -1838,8 +1969,7 @@ html[data-density="compact"] .toolbar { margin-bottom: 12px; }
 html[data-density="compact"] .tracks > div:not(.tracks__row),
 html[data-density="compact"] .tracks > .tracks__row > div { padding: 5px 10px; }
 /* Linhas de lista (Home, History) */
-html[data-density="compact"] .row { padding: 6px 12px; contain-intrinsic-size: auto 53px; }
-html[data-density="compact"] .row.is-current { padding-left: 10px; }
+html[data-density="compact"] .row { padding: 6px 12px 6px 10px; contain-intrinsic-size: auto 53px; }
 /* Grades de cards */
 html[data-density="compact"] .card-grid,
 html[data-density="compact"] .pl-grid { gap: 14px 12px; }
@@ -1990,9 +2120,9 @@ html { --glow: 0; }
     0 0 0 calc(1px + var(--glow, 0.15) * 2px) color-mix(in srgb, var(--blue-ring) calc(var(--glow, 0.15) * 55%), transparent),
     0 0 calc(var(--glow, 0.15) * 22px) calc(var(--glow, 0.15) * 4px) color-mix(in srgb, var(--blue-ring) calc(var(--glow, 0.15) * 30%), transparent);
   transition:
-    box-shadow 0.18s var(--ease-out, ease-out),
-    background-color 0.15s var(--ease-out, ease-out),
-    color 0.15s var(--ease-out, ease-out);
+    box-shadow var(--dur-med) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
 }
 
 /* Scale tatil breve no click — sensacao de "premi" sem mudar layout.
@@ -2004,17 +2134,17 @@ html { --glow: 0; }
 .sm-toggle:active,
 .chip:active {
   transform: scale(0.96);
-  transition: transform 0.08s var(--ease-out, ease-out);
+  transition: transform var(--dur-press) var(--ease-out);
 }
 /* Alvos grandes cedem menos: o tile mal afunda, o item de navegação
    recua um pouco. Transporte (play, anterior, próxima) fica de fora. */
 .nav-item:active {
   transform: scale(0.98);
-  transition: transform 0.08s var(--ease-out, ease-out);
+  transition: transform var(--dur-press) var(--ease-out);
 }
 .hero-tile:active {
   transform: scale(0.995);
-  transition: transform 0.08s var(--ease-out, ease-out);
+  transition: transform var(--dur-press) var(--ease-out);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2160,7 +2290,7 @@ html { --glow: 0; }
   color: var(--fg-4);
   border: 1px solid var(--line-2);
   cursor: pointer;
-  transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 .sig-pre:hover { color: var(--fg-1); border-color: var(--fg-8); }
 .sig-pre[aria-pressed="true"] {
@@ -2182,7 +2312,7 @@ html { --glow: 0; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 .sig-pbtn:hover { color: var(--fg-1); border-color: var(--fg-8); background: var(--bg-soft); }
 .sig-pbtn:disabled { opacity: 0.40; cursor: not-allowed; }
@@ -2309,7 +2439,7 @@ html { --glow: 0; }
   padding: 4px 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
   user-select: none;
 }
 .fader:hover { background: var(--bg-soft); }
@@ -2357,7 +2487,7 @@ html { --glow: 0; }
   border: 2px solid var(--bg-paper);
   border-radius: 50%;
   box-shadow: var(--shadow-knob);
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
 }
 .fader[data-active="true"] .fader__thumb { background: var(--blue-fg); }
 .fader__val {
@@ -2711,7 +2841,7 @@ html { --glow: 0; }
   background: var(--fg-8);
   position: relative;
   cursor: pointer;
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
   border: 1px solid var(--line-2);
 }
 .tog::after {
@@ -2722,7 +2852,7 @@ html { --glow: 0; }
   border-radius: 50%;
   background: var(--bg-paper);
   box-shadow: var(--shadow-knob);
-  transition: transform var(--dur-base);
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .tog[aria-pressed="true"] { background: var(--fg-1); }
 .tog[aria-pressed="true"]::after { transform: translateX(12px); }
@@ -2786,7 +2916,7 @@ html { --glow: 0; }
   grid-template-rows: 1fr 1fr;
   gap: 1px;
   background: var(--line-2);
-  transition: transform var(--dur-med), box-shadow var(--dur-med);
+  transition: transform var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out);
 }
 .pl-card:hover .pl-card__cover {
   transform: translateY(-2px);
@@ -2848,7 +2978,7 @@ html { --glow: 0; }
   cursor: pointer;
   opacity: 0;
   transform: scale(0.92);
-  transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out), color 140ms var(--ease-out);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .pl-card:hover .pl-card__pin,
 .pl-card__pin.is-pinned,
@@ -2959,7 +3089,7 @@ html { --glow: 0; }
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: -0.005em;
-  transition: background var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out);
   border: 0;
   cursor: pointer;
 }
@@ -3106,7 +3236,7 @@ html { --glow: 0; }
   flex-direction: column;
   gap: 6px;
   cursor: pointer;
-  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
   position: relative;
 }
 .st-card:hover { border-color: var(--fg-8); box-shadow: var(--shadow-hairline); }
@@ -3202,8 +3332,8 @@ html { --glow: 0; }
   cursor: pointer;
   /* Secundário: invisível em repouso, aparece no hover e no foco. */
   opacity: 0;
-  transition: opacity var(--dur-base), color var(--dur-base),
-    border-color var(--dur-base), background var(--dur-base);
+  transition: opacity var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
 }
 .st-card:hover .st-card__delete,
 .st-card:focus-within .st-card__delete,
@@ -3296,7 +3426,7 @@ html { --glow: 0; }
   background: var(--bg-paper);
   border: 0;
   border-right: 1px solid var(--line-2);
-  transition: background var(--dur-base), color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
   cursor: pointer;
 }
 .seg button:last-child { border-right: 0; }
@@ -3354,7 +3484,7 @@ html { --glow: 0; }
   border: 1px solid var(--line-2);
   border-radius: var(--radius-md);
   color: var(--fg-2);
-  transition: background var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
   cursor: pointer;
 }
 .set-folder-btn:hover:not(:disabled) { background: var(--bg-soft); border-color: var(--fg-8); }
@@ -3468,7 +3598,7 @@ html { --glow: 0; }
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  transition: color var(--dur-fast), background var(--dur-fast);
+  transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
 .resources__close:hover { color: var(--on-surface, var(--fg-1)); background: var(--surface-container-high, var(--bg-tint)); }
 
@@ -3540,7 +3670,7 @@ html { --glow: 0; }
   right: auto;
   width: var(--w, 0%);
   background: linear-gradient(90deg, var(--primary), var(--primary-container));
-  transition: width 0.4s ease;
+  transition: width var(--dur-screen) var(--ease-out);
 }
 .res-core__pct { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; text-align: right; }
 
@@ -3557,7 +3687,7 @@ html { --glow: 0; }
   bottom: 0;
   left: 0;
   background: var(--primary);
-  transition: width 0.4s ease;
+  transition: width var(--dur-screen) var(--ease-out);
 }
 .res-legend {
   display: flex;
@@ -3662,7 +3792,7 @@ html { --glow: 0; }
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--dur-base), border-color var(--dur-base), color var(--dur-base);
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .pl-action-btn iconify-icon { width: 13px; height: 13px; }
 .pl-action-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
@@ -3722,7 +3852,7 @@ html { --glow: 0; }
   display: flex;
   flex-direction: column;
   gap: 1px;
-  animation: track-ctx-pop 0.12s var(--ease-out);
+  animation: track-ctx-pop var(--dur-fast) var(--ease-out);
 }
 @keyframes track-ctx-pop {
   from { opacity: 0; transform: translateY(-3px) scale(0.985); }
@@ -4588,8 +4718,14 @@ html { --glow: 0; }
 /* Linha selecionada (depois de hover e atual, mesma especificidade).
    Na faixa atual selecionada o azul de "tocando agora" continua por baixo:
    o realce da seleção é só uma película de acento sobre ele. */
-.row.is-selected { background: var(--row-selected); box-shadow: inset 2px 0 0 var(--row-selected-line); }
-.row.is-selected.is-current { background: linear-gradient(var(--row-selected), var(--row-selected)), var(--blue-bg); }
+/* O traço da seleção usa a mesma borda transparente da linha (acende em vez
+   de surgir); na atual selecionada, a borda segue azul e o traço vem por dentro. */
+.row.is-selected { background: var(--row-selected); border-left-color: var(--row-selected-line); }
+.row.is-selected.is-current {
+  background: linear-gradient(var(--row-selected), var(--row-selected)), var(--blue-bg);
+  border-left-color: var(--blue-ring);
+  box-shadow: inset 2px 0 0 var(--row-selected-line);
+}
 .tracks__row.tracks__row--selected > div { background: var(--row-selected); }
 .tracks__row.tracks__row--selected.tracks__row--current > div {
   background: linear-gradient(var(--row-selected), var(--row-selected)), var(--blue-bg);
@@ -4805,7 +4941,9 @@ html { --glow: 0; }
    ligada: nada desliza, pulsa ou quica; o que precisa aparecer aparece
    por opacidade curta. Os três blocos locais antigos (.npi, eyebrow da
    Stations, .sel-bar) seguem valendo; este cobre o resto. O fundo
-   animado (WebGL/2D) acalma pelo sinal, não por CSS.
+   animado (WebGL/2D) acalma pelo sinal, não por CSS. O que é só
+   opacidade ou cor (estados que aparecem, crossfade da capa, linha atual,
+   seleção) continua: confirma a ação sem mover nada.
    ──────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .view,
@@ -4834,6 +4972,25 @@ html { --glow: 0; }
     transform: none;
     transition: opacity var(--dur-base) linear;
   }
+  .palette-scrim--mount .palette { animation: state-in var(--dur-base) linear; }
+
+  /* Tweaks: abre e fecha só por opacidade. */
+  .tweaks,
+  .tweaks.is-visible { transform: none; }
+
+  /* Card de letra: aparece sem subir. */
+  .np__lyrics-card--floating { animation: state-in var(--dur-base) linear; }
+
+  /* Troca de faixa: título e ficha trocam por opacidade, sem subir. */
+  [data-swap="a"] { animation-name: swap-fade-a; }
+  [data-swap="b"] { animation-name: swap-fade-b; }
+
+  /* Aba ativa: o sublinhado só aparece, sem abrir do centro. */
+  .tab::after { transition: none; }
+
+  /* Sem escalonamento: o conjunto aparece junto com a vista. */
+  .hero-grid > .hero-tile,
+  .st-grid[data-enter] > .st-card { animation: none; }
 
   /* Fundo: troca focused/ambient sem a rampa de 420 ms no filtro. */
   .app-bg { transition: opacity var(--dur-base) linear; }

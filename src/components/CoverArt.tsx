@@ -8,7 +8,8 @@
        "no art" cleanly.
    ============================================================ */
 
-import { createSignal, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { isCalmChange, now, type SwapKey } from "../lib/motion";
 import type { Tone, Glyph } from "../tones";
 import cassetteFallback from "../assets/cassette-fallback.png";
 
@@ -30,7 +31,14 @@ export interface CoverArtProps {
   alt?: string;
   /** Conteudo sobreposto ao cover (ex: botao play no hover dos cards). */
   children?: import("solid-js").JSX.Element;
+  /** Troca de capa com crossfade (barra e Now Playing): a anterior fica por
+      baixo até a nova carregar e aparecer. Só fora de rajada de pulos
+      (lib/motion.ts); em rajada, corte seco. */
+  crossfade?: boolean;
 }
+
+/** Teto de espera pelo load da capa nova antes de soltar a de baixo. */
+const UNDER_MAX_MS = 1200;
 
 export function CoverArt(props: CoverArtProps) {
   const sizeClass = () => {
@@ -46,6 +54,49 @@ export function CoverArt(props: CoverArtProps) {
   // que falhou: trocar de capa tenta a nova.
   const [failedSrc, setFailedSrc] = createSignal<string | null>(null);
   const liveSrc = () => (props.src && props.src !== failedSrc() ? props.src : null);
+
+  // Crossfade: `under` = capa anterior, desenhada por baixo; `swap` alterna
+  // a cada load para o keyframe de entrada recomeçar.
+  const [under, setUnder] = createSignal<string | null>(null);
+  const [swap, setSwap] = createSignal<SwapKey>("off");
+  const [loaded, setLoaded] = createSignal(false);
+  let underTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(underTimer));
+  if (props.crossfade) {
+    let last = now();
+    // `on` com defer não entrega o valor anterior na primeira troca: guarda à mão.
+    let prev = liveSrc();
+    createEffect(
+      on(
+        liveSrc,
+        (next) => {
+          const old = prev;
+          prev = next;
+          if (next === old) return;
+          clearTimeout(underTimer);
+          const at = now();
+          const calm = isCalmChange(last, at);
+          last = at;
+          if (!calm || !old || !next) {
+            setUnder(null);
+            setSwap("off");
+            return;
+          }
+          setUnder(old);
+          // Load que nunca chega (arquivo lento, erro silencioso) não deixa a
+          // capa velha presa por baixo.
+          underTimer = setTimeout(() => setUnder(null), UNDER_MAX_MS);
+        },
+        { defer: true },
+      ),
+    );
+  }
+  const onLoad = () => {
+    setLoaded(true);
+    if (!under()) return;
+    clearTimeout(underTimer);
+    setSwap((k) => (k === "a" ? "b" : "a"));
+  };
   return (
     <div
       class={`${sizeClass()} cover--fallback${props.class ? ` ${props.class}` : ""}`}
@@ -56,13 +107,24 @@ export function CoverArt(props: CoverArtProps) {
         fallback={<img class="cover__cassette" src={cassetteFallback} alt="" />}
       >
         {(src) => (
-          <img
-            src={src()}
-            alt={props.alt ?? ""}
-            loading="lazy"
-            decoding="async"
-            onError={() => setFailedSrc(src())}
-          />
+          <>
+            <Show when={under()}>
+              {(old) => <img class="cover__under" src={old()} alt="" aria-hidden="true" />}
+            </Show>
+            <img
+              class="cover__img"
+              classList={{ "cover__img--over": !!under() }}
+              src={src()}
+              alt={props.alt ?? ""}
+              loading="lazy"
+              decoding="async"
+              data-loaded={loaded() ? "" : undefined}
+              data-swap={swap()}
+              onLoad={onLoad}
+              onAnimationEnd={() => setUnder(null)}
+              onError={() => { setUnder(null); setFailedSrc(src()); }}
+            />
+          </>
         )}
       </Show>
       {props.children}

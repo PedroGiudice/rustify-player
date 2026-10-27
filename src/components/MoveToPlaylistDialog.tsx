@@ -110,7 +110,7 @@ function MoveDialogBody(props: { req: MoveRequest }) {
   return (
     <Portal mount={document.body}>
       <div
-        class="palette-scrim"
+        class="palette-scrim palette-scrim--mount"
         data-open="true"
         onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
       >

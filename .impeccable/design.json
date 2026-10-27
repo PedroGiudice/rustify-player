@@ -1007,12 +1007,27 @@
       {
         "name": "dur-med",
         "value": "0.18s",
-        "purpose": "Capa que sobe 2 px no hover de card."
+        "purpose": "Capa que sobe 2 px no hover de card; saída de painel (com ease-in); linha atual e seleção acendendo; capa da grade aparecendo."
+      },
+      {
+        "name": "dur-enter",
+        "value": "0.24s",
+        "purpose": "Entrada de componente: Tweaks, fila, paleta, diálogo, card de letra, troca de conteúdo na troca de faixa (motion.enter)."
+      },
+      {
+        "name": "dur-press",
+        "value": "0.08s",
+        "purpose": "Toque que afunda (:active) em chip, nav, hero-tile e botões quietos; nunca no transporte (motion.press)."
+      },
+      {
+        "name": "stagger-step",
+        "value": "30ms",
+        "purpose": "Escalonamento de hero-tiles e cards de station na entrada da vista, teto de 7 passos (motion.stagger)."
       },
       {
         "name": "view-fade",
-        "value": "0.25s",
-        "purpose": "Entrada de vista: fade + 6 px para cima."
+        "value": "var(--dur-screen)",
+        "purpose": "Entrada de vista: fade + 6 px para cima, em toda rota."
       },
       {
         "name": "bg-mode",
