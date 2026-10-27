@@ -612,6 +612,42 @@ fn shuffle_excluding(tracks: Vec<Track>, exclude: &[u64], lim: usize) -> Vec<Tra
     keep
 }
 
+/// Por que o radio escolheu a faixa (chip "radio · descoberta" da barra).
+/// So existe quando a mistura conhecida/descoberta rodou (camada 1 com o
+/// indice de familiaridade montado); camadas 2 e 3 nao classificam. Mesma
+/// regra do `partition_known` (`familiarity::is_known`). O S24 nao manda o
+/// campo: no frontend ele e opcional.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+struct AutoplayPick {
+    /// "known" ou "discovery".
+    kind: &'static str,
+    /// Vezes ouvida ate o fim (motivo no tooltip).
+    ended: u32,
+    liked: bool,
+}
+
+fn autoplay_pick(f: familiarity::TrackFamiliarity, liked: bool) -> AutoplayPick {
+    AutoplayPick {
+        kind: if familiarity::is_known(f, liked) { "known" } else { "discovery" },
+        ended: f.ended,
+        liked,
+    }
+}
+
+/// Track + o motivo da escolha. `flatten` mantem o JSON de `Track` intacto:
+/// quem nao le `autoplay_pick` nao percebe a diferenca.
+#[derive(Serialize)]
+struct AutoplayTrack {
+    #[serde(flatten)]
+    track: Track,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    autoplay_pick: Option<AutoplayPick>,
+}
+
+fn unpicked(tracks: Vec<Track>) -> Vec<AutoplayTrack> {
+    tracks.into_iter().map(|track| AutoplayTrack { track, autoplay_pick: None }).collect()
+}
+
 #[tauri::command]
 fn lib_autoplay_next(
     lib: State<Library>,
@@ -620,7 +656,7 @@ fn lib_autoplay_next(
     session_negative_ids: Option<Vec<String>>,
     limit: Option<usize>,
     mix_slot: Option<usize>,
-) -> Result<Vec<Track>, String> {
+) -> Result<Vec<AutoplayTrack>, String> {
     let track_id = parse_id(&track_id)?;
     // Posicao da proxima faixa no ciclo K, K, D da rodada de radio
     // (radioSession.mixSlot no frontend). Ausente = inicio do ciclo.
@@ -748,7 +784,17 @@ fn lib_autoplay_next(
                         }
                     }
                     if !ranked.is_empty() {
-                        return Ok(ranked);
+                        let picked = ranked
+                            .into_iter()
+                            .map(|track| {
+                                let autoplay_pick = fam.as_deref().map(|fam| {
+                                    let liked = out.liked.as_ref().is_some_and(|l| l.contains(&track.id));
+                                    autoplay_pick(fam.get(track.id), liked)
+                                });
+                                AutoplayTrack { track, autoplay_pick }
+                            })
+                            .collect();
+                        return Ok(picked);
                     }
                 }
             }
@@ -784,7 +830,7 @@ fn lib_autoplay_next(
             }
         }
         if !tracks.is_empty() {
-            return Ok(tracks);
+            return Ok(unpicked(tracks));
         }
     }
 
@@ -805,7 +851,7 @@ fn lib_autoplay_next(
         }
     }
 
-    Ok(tracks)
+    Ok(unpicked(tracks))
 }
 
 #[tauri::command]
@@ -5233,6 +5279,25 @@ fg-8: '#404040'
 
     fn ids(v: &[Track]) -> Vec<u64> {
         v.iter().map(|t| t.id).collect()
+    }
+
+    #[test]
+    fn autoplay_pick_segue_a_regra_da_mistura_e_serializa_junto_da_track() {
+        let f = |ended| familiarity::TrackFamiliarity { ended, ..Default::default() };
+        assert_eq!(autoplay_pick(f(7), false), AutoplayPick { kind: "known", ended: 7, liked: false });
+        assert_eq!(autoplay_pick(f(0), true).kind, "known");
+        assert_eq!(autoplay_pick(f(1), false).kind, "discovery");
+
+        let v = serde_json::to_value(AutoplayTrack {
+            track: mix_track(42, "a"),
+            autoplay_pick: Some(autoplay_pick(f(2), false)),
+        })
+        .unwrap();
+        assert_eq!(v["id"], "42");
+        assert_eq!(v["autoplay_pick"]["kind"], "discovery");
+        assert_eq!(v["autoplay_pick"]["ended"], 2);
+        let sem = serde_json::to_value(AutoplayTrack { track: mix_track(1, "a"), autoplay_pick: None }).unwrap();
+        assert!(sem.get("autoplay_pick").is_none());
     }
 
     #[test]

@@ -19,6 +19,7 @@ import { setQueue, enqueueEnd, enqueueNext } from "../store/player";
 import { openTrackMenu } from "../store/contextMenu";
 import { libSearch, libShuffle, coverUrl, type Track, type Album, type Artist } from "../tauri";
 import { modCombo } from "../lib/keyboard";
+import { fmtDur } from "../lib/format";
 
 export const CMD_PALETTE_EVENT = "rustify:open-palette";
 
@@ -52,10 +53,9 @@ interface SearchBundle {
   failed?: boolean;
 }
 
-function fmtDur(ms: number): string {
-  if (!ms) return "—";
-  const s = Math.round(ms / 1000);
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+/** Duração da linha de faixa: a mesma conta da lista e da barra; sem duração, traço. */
+function durOrDash(ms: number): string {
+  return ms ? fmtDur(ms) : "—";
 }
 
 export function CommandPalette() {
@@ -425,7 +425,7 @@ export function CommandPalette() {
                         {it.kind === "action"
                           ? it.sub
                           : it.kind === "track"
-                            ? `${it.track.artist_name ?? "—"} · ${it.track.album_title ?? "—"} · ${fmtDur(it.track.duration_ms)}`
+                            ? `${it.track.artist_name ?? "—"} · ${it.track.album_title ?? "—"} · ${durOrDash(it.track.duration_ms)}`
                             : it.kind === "album"
                               ? `${it.album.artist_name ?? "—"} · ${it.album.track_count} tracks`
                               : `${it.artist.track_count} tracks · ${it.artist.album_count} albums`}

@@ -9,7 +9,7 @@
    - Like button
    ============================================================ */
 
-import { onMount, onCleanup, Show } from "solid-js";
+import { createSignal, onMount, onCleanup, Show } from "solid-js";
 import {
   player, setPlayer,
   applyTrackStarted, updatePosition, setPlayingState,
@@ -26,7 +26,7 @@ import {
   playerEnqueueNext, playerSetOrigin, playerLoadPaused,
   libIsLiked, libToggleLike, libRecordPlay,
   libAutoplayNext, libStationNext, getState,
-  coverUrl, formatDuration, onPlayerState, onMprisCommand,
+  coverUrl, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds,
 } from "../tauri";
 import { openTrackMenu } from "../store/contextMenu";
@@ -35,7 +35,8 @@ import { CoverArt } from "./CoverArt";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
 import { QUEUE_EVENT } from "./QueueDrawer";
 import { navigate } from "../router";
-import { qualityBadge } from "../lib/quality";
+import { describeFile, qualityBadge } from "../lib/quality";
+import { fmtDur } from "../lib/format";
 
 // Re-export para que outros call-sites possam importar daqui.
 export { CMD_PALETTE_EVENT };
@@ -405,11 +406,24 @@ export function PlayerBar() {
 
   // ── Like ───────────────────────────────────────────────────────
 
+  // Pulso único do coração (B9): só no gesto de curtir. Descurtir, trocar de
+  // faixa ou carregar uma faixa já curtida não pulsam (o estado vem de
+  // setLiked em outros caminhos, que não tocam este sinal).
+  const [likePulse, setLikePulse] = createSignal(false);
+
   async function onLike() {
     if (!player.currentTrack?.id) return;
     try {
       const liked = await libToggleLike(player.currentTrack.id);
       setLiked(liked);
+      if (liked) {
+        // Remove e repõe a classe no próximo quadro: curtir de novo logo
+        // depois de descurtir reinicia a animação.
+        setLikePulse(false);
+        requestAnimationFrame(() => setLikePulse(true));
+      } else {
+        setLikePulse(false);
+      }
     } catch (e) {
       console.error("[like] toggle failed:", e);
     }
@@ -435,6 +449,29 @@ export function PlayerBar() {
     if (dsp.bass.enabled) parts.push("BASS");
     return parts.length ? parts.join(" · ") : "DSP OFF";
   };
+
+  // A mesma cadeia por extenso, para o title/aria-label da pílula.
+  const dspSentence = () => {
+    if (dsp.bypass) return "Processamento desligado (bypass).";
+    const parts: string[] = [];
+    if (dsp.eq.enabled) parts.push("EQ");
+    if (dsp.limiter.enabled) parts.push("limitador");
+    if (dsp.bass.enabled) parts.push("reforço de grave");
+    if (!parts.length) return "Sem processamento.";
+    const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}`;
+    return `${list[0].toUpperCase()}${list.slice(1)} ${parts.length === 1 ? "ligado" : "ligados"}.`;
+  };
+
+  const techTitle = () => `${describeFile(player.techInfo)}. ${dspSentence()} ${badge().hint}`;
+
+  // Chip de origem: no rádio, a faixa que o motor trouxe como descoberta diz
+  // isso (B7). Sem autoplay_pick (seed, camadas 2/3, S24): "rádio" puro.
+  const srcPick = () =>
+    player.queueSource?.kind === "radio" ? player.currentTrack?.autoplay_pick ?? null : null;
+  const srcLabel = () =>
+    srcPick()?.kind === "discovery" ? "rádio · descoberta" : queueSourceLabel(player.queueSource?.kind);
+  const srcTitle = () =>
+    player.queueSource?.kind === "radio" ? radioPickTitle(srcPick()) : player.queueSource?.name;
 
   return (
     <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
@@ -483,9 +520,10 @@ export function PlayerBar() {
               <span
                 class="pb-src"
                 data-kind={player.queueSource?.kind ?? "solta"}
-                title={player.queueSource?.name}
+                data-pick={srcPick()?.kind}
+                title={srcTitle()}
               >
-                {queueSourceLabel(player.queueSource?.kind)}
+                {srcLabel()}
               </span>
             </Show>
             {player.currentTrack?.artist_name ?? "—"}
@@ -498,11 +536,13 @@ export function PlayerBar() {
         <Show when={player.currentTrack}>
           <button
             class="pb-icon-btn pb-like"
+            classList={{ "pb-like--pulse": likePulse() }}
             id="pb-like"
-            aria-label="Like"
+            aria-label="Curtir"
             aria-pressed={player.isLiked ? "true" : "false"}
-            title="Like"
+            title={player.isLiked ? "Curtida" : "Curtir"}
             onClick={onLike}
+            onAnimationEnd={() => setLikePulse(false)}
           >
             <Icon name={player.isLiked ? ICONS.heartFilled : ICONS.heart} size={14} />
           </button>
@@ -609,7 +649,7 @@ export function PlayerBar() {
 
         <div class="pb-seek">
           <span class="pb-time" id="pb-time-current">
-            {formatDuration(player.positionSecs)}
+            {fmtDur(player.positionSecs * 1000)}
           </span>
           <div
             class="progress"
@@ -617,11 +657,11 @@ export function PlayerBar() {
             ref={seekBarRef}
             role="slider"
             tabindex="0"
-            aria-label="Seek"
+            aria-label="Posição da faixa"
             aria-valuemin="0"
             aria-valuemax={Math.round(player.durationSecs)}
             aria-valuenow={Math.round(player.positionSecs)}
-            aria-valuetext={`${formatDuration(player.positionSecs)} of ${formatDuration(player.durationSecs)}`}
+            aria-valuetext={`${fmtDur(player.positionSecs * 1000)} de ${fmtDur(player.durationSecs * 1000)}`}
             onPointerDown={onSeekPointerDown}
             onKeyDown={onSeekKeyDown}
           >
@@ -629,7 +669,7 @@ export function PlayerBar() {
             <div class="progress__thumb" id="pb-progress-thumb" style={{ left: `${pct()}%` }} />
           </div>
           <span class="pb-time" id="pb-time-total">
-            {formatDuration(player.durationSecs)}
+            {fmtDur(player.durationSecs * 1000)}
           </span>
         </div>
       </div>
@@ -639,9 +679,10 @@ export function PlayerBar() {
         <Show when={player.techInfo.format && player.techInfo.format !== "—"}>
           <div
             class="pb-tech"
-            classList={{ "pb-tech--lossy": badge().lossy }}
+            classList={{ "pb-tech--lossy": badge().lossy, "pb-tech--unmeasured": badge().unmeasured }}
             id="pb-tech"
-            title={badge().title ?? "Signal path"}
+            title={techTitle()}
+            aria-label={techTitle()}
           >
             <span class="pb-tech__dot" />
             <span>{badge().label}</span>
@@ -725,6 +766,24 @@ export function contOrigin(def: string): string {
     case "playlist": return "playlist";
     default: return def;
   }
+}
+
+/** Motivo da escolha do rádio, no title do chip (B7). */
+export function radioPickTitle(pick: import("../tauri").AutoplayPick | null | undefined): string {
+  const base = "Tocando por rádio: o motor escolheu esta faixa.";
+  if (!pick) return base;
+  const vezes = pick.ended === 1 ? "1 vez" : `${pick.ended} vezes`;
+  if (pick.kind === "discovery") {
+    return pick.ended === 0
+      ? `${base} Descoberta: você ainda não a ouviu até o fim.`
+      : `${base} Descoberta: você a ouviu até o fim só ${vezes}.`;
+  }
+  if (pick.liked) {
+    return pick.ended > 0
+      ? `${base} Conhecida: você curtiu e ouviu até o fim ${vezes}.`
+      : `${base} Conhecida: você curtiu.`;
+  }
+  return `${base} Conhecida: você ouviu até o fim ${vezes}.`;
 }
 
 /** Label PT do chip de proveniência da fila na barra. */

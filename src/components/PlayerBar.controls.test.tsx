@@ -31,6 +31,7 @@ vi.mock("../tauri", async (importOriginal) => {
     persistLoadState: vi.fn(async () => null),
     persistSaveState: vi.fn(async () => {}),
     libIsLiked: vi.fn(async () => false),
+    libToggleLike: vi.fn(async () => true),
     libRecordPlay: vi.fn(async () => {}),
     getState: vi.fn(async () => ({ current_library_track: null, is_playing: false })),
   };
@@ -38,7 +39,7 @@ vi.mock("../tauri", async (importOriginal) => {
 
 import { PlayerBar } from "./PlayerBar";
 import { player, setPlayer, setQueue } from "../store/player";
-import { playerSeek, setVolume } from "../tauri";
+import { libToggleLike, playerSeek, setVolume } from "../tauri";
 import { trackMenu, closeTrackMenu } from "../store/contextMenu";
 import type { Track } from "../tauri";
 
@@ -90,7 +91,7 @@ describe("seek como slider (shell-2, ds-2)", () => {
     expect(seek.getAttribute("aria-valuemin")).toBe("0");
     expect(seek.getAttribute("aria-valuemax")).toBe("200");
     expect(seek.getAttribute("aria-valuenow")).toBe("83");
-    expect(seek.getAttribute("aria-valuetext")).toBe("1:23 of 3:20");
+    expect(seek.getAttribute("aria-valuetext")).toBe("1:23 de 3:20");
   });
 
   it("setas avançam e voltam 5 s e fazem o seek no engine", () => {
@@ -200,5 +201,39 @@ describe("botão de mudo (shell-v3)", () => {
     fireEvent.click(btn);
     expect(player.isMuted).toBe(false);
     expect(vi.mocked(setVolume)).toHaveBeenLastCalledWith(0.6);
+  });
+});
+
+describe("curtir pulsa uma vez (B9)", () => {
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+
+  it("curtir põe a classe do pulso; descurtir não", async () => {
+    setQueue([TRACK], 0);
+    const { container } = render(() => <PlayerBar />);
+    const btn = container.querySelector("#pb-like") as HTMLElement;
+    expect(btn.getAttribute("aria-label")).toBe("Curtir");
+    expect(btn.classList.contains("pb-like--pulse")).toBe(false);
+
+    vi.mocked(libToggleLike).mockResolvedValueOnce(true);
+    fireEvent.click(btn);
+    await vi.waitFor(() => expect(player.isLiked).toBe(true));
+    await nextFrame();
+    expect(btn.classList.contains("pb-like--pulse")).toBe(true);
+    expect(btn.getAttribute("title")).toBe("Curtida");
+    fireEvent.animationEnd(btn);
+    expect(btn.classList.contains("pb-like--pulse")).toBe(false);
+
+    vi.mocked(libToggleLike).mockResolvedValueOnce(false);
+    fireEvent.click(btn);
+    await vi.waitFor(() => expect(player.isLiked).toBe(false));
+    await nextFrame();
+    expect(btn.classList.contains("pb-like--pulse")).toBe(false);
+  });
+
+  it("faixa que já chega curtida não pulsa", () => {
+    setQueue([TRACK], 0);
+    setPlayer({ isLiked: true });
+    const { container } = render(() => <PlayerBar />);
+    expect(container.querySelector("#pb-like")!.classList.contains("pb-like--pulse")).toBe(false);
   });
 });

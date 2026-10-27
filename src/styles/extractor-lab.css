@@ -1268,6 +1268,19 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    station). */
 .pb-icon-btn[aria-pressed="true"], .pb-btn[aria-pressed="true"] { color: var(--blue-fg); }
 .pb-like[aria-pressed="true"] { color: var(--rose-fg); }
+/* Curtir confirma com um pulso único (B9). A classe só entra no gesto de
+   curtir (PlayerBar.onLike): descurtir e carregar faixa curtida não pulsam.
+   Só transform; 240 ms não tem token de duração próprio (o mais longo é
+   --dur-med, 180 ms, curto demais para o retorno ler). */
+.pb-like--pulse iconify-icon { animation: pb-like-pulse 240ms var(--ease-out); }
+@keyframes pb-like-pulse {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pb-like--pulse iconify-icon { animation: none; }
+}
 .pb-icon-btn iconify-icon, .pb-btn iconify-icon { width: 14px; height: 14px; }
 
 .pb-center { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
@@ -1288,7 +1301,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Stroke maior pra dar peso visual de "play/pause filled" usando line icons */
 .pb-btn--primary iconify-icon::part(svg) { stroke-width: 2.5; }
 
-.pb-seek { display: grid; grid-template-columns: 42px 1fr 42px; gap: 10px; align-items: center; }
+/* minmax: faixa de mais de 1 h mostra H:MM:SS (fmtDur) e não cabe em 42 px. */
+.pb-seek { display: grid; grid-template-columns: minmax(42px, auto) 1fr minmax(42px, auto); gap: 10px; align-items: center; }
 .pb-time { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); font-variant-numeric: tabular-nums; text-align: center; }
 
 .progress {
@@ -1338,6 +1352,9 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-tech__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent); }
 /* Faixa lossy por dentro (corte espectral medido): o ponto do caminho do sinal vira aviso. */
 .pb-tech--lossy .pb-tech__dot { background: var(--amber-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-ring) calc(var(--halo-alpha) * 160%), transparent); }
+/* Nunca medida (ou medição indeterminada): o verde fica só para o que o
+   corte espectral conferiu; aqui o ponto é neutro e sem halo. */
+.pb-tech--unmeasured .pb-tech__dot { background: var(--fg-6); box-shadow: none; }
 .pb-vol { display: flex; align-items: center; gap: 8px; min-width: 130px; }
 .pb-vol .progress { flex: 1; }
 

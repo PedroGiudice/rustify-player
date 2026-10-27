@@ -80,6 +80,34 @@ describe("chip de origem da fila (pb-src)", () => {
     expect(c2.querySelector(".pb-src")!.textContent).toBe("álbum");
   });
 
+  it("no rádio, a descoberta se anuncia e o title diz o motivo (B7)", () => {
+    const disc = { ...FAKE_TRACK, autoplay_pick: { kind: "discovery", ended: 0, liked: false } } as Track;
+    setQueue([disc], 0, "curated", { kind: "radio" });
+    const { container } = render(() => <PlayerBar />);
+    const chip = container.querySelector(".pb-src")!;
+    expect(chip.textContent).toBe("rádio · descoberta");
+    expect(chip.getAttribute("data-pick")).toBe("discovery");
+    expect(chip.getAttribute("title")).toBe(
+      "Tocando por rádio: o motor escolheu esta faixa. Descoberta: você ainda não a ouviu até o fim.",
+    );
+  });
+
+  it("conhecida e faixa sem o campo (seed, S24) mostram só 'rádio'", () => {
+    const known = { ...FAKE_TRACK, autoplay_pick: { kind: "known", ended: 7, liked: false } } as Track;
+    setQueue([known], 0, "curated", { kind: "radio" });
+    const { container } = render(() => <PlayerBar />);
+    const chip = container.querySelector(".pb-src")!;
+    expect(chip.textContent).toBe("rádio");
+    expect(chip.getAttribute("title")).toBe(
+      "Tocando por rádio: o motor escolheu esta faixa. Conhecida: você ouviu até o fim 7 vezes.",
+    );
+    cleanup();
+    setQueue([FAKE_TRACK], 0, "curated", { kind: "radio" });
+    const { container: c2 } = render(() => <PlayerBar />);
+    expect(c2.querySelector(".pb-src")!.textContent).toBe("rádio");
+    expect(c2.querySelector(".pb-src")!.getAttribute("title")).toBe("Tocando por rádio: o motor escolheu esta faixa.");
+  });
+
   it("sem faixa tocando não há chip", () => {
     setQueue([], 0);
     const { container } = render(() => <PlayerBar />);
@@ -169,5 +197,22 @@ describe("skip manual reage a sessao de station (Fase 3)", () => {
     await playQueueUpcoming(foreign);
     expect(player.queueIndex).toBe(0); // nao avancou — fallback seguro
     expect(currentSession().skippedIds).toEqual([]);
+  });
+});
+
+describe("pílula técnica (A19)", () => {
+  it("faixa sem medição ganha o estado neutro; medida sem corte, não", () => {
+    setPlayer({ techInfo: { ...player.techInfo, format: "FLAC", bitDepth: 24, sampleRate: 96000 } });
+    setQueue([FAKE_TRACK], 0);
+    const { container } = render(() => <PlayerBar />);
+    const pill = container.querySelector("#pb-tech")!;
+    expect(pill.classList.contains("pb-tech--unmeasured")).toBe(true);
+    expect(pill.getAttribute("title")).toMatch(/^FLAC 24 bits, 96 kHz\. .* Qualidade ainda não medida\.$/);
+    cleanup();
+    setQueue([{ ...FAKE_TRACK, quality_class: "sem_corte" } as Track], 0);
+    const { container: c2 } = render(() => <PlayerBar />);
+    const p2 = c2.querySelector("#pb-tech")!;
+    expect(p2.classList.contains("pb-tech--unmeasured")).toBe(false);
+    expect(p2.getAttribute("title")).toMatch(/Medido no conteúdo: sem corte de lossy\.$/);
   });
 });
