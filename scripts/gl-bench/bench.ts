@@ -46,6 +46,19 @@
      xfade        mede cada cena COM a dissolução de troca de cena ativa
                   o quadro inteiro (retrato da cena anterior por cima,
                   gl/engine.ts): o custo extra da transição, por cena.
+     ambient=1    mede cada cena no modo ambient (fora do Now Playing):
+                  cena num buffer de tela cheia, redução a 1/4, desfoque
+                  separável e composição com saturação/ganho (gl/ambient.ts).
+                  A diferença para ambient=0 é o custo do passe; o shot sai
+                  desfocado, como o app mostra na Home.
+     sync         lê 1 pixel depois de CADA quadro, não só no fim do lote.
+                  Necessário no llvmpipe (VM, sem GPU): o rasterizador por
+                  bins descarta os quadros pendentes quando o próximo limpa
+                  a tela inteira, e sem leitura por quadro só o último
+                  quadro do lote é rasterizado. A cena direto na tela sai
+                  barata demais; o ambient (que troca de framebuffer no
+                  meio do quadro) não. Com sync os dois pagam o quadro
+                  inteiro e a diferença é a do passe.
 
    O shot e a fração de pixels acesos saem de um quadro num instante
    FIXO do sinal simulado (SHOT_T), igual para todas as cenas e
@@ -210,6 +223,8 @@ async function run(): Promise<void> {
   const only = q.get("scenes")?.split(",").filter(Boolean);
   const wantFull = q.has("full");
   const xfade = q.has("xfade");
+  const ambient = q.get("ambient") === "1";
+  const syncEach = q.has("sync");
   const shots = q.has("shots");
   const settle = Math.max(0, Math.min(60, Number(q.get("settle") ?? 0) || 0));
   const reliefQ = q.get("relief");
@@ -302,7 +317,7 @@ async function run(): Promise<void> {
     ua: navigator.userAgent,
     renderer: "",
     size: `${W}x${H}`,
-    method: `${WARM} de aquecimento + ${BATCHES}x${PER_BATCH} quadros, readPixels por lote; ms = mediana dos lotes${q.has("xfade") ? "; com a dissolução ativa" : ""}`,
+    method: `${WARM} de aquecimento + ${BATCHES}x${PER_BATCH} quadros, readPixels por lote; ms = mediana dos lotes${q.has("xfade") ? "; com a dissolução ativa" : ""}${ambient ? "; modo ambient (desfoque na GPU)" : ""}${syncEach ? "; readPixels a cada quadro" : ""}`,
     results: [],
   };
   if (replay)
@@ -327,6 +342,9 @@ async function run(): Promise<void> {
   out.renderer = engine.rendererName();
   engine.resize(W, H);
   engine.setPalette(paletteFromQuery(q.get("pal")));
+  // O primeiro quadro crava o modo: ambient=1 já mede o passe inteiro,
+  // sem a rampa de 420 ms.
+  engine.setMode(ambient ? "ambient" : "focused");
   const one = new Uint8Array(4);
   const full = new Uint8Array(W * H * 4);
 
@@ -375,6 +393,7 @@ async function run(): Promise<void> {
         stepGlSignal(sig, replay.dt[i], true, raw, cfg);
       } else stepGlSignal(sig, DT, true, stepSim(sim, DT), cfg);
       engine.frame(sig, DT);
+      if (syncEach) gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one);
     };
     try {
       for (let i = 0; i < WARM; i++) step();

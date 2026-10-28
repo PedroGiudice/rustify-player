@@ -33,12 +33,36 @@
    baixo desde o primeiro quadro: nada espera a transição, e o som
    nunca passa por aqui.
 
+   Modo ambient (B6, 28/10): fora do Now Playing o fundo fica atrás da
+   interface, desfocado, com saturação 0,9 e ganho 0,8 (gl/ambient.ts).
+   Era filter CSS no .app-bg, que o WebKitGTK refazia em tela cheia a
+   cada quadro (Home a 46,9 fps). Agora, com o modo em ambient (ou na
+   troca de 420 ms), a cena e o véu da dissolução desenham num buffer
+   de tela cheia (this.target = ambFull) e o motor acrescenta quatro
+   passes: redução 4x4 para 1/4 da largura e da altura (4 leituras),
+   desfoque horizontal e vertical (9 leituras cada, a 1/16 dos pixels)
+   e a composição na tela (1 ou 2 leituras + saturação, ganho e dither).
+   No focused parado nada disso roda: a cena desenha direto na tela,
+   como antes. Buffers alocados na primeira vez que o ambient entra,
+   liberados no resize (realocados no quadro seguinte) e no dispose.
+
    Contrato das cenas: gl/scene.ts. Registro: gl/registry.ts.
    ============================================================ */
 
 import { IGN, HEAD, VS_TRI } from "./glsl";
 import { makeProgram, makeTarget, type Program, type Target } from "./glkit";
 import { reducedBufferSize } from "./budget";
+import {
+  AMBIENT_SCALE,
+  ambientBufferSize,
+  ambientLook,
+  ambientSigma,
+  createModeTween,
+  gaussPairs,
+  stepModeTween,
+  type BgMode,
+  type GaussPairs,
+} from "./ambient";
 import { SCENES } from "./registry";
 import type { SceneKey } from "./meta";
 import type { GlPalette } from "./palette";
@@ -64,6 +88,56 @@ out vec4 outColor;
 ` + IGN + `
 void main(){
   vec3 c=texture(uTex,gl_FragCoord.xy/uRes).rgb;
+  outColor=vec4(dither(c),1.0);
+}`;
+
+/* ---------- modo ambient ---------- */
+
+/** Redução para o buffer do desfoque: caixa de s x s em 4 leituras
+    lineares a ±s/4 px do centro do bloco (a 1/4, cada leitura cai na
+    quina de 2x2 texels e as 4 cobrem o bloco 4x4 inteiro). */
+const AMB_DOWN_FS = HEAD + `
+uniform sampler2D uTex; uniform vec2 uSrc, uScale;
+out vec4 outColor;
+void main(){
+  vec2 c=gl_FragCoord.xy*uScale;
+  vec2 o=0.25*uScale;
+  vec2 k=1.0/uSrc;
+  vec3 s=texture(uTex,(c+vec2(-o.x,-o.y))*k).rgb+texture(uTex,(c+vec2(o.x,-o.y))*k).rgb
+        +texture(uTex,(c+vec2(-o.x,o.y))*k).rgb+texture(uTex,(c+vec2(o.x,o.y))*k).rgb;
+  outColor=vec4(s*0.25,1.0);
+}`;
+
+/** Uma passagem do desfoque gaussiano separável: centro + 4 pares de
+    leituras lineares (gl/ambient.ts gaussPairs). uDir = passo de um
+    texel no eixo, já escalado pela fração do desvio da transição. */
+const AMB_BLUR_FS = HEAD + `
+uniform sampler2D uTex; uniform vec2 uRes, uDir; uniform float uW0; uniform vec4 uW, uO;
+out vec4 outColor;
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes;
+  vec3 c=texture(uTex,uv).rgb*uW0;
+  for(int i=0;i<4;i++){
+    vec2 d=uDir*uO[i];
+    c+=(texture(uTex,uv+d).rgb+texture(uTex,uv-d).rgb)*uW[i];
+  }
+  outColor=vec4(c,1.0);
+}`;
+
+/** Composição do ambient na tela: mistura nítida/desfocada (a nítida só
+    é lida durante a troca de modo: uMix é uniforme, o desvio é coerente),
+    saturação como o saturate() do CSS (luma Rec. 709), ganho para o preto
+    e dither (a ampliação do buffer reduzido revelaria degraus no escuro). */
+const AMB_FINAL_FS = HEAD + `
+uniform sampler2D uSharp, uBlur; uniform vec2 uRes; uniform float uMix, uSat, uGain;
+out vec4 outColor;
+` + IGN + `
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes;
+  vec3 b=texture(uBlur,uv).rgb;
+  vec3 c=uMix<1.0?mix(texture(uSharp,uv).rgb,b,uMix):b;
+  float l=dot(c,vec3(0.2126,0.7152,0.0722));
+  c=mix(vec3(l),c,uSat)*uGain;
   outColor=vec4(dither(c),1.0);
 }`;
 
@@ -129,6 +203,9 @@ export class GlEngine {
   private readonly composite: Program;
   private readonly fadeSnap: Program;
   private readonly fadeSolid: Program;
+  private readonly ambDown: Program;
+  private readonly ambBlur: Program;
+  private readonly ambFinal: Program;
   private readonly emptyVao: WebGLVertexArrayObject;
 
   private key: SceneKey | null = null;
@@ -152,6 +229,21 @@ export class GlEngine {
   private fadeDur = 1;
   /** Último sinal desenhado (o retrato redesenha a cena com ele). */
   private lastSig: GlSignal | null = null;
+
+  /** Modo pedido (0 = focused, 1 = ambient), troca e versão calma. */
+  private modeTarget = 0;
+  private modeCalm = false;
+  private readonly modeTween = createModeTween();
+  /** Buffers do ambient: a cena em tela cheia e dois a 1/AMBIENT_SCALE
+      (redução e vertical em A, horizontal em B). */
+  private ambFull: Target | null = null;
+  private ambA: Target | null = null;
+  private ambB: Target | null = null;
+  private ambKernel: GaussPairs | null = null;
+  /** Sem memória para os buffers: o ambient fica nítido, o motor segue. */
+  private ambBroken = false;
+  private ambBrokenW = 0;
+  private ambBrokenH = 0;
 
   /** Paleta em float, mutada no lugar (as cenas leem por referência). */
   readonly pal: ScenePalette = {
@@ -186,6 +278,9 @@ export class GlEngine {
       this.composite = makeProgram(gl, VS_TRI, COMPOSITE_FS, { label: "composite" });
       this.fadeSnap = makeProgram(gl, VS_TRI, XFADE_SNAP_FS, { label: "xfade" });
       this.fadeSolid = makeProgram(gl, VS_TRI, XFADE_SOLID_FS, { label: "xfade-solid" });
+      this.ambDown = makeProgram(gl, VS_TRI, AMB_DOWN_FS, { label: "ambient/redução" });
+      this.ambBlur = makeProgram(gl, VS_TRI, AMB_BLUR_FS, { label: "ambient/desfoque" });
+      this.ambFinal = makeProgram(gl, VS_TRI, AMB_FINAL_FS, { label: "ambient/composição" });
     } catch (e) {
       // Motor que não subiu devolve o contexto na hora (teto de contextos).
       canvas.removeEventListener("webglcontextlost", this.handleLost);
@@ -229,6 +324,22 @@ export class GlEngine {
   get transition(): { kind: "start" | "scene"; progress: number } | null {
     if (!this.fadeKind) return null;
     return { kind: this.fadeKind === 1 ? "start" : "scene", progress: Math.min(1, this.fadeT / this.fadeDur) };
+  }
+
+  /** Valor atual da troca de modo (0 = focused, 1 = ambient), para
+      testes e diagnóstico. */
+  get ambient(): number {
+    return this.modeTween.value;
+  }
+
+  /**
+   * Modo do fundo, chamado por quadro por quem hospeda (barato,
+   * idempotente). O primeiro quadro crava o modo; depois cada troca anda
+   * AMBIENT_MODE_S. `calm` (reduzir animação): a troca só dissolve.
+   */
+  setMode(mode: BgMode, calm = false): void {
+    this.modeTarget = mode === "ambient" ? 1 : 0;
+    this.modeCalm = calm;
   }
 
   /**
@@ -290,6 +401,11 @@ export class GlEngine {
       this.snap = null;
       if (this.fadeKind === 2) this.fadeKind = 1;
     }
+    // Buffers do ambient no tamanho velho saem; o próximo quadro que
+    // precisar deles realoca no tamanho novo (e tenta de novo se o
+    // tamanho anterior não coube na memória).
+    if (this.ambFull && (this.ambFull.w !== this.w || this.ambFull.h !== this.h)) this.dropAmbient();
+    if (this.ambBroken && (this.w !== this.ambBrokenW || this.h !== this.ambBrokenH)) this.ambBroken = false;
     this.layout();
     this.scene?.resize(this.outW, this.outH);
   }
@@ -301,8 +417,17 @@ export class GlEngine {
   frame(sig: GlSignal, dt: number, still = false): void {
     if (this.lost || this.disposed) return;
     this.lastSig = sig;
-    this.drawScene(sig, dt);
-    if (this.fadeKind) this.drawFade(dt, still);
+    const m = stepModeTween(this.modeTween, this.modeTarget, dt, this.modeCalm);
+    // Focused parado: a cena vai direto para a tela, custo de sempre.
+    const post = m > 0 && this.ensureAmbient();
+    this.target = post ? this.ambFull!.fb : null;
+    try {
+      this.drawScene(sig, dt);
+      if (this.fadeKind) this.drawFade(dt, still);
+    } finally {
+      this.target = null;
+    }
+    if (post) this.drawAmbient(m);
   }
 
   /** Cena atual no framebuffer final (this.target), com o composite do
@@ -339,9 +464,13 @@ export class GlEngine {
       this.rt = null;
       this.snap?.dispose();
       this.snap = null;
+      this.dropAmbient();
       this.composite.dispose();
       this.fadeSnap.dispose();
       this.fadeSolid.dispose();
+      this.ambDown.dispose();
+      this.ambBlur.dispose();
+      this.ambFinal.dispose();
       gl.deleteVertexArray(this.emptyVao);
     } catch { /* contexto já perdido */ }
     this.canvas.removeEventListener("webglcontextlost", this.handleLost);
@@ -450,7 +579,8 @@ export class GlEngine {
     this.snap = null;
   }
 
-  /** Véu da transição por cima da cena nova, na tela. */
+  /** Véu da transição por cima da cena nova, no framebuffer final (a
+      tela, ou o buffer do ambient: o véu também sai desfocado). */
   private drawFade(dt: number, still: boolean): void {
     const gl = this.gl;
     this.fadeT += dt > 0 ? dt * this.fadeTimeScale : 0;
@@ -460,7 +590,7 @@ export class GlEngine {
       return;
     }
     const k = xfadeAt(p, still);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.target);
     gl.viewport(0, 0, this.w, this.h);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
@@ -485,6 +615,98 @@ export class GlEngine {
       this.fullscreen();
     }
     gl.disable(gl.BLEND);
+  }
+
+  /** Buffers do ambient no tamanho da tela; false = sem memória (o
+      ambient fica nítido e o motor segue; tenta uma vez só). */
+  private ensureAmbient(): boolean {
+    if (this.ambBroken) return false;
+    if (this.ambFull && this.ambA && this.ambB) return true;
+    this.dropAmbient();
+    try {
+      const q = ambientBufferSize(this.w, this.h, AMBIENT_SCALE);
+      this.ambFull = makeTarget(this.gl, this.w, this.h);
+      this.ambA = makeTarget(this.gl, q.w, q.h);
+      this.ambB = makeTarget(this.gl, q.w, q.h);
+      // Escala real (a divisão arredonda para cima): o desvio sai em
+      // texels do buffer que de fato existe.
+      this.ambKernel = gaussPairs(ambientSigma(this.w / q.w));
+      return true;
+    } catch (e) {
+      this.dropAmbient();
+      this.ambBroken = true;
+      this.ambBrokenW = this.w;
+      this.ambBrokenH = this.h;
+      console.warn("[gl] modo ambient sem buffer, o fundo segue nítido:", e);
+      return false;
+    }
+  }
+
+  private dropAmbient(): void {
+    this.ambFull?.dispose();
+    this.ambA?.dispose();
+    this.ambB?.dispose();
+    this.ambFull = this.ambA = this.ambB = null;
+    this.ambKernel = null;
+  }
+
+  /** Redução, desfoque separável e composição na tela (ver cabeçalho). */
+  private drawAmbient(m: number): void {
+    const gl = this.gl;
+    const full = this.ambFull!, a = this.ambA!, b = this.ambB!, k = this.ambKernel!;
+    const look = ambientLook(m, this.modeCalm);
+    gl.disable(gl.BLEND);
+    gl.activeTexture(gl.TEXTURE0);
+
+    // 1. Tela cheia -> A (caixa 4x4).
+    gl.bindFramebuffer(gl.FRAMEBUFFER, a.fb);
+    gl.viewport(0, 0, a.w, a.h);
+    const down = this.ambDown;
+    down.use();
+    down.v2("uSrc", full.w, full.h);
+    down.v2("uScale", full.w / a.w, full.h / a.h);
+    gl.bindTexture(gl.TEXTURE_2D, full.tex);
+    down.i("uTex", 0);
+    this.fullscreen();
+
+    // 2-3. Desfoque: A -> B (horizontal), B -> A (vertical). Desvio nulo
+    // (primeiro quadro da troca na versão normal) = identidade, pula.
+    if (look.radius > 0) {
+      const blur = this.ambBlur;
+      blur.use();
+      blur.v2("uRes", a.w, a.h);
+      blur.f("uW0", k.w0);
+      blur.v4("uW", k.w[0], k.w[1], k.w[2], k.w[3]);
+      blur.v4("uO", k.o[0], k.o[1], k.o[2], k.o[3]);
+      blur.i("uTex", 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, b.fb);
+      blur.v2("uDir", look.radius / a.w, 0);
+      gl.bindTexture(gl.TEXTURE_2D, a.tex);
+      this.fullscreen();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, a.fb);
+      blur.v2("uDir", 0, look.radius / a.h);
+      gl.bindTexture(gl.TEXTURE_2D, b.tex);
+      this.fullscreen();
+    }
+
+    // 4. Composição na tela.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.w, this.h);
+    const fin = this.ambFinal;
+    fin.use();
+    fin.v2("uRes", this.w, this.h);
+    fin.f("uMix", look.mix);
+    fin.f("uSat", look.sat);
+    fin.f("uGain", look.gain);
+    gl.bindTexture(gl.TEXTURE_2D, full.tex);
+    fin.i("uSharp", 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, a.tex);
+    fin.i("uBlur", 1);
+    this.fullscreen();
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   private dropScene(): void {

@@ -64,6 +64,8 @@ Parâmetros da página (`--query`):
 | `replay=fft-real-2609` | troca o `sim.ts` pelo sinal real gravado no app (`src/gl/__fixtures__/fft-real-2609.json`, decodificado por `src/gl/fftReplay.ts`), um evento por quadro com o dt gravado. Com `shots`, fotografa os 2 piores instantes da reação ANTIGA do Relevo (ver abaixo) |
 | `pal=RRGGBB,RRGGBB` | paleta (ink,ink2) no lugar do Copper: a cena com a cor de uma capa real (ex.: `pal=9af425,9af920`, a capa verde-limão de 11/10) |
 | `xfade` | mede cada cena com a dissolução de troca de cena ativa no quadro inteiro (retrato da cena anterior por cima, `gl/engine.ts`): a diferença para a rodada sem `xfade` é o custo da transição, que no app só existe durante 1,4 s depois de trocar de cena (1,8 s ao ligar o motor) |
+| `ambient=1` | mede cada cena no modo ambient (o fundo fora do Now Playing): a cena desenha num buffer de tela cheia e o motor reduz a 1/4, desfoca (gaussiana separável, 2 passagens) e compõe com saturação 0,9 e ganho 0,8 (`gl/ambient.ts`). A diferença para `ambient=0` (ou sem o parâmetro) é o custo do passe, que no app vale em toda vista que não é o Now Playing. Com `shots`, o PNG sai desfocado |
+| `sync` | lê 1 pixel depois de cada quadro (não só no fim do lote). Obrigatório para comparar na VM: o llvmpipe descarta os quadros pendentes do lote quando o seguinte limpa a tela, e sem `sync` a cena direto na tela mede só uma fração do trabalho (Tinta: 4,3 ms sem `sync`, 21,1 ms com, em 28/10) |
 | `cfg=ceo` / `cfg=default` | cfg do sinal no replay: `ceo` (padrão; Bass 0,30, Mid 0,15, Treble 0,10, smoothing 1,0, pulse, depth 1,0) ou os defaults do app. Sem replay, sempre os defaults |
 
 O shot (e a fração de pixels acesos) sai de UM quadro num instante
@@ -73,6 +75,48 @@ com relevo bem visível, e o mesmo instante para todas as variantes, que
 ficam comparáveis lado a lado. O resultado chega ao runner por POST
 `/result` (o título da página trunca em ~1000 caracteres e a rodada
 `relief=all` passa disso).
+
+## Modo ambient (B6, 28/10)
+
+Até a 0.2.98 o ambient era `filter: blur(8px) saturate(0.9)` + `opacity:
+0.8` no `.app-bg`, refeito em tela cheia a cada quadro do canvas: no app
+real (26/10, 1866x1048, Tinta, sem áudio) a Home ficava em 46,9 fps com
+69 % dos quadros acima de 20 ms, e o Now Playing (sem filter) em 60. O
+passe que o substitui se mede assim, na mesma rodada:
+
+```bash
+python3 run_bench.py gl-bench-build --query 'w=1857&h=1048&scenes=paint,relief&sync'
+python3 run_bench.py gl-bench-build --query 'w=1857&h=1048&scenes=paint,relief&ambient=1&sync'
+```
+
+Na VM (renderização por software, sem GPU) o número absoluto não vale;
+só a diferença entre as duas rodadas, e só com `sync` (ver a tabela
+acima: sem ele o llvmpipe rasteriza um quadro por lote quando a cena vai
+direto para a tela, e o ambient parece 20 ms mais caro do que é). Medido
+na VM em 28/10, 1857x1048, com `sync`:
+
+| cena | focused | ambient | passe |
+|---|---|---|---|
+| Tinta | 21,1 ms | 25,1-25,2 ms | +4 ms |
+| Relevo | 19,7-20,5 ms | 26,6-30,6 ms | +6 a +10 ms (3 de 4 rodadas em ~30 ms) |
+
+O Relevo paga mais que a Tinta pelo mesmo passe porque, no llvmpipe,
+cada troca de framebuffer é um ponto de sincronia entre a CPU e as
+threads de rasterização, e o Relevo é a cena mais pesada de vértices.
+Em GPU de verdade isso não tem o mesmo peso; o número que decide é o
+do cmr-auto.
+
+Paridade com o CSS antigo (mesma rodada, `shots`): o PNG do ambient
+contra a foto do focused passada por gaussiana de 8 px, saturação 0,9
+e ganho 0,8 (ffmpeg `gblur=sigma=8:steps=6` + `colorchannelmixer`)
+dá PSNR de 54,5 dB no Relevo e 52,0 dB na Tinta; contra a mesma foto
+sem o desfoque, 30,5 e 40,4 dB.
+
+Do passe, a redução e o desfoque a 1/4 custam ~2,2 ms no llvmpipe (a
+1/3, ~3-4 ms, sem ganho visível: a gaussiana de 8 px já zera o que passa
+do Nyquist de 1/4); o resto é a composição de tela cheia e as trocas de
+framebuffer. O aceite continua sendo o fps medido no app real em todas
+as vistas.
 
 ## Replay do sinal real (calibração do Relevo, 26/09)
 

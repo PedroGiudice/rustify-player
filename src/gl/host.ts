@@ -13,12 +13,15 @@
        em ~1 s, o ciclo da paleta da capa (bgInkCycle) migra em ~10 s;
      - transição: a cena entra por dissolução (gl/engine.ts) quando
        `transitions()` permite — a medição de cenas troca seco;
+     - modo: focused/ambient lido por quadro e entregue ao motor, que
+       desfoca o ambient na GPU (gl/ambient.ts); sem `mode`, focused;
      - sinal: gl/signal.ts por quadro;
      - fps medido 1x/s em glStatus (o gate da feature) e a cena de
        fato montada em glActiveScene (a medição espera por ela).
    ============================================================ */
 
 import { GlEngine } from "./engine";
+import type { BgMode } from "./ambient";
 import { setGlActiveScene, setGlStatus, type SceneKey } from "./meta";
 import type { GlPalette, Rgb } from "./palette";
 import { createGlSignal, stepGlSignal, type FftBands, type GlCfg } from "./signal";
@@ -61,6 +64,9 @@ export interface GlHostOptions {
   transitions?: () => boolean;
   /** Versão calma (reduzir animação): a transição só dissolve. */
   calm?: () => boolean;
+  /** Modo do fundo, lido por quadro (desktop: focused no Now Playing e
+      no cinema, ambient no resto). Ausente = focused (mobile). */
+  mode?: () => BgMode;
 }
 
 /** Sobe o motor no canvas. Devolve a função de desmonte. */
@@ -155,7 +161,11 @@ export function startGlHost(o: GlHostOptions): () => void {
     const cfg = o.cfg();
     stepGlSignal(sig, dt, b.fresh, b, cfg);
     // Calma ou Speed = 0: a transição não avança o retrato.
-    const still = (o.calm?.() ?? false) || !(cfg.speed > 0);
+    const calm = o.calm?.() ?? false;
+    const still = calm || !(cfg.speed > 0);
+    // A troca de modo só depende da calma: Speed = 0 para a cena, não
+    // a interface.
+    eng.setMode(o.mode?.() ?? "focused", calm);
 
     const want = o.scene();
     if (eng.sceneKey !== want) {

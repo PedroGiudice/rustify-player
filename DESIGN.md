@@ -655,7 +655,11 @@ flashes por segundo; `Speed = 0` no Tweaks para. No WebGL a troca de cena
 dissolve em 1,4 s (a cena que sai avança 6% e some por cima da nova; só
 dissolve na versão calma) e o motor nasce do preto ao ligar; o kick é um
 gesto que atravessa o espaço (frente de luz na Poeira, onda que desce o
-túnel na Órbitas), nunca um clarão da tela inteira. Critério de aceite: 60 fps
+túnel na Órbitas), nunca um clarão da tela inteira. Fora do Now Playing
+(modo ambient) o fundo recua: desfoque de 8 px, saturação 0,9 e 80 % do
+brilho, em 420 ms no `--ease-out` (na versão calma, só dissolve); no
+WebGL quem faz isso é o próprio motor, num buffer a 1/4, nunca filter CSS
+sobre o canvas. Critério de aceite: 60 fps
 medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
 20 ms.
 
@@ -695,7 +699,8 @@ medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
 - **Don't** usar cor crua (`#3b82f6`, `rgba(59,130,246,…)`, `#fff` sobre
   acento): use `--blue-ring` com `--halo-alpha` e `--on-primary`.
 - **Don't** usar sombra para elevar superfície em repouso, nem
-  `backdrop-filter` em tela cheia sobre o canvas animado.
+  `backdrop-filter` ou `filter` em tela cheia sobre o canvas animado (o
+  filter do ambient custava 13 fps na Home; no WebGL ele é passe do motor).
 - **Don't** "corrigir" o canvas do WebGL para quase-preto: é #000 por decisão.
 - **Don't** empilhar mais de 3 tamanhos e 2 pesos numa tela, nem usar
   sobretítulo espaçado além do eyebrow, mono decorativo em dado que não muda,
