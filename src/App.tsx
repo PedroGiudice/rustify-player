@@ -9,7 +9,9 @@
    monta o canvas UMA vez e nunca remonta. Só o data-mode do
    wrapper recomputa em mudança de rota — "focused" quando o
    user está em /now-playing (ou cinema mode), "ambient" caso
-   contrário. Animação persiste entre navegações.
+   contrário. Animação persiste entre navegações. No 2D o
+   ambient é filter CSS no wrapper; no WebGL o mesmo modo vai
+   por prop ao GlBackground e o motor desfoca na GPU.
 
    Atalhos globais: N (now playing), H (home), L (library), Esc
    (sai do cinema mode). Demais atalhos (Q, F, [, ], Ctrl/Cmd+K)
@@ -124,7 +126,7 @@ export default function App() {
           fallback={<SpectrumCanvas />}
         >
           <Suspense fallback={<SpectrumCanvas />}>
-            <GlBackground />
+            <GlBackground mode={bgMode()} />
           </Suspense>
         </Show>
       </div>

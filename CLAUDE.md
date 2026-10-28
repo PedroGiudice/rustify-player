@@ -312,6 +312,27 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   frente de luz corre para o fundo, na Órbitas uma onda desce o túnel. A
   Órbitas passou a andar no relógio virtual (antes o túnel ignorava o
   Speed). Médias de brilho travadas no replay real (`scenes.test.ts`).
+- **Modo ambient na GPU (B6, 28/10)**: fora do Now Playing o fundo
+  WebGL sai desfocado (gaussiana de 8 px num buffer a 1/4, saturação
+  0,9, ganho 0,8 misturando com o `--bg-canvas`, como a opacity antiga
+  deixava o body aparecer) pelo proprio motor (`gl/ambient.ts`,
+  passes no fim de `gl/engine.ts`); o modo chega por prop do App ao
+  GlBackground. O `filter`/`opacity` do `.app-bg[data-mode="ambient"]`
+  vale SO para o 2D (`:not([data-engine="webgl"])`, marca posta pelo
+  GlBackground): o filter CSS de tela cheia sobre o canvas animado
+  derrubava a Home a 46,9 fps (69 % > 20 ms). Nao reintroduzir filter,
+  opacity < 1 nem backdrop-filter de tela cheia sobre o canvas do WebGL.
+  Troca focused/ambient = 420 ms no --ease-out integrada por dt; versao
+  calma = so dissolve, e segue o reduzir animacao do SISTEMA (`reduced`
+  no host), nao o `bgCalm` dos knobs. No VM, medir com `gl-bench ... &sync`
+  (sem ele o llvmpipe rasteriza 1 quadro por lote e o focused sai barato
+  demais). Na GPU da cmr-auto, desenhar a cena em tela cheia num buffer
+  e reduzir custava +4 a +9 ms (Tinta 10,4 -> 18,4 ms): no ambient
+  PARADO a cena com `SceneDef.ambientDirect` (campo suave; so a Tinta)
+  desenha direto a 1/4 (5,6 ms) e a de `maxRows` (Nebula) e desfocada a
+  partir do proprio buffer (9,5 ms). Linha e ponto NAO entram no direto
+  (a 1/4 o brilho sobe 2-4x). Lorem segue no caminho cheio (16,4-17 ms
+  no bench sem sync, o risco do aceite no ambient).
 - Falha de contexto WebGL nao deixa tela preta: `glStatus.ok === false` e
   o App reassume o 2D sozinho; o motivo aparece no painel. Religar o
   motor chama `resetGlStatus()`.

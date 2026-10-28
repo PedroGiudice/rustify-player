@@ -41,6 +41,15 @@ describe("readGlPalette", () => {
     expect(m.canvas).toEqual({ r: 0, g: 0, b: 0 });
   });
 
+  it("back = --bg-canvas no desktop (só o ambient mistura com ele); mobile e tema ausente = preto", () => {
+    const p = readGlPalette(reader({ "--bg-canvas": "#2b2b2a", "--bg-ink": "#c6633d" }));
+    expect(p.back).toEqual({ r: 43, g: 43, b: 42 });
+    expect(p.canvas).toEqual({ r: 0, g: 0, b: 0 });
+    expect(readGlPalette(reader({ "--bg-ink": "#c6633d" })).back).toEqual({ r: 0, g: 0, b: 0 });
+    const m = readGlPalette(reader({ "--bg-canvas": "#2b2b2a", "--bg-ink-rgb": "240, 240, 240" }), MOBILE_VARS);
+    expect(m.back).toEqual({ r: 0, g: 0, b: 0 });
+  });
+
   it("cai em --bg-ink quando --bg-ink-rgb nao existe", () => {
     const p = readGlPalette(reader({ "--bg-ink": "#c6633d" }));
     expect(p.ink).toEqual({ r: 198, g: 99, b: 61 });

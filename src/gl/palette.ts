@@ -32,6 +32,11 @@ export interface GlPalette {
   ink: Rgb;
   ink2: Rgb;
   soft: Rgb;
+  /** Fundo atrás do canvas (desktop: --bg-canvas, o html/body). Só a
+      composição do modo ambient usa: o ganho 0,8 mistura com ele, como
+      a opacity 0.8 do CSS deixava o body aparecer. As cenas não o veem.
+      Ausente = canvas (preto). */
+  back?: Rgb;
 }
 
 /** Base fixa das cenas: preto puro, igual ao que o 2D mostra. */
@@ -101,12 +106,15 @@ export interface PaletteVars {
   ink: readonly string[];
   ink2: readonly string[];
   soft: readonly string[];
+  /** Fundo atrás do canvas (GlPalette.back). Ausente = canvas. */
+  back?: readonly string[];
 }
 
 export const DESKTOP_VARS: PaletteVars = {
   ink: ["--bg-ink-rgb", "--bg-ink"],
   ink2: ["--primary"],
   soft: ["--fg-5"],
+  back: ["--bg-canvas"],
 };
 
 export const MOBILE_VARS: PaletteVars = {
@@ -131,5 +139,6 @@ export function readGlPalette(read: VarReader, vars: PaletteVars = DESKTOP_VARS)
   // criar profundidade).
   const ink2 = first(read, vars.ink2) ?? lighten(ink, 0.28);
   const soft = first(read, vars.soft) ?? mix(ink, canvas, 0.5);
-  return { canvas, ink, ink2, soft };
+  const back = (vars.back && first(read, vars.back)) ?? { ...canvas };
+  return { canvas, ink, ink2, soft, back };
 }

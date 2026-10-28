@@ -13,6 +13,13 @@
    dissolve uma na outra (gl/engine.ts, transição). Os dois motores nunca rodam juntos: App.tsx
    monta UM dos dois, então só existe um rAF e um contexto GL vivos.
 
+   Modo ambient (fora do Now Playing): o desfoque, a saturação e o
+   ganho saem da GPU (gl/engine.ts, gl/ambient.ts), não de filter CSS.
+   Enquanto este componente está montado, o wrapper .app-bg leva
+   data-engine="webgl" e o CSS do ambient (filter + opacity, que só o
+   2D usa) não se aplica; se o WebGL cair, o desmonte tira a marca e o
+   CSS volta a valer para o 2D.
+
    Degradação: sem WebGL2, shader que não compila ou contexto
    perdido → glStatus.ok = false com o motivo, e o App cai de volta
    pro 2D sozinho — o usuário vê o motivo no Tweaks, não uma tela
@@ -25,11 +32,12 @@
 
 import { onCleanup, onMount } from "solid-js";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
-import { bgCalm, tweaks } from "../store/tweaks";
+import { bgCalm, reducedMotion, tweaks } from "../store/tweaks";
 import { startGlHost } from "../gl/host";
 import { glSceneOverride } from "../gl/meta";
 import { readGlPalette } from "../gl/palette";
 import { calmGlCfg, type GlCfg } from "../gl/signal";
+import type { BgMode } from "../gl/ambient";
 
 /** Tempo (ms) sem frame de FFT antes de considerar o stream parado. */
 const FFT_STALE_MS = 250;
@@ -49,10 +57,14 @@ function cfgFromTweaks(): GlCfg {
   return bgCalm(t) ? calmGlCfg(cfg) : cfg;
 }
 
-export function GlBackground() {
+export function GlBackground(props: { mode: BgMode }) {
   let canvas!: HTMLCanvasElement;
 
   onMount(() => {
+    // O motor desfoca o ambient sozinho: o filter CSS do 2D não vale aqui.
+    const wrapper = canvas.parentElement;
+    wrapper?.setAttribute("data-engine", "webgl");
+
     // Sinal de áudio — mesmo feed do SpectrumCanvas.
     const bands = { low: 0, mid: 0, high: 0, fresh: false };
     let lastFftAt = 0;
@@ -88,6 +100,8 @@ export function GlBackground() {
       // A medição de cenas troca seco: a dissolução entraria na conta.
       transitions: () => glSceneOverride() === null,
       calm: () => bgCalm(tweaks()),
+      mode: () => props.mode,
+      reduced: () => reducedMotion(),
       cfg: cfgFromTweaks,
       bands: (nowMs) => {
         bands.fresh = lastFftAt !== 0 && nowMs - lastFftAt < FFT_STALE_MS;
@@ -98,6 +112,7 @@ export function GlBackground() {
     onCleanup(() => {
       alive = false;
       stop();
+      wrapper?.removeAttribute("data-engine");
       try { unlistenFft?.(); } catch {}
     });
   });

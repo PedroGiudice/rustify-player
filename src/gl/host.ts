@@ -13,12 +13,15 @@
        em ~1 s, o ciclo da paleta da capa (bgInkCycle) migra em ~10 s;
      - transição: a cena entra por dissolução (gl/engine.ts) quando
        `transitions()` permite — a medição de cenas troca seco;
+     - modo: focused/ambient lido por quadro e entregue ao motor, que
+       desfoca o ambient na GPU (gl/ambient.ts); sem `mode`, focused;
      - sinal: gl/signal.ts por quadro;
      - fps medido 1x/s em glStatus (o gate da feature) e a cena de
        fato montada em glActiveScene (a medição espera por ela).
    ============================================================ */
 
 import { GlEngine } from "./engine";
+import type { BgMode } from "./ambient";
 import { setGlActiveScene, setGlStatus, type SceneKey } from "./meta";
 import type { GlPalette, Rgb } from "./palette";
 import { createGlSignal, stepGlSignal, type FftBands, type GlCfg } from "./signal";
@@ -61,6 +64,14 @@ export interface GlHostOptions {
   transitions?: () => boolean;
   /** Versão calma (reduzir animação): a transição só dissolve. */
   calm?: () => boolean;
+  /** Modo do fundo, lido por quadro (desktop: focused no Now Playing e
+      no cinema, ambient no resto). Ausente = focused (mobile), e o
+      motor nem aloca os buffers do ambient. */
+  mode?: () => BgMode;
+  /** Reduzir animação do SISTEMA, só para a troca de modo: ela é
+      movimento da interface, não da cena, e não depende dos knobs do
+      fundo (bgCalm exige os knobs no padrão). Ausente = calm(). */
+  reduced?: () => boolean;
 }
 
 /** Sobe o motor no canvas. Devolve a função de desmonte. */
@@ -88,6 +99,7 @@ export function startGlHost(o: GlHostOptions): () => void {
   }
   const eng = engine;
   renderer = eng.rendererName();
+  if (o.mode) eng.prepareAmbient();
 
   const mountScene = (key: SceneKey): boolean => {
     try {
@@ -105,6 +117,7 @@ export function startGlHost(o: GlHostOptions): () => void {
     ink: { ...tgt.ink },
     ink2: { ...tgt.ink2 },
     soft: { ...tgt.soft },
+    back: { ...(tgt.back ?? tgt.canvas) },
   };
   eng.setPalette(cur);
   let inkTau = inkMorphTau(o.morphTau?.());
@@ -149,13 +162,18 @@ export function startGlHost(o: GlHostOptions): () => void {
     stepRgbLerp(cur.ink as Rgb, tgt.ink, dt, inkTau);
     stepRgbLerp(cur.ink2 as Rgb, tgt.ink2, dt, inkTau);
     stepRgbLerp(cur.soft as Rgb, tgt.soft, dt, inkTau);
+    stepRgbLerp(cur.back as Rgb, tgt.back ?? tgt.canvas, dt, inkTau);
     eng.setPalette(cur);
 
     const b = o.bands(nowMs);
     const cfg = o.cfg();
     stepGlSignal(sig, dt, b.fresh, b, cfg);
     // Calma ou Speed = 0: a transição não avança o retrato.
-    const still = (o.calm?.() ?? false) || !(cfg.speed > 0);
+    const calm = o.calm?.() ?? false;
+    const still = calm || !(cfg.speed > 0);
+    // A troca de modo é movimento da interface: segue o reduzir
+    // animação do sistema, não a calma da cena (knobs) nem o Speed.
+    eng.setMode(o.mode?.() ?? "focused", o.reduced?.() ?? calm);
 
     const want = o.scene();
     if (eng.sceneKey !== want) {

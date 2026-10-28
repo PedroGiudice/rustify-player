@@ -102,6 +102,79 @@ describe("startGlHost", () => {
   });
 });
 
+/* ---------- modo ambient: a ligação host -> motor (B6) ---------- */
+
+const uniforms = (fake: ReturnType<typeof makeFakeGl>, fn: string, name: string) =>
+  fake.calls.filter(([n, a]) => n === fn && (a[0] as { uniform: string } | null)?.uniform === name).map(([, a]) => a.slice(1) as number[]);
+
+describe("startGlHost: modo do fundo", () => {
+  function hostMode(canvas: HTMLCanvasElement, mode: () => "focused" | "ambient", extra: { calm?: () => boolean; reduced?: () => boolean } = {}) {
+    return startGlHost({
+      canvas,
+      tag: "[teste]",
+      scene: () => "dust",
+      palette: () => ({ ...PAL, back: { r: 43, g: 43, b: 42 } }),
+      cfg: () => DEFAULT_GL_CFG,
+      bands: () => ({ low: 0.5, mid: 0.5, high: 0.5, fresh: true }),
+      mode,
+      ...extra,
+    });
+  }
+
+  it("ambient chega ao motor: desfoca na GPU e mistura com o fundo do tema", () => {
+    const fake = makeFakeGl();
+    const { canvas } = makeFakeCanvas(fake.gl);
+    const stop = hostMode(canvas, () => "ambient");
+    vi.advanceTimersByTime(50);
+    expect(uniforms(fake, "uniform1f", "uMix").at(-1)).toEqual([1]);
+    const back = uniforms(fake, "uniform3f", "uBack").at(-1)!;
+    expect(back[0]).toBeCloseTo(43 / 255, 2);
+    stop();
+  });
+
+  it("sem `mode` (mobile): nenhum passe do ambient nem buffer dele", () => {
+    const fake = makeFakeGl();
+    const { canvas } = makeFakeCanvas(fake.gl);
+    const stop = host(canvas, () => "dust");
+    vi.advanceTimersByTime(2000);
+    expect(uniforms(fake, "uniform1f", "uMix")).toEqual([]);
+    expect(fake.count("texImage2D")).toBe(0);
+    stop();
+  });
+
+  it("com `mode`, os buffers já existem antes da primeira troca", () => {
+    const fake = makeFakeGl();
+    const { canvas } = makeFakeCanvas(fake.gl);
+    let mode: "focused" | "ambient" = "focused";
+    const stop = hostMode(canvas, () => mode);
+    vi.advanceTimersByTime(1000);
+    const allocated = fake.count("texImage2D");
+    expect(allocated).toBe(3);
+    mode = "ambient";
+    vi.advanceTimersByTime(50);
+    expect(fake.count("texImage2D")).toBe(allocated);
+    stop();
+  });
+
+  it("reduzir animação vale para a troca mesmo com knobs fora do padrão (calma da cena desligada)", () => {
+    const fake = makeFakeGl();
+    const { canvas } = makeFakeCanvas(fake.gl);
+    let mode: "focused" | "ambient" = "focused";
+    const stop = hostMode(canvas, () => mode, { calm: () => false, reduced: () => true });
+    vi.advanceTimersByTime(50);
+    mode = "ambient";
+    vi.advanceTimersByTime(100);
+    // Versão calma da troca: o desfoque entra inteiro desde o primeiro
+    // quadro (só a mistura anda), sem rampa de raio.
+    const dirs = uniforms(fake, "uniform2f", "uDir").filter((v) => v[1] === 0).map((v) => v[0]);
+    expect(dirs.length).toBeGreaterThan(1);
+    expect(new Set(dirs).size).toBe(1);
+    const mixes = uniforms(fake, "uniform1f", "uMix").map((v) => v[0]);
+    expect(mixes.at(-1)!).toBeLessThan(1);
+    stop();
+  });
+});
+
 describe("inkMorphTau: o tau do morph de cor segue --bg-ink-morph", () => {
   it("valor anunciado pelo ciclo da paleta vale; ausente ou absurdo cai no padrão", () => {
     expect(inkMorphTau(3.5)).toBe(3.5); // ciclo da paleta (lib/adaptiveInk.ts)
