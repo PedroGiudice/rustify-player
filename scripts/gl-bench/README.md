@@ -112,6 +112,32 @@ e ganho 0,8 (ffmpeg `gblur=sigma=8:steps=6` + `colorchannelmixer`)
 dá PSNR de 54,5 dB no Relevo e 52,0 dB na Tinta; contra a mesma foto
 sem o desfoque, 30,5 e 40,4 dB.
 
+Na GPU da cmr-auto (UHD 620, WebKitGTK 2.52, 1857x1048, app aberto,
+CPU a 97-99 °C, 28/10), sem `sync` (com `sync` o readPixels por quadro
+serializa CPU e GPU e soma ~10 ms ao focused). Antes: a cena em buffer
+de tela cheia + redução em toda cena; depois: ambient PARADO com
+`SceneDef.ambientDirect` desenha direto a 1/4 (Tinta) e cena com
+`maxRows` desfoca a partir do próprio buffer (Nébula):
+
+| cena | focused | ambient antes | ambient depois |
+|---|---|---|---|
+| Tinta | 10,3-10,8 ms | 18,4-19,1 ms | 5,4-5,8 ms |
+| Nébula | 9,7-10,7 ms | 12,0-12,9 ms | 9,2-9,8 ms |
+| Lorem | 8,0-8,3 ms | 16,8-17,1 ms | 16,4-16,8 ms |
+| Riso | 3,8-4,0 ms | 12,1-12,6 ms | 11,6-12,0 ms |
+| Mandala | 3,5-3,7 ms | 10,9-11,8 ms | 11,2-11,7 ms |
+| Relevo | 2,3-2,8 ms | 6,6-6,8 ms | 6,6-6,9 ms |
+| Poeira / Órbitas | 2,2 / 0,5-0,7 ms | 6,2-6,4 / 4,4 ms | 6,5-6,8 / 4,4-4,5 ms |
+
+Na GPU real, o passe no caminho cheio custa ~4 ms numa cena que quase
+não pinta (Órbitas) e ~8 ms numa que pinta a tela inteira (Tinta,
+Lorem, Riso, Mandala). O mesmo buffer sem nada lendo dele custa o
+mesmo que a tela; o custo aparece quando um passe seguinte o amostra.
+Paridade do caminho novo com o antigo (fotos `ambient=1&shots`, mesma
+rodada): Tinta 49,7 dB, Nébula 52,9 dB. Lorem a 1/4 daria 5,4 ms, mas
+os glifos engrossam (média de brilho +50 %, 33,6 dB): fica no caminho
+cheio até o CEO julgar.
+
 Do passe, a redução e o desfoque a 1/4 custam ~2,2 ms no llvmpipe (a
 1/3, ~3-4 ms, sem ganho visível: a gaussiana de 8 px já zera o que passa
 do Nyquist de 1/4); o resto é a composição de tela cheia e as trocas de

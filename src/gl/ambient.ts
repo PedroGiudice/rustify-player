@@ -28,9 +28,13 @@ export const AMBIENT_MODE_S = 0.42;
 export const AMBIENT_BLUR_PX = 8;
 /** Saturação no ambient: o `saturate(0.9)`. */
 export const AMBIENT_SAT = 0.9;
-/** Ganho no ambient: o `opacity: 0.8`, misturado com o preto do canvas
-    (GL_CANVAS = #000, decisão de 20/09). */
+/** Ganho no ambient: o `opacity: 0.8`. */
 export const AMBIENT_GAIN = 0.8;
+/* O ganho mistura com o fundo ATRÁS do canvas (o --bg-canvas do tema,
+   pintado no html/body), não com o preto: a opacity 0.8 do CSS deixava
+   20 % do body aparecer. O motor recebe essa cor como `back` da paleta
+   (gl/palette.ts) e só a usa na composição do ambient; as cenas seguem
+   no preto fixo. */
 /**
  * Redução do buffer do desfoque, por eixo. Com desvio de 8 px, a
  * gaussiana já zera o que passa de 1/8 ciclo por pixel (atenuação
@@ -61,10 +65,12 @@ export function ambientBufferSize(w: number, h: number, scale = AMBIENT_SCALE): 
  * variância (s²-1)/12 px²) e a ampliação bilinear (tenda de meia-largura
  * s, variância s²/6 px²) já borram um pouco: o kernel entra só com o
  * que falta. A 1/4: sqrt(64 - 1,25 - 2,67)/4 ≈ 1,94 texel.
+ * `boxed = false`: a imagem já nasceu no tamanho reduzido (cena com
+ * ambientDirect, ou o buffer de maxRows), sem a caixa da redução.
  */
-export function ambientSigma(scale: number, blurPx = AMBIENT_BLUR_PX): number {
+export function ambientSigma(scale: number, blurPx = AMBIENT_BLUR_PX, boxed = true): number {
   const s = Math.max(1, scale);
-  const rest = blurPx * blurPx - (s * s - 1) / 12 - (s * s) / 6;
+  const rest = blurPx * blurPx - (boxed ? (s * s - 1) / 12 : 0) - (s * s) / 6;
   return Math.sqrt(Math.max(0, rest)) / s;
 }
 

@@ -13,7 +13,7 @@
    ============================================================ */
 
 import { describe, it, expect, vi } from "vitest";
-import { GlEngine, XFADE_SCENE_S, XFADE_START_S, XFADE_ZOOM, xfadeAt } from "./engine";
+import { AMB_SETTLE_FRAMES, GlEngine, XFADE_SCENE_S, XFADE_START_S, XFADE_ZOOM, xfadeAt } from "./engine";
 import type { SceneKey } from "./meta";
 import { createGlSignal } from "./signal";
 import type { GlPalette } from "./palette";
@@ -300,5 +300,117 @@ describe("GlEngine: modo ambient", () => {
     expect(s.frame).toHaveBeenCalledTimes(2);
     expect(live(fake, "texture")).toBe(0);
     warn.mockRestore();
+  });
+});
+
+/* ---------- revisão do passe ambient (28/10) ---------- */
+
+/** Motor com uma cena espiã de def arbitrária (ambientDirect, maxRows). */
+function withDef(def: { ambientDirect?: boolean; maxRows?: number }) {
+  const fake = makeFakeGl();
+  const { canvas } = makeFakeCanvas(fake.gl);
+  const s = spyScene();
+  const o = spyScene();
+  const engine = new GlEngine(canvas, {
+    scenes: { s: { key: "paint", ...def, create: () => s }, o: { key: "dust", create: () => o } },
+  });
+  engine.resize(800, 450);
+  engine.setPalette(PAL);
+  return { engine, fake, s, o };
+}
+const S = "s" as SceneKey;
+const O = "o" as SceneKey;
+const draws = (fake: FakeGl, from: number) => fake.calls.slice(from).filter(([n]) => n === "drawArrays").length;
+
+describe("GlEngine: ambient parado sem tela cheia", () => {
+  it("ambientDirect: a cena desenha direto a 1/4, sem redução; volta à tela cheia na troca", () => {
+    const { engine, fake, s } = withDef({ ambientDirect: true });
+    engine.setScene(S);
+    engine.setMode("ambient");
+    const from = fake.calls.length;
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(s.resize).toHaveBeenLastCalledWith(200, 113);
+    expect(s.frame.mock.calls.at(-1)!.slice(3)).toEqual([200, 113]);
+    // horizontal + vertical + composição; nenhuma redução.
+    expect(draws(fake, from)).toBe(3);
+    expect(uniformCalls(fake, "uniform2f", "uScale")).toEqual([]);
+    // Saindo do ambient: a nítida entra na mistura já no primeiro quadro.
+    engine.setMode("focused");
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(s.resize).toHaveBeenLastCalledWith(800, 450);
+    expect(s.frame.mock.calls.at(-1)!.slice(3)).toEqual([800, 450]);
+    expect(engine.ambient).toBeLessThan(1);
+  });
+
+  it("ambientDirect: sem resize da cena a cada quadro parado", () => {
+    const { engine, s } = withDef({ ambientDirect: true });
+    engine.setScene(S);
+    engine.setMode("ambient");
+    for (let i = 0; i < 5; i++) engine.frame(createGlSignal(), 1 / 60);
+    // Montagem (800x450) + entrada no direto (200x113).
+    expect(s.resize.mock.calls).toEqual([[800, 450], [200, 113]]);
+  });
+
+  it("dissolução a partir do ambient direto: retrato em tela cheia e caminho cheio", () => {
+    const { engine, fake, s } = withDef({ ambientDirect: true });
+    engine.setScene(S);
+    engine.setMode("ambient");
+    engine.frame(createGlSignal(), 1 / 60);
+    const before = s.frame.mock.calls.length;
+    engine.setScene(O, true);
+    // O retrato redesenha a cena no tamanho da tela.
+    expect(s.frame.mock.calls[before].slice(3)).toEqual([800, 450]);
+    const from = fake.calls.length;
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(uniformCalls(fake, "uniform2f", "uScale").length).toBeGreaterThan(0);
+    expect(draws(fake, from)).toBeGreaterThanOrEqual(4);
+  });
+
+  it("maxRows (Nébula): o desfoque lê o buffer da cena, sem ampliar e reduzir de novo", () => {
+    const { engine, fake } = withDef({ maxRows: 120 });
+    engine.setScene(S);
+    engine.setMode("ambient");
+    const from = fake.calls.length;
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(draws(fake, from)).toBe(3);
+    expect(uniformCalls(fake, "uniform2f", "uScale")).toEqual([]);
+    // Na troca de modo volta o caminho cheio (composição do rt + redução).
+    engine.setMode("focused");
+    const from2 = fake.calls.length;
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(draws(fake, from2)).toBe(5);
+  });
+
+  it("ganho mistura com o fundo atrás do canvas (paleta.back), não com o preto", () => {
+    const { engine, fake } = two();
+    engine.setPalette({ ...PAL, back: { r: 43, g: 43, b: 42 } });
+    engine.setScene(A);
+    engine.setMode("ambient");
+    engine.frame(createGlSignal(), 1 / 60);
+    const v = uniformCalls(fake, "uniform3f", "uBack").at(-1)!;
+    expect(v[0]).toBeCloseTo(43 / 255, 6);
+    expect(v[2]).toBeCloseTo(42 / 255, 6);
+  });
+
+  it("prepareAmbient: aloca no focused depois que o tamanho assenta, nunca no mobile", () => {
+    const { engine, fake } = two();
+    engine.prepareAmbient();
+    engine.setScene(A);
+    for (let i = 0; i < AMB_SETTLE_FRAMES - 1; i++) engine.frame(createGlSignal(), 1 / 60);
+    expect(live(fake, "texture")).toBe(0);
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(live(fake, "texture")).toBe(3);
+    expect(engine.ambient).toBe(0);
+    // Resize no focused: solta e só realoca com o tamanho parado de novo.
+    engine.resize(900, 500);
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(live(fake, "texture")).toBe(0);
+    // A troca para o ambient depois disso não aloca no meio.
+    for (let i = 0; i < AMB_SETTLE_FRAMES; i++) engine.frame(createGlSignal(), 1 / 60);
+    expect(live(fake, "texture")).toBe(3);
+    const from = fake.calls.length;
+    engine.setMode("ambient");
+    engine.frame(createGlSignal(), 1 / 60);
+    expect(fake.calls.slice(from).filter(([n]) => n === "texImage2D")).toEqual([]);
   });
 });

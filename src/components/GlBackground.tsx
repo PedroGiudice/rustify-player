@@ -32,7 +32,7 @@
 
 import { onCleanup, onMount } from "solid-js";
 import { onAudioFft, spectrumSubscribe, type FftPayload } from "../tauri";
-import { bgCalm, tweaks } from "../store/tweaks";
+import { bgCalm, reducedMotion, tweaks } from "../store/tweaks";
 import { startGlHost } from "../gl/host";
 import { glSceneOverride } from "../gl/meta";
 import { readGlPalette } from "../gl/palette";
@@ -101,6 +101,7 @@ export function GlBackground(props: { mode: BgMode }) {
       transitions: () => glSceneOverride() === null,
       calm: () => bgCalm(tweaks()),
       mode: () => props.mode,
+      reduced: () => reducedMotion(),
       cfg: cfgFromTweaks,
       bands: (nowMs) => {
         bands.fresh = lastFftAt !== 0 && nowMs - lastFftAt < FFT_STALE_MS;

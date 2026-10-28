@@ -302,6 +302,11 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   opacity: 0.80;
   filter: blur(8px) saturate(0.9);
 }
+/* Marca entrando (o chunk do WebGL montou por cima do 2D do Suspense,
+   ou o motor foi religado no Tweaks): o filter some na hora, sem a
+   rampa de 420 ms do blur por cima do canvas que o motor já desfoca.
+   Saindo (o WebGL caiu para o 2D), a regra some e a rampa volta. */
+.app-bg[data-engine="webgl"] { transition: none; }
 
 /* Elementos do shell ficam acima do bg. */
 .titlebar, .sidebar, .playerbar { position: relative; z-index: 2; }

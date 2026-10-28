@@ -65,8 +65,13 @@ export interface GlHostOptions {
   /** Versão calma (reduzir animação): a transição só dissolve. */
   calm?: () => boolean;
   /** Modo do fundo, lido por quadro (desktop: focused no Now Playing e
-      no cinema, ambient no resto). Ausente = focused (mobile). */
+      no cinema, ambient no resto). Ausente = focused (mobile), e o
+      motor nem aloca os buffers do ambient. */
   mode?: () => BgMode;
+  /** Reduzir animação do SISTEMA, só para a troca de modo: ela é
+      movimento da interface, não da cena, e não depende dos knobs do
+      fundo (bgCalm exige os knobs no padrão). Ausente = calm(). */
+  reduced?: () => boolean;
 }
 
 /** Sobe o motor no canvas. Devolve a função de desmonte. */
@@ -94,6 +99,7 @@ export function startGlHost(o: GlHostOptions): () => void {
   }
   const eng = engine;
   renderer = eng.rendererName();
+  if (o.mode) eng.prepareAmbient();
 
   const mountScene = (key: SceneKey): boolean => {
     try {
@@ -111,6 +117,7 @@ export function startGlHost(o: GlHostOptions): () => void {
     ink: { ...tgt.ink },
     ink2: { ...tgt.ink2 },
     soft: { ...tgt.soft },
+    back: { ...(tgt.back ?? tgt.canvas) },
   };
   eng.setPalette(cur);
   let inkTau = inkMorphTau(o.morphTau?.());
@@ -155,6 +162,7 @@ export function startGlHost(o: GlHostOptions): () => void {
     stepRgbLerp(cur.ink as Rgb, tgt.ink, dt, inkTau);
     stepRgbLerp(cur.ink2 as Rgb, tgt.ink2, dt, inkTau);
     stepRgbLerp(cur.soft as Rgb, tgt.soft, dt, inkTau);
+    stepRgbLerp(cur.back as Rgb, tgt.back ?? tgt.canvas, dt, inkTau);
     eng.setPalette(cur);
 
     const b = o.bands(nowMs);
@@ -163,9 +171,9 @@ export function startGlHost(o: GlHostOptions): () => void {
     // Calma ou Speed = 0: a transição não avança o retrato.
     const calm = o.calm?.() ?? false;
     const still = calm || !(cfg.speed > 0);
-    // A troca de modo só depende da calma: Speed = 0 para a cena, não
-    // a interface.
-    eng.setMode(o.mode?.() ?? "focused", calm);
+    // A troca de modo é movimento da interface: segue o reduzir
+    // animação do sistema, não a calma da cena (knobs) nem o Speed.
+    eng.setMode(o.mode?.() ?? "focused", o.reduced?.() ?? calm);
 
     const want = o.scene();
     if (eng.sceneKey !== want) {

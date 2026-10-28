@@ -221,5 +221,8 @@ class Paint implements GlScene {
 
 export const paint: SceneDef = {
   key: "paint",
+  // Campo de ruído contínuo (as contas em gl_FragCoord/uRes, resize
+  // vazio): no ambient parado desenha direto a 1/4 (gl/scene.ts).
+  ambientDirect: true,
   create: (ctx) => new Paint(ctx),
 };

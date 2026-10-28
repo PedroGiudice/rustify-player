@@ -112,5 +112,17 @@ export interface SceneDef {
   readonly key: SceneKey;
   /** Teto de linhas do buffer interno. Ausente = resolução cheia. */
   readonly maxRows?: number;
+  /**
+   * Campo suave, sem linha fina nem ponto: no ambient parado (fora do
+   * Now Playing, sem troca de modo nem dissolução) o motor desenha a
+   * cena direto no buffer do desfoque, a 1/AMBIENT_SCALE por eixo, em
+   * vez de em tela cheia para depois reduzir. Exige saída independente
+   * da resolução (as contas em gl_FragCoord/uRes) e resize() barato: o
+   * motor troca o tamanho da cena na entrada e na saída do ambient
+   * parado. Linha e ponto NÃO servem: a 1/4 ficam 4x mais grossos e o
+   * desfoque sai 2-4x mais claro (gl-bench, 28/10: Poeira, Relevo e
+   * Mandala mudam de brilho; a Tinta dá 49,7 dB contra o caminho cheio).
+   */
+  readonly ambientDirect?: boolean;
   create(ctx: SceneCtx): GlScene;
 }
