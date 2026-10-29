@@ -16,6 +16,7 @@ import { route, navigate } from "../router";
 import { player } from "../store/player";
 import { activeCount, markArrivalsSeen, newArrivals } from "../store/crate";
 import { tweaks, tweaksOpen } from "../store/tweaks";
+import { bridgeStatus, chipTitle, chipVisible, clientes } from "../store/bridge";
 import { Icon, ICONS } from "./Icon";
 import { modCombo } from "../lib/keyboard";
 import { CoverArt } from "./CoverArt";
@@ -267,6 +268,26 @@ export function Sidebar() {
           <span>Tweaks</span>
           <NavTip label="Tweaks" />
         </button>
+
+        {/* Cadeado da ponte MCP (29/10/2026): só existe com a ponte LIGADA
+            e alguém conectado — é o aviso de que uma sessão de fora pode
+            ler e mexer na tela. Abre o Tweaks, onde fica o interruptor.
+            Âmbar = estado de atenção (Regra da Moldura Quieta: sinal, não
+            decoração). No modo icons sobra o ícone com o tooltip da casa. */}
+        <Show when={chipVisible(bridgeStatus())}>
+          <button
+            class="bridge-chip"
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
+            aria-controls="tweaks-panel"
+            title={iconsMode() ? undefined : chipTitle(bridgeStatus())}
+            aria-label={chipTitle(bridgeStatus())}
+          >
+            <Icon name={ICONS.plug} size={12} />
+            <span class="bridge-chip__text">Ponte conectada</span>
+            <NavTip label="Ponte conectada" note={clientes(bridgeStatus().clients)} />
+          </button>
+        </Show>
       </div>
     </aside>
   );

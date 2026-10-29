@@ -2494,6 +2494,23 @@ fn norm_get_state(norm: State<NormState>) -> bool {
     norm.enabled.load(Ordering::Relaxed)
 }
 
+// ── Ponte MCP: cadeado (29/10/2026) ─────────────────────────────────
+// O interruptor vive no Tweaks ("Controle remoto", `remoteBridge`) e chega
+// aqui por IPC; o estado real mora no plugin (crates/mcp-bridge, gate.rs),
+// que nasce DESLIGADO e recusa todo comando do WebSocket que lê ou mexe
+// na tela enquanto o interruptor não liga. `bridge_get_status` devolve
+// ligado + nº de clientes conectados (o chip da sidebar).
+
+#[tauri::command]
+fn bridge_set_enabled(app: tauri::AppHandle, enabled: bool) -> Result<tauri_plugin_mcp_bridge::BridgeStatus, String> {
+    tauri_plugin_mcp_bridge::set_enabled(&app, enabled).ok_or_else(|| "ponte não montada".to_string())
+}
+
+#[tauri::command]
+fn bridge_get_status(app: tauri::AppHandle) -> Result<tauri_plugin_mcp_bridge::BridgeStatus, String> {
+    tauri_plugin_mcp_bridge::status(&app).ok_or_else(|| "ponte não montada".to_string())
+}
+
 /// Set the normalization target loudness (LUFS) at runtime.
 ///
 /// Applies immediately to the track playing right now: if the current
@@ -3884,6 +3901,8 @@ pub fn run() {
             dsp_set_bypass,
             norm_set_enabled,
             norm_get_state,
+            bridge_set_enabled,
+            bridge_get_status,
             norm_set_target,
             norm_get_target,
             get_state,

@@ -80,4 +80,5 @@ export const ICONS = {
   packageOpen:  "lucide:package-open",
   alert:        "lucide:triangle-alert",
   externalLink: "lucide:external-link",
+  plug:         "lucide:plug",
 } as const;

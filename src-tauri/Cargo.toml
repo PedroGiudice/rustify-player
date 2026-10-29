@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/audio-engine", "crates/library-indexer", "crates/slskd-client", "crates/soundcloud-client", "crates/tauri-plugin-rustify-audio"]
+members = [".", "crates/audio-engine", "crates/library-indexer", "crates/mcp-bridge", "crates/slskd-client", "crates/soundcloud-client", "crates/tauri-plugin-rustify-audio"]
 resolver = "2"
 
 [workspace.package]
@@ -98,7 +98,8 @@ library-indexer = { path = "crates/library-indexer" }
 slskd-client = { path = "crates/slskd-client" }
 soundcloud-client = { path = "crates/soundcloud-client" }
 audio-engine = { path = "crates/audio-engine", features = ["serde"] }
-tauri-plugin-mcp-bridge = "0.11.1"
+# Cópia local com o cadeado da ponte (Tweaks > Controle remoto); ver crates/mcp-bridge/README.md.
+tauri-plugin-mcp-bridge = { path = "crates/mcp-bridge" }
 souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] }
 crossbeam-channel = { workspace = true }
 ureq = { workspace = true }

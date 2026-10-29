@@ -67,11 +67,17 @@ Todas as portas do app na cmr-auto escutam SÓ em 127.0.0.1 — MCP bridge
 tailnet alcanca (WireGuard e o canal cifrado; sem tailnet ele nem sobe).
 Nao "corrigir" pra loopback: quebraria o sync mobile. NUNCA reabrir
 bind pra 0.0.0.0 (o bridge executa JS/IPC arbitrário sem auth = RCE na
-LAN). Acesso da VM é por túnel SSH (idempotente — porta local já
+LAN). **Cadeado da ponte (29/10/2026, ADR 002)**: a ponte é cópia local do
+plugin (`src-tauri/crates/mcp-bridge`, `gate.rs`), nasce DESLIGADA e recusa
+todo comando que lê ou mexe na tela até o CEO ligar **Tweaks > Controle
+remoto > Ponte MCP**; ligada com cliente conectado, a pílula âmbar "Ponte
+conectada" aparece na sidebar. `app_eval.sh` e o `driver_session` falham com
+"ponte desligada no app" enquanto está Off: ligar é gesto do CEO, nunca da
+sessão. Acesso da VM é por túnel SSH (idempotente — porta local já
 respondendo = túnel de pé):
 
 ```bash
-# Probes MCP no app real:
+# Probes MCP no app real (só com Tweaks > Controle remoto ligado pelo CEO):
 ssh -f -N -o ExitOnForwardFailure=yes -L 9223:localhost:9223 cmr-auto@100.102.249.9
 # driver_session: host=127.0.0.1 port=9223
 # Se a 9223 ainda estava presa quando o app reabriu (dpkg -i + reabrir

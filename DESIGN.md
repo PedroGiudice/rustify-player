@@ -346,8 +346,9 @@ regido por tema.
   `--amber-*` #b45309 / #f59e0b / #fffbeb, `--rose-*` #be123c / #ef4444 /
   #fef2f2; Really Dark #809078 / #908870 / #8b7575 apagados, com `-bg` a 12 %):
   só estado, nunca decoração. Verde = ponto "rede ok" no Crate, bench ok;
-  âmbar = qualidade lossy na pílula de formato, bench baixo; rosa = like
-  ligado (coração) e erro. Cada um é um trio ring/bg/fg.
+  âmbar = qualidade lossy na pílula de formato, bench baixo, ponte MCP
+  conectada (alguém de fora pode mexer na tela); rosa = like ligado
+  (coração) e erro. Cada um é um trio ring/bg/fg.
 
 ### Named Rules
 **A Regra da Moldura Quieta.** A interface é acromática. Cor de verdade só
@@ -617,8 +618,11 @@ aparece no hover ou no foco de teclado.
 - **Sidebar (desktop):** paper com borda direita; marca de 22 px e nome 15/600;
   rótulo de seção 10/700 caixa-alta carbono 5; item `7px 12px`, 13.5/500
   carbono 3, ícone Lucide 16 px a 0,85 de opacidade; hover soft + carbono 1;
-  ativo faint + 600. Rodapé com borda superior: Signal, Settings, Tweaks. O
-  modo só-ícones esconde rótulos e mantém os atalhos.
+  ativo faint + 600. Rodapé com borda superior: Signal, Settings, Tweaks e,
+  abaixo do Tweaks, a pílula âmbar "Ponte conectada" (`.bridge-chip`, 24 px,
+  11/600, ícone `plug` 12 px): só monta com a ponte MCP ligada E cliente
+  conectado, e abre o Tweaks ao clicar. O modo só-ícones esconde rótulos e
+  mantém os atalhos.
 - **Tabs (Library, Crate):** 13/500 carbono 5, ativo carbono 1/600 com sublinhado
   de 2 px em carbono 1; contagem em mono 10.5.
 - **Titlebar:** 32 px, paper, 12 px de texto, semáforo de três pontos à
@@ -644,7 +648,9 @@ com título 13/600 e fechar de 22 px; corpo com linhas de knob separadas por
 (11/400 carbono 5), controle abaixo (segmented, select, range ou color), dica de
 uma linha 11 px carbono 5. Divisores com texto 10/700 entre as seções. É a
 referência canônica para todo knob de preferência: antes de criar UI nova ou
-YAML para um ajuste, ele entra aqui.
+YAML para um ajuste, ele entra aqui. Última seção, "Controle remoto": o
+interruptor da ponte MCP (padrão Off) com a linha viva de estado (ponto âmbar
+quando alguém de fora pode agir).
 
 ### Fundo animado (assinatura)
 Canvas único no shell, dois motores (2D: 18 formas x 5 renderizadores; WebGL2:

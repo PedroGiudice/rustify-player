@@ -7,7 +7,12 @@
 #   scripts/impeccable/app_eval.sh detect           -> achados em .impeccable/captures/detect-<ts>.json
 #   scripts/impeccable/app_eval.sh js '<corpo>'     -> resultado do JS (use `return`)
 #
-# Pré-requisito: app aberto na cmr-auto. Nada aparece na tela do CEO.
+# Pré-requisito: app aberto na cmr-auto E o interruptor Tweaks > Controle
+# remoto > Ponte MCP ligado pelo CEO (cadeado da ponte, 29/10/2026). Com ele
+# desligado (o padrão) a conexão abre, mas todo comando volta com
+# "ponte desligada no app; ligue em Tweaks > Controle remoto" e este script
+# falha com essa mensagem. Ligar é gesto do CEO, nunca da sessão.
+# Nada aparece na tela do CEO.
 set -euo pipefail
 
 HOST=cmr-auto@100.102.249.9

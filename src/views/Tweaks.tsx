@@ -38,6 +38,7 @@ import {
   SCENE_LABELS,
 } from "../gl/meta";
 import { GL_BENCH_EVENT, glBenchProgress, glBenchResult, runGlBench } from "../gl/bench";
+import { bridgeLine, bridgeStatus, chipVisible } from "../store/bridge";
 import type { BenchResult } from "../gl/benchStats";
 
 // ── Subcomponentes locais ────────────────────────────────────
@@ -626,6 +627,27 @@ export function Tweaks() {
             step={0.5}
             format={(v) => `${v.toFixed(1)} LUFS`}
           />
+
+          {/* Cadeado da ponte MCP (29/10/2026): o app só obedece à ponte
+              (127.0.0.1:9223, alcançada por túnel SSH) com isto ligado.
+              Padrão Off; vai ao backend por IPC (store/tweaks.ts). A linha
+              viva vem do espelho store/bridge.ts, o mesmo do chip da sidebar. */}
+          <div class="tweaks__divider"><span>Controle remoto</span></div>
+          <Segmented
+            label="Ponte MCP"
+            key="remoteBridge"
+            options={[[true, "On"], [false, "Off"]]}
+          />
+          <div class="tweaks__hint">
+            Ligado, uma sessão de fora (ponte MCP por túnel SSH) pode ler e mexer na tela.
+            Desligado, nada de fora controla o app.
+          </div>
+          <div class="tweaks__hint tweaks__gl-status" role="status">
+            <Show when={chipVisible(bridgeStatus())}>
+              <span class="tweaks__gl-dot tweaks__gl-dot--attn" aria-hidden="true" />
+            </Show>
+            <span>{bridgeLine(bridgeStatus())}</span>
+          </div>
 
           <button class="tweaks__reset" onClick={() => resetTweaks()}>
             Redefinir tudo

@@ -35,7 +35,9 @@ async function loadIconSprite() {
 // Aplica DSP state persistido ao backend antes de renderizar
 import { applyFullDspState } from "./store/dsp";
 // Aplica loudness norm/target persistido ao backend (com retry de boot)
-import { applyLoudnessState } from "./store/tweaks";
+import { applyLoudnessState, applyBridgeState } from "./store/tweaks";
+// Espelho do estado da ponte MCP (chip da sidebar, linha do Tweaks)
+import { wireBridgeStatus } from "./store/bridge";
 // Restaura o volume persistido (kv-volume) e empurra pro engine
 import { applyPersistedVolume } from "./store/player";
 // Board do Crate: ciclo LONGO, atravessa views — precisa estar de pé
@@ -54,6 +56,11 @@ async function boot() {
   await loadIconSprite();
   applyFullDspState().catch((e) => console.warn("[dsp] initial sync failed:", e));
   applyLoudnessState().catch((e) => console.warn("[loudness] initial sync failed:", e));
+  // Ponte: primeiro o interruptor salvo vai ao backend, depois o espelho
+  // lê o estado — nessa ordem o chip não pisca com o padrão desligado.
+  applyBridgeState()
+    .catch((e) => console.warn("[bridge] initial sync failed:", e))
+    .finally(() => { wireBridgeStatus().catch((e) => console.warn("[bridge] status failed:", e)); });
   applyPersistedVolume().catch((e) => console.warn("[volume] initial sync failed:", e));
   bootCrateStore().catch((e) => console.warn("[crate] boot failed:", e));
 

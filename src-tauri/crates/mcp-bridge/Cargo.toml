@@ -1,0 +1,46 @@
+# Cópia local (fork) de tauri-plugin-mcp-bridge 0.11.1 (hypothesi, MIT) com o
+# cadeado da ponte: BridgeGate em src/gate.rs, checado no despacho de cada
+# comando do WebSocket (src/websocket.rs). Mesmo nome de pacote de propósito:
+# os identificadores de permissão (`mcp-bridge:default`) e o prefixo
+# `plugin:mcp-bridge|` dos comandos continuam os mesmos. Atualizar o upstream =
+# refazer a cópia e reaplicar o gate (ver README.md).
+[package]
+name = "tauri-plugin-mcp-bridge"
+version = "0.11.1"
+description = "Ponte MCP do Rustify Player (fork de tauri-plugin-mcp-bridge 0.11.1) com interruptor de controle remoto"
+authors = ["hypothesi", "PedroGiudice"]
+edition = "2021"
+rust-version = "1.70"
+license = "MIT"
+repository = "https://github.com/hypothesi/mcp-server-tauri"
+links = "tauri-plugin-mcp-bridge"
+
+[lib]
+name = "tauri_plugin_mcp_bridge"
+crate-type = ["rlib"]
+
+[dependencies]
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22.1"
+thiserror = "1.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+# Só o Linux (cmr-auto) compila este crate: o app Android não o inclui
+# (Cargo.toml do app, dependência desktop-only). As dependências nativas de
+# screenshot do upstream (objc2, webview2-com, jni) saíram da cópia.
+
+[dev-dependencies]
+# App de mentira do Tauri (MockRuntime) para testar o despacho sem janela.
+tauri = { version = "2", features = ["test"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[lints.clippy]
+too_many_lines = "warn"

@@ -28,6 +28,10 @@ scripts/impeccable/app_eval.sh detect    # detector do navegador injetado no app
 scripts/impeccable/app_eval.sh js 'return location.pathname'
 ```
 
+- **A ponte tem cadeado (29/10/2026).** O app nasce com a ponte desligada e recusa todo
+  comando até o CEO ligar Tweaks > Controle remoto > Ponte MCP; `capture`/`detect`/`js`
+  falham com "ponte desligada no app; ligue em Tweaks > Controle remoto". Pedir que ele
+  ligue (e desligue depois) é parte da autorização; a sessão nunca liga por ele.
 - **O app é do CEO.** Cada rodada pela ponte precisa de autorização escrita dele NA
   sessão que vai rodar, valendo só para aquela rodada (um "app aberto, pode testar" não
   autoriza amostrador em laço nem rodadas de horas depois). Sem autorização: nenhuma

@@ -156,6 +156,20 @@ export const normGetTarget = () => invoke<number>("norm_get_target");
 export const normSetTarget = (lufs: number) =>
   invoke<void>("norm_set_target", { lufs });
 
+// ── Ponte MCP (cadeado, 29/10/2026) ────────────────────────────
+/** Estado da ponte como o backend o serializa (`BridgeStatus` no crate
+    mcp-bridge): interruptor e clientes conectados ao WebSocket. */
+export interface BridgeStatus {
+  enabled: boolean;
+  clients: number;
+}
+export const bridgeGetStatus = () => invoke<BridgeStatus>("bridge_get_status");
+export const bridgeSetEnabled = (enabled: boolean) =>
+  invoke<BridgeStatus>("bridge_set_enabled", { enabled });
+/** Evento `bridge-clients-changed`: conexão/desconexão e troca do interruptor. */
+export const onBridgeStatus = (cb: (s: BridgeStatus) => void) =>
+  listen<BridgeStatus>("bridge-clients-changed", (e) => cb(e.payload));
+
 // ── Library commands ───────────────────────────────────────────
 
 export const getState = () => invoke<AppState>("get_state");

@@ -6,7 +6,7 @@
    ============================================================ */
 
 import { createSignal, createEffect, untrack } from "solid-js";
-import { normSetEnabled, normSetTarget, themeVar } from "../tauri";
+import { bridgeSetEnabled, normSetEnabled, normSetTarget, themeVar } from "../tauri";
 import { ensureInkContrast } from "../lib/color";
 import { CALM_SPEED } from "../gl/signal";
 import {
@@ -126,6 +126,14 @@ export interface TweaksState {
   reliefShape: ReliefShape;
   reliefSurface: ReliefSurface;
 
+  /** Controle remoto (ponte MCP, cadeado de 29/10/2026). Desligado (o
+      padrão), a ponte do app recusa todo comando que lê ou mexe na tela;
+      ligado, uma sessão de fora (túnel SSH até 127.0.0.1:9223) pode
+      executar JS, tirar foto, interagir. NÃO é CSS var: vai ao backend
+      por IPC (`bridge_set_enabled`), no effect dedicado abaixo e no boot
+      (`applyBridgeState`). Estado ao vivo (clientes) em store/bridge.ts. */
+  remoteBridge: boolean;
+
   /** Accent adaptativo: --primary e família (container, on-primary,
       blue-fg/bg/ring — chips, halos, botões) seguem o hue da capa da
       faixa tocando, com contraste garantido na derivação. Desligado ou
@@ -157,6 +165,7 @@ export const DEFAULTS: TweaksState = {
   adaptiveInk: true,
   bgInkCycle: true,
   adaptiveAccent: true,
+  remoteBridge: false,
   bgEngine: "2d",
   bgScene: "dust",
   reliefLines: RELIEF_DEFAULT.lines,
@@ -619,6 +628,10 @@ export function loadTweaks() {
     // seria um canvas preto sem mensagem nenhuma.
     if (!isSceneKey(next.bgScene)) next.bgScene = DEFAULTS.bgScene;
     if (next.bgEngine !== "2d" && next.bgEngine !== "webgl") next.bgEngine = DEFAULTS.bgEngine;
+    // Cadeado da ponte: só o booleano `true` liga. Qualquer outro valor
+    // salvo (string, número, localStorage editado) cai em Off — o
+    // interruptor abre o app a quem está de fora, então falha fechado.
+    next.remoteBridge = next.remoteBridge === true;
     const relief = sanitizeReliefStyle({
       lines: next.reliefLines,
       shape: next.reliefShape,
@@ -766,6 +779,40 @@ createEffect(() => {
     pushLoudness(norm, target);
   }, 100);
 });
+
+// ── Controle remoto (ponte) → backend (IPC) ──────────────────
+// Mesmo padrão do loudness: effect dedicado, guard de valor anterior
+// (o signal é do objeto inteiro), gate _loaded. Sem debounce: é um
+// interruptor, e cada toque precisa chegar.
+let _prevBridge: boolean | undefined;
+
+createEffect(() => {
+  const on = state().remoteBridge;
+  if (!_loaded) return;
+  if (on === _prevBridge) return;
+  _prevBridge = on;
+  bridgeSetEnabled(on).catch((e: unknown) => {
+    console.warn("[tweaks] bridge_set_enabled falhou:", e);
+  });
+});
+
+/** Reaplica o interruptor da ponte ao backend no boot, com retry. O
+    backend nasce DESLIGADO: sem isto, quem deixou ligado teria de ligar
+    de novo a cada abertura; e o estado salvo é a única fonte. */
+export async function applyBridgeState(retries = 5): Promise<void> {
+  const on = state().remoteBridge;
+  try {
+    await bridgeSetEnabled(on);
+  } catch (e) {
+    if (retries > 0) {
+      setTimeout(() => {
+        applyBridgeState(retries - 1).catch(() => {});
+      }, 300);
+    } else {
+      console.warn("[tweaks] applyBridgeState desistiu:", e);
+    }
+  }
+}
 
 /** Reaplica o estado de loudness salvo ao backend no boot.
     Chamado em main.tsx ao lado de applyFullDspState(), porque no

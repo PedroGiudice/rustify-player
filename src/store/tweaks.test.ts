@@ -17,6 +17,7 @@ vi.mock("../tauri", () => ({
   clearThemeVars: vi.fn(),
   normSetEnabled: vi.fn().mockResolvedValue(undefined),
   normSetTarget: vi.fn().mockResolvedValue(undefined),
+  bridgeSetEnabled: vi.fn().mockResolvedValue({ enabled: false, clients: 0 }),
 }));
 
 // O store lê window.__TAURI__ no top-level (invoke de list_system_fonts).
@@ -465,5 +466,25 @@ describe("reduzir movimento: fundo calmo (A16)", () => {
   it("preferência desligada: nada muda", () => {
     expect(bgCalm(DEFAULTS, false)).toBe(false);
     expect(bgKnobs(DEFAULTS, false)).toEqual(bgKnobs(DEFAULTS));
+  });
+});
+
+describe("remoteBridge (cadeado da ponte MCP)", () => {
+  it("nasce desligado: estado salvo sem o campo fica Off", () => {
+    localStorage.setItem("kv-tweaks", "{}");
+    loadTweaks();
+    expect(tweaks().remoteBridge).toBe(false);
+  });
+
+  it("só `true` liga: valor salvo de outro tipo fica Off (fechado por padrão)", () => {
+    localStorage.setItem("kv-tweaks", JSON.stringify({ remoteBridge: "sim" }));
+    loadTweaks();
+    expect(tweaks().remoteBridge).toBe(false);
+    localStorage.setItem("kv-tweaks", JSON.stringify({ remoteBridge: 1 }));
+    loadTweaks();
+    expect(tweaks().remoteBridge).toBe(false);
+    localStorage.setItem("kv-tweaks", JSON.stringify({ remoteBridge: true }));
+    loadTweaks();
+    expect(tweaks().remoteBridge).toBe(true);
   });
 });

@@ -1900,7 +1900,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--green-ring);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent);
 }
-.tweaks__gl-dot--low {
+/* --low: fps abaixo do critério; --attn: ponte ligada com cliente conectado
+   (o mesmo âmbar do chip da sidebar). */
+.tweaks__gl-dot--low,
+.tweaks__gl-dot--attn {
   background: var(--amber-ring);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-ring) calc(var(--halo-alpha) * 160%), transparent);
 }
@@ -2063,12 +2066,14 @@ html[data-sidebar="icons"] .nav-item__new {
   transform: translate(-4px, -50%);
   transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
 }
-.nav-item:hover > .nav-tip {
+.nav-item:hover > .nav-tip,
+.bridge-chip:hover > .nav-tip {
   opacity: 1;
   transform: translate(0, -50%);
   transition-delay: 400ms;
 }
-.nav-item:focus-visible > .nav-tip {
+.nav-item:focus-visible > .nav-tip,
+.bridge-chip:focus-visible > .nav-tip {
   opacity: 1;
   transform: translate(0, -50%);
 }
@@ -3978,6 +3983,47 @@ html { --glow: 0; }
   white-space: nowrap;
 }
 
+/* Ponte MCP conectada (cadeado de 29/10/2026): pílula no rodapé da
+   sidebar, logo abaixo do Tweaks. Só monta com a ponte ligada E cliente
+   conectado (store/bridge.ts). Trio âmbar = atenção: alguém de fora pode
+   ler e mexer na tela; nunca decoração. Mesma receita do contador do
+   Crate (.nav-item__badge), com o acento trocado pelo sinal. Clicar abre
+   o Tweaks, onde está o interruptor. */
+.bridge-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 2px 12px 0;
+  height: 24px;
+  padding: 0 9px 0 8px;
+  font: inherit;
+  font-size: var(--fs-label); font-weight: 600;
+  color: var(--amber-fg);
+  background: var(--amber-bg);
+  border: 1px solid color-mix(in srgb, var(--amber-ring) 30%, transparent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  position: relative;
+  transition: border-color var(--dur-base) var(--ease-out);
+}
+.bridge-chip:hover { border-color: color-mix(in srgb, var(--amber-ring) 55%, transparent); }
+.bridge-chip iconify-icon { width: 12px; height: 12px; flex: none; }
+.bridge-chip__text { white-space: nowrap; }
+/* Modo só-ícones: fica o ícone, centrado como os itens; o texto sai da
+   tela mas segue no nome acessível (aria-label) e no tooltip. */
+html[data-sidebar="icons"] .bridge-chip {
+  margin: 2px 0 0;
+  padding: 0;
+  width: 100%;
+  justify-content: center;
+  gap: 0;
+}
+html[data-sidebar="icons"] .bridge-chip__text {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
 /* A view Crate desenha suas próprias faixas horizontais (toolbar,
    banners, list-head) — o padding vertical/gap do .view__body padrão
    duplicaria os espaçamentos do handoff. */
