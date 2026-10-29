@@ -28,15 +28,23 @@ scripts/impeccable/app_eval.sh detect    # detector do navegador injetado no app
 scripts/impeccable/app_eval.sh js 'return location.pathname'
 ```
 
-- Pré-requisito: app aberto na cmr-auto. O script acha a porta da ponte (9223 ou 9224) e
-  abre o túnel. Nada aparece na tela do CEO; o detector roda sem overlay.
+- **O app é do CEO.** Cada rodada pela ponte precisa de autorização escrita dele NA
+  sessão que vai rodar, valendo só para aquela rodada (um "app aberto, pode testar" não
+  autoriza amostrador em laço nem rodadas de horas depois). Sem autorização: nenhuma
+  chamada à ponte, nem leitura "passiva". Incidente de 28/10/2026: uma sessão navegou
+  telas, abriu o Tweaks e trocou a cena enquanto ele usava o app; ele parou tudo
+  ("o app é MEU"). Avisar no chat não substitui a autorização.
+- Com autorização, `capture` e `detect` leem a tela em que o app ESTÁ. Navegar, abrir
+  painel, trocar cena ou tema muda o que o CEO vê: só se ele pediu isso explicitamente
+  naquela rodada, e o app volta ao estado anterior no fim. O script acha a porta da ponte
+  (9223 ou 9224) e abre o túnel; o detector roda sem overlay.
 - A captura vem do comando `debug_capture_webview` (`src-tauri/src/capture.rs`): pixels
   do próprio WebKit, com capas, fonte e fundo animado. As outras três vias falham: o
   screenshot da ponte não existe no Linux, a reconstrução do DOM perde capa e fonte, e o
   print do sistema pega a janela que estiver na frente.
 - Na `critique`/`audit`, a avaliação B é `app_eval.sh detect` + `impeccable detect` no
-  código; a A olha as capturas. A janela é uma só: as duas avaliações se revezam e
-  devolvem a rota em que o app estava.
+  código; a A olha as capturas. A janela é uma só: as duas avaliações se revezam, nas
+  mesmas condições de autorização acima.
 
 ## Leitura dos achados
 
