@@ -121,6 +121,8 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
     let sample_rate_atom: crate::output::pw_capture::SharedSampleRate =
         Arc::new(std::sync::atomic::AtomicU32::new(0));
     let sample_rate_pub = sample_rate_atom.clone();
+    let levels_atom: crate::output::pw_capture::SharedLevels = Arc::new(Default::default());
+    let levels_pub = levels_atom.clone();
 
     thread::Builder::new()
         .name("audio-engine".to_string())
@@ -162,6 +164,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
                 spectrum_latest.clone(),
                 envelope_latest.clone(),
                 sample_rate_atom.clone(),
+                levels_atom.clone(),
             );
             if _pw_capture.is_none() {
                 tracing::warn!("PipeWire capture unavailable — spectrum will be silent");
@@ -202,6 +205,7 @@ pub(crate) fn spawn() -> Result<EngineHandle, EngineError> {
         spectrum_buf: spectrum_latest_pub,
         envelope_buf: envelope_latest_pub,
         sample_rate_buf: sample_rate_pub,
+        levels_buf: levels_pub,
     })
 }
 

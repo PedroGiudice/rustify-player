@@ -34,7 +34,7 @@ impl Engine {
 /// Re-export do snapshot de envelope publicado pelo FFT worker. Usado pela
 /// camada Tauri para incluir os campos `low_band_mag` / `rms_energy` no
 /// payload de `audio-fft`.
-pub use output::pw_capture::{SharedSampleRate, SpectrumEnvelope};
+pub use output::pw_capture::{ChannelLevels, SharedLevels, SharedSampleRate, SpectrumEnvelope};
 
 #[derive(Clone)]
 pub struct EngineHandle {
@@ -44,6 +44,7 @@ pub struct EngineHandle {
     pub(crate) spectrum_buf: std::sync::Arc<std::sync::Mutex<(u64, Vec<u8>)>>,
     pub(crate) envelope_buf: std::sync::Arc<std::sync::Mutex<SpectrumEnvelope>>,
     pub(crate) sample_rate_buf: SharedSampleRate,
+    pub(crate) levels_buf: SharedLevels,
 }
 
 impl EngineHandle {
@@ -82,6 +83,12 @@ impl EngineHandle {
     /// 1/3 oitava ISO em qualquer SR (44.1/48/96 kHz).
     pub fn sample_rate_buf(&self) -> SharedSampleRate {
         self.sample_rate_buf.clone()
+    }
+
+    /// Níveis por canal (RMS do último bloco, pico desde a última leitura)
+    /// publicados pelo callback de captura. Leitura destrutiva do pico.
+    pub fn levels_buf(&self) -> SharedLevels {
+        self.levels_buf.clone()
     }
 
     pub fn sink_latency_ms(&self) -> u64 {

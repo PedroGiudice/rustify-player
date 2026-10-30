@@ -60,6 +60,13 @@ struct FftPayload {
     /// negociado. Frontend usa pra calcular bin->banda do RTA
     /// 1/3 oitava ISO no overlay do EqCanvas.
     sample_rate: u32,
+    /// Níveis lineares 0..1 por canal (monitor do sink, depois da cadeia DSP).
+    /// RMS = último bloco de captura (~21 ms); pico = máximo desde o quadro
+    /// anterior. Captura mono replica nos dois lados.
+    level_l_rms: f32,
+    level_r_rms: f32,
+    level_l_peak: f32,
+    level_r_peak: f32,
 }
 
 /// Refcount de assinantes do spectrum-emitter. Cada consumidor de `audio-fft`
@@ -3399,6 +3406,7 @@ pub fn run() {
             let spectrum_buf = engine.spectrum_buffer();
             let envelope_buf = engine.envelope_buffer();
             let sample_rate_buf = engine.sample_rate_buf();
+            let levels_buf = engine.levels_buf();
             let spectrum_handle = _app.handle().clone();
             let spectrum_flag = spectrum_active.clone();
             _app.manage(SpectrumActive(spectrum_active));
@@ -3460,6 +3468,7 @@ pub fn run() {
                                 envelope.rms_energy,
                             );
                         }
+                        let levels = levels_buf.take();
                         let payload = FftPayload {
                             stream_time_ms: 0,
                             magnitudes: fft,
@@ -3468,6 +3477,10 @@ pub fn run() {
                             high_band_mag: envelope.high_band_mag,
                             rms_energy: envelope.rms_energy,
                             sample_rate: sample_rate_buf.load(Ordering::Relaxed),
+                            level_l_rms: levels.l_rms,
+                            level_r_rms: levels.r_rms,
+                            level_l_peak: levels.l_peak,
+                            level_r_peak: levels.r_peak,
                         };
                         let _ = spectrum_handle.emit("audio-fft", &payload);
                     }

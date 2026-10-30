@@ -97,6 +97,83 @@ pub struct SpectrumEnvelope {
 /// Shared buffer type used to publish the envelope from the FFT worker.
 pub type SharedEnvelope = Arc<Mutex<SpectrumEnvelope>>;
 
+/// Níveis lineares (0..1) por canal de um bloco de amostras. RMS e pico
+/// absoluto, esquerdo e direito.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ChannelLevels {
+    pub l_rms: f32,
+    pub r_rms: f32,
+    pub l_peak: f32,
+    pub r_peak: f32,
+}
+
+/// Níveis por canal de um bloco interleaved com `channels` canais.
+///
+/// Uma passada, sem alocação (roda no callback RT do PipeWire). Canais 0 e 1
+/// são L e R; com mais de dois canais os demais são ignorados. Captura mono
+/// replica o mesmo valor nos dois lados. Resultado clampado em 0..1 (o sink
+/// monitor pode passar de 1.0 antes do limiter do dispositivo).
+pub fn channel_levels(samples: &[f32], channels: usize) -> ChannelLevels {
+    let ch = channels.max(1);
+    let frames = samples.len() / ch;
+    if frames == 0 {
+        return ChannelLevels::default();
+    }
+    let (mut sq_l, mut sq_r) = (0.0f32, 0.0f32);
+    let (mut pk_l, mut pk_r) = (0.0f32, 0.0f32);
+    for frame in samples.chunks_exact(ch) {
+        let l = frame[0];
+        let r = if ch >= 2 { frame[1] } else { l };
+        sq_l += l * l;
+        sq_r += r * r;
+        pk_l = pk_l.max(l.abs());
+        pk_r = pk_r.max(r.abs());
+    }
+    let n = frames as f32;
+    ChannelLevels {
+        l_rms: (sq_l / n).sqrt().min(1.0),
+        r_rms: (sq_r / n).sqrt().min(1.0),
+        l_peak: pk_l.min(1.0),
+        r_peak: pk_r.min(1.0),
+    }
+}
+
+/// Níveis publicados pelo callback RT sem lock (f32 como bits em `AtomicU32`).
+///
+/// RMS = o do último bloco do PipeWire (um quantum, ~21 ms a 48 kHz/1024).
+/// Pico = máximo desde a última leitura: `take()` zera, então nenhum pico
+/// entre dois quadros do emitter se perde. Para f32 não negativo a ordem dos
+/// bits coincide com a ordem numérica, por isso `fetch_max` serve.
+#[derive(Debug, Default)]
+pub struct LevelsAtomic {
+    l_rms: std::sync::atomic::AtomicU32,
+    r_rms: std::sync::atomic::AtomicU32,
+    l_peak: std::sync::atomic::AtomicU32,
+    r_peak: std::sync::atomic::AtomicU32,
+}
+
+pub type SharedLevels = Arc<LevelsAtomic>;
+
+impl LevelsAtomic {
+    /// Chamado do callback RT: só atomics, sem alocação nem bloqueio.
+    pub fn publish(&self, lv: ChannelLevels) {
+        self.l_rms.store(lv.l_rms.to_bits(), Ordering::Relaxed);
+        self.r_rms.store(lv.r_rms.to_bits(), Ordering::Relaxed);
+        self.l_peak.fetch_max(lv.l_peak.to_bits(), Ordering::Relaxed);
+        self.r_peak.fetch_max(lv.r_peak.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Lê o RMS atual e o pico acumulado, zerando o pico.
+    pub fn take(&self) -> ChannelLevels {
+        ChannelLevels {
+            l_rms: f32::from_bits(self.l_rms.load(Ordering::Relaxed)),
+            r_rms: f32::from_bits(self.r_rms.load(Ordering::Relaxed)),
+            l_peak: f32::from_bits(self.l_peak.swap(0, Ordering::Relaxed)),
+            r_peak: f32::from_bits(self.r_peak.swap(0, Ordering::Relaxed)),
+        }
+    }
+}
+
 /// Negotiated sample rate (Hz). Updated by `param_changed` callback; the
 /// FFT worker uses this to compute bin indices for the low-band envelope.
 /// `AtomicU32` so the RT callback can publish without locking.
@@ -111,6 +188,7 @@ pub fn start(
     spectrum_buf: Arc<Mutex<(u64, Vec<u8>)>>,
     envelope_buf: SharedEnvelope,
     sample_rate: SharedSampleRate,
+    levels: SharedLevels,
 ) -> Option<PwCaptureHandle> {
     let running = Arc::new(AtomicBool::new(true));
 
@@ -124,7 +202,7 @@ pub fn start(
     let pw_thread = thread::Builder::new()
         .name("pw-capture".into())
         .spawn(move || {
-            if let Err(e) = pw_capture_loop(&target, producer, running_pw, sample_rate_pw) {
+            if let Err(e) = pw_capture_loop(&target, producer, running_pw, sample_rate_pw, levels) {
                 error!("PipeWire capture loop failed: {e}");
             }
         })
@@ -164,6 +242,7 @@ fn pw_capture_loop(
     producer: rtrb::Producer<f32>,
     running: Arc<AtomicBool>,
     sample_rate_out: SharedSampleRate,
+    levels: SharedLevels,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     pipewire::init();
 
@@ -191,12 +270,14 @@ fn pw_capture_loop(
         producer: rtrb::Producer<f32>,
         channels: u32,
         sample_rate_out: SharedSampleRate,
+        levels: SharedLevels,
     }
 
     let data = CaptureData {
         producer,
         channels: 0,
         sample_rate_out,
+        levels,
     };
 
     // Register stream listener with process + param_changed callbacks.
@@ -261,6 +342,9 @@ fn pw_capture_loop(
             let samples: &[f32] = bytemuck::cast_slice(valid_bytes);
 
             let channels = user_data.channels.max(1) as usize;
+
+            // VU/pico por canal do bloco (uma passada, sem alocação).
+            user_data.levels.publish(channel_levels(samples, channels));
 
             // Downmix to mono and push into ring buffer (drop if full — no blocking).
             if channels == 1 {
@@ -580,6 +664,62 @@ fn normalize_rms(raw: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn channel_levels_estereo_rms_e_pico() {
+        // L: +-0.5 constante; R: +-1.0 alternado com um pico de 2.0 (clampa).
+        let x = [0.5, 1.0, -0.5, -1.0, 0.5, 2.0, -0.5, -1.0];
+        let lv = channel_levels(&x, 2);
+        assert!((lv.l_rms - 0.5).abs() < 1e-6);
+        assert!((lv.l_peak - 0.5).abs() < 1e-6);
+        assert_eq!(lv.r_peak, 1.0);
+        assert_eq!(lv.r_rms, 1.0); // sqrt((1+1+4+1)/4) > 1, clampado
+    }
+
+    #[test]
+    fn channel_levels_canais_independentes() {
+        let x = [0.25, 0.0, -0.25, 0.0];
+        let lv = channel_levels(&x, 2);
+        assert!((lv.l_rms - 0.25).abs() < 1e-6);
+        assert_eq!(lv.r_rms, 0.0);
+        assert_eq!(lv.r_peak, 0.0);
+    }
+
+    #[test]
+    fn channel_levels_mono_replica() {
+        let lv = channel_levels(&[0.5, -0.5, 0.5, -0.5], 1);
+        assert_eq!(lv.l_rms, lv.r_rms);
+        assert_eq!(lv.l_peak, lv.r_peak);
+        assert!((lv.l_rms - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_levels_multicanal_usa_os_dois_primeiros() {
+        let x = [0.1, 0.2, 0.9, 0.9, 0.1, 0.2, 0.9, 0.9];
+        let lv = channel_levels(&x, 4);
+        assert!((lv.l_peak - 0.1).abs() < 1e-6);
+        assert!((lv.r_peak - 0.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_levels_vazio_e_zero() {
+        assert_eq!(channel_levels(&[], 2), ChannelLevels::default());
+        assert_eq!(channel_levels(&[0.5], 2), ChannelLevels::default());
+    }
+
+    #[test]
+    fn levels_atomic_pico_acumula_e_zera_na_leitura() {
+        let a = LevelsAtomic::default();
+        a.publish(ChannelLevels { l_rms: 0.1, r_rms: 0.1, l_peak: 0.3, r_peak: 0.2 });
+        a.publish(ChannelLevels { l_rms: 0.2, r_rms: 0.2, l_peak: 0.1, r_peak: 0.4 });
+        let lv = a.take();
+        assert_eq!(lv.l_peak, 0.3);
+        assert_eq!(lv.r_peak, 0.4);
+        assert_eq!(lv.l_rms, 0.2); // ultimo bloco
+        let lv2 = a.take();
+        assert_eq!(lv2.l_peak, 0.0);
+        assert_eq!(lv2.l_rms, 0.2);
+    }
 
     #[test]
     fn band_bin_range_at_48k_low_band() {
