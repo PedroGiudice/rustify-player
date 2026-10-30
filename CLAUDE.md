@@ -129,6 +129,28 @@ Avaliação completa de 26/10/2026 (17 comandos em modo proposta, consolidada em
   (`newArrivals` em `store/crate.ts`). Pendentes da avaliação: leva 2 (A24 PT-BR, A27 tokens de
   espaçamento), S24 (A26), B2/B6/B10-B12 (medição ou protótipo antes).
 
+### Leva Impeccable de 30/10 (0.2.102): medidores, seek, fila, 1ª escuta
+
+- **Medidores reais**: o `audio-fft` traz `level_{l,r}_{rms,peak}` (lineares, monitor do sink:
+  DEPOIS do DSP e do volume; pico = máximo desde o quadro anterior, `LevelsAtomic` no callback
+  RT do `pw_capture.rs`, sem lock). `src/lib/levels.ts` (um ouvinte + um rAF para todos,
+  pausa com janela oculta) e `src/lib/meter.ts` (VU 99% em 300 ms, pico retém 1,5 s e cai
+  20 dB/s, escala -48..0 dBFS) alimentam o `LevelMeter` da barra e o indicador "tocando agora"
+  das listas (o loop de CSS antigo, que animava `height` sem medir nada, saiu).
+- **Seek com perfil**: `library-indexer/src/waveform.rs` grava `wave_profile` (400 u8, RMS
+  mono, 0 = -60 dBFS, 255 = 0 dBFS) e `wave_profile_v` (1 ok, 0 falha) no payload, no ingest
+  (terceira decodificação completa, ~0,4 s/faixa em release) e no backfill do boot (depois do
+  de qualidade, 200 ms entre faixas; ~2.200 faixas = 25-40 min estimados na cmr-auto, não
+  medido). Recalcula em todo ingest de propósito (troca de áudio mantém o id). Listagens
+  excluem o campo. `lib_track_profile` -> o trilho vira contorno normalizado pela faixa
+  (`src/lib/waveProfile.ts`, máscara em `components/waveMask.ts`).
+- **Fila editável** (`QueueDrawer`, classe `.qedit`; `.qrow` é a linha compacta de faixa,
+  NÃO reusar): arrastar pela alça, tirar, Alt+setas e Delete; `moveUpcoming`/`removeUpcoming`
+  passam por `mutateQueueRealign`. Enfileirar confirma com "+N" (`queueAck`).
+- **1ª escuta**: `lib_track_familiarity` (cache do motor; `full_listens` = `track_ended`) ->
+  selo na barra do player.
+- Escala de fonte ganhou `--fs-feature` 28 / `--fs-lead` 18 / `--fs-subhead` 15 (DESIGN.md).
+
 ## TweaksPanel e o hub de customizacao
 
 O painel **Tweaks** (sidebar bottom-left, atalho via evento
