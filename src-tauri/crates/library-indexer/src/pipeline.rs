@@ -209,6 +209,14 @@ fn coordinator_loop(
                         "quality backfill failed"
                     );
                 }
+                // E depois da qualidade: perfil de volume do seek.
+                if let Err(e) = backfill_missing_wave_profile(&backfill_client) {
+                    warn!(
+                        target: "library_indexer::pipeline",
+                        error = %e,
+                        "wave profile backfill failed"
+                    );
+                }
             })
             .ok();
     }
@@ -615,6 +623,58 @@ fn quality_fields(m: &Result<crate::spectral::SpectralVerdict, IndexerError>) ->
     }
 }
 
+/// `wave_profile`/`wave_profile_v` do payload a partir do cálculo. Falha grava
+/// `wave_profile_v = 0` (não é `is_empty`, então o backfill não insiste a cada boot).
+fn wave_fields(m: &Result<Vec<u8>, IndexerError>) -> serde_json::Value {
+    match m {
+        Ok(p) => json!({ "wave_profile": p, "wave_profile_v": crate::waveform::WAVE_VERSION }),
+        Err(_) => json!({ "wave_profile": null, "wave_profile_v": 0 }),
+    }
+}
+
+/// Calcula o perfil de volume das faixas sem `wave_profile_v` (indexadas antes
+/// de existir). Mesmo padrão do `backfill_missing_quality`: arquivo ausente
+/// não grava marcador (próximo boot tenta de novo), falha de cálculo grava
+/// `wave_profile_v = 0`, pausa de 200 ms entre faixas.
+fn backfill_missing_wave_profile(client: &QdrantClient) -> Result<(), IndexerError> {
+    let filter = json!({ "must": [ { "is_empty": { "key": "wave_profile_v" } } ] });
+    let pending = client.scroll_all_with_filter(filter, &["path"])?;
+    if pending.is_empty() {
+        info!(target: "library_indexer::pipeline", "wave profile backfill: nothing to do");
+        return Ok(());
+    }
+    let total = pending.len();
+    info!(target: "library_indexer::pipeline", total, "wave profile backfill: starting");
+    let (mut done, mut failed) = (0usize, 0usize);
+    for (id, payload) in pending {
+        let Some(path) = payload["path"].as_str().filter(|p| !p.is_empty()).map(PathBuf::from) else {
+            failed += 1;
+            continue;
+        };
+        if !path.is_file() {
+            failed += 1;
+            continue;
+        }
+        let m = crate::waveform::analyze_flac(&path);
+        if let Err(e) = &m {
+            warn!(target: "library_indexer::pipeline", track_id = id, path = ?path, error = %e, "wave profile backfill: não calculado");
+        }
+        match client.set_payload(&[id], wave_fields(&m)) {
+            Ok(()) => done += 1,
+            Err(e) => {
+                warn!(target: "library_indexer::pipeline", track_id = id, error = %e, "wave profile backfill: set_payload failed");
+                failed += 1;
+            }
+        }
+        if (done + failed) % 50 == 0 {
+            info!(target: "library_indexer::pipeline", done, failed, total, "wave profile backfill: progress");
+        }
+        thread::sleep(std::time::Duration::from_millis(200));
+    }
+    info!(target: "library_indexer::pipeline", done, failed, total, "wave profile backfill: complete");
+    Ok(())
+}
+
 /// Campos do payload que NÃO vêm do arquivo e por isso não sobrevivem a um
 /// re-ingest: `build_track_payload` os reconstrói do zero e o `upsert_tracks`
 /// (PUT /points) reescreve o ponto inteiro.
@@ -763,6 +823,15 @@ fn build_track_payload(
     }
     let quality = quality_fields(&quality);
 
+    // Perfil de volume para o seek. Best-effort como os demais: falha grava o
+    // marcador (wave_profile_v = 0) e o backfill não insiste. Recalculado a
+    // cada ingest de propósito: troca de áudio por versão melhor mantém o id.
+    let wave = crate::waveform::analyze_flac(&entry.path);
+    if let Err(e) = &wave {
+        warn!(target: "library_indexer::pipeline", path = ?entry.path, error = %e, "perfil de volume não calculado");
+    }
+    let wave = wave_fields(&wave);
+
     Ok(json!({
         "path": path_str(&entry.path),
         "filename": filename,
@@ -788,6 +857,8 @@ fn build_track_payload(
         "lufs_integrated": lufs_integrated,
         "quality_class": quality["quality_class"],
         "quality_cutoff_hz": quality["quality_cutoff_hz"],
+        "wave_profile": wave["wave_profile"],
+        "wave_profile_v": wave["wave_profile_v"],
         "embedding_status": "pending",
         "lrc_path": lrc_path,
         "embedded_lyrics": embedded_lyrics,
@@ -1366,6 +1437,11 @@ mod tests {
         // Falha marca "indeterminado": o backfill (filtro is_empty) não tenta de novo a cada boot.
         let falhou = quality_fields(&Err(IndexerError::Shutdown));
         assert_eq!(falhou, json!({ "quality_class": QUALITY_UNKNOWN, "quality_cutoff_hz": null }));
+        // perfil de volume: ok grava array + versão; falha grava marcador 0.
+        let w = wave_fields(&Ok(vec![1u8, 2, 3]));
+        assert_eq!(w, json!({ "wave_profile": [1, 2, 3], "wave_profile_v": 1 }));
+        let w = wave_fields(&Err(IndexerError::Embedding("x".into())));
+        assert_eq!(w, json!({ "wave_profile": null, "wave_profile_v": 0 }));
     }
 
     #[test]
