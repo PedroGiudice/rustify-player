@@ -804,7 +804,7 @@ impl QdrantClient {
     ) -> Result<Vec<(u64, Value)>, IndexerError> {
         let mut body = json!({
             "limit": limit,
-            "with_payload": true,
+            "with_payload": { "exclude": ["wave_profile"] },
             "with_vector": with_vector
         });
         if let Some(f) = filter {
@@ -996,7 +996,7 @@ impl QdrantClient {
                 // Tudo menos `embedded_lyrics` (LRC completo, ~1-4 KB/faixa): a
                 // busca só lê title/artist/album + os campos de playback, e este
                 // scroll roda no hot path da palette (a cada tecla).
-                "with_payload": { "exclude": ["embedded_lyrics"] },
+                "with_payload": { "exclude": ["embedded_lyrics", "wave_profile"] },
                 "with_vector": false
             });
             if let Some(ref off) = offset {
@@ -1827,6 +1827,23 @@ impl QdrantClient {
             }
         }
         Ok(out)
+    }
+
+    /// Perfil de volume (400 bytes) da faixa, ou `None` se o ponto não existe,
+    /// ainda não foi calculado ou o cálculo falhou (marcador `wave_profile_v` 0).
+    pub fn get_wave_profile(&self, id: u64) -> Result<Option<Vec<u8>>, IndexerError> {
+        let body = json!({ "ids": [id], "with_payload": { "include": ["wave_profile"] } });
+        let resp: Value = self
+            .agent
+            .post(&format!("{}/collections/{COLLECTION}/points", self.base_url))
+            .send_json(&body)
+            .map_err(|e| IndexerError::Embedding(format!("qdrant get_wave_profile: {e}")))?
+            .into_json()
+            .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+        Ok(resp["result"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|p| crate::waveform::parse_profile(&p["payload"]["wave_profile"])))
     }
 
     /// Quais destes ids têm like vigente (`liked_at` inteiro, mesma regra do

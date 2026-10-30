@@ -22,6 +22,7 @@ pub mod query;
 mod pipeline;
 pub mod dedup;
 pub mod spectral;
+pub mod waveform;
 pub mod transcode;
 pub mod tagwrite;
 
