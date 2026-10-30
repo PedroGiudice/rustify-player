@@ -344,10 +344,28 @@ export interface FftPayload {
   rms_energy: number;
   /** Sample rate negociada do PipeWire (Hz). 0 enquanto nao negociado. */
   sample_rate: number;
+  /** Níveis por canal da janela mais recente (lineares 0..1): RMS e pico
+      de amostra. Ausentes em backend anterior a 0.2.102 (lib/levels.ts cai
+      no rms_energy mono). */
+  level_l_rms?: number;
+  level_r_rms?: number;
+  level_l_peak?: number;
+  level_r_peak?: number;
 }
 
 export const onAudioFft = (cb: (payload: FftPayload) => void) =>
   listen<FftPayload>("audio-fft", (e) => cb(e.payload));
+
+/** Perfil de volume da faixa para o seek (400 baldes u8; 0 = -60 dBFS,
+    255 = 0 dBFS). null = ainda não calculado (o backfill do boot preenche). */
+export const libTrackProfile = (trackId: string) =>
+  invoke<number[] | null>("lib_track_profile", { trackId });
+
+/** Quantas vezes a faixa foi ouvida até o fim e se está curtida (cache do
+    motor; null enquanto o cache não montou). */
+export interface TrackFamiliarity { full_listens: number; liked: boolean }
+export const libTrackFamiliarity = (trackId: string) =>
+  invoke<TrackFamiliarity | null>("lib_track_familiarity", { trackId });
 
 export const spectrumSubscribe = () => invoke("spectrum_subscribe");
 export const spectrumUnsubscribe = () => invoke("spectrum_unsubscribe");

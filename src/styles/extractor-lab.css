@@ -469,13 +469,16 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .np-mini__title { font-size: 12.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-mini__artist { font-size: 11.5px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-mini__vu { display: flex; gap: 2px; align-items: flex-end; height: 12px; }
+/* Barras de 10 px escaladas por transform a partir do nível real
+   (NowPlayingIndicator + lib/levels.ts). Sem nível (pausa, movimento
+   reduzido) ficam paradas em três alturas fixas. */
 .np-mini__vu span {
-  width: 2px; background: var(--blue-fg); border-radius: var(--radius-pill);
-  animation: vu 0.9s ease-in-out infinite alternate;
+  width: 2px; height: 10px; background: var(--blue-fg); border-radius: var(--radius-pill);
+  transform-origin: bottom center;
 }
-.np-mini__vu span:nth-child(2) { animation-delay: 0.15s; }
-.np-mini__vu span:nth-child(3) { animation-delay: 0.30s; }
-@keyframes vu { from { height: 2px; } to { height: 10px; } }
+.np-mini__vu:not(.npi--live) span { transform: scaleY(0.6); }
+.np-mini__vu:not(.npi--live) span:nth-child(2) { transform: scaleY(1); }
+.np-mini__vu:not(.npi--live) span:nth-child(3) { transform: scaleY(0.4); }
 
 /* ────────────────────────────────────────────────────────────
    VIEW HEADER (compartilhado)
@@ -1367,6 +1370,8 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   vertical-align: 1.5px;
   line-height: 1.25;  /* 10px x 1.25 mantém a altura do chip de 8.5px x 1.5 */
 }
+/* Selo de primeira escuta: aparece por opacidade junto com a faixa. */
+.pb-src--first { animation: state-in var(--dur-med) var(--ease-out); }
 .pb-src[data-kind="station"],
 .pb-src[data-kind="radio"] {
   color: var(--blue-fg);
@@ -1401,6 +1406,23 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   .pb-like--pulse iconify-icon { animation: none; }
 }
 .pb-icon-btn iconify-icon, .pb-btn iconify-icon { width: 14px; height: 14px; }
+
+/* Medidor de saída (LevelMeter): dois canais de 40x3 px, VU em carbono 3
+   e pico retido em carbono 1 (sinal de erro perto de clipar). Instrumento
+   da mesa de estúdio: discreto, ao lado da pílula técnica. */
+.pb-meter { display: grid; gap: 2px; width: 40px; flex: none; }
+.pb-meter__ch {
+  position: relative; height: 3px; overflow: hidden;
+  background: var(--bg-tint); border-radius: var(--radius-pill);
+}
+.pb-meter__fill, .pb-meter__peak { position: absolute; inset: 0; }
+.pb-meter__fill { background: var(--fg-3); transform-origin: left center; transform: scaleX(0); }
+.pb-meter__peak { transform: translateX(-100%); }
+.pb-meter__peak::after {
+  content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 1px;
+  background: var(--fg-1);
+}
+.pb-meter__peak[data-clip="true"]::after { background: var(--rose-fg); }
 
 /* Confirmação de enfileirar: "+N" ao lado do ícone da fila, em mono
    tabular, entra subindo 3 px e some sozinho (PlayerBar, ACK_MS 1600 ms).
@@ -1491,6 +1513,26 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .progress:hover .progress__thumb,
 .progress:focus-visible .progress__thumb { opacity: 1; }
+
+/* Seek com a forma da música (perfil de volume da faixa): a mesma máscara
+   em duas camadas, resto em carbono 7 e tocado em carbono 3 (carbono 1 no
+   hover), recortado pela posição. 14 px cabem na barra de 72 px. */
+.progress--wave { height: 14px; background: none; border-radius: 0; }
+.progress--wave::before { height: 22px; }
+.progress__wave {
+  position: absolute; inset: 0;
+  background: var(--fg-7);
+  -webkit-mask: var(--wave-mask) no-repeat 0 0 / 100% 100%;
+  mask: var(--wave-mask) no-repeat 0 0 / 100% 100%;
+}
+.progress__wave--played {
+  background: var(--fg-3);
+  transition: background var(--dur-base) var(--ease-out);
+}
+.progress--wave:hover .progress__wave--played,
+.progress--wave:focus-visible .progress__wave--played { background: var(--fg-1); }
+/* Sobre o contorno, a cabeça vira um traço vertical da altura do trilho. */
+.progress--wave .progress__thumb { width: 2px; height: 18px; border-radius: var(--radius-pill); }
 
 .pb-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .pb-tech {
@@ -1746,7 +1788,6 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    (uniformidade visual: um unico equalizer no app inteiro). Estes
    modifiers so adaptam o contexto; o sprite vem de .np-mini__vu.
    ──────────────────────────────────────────────────────────── */
-.npi--paused span { animation-play-state: paused; }
 .npi--overlay {
   position: absolute;
   top: 50%; left: 50%;
@@ -5098,10 +5139,6 @@ html[data-sidebar="icons"] .bridge-chip__text {
   .st-feature__eyebrow .dot,
   .sel-bar { animation: none; }
 
-  /* VU do mini player: barras paradas em alturas diferentes. */
-  .np-mini__vu span { animation: none; height: 6px; }
-  .np-mini__vu span:nth-child(2) { height: 10px; }
-  .np-mini__vu span:nth-child(3) { height: 4px; }
 
   .np__lyrics-rail { transition: none; }
 

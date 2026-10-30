@@ -27,11 +27,13 @@ import {
   libIsLiked, libToggleLike, libRecordPlay,
   libAutoplayNext, libStationNext, getState,
   coverUrl, onPlayerState, onMprisCommand,
-  persistLoadState, persistSaveState, libGetTracksByIds,
+  persistLoadState, persistSaveState, libGetTracksByIds, libTrackProfile, libTrackFamiliarity,
 } from "../tauri";
 import { openTrackMenu } from "../store/contextMenu";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
+import { LevelMeter } from "./LevelMeter";
+import { makeWaveMask } from "./waveMask";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
 import { QUEUE_EVENT } from "./QueueDrawer";
 import { navigate } from "../router";
@@ -405,6 +407,52 @@ export function PlayerBar() {
     changeVolume(Math.round(next * 100) / 100).catch(console.error);
   }
 
+  // ── Seek com a forma da música ────────────────────────────────
+  // Com o perfil de volume da faixa (lib_track_profile), o trilho de 3 px
+  // vira o contorno da música inteira; sem perfil, fica o trilho de sempre.
+  const WAVE_H = 14;
+  const [waveMask, setWaveMask] = createSignal<string | null>(null);
+  let waveProfile: number[] | null = null;
+  function redrawWave() {
+    if (!waveProfile || !seekBarRef) { setWaveMask(null); return; }
+    setWaveMask(makeWaveMask(waveProfile, seekBarRef.clientWidth, WAVE_H, window.devicePixelRatio || 1));
+  }
+  createEffect(on(() => player.currentTrack?.id, (id) => {
+    waveProfile = null;
+    setWaveMask(null);
+    if (!id) return;
+    libTrackProfile(id)
+      .then((p) => {
+        if (player.currentTrack?.id !== id || !p || p.length === 0) return;
+        waveProfile = p;
+        redrawWave();
+      })
+      .catch(() => {});
+  }));
+  onMount(() => {
+    if (typeof ResizeObserver === "undefined" || !seekBarRef) return;
+    let pending = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(redrawWave);
+    });
+    ro.observe(seekBarRef);
+    onCleanup(() => { ro.disconnect(); cancelAnimationFrame(pending); });
+  });
+
+  // ── Primeira escuta (delight) ──────────────────────────────────
+  // Faixa nunca ouvida até o fim (mesma régua do motor: evento track_ended)
+  // ganha o selo "1ª escuta". Familiaridade é o que separa aceite de pulo
+  // na forense do autoplay: o dono sabe quando está diante de descoberta.
+  const [firstListen, setFirstListen] = createSignal(false);
+  createEffect(on(() => player.currentTrack?.id, (id) => {
+    setFirstListen(false);
+    if (!id) return;
+    libTrackFamiliarity(id)
+      .then((f) => { if (player.currentTrack?.id === id) setFirstListen(!!f && f.full_listens === 0); })
+      .catch(() => {});
+  }));
+
   // ── Confirmação de enfileirar ─────────────────────────────────
   // Tocar a seguir / adicionar à fila não tinham retorno nenhum: o "+N" ao
   // lado do ícone da fila diz quanto entrou e onde, e some sozinho.
@@ -551,6 +599,11 @@ export function PlayerBar() {
                 {srcLabel()}
               </span>
             </Show>
+            <Show when={firstListen()}>
+              <span class="pb-src pb-src--first" title="Você nunca ouviu esta faixa até o fim">
+                1ª escuta
+              </span>
+            </Show>
             {player.currentTrack?.artist_name ?? "—"}
             <Show when={player.currentTrack?.album_title}>
               {(album) => <> · {album()}</>}
@@ -678,6 +731,8 @@ export function PlayerBar() {
           </span>
           <div
             class="progress"
+            classList={{ "progress--wave": !!waveMask() }}
+            style={waveMask() ? { "--wave-mask": `url(${waveMask()})` } : undefined}
             id="pb-progress"
             ref={seekBarRef}
             role="slider"
@@ -690,7 +745,13 @@ export function PlayerBar() {
             onPointerDown={onSeekPointerDown}
             onKeyDown={onSeekKeyDown}
           >
-            <div class="progress__fill" id="pb-progress-fill" style={{ width: `${pct()}%` }} />
+            <Show
+              when={waveMask()}
+              fallback={<div class="progress__fill" id="pb-progress-fill" style={{ width: `${pct()}%` }} />}
+            >
+              <div class="progress__wave" />
+              <div class="progress__wave progress__wave--played" style={{ "clip-path": `inset(0 ${100 - pct()}% 0 0)` }} />
+            </Show>
             <div class="progress__thumb" id="pb-progress-thumb" style={{ left: `${pct()}%` }} />
           </div>
           <span class="pb-time" id="pb-time-total">
@@ -701,6 +762,7 @@ export function PlayerBar() {
 
       {/* ── Direito: tech pill + queue + volume ── */}
       <div class="pb-right">
+        <LevelMeter />
         <Show when={player.techInfo.format && player.techInfo.format !== "—"}>
           <div
             class="pb-tech"
