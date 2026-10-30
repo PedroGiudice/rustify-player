@@ -163,6 +163,13 @@
   /* Type scale: piso de leitura (Regra do Piso de 11). Rótulos, eyebrows,
      kbd e rodapés funcionais não descem disso. */
   --fs-label: 11px;
+  /* Degraus da escala que se repetem com papel próprio (DESIGN.md):
+     subhead = título de painel e nome da marca; lead = título de cartão,
+     artista no Now Playing, valor de estatística, linha da letra;
+     feature = título de destaque (Stations, playlist). */
+  --fs-subhead: 15px;
+  --fs-lead: 18px;
+  --fs-feature: 28px;
 
   /* Texto sobre scrim escuro (capa com gradiente preto por cima): branco
      literal em dois degraus, independente do tema, porque o scrim é
@@ -404,7 +411,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px; }
 .brand__mark { width: 22px; height: 22px; display: grid; place-items: center; color: var(--fg-1); }
 .brand__mark svg { width: 20px; height: 20px; display: block; }
-.brand__word { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg-1); }
+.brand__word { font-size: var(--fs-subhead); font-weight: 600; letter-spacing: -0.01em; color: var(--fg-1); }
 .brand__dot { margin-left: auto; margin-right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--green-ring); }
 
 .sidebar__section { display: flex; flex-direction: column; gap: 1px; }
@@ -463,7 +470,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .np-mini__artist { font-size: 11.5px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-mini__vu { display: flex; gap: 2px; align-items: flex-end; height: 12px; }
 .np-mini__vu span {
-  width: 2px; background: var(--blue-fg); border-radius: 1px;
+  width: 2px; background: var(--blue-fg); border-radius: var(--radius-pill);
   animation: vu 0.9s ease-in-out infinite alternate;
 }
 .np-mini__vu span:nth-child(2) { animation-delay: 0.15s; }
@@ -712,7 +719,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 80%), transparent);
 }
 .hero-tile__title {
-  font-size: 18px; font-weight: 600;
+  font-size: var(--fs-lead); font-weight: 600;
   letter-spacing: -0.015em; color: var(--fg-1);
   margin: 4px 0 0; line-height: 1.25;
 }
@@ -922,7 +929,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
    no placeholder "—", que não promete clique. */
 .np__artist {
   display: block; text-align: left;
-  font-size: 18px; font-weight: 500;
+  font-size: var(--fs-lead); font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--fg-2);
   width: fit-content;
@@ -1111,7 +1118,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    sobre a Tinta. A escala do card garante 4,5:1 e um degrau visível até a
    próxima e a ativa (lib/lyricsInk.ts). */
 .np__lyric {
-  font-size: 17px; font-weight: 500;
+  font-size: var(--fs-lead); font-weight: 500;
   line-height: 1.28; letter-spacing: -0.012em;
   color: var(--fg-5);
   transition: color var(--dur-screen) var(--ease-out);
@@ -1560,7 +1567,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .palette__input {
   flex: 1;
   background: none; border: 0; outline: 0;
-  font-size: 16px; font-weight: 500;
+  font-size: var(--fs-subhead); font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--fg-1);
 }
@@ -1646,7 +1653,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   padding: 18px; border-bottom: 1px solid var(--line-2);
   display: flex; align-items: baseline; justify-content: space-between;
 }
-.queue-drawer__title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--fg-1); }
+.queue-drawer__title { font-size: var(--fs-subhead); font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--fg-1); }
 .queue-drawer__close {
   width: 28px; height: 28px;
   border-radius: var(--radius-md);
@@ -1676,15 +1683,15 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Fila editável: alça e tirar aparecem no hover/foco (secundários
    invisíveis em repouso). As vizinhas deslizam em --dur-med enquanto uma
    linha é arrastada; a solta assenta por FLIP (QueueDrawer.flip). */
-.qrow {
+.qedit {
   position: relative;
   display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px; align-items: center;
   border-radius: var(--radius-md);
   transition: transform var(--dur-med) var(--ease-out);
 }
-.qlist[data-dragging="true"] .qrow { user-select: none; }
-.qrow__track { min-width: 0; }
-.qrow__grip, .qrow__remove {
+.qlist[data-dragging="true"] .qedit { user-select: none; }
+.qedit__track { min-width: 0; }
+.qedit__grip, .qedit__remove {
   display: grid; place-items: center;
   width: 22px; height: 28px; padding: 0;
   border: 0; border-radius: var(--radius-xs);
@@ -1692,21 +1699,21 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   opacity: 0;
   transition: opacity var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
-.qrow__grip { cursor: grab; touch-action: none; }
-.qrow__remove { width: 24px; }
-.qrow:hover .qrow__grip, .qrow:hover .qrow__remove,
-.qrow__grip:focus-visible, .qrow__remove:focus-visible,
-.qrow:focus-within .qrow__grip, .qrow:focus-within .qrow__remove { opacity: 1; }
-.qrow__grip:hover, .qrow__remove:hover { color: var(--fg-1); }
-.qrow__grip:focus-visible, .qrow__remove:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.qedit__grip { cursor: grab; touch-action: none; }
+.qedit__remove { width: 24px; }
+.qedit:hover .qedit__grip, .qedit:hover .qedit__remove,
+.qedit__grip:focus-visible, .qedit__remove:focus-visible,
+.qedit:focus-within .qedit__grip, .qedit:focus-within .qedit__remove { opacity: 1; }
+.qedit__grip:hover, .qedit__remove:hover { color: var(--fg-1); }
+.qedit__grip:focus-visible, .qedit__remove:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
 /* A linha erguida segue o ponteiro sem atraso, flutua sobre as vizinhas. */
-.qrow--lifted {
+.qedit--lifted {
   z-index: 2;
   transition: none;
   background: var(--bg-paper);
   box-shadow: var(--shadow-hover);
 }
-.qrow--lifted .qrow__grip { opacity: 1; cursor: grabbing; color: var(--fg-1); }
+.qedit--lifted .qedit__grip { opacity: 1; cursor: grabbing; color: var(--fg-1); }
 
 .qrow {
   display: grid;
@@ -1731,7 +1738,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   content: ''; position: absolute;
   left: -4px; top: 50%; transform: translateY(-50%);
   width: 2px; height: 22px;
-  background: var(--blue-ring); border-radius: 2px;
+  background: var(--blue-ring); border-radius: var(--radius-pill);
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -1779,7 +1786,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   color: var(--fg-5);
 }
 .stat-tile__value {
-  font-size: 18px; font-weight: 700;
+  font-size: var(--fs-lead); font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
@@ -2301,7 +2308,7 @@ html { --glow: 0; }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 100%), transparent);
 }
 .sig-stat__value {
-  font-size: 16px; font-weight: 700;
+  font-size: var(--fs-lead); font-weight: 700;
   color: var(--fg-1);
   letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
@@ -3123,7 +3130,7 @@ html { --glow: 0; }
   .st-feature__eyebrow .dot { animation: none; }
 }
 .st-feature__title {
-  font-size: 28px;
+  font-size: var(--fs-feature);
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--fg-1);
@@ -3159,7 +3166,7 @@ html { --glow: 0; }
 }
 .st-seed-chip__cover {
   width: 16px; height: 16px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   display: grid; place-items: center;
   border: 1px solid;
 }
@@ -3683,7 +3690,6 @@ html { --glow: 0; }
   align-items: center;
   justify-content: center;
   color: var(--on-surface-mute, var(--fg-5));
-  font-size: 18px;
   line-height: 1;
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
@@ -3843,7 +3849,7 @@ html { --glow: 0; }
   margin-bottom: 6px;
 }
 .pl-hero-meta__title {
-  font-size: 38px;
+  font-size: var(--fs-feature);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.025em;
@@ -3921,7 +3927,7 @@ html { --glow: 0; }
 .tweaks__color::-webkit-color-swatch-wrapper { padding: 2px; }
 .tweaks__color::-webkit-color-swatch {
   border: 1px solid var(--line-2);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 /* ── Menu de contexto de faixa (right-click) ──────────────────
@@ -3954,7 +3960,7 @@ html { --glow: 0; }
   padding: 7px 10px;
   border: 0;
   background: transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   font: inherit;
   font-size: 13px;
   color: var(--fg-2);
@@ -4268,7 +4274,8 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-dest__opt:hover { background: var(--bg-soft); }
 .crate-dest__clear {
   height: 40px; padding: 0 8px;
-  color: var(--fg-5); font-size: 15px;
+  display: inline-grid; place-items: center;
+  color: var(--fg-5);
 }
 .crate-dest__clear:hover { color: var(--fg-1); }
 
@@ -5123,7 +5130,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
   /* Confirmação da fila: aparece e some, sem subir. Chegada no acervo: o
      ponto só aparece (sem crescer). */
   .pb-queue__ack { animation-name: pb-queue-ack-calm; }
-  .qrow { transition: none; }
+  .qedit { transition: none; }
   .nav-item__new { animation: state-in var(--dur-base) linear; }
 
   /* Troca de faixa: título e ficha trocam por opacidade, sem subir. */

@@ -44,11 +44,11 @@ const LEAVE_MS = 180;
  */
 function flip(list: HTMLElement | undefined, mutate: () => void) {
   if (!list || reducedMotion()) { mutate(); return; }
-  const rows = Array.from(list.querySelectorAll<HTMLElement>(".qrow"));
+  const rows = Array.from(list.querySelectorAll<HTMLElement>(".qedit"));
   const before = new Map(rows.map((el) => [el, el.getBoundingClientRect().top]));
   for (const el of rows) { el.style.transition = "none"; el.style.transform = ""; }
   mutate();
-  for (const el of list.querySelectorAll<HTMLElement>(".qrow")) {
+  for (const el of list.querySelectorAll<HTMLElement>(".qedit")) {
     const top0 = before.get(el);
     el.style.transition = "";
     if (top0 === undefined) continue;
@@ -94,9 +94,9 @@ export function QueueDrawer() {
   const upcoming = () => player.queue.slice(player.queueIndex + 1);
 
   // ── Editar a fila: arrastar, tirar, Alt+setas ───────────────────
-  const rowsOf = () => Array.from(listEl?.querySelectorAll<HTMLElement>(".qrow") ?? []);
+  const rowsOf = () => Array.from(listEl?.querySelectorAll<HTMLElement>(".qedit") ?? []);
   const focusGrip = (i: number) =>
-    requestAnimationFrame(() => rowsOf()[i]?.querySelector<HTMLElement>(".qrow__grip")?.focus());
+    requestAnimationFrame(() => rowsOf()[i]?.querySelector<HTMLElement>(".qedit__grip")?.focus());
 
   function moveTo(from: number, to: number) {
     flip(listEl, () => moveUpcoming(from, to));
@@ -138,7 +138,7 @@ export function QueueDrawer() {
     const y0 = e.clientY;
     let to = from;
     listEl!.dataset.dragging = "true";
-    row.classList.add("qrow--lifted");
+    row.classList.add("qedit--lifted");
 
     const onMove = (ev: PointerEvent) => {
       const dy = ev.clientY - y0;
@@ -157,7 +157,7 @@ export function QueueDrawer() {
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", finish);
       grip.removeEventListener("pointercancel", cancel);
-      row.classList.remove("qrow--lifted");
+      row.classList.remove("qedit--lifted");
       delete listEl!.dataset.dragging;
       flip(listEl, () => moveUpcoming(from, to));
     };
@@ -209,9 +209,9 @@ export function QueueDrawer() {
             <div class="qlist" ref={listEl}>
               <For each={upcoming()}>
                 {(track, i) => (
-                  <div class="qrow">
+                  <div class="qedit">
                     <button
-                      class="qrow__grip"
+                      class="qedit__grip"
                       aria-label={`Mover ${track.title ?? "faixa"} na fila`}
                       title="Arrastar para reordenar (Alt+↑/↓; Delete tira)"
                       onPointerDown={(e) => startDrag(e, i())}
@@ -219,11 +219,11 @@ export function QueueDrawer() {
                     >
                       <Icon name={ICONS.grip} size={14} />
                     </button>
-                    <div class="qrow__track">
+                    <div class="qedit__track">
                       <TrackRowList track={track} onClick={() => playQueueUpcoming(track)} size="compact" />
                     </div>
                     <button
-                      class="qrow__remove"
+                      class="qedit__remove"
                       aria-label={`Tirar ${track.title ?? "faixa"} da fila`}
                       title="Tirar da fila"
                       onClick={(e) => { e.stopPropagation(); removeAt(i()); }}

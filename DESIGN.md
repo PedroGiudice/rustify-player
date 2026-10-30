@@ -63,12 +63,30 @@ typography:
     fontWeight: 600
     lineHeight: 0.98
     letterSpacing: "-0.025em"
+  feature:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "28px"
+    fontWeight: 600
+    lineHeight: 1.1
+    letterSpacing: "-0.02em"
   headline:
     fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "22px"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.015em"
+  lead:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "18px"
+    fontWeight: 600
+    lineHeight: 1.25
+    letterSpacing: "-0.01em"
+  subhead:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "15px"
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: "-0.01em"
   title:
     fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "13.5px"
@@ -390,13 +408,17 @@ Baumans e Righteous), não parte do sistema. Tela nova nasce com Instrument Sans
 - **Display** (600, `clamp(48px, 5.4vw, 76px)`, 0.98, −0.025em): só o título
   da faixa no Now Playing, com `text-wrap: balance`. Única palavra grande do
   app.
-- **Feature** (600, 28px, 1.1, −0.02em): título do destaque na Stations
-  ("Your Mix").
+- **Feature** (`--fs-feature`, 600, 28px, 1.1, −0.02em): título do destaque
+  na Stations ("Your Mix") e título da playlist (era 38 px até 30/10/2026).
 - **Headline** (600, 22px, 1.2, −0.015em): h1 de cada vista ("Home",
   "Stations", "Crate").
-- **Title** (600, 13.5–18px, 1.25–1.3, −0.005 a −0.015em): título da faixa na
-  linha (13.5), nome da station (14), título do hero-tile (18), item de
-  navegação (13.5/500, 600 quando ativo).
+- **Lead** (`--fs-lead`, 18px, 500–700): título do hero-tile, artista no Now
+  Playing, valor de estatística (Signal, Settings), linha da letra.
+- **Subhead** (`--fs-subhead`, 15px, 500–600): nome da marca, título da
+  gaveta da fila, campo da paleta ⌘K.
+- **Title** (600, 13.5–14px, 1.25–1.3, −0.005 a −0.015em): título da faixa na
+  linha (13.5), nome da station (14), item de navegação (13.5/500, 600 quando
+  ativo).
 - **Body** (400–500, 13–14px, 1.4): texto corrente, campo de busca (13.5/500),
   aba (13/500), dica do cabeçalho (13).
 - **Secondary** (400, 11.5–12px, 1.3–1.4, carbono 5): artista, álbum,

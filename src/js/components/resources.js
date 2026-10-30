@@ -55,7 +55,7 @@ function renderPanel(data) {
       <span class="resources__bracket">\u250C\u2500[</span>
       <span class="resources__title">system \u00B7 rustify-player</span>
       <span class="resources__bracket">]\u2500\u2510</span>
-      <button class="resources__close" id="res-close">\u00D7</button>
+      <button class="resources__close" id="res-close" aria-label="Fechar" title="Fechar"><iconify-icon icon="lucide:x" width="14" height="14"></iconify-icon></button>
     </div>
     <div class="resources__body">
       <div class="res-section">

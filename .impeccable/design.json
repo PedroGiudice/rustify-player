@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-27T14:38:32Z",
+  "generatedAt": "2026-10-30T13:23:33.548418+00:00",
   "title": "Design System: Rustify Player",
   "extensions": {
     "colorMeta": {
@@ -888,7 +888,7 @@
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "h1 de cada vista; 28px no destaque da Stations."
+        "purpose": "h1 de cada vista."
       },
       "title": {
         "displayName": "Title",
@@ -929,6 +929,18 @@
       "s24-data": {
         "displayName": "S24 Data (JetBrains Mono)",
         "purpose": "Duração, tempos do seek, subtítulos técnicos."
+      },
+      "feature": {
+        "displayName": "Feature",
+        "purpose": "Título de destaque: 'Your Mix' na Stations e título da playlist. --fs-feature."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Título do hero-tile, artista no Now Playing, valor de estatística (Signal, Settings), linha da letra. --fs-lead."
+      },
+      "subhead": {
+        "displayName": "Subhead",
+        "purpose": "Nome da marca, título da gaveta da fila, campo da paleta ⌘K. --fs-subhead."
       }
     },
     "shadows": [

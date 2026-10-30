@@ -1969,8 +1969,8 @@ export default function Crate(props: { param?: string | null }) {
               onPick={(f) => { setDestOverride(f); saveLastDest(f); setOpenDest(null); }}
             />
             <Show when={destOverride()}>
-              <button type="button" class="crate-dest__clear" onClick={() => setDestOverride(null)} title="Limpar destino fixo">
-                ×
+              <button type="button" class="crate-dest__clear" onClick={() => setDestOverride(null)} title="Limpar destino fixo" aria-label="Limpar destino fixo">
+                <Icon name={ICONS.close} size={14} />
               </button>
             </Show>
           </div>
