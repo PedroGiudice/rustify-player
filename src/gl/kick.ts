@@ -22,11 +22,9 @@
    Puro e sem alocação por quadro (as cenas chamam a 60 Hz).
    ============================================================ */
 
-/** Pulso acima disto dispara o evento... O pulso já vem multiplicado pelo
-    depth do Tweaks (0,55 no padrão, 1,0 na cfg do CEO): 0,18 dispara na
-    mesma taxa nos dois (replay do sinal real: ~0,55 evento/s, o mesmo
-    número de kicks que o próprio pulso tem — a taxa é do sinal, não do
-    limiar). */
+/** Onset (o pulso SEM o depth do Tweaks, gl/signal.ts) acima disto
+    dispara o evento. Desde 30/10/2026 as cenas passam `sig.onset`, não
+    `sig.pulse`: o depth regula a força, nunca se a batida existe. */
 export const KICK_ON = 0.18;
 /** ...e só rearma depois de cair abaixo disto (histerese). */
 export const KICK_OFF = 0.08;

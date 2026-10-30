@@ -22,6 +22,7 @@ import { FS_COMMON, HEAD, VS_TRI } from "../glsl";
 import { makeProgram, type Program } from "../glkit";
 import type { GlScene, SceneCtx, SceneDef, ScenePalette } from "../scene";
 import type { GlSignal } from "../signal";
+import { drive } from "../react";
 
 const FS = HEAD + FS_COMMON + `
 uniform float uScale, uShift, uKickN, uCore;
@@ -80,9 +81,9 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 /** Só lê a reação relativa à faixa: grave alto e parado não move nada. */
 export function risoReaction(sig: GlSignal): RisoReaction {
   return {
-    scale: 1 + 0.15 * clamp01(sig.swell),
+    scale: 1 + 0.15 * drive(sig.swell),
     shift: 0.035 * clamp01(sig.pulse),
-    core: 0.3 * clamp01(sig.midLift),
+    core: 0.3 * drive(sig.midLift),
   };
 }
 
@@ -117,7 +118,7 @@ class Riso implements GlScene {
   resize(): void {}
 
   frame(sig: GlSignal, pal: ScenePalette, _dt: number, w: number, h: number): void {
-    this.kick = stepKickCount(this.kick, sig.pulse);
+    this.kick = stepKickCount(this.kick, sig.onset);
     const r = risoReaction(sig);
     this.prog.use();
     this.prog.common(sig, pal, w, h);

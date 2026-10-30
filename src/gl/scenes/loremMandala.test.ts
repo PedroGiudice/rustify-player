@@ -59,7 +59,8 @@ describe("Lorem: atlas asêmico", () => {
 });
 
 describe("Lorem: ondas", () => {
-  const sig = (pulse: number, midRel = 0) => ({ ...createGlSignal(), pulse, midRel });
+  // O kick é detectado no onset (sem depth) e a força vem do pulse; aqui depth 1.
+  const sig = (pulse: number, midRel = 0) => ({ ...createGlSignal(), pulse, onset: pulse, midRel });
 
   it("um kick (borda de subida com histerese) abre UMA onda, com origem dentro da tela", () => {
     const st = createLoremState();
@@ -136,11 +137,11 @@ describe("Mandala: movimento", () => {
 
   it("kick dá UM impulso angular que amortece; sem kick o giro para", () => {
     const m = createMandalaMotion();
-    stepMandala(m, { ...createGlSignal(), pulse: 1 }, 1 / 60);
+    stepMandala(m, { ...createGlSignal(), pulse: 1, onset: 1 }, 1 / 60);
     const s0 = m.spin;
     expect(s0).toBeGreaterThan(0);
     expect(s0).toBeLessThanOrEqual(SPIN_KICK);
-    stepMandala(m, { ...createGlSignal(), pulse: 1 }, 1 / 60); // mesmo kick, não conta de novo
+    stepMandala(m, { ...createGlSignal(), pulse: 1, onset: 1 }, 1 / 60); // mesmo kick, não conta de novo
     expect(m.spin).toBeLessThan(s0);
     for (let f = 0; f < 600; f++) stepMandala(m, createGlSignal(), 1 / 60);
     expect(m.spin).toBeLessThan(1e-4);

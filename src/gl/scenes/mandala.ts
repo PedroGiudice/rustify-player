@@ -31,6 +31,7 @@ import { FS_COMMON, HEAD, VS_TRI } from "../glsl";
 import { makeProgram, type Program } from "../glkit";
 import type { GlScene, SceneCtx, SceneDef, ScenePalette } from "../scene";
 import type { GlSignal } from "../signal";
+import { drive, driveSigned } from "../react";
 
 /** Setores do caleidoscópio. */
 export const MANDALA_FOLDS = 6;
@@ -106,18 +107,25 @@ const DCLOCK_MAX = 0.1;
     velocidade do zoom, o kick dá um impulso que amortece. Muta e devolve `m`. */
 export function stepMandala(m: MandalaMotion, sig: GlSignal, dClock: number): MandalaMotion {
   const dt = Math.min(Math.max(dClock, 0), DCLOCK_MAX);
-  const swell = sig.swell < 0 ? 0 : sig.swell > 1 ? 1 : sig.swell;
-  m.zoom += dt * (ZOOM_BASE + ZOOM_SWELL * swell);
-  if (m.armed && sig.pulse > 0.5) {
+  m.zoom += dt * (ZOOM_BASE + ZOOM_SWELL * drive(sig.swell));
+  // Detecta no onset (sem depth); o depth só dá a força do impulso.
+  if (m.armed && sig.onset > 0.5) {
     m.spin += SPIN_KICK * Math.min(1, sig.pulse);
     m.armed = false;
-  } else if (!m.armed && sig.pulse < 0.2) m.armed = true;
+  } else if (!m.armed && sig.onset < 0.2) m.armed = true;
   m.rot += dt * m.spin;
   m.spin *= Math.exp(-dt / SPIN_TAU);
   return m;
 }
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** Uniforms do som pela curva comum (gl/react.ts): médio respira
+    (breath -1..1), agudo acende o nível fino (fine 0..1); o flash é a
+    batida (pulse, força = beat depth). */
+export function mandalaReaction(sig: GlSignal): { breath: number; fine: number; flash: number } {
+  return { breath: driveSigned(sig.midRel), fine: drive(sig.highLift), flash: clamp01(sig.pulse) };
+}
 
 class Mandala implements GlScene {
   private readonly prog: Program;
@@ -139,9 +147,10 @@ class Mandala implements GlScene {
     p.common(sig, pal, w, h);
     p.f("uZoom", this.m.zoom);
     p.f("uRot", this.m.rot);
-    p.f("uBreath", 0.06 * Math.max(-1, Math.min(1, sig.midRel)));
-    p.f("uFine", clamp01(sig.highLift));
-    p.f("uFlash", clamp01(sig.pulse));
+    const r = mandalaReaction(sig);
+    p.f("uBreath", 0.06 * r.breath);
+    p.f("uFine", r.fine);
+    p.f("uFlash", r.flash);
     this.ctx.fullscreen();
   }
 

@@ -114,8 +114,13 @@ export interface GlSignal {
   /** Graves acima da média recente da música: ondulação lenta. */
   swell: number;
   /** Transiente do kick acima da média: pulso curto. Já escalado por
-      beatDepth; zero com beat-sync off. */
+      beatDepth; zero com beat-sync off. É a FORÇA da batida. */
   pulse: number;
+  /** O mesmo transiente SEM o beatDepth (0..1): é nele que as cenas
+      DETECTAM a batida. Detectar no pulse fazia do depth um interruptor
+      (Lorem/Riso/Mandala com limiar 0,5: depth <= 0,5 = nenhuma onda;
+      30/10/2026). Zero com beat-sync off ou depth 0. */
+  onset: number;
   /** Médios acima da média recente. */
   midLift: number;
   /** Agudos acima da média recente (11/10: zonas da Tinta, as camadas
@@ -152,7 +157,7 @@ export interface GlSignal {
 export function createGlSignal(): GlSignal {
   return {
     low: 0, mid: 0, high: 0, beat: 0, clock: 0,
-    swell: 0, pulse: 0, midLift: 0, highLift: 0, lowRel: 0, midRel: 0, highRel: 0, level: 0,
+    swell: 0, pulse: 0, onset: 0, midLift: 0, highLift: 0, lowRel: 0, midRel: 0, highRel: 0, level: 0,
     lowEnv: 0, midEnv: 0, highEnv: 0, lowAvg: 0, lowDev: 0, midAvg: 0, midDev: 0, highAvg: 0, highDev: 0,
     relAge: 0,
   };
@@ -283,8 +288,9 @@ function stepRelative(
     s.midRel = ema(s.midRel, 0, dt, tau);
     s.highRel = ema(s.highRel, 0, dt, tau);
     s.pulse = ema(s.pulse, 0, dt, PULSE_RELEASE);
+    s.onset = ema(s.onset, 0, dt, PULSE_RELEASE);
     s.level = ema(s.level, 0, dt, tau);
-    if (!beatOn) s.pulse = 0;
+    if (!beatOn) s.pulse = s.onset = 0;
     return;
   }
   const lo = clamp01(rawLow);
@@ -331,7 +337,10 @@ function stepRelative(
   s.level = ema(s.level, clamp01(bass) * s.lowAvg, dt, tau);
 
   const kick = beatOn ? clamp01((lo - s.lowAvg - PULSE_GATE * lowSd) / (PULSE_SPAN * lowSd)) : 0;
-  const tp = kick * clamp01(cfg.beatDepth);
+  const depth = clamp01(cfg.beatDepth);
+  const tp = kick * depth;
   s.pulse = ema(s.pulse, tp, dt, tp > s.pulse ? PULSE_ATTACK : PULSE_RELEASE);
-  if (!beatOn) s.pulse = 0;
+  const to = depth > 0 ? kick : 0;
+  s.onset = ema(s.onset, to, dt, to > s.onset ? PULSE_ATTACK : PULSE_RELEASE);
+  if (!beatOn) s.pulse = s.onset = 0;
 }

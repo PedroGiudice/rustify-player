@@ -31,6 +31,7 @@ import type { GlScene, SceneCtx, SceneDef, ScenePalette } from "../scene";
 import type { GlSignal } from "../signal";
 import { ATLAS_COLS, ATLAS_H, ATLAS_ROWS, ATLAS_W, GLYPH_H, GLYPH_W, makeGlyphAtlas } from "../glyphAtlas";
 import { stepKickCount, type KickCount } from "./riso";
+import { drive, driveSigned } from "../react";
 
 export const LOREM_WAVES = 8;
 /** Raio da onda cresce isto por segundo (unidade = altura da tela). */
@@ -128,6 +129,13 @@ export interface LoremState {
   retype: number;
 }
 
+/** O que o som faz na cena, pela curva comum (gl/react.ts): grave acende
+    a névoa (glow 0..1), agudo faz faísca (spark 0..1), médio muda a
+    velocidade da deriva (drift -1..1, até ±80%). A batida é a onda. */
+export function loremReaction(sig: GlSignal): { glow: number; spark: number; drift: number } {
+  return { glow: drive(sig.swell), spark: drive(sig.highLift), drift: driveSigned(sig.midRel) };
+}
+
 export function createLoremState(): LoremState {
   const waves: LoremWave[] = [];
   for (let i = 0; i < LOREM_WAVES; i++) waves.push({ x: 0, y: 0, age: -1, amp: 0 });
@@ -151,7 +159,7 @@ export function stepLoremWaves(st: LoremState, sig: GlSignal, dClock: number, as
     if (w.age > WAVE_LIFE) w.age = -1;
   }
   const before = st.kick.n;
-  st.kick = stepKickCount(st.kick, sig.pulse);
+  st.kick = stepKickCount(st.kick, sig.onset);
   if (st.kick.n !== before) {
     // vaga livre, senão a mais velha
     let slot = st.waves.find((w) => w.age < 0);
@@ -162,7 +170,7 @@ export function stepLoremWaves(st: LoremState, sig: GlSignal, dClock: number, as
     slot.amp = 0.6 + 0.4 * Math.min(1, sig.pulse);
   }
   // deriva da névoa: velocidade muda com os médios, posição integrada
-  const v = MIST_DRIFT * (1 + 0.8 * sig.midRel);
+  const v = MIST_DRIFT * (1 + 0.8 * loremReaction(sig).drift);
   st.mistX += dt * v;
   st.mistY += dt * v * 0.6;
   // redigitação lenta de fundo: uma letra nova a cada ~9 s por célula
@@ -231,8 +239,9 @@ class Lorem implements GlScene {
     p.i("uAtlas", 0);
     p.v2("uMist", this.st.mistX, this.st.mistY);
     gl.uniform4fv(p.loc("uWaves[0]"), this.packed);
-    p.f("uGlow", clamp01(sig.swell));
-    p.f("uSpark", clamp01(sig.highLift));
+    const r = loremReaction(sig);
+    p.f("uGlow", r.glow);
+    p.f("uSpark", r.spark);
     p.f("uRetype", Math.floor(this.st.retype));
     this.ctx.fullscreen();
     gl.bindTexture(gl.TEXTURE_2D, null);

@@ -34,6 +34,7 @@ import { lookAt, mat4, perspective } from "../mat4";
 import { advanceDustTravel } from "../motion";
 import type { GlScene, SceneCtx, SceneDef, ScenePalette } from "../scene";
 import type { GlSignal } from "../signal";
+import { drive } from "../react";
 
 export const DUST_POINTS = 6000;
 const TARGET = [0, 0, -30] as const;
@@ -102,11 +103,11 @@ export const DUST_SIZE_BASE = 1.2;
    devagar: mantém o knob Bass mexendo no brilho geral, como antes, sem
    prender a nuvem no alto. O que pisca é o RELATIVO. */
 export function dustLum(sig: GlSignal): number {
-  return DUST_LUM_BASE + 0.25 * sig.level + 0.32 * sig.swell + 0.22 * sig.highLift + 0.16 * sig.pulse;
+  return DUST_LUM_BASE + 0.25 * sig.level + 0.28 * drive(sig.swell) + 0.22 * drive(sig.highLift) + 0.16 * sig.pulse;
 }
 
 export function dustSize(sig: GlSignal): number {
-  return DUST_SIZE_BASE + 0.5 * sig.level + 0.4 * sig.swell + 0.45 * sig.pulse;
+  return DUST_SIZE_BASE + 0.5 * sig.level + 0.4 * drive(sig.swell) + 0.45 * sig.pulse;
 }
 
 /** Avança o estado um quadro. dt = parede (detector do kick, surge);
@@ -115,9 +116,10 @@ export function stepDust(m: DustMotion, sig: GlSignal, dt: number): void {
   const dClock = m.lastClock === null ? 0 : Math.max(0, sig.clock - m.lastClock);
   m.lastClock = sig.clock;
   m.surge = stepSurge(m.surge, sig.pulse, dt);
-  m.travel = advanceDustTravel(m.travel, dClock, sig.midLift, m.surge);
+  m.travel = advanceDustTravel(m.travel, dClock, drive(sig.midLift), m.surge);
 
-  if (stepKickTrigger(m.trig, sig.pulse, dt)) {
+  // Detecta no onset (sem depth); o depth só dá a força da frente.
+  if (stepKickTrigger(m.trig, sig.onset, dt)) {
     m.waveZ[m.next] = DUST_WAVE_START;
     m.waveA[m.next] = 0.55 + 0.45 * Math.min(1, sig.pulse);
     m.next = (m.next + 1) % DUST_WAVES;

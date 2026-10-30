@@ -21,6 +21,7 @@ import { circleStrip } from "../geometry";
 import { createPulseHistory, pulseAgo, pushPulse, type PulseHistory } from "../kick";
 import { mat4, perspective, translation } from "../mat4";
 import type { GlScene, SceneCtx, SceneDef, ScenePalette } from "../scene";
+import { drive } from "../react";
 import type { GlSignal } from "../signal";
 
 export const ORBIT_RINGS = 40;
@@ -112,7 +113,10 @@ export function stepOrbits(
   const dClock = st.lastClock === null ? 0 : Math.max(0, sig.clock - st.lastClock);
   st.lastClock = sig.clock;
   pushPulse(st.hist, sig.pulse, dClock);
-  st.zoff += dClock * (ORBIT_V_BASE + ORBIT_V_SWELL * sig.swell);
+  const swell = drive(sig.swell);
+  const midLift = drive(sig.midLift);
+  const highLift = drive(sig.highLift);
+  st.zoff += dClock * (ORBIT_V_BASE + ORBIT_V_SWELL * swell);
   const L = st.rings.length * ORBIT_GAP;
   for (const r of st.rings) {
     const z = ((((r.base + st.zoff) % L) + L) % L) - L + 12;
@@ -120,17 +124,17 @@ export function stepOrbits(
     const wave = pulseAgo(st.hist, dist / ORBIT_WAVE_SPEED);
     // Ondulação dos graves: fase por anel (relógio x constante, nunca
     // relógio x sinal) com amplitude no swell.
-    const s = r.radius * (1 + 0.08 * sig.swell * Math.sin(sig.clock * 1.3 + r.i * 0.55) + ORBIT_KICK_DILATE * wave);
+    const s = r.radius * (1 + 0.08 * swell * Math.sin(sig.clock * 1.3 + r.i * 0.55) + ORBIT_KICK_DILATE * wave);
     const rotX = r.tilt + Math.sin(sig.clock * 0.3 + r.i * 0.2) * 0.15;
-    r.rotZ += dClock * r.spin * (1 + 1.5 * sig.midLift);
+    r.rotZ += dClock * r.spin * (1 + 1.5 * midLift);
     const depth = Math.min(1, Math.max(0, 1 - dist / L));
     // A versão three multiplicava ainda por (1 - near), com near =
     // MathUtils.smoothstep(z, 12, 6). Com min > max essa função devolve 0
     // para todo z <= 12 — e z nunca passa de 12 —, então o fator sempre
     // foi 1. Fica de fora; fade perto da câmera seria mudança visual.
-    const opacity = (0.08 + 0.6 * depth * depth) * (ORBIT_OP_BASE + 0.35 * sig.highLift + 0.5 * wave);
+    const opacity = (0.08 + 0.6 * depth * depth) * (ORBIT_OP_BASE + 0.35 * highLift + 0.5 * wave);
     const base = r.i % 3 === 0 ? pal.ink2 : pal.ink;
-    const t = Math.min(1, sig.highLift * 0.25 * depth + 0.3 * wave);
+    const t = Math.min(1, highLift * 0.25 * depth + 0.3 * wave);
     const o = r.i * ORBIT_STRIDE;
     out[o] = z;
     out[o + 1] = s;

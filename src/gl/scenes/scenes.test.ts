@@ -120,14 +120,15 @@ describe("Órbitas: passo", () => {
     expect(st.rings[3].rotZ).toBe(r0);
   });
 
-  it("giro em z acumula delta de relógio x spin x (1 + 1,5 médios acima da média)", () => {
+  it("giro em z acumula delta de relógio x spin x (1 + 1,5 médios acima da média, pela curva comum)", () => {
     const st = fresh();
     const out = new Float32Array(ORBIT_RINGS * ORBIT_STRIDE);
     const sig = { ...createGlSignal(), midLift: 0.5 };
     stepOrbits(st, sig, 0, PAL, out); // primeiro quadro: referência do relógio
     tick(st, sig, 0.1, out);
     const r0 = st.rings[0];
-    expect(r0.rotZ).toBeCloseTo(0.1 * r0.spin * 1.75, 9);
+    // drive(0,5) = tanh(2,5)/tanh(5) = 0,98667 (gl/react.ts)
+    expect(r0.rotZ).toBeCloseTo(0.1 * r0.spin * (1 + 1.5 * 0.98667), 5);
     expect(out[3]).toBeCloseTo(r0.rotZ, 6);
   });
 

@@ -294,6 +294,17 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   pulse), com UMA diferenca deliberada — as cenas consomem as TRES
   bandas separadas, nao a soma ponderada. No modo pulse NAO roda o PLL;
   `beat` e o envelope de kick expandido nos dois modos.
+- **Knobs iguais em todas as cenas (30/10, `gl/react.ts`)**: grave, médio e agudo (swell /
+  midLift / highLift / *Rel) passam por `drive`/`driveSigned`, a MESMA curva das zonas da
+  Tinta (tanh 5, calibrada no olho do CEO em 11/10), em Lorem, Mandala, Riso, Poeira e
+  Órbitas. Antes cada cena usava o sinal cru e, com os ajustes do CEO, a Lorem ficava parada
+  (brilho em 10% nos momentos fortes; agora 48%, Tinta 62%). Relevo (joelho próprio) e Nébula
+  (cadeia absoluta) ficaram de fora. Cena nova: reação de banda passa por `drive`.
+- **Batida: detectar no `onset`, força no `pulse` (30/10)**: `pulse` já vem multiplicado
+  pelo beat depth; contar kick nele com limiar fixo fazia do depth um interruptor (limiar 0,5
+  na Lorem/Riso/Mandala: depth <= 0,5 = zero ondas; 0,55 = 15,8/min). `sig.onset` é o mesmo
+  transiente sem o depth (zero com depth 0 ou beat off): limiar de detecção usa `onset`,
+  amplitude usa `pulse`. Travado em `gl/sceneReaction.test.ts` (replay real).
 - Paleta em `src/gl/palette.ts` (puro, testado): ink/ink2/soft saem de
   `--bg-ink-rgb` / `--primary` / `--fg-5`, entao tema, capa
   (adaptiveInk/Accent) e knob mandam no WebGL igual mandam no 2D. O
