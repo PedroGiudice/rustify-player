@@ -484,7 +484,7 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
             return (
               <>
                 <span class="crate-pill crate-pill--live">baixando</span>
-                <div class="crate-prog"><i style={{ width: `${st.pct}%` }} /></div>
+                <div class="crate-prog"><i style={{ transform: `scaleX(${st.pct / 100})` }} /></div>
                 <span class="crate-st-mono crate-st-txt--live">
                   {Math.round(st.pct)}% · {formatSpeed(st.bps)}
                   {st.eta_s != null ? ` · ${formatEta(st.eta_s)}` : ""}
@@ -2094,7 +2094,7 @@ export default function Crate(props: { param?: string | null }) {
                     aria-valuemax="100"
                     aria-valuenow={Math.round(searchPct())}
                   >
-                    <i style={{ width: `${searchPct()}%` }} />
+                    <i style={{ transform: `scaleX(${searchPct() / 100})` }} />
                   </div>
                 </div>
               </Show>

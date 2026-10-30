@@ -9,13 +9,13 @@
    - Like button
    ============================================================ */
 
-import { createSignal, onMount, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, on, onMount, onCleanup, Show } from "solid-js";
 import {
   player, setPlayer,
   applyTrackStarted, updatePosition, setPlayingState,
   setLiked, cycleRepeat, advanceQueue, retreatQueue, jumpToQueueIndex,
   shuffleQueue, reconcileFromState, setQueue, changeVolume, toggleMute,
-  rememberRecent, recentlyPlayed, resumeOnLaunch, gaplessNext,
+  rememberRecent, recentlyPlayed, resumeOnLaunch, gaplessNext, queueAck,
 } from "../store/player";
 import type { QueueScope, QueueSource } from "../store/player";
 import { registerSeen, registerSkipIfEarly, currentSession, ensureOpenRadioSession, noteAccepted, advanceMix, rewindMix } from "../store/radioSession";
@@ -405,6 +405,24 @@ export function PlayerBar() {
     changeVolume(Math.round(next * 100) / 100).catch(console.error);
   }
 
+  // ── Confirmação de enfileirar ─────────────────────────────────
+  // Tocar a seguir / adicionar à fila não tinham retorno nenhum: o "+N" ao
+  // lado do ícone da fila diz quanto entrou e onde, e some sozinho.
+  const ACK_MS = 1600;
+  const [ackShown, setAckShown] = createSignal<ReturnType<typeof queueAck>>(null);
+  let ackTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(on(queueAck, (a) => {
+    if (!a) return;
+    clearTimeout(ackTimer);
+    // Sai e volta no próximo quadro: gesto repetido reinicia a animação.
+    setAckShown(null);
+    requestAnimationFrame(() => setAckShown(a));
+    ackTimer = setTimeout(() => setAckShown(null), ACK_MS);
+  }, { defer: true }));
+  onCleanup(() => clearTimeout(ackTimer));
+  const ackText = (a: NonNullable<ReturnType<typeof queueAck>>) =>
+    `${a.n} ${a.n === 1 ? "faixa" : "faixas"} ${a.where === "next" ? "a seguir" : "no fim da fila"}`;
+
   // ── Like ───────────────────────────────────────────────────────
 
   // Pulso único do coração (B9): só no gesto de curtir. Descurtir, trocar de
@@ -710,15 +728,23 @@ export function PlayerBar() {
           <Icon name={ICONS.lyrics} size={14} />
         </button>
 
-        <button
-          class="pb-btn"
-          id="pb-queue"
-          title="Queue (Q)"
-          aria-label="Queue"
-          onClick={() => window.dispatchEvent(new CustomEvent(QUEUE_EVENT))}
-        >
-          <Icon name={ICONS.queue} size={14} />
-        </button>
+        <div class="pb-queue">
+          <button
+            class="pb-btn"
+            id="pb-queue"
+            title="Queue (Q)"
+            aria-label="Queue"
+            onClick={() => window.dispatchEvent(new CustomEvent(QUEUE_EVENT))}
+          >
+            <Icon name={ICONS.queue} size={14} />
+          </button>
+          <span class="sr-only" role="status">{ackShown() ? ackText(ackShown()!) : ""}</span>
+          <Show when={ackShown()} keyed>
+            {(a) => (
+              <span class="pb-queue__ack" aria-hidden="true" title={ackText(a)}>+{a.n}</span>
+            )}
+          </Show>
+        </div>
 
         <div class="pb-vol">
           <button

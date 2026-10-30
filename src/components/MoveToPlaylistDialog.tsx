@@ -193,7 +193,7 @@ function MoveDialogBody(props: { req: MoveRequest }) {
             <Match when={phase() === "running"}>
               <div class="move-dlg__body" aria-live="polite">
                 <p class="move-dlg__line">Movendo {progress()} de {total()} para {dest()}</p>
-                <div class="move-dlg__bar"><div style={{ width: `${(progress() / total()) * 100}%` }} /></div>
+                <div class="move-dlg__bar"><div style={{ transform: `scaleX(${progress() / total()})` }} /></div>
               </div>
             </Match>
 

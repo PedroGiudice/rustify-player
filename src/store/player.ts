@@ -248,9 +248,18 @@ function mutateQueueRealign(mutate: () => void) {
   if (next && next.path !== before) playerEnqueueNext(next.path).catch(console.error);
 }
 
+/** Último gesto de enfileirar que pôs algo na fila: a barra do player mostra
+    "+N" ao lado do ícone da fila. `seq` muda a cada gesto (reinicia a animação). */
+export interface QueueAck { n: number; where: "next" | "end"; seq: number }
+const [queueAck, setQueueAck] = createSignal<QueueAck | null>(null);
+export { queueAck };
+let ackSeq = 0;
+const ack = (n: number, where: QueueAck["where"]) => setQueueAck({ n, where, seq: ++ackSeq });
+
 /** A faixa que está tocando não entra de novo na fila (tocaria duas vezes seguidas). */
 export function enqueueNext(track: Track) {
   if (track.id === player.currentTrack?.id) return;
+  ack(1, "next");
   mutateQueueRealign(() =>
     setPlayer("queue", (q) => {
       const next = [...q];
@@ -260,6 +269,7 @@ export function enqueueNext(track: Track) {
 }
 
 export function enqueueEnd(track: Track) {
+  ack(1, "end");
   mutateQueueRealign(() => setPlayer("queue", (q) => [...q, track]));
 }
 
@@ -270,6 +280,7 @@ export function enqueueNextMany(tracks: Track[]) {
   const curId = player.currentTrack?.id;
   const batch = tracks.filter((t) => t.id !== curId);
   if (batch.length === 0) return;
+  ack(batch.length, "next");
   mutateQueueRealign(() =>
     setPlayer("queue", (q) => {
       const next = [...q];
@@ -283,7 +294,31 @@ export function enqueueEndMany(tracks: Track[]) {
   const curId = player.currentTrack?.id;
   const batch = tracks.filter((t) => t.id !== curId);
   if (batch.length === 0) return;
+  ack(batch.length, "end");
   mutateQueueRealign(() => setPlayer("queue", (q) => [...q, ...batch]));
+}
+
+/** Move uma faixa dentro do "a seguir" (índices relativos a ele: 0 = a próxima).
+    O que já tocou e a atual ficam onde estão; o preload gapless realinha. */
+export function moveUpcoming(from: number, to: number) {
+  const base = player.queueIndex + 1;
+  const count = player.queue.length - base;
+  if (from === to || from < 0 || to < 0 || from >= count || to >= count) return;
+  mutateQueueRealign(() =>
+    setPlayer("queue", (q) => {
+      const next = [...q];
+      const [t] = next.splice(base + from, 1);
+      next.splice(base + to, 0, t);
+      return next;
+    }));
+}
+
+/** Tira uma faixa do "a seguir" (índice relativo a ele). */
+export function removeUpcoming(i: number) {
+  const base = player.queueIndex + 1;
+  if (i < 0 || base + i >= player.queue.length) return;
+  mutateQueueRealign(() =>
+    setPlayer("queue", (q) => q.filter((_, k) => k !== base + i)));
 }
 
 export function advanceQueue(): Track | null {

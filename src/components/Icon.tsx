@@ -63,6 +63,7 @@ export const ICONS = {
   expand:       "lucide:maximize-2",
   shrink:       "lucide:minimize-2",
   close:        "lucide:x",
+  grip:         "lucide:grip-vertical",
   chevronLeft:  "lucide:chevron-left",
   chevronRight: "lucide:chevron-right",
   chevronDown:  "lucide:chevron-down",

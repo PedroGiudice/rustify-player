@@ -6,7 +6,7 @@ vi.mock("../tauri", () => ({
   playerEnqueueNext: (path: string) => enqueuePreload(path),
 }));
 
-import { enqueueNext, enqueueEnd, enqueueNextMany, enqueueEndMany, player, setPlayer } from "./player";
+import { enqueueNext, enqueueEnd, enqueueNextMany, enqueueEndMany, player, queueAck, setPlayer } from "./player";
 import type { Track } from "../tauri";
 
 const mk = (id: string) => ({ id, title: id, path: `/m/${id}` } as Track);
@@ -90,5 +90,26 @@ describe("realinhamento do preload gapless", () => {
     setPlayer({ repeatMode: "one" });
     enqueueNextMany([mk("x")]);
     expect(enqueuePreload).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmação de enfileirar (queueAck)", () => {
+  it("conta o que entrou de fato e muda a cada gesto", () => {
+    enqueueNextMany([mk("x"), mk("y")]);
+    const first = queueAck();
+    expect(first?.n).toBe(2);
+    expect(first?.where).toBe("next");
+    enqueueEnd(mk("z"));
+    expect(queueAck()?.n).toBe(1);
+    expect(queueAck()?.where).toBe("end");
+    expect(queueAck()!.seq).not.toBe(first!.seq);
+  });
+  it("a faixa que está tocando não conta; nada entrou = sem confirmação nova", () => {
+    enqueueEndMany([mk("a"), mk("x")]);
+    expect(queueAck()?.n).toBe(1);
+    const before = queueAck()!.seq;
+    enqueueNextMany([mk("a")]);
+    enqueueNext(mk("a"));
+    expect(queueAck()!.seq).toBe(before);
   });
 });

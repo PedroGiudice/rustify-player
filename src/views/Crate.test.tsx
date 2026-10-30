@@ -294,7 +294,7 @@ describe("Crate — busca em voo (crate-8)", () => {
     expect(text).toContain("7 respostas");
     expect(text).not.toContain("faixas");
     const bar = head.querySelector(".crate-prog i") as HTMLElement;
-    expect(bar.style.width).toBe("50%");
+    expect(bar.style.transform).toBe("scaleX(0.5)");
   });
 });
 
