@@ -1897,6 +1897,44 @@ fn list_shapes() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+/// Perfil de volume da faixa para o seek: 400 inteiros 0..=255 (0 = -60 dBFS
+/// ou menos, 255 = 0 dBFS, RMS mono por balde de tempo igual). `None` enquanto
+/// o backfill não calculou (ou se o cálculo falhou nesta faixa).
+#[tauri::command]
+fn lib_track_profile(lib: State<Library>, track_id: String) -> Result<Option<Vec<u8>>, String> {
+    let tid = parse_id(&track_id)?;
+    lib.handle.client().get_wave_profile(tid).map_err(err)
+}
+
+/// Familiaridade da faixa para a UI.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+struct TrackFamiliarityDto {
+    /// Vezes ouvida até o fim (todo o histórico, qualquer origem).
+    full_listens: u32,
+    liked: bool,
+}
+
+fn familiarity_dto(f: familiarity::TrackFamiliarity, liked: bool) -> TrackFamiliarityDto {
+    TrackFamiliarityDto { full_listens: f.ended, liked }
+}
+
+/// `None` quando o cache de familiaridade ainda não foi montado (boot, ou
+/// remontagem após invalidação): o cache nunca faz I/O nem espera lock. O like
+/// vem de uma consulta pontual de 1 id em `track_enrichments`.
+#[tauri::command]
+fn lib_track_familiarity(
+    lib: State<Library>,
+    track_id: String,
+) -> Result<Option<TrackFamiliarityDto>, String> {
+    let tid = parse_id(&track_id)?;
+    let client = lib.handle.client();
+    let Some(fam) = client.familiarity() else {
+        return Ok(None);
+    };
+    let liked = client.liked_among(&[tid]).map_err(err)?.contains(&tid);
+    Ok(Some(familiarity_dto(fam.get(tid), liked)))
+}
+
 #[tauri::command]
 fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, String> {
     let tid = parse_id(&track_id)?;
@@ -3861,6 +3899,8 @@ pub fn run() {
             watch_theme,
             unwatch_theme,
             get_track_color,
+            lib_track_profile,
+            lib_track_familiarity,
             get_track_palette,
             log_event,
             fs_read_text,
@@ -4572,6 +4612,19 @@ fn maybe_seed_default_station(lib: &Library) {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn familiaridade_dto_expoe_so_fins_e_like_com_nomes_estaveis() {
+        let f = familiarity::TrackFamiliarity { ended: 4, motor_attempts: 9, early_skips: 2 };
+        let dto = familiarity_dto(f, true);
+        assert_eq!(dto, TrackFamiliarityDto { full_listens: 4, liked: true });
+        assert_eq!(
+            serde_json::to_value(&dto).unwrap(),
+            serde_json::json!({ "full_listens": 4, "liked": true })
+        );
+        let zero = familiarity_dto(Default::default(), false);
+        assert_eq!((zero.full_listens, zero.liked), (0, false));
+    }
 
     // ── Mover para playlist (CMR-298) ──────────────────────────────────
 
