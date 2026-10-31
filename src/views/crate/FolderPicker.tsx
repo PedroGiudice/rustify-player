@@ -63,9 +63,8 @@ export function FolderPicker(props: FolderPickerProps) {
         onClick={(e) => { e.stopPropagation(); props.onToggle(); }}
       >
         <Show when={props.variant === "toolbar"}>
-          <span class="crate-dest__lbl">Destino</span>
+          <span class="crate-dest__lbl">Salvar em</span>
         </Show>
-        <span class="crate-dest__arrow">→</span>
         <span>{props.value ?? props.placeholder}</span>
         <Icon name={ICONS.chevronDown} size={12} />
       </button>

@@ -371,7 +371,7 @@ describe("TidalTab", () => {
 
   it("com a fila fora, o convite de busca some: o banner diz o que falta (A25)", () => {
     render(() => (
-      <TidalTab jobs={[]} pastas={[]} load="error" loadError="A fila da Tidal na VM não respondeu." refresh={() => {}} tokenMissing={false} />
+      <TidalTab jobs={[]} pastas={[]} load="error" loadError="Não consegui falar com a fila de downloads da Tidal." refresh={() => {}} tokenMissing={false} />
     ));
     expect(screen.queryByText(/Cole um link da Tidal ou busque/)).toBeNull();
     expect(document.querySelectorAll(".crate-banner")).toHaveLength(1);
@@ -418,7 +418,7 @@ describe("TidalTab", () => {
   });
 
   it("fila fora com busca que falhou: um banner só, rosa, sem IP; campo e seletor apagados (A2)", async () => {
-    const OFF = "A fila da Tidal na VM não respondeu. Sem ela não dá para baixar.";
+    const OFF = "Não consegui falar com a fila de downloads da Tidal. Sem ela não dá para baixar.";
     mocks.crateTidalSearch.mockRejectedValue(OFF);
     const [load, setLoad] = createSignal<"loading" | "loaded" | "error">("loaded");
     const refresh = vi.fn();
@@ -434,7 +434,7 @@ describe("TidalTab", () => {
     const banners = document.querySelectorAll(".crate-banner");
     expect(banners).toHaveLength(1);
     expect(banners[0].getAttribute("data-tone")).toBe("rose");
-    expect(banners[0].textContent).toContain("não respondeu");
+    expect(banners[0].textContent).toContain("Não consegui falar com a fila");
     expect(banners[0].textContent).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
     expect((document.querySelector(".crate-dest__btn") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));

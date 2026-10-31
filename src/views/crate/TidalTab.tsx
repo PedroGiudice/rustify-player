@@ -703,7 +703,7 @@ function PreviewView(props: {
 
 // ── aba ────────────────────────────────────────────────────────────
 /** Mesmo texto de `OFFLINE_MSG` em src-tauri/src/slsk/tidal_fila.rs (fallback quando o erro vem vazio). */
-const FILA_OFFLINE = "A fila da Tidal na VM não respondeu. Sem ela não dá para baixar.";
+const FILA_OFFLINE = "Não consegui falar com a fila de downloads da Tidal. Sem ela não dá para baixar.";
 type SectionKey = "faixas" | "albuns" | "artistas" | "playlists";
 const TOP_SECTION: Record<string, SectionKey> = { faixa: "faixas", album: "albuns", artista: "artistas", playlist: "playlists" };
 
@@ -1030,8 +1030,8 @@ export default function TidalTab(props: Props) {
         <div class="crate-banner" data-tone="amber">
           <Icon name={ICONS.alert} size={15} />
           <p>
-            Sem token da fila: configure <code>~/.secrets/telemetria-token.txt</code>{" "}
-            (ou <code>RUSTIFY_TIDAL_FILA_TOKEN_FILE</code> para outro caminho).
+            Falta a chave de acesso da fila da Tidal: ponha o arquivo em{" "}
+            <code title="Outro caminho: variável RUSTIFY_TIDAL_FILA_TOKEN_FILE">~/.secrets/telemetria-token.txt</code>.
           </p>
         </div>
       </Show>

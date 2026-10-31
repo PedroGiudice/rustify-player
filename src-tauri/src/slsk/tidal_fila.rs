@@ -243,11 +243,11 @@ fn host_port(cfg: &SourcesConfig) -> &str {
     cfg.tidal_fila_url.trim_end_matches('/')
 }
 
-const SEM_TOKEN: &str = "token da fila indisponível (veja o status das fontes)";
+const SEM_TOKEN: &str = "Falta a chave de acesso da fila da Tidal (veja o status das fontes).";
 
 /// Texto da tela quando a fila não responde. Host e porta ficam só no log:
 /// o dono não interpreta IP, e a mesma frase serve à lista e à busca.
-pub(crate) const OFFLINE_MSG: &str = "A fila da Tidal na VM não respondeu. Sem ela não dá para baixar.";
+pub(crate) const OFFLINE_MSG: &str = "Não consegui falar com a fila de downloads da Tidal. Sem ela não dá para baixar.";
 
 fn offline_msg(cfg: &SourcesConfig) -> String {
     tracing::warn!(host = %host_port(cfg), "tidal-fila: sem resposta da fila");
@@ -297,7 +297,7 @@ fn status_msg(cfg: &SourcesConfig, code: u16, resp: ureq::Response) -> String {
 /// token (o corpo, se houver, é técnico); nos demais o corpo da fila vence.
 fn status_text(code: u16, body_error: Option<String>) -> String {
     if code == 401 || code == 403 {
-        return "A VM recusou o token da fila.".to_string();
+        return "A fila da Tidal recusou a chave de acesso.".to_string();
     }
     if let Some(e) = body_error.map(|e| e.trim().to_string()).filter(|e| !e.is_empty()) {
         return e;
@@ -483,8 +483,8 @@ mod tests {
     // ── texto de erro da fila (A26: sem host, sem código cru) ──────────
     #[test]
     fn token_recusado_diz_token_e_nao_vm_fora() {
-        assert_eq!(status_text(401, None), "A VM recusou o token da fila.");
-        assert_eq!(status_text(403, Some("forbidden".into())), "A VM recusou o token da fila.");
+        assert_eq!(status_text(401, None), "A fila da Tidal recusou a chave de acesso.");
+        assert_eq!(status_text(403, Some("forbidden".into())), "A fila da Tidal recusou a chave de acesso.");
     }
 
     #[test]
