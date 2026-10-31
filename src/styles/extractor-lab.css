@@ -118,6 +118,9 @@
   --shadow-card:     0 1px 4px rgba(0,0,0,0.04);
   --shadow-hover:    0 8px 24px rgba(0,0,0,0.06);
   --shadow-compact:  0 6px 18px rgba(0,0,0,0.05);
+  /* Véu de paleta e gaveta: escurece em qualquer tema. O literal antigo
+     era o --fg-1 do repouso (23,23,23) e no Really Dark clareava o fundo. */
+  --scrim-rgb:       0, 0, 0;
   /* Foco com contraste real: o anel antigo (rgba(163,163,163,.15)) dava
      1,13:1 no claro e 1,24:1 no really-dark, invisível. --blue-ring segue
      tema e accent adaptativo; #3b82f6 sobre o paper dá 3,7:1 (WCAG 1.4.11
@@ -1561,7 +1564,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    ──────────────────────────────────────────────────────────── */
 .palette-scrim {
   position: fixed; inset: 0;
-  background: rgba(23,23,23,0.20);
+  background: rgba(var(--scrim-rgb), 0.32);
   z-index: 100;
   /* Fechada fica montada e invisível (não display:none): com display:none
      nenhuma transição roda, e a paleta abria e fechava num salto. A
@@ -1587,7 +1590,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
-  box-shadow: 0 24px 64px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-hover);
   display: flex; flex-direction: column;
   overflow: hidden;
   transform: translateY(-6px) scale(0.99);
@@ -1671,7 +1674,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .queue-scrim {
   position: fixed;
   top: var(--titlebar-h); right: 0; bottom: var(--playerbar-h); left: 0;
-  background: rgba(23,23,23,0.16);
+  background: rgba(var(--scrim-rgb), 0.32);
   z-index: 90; opacity: 0; pointer-events: none;
   transition: opacity var(--dur-med) var(--ease-in);
 }
@@ -1682,7 +1685,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   width: 380px;
   background: var(--bg-paper);
   border-left: 1px solid var(--line-2);
-  box-shadow: -16px 0 32px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-hover);
   z-index: 95;
   transform: translateX(100%);
   /* Sai acelerando em --dur-med; entra desacelerando em --dur-enter. */
@@ -3684,10 +3687,12 @@ html { --glow: 0; }
  * RESOURCES PANEL — btop-inspired overlay
  * O painel veio do design system antigo (tokens.css, fora do build):
  * --space-*, --text-label-xs e --fw-medium nunca existiram aqui e zeravam
- * padding e gap em qualquer tema; --surface, --divider, --on-surface* e
- * --surface-container-* só existem quando o tema declara as chaves
- * legadas (surfaces.*, dividers.*, text.*). Espaçamentos viram valores
- * fixos e as cores ganham fallback nos tokens do Extractor Lab.
+ * padding e gap em qualquer tema. Cor (A23, 31/10/2026): o painel é
+ * instrumento, não peça de acento. Antes o cabeçalho, a sparkline e as
+ * barras pintavam com o acento da capa e trocavam de cor a cada faixa, e
+ * as cores vinham do vocabulário legado (--surface*, --on-surface*,
+ * --divider). Agora é tudo carbono; a cor só aparece como sinal: âmbar
+ * acima de 80 % de uso e rosa acima de 95 %.
  * ====================================================================== */
 
 .resources {
@@ -3696,14 +3701,11 @@ html { --glow: 0; }
   right: 20px;
   width: 560px;
   max-height: calc(100% - 150px);
-  background: color-mix(in srgb, var(--surface, var(--bg-paper)) 94%, transparent);
+  background: color-mix(in srgb, var(--bg-paper) 94%, transparent);
   backdrop-filter: blur(28px) saturate(130%);
   -webkit-backdrop-filter: blur(28px) saturate(130%);
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--divider, var(--line-2)));
-  box-shadow:
-    0 0 0 1px rgba(0,0,0,0.4),
-    0 30px 80px rgba(0,0,0,0.55),
-    inset 0 0 0 1px rgba(237,234,227,0.04);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-hover);
   z-index: 900;
   display: flex;
   flex-direction: column;
@@ -3716,26 +3718,25 @@ html { --glow: 0; }
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  font-size: 10px;
-  color: var(--primary);
-  border-bottom: 1px dashed color-mix(in srgb, var(--primary) 30%, var(--divider, var(--line-2)));
-  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  font-size: var(--fs-label, 11px);
+  color: var(--fg-5);
+  border-bottom: 1px dashed var(--line-2);
   letter-spacing: 0.05em;
 }
 .resources__bracket { opacity: 0.7; }
-.resources__title { color: var(--on-surface, var(--fg-1)); font-weight: 500; letter-spacing: 0.04em; flex: 1; }
+.resources__title { color: var(--fg-1); font-weight: 500; letter-spacing: 0.04em; flex: 1; }
 .resources__close {
   width: 22px;
   height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--on-surface-mute, var(--fg-5));
+  color: var(--fg-5);
   line-height: 1;
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
-.resources__close:hover { color: var(--on-surface, var(--fg-1)); background: var(--surface-container-high, var(--bg-tint)); }
+.resources__close:hover { color: var(--fg-1); background: var(--bg-tint); }
 
 .resources__body {
   flex: 1;
@@ -3745,24 +3746,24 @@ html { --glow: 0; }
   flex-direction: column;
   gap: 20px;
   font-size: 11px;
-  color: var(--on-surface-variant, var(--fg-4));
+  color: var(--fg-4);
   line-height: 1.5;
 }
 .resources__body::-webkit-scrollbar { width: 6px; }
-.resources__body::-webkit-scrollbar-thumb { background: var(--divider, var(--line-2)); }
+.resources__body::-webkit-scrollbar-thumb { background: var(--line-2); }
 
 .resources__footer {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  font-size: 10px;
-  color: var(--on-surface-mute, var(--fg-5));
-  border-top: 1px dashed var(--divider, var(--line-2));
-  background: var(--surface-container-low, var(--bg-soft));
+  font-size: var(--fs-label, 11px);
+  color: var(--fg-5);
+  border-top: 1px dashed var(--line-2);
+  background: var(--bg-soft);
   letter-spacing: 0.03em;
 }
-.resources__footer b { color: var(--on-surface, var(--fg-1)); font-weight: 500; }
+.resources__footer b { color: var(--fg-1); font-weight: 500; font-variant-numeric: tabular-nums; }
 .resources__footer .sep { opacity: 0.4; }
 
 /* Resource sections */
@@ -3772,14 +3773,14 @@ html { --glow: 0; }
   grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 12px;
-  color: var(--on-surface, var(--fg-1));
-  font-size: 10px;
+  color: var(--fg-1);
+  font-size: var(--fs-label, 11px);
   letter-spacing: 0.05em;
 }
-.res-section__title > span:first-child { color: color-mix(in srgb, var(--primary) 85%, var(--on-surface, var(--fg-1))); }
-.res-section__spark { color: var(--primary); opacity: 0.8; width: 120px; height: 24px; }
+.res-section__title > span:first-child { color: var(--fg-3); }
+.res-section__spark { color: var(--fg-5); width: 120px; height: 24px; }
 .res-spark { display: block; width: 100%; height: 100%; }
-.res-section__value { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; font-weight: 500; }
+.res-section__value { color: var(--fg-1); font-variant-numeric: tabular-nums; font-weight: 500; }
 
 /* CPU cores */
 .res-cores { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px; margin-top: 2px; }
@@ -3790,38 +3791,48 @@ html { --glow: 0; }
   gap: 8px;
   font-size: 11px;
 }
-.res-core__id { color: var(--on-surface-mute, var(--fg-5)); }
+.res-core__id { color: var(--fg-5); }
 .res-core__bar {
   position: relative;
   display: block;
   height: 10px;
-  background: var(--surface-container-high, var(--bg-tint));
+  background: var(--bg-tint);
   overflow: hidden;
 }
+/* A barra é a régua inteira pintada em zonas (carbono até 80 %, âmbar até
+   95 %, rosa acima) e recortada no uso: o trecho acima de 80 % aparece em
+   âmbar sem o JS saber de limiar (o --w vem do resources.js). */
 .res-core__bar::before {
   content: "";
   position: absolute;
   inset: 0;
-  right: auto;
-  width: var(--w, 0%);
-  background: linear-gradient(90deg, var(--primary), var(--primary-container));
-  transition: width var(--dur-screen) var(--ease-out);
+  background: linear-gradient(90deg,
+    var(--fg-3) 0 80%,
+    var(--amber-ring) 80% 95%,
+    var(--rose-ring) 95% 100%);
+  clip-path: inset(0 calc(100% - var(--w, 0%)) 0 0);
 }
-.res-core__pct { color: var(--on-surface, var(--fg-1)); font-variant-numeric: tabular-nums; text-align: right; }
+.res-core__pct { color: var(--fg-1); font-variant-numeric: tabular-nums; text-align: right; }
 
 /* MEM bar */
 .res-mem-bar {
   position: relative;
   height: 14px;
-  background: var(--surface-container-high, var(--bg-tint));
+  background: var(--bg-tint);
   overflow: hidden;
+  container-type: inline-size;
 }
+/* Mesmas zonas da barra de núcleo. Aqui a largura vem inline (width), então
+   a régua é medida pelo contêiner (100cqw = largura da barra inteira). */
 .res-mem-bar__used {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  background: var(--primary);
+  background: linear-gradient(90deg,
+    var(--fg-3) 0 80%,
+    var(--amber-ring) 80% 95%,
+    var(--rose-ring) 95% 100%) 0 0 / 100cqw 100% no-repeat;
   transition: width var(--dur-screen) var(--ease-out);
 }
 .res-legend {
@@ -3829,15 +3840,15 @@ html { --glow: 0; }
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  font-size: 10px;
-  color: var(--on-surface-mute, var(--fg-5));
+  font-size: var(--fs-label, 11px);
+  color: var(--fg-5);
   letter-spacing: 0.04em;
 }
 .res-legend .dot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; vertical-align: middle; }
-.res-legend .dot--used { background: var(--primary); }
-.res-legend .dot--free { background: var(--surface-container-high, var(--bg-tint)); border: 1px solid var(--divider, var(--line-2)); }
+.res-legend .dot--used { background: var(--fg-3); }
+.res-legend .dot--free { background: var(--bg-tint); border: 1px solid var(--line-2); }
 .res-legend__sep { opacity: 0.4; }
-.res-legend b { color: var(--on-surface, var(--fg-1)); font-weight: 500; }
+.res-legend b { color: var(--fg-1); font-weight: 500; font-variant-numeric: tabular-nums; }
 
 
 /* ============================================================
@@ -3983,7 +3994,7 @@ html { --glow: 0; }
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
   border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-hover);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -4918,6 +4929,18 @@ html[data-sidebar="icons"] .bridge-chip__text {
   background: linear-gradient(var(--row-selected), var(--row-selected)), var(--blue-bg);
 }
 .tracks__row.tracks__row--selected > .tracks__idx { box-shadow: inset 2px 0 0 var(--row-selected-line); }
+/* Texto secundário das linhas com película de acento (a marcada e a atual
+   da tabela, que pinta --blue-bg): sobre ela o --fg-5 caía a 3,72:1 no
+   Really Dark (4,0:1 na lavagem de uma capa verde-limão); o --fg-3 dá
+   7,4:1 (A23, 31/10/2026). */
+.row.is-selected .row__sub,
+.row.is-selected .row__tech,
+.row.is-selected .row__when,
+.tracks__row--selected .tracks__title small,
+.tracks__row--selected .tracks__mono,
+.tracks__row--selected .tracks__idx,
+.tracks__row--current .tracks__title small,
+.tracks__row--current .tracks__mono { color: var(--fg-3); }
 
 /* Barra de ação, centrada na área de conteúdo, acima da PlayerBar. */
 .sel-bar-wrap {
