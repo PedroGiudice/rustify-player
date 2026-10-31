@@ -153,11 +153,13 @@ export function TrackContextMenu() {
   };
   const doPlayNextMulti = () => {
     const sel = multi(); if (!sel) return;
-    enqueueNextMany(sel); clearSelection(); closeTrackMenu();
+    if (enqueueNextMany(sel) > 0) clearSelection();
+    closeTrackMenu();
   };
   const doAddQueueMulti = () => {
     const sel = multi(); if (!sel) return;
-    enqueueEndMany(sel); clearSelection(); closeTrackMenu();
+    if (enqueueEndMany(sel) > 0) clearSelection();
+    closeTrackMenu();
   };
 
   const goAlbum = () => {
