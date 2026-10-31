@@ -164,7 +164,7 @@ export function persistDsp() {
 // novo e o som seguia no antigo, sem aviso. Agora a recusa acende
 // dspError, que a Signal mostra como banner com [Reaplicar]. O store
 // guarda o valor PEDIDO; Reaplicar reenvia o estado inteiro.
-const DSP_REFUSED = "O motor de áudio recusou um ajuste.";
+const DSP_REFUSED = "Não consegui aplicar o ajuste: o motor de áudio recusou.";
 const [dspErrorSig, setDspErrorSig] = createSignal<{ message: string; detail: string } | null>(null);
 export const dspError = dspErrorSig;
 export function clearDspError() { setDspErrorSig(null); }

@@ -131,16 +131,16 @@ describe("Signal view", () => {
     const [eq, lim, bass] = panels();
     expect(eq.dataset.live).toBe("true");
     expect(lim.dataset.live).toBe("false");
-    expect(lim.querySelector(".sig-panel__state")?.textContent).toBe("off");
+    expect(lim.querySelector(".sig-panel__state")?.textContent).toBe("desligado");
     expect(bass.dataset.live).toBe("false");
 
     master.click(); // bypass
     for (const p of panels()) {
       expect(p.dataset.live).toBe("false");
-      expect(p.querySelector(".sig-panel__state")?.textContent).toBe("bypassed");
+      expect(p.querySelector(".sig-panel__state")?.textContent).toBe("ignorado");
     }
     const eqTile = container.querySelector<HTMLElement>(".sig-stat")!;
-    expect(eqTile.querySelector(".sig-stat__value")?.textContent).toBe("bypassed");
+    expect(eqTile.querySelector(".sig-stat__value")?.textContent).toBe("ignorado");
     master.click();
   });
 
@@ -165,7 +165,7 @@ describe("Signal view", () => {
     setBassFloor(33.3333333);
     const { container } = render(() => <Signal />);
     const text = container.textContent ?? "";
-    expect(text).toContain("scope 137 Hz · floor 33 Hz");
+    expect(text).toContain("escopo 137 Hz · piso 33 Hz");
     expect(text).not.toMatch(/137\.46/);
     setBassFreq(120);
     setBassFloor(20);
@@ -191,7 +191,7 @@ describe("Signal view", () => {
     vi.spyOn(window, "prompt").mockReturnValue("Flat");
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     const { getByText } = render(() => <Signal />);
-    getByText("Save").click();
+    getByText("Salvar").click();
     expect(alertSpy).toHaveBeenCalled();
     expect(localStorage.getItem("rustify-dsp-presets")).toBeNull();
   });
@@ -202,12 +202,12 @@ describe("Signal view", () => {
     vi.spyOn(window, "alert").mockImplementation(() => {});
     const { getByText, container } = render(() => <Signal />);
     promptSpy.mockReturnValueOnce("Aki");
-    getByText("Save").click();
+    getByText("Salvar").click();
     promptSpy.mockReturnValueOnce("Rock");
-    getByText("Save").click();
+    getByText("Salvar").click();
     // "Rock" ativo; renomear para "Aki" colidiria.
     promptSpy.mockReturnValueOnce("Aki");
-    getByText("Rename").click();
+    getByText("Renomear").click();
     const names = Array.from(container.querySelectorAll(".sig-pre")).map((b) => b.textContent);
     expect(names.filter((n) => n === "Aki").length).toBe(1);
     expect(names).toContain("Rock");
@@ -219,7 +219,7 @@ describe("Signal view", () => {
   it("cartões na ordem do sinal, sem fluxo de nós nem selos", () => {
     const { container } = render(() => <Signal />);
     const labels = Array.from(container.querySelectorAll(".sig-stat__label")).map((l) => l.textContent);
-    expect(labels).toEqual(["EQ", "Normalização", "Limiter", "Bass"]);
+    expect(labels).toEqual(["EQ", "Normalização", "Limitador", "Grave"]);
     expect(container.querySelector(".sig-chain")).toBeNull();
     expect(container.querySelector(".sig-panel__badge")).toBeNull();
     expect(container.textContent).not.toContain("bit-perfect");
@@ -228,9 +228,9 @@ describe("Signal view", () => {
   it("interruptores dos estágios têm nome", () => {
     const { getByRole } = render(() => <Signal />);
     expect(getByRole("switch", { name: "Cadeia DSP" })).toBeTruthy();
-    expect(getByRole("switch", { name: "Parametric Equalizer" })).toBeTruthy();
-    expect(getByRole("switch", { name: "Limiter" })).toBeTruthy();
-    expect(getByRole("switch", { name: "Bass Enhancer" })).toBeTruthy();
+    expect(getByRole("switch", { name: "Equalizador paramétrico" })).toBeTruthy();
+    expect(getByRole("switch", { name: "Limitador" })).toBeTruthy();
+    expect(getByRole("switch", { name: "Reforço de grave" })).toBeTruthy();
   });
 
   // A32: Rename e Delete ficavam acesos e mortos nos presets de fábrica.
@@ -238,12 +238,12 @@ describe("Signal view", () => {
     localStorage.removeItem("rustify-dsp-presets");
     const { getByText, queryByText } = render(() => <Signal />);
     getByText("Flat").click();
-    expect(queryByText("Rename")).toBeNull();
-    expect(queryByText("Delete")).toBeNull();
+    expect(queryByText("Renomear")).toBeNull();
+    expect(queryByText("Apagar")).toBeNull();
     vi.spyOn(window, "prompt").mockReturnValueOnce("Meu");
-    getByText("Save").click();
-    expect(getByText("Rename")).toBeTruthy();
-    expect(getByText("Delete")).toBeTruthy();
+    getByText("Salvar").click();
+    expect(getByText("Renomear")).toBeTruthy();
+    expect(getByText("Apagar")).toBeTruthy();
     localStorage.removeItem("rustify-dsp-presets");
   });
 
@@ -253,8 +253,8 @@ describe("Signal view", () => {
     const confirmSpy = vi.spyOn(window, "confirm");
     const { getByText, queryByText, container } = render(() => <Signal />);
     vi.spyOn(window, "prompt").mockReturnValueOnce("Meu");
-    getByText("Save").click();
-    getByText("Delete").click();
+    getByText("Salvar").click();
+    getByText("Apagar").click();
     expect(getByText("Apagar?")).toBeTruthy();
     const names = () => Array.from(container.querySelectorAll(".sig-pre")).map((b) => b.textContent);
     expect(names()).toContain("Meu");
@@ -269,14 +269,14 @@ describe("Signal view", () => {
   it("recusa do motor mostra o banner e Reaplicar reenvia o estado", async () => {
     vi.mocked(ipc.dspSetEqEnabled).mockRejectedValueOnce(new Error("engine"));
     const { getByText, findByRole } = render(() => <Signal />);
-    getByText("Parametric Equalizer").closest(".sig-panel")!.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
+    getByText("Equalizador paramétrico").closest(".sig-panel")!.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
     const alert = await findByRole("alert");
-    expect(alert.textContent).toContain("O motor de áudio recusou um ajuste.");
+    expect(alert.textContent).toContain("Não consegui aplicar o ajuste: o motor de áudio recusou.");
     vi.mocked(ipc.dspSetBypass).mockClear();
     getByText("Reaplicar").click();
     await vi.waitFor(() => expect(ipc.dspSetBypass).toHaveBeenCalled());
     await vi.waitFor(() => expect(document.querySelector(".sig-alert")).toBeNull());
     // devolve o EQ ao estado inicial
-    getByText("Parametric Equalizer").closest(".sig-panel")!.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
+    getByText("Equalizador paramétrico").closest(".sig-panel")!.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
   });
 });

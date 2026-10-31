@@ -18,10 +18,10 @@ describe("sync do celular (B14)", () => {
   });
 
   it("o que veio no último lote", () => {
-    expect(syncDetail(d({}))).toBe("34 plays, 2 curtidas");
-    expect(syncDetail(d({ plays: 1, likes: 1 }))).toBe("1 play, 1 curtida");
+    expect(syncDetail(d({}))).toBe("34 escutas, 2 curtidas");
+    expect(syncDetail(d({ plays: 1, likes: 1 }))).toBe("1 escuta, 1 curtida");
     expect(syncDetail(d({ plays: 0, likes: 0, accepted: 0 }))).toBe("lote vazio");
-    expect(syncDetail(d({ rejected: 3 }))).toBe("34 plays, 2 curtidas · 3 recusados");
+    expect(syncDetail(d({ rejected: 3 }))).toBe("34 escutas, 2 curtidas · 3 recusados");
   });
 
   it("âmbar passadas 24 h", () => {

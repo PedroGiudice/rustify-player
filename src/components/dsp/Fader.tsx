@@ -138,7 +138,7 @@ export const Fader: Component<FaderProps> = (props) => {
         role="slider"
         tabIndex={0}
         aria-orientation="vertical"
-        aria-label={`Band ${props.bandIdx + 1} (${fmtHz(props.freq)} Hz) gain`}
+        aria-label={`Ganho da banda ${props.bandIdx + 1} (${fmtHz(props.freq)} Hz)`}
         aria-valuemin={-DB_RANGE}
         aria-valuemax={DB_RANGE}
         aria-valuenow={Number(props.gainDb.toFixed(1))}

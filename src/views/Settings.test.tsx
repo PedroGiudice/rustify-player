@@ -73,7 +73,7 @@ describe("sync do celular na Biblioteca (B14)", () => {
     ]);
     const { findByText, container } = render(() => <Settings />);
     expect(await findByText("S24: último sync há 12 min")).toBeTruthy();
-    expect(container.textContent).toContain("34 plays, 2 curtidas");
+    expect(container.textContent).toContain("34 escutas, 2 curtidas");
     expect(container.querySelector(".set-sync")!.hasAttribute("data-stale")).toBe(false);
   });
 
