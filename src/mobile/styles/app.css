@@ -289,7 +289,7 @@
   outline: none;
 }
 .searchfield input::placeholder {
-  color: var(--t4);
+  color: var(--t3);
 }
 /* dock */
 .dock {
@@ -667,7 +667,8 @@
   flex: 1;
   background: none;
   border: 0;
-  color: var(--t3);
+  /* Inativo em --t2 (8,6:1 sobre --s-high); --t3 dava 4,32:1 (A54). */
+  color: var(--t2);
   font: 500 11.5px var(--font);
   padding: 7px 4px;
   border-radius: var(--r-xs);
@@ -727,7 +728,7 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--t4);
+  color: var(--t3);
 }
 .stile__v {
   display: block;
@@ -756,7 +757,7 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--t4);
+  color: var(--t3);
   text-transform: uppercase;
 }
 .aitem__v {
@@ -875,7 +876,7 @@
 .stcard__tags {
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--t4);
+  color: var(--t3);
   margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -929,17 +930,17 @@
   flex-direction: column;
   gap: 9px;
 }
+/* Inativas em --t3 cheio (5,2:1 sobre o véu); a hierarquia fica na cor e
+   no peso da ativa, como no desktop. Antes, --t4 a 0,6 dava 2,09:1 (A54). */
 .np .lrail p {
   font-size: 15px;
   line-height: 1.35;
-  color: var(--t4);
-  transition: color 0.3s var(--ease), opacity 0.3s var(--ease);
-  opacity: 0.6;
+  color: var(--t3);
+  transition: color 0.3s var(--ease);
   margin: 0;
 }
 .np .lrail p[data-on] {
   color: var(--t1);
-  opacity: 1;
   font-weight: 500;
 }
 .np .lrail p[data-header] {

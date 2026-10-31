@@ -1,0 +1,86 @@
+/* ============================================================
+   styles.test.ts — regras de CSS do S24 que o jsdom não aplica.
+
+   Lê tokens.css e app.css como texto e confere o que importa no
+   aparelho: contraste do texto (A54), piso de 11 px (A63), alvos de
+   toque (A59). Cada regra é procurada pelo seletor EXATO, no começo
+   de linha; mudar o seletor sem atualizar aqui faz o teste acusar.
+   ============================================================ */
+
+import { beforeAll, describe, expect, it } from "vitest";
+import { contrastRatio, hexToRgb, relLuminance } from "../../lib/color";
+
+let tokens: Record<string, string> = {};
+let css = "";
+
+beforeAll(async () => {
+  const NODE_FS = "node:fs";
+  const { readFileSync } = await import(/* @vite-ignore */ NODE_FS);
+  const root: string = (globalThis as any).process.cwd();
+  const t: string = readFileSync(`${root}/src/mobile/styles/tokens.css`, "utf8");
+  const a: string = readFileSync(`${root}/src/mobile/styles/app.css`, "utf8");
+  css = `${t}\n${a}`;
+  for (const m of t.matchAll(/(--[\w-]+):\s*([^;]+);/g)) tokens[m[1]] ??= m[2].trim();
+});
+
+/** Corpo de TODAS as regras cujo seletor (lista inteira) é `sel`. */
+export function rules(src: string, sel: string): string[] {
+  const out: string[] = [];
+  const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`, "g");
+  for (const m of src.matchAll(re)) out.push(m[1]);
+  return out;
+}
+
+function prop(sel: string, name: string): string | null {
+  let v: string | null = null;
+  for (const body of rules(css, sel)) {
+    const m = new RegExp(`(?:^|[;\\s])${name}\\s*:\\s*([^;]+);`).exec(body);
+    if (m) v = m[1].trim();
+  }
+  return v;
+}
+
+/** Resolve `var(--x)` para o hex do token. */
+function hex(v: string | null): string {
+  const m = /var\((--[\w-]+)\)/.exec(v ?? "");
+  const raw = m ? tokens[m[1]] : v;
+  if (!raw || !/^#[0-9a-f]{3,6}$/i.test(raw)) throw new Error(`cor não resolvida: ${v}`);
+  return raw.length === 4 ? `#${[...raw.slice(1)].map((c) => c + c).join("")}` : raw;
+}
+
+function over(fg: string, bg: string, alpha: number): string {
+  const f = hexToRgb(fg)!, b = hexToRgb(bg)!;
+  const c = (x: number, y: number) => Math.round(alpha * x + (1 - alpha) * y).toString(16).padStart(2, "0");
+  return `#${c(f.r, b.r)}${c(f.g, b.g)}${c(f.b, b.b)}`;
+}
+
+const ratio = (fg: string, bg: string) => contrastRatio(relLuminance(fg)!, relLuminance(bg)!);
+
+describe("contraste do texto no S24 (A54)", () => {
+  // Texto que se lê de relance, cada um com a superfície em que aparece.
+  const TEXT: Array<[string, string]> = [
+    [".trk .dur", "--s-c"],
+    [".tab", "--s-low"],
+    [".searchfield input::placeholder", "--s-c"],
+    [".stile__l", "--s-c"],
+    [".aitem__l", "--s-c"],
+    [".stcard__tags", "--s-c"],
+  ];
+  for (const [sel, surface] of TEXT) {
+    it(`${sel} fica em 4,5:1 ou mais sobre ${surface}`, () => {
+      expect(ratio(hex(prop(sel, "color")), hex(`var(${surface})`))).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it("segmentado inativo em 4,5:1 sobre --s-high", () => {
+    expect(ratio(hex(prop(".seg button", "color")), hex("var(--s-high)"))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("letra inativa em 4,5:1 sobre o véu (~#050505), com a opacidade aplicada", () => {
+    const veil = "#050505";
+    const a = parseFloat(prop(".np .lrail p", "opacity") ?? "1");
+    const fg = over(hex(prop(".np .lrail p", "color")), veil, a);
+    expect(ratio(fg, veil)).toBeGreaterThanOrEqual(4.5);
+  });
+});

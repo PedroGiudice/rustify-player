@@ -31,6 +31,8 @@
   --t1: #f0f0f0;
   --t2: #b8b8b8;
   --t3: #808080;
+  /* --t4 só em glifo e chevron (3:1 basta para não-texto). Texto, por menor
+     que seja, vai em --t3 ou acima (A54): o --t4 dava 3,55-3,84:1. */
   --t4: #6e6e6e;
   --outline: rgba(240, 240, 240, 0.16);
   --ok: #809078;
@@ -273,7 +275,7 @@ body {
 .trk .dur {
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--t4);
+  color: var(--t3);
   font-variant-numeric: tabular-nums;
 }
 .grid {
@@ -385,7 +387,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: var(--t4);
+  color: var(--t3);
   font-size: 9.5px;
   letter-spacing: 0.02em;
 }
