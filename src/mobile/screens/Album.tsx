@@ -25,7 +25,7 @@ export function Album(props: { param: string | null }) {
     <div class="screen">
       <TopBar />
       <LibGate>
-        <Show when={album()} fallback={<Empty title="Álbum não encontrado" hint="Ele pode ter saído do acervo no último re-scan." />}>
+        <Show when={album()} fallback={<Empty title="Álbum não encontrado" hint="Ele pode ter saído do acervo na última releitura." />}>
           {(a) => (
             <>
               <div class="hero">
@@ -51,11 +51,11 @@ export function Album(props: { param: string | null }) {
               <div class="actions">
                 <button class="btn btn--pri" onClick={() => void playAlbum(list(), a().key)}>
                   <Icon.play />
-                  Play
+                  Tocar
                 </button>
                 <button class="btn" onClick={() => void shuffleList(list())}>
                   <Icon.shuffle />
-                  Shuffle
+                  Aleatório
                 </button>
               </div>
               <div class="rowlist list-lite" style={{ padding: "0 20px" }}>

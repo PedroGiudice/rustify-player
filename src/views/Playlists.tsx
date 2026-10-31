@@ -108,7 +108,8 @@ function PlaylistCard(props: { folder: FolderPlaylist; children?: JSX.Element })
         type="button"
         class="pl-card__pin"
         classList={{ "is-pinned": pinned() }}
-        title={pinned() ? "Unpin" : "Pin"}
+        title={pinned() ? "Desafixar" : "Fixar"}
+        aria-label={pinned() ? `Desafixar ${props.folder.name}` : `Fixar ${props.folder.name}`}
         onClick={() => togglePin(props.folder.name)}
       >
         {/* @ts-ignore */}
@@ -175,8 +176,8 @@ export default function Playlists() {
           <p class="view__head-hint">Coleções pessoais — uma pasta do acervo por playlist.</p>
         </div>
         <div class="view__stats">
-          <span><b>{totalPlaylists()}</b> playlists</span>
-          <span><b>{totalTracks()}</b> tracks total</span>
+          <span><b>{totalPlaylists()}</b> {totalPlaylists() === 1 ? "playlist" : "playlists"}</span>
+          <span><b>{totalTracks()}</b> {totalTracks() === 1 ? "faixa" : "faixas"} no total</span>
         </div>
       </header>
 
@@ -188,7 +189,7 @@ export default function Playlists() {
             <iconify-icon icon="lucide:search" noobserver />
             <input
               type="text"
-              placeholder="Filter playlists…"
+              placeholder="Filtrar playlists…"
               value={filter()}
               onInput={(e) => setFilter(e.currentTarget.value)}
             />
@@ -226,13 +227,13 @@ export default function Playlists() {
             <Show when={pinned().length > 0}>
               <section>
                 <div class="section__head">
-                  <h2 class="section__title">Pinned</h2>
+                  <h2 class="section__title">Fixadas</h2>
                 </div>
                 <div class="pl-grid">
                   <For each={pinned()}>
                     {(p) => (
                       <PlaylistCard folder={p}>
-                        <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
+                        <div class="pl-card__sub">{fmtTracks(p.track_count)}</div>
                       </PlaylistCard>
                     )}
                   </For>
@@ -244,16 +245,16 @@ export default function Playlists() {
             <Show when={rest().length > 0}>
               <section>
                 <div class="section__head">
-                  <h2 class="section__title">All playlists · {rest().length}</h2>
+                  <h2 class="section__title">Todas as playlists · {rest().length}</h2>
                   <button type="button" class="section__action" onClick={cycleSortDir}>
-                    {sortDir() === "none" ? "Sort by name" : sortDir() === "asc" ? "Sort: A→Z ↑" : "Sort: Z→A ↓"}
+                    {sortDir() === "none" ? "Ordenar por nome" : sortDir() === "asc" ? "Ordem: nome A–Z" : "Ordem: nome Z–A"}
                   </button>
                 </div>
                 <div class="pl-grid">
                   <For each={rest()}>
                     {(p) => (
                       <PlaylistCard folder={p}>
-                        <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
+                        <div class="pl-card__sub">{fmtTracks(p.track_count)}</div>
                       </PlaylistCard>
                     )}
                   </For>

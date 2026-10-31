@@ -44,7 +44,7 @@ export function Artist(props: { param: string | null }) {
               <div class="actions">
                 <button class="btn btn--pri" onClick={() => void shuffleList(list())}>
                   <Icon.shuffle />
-                  Shuffle
+                  Aleatório
                 </button>
               </div>
 

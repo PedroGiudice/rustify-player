@@ -74,7 +74,7 @@ export function Queue() {
 
   return (
     <div class="screen">
-      <ViewHead title="Queue" sub={sub()} />
+      <ViewHead title="Fila" sub={sub()} />
 
       {/* Sem o acervo carregado, cada item viraria "Faixa fora do acervo" —
           falso quando o que falhou foi a carga (mobile-12). */}

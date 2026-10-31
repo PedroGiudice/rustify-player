@@ -115,13 +115,13 @@ export async function checkForUpdate(manual: boolean): Promise<void> {
     localStorage.setItem(CHECK_KEY, String(Date.now()));
     if (check.installed) setAppVersion(check.installed);
     setUpd({ phase: check.available ? "available" : "uptodate", check, bytes: 0, total: 0, error: null });
-    if (check.available && !manual) showToast(`Atualização ${check.latest} disponível — veja em Settings`);
+    if (check.available && !manual) showToast(`Atualização ${check.latest} disponível: veja em Ajustes`);
     if (!check.available && manual) showToast("Você já está na versão mais recente");
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     console.warn("[mobile] updater_check falhou:", msg);
     setUpd((s) => ({ ...s, phase: phaseAfterCheckFailure(s.check), error: manual ? msg : null }));
-    if (manual) showToast("Não deu para consultar o release");
+    if (manual) showToast("Não consegui consultar a versão nova");
   }
 }
 
@@ -151,7 +151,7 @@ export function bootUpdater(): void {
     .onUpdaterProgress((ev) => {
       setUpd((s) => reduceProgress(s, ev));
       // O usuário pode estar em qualquer tela: falha e conclusão são notícia.
-      if (ev.phase === "failed") showToast(`Atualização falhou: ${(ev.message ?? "erro").slice(0, 70)}`);
+      if (ev.phase === "failed") showToast(`Não consegui atualizar: ${(ev.message ?? "erro").slice(0, 70)}`);
       else if (ev.phase === "done") showToast("Atualização instalada");
     })
     .catch((e) => console.warn("[mobile] listener updater_progress:", e));

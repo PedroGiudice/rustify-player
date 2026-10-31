@@ -200,14 +200,14 @@ function NpSheet(props: { track: Track }) {
         <button class="sheet__act" onClick={() => useRenderer.next()}>
           <Icon.sparkle class="lead" />
           <div class="sheet__actlabel">
-            <span>Render do fundo</span>
+            <span>Estilo do fundo</span>
             <span class="sheet__acthint">{useRenderer.name()}</span>
           </div>
         </button>
         <button class="sheet__act" onClick={() => useShape.next()}>
           <Icon.sparkle class="lead" />
           <div class="sheet__actlabel">
-            <span>Shape do fundo</span>
+            <span>Forma do fundo</span>
             <span class="sheet__acthint">{useShape.name()}</span>
           </div>
         </button>

@@ -368,7 +368,7 @@ describe("Crate — erros aparecem na tela (crate-6)", () => {
       (b.textContent ?? "").includes("Baixar"),
     )!;
     fireEvent.click(baixar);
-    await waitFor(() => expect(alertText(container)).toContain("Não deu pra baixar"));
+    await waitFor(() => expect(alertText(container)).toContain("Não consegui baixar"));
     expect(alertText(container)).toContain("nome de playlist inválido");
     fireEvent.click(getByText("Fechar"));
     expect(container.querySelector('[role="alert"]')).toBeFalsy();
@@ -419,7 +419,7 @@ describe("Crate — erros aparecem na tela (crate-6)", () => {
     const btn = trocarFonte(container.querySelector(".crate-row")!)!;
     expect(btn).toBeTruthy();
     fireEvent.click(btn);
-    await waitFor(() => expect(alertText(container)).toContain("Não deu pra trocar a fonte"));
+    await waitFor(() => expect(alertText(container)).toContain("Não consegui trocar a fonte"));
     expect(tauriApi.slskTryOtherSource).toHaveBeenCalledWith("job1");
   });
 });
@@ -1285,14 +1285,14 @@ describe("Crate: SoundCloud", () => {
     mocks.crateScProbe.mockRejectedValue("no_token");
     await userEvent.click(within(card).getByRole("button", { name: /Cancelar/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Baixar/ }));
-    expect(await screen.findByText(/sem token do SoundCloud/)).toBeInTheDocument();
+    expect(await screen.findByText(/sem chave de acesso do SoundCloud/)).toBeInTheDocument();
   });
 
   it("status das fontes aparece no cabeçalho e a fila mostra a origem", async () => {
     mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "no_token", ffmpeg: true, uv: false, bandcamp_identity: false, tidal: "token_ok" });
     mocks.slskJobs.mockResolvedValue([job({ job_id: "j", source: { kind: "sound_cloud", track_id: 1, permalink_url: "https://soundcloud.com/a/b" }, display: "DJ Arana - Festa", state: { kind: "downloading", pct: 40, bps: 1000, eta_s: 3 } })]);
     render(() => <Crate />);
-    expect(await screen.findByText(/SoundCloud sem token/)).toBeInTheDocument();
+    expect(await screen.findByText(/SoundCloud sem chave de acesso/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
     expect(await screen.findByText("SoundCloud", { selector: ".crate-origin" })).toBeInTheDocument();
     expect(screen.getByText("soundcloud.com/a/b")).toBeInTheDocument();
@@ -1379,7 +1379,7 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
     await screen.findByText("falhou");
     // A26: o estado cru do slskd vira frase; o cru fica no title.
-    const motivo = screen.getByText("o peer interrompeu a transferência");
+    const motivo = screen.getByText("a origem interrompeu a transferência");
     expect(motivo.getAttribute("title")).toContain("Completed, Errored");
     await userEvent.click(screen.getByRole("button", { name: /Tentar de novo/ }));
     expect(mocks.slskTryOtherSource).toHaveBeenCalledWith("s");
@@ -1515,7 +1515,7 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     const ff = container.querySelector(".crate-src-status")!;
     expect(ff.getAttribute("data-tone")).toBe("amber");
     expect(ff.textContent).toContain("conversor ausente");
-    expect(container.querySelector("#crate-sources")!.getAttribute("title")).toContain("SoundCloud: token ok");
+    expect(container.querySelector("#crate-sources")!.getAttribute("title")).toContain("SoundCloud conectado");
   });
 
   it("com todas as fontes em ordem, um ponto só: 'fontes ok', detalhe no title (B13)", async () => {
@@ -1523,8 +1523,8 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     await waitFor(() => expect(container.querySelector("#crate-sources")!.textContent).toContain("fontes ok"));
     expect(container.querySelectorAll(".crate-src-status")).toHaveLength(0);
     const title = container.querySelector("#crate-sources")!.getAttribute("title") ?? "";
-    expect(title).toContain("Soulseek: conectado");
-    expect(title).toContain("Conversor (ffmpeg): pronto");
+    expect(title).toContain("Soulseek conectado");
+    expect(title).toContain("Conversor pronto");
   });
 });
 
@@ -1757,7 +1757,7 @@ describe("Crate — estados da linha (A10, A26, B29)", () => {
     mocks.slskJobs.mockResolvedValue([job({ job_id: "o", state: { kind: "rejected", reason: { already_owned: { track_id: "9" } } } })]);
     render(() => <Crate />);
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
-    expect(await screen.findByText(/você já tinha esta faixa/)).toBeInTheDocument();
+    expect(await screen.findByText(/você já tem esta faixa no acervo/)).toBeInTheDocument();
   });
 
   it("a chegada tem quatro trechos e marca a etapa atual (B29)", async () => {

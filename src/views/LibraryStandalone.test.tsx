@@ -54,9 +54,9 @@ afterEach(() => {
 });
 
 const CASES = [
-  { name: "Albums", path: "/albums", View: Albums, title: "Albums" },
-  { name: "Tracks", path: "/tracks", View: Tracks, title: "Tracks" },
-  { name: "Artists", path: "/artists", View: Artists, title: "Artists" },
+  { name: "Albums", path: "/albums", View: Albums, title: "Álbuns" },
+  { name: "Tracks", path: "/tracks", View: Tracks, title: "Faixas" },
+  { name: "Artists", path: "/artists", View: Artists, title: "Artistas" },
 ] as const;
 
 describe("views da biblioteca abertas direto", () => {

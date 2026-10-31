@@ -846,7 +846,7 @@ impl Coordinator {
                     self.board.upsert(DownloadJob {
                         state: JobState::Manual {
                             path: self.cfg.downloads_dir.display().to_string(),
-                            why: "sem rastro no slskd apos reiniciar — verifique downloads manualmente"
+                            why: "o Soulseek local perdeu o rastro deste download depois de reiniciar; confira a pasta de downloads"
                                 .to_string(),
                         },
                         ..base
@@ -1247,7 +1247,7 @@ impl Coordinator {
             Err(e) => {
                 self.board.transition(
                     job_id,
-                    JobState::Failed { reason: e.to_string(), retryable: true },
+                    JobState::Failed { reason: enqueue_fail_text(&e), retryable: true },
                 );
             }
         }
@@ -1832,7 +1832,7 @@ impl Coordinator {
             self.last_seen.lock().unwrap_or_else(|p| p.into_inner()).remove(&job.job_id);
             self.board.transition(
                 &job.job_id,
-                JobState::Failed { reason: "a transferência sumiu do slskd".to_string(), retryable: true },
+                JobState::Failed { reason: "o download sumiu do Soulseek local".to_string(), retryable: true },
             );
             self.mark_dirty();
         }
@@ -1961,7 +1961,7 @@ impl Coordinator {
                     &job.job_id,
                     JobState::Manual {
                         path: self.cfg.downloads_dir.display().to_string(),
-                        why: "baixou, mas não achei o arquivo em downloads_dir".to_string(),
+                        why: "baixou, mas não achei o arquivo na pasta de downloads do Soulseek".to_string(),
                     },
                 );
                 self.mark_dirty();
@@ -1985,7 +1985,7 @@ impl Coordinator {
                 self.board.transition(
                     &job.job_id,
                     JobState::Failed {
-                        reason: "Qdrant indisponível para checagem de dedup".to_string(),
+                        reason: DEDUP_UNAVAILABLE.to_string(),
                         retryable: true,
                     },
                 );
@@ -2306,9 +2306,35 @@ fn jobs_path_from_cfg(_cfg: &SlskConfig) -> PathBuf {
     home.join(".local/share/rustify-player").join(JOBS_FILE_NAME)
 }
 
+/// Motivo de falha quando a checagem "já está no acervo" não roda (índice
+/// fora do ar). Texto de tela: o nome do banco fica no log.
+const DEDUP_UNAVAILABLE: &str = "não consegui conferir se a faixa já está no acervo; tente de novo daqui a pouco";
+
+/// Recusa do slskd ao enfileirar -> motivo de tela em PT-BR. O erro cru
+/// (status HTTP, texto de rede/parse) vai para o log, não para a linha.
+fn enqueue_fail_text(e: &slskd_client::error::SlskdError) -> String {
+    use slskd_client::error::SlskdError as E;
+    tracing::warn!("slsk: enqueue recusado: {e}");
+    match e {
+        E::Network(_) => "o Soulseek local não respondeu".to_string(),
+        E::Unauthorized => "o Soulseek local recusou a chave de acesso do app".to_string(),
+        E::Conflict409 => "o Soulseek local já tem este pedido; tente de novo daqui a pouco".to_string(),
+        E::Http(_) | E::Parse(_) => "o Soulseek local recusou o pedido".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn falha_ao_enfileirar_vira_texto_de_tela_sem_codigo() {
+        use slskd_client::error::SlskdError as E;
+        assert_eq!(enqueue_fail_text(&E::Network("offline".into())), "o Soulseek local não respondeu");
+        let http = enqueue_fail_text(&E::Http(500));
+        assert!(!http.contains("500") && !http.contains("http"), "{http}");
+        assert!(!enqueue_fail_text(&E::Parse("eof".into())).contains("parse"));
+    }
     use crate::slsk::stage::test_support::empty_owned_index;
     use slskd_client::testing::FakeSlskd;
     use slskd_client::wire::{ApiSearch, ApiSearchResponse, ApiTransferDir, ApiTransferFile, ApiTransferUser, ServerStatus};
@@ -3854,11 +3880,11 @@ mod tests {
         etx.send(FetchEvent::Started { job_id: id.clone(), attempt: att(&c, &id) }).unwrap();
         c.drain_fetch_events(Instant::now());
         assert_eq!(c.board.get(&id).unwrap().state, JobState::Downloading { pct: 0.0, bps: 0, eta_s: None });
-        etx.send(FetchEvent::Failed { job_id: id.clone(), attempt: att(&c, &id), reason: "token do SoundCloud recusado".into(), retryable: false }).unwrap();
+        etx.send(FetchEvent::Failed { job_id: id.clone(), attempt: att(&c, &id), reason: "o SoundCloud recusou a chave de acesso".into(), retryable: false }).unwrap();
         c.drain_fetch_events(Instant::now());
         assert_eq!(
             c.board.get(&id).unwrap().state,
-            JobState::Failed { reason: "token do SoundCloud recusado".into(), retryable: false }
+            JobState::Failed { reason: "o SoundCloud recusou a chave de acesso".into(), retryable: false }
         );
     }
 
@@ -4087,7 +4113,7 @@ mod tests {
         c.drain_fetch_events(Instant::now());
         assert_eq!(
             c.board.get(&id).unwrap().state,
-            JobState::Failed { reason: "Qdrant indisponível para checagem de dedup".into(), retryable: true }
+            JobState::Failed { reason: DEDUP_UNAVAILABLE.into(), retryable: true }
         );
         assert!(!flac.exists(), "o FLAC da tentativa que falhou não fica no incoming");
     }

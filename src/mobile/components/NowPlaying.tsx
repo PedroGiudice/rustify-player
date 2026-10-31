@@ -204,7 +204,7 @@ export function NowPlaying() {
       <div class="inner">
         <div class="grab" />
         <div class="nphead">
-          <div class="eyebrow">Now playing</div>
+          <div class="eyebrow">Tocando agora</div>
           {/* Três alvos de 44px no máximo (mobile-1; Curtir desceu, B34): na
               largura útil do S24 (316px) as sete ações de antes transbordavam
               ~90px. Rádio, Fila e shape/render moram na sheet de "Mais opções". */}

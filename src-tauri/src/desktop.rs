@@ -2144,11 +2144,31 @@ fn theme_contrast_checks(vars: &std::collections::HashMap<String, String>) -> Ve
     checks
 }
 
+/// Texto de tela para YAML de tema inválido (linha 1-based quando o serde a conhece).
+fn theme_yaml_error_msg(filename: &str, line: Option<usize>) -> String {
+    match line {
+        Some(l) => format!(
+            "O tema {filename} tem um erro de YAML na linha {l}. Corrija o arquivo em ~/.local/share/rustify-player/themes/."
+        ),
+        None => format!(
+            "O tema {filename} tem um erro de YAML. Corrija o arquivo em ~/.local/share/rustify-player/themes/."
+        ),
+    }
+}
+
 #[tauri::command]
 fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     let path = themes_dir().join(&filename);
-    let content = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read theme: {e}"))?;
-    let val: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| format!("Invalid YAML: {e}"))?;
+    // Mensagens vão para a tela do Settings: PT-BR, com o nome do arquivo e
+    // onde corrigir; o erro cru do serde fica no log.
+    let content = std::fs::read_to_string(&path).map_err(|e| {
+        tracing::warn!("load_theme: leitura de {filename} falhou: {e}");
+        format!("Não consegui ler o arquivo {filename} em ~/.local/share/rustify-player/themes/.")
+    })?;
+    let val: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| {
+        tracing::warn!("load_theme: YAML inválido em {filename}: {e}");
+        theme_yaml_error_msg(&filename, e.location().map(|l| l.line()))
+    })?;
     let mut vars = std::collections::HashMap::new();
     yaml_to_css_vars(&val, "", &mut vars);
     bridge_legacy_to_extractor_lab(&mut vars);
@@ -2257,7 +2277,7 @@ fn watch_theme(
 ) -> Result<(), String> {
     let path = themes_dir().join(&filename);
     if !path.exists() {
-        return Err(format!("Theme not found: {filename}"));
+        return Err(format!("Tema não encontrado: {filename}"));
     }
 
     // Derruba o watcher anterior (se houver) ANTES de criar o novo.
@@ -5508,6 +5528,20 @@ fn maybe_seed_default_station(lib: &Library) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── A50: erro de tema em PT, com a linha e onde corrigir ───────────────
+
+    #[test]
+    fn erro_de_yaml_do_tema_diz_arquivo_linha_e_pasta() {
+        let bad = "surfaces:\n  canvas: \"#000\"\n  : x: y\n";
+        let e = serde_yaml::from_str::<serde_yaml::Value>(bad).unwrap_err();
+        let msg = theme_yaml_error_msg("noite.yaml", e.location().map(|l| l.line()));
+        assert!(msg.starts_with("O tema noite.yaml tem um erro de YAML na linha "), "{msg}");
+        assert!(msg.contains("~/.local/share/rustify-player/themes/"));
+        assert!(!msg.contains("Invalid"));
+        let sem_linha = theme_yaml_error_msg("noite.yaml", None);
+        assert!(sem_linha.starts_with("O tema noite.yaml tem um erro de YAML."));
+    }
 
     // ── A40: comandos fora da thread da janela, com teto de espera ─────────
 

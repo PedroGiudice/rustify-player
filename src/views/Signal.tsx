@@ -202,7 +202,7 @@ export default function Signal() {
         applyPresetToStore(preset);
       } catch (e) {
         console.error("[signal] import falhou:", e);
-        window.alert("A importação falhou: JSON inválido ou formato não reconhecido.");
+        window.alert("Não consegui importar: o arquivo não é um preset do EasyEffects (.json).");
       }
     };
     input.click();
@@ -216,7 +216,7 @@ export default function Signal() {
   const bassLive = () => dsp.bass.enabled && !dsp.bypass;
   const normLive = () => tweaks().loudnessNorm;
   /** Rótulo de um estágio que não processa: bypass vence o "off" próprio. */
-  const offLabel = () => (dsp.bypass ? "bypassed" : "off");
+  const offLabel = () => (dsp.bypass ? "ignorado" : "desligado");
 
   function handleExport() {
     const snap = snapshotCurrentDsp(activePreset() || "rustify-export");
@@ -237,7 +237,7 @@ export default function Signal() {
       <header class="view__head">
         <div>
           <h1>Signal</h1>
-          <p class="view__head-hint">EQ paramétrico · normalização · Limiter · Bass, na ordem do sinal</p>
+          <p class="view__head-hint">Equalizador paramétrico, normalização, limitador e reforço de grave, na ordem do sinal</p>
         </div>
       </header>
 
@@ -262,14 +262,14 @@ export default function Signal() {
           <div class="sig-master-bar__meta">
             <h3 class="sig-master-bar__title" id="sig-master-label">Cadeia DSP</h3>
             <span class="sig-master-bar__sub">
-              EQ, Limiter e Bass <b>{dsp.bypass ? "em bypass" : "processando"}</b>. A normalização fica no Tweaks.
+              EQ, limitador e grave <b>{dsp.bypass ? "ignorados" : "processando"}</b>. A normalização fica no Tweaks.
             </span>
           </div>
           <Switch
             checked={!dsp.bypass}
             onChange={toggleBypass}
             labelledBy="sig-master-label"
-            title={dsp.bypass ? "Religar EQ, Limiter e Bass" : "Pôr EQ, Limiter e Bass em bypass"}
+            title={dsp.bypass ? "Religar EQ, limitador e grave" : "Ignorar EQ, limitador e grave (bypass)"}
           />
         </div>
 
@@ -281,26 +281,26 @@ export default function Signal() {
           <StatTile
             label="EQ"
             on={eqLive()}
-            value={eqLive() ? `${dsp.eq.bands.length} bands` : offLabel()}
-            sub={`${FILTER_MODES[dsp.eq.bands[dsp.activeBand]?.filterMode ?? 6]} · ${ENGINE_MODES[dsp.eq.mode]} mode`}
+            value={eqLive() ? `${dsp.eq.bands.length} bandas` : offLabel()}
+            sub={`${FILTER_MODES[dsp.eq.bands[dsp.activeBand]?.filterMode ?? 6]} · modo ${ENGINE_MODES[dsp.eq.mode]}`}
           />
           <StatTile
             label="Normalização"
             on={normLive()}
-            value={normLive() ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
+            value={normLive() ? `${tweaks().loudnessTarget.toFixed(1).replace(".", ",")} LUFS` : "desligada"}
             sub="por faixa · no Tweaks"
           />
           <StatTile
-            label="Limiter"
+            label="Limitador"
             on={limLive()}
             value={limLive() ? `${dsp.limiter.threshold.toFixed(1)} dB` : offLabel()}
-            sub={`${LIMITER_MODES[dsp.limiter.mode]} · lookahead ${dsp.limiter.lookahead.toFixed(1)} ms`}
+            sub={`${LIMITER_MODES[dsp.limiter.mode]} · antecipação ${dsp.limiter.lookahead.toFixed(1)} ms`}
           />
           <StatTile
-            label="Bass"
+            label="Grave"
             on={bassLive()}
             value={bassLive() ? `${dsp.bass.amount.toFixed(1)} dB` : offLabel()}
-            sub={`scope ${dsp.bass.freq.toFixed(0)} Hz · floor ${dsp.bass.floor.toFixed(0)} Hz`}
+            sub={`escopo ${dsp.bass.freq.toFixed(0)} Hz · piso ${dsp.bass.floor.toFixed(0)} Hz`}
           />
         </div>
 
@@ -312,7 +312,7 @@ export default function Signal() {
               class="sig-pre"
               aria-pressed={activePreset() === FLAT_PRESET ? "true" : undefined}
               onClick={() => handlePresetClick(FLAT_PRESET)}
-              title="Reseta todas as bandas pra 0 dB"
+              title="Zera todas as bandas (0 dB)"
             >
               {FLAT_PRESET}
             </button>
@@ -329,28 +329,28 @@ export default function Signal() {
                 class="sig-pre"
                 aria-pressed={activePreset() === p.name ? "true" : undefined}
                 onClick={() => handlePresetClick(p.name)}
-                title={`Aplica preset "${p.name}"`}
+                title={`Aplica o preset "${p.name}"`}
               >
                 {p.name}
               </button>
             )}</For>
             <Show when={presets().length === 0}>
               <span class="sig-preset-chips__empty">
-                Nenhum preset salvo — use Save ou Import .json
+                Nenhum preset salvo: use Salvar ou Importar .json
               </span>
             </Show>
           </div>
           <div class="sig-preset-actions">
-            <button class="sig-pbtn" onClick={handleSave} title="Salva estado atual como novo preset">
+            <button class="sig-pbtn" onClick={handleSave} title="Salva o ajuste atual como preset novo">
               {/* @ts-ignore */}
-              <iconify-icon icon="lucide:save" noobserver />Save
+              <iconify-icon icon="lucide:save" noobserver />Salvar
             </button>
             {/* Renomear e apagar só existem para preset próprio (A32): nos de
                 fábrica (Flat, Padrão) ficavam acesos e mortos. */}
             <Show when={ownPreset()}>
               <button class="sig-pbtn" onClick={handleRename} title="Renomeia o preset selecionado">
                 {/* @ts-ignore */}
-                <iconify-icon icon="lucide:pencil" noobserver />Rename
+                <iconify-icon icon="lucide:pencil" noobserver />Renomear
               </button>
               {/* Arma e confirma (B4): o 1º clique pede o 2º, e desarma sozinho. */}
               <button
@@ -361,16 +361,16 @@ export default function Signal() {
                 aria-label={deleteArmed() ? `Confirmar: apagar o preset ${activePreset()}` : `Apagar o preset ${activePreset()}`}
               >
                 {/* @ts-ignore */}
-                <iconify-icon icon="lucide:trash-2" noobserver />{deleteArmed() ? "Apagar?" : "Delete"}
+                <iconify-icon icon="lucide:trash-2" noobserver />{deleteArmed() ? "Apagar?" : "Apagar"}
               </button>
             </Show>
-            <button class="sig-pbtn" onClick={handleImport} title="Importa preset EasyEffects (.json)">
+            <button class="sig-pbtn" onClick={handleImport} title="Importa um preset do EasyEffects (.json)">
               {/* @ts-ignore */}
-              <iconify-icon icon="lucide:upload" noobserver />Import .json
+              <iconify-icon icon="lucide:upload" noobserver />Importar .json
             </button>
-            <button class="sig-pbtn" onClick={handleExport} title="Exporta estado atual como JSON EasyEffects">
+            <button class="sig-pbtn" onClick={handleExport} title="Exporta o ajuste atual como JSON do EasyEffects">
               {/* @ts-ignore */}
-              <iconify-icon icon="lucide:download" noobserver />Export
+              <iconify-icon icon="lucide:download" noobserver />Exportar
             </button>
           </div>
         </div>
@@ -378,10 +378,10 @@ export default function Signal() {
         {/* ── Parametric EQ panel ── */}
         <div class="sig-panel" data-live={eqLive() ? "true" : "false"}>
           <div class="sig-panel__head">
-            <h3 class="sig-panel__title" id="sig-eq-label">Parametric Equalizer</h3>
+            <h3 class="sig-panel__title" id="sig-eq-label">Equalizador paramétrico</h3>
             <Show when={!eqLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
-              mode <b>{ENGINE_MODES[dsp.eq.mode]}</b> · gain <b>{dsp.eq.input_gain.toFixed(1)}</b> / <b>{dsp.eq.output_gain.toFixed(1)}</b> dB
+              modo <b>{ENGINE_MODES[dsp.eq.mode]}</b> · ganho <b>{dsp.eq.input_gain.toFixed(1)}</b> / <b>{dsp.eq.output_gain.toFixed(1)}</b> dB
             </span>
             <Switch checked={dsp.eq.enabled} onChange={toggleEq} labelledBy="sig-eq-label" variant="blue" />
           </div>
@@ -407,7 +407,7 @@ export default function Signal() {
             {/* EQ footer: engine mode + I/O gain */}
             <div class="eq-footer">
               <div>
-                <div class="mode-group__label">Engine mode</div>
+                <div class="mode-group__label">Modo do motor</div>
                 <div class="segmented">
                   <For each={ENGINE_MODES}>{(name, i) => (
                     <button
@@ -421,7 +421,7 @@ export default function Signal() {
               </div>
               <div class="eq-gains">
                 <ParamRow
-                  label="Input gain"
+                  label="Ganho de entrada"
                   value={dsp.eq.input_gain}
                   min={-12}
                   max={12}
@@ -429,7 +429,7 @@ export default function Signal() {
                   onInput={(v) => setEqGain(v, dsp.eq.output_gain)}
                 />
                 <ParamRow
-                  label="Output gain"
+                  label="Ganho de saída"
                   value={dsp.eq.output_gain}
                   min={-12}
                   max={12}
@@ -445,10 +445,10 @@ export default function Signal() {
         {/* ── Limiter panel ── */}
         <div class="sig-panel" data-live={limLive() ? "true" : "false"}>
           <div class="sig-panel__head">
-            <h3 class="sig-panel__title" id="sig-lim-label">Limiter</h3>
+            <h3 class="sig-panel__title" id="sig-lim-label">Limitador</h3>
             <Show when={!limLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
-              threshold <b>{dsp.limiter.threshold.toFixed(1)}</b> dB · stereo-link <b>{dsp.limiter.stereo_link.toFixed(0)}</b>%
+              limiar <b>{dsp.limiter.threshold.toFixed(1)}</b> dB · vínculo estéreo <b>{dsp.limiter.stereo_link.toFixed(0)}</b>%
             </span>
             <Switch checked={dsp.limiter.enabled} onChange={toggleLimiter} labelledBy="sig-lim-label" variant="blue" />
           </div>
@@ -456,19 +456,22 @@ export default function Signal() {
 
             <div class="lim-selects">
               <Select
-                label="Mode"
+                label="Modo"
+                title="Curva do limitador (nomes do LSP): Herm e Exp mudam o quão suave ele age; Thin, Wide, Tail e Duck mudam a forma da redução."
                 options={LIMITER_MODES}
                 value={dsp.limiter.mode}
                 onChange={setLimiterMode}
               />
               <Select
-                label="Oversampling"
+                label="Sobreamostragem"
+                title="Calcula o limitador em taxa maior para evitar picos entre amostras. Mais alto = mais CPU."
                 options={LIMITER_OVS}
                 value={dsp.limiter.ovs}
                 onChange={setLimiterOvs}
               />
               <Select
                 label="Dither"
+                title="Ruído mínimo somado na redução de bits da saída. Nenhum é o padrão."
                 options={LIMITER_DITHER}
                 value={dsp.limiter.dither}
                 onChange={setLimiterDither}
@@ -484,21 +487,21 @@ export default function Signal() {
             </div>
 
             <div class="params">
-              <ParamRow label="Threshold" value={dsp.limiter.threshold} min={-60} max={0} unit="dB" decimals={1} onInput={setLimiterThreshold} />
-              <ParamRow label="Knee" value={dsp.limiter.knee} min={0} max={12} unit="dB" decimals={1} onInput={setLimiterKnee} />
-              <ParamRow label="Lookahead" value={dsp.limiter.lookahead} min={0} max={20} unit="ms" decimals={1} onInput={setLimiterLookahead} />
-              <ParamRow label="Attack" value={dsp.limiter.attack} min={0.1} max={20} unit="ms" decimals={1} onInput={setLimiterAttack} />
-              <ParamRow label="Release" value={dsp.limiter.release} min={0.1} max={20} unit="ms" decimals={1} onInput={setLimiterRelease} />
-              <ParamRow label="SC PreAmp" value={dsp.limiter.sc_preamp} min={-10} max={10} unit="dB" decimals={1} onInput={setLimiterScPreamp} />
-              <ParamRow label="Stereo link" value={dsp.limiter.stereo_link} min={0} max={100} unit="%" decimals={0} onInput={setLimiterStereoLink} />
-              <ParamRow label="Input gain" value={dsp.limiter.input_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setLimiterGain(v, dsp.limiter.output_gain)} />
-              <ParamRow label="Output gain" value={dsp.limiter.output_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setLimiterGain(dsp.limiter.input_gain, v)} />
+              <ParamRow label="Limiar" value={dsp.limiter.threshold} min={-60} max={0} unit="dB" decimals={1} onInput={setLimiterThreshold} />
+              <ParamRow label="Joelho" value={dsp.limiter.knee} min={0} max={12} unit="dB" decimals={1} onInput={setLimiterKnee} />
+              <ParamRow label="Antecipação" value={dsp.limiter.lookahead} min={0} max={20} unit="ms" decimals={1} onInput={setLimiterLookahead} />
+              <ParamRow label="Ataque" value={dsp.limiter.attack} min={0.1} max={20} unit="ms" decimals={1} onInput={setLimiterAttack} />
+              <ParamRow label="Liberação" value={dsp.limiter.release} min={0.1} max={20} unit="ms" decimals={1} onInput={setLimiterRelease} />
+              <ParamRow label="Pré-amp do side-chain" value={dsp.limiter.sc_preamp} min={-10} max={10} unit="dB" decimals={1} onInput={setLimiterScPreamp} />
+              <ParamRow label="Vínculo estéreo" value={dsp.limiter.stereo_link} min={0} max={100} unit="%" decimals={0} onInput={setLimiterStereoLink} />
+              <ParamRow label="Ganho de entrada" value={dsp.limiter.input_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setLimiterGain(v, dsp.limiter.output_gain)} />
+              <ParamRow label="Ganho de saída" value={dsp.limiter.output_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setLimiterGain(dsp.limiter.input_gain, v)} />
             </div>
 
             <div class="alr">
               <div class="alr__head">
-                <span class="alr__title" id="sig-alr-label">Auto-leveling release</span>
-                <span class="alr__hint">stabilizes attack-release sensitivity over time</span>
+                <span class="alr__title" id="sig-alr-label">Liberação automática (ALR)</span>
+                <span class="alr__hint">estabiliza o ataque e a liberação ao longo do tempo</span>
                 <Switch
                   checked={dsp.limiter.alr}
                   onChange={() => setLimiterAlr(!dsp.limiter.alr)}
@@ -507,8 +510,8 @@ export default function Signal() {
                 />
               </div>
               <div class="params">
-                <ParamRow label="ALR attack" value={dsp.limiter.alr_attack} min={0.1} max={200} unit="ms" decimals={1} onInput={setLimiterAlrAttack} />
-                <ParamRow label="ALR release" value={dsp.limiter.alr_release} min={1} max={1000} unit="ms" decimals={0} onInput={setLimiterAlrRelease} />
+                <ParamRow label="Ataque do ALR" value={dsp.limiter.alr_attack} min={0.1} max={200} unit="ms" decimals={1} onInput={setLimiterAlrAttack} />
+                <ParamRow label="Liberação do ALR" value={dsp.limiter.alr_release} min={1} max={1000} unit="ms" decimals={0} onInput={setLimiterAlrRelease} />
               </div>
             </div>
 
@@ -518,10 +521,10 @@ export default function Signal() {
         {/* ── Bass Enhancer panel ── */}
         <div class="sig-panel" data-live={bassLive() ? "true" : "false"}>
           <div class="sig-panel__head">
-            <h3 class="sig-panel__title" id="sig-bass-label">Bass Enhancer</h3>
+            <h3 class="sig-panel__title" id="sig-bass-label">Reforço de grave</h3>
             <Show when={!bassLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
-              amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq.toFixed(0)}</b> Hz
+              quantidade <b>{dsp.bass.amount.toFixed(1)}</b> dB · escopo <b>{dsp.bass.freq.toFixed(0)}</b> Hz
             </span>
             <Switch checked={dsp.bass.enabled} onChange={toggleBass} labelledBy="sig-bass-label" />
           </div>
@@ -529,33 +532,33 @@ export default function Signal() {
 
             <div class="bass-toggles">
               <div class="bass-toggle">
-                <span class="bass-toggle__label" id="sig-listen-label">Listen</span>
+                <span class="bass-toggle__label" id="sig-listen-label">Ouvir só o grave</span>
                 <Switch
                   checked={dsp.bass.listen}
                   onChange={() => setBassListen(!dsp.bass.listen)}
                   labelledBy="sig-listen-label"
-                  title="Listen to bass-only signal"
+                  title="Toca só o sinal de grave, para ajustar"
                 />
               </div>
               <div class="bass-toggle">
-                <span class="bass-toggle__label" id="sig-floor-label">Floor</span>
+                <span class="bass-toggle__label" id="sig-floor-label">Piso</span>
                 <Switch
                   checked={dsp.bass.floor_active}
                   onChange={() => setBassFloorActive(!dsp.bass.floor_active)}
                   labelledBy="sig-floor-label"
-                  title="Enable floor filter"
+                  title="Liga o filtro de piso (corta abaixo da frequência do piso)"
                 />
               </div>
             </div>
 
             <div class="params">
-              <ParamRow label="Amount" value={dsp.bass.amount} min={0} max={12} unit="dB" decimals={1} onInput={setBassAmount} />
-              <ParamRow label="Harmonics" value={dsp.bass.drive} min={0} max={10} unit="" decimals={1} onInput={setBassDrive} />
-              <ParamRow label="Blend" value={dsp.bass.blend} min={-1} max={1} unit="" decimals={2} onInput={setBassBlend} />
-              <ParamRow label="Scope" value={dsp.bass.freq} min={20} max={500} unit="Hz" decimals={0} onInput={setBassFreq} />
-              <ParamRow label="Floor" value={dsp.bass.floor} min={20} max={200} unit="Hz" decimals={0} onInput={setBassFloor} />
-              <ParamRow label="Input gain" value={dsp.bass.input_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setBassLevels(v, dsp.bass.output_gain)} />
-              <ParamRow label="Output gain" value={dsp.bass.output_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setBassLevels(dsp.bass.input_gain, v)} />
+              <ParamRow label="Quantidade" value={dsp.bass.amount} min={0} max={12} unit="dB" decimals={1} onInput={setBassAmount} />
+              <ParamRow label="Harmônicos" value={dsp.bass.drive} min={0} max={10} unit="" decimals={1} onInput={setBassDrive} />
+              <ParamRow label="Mistura" value={dsp.bass.blend} min={-1} max={1} unit="" decimals={2} onInput={setBassBlend} />
+              <ParamRow label="Escopo" value={dsp.bass.freq} min={20} max={500} unit="Hz" decimals={0} onInput={setBassFreq} />
+              <ParamRow label="Piso" value={dsp.bass.floor} min={20} max={200} unit="Hz" decimals={0} onInput={setBassFloor} />
+              <ParamRow label="Ganho de entrada" value={dsp.bass.input_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setBassLevels(v, dsp.bass.output_gain)} />
+              <ParamRow label="Ganho de saída" value={dsp.bass.output_gain} min={-12} max={12} unit="dB" decimals={1} onInput={(v) => setBassLevels(dsp.bass.input_gain, v)} />
             </div>
 
           </div>
@@ -581,14 +584,25 @@ function StatTile(props: { label: string; value: string; sub: string; on: boolea
   );
 }
 
+/** Rótulo de tela de uma opção de lista do LSP: só "Off" e "None" têm
+    tradução honesta; o resto é nome de ofício e fica. O índice, não o
+    texto, vai ao backend, e o preset do EasyEffects segue com o nome
+    original (store/dsp-presets.ts). */
+function optionLabel(opt: string): string {
+  if (opt === "Off") return "Desligado";
+  if (opt === "None") return "Nenhum";
+  return opt;
+}
+
 function Select<T extends readonly string[]>(props: {
   label: string;
+  title?: string;
   options: T;
   value: number;
   onChange: (idx: number) => void;
 }) {
   return (
-    <label class="select-control">
+    <label class="select-control" title={props.title}>
       <span class="select-control__label">{props.label}</span>
       <span class="select-shell select-shell--block">
         <select
@@ -596,7 +610,7 @@ function Select<T extends readonly string[]>(props: {
           onChange={(e) => props.onChange(Number((e.currentTarget as HTMLSelectElement).value))}
         >
           <For each={props.options}>{(opt, i) => (
-            <option value={i()}>{opt}</option>
+            <option value={i()}>{optionLabel(opt)}</option>
           )}</For>
         </select>
         <Icon class="select-shell__chev" name={ICONS.chevronDown} size={12} />
@@ -621,7 +635,7 @@ function BandDetail() {
   return (
     <div class="band-detail">
       <div class="band-detail__ctx">
-        <span class="band-detail__title">Band {String(dsp.activeBand + 1).padStart(2, "0")}</span>
+        <span class="band-detail__title">Banda {String(dsp.activeBand + 1).padStart(2, "0")}</span>
         <span class="band-detail__ctx-row">
           <input
             class="band-detail__freq"
@@ -632,27 +646,28 @@ function BandDetail() {
             value={band().freq}
             onChange={onFreqInput}
             onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
-            title="Frequencia central (Hz). LSP Para EQ aceita 10..24000."
+            title="Frequência central (Hz), de 10 a 24.000."
           />
           <span class="band-detail__unit"> Hz</span>
-          {" · "}{FILTER_TYPES[band().type]} · {FILTER_MODES[band().filterMode]}
+          {" · "}{optionLabel(FILTER_TYPES[band().type])} · {FILTER_MODES[band().filterMode]}
         </span>
       </div>
       <div class="band-detail__ctrls">
         <Select
-          label="Type"
+          label="Tipo"
           options={FILTER_TYPES}
           value={band().type}
           onChange={(v) => setEqBandType(dsp.activeBand, v)}
         />
         <Select
-          label="Mode"
+          label="Modo"
+          title="Família matemática do filtro (nomes do LSP). Padrão: APO (DR)."
           options={FILTER_MODES}
           value={band().filterMode}
           onChange={(v) => setEqBandMode(dsp.activeBand, v)}
         />
         <Select
-          label="Slope"
+          label="Inclinação"
           options={SLOPES}
           value={band().slope}
           onChange={(v) => setEqBandSlope(dsp.activeBand, v)}
@@ -678,7 +693,7 @@ function BandDetail() {
           data-kind="solo"
           data-on={band().solo ? "true" : undefined}
           onClick={() => setEqBandSolo(dsp.activeBand, !band().solo)}
-          title="Solo"
+          title="Solo (ouvir só esta banda)"
         >
           S
         </button>
@@ -687,7 +702,7 @@ function BandDetail() {
           data-kind="mute"
           data-on={band().mute ? "true" : undefined}
           onClick={() => setEqBandMute(dsp.activeBand, !band().mute)}
-          title="Mute"
+          title="Mudo (desligar esta banda)"
         >
           M
         </button>

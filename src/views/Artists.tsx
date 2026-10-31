@@ -120,7 +120,7 @@ export default function Artists(props: {
   return (
     <Show when={standalone()} fallback={body()}>
       <article class="view">
-        <header class="view__head"><div><h1>Artists</h1></div></header>
+        <header class="view__head"><div><h1>Artistas</h1></div></header>
         {body()}
       </article>
     </Show>

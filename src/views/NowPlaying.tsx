@@ -499,14 +499,14 @@ export default function NowPlaying() {
             pra deixar o bg vazar no modo "focused". */}
 
         <div class="np__corner">
-          <button title="Cinema mode (F)" onClick={toggleCinema}>
+          <button title="Modo cinema (F)" onClick={toggleCinema}>
             <Icon name={cinema() ? ICONS.shrink : ICONS.expand} size={14} />
           </button>
-          <button title="Spectrum settings" onClick={openBgSettings}>
+          <button title="Ajustes do espectro" onClick={openBgSettings}>
             <Icon name={ICONS.settings} size={14} />
           </button>
           <button
-            title="More"
+            title="Mais opções"
             disabled={!player.currentTrack}
             onClick={(e) => { if (player.currentTrack) openTrackMenu(e, player.currentTrack); }}
           >
@@ -543,7 +543,7 @@ export default function NowPlaying() {
                 <div class="np__tags">
                   {/* O ponto respira só tocando; pausado fica neutro (A12). */}
                   <span class="np__tag-playing" data-playing={player.isPlaying ? "true" : "false"}>
-                    <span class="dot" />Now Playing
+                    <span class="dot" />Tocando agora
                   </span>
                 </div>
                 <h1
@@ -594,7 +594,7 @@ export default function NowPlaying() {
                     <span>Saída <b>PipeWire</b></span>
                     <Show
                       when={!dsp.bypass && (dsp.eq.enabled || dsp.limiter.enabled || dsp.bass.enabled)}
-                      fallback={<span>DSP <b>{dsp.bypass ? "BYPASS" : "OFF"}</b></span>}
+                      fallback={<span>DSP <b>{dsp.bypass ? "ignorado" : "desligado"}</b></span>}
                     >
                       <span>
                         DSP
@@ -629,13 +629,13 @@ export default function NowPlaying() {
                 ...ink(),
               }}
             >
-              <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste pra mover">
+              <div class="np__lyrics-head" onMouseDown={startDrag} title="Arraste para mover">
                 <span class="np__lyrics-label">
-                  Lyrics{isSynced() ? " · synced" : ""}
+                  Letra{isSynced() ? " · sincronizada" : ""}
                 </span>
-                <Show when={!lyricsFailed()}>
+                <Show when={!lyricsFailed() && !isSynced()}>
                   <span class="np__lyrics-source mono">
-                    {isSynced() ? "aligned" : "unsynced"}
+                    sem tempo
                   </span>
                 </Show>
               </div>
@@ -677,7 +677,7 @@ export default function NowPlaying() {
               <span
                 class="np__lyrics-resize"
                 onMouseDown={startResize}
-                title="Arraste pra redimensionar"
+                title="Arraste para redimensionar"
                 aria-hidden="true"
               />
             </aside>
@@ -689,24 +689,24 @@ export default function NowPlaying() {
         <Show when={!glActive()}>
           <div class="np__viz-nav">
             <div class="np__nav-row">
-              <button title="Previous renderer (,)" onClick={() => renderer.prev()}>
+              <button title="Estilo anterior (,)" onClick={() => renderer.prev()}>
                 <Icon name={ICONS.chevronLeft} size={14} />
               </button>
               <span class="np__nav-name" onClick={() => renderer.next()}>
-                render · <b>{renderer.name()}</b>
+                estilo · <b>{renderer.name()}</b>
               </span>
-              <button title="Next renderer (.)" onClick={() => renderer.next()}>
+              <button title="Próximo estilo (.)" onClick={() => renderer.next()}>
                 <Icon name={ICONS.chevronRight} size={14} />
               </button>
             </div>
             <div class="np__nav-row">
-              <button title="Previous shape ([)" onClick={() => shape.prev()}>
+              <button title="Forma anterior ([)" onClick={() => shape.prev()}>
                 <Icon name={ICONS.chevronLeft} size={14} />
               </button>
               <span class="np__nav-name" onClick={() => shape.next()}>
-                shape · <b>{shape.name()}</b>
+                forma · <b>{shape.name()}</b>
               </span>
-              <button title="Next shape (])" onClick={() => shape.next()}>
+              <button title="Próxima forma (])" onClick={() => shape.next()}>
                 <Icon name={ICONS.chevronRight} size={14} />
               </button>
             </div>

@@ -50,7 +50,7 @@ describe("Playlists view", () => {
   it("toolbar tem so o filtro: sem New playlist / New smart playlist sem acao", () => {
     const { container, getByPlaceholderText } = render(() => <Playlists />);
     expect(container.querySelector(".coll-toolbar")).toBeTruthy();
-    expect(getByPlaceholderText("Filter playlists…")).toBeTruthy();
+    expect(getByPlaceholderText("Filtrar playlists…")).toBeTruthy();
     expect(container.querySelectorAll(".coll-toolbar button").length).toBe(0);
     expect(container.textContent).not.toContain("New playlist");
     expect(container.textContent).not.toContain("New smart playlist");
@@ -66,7 +66,7 @@ describe("Playlists view", () => {
     const { container } = render(() => <Playlists />);
     const allHead = () =>
       Array.from(container.querySelectorAll(".section__title")).find(
-        (h) => (h.textContent ?? "").toLowerCase().startsWith("all playlists"),
+        (h) => (h.textContent ?? "").toLowerCase().startsWith("todas as playlists"),
       );
     await vi.waitFor(() => {
       const cards = allHead()!.closest("section")!.querySelectorAll(".pl-card");
@@ -80,7 +80,7 @@ describe("Playlists view", () => {
     const { container } = render(() => <Playlists />);
     await vi.waitFor(() => {
       const titles = Array.from(container.querySelectorAll(".section__title")).map((h) => h.textContent);
-      expect(titles).toContain("Pinned");
+      expect(titles).toContain("Fixadas");
     });
     expect(container.textContent).not.toContain("Reorder");
   });
@@ -95,7 +95,7 @@ describe("Playlists — Sort by name", () => {
 
   function getSortLink(container: HTMLElement): HTMLElement {
     const links = Array.from(container.querySelectorAll(".section__action"));
-    return links.find((l) => (l.textContent ?? "").includes("Sort")) as HTMLElement;
+    return links.find((l) => (l.textContent ?? "").startsWith("Orde")) as HTMLElement;
   }
 
   it("renderiza o link 'Sort by name' na secao All playlists", async () => {
@@ -132,14 +132,14 @@ describe("Playlists — Sort by name", () => {
     const afterFirstClick = getCardNames(container);
     const sortedAZ = [...mockFolders].map((f) => f.name).sort((a, b) => a.localeCompare(b));
     expect(afterFirstClick).toEqual(sortedAZ);
-    expect(sortLink.textContent).toContain("↑"); // indicador A→Z ativo
+    expect(sortLink.textContent).toContain("A–Z"); // indicador A→Z ativo
 
     // Segundo clique: Z→A
     fireEvent.click(sortLink);
     const afterSecondClick = getCardNames(container);
     const sortedZA = [...sortedAZ].reverse();
     expect(afterSecondClick).toEqual(sortedZA);
-    expect(sortLink.textContent).toContain("↓"); // indicador Z→A ativo
+    expect(sortLink.textContent).toContain("Z–A"); // indicador Z→A ativo
 
     // Terceiro clique: volta a sem sort (ordem original)
     fireEvent.click(sortLink);
@@ -152,8 +152,8 @@ describe("Playlists — card fixado (lib-26)", () => {
   it("mostra a contagem de faixas uma vez só", async () => {
     pinPlaylist("Middle Road");
     const { getByText } = render(() => <Playlists />);
-    await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
-    const card = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
+    await vi.waitFor(() => expect(getByText("Fixadas")).toBeTruthy());
+    const card = getByText("Fixadas").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
     const hits = (card.textContent ?? "").match(/8 faixas/g) ?? [];
     expect(hits.length).toBe(1);
   });
@@ -168,7 +168,7 @@ describe("Playlists — filtro", () => {
       Array.from(container.querySelectorAll(".pl-card .pl-card__title")).map((e) => e.textContent ?? "");
     await vi.waitFor(() => expect(names().length).toBe(3));
 
-    fireEvent.input(getByPlaceholderText("Filter playlists…"), { target: { value: "zoo" } });
+    fireEvent.input(getByPlaceholderText("Filtrar playlists…"), { target: { value: "zoo" } });
     await vi.waitFor(() => expect(names()).toEqual(["Zoo Songs"]));
   });
 });
@@ -231,8 +231,8 @@ describe("cards de playlist: teclado (ds-2)", () => {
     window.location.hash = "";
     pinPlaylist("Middle Road");
     const { getByText } = render(() => <Playlists />);
-    await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
-    const pinnedCard = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
+    await vi.waitFor(() => expect(getByText("Fixadas")).toBeTruthy());
+    const pinnedCard = getByText("Fixadas").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
     fireEvent.click(pinnedCard.querySelector(".pl-card__open")!);
     expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent("Middle Road")}`);
   });
@@ -258,7 +258,7 @@ describe("Playlists — carregando, erro, vazio e filtro sem resultado (A7)", ()
   it("filtro sem resultado avisa e oferece limpar", async () => {
     const { container, getByPlaceholderText, findByText, getByRole } = render(() => <Playlists />);
     await vi.waitFor(() => expect(container.querySelectorAll(".pl-card").length).toBe(3));
-    fireEvent.input(getByPlaceholderText("Filter playlists…"), { target: { value: "xyz" } });
+    fireEvent.input(getByPlaceholderText("Filtrar playlists…"), { target: { value: "xyz" } });
     expect(await findByText('Nenhuma playlist com "xyz".')).toBeTruthy();
     fireEvent.click(getByRole("button", { name: "Limpar filtro" }));
     await vi.waitFor(() => expect(container.querySelectorAll(".pl-card").length).toBe(3));

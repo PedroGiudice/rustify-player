@@ -326,7 +326,7 @@ export async function playList(
       .catch((e) => console.warn("[mobile] continuity_arm falhou:", e));
   } catch (e) {
     console.error("[mobile] set_queue falhou:", e);
-    showToast("Falha ao iniciar a reprodução");
+    showToast("Não consegui tocar");
     await syncState();
     await syncQueue();
   }
@@ -404,7 +404,7 @@ export async function playStation(st: StationMeta) {
     await playList(batch, 0, "station", st.id, { mode: "station", stationId: st.id });
   } catch (e) {
     console.error("[mobile] lib_play_station falhou:", e);
-    showToast("Falha ao iniciar a station");
+    showToast("Não consegui iniciar a station");
   }
 }
 
@@ -438,7 +438,7 @@ export async function playSimilar(track: Track) {
     );
   } catch (e) {
     console.error("[mobile] lib_radio_start falhou:", e);
-    showToast("Falha ao montar o rádio");
+    showToast("Não consegui montar o rádio");
   }
 }
 
@@ -464,7 +464,7 @@ async function enqueue(track: Track, mode: "next" | "end") {
     showToast(mode === "next" ? "Toca em seguida" : "Adicionada ao fim da fila");
   } catch (e) {
     console.error("[mobile] add_items falhou:", e);
-    showToast("Falha ao enfileirar");
+    showToast("Não consegui pôr na fila");
     await syncQueue();
   }
 }
@@ -494,7 +494,7 @@ export async function shuffleUpcoming() {
     console.warn("[mobile] shuffle_upcoming falhou:", e);
     // Sem aviso o botão era um no-op mudo; a fila volta a ser o que o
     // serviço diz (a UI nunca reordenou, então não há o que desfazer).
-    showToast("Falha ao embaralhar");
+    showToast("Não consegui embaralhar");
     await syncQueue();
   }
 }
@@ -545,7 +545,7 @@ export async function toggleLike(t: Track) {
     showToast(liked ? "Curtida" : "Curtida removida");
   } catch (e) {
     console.warn("[mobile] set_like falhou:", e);
-    showToast("Falha ao registrar a curtida");
+    showToast("Não consegui registrar a curtida");
     // Reverte SÓ se o override vivo ainda é o desta chamada: dois toques
     // rápidos com o 1º falhando tarde não podem apagar o gesto do 2º (que o
     // journal já tem) — coração e LWW mentiriam.
@@ -638,7 +638,7 @@ export async function next() {
     if (r && r.moved === false) showToast("Fim da fila");
   } catch (e) {
     console.warn("[mobile] next falhou:", e);
-    showToast("Falha ao avançar");
+    showToast("Não consegui avançar");
   }
 }
 
@@ -687,7 +687,7 @@ export async function rescan() {
     showToast(`Biblioteca re-indexada · ${count} faixas`);
   } catch (e) {
     console.error("[mobile] lib_rescan falhou:", e);
-    showToast("Falha ao re-indexar");
+    showToast("Não consegui reler o acervo");
   } finally {
     setRescanning(false);
   }

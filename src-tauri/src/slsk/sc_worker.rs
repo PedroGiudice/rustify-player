@@ -116,13 +116,16 @@ fn run_task(
     // log, evento ou mensagem de erro.
     let token = match cfg.read_sc_token() {
         Ok(tk) => tk,
-        Err(e) => return fail(format!("sem token do SoundCloud: {e}"), false),
+        Err(e) => {
+            tracing::warn!("sc-worker: chave de acesso do SoundCloud ilegível: {e}");
+            return fail("falta a chave de acesso do SoundCloud".into(), false);
+        }
     };
     // Sem ffmpeg/ffprobe nada do que baixar vira FLAC: falha antes de gastar
     // a banda do original (spec §4.1).
     let tools = Tools::from_ffmpeg(&cfg.ffmpeg);
     if !transcode::ffmpeg_available(&tools) {
-        return fail("ffmpeg ausente".into(), false);
+        return fail("falta o conversor de áudio (ffmpeg)".into(), false);
     }
     if board.is_canceled(&job_id, attempt) {
         return canceled();
@@ -136,7 +139,7 @@ fn run_task(
     // 1) sondagem do original
     let orig = match api.probe_original(*track_id, &token, 0) {
         Ok(o) => o,
-        Err(ScError::NoToken) => return fail("token do SoundCloud recusado (expirado?)".into(), false),
+        Err(ScError::NoToken) => return fail("o SoundCloud recusou a chave de acesso (expirou?)".into(), false),
         Err(ScError::RateLimited) => {
             return fail("SoundCloud limitou as chamadas; tente em alguns minutos".into(), true)
         }
@@ -484,7 +487,7 @@ mod tests {
         if !ffmpeg_ok() { return; }
         let (tmp, api, cfg, board) = setup_modo("wav", &[], Modo { probe_401: true, ..Modo::default() });
         let evs = run_one(api.clone(), cfg, board, task(&tmp));
-        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("token")), "{evs:?}");
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("chave de acesso")), "{evs:?}");
         assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
     }
 
@@ -498,7 +501,7 @@ mod tests {
         let evs = run_one(api.clone(), cfg, board, task(&tmp));
         assert_eq!(api.log.lock().unwrap().as_slice(), ["download"], "o download começou");
         assert!(
-            matches!(evs.last(), Some(FetchEvent::Failed { retryable: true, reason, .. }) if reason.contains("link do original") && !reason.contains("token")),
+            matches!(evs.last(), Some(FetchEvent::Failed { retryable: true, reason, .. }) if reason.contains("link do original") && !reason.contains("chave de acesso")),
             "{evs:?}"
         );
         assert!(sobras(&tmp).is_empty(), "nada de j1.a0.* no incoming: {:?}", sobras(&tmp));
@@ -542,7 +545,7 @@ mod tests {
             (tmp, Arc::new(api), Arc::new(cfg), board)
         })();
         let evs = run_one(api.clone(), cfg, board, task(&tmp));
-        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason == "ffmpeg ausente"), "{evs:?}");
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason == "falta o conversor de áudio (ffmpeg)"), "{evs:?}");
         assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
     }
 
@@ -561,7 +564,7 @@ mod tests {
         let (tmp, api, cfg, board) = setup("wav", &[]);
         let mut cfg2 = (*cfg).clone(); cfg2.sc_token_file = tmp.path().join("inexistente.txt");
         let evs = run_one(api.clone(), Arc::new(cfg2), board, task(&tmp));
-        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("token")), "{evs:?}");
+        assert!(matches!(evs.last(), Some(FetchEvent::Failed { retryable: false, reason, .. }) if reason.contains("chave de acesso")), "{evs:?}");
         assert!(api.log.lock().unwrap().is_empty(), "não baixou nada");
     }
 

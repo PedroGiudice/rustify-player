@@ -593,7 +593,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
       <Show when={tweaks().eqSpectrumOverlay}>
         <p
           class="eq-legend"
-          title="O traço desconta só a curva do EQ: Limiter, Bass, normalização e volume também mexem no que se mede."
+          title="O traço desconta só a curva do EQ: limitador, grave, normalização e volume também mexem no que se mede."
         >
           <span class="eq-legend__bar" aria-hidden="true" />Barras: saída medida
           <span class="eq-legend__tick" aria-hidden="true" />Traço: antes do EQ (estimado)

@@ -31,7 +31,7 @@ import { Settings } from "./Settings";
 import { setBgEngine } from "../bg/engine";
 import { glStatus, resetGlStatus, SCENE_KEYS, setGlStatus } from "../../gl/meta";
 
-const ROW = "Background render + shape";
+const ROW = "Estilo e forma do fundo";
 
 afterEach(() => {
   cleanup();

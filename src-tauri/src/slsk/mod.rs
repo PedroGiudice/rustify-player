@@ -352,11 +352,16 @@ fn probe_verdict(ext: &str, size: Option<u64>, kbps_est: Option<u32>) -> ScProbe
     ScProbe { ext: e, size, kbps_est, format_label, allowed, reason }
 }
 
-/// Mensagem de erro do SoundCloud para a UI (nunca carrega o token).
+/// Mensagem de erro do SoundCloud para a UI (nunca carrega o token). Código
+/// HTTP e texto de rede/parse ficam no log: o dono não interpreta "HTTP 503".
 fn sc_err(e: ScError) -> String {
+    tracing::warn!("soundcloud: {e}");
     match e {
-        ScError::NoToken => "token do SoundCloud recusado".to_string(),
-        other => other.to_string(),
+        ScError::NoToken => "o SoundCloud recusou a chave de acesso".to_string(),
+        ScError::RateLimited => "o SoundCloud limitou as chamadas; tente em alguns minutos".to_string(),
+        ScError::Http(_) => "o SoundCloud respondeu com erro; tente de novo".to_string(),
+        ScError::Transport(_) => "não consegui falar com o SoundCloud; veja a conexão".to_string(),
+        ScError::Parse(_) => "o SoundCloud mandou uma resposta que o app não entende".to_string(),
     }
 }
 
@@ -766,6 +771,14 @@ mod dedup_parity {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn erro_do_soundcloud_na_tela_sem_codigo_nem_token() {
+        assert_eq!(sc_err(ScError::NoToken), "o SoundCloud recusou a chave de acesso");
+        let http = sc_err(ScError::Http(503));
+        assert!(!http.contains("503") && !http.contains("HTTP"), "{http}");
+        assert!(!sc_err(ScError::Transport("dns".into())).contains("dns"));
+    }
 
     #[test]
     fn sources_status_sem_token_nao_consulta_o_me() {

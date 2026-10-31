@@ -27,6 +27,7 @@ import { playTrack } from "../components/PlayerBar";
 import { startRadioSession, registerSeen } from "../store/radioSession";
 import { plural, relTime } from "../lib/format";
 import { failNotice } from "../lib/failNotice";
+import { activityLabel, moodLabel, queryWordLabel } from "../lib/moodLabels";
 import { RadioExcluded } from "../components/RadioExcluded";
 
 // Lote inicial reduzido (Fase 2 do session-awareness): a station vira fila
@@ -111,7 +112,7 @@ function DeleteStationButton(props: {
       type="button"
       class={`st-card__delete${props.class ? ` ${props.class}` : ""}${armed() ? " is-armed" : ""}`}
       title={armed() ? "Clique de novo para apagar" : "Apagar station"}
-      aria-label={armed() ? `Confirmar exclusao de ${props.station.name}` : `Apagar ${props.station.name}`}
+      aria-label={armed() ? `Confirmar exclusão de ${props.station.name}` : `Apagar ${props.station.name}`}
       onClick={handleDeleteClick}
     >
       <Show
@@ -218,7 +219,7 @@ export function MoodWords(props: { station: Station }) {
   return (
     <Show when={list().length > 0}>
       <ul class="st-feature__words" aria-label="Clima">
-        <For each={list()}>{(w) => <li class="st-feature__word">{w}</li>}</For>
+        <For each={list()}>{(w) => <li class="st-feature__word">{queryWordLabel(w)}</li>}</For>
       </ul>
       <p class="st-feature__caption">nasce destas palavras</p>
     </Show>
@@ -246,7 +247,7 @@ function FeatureCard(props: {
       />
       <div>
         <Show when={props.station.stats.played > 0}>
-          <div class="st-feature__eyebrow">Most played</div>
+          <div class="st-feature__eyebrow">Mais tocada</div>
         </Show>
         <h2 class="st-feature__title">{props.station.name}</h2>
         <Show when={hint()}>
@@ -259,7 +260,7 @@ function FeatureCard(props: {
         >
           {/* @ts-ignore */}
           <iconify-icon icon="lucide:play" noobserver />
-          Play station
+          Tocar station
         </button>
       </div>
       <div class="st-feature__visual">
@@ -323,11 +324,11 @@ export function StationCard(props: {
         <p class="st-card__desc">{desc()}</p>
       </Show>
       <div class="st-card__stats">
-        <span>{props.station.stats.played} played</span>
+        <span>{plural(props.station.stats.played, "reprodução", "reproduções")}</span>
         {/* match_avg é declarado mas nunca escrito pelo backend: sem slot
             vazio enquanto não houver valor. */}
         <Show when={props.station.stats.match_avg != null}>
-          <span>{`${Math.round(props.station.stats.match_avg! * 100)}% match`}</span>
+          <span>{`${Math.round(props.station.stats.match_avg! * 100)}% de semelhança`}</span>
         </Show>
         <span>
           {props.station.stats.last_played_at
@@ -357,7 +358,8 @@ function MoodStationCreator(props: { onCreated: () => void }) {
     setList(list().includes(tag) ? list().filter((t) => t !== tag) : [...list(), tag]);
   }
 
-  const autoName = () => [...selectedMoods(), ...selectedActivities()].join(" · ");
+  const autoName = () =>
+    [...selectedMoods().map(moodLabel), ...selectedActivities().map(activityLabel)].join(" · ");
   const canCreate = () => selectedMoods().length > 0 || selectedActivities().length > 0;
 
   async function handleCreate() {
@@ -395,7 +397,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
   return (
     <div class="st-mood-create">
       <div class="st-mood-create__group">
-        <span class="st-mood-create__label">Mood</span>
+        <span class="st-mood-create__label">Clima</span>
         <div class="st-mood-create__chips">
           <For each={vocab()?.moods ?? []}>
             {(m) => (
@@ -405,14 +407,14 @@ function MoodStationCreator(props: { onCreated: () => void }) {
                 aria-pressed={selectedMoods().includes(m) ? "true" : "false"}
                 onClick={() => toggle(selectedMoods, setSelectedMoods, m)}
               >
-                {m}
+                {moodLabel(m)}
               </button>
             )}
           </For>
         </div>
       </div>
       <div class="st-mood-create__group">
-        <span class="st-mood-create__label">Activity</span>
+        <span class="st-mood-create__label">Atividade</span>
         <div class="st-mood-create__chips">
           <For each={vocab()?.activities ?? []}>
             {(a) => (
@@ -422,7 +424,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
                 aria-pressed={selectedActivities().includes(a) ? "true" : "false"}
                 onClick={() => toggle(selectedActivities, setSelectedActivities, a)}
               >
-                {a}
+                {activityLabel(a)}
               </button>
             )}
           </For>
@@ -436,7 +438,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
           value={genre()}
           onChange={(e) => setGenre(e.currentTarget.value)}
         >
-          <option value="">Qualquer genero</option>
+          <option value="">Qualquer gênero</option>
           <For each={vocab()?.genres ?? []}>
             {(g) => <option value={g}>{g}</option>}
           </For>
@@ -457,7 +459,7 @@ function MoodStationCreator(props: { onCreated: () => void }) {
           disabled={!canCreate()}
           onClick={handleCreate}
         >
-          Criar mood station
+          Criar station por clima
         </button>
       </div>
     </div>
@@ -531,7 +533,7 @@ export default function Stations() {
     if (!current) return;
     try {
       await libCreateStation({
-        name: `${current.title} radio`,
+        name: `Rádio de ${current.title}`,
         kind: "seed",
         seedTrackIds: [current.id],
         icon: "lucide:radio",
@@ -561,7 +563,7 @@ export default function Stations() {
           <Show when={stations.latest} fallback={<span>—</span>}>
             {(list) => (
               <span>
-                <b>{list().length}</b> stations
+                <b>{list().length}</b> {list().length === 1 ? "station" : "stations"}
               </span>
             )}
           </Show>
@@ -656,14 +658,14 @@ export default function Stations() {
         {/* ── Grid de stations ────────────────────────── */}
         <section>
           <div class="section__head">
-            <h2 class="section__title">All stations</h2>
+            <h2 class="section__title">Todas as stations</h2>
             <div style={{ display: "flex", gap: "16px" }}>
               <button
                 type="button"
                 class="section__action"
                 onClick={handleNewFromCurrent}
               >
-                New from current track →
+                Nova a partir da faixa atual
               </button>
               <button
                 type="button"
@@ -671,7 +673,7 @@ export default function Stations() {
                 aria-expanded={moodPanelOpen() ? "true" : "false"}
                 onClick={() => setMoodPanelOpen((v) => !v)}
               >
-                {moodPanelOpen() ? "Fechar" : "Nova mood station"} →
+                {moodPanelOpen() ? "Fechar" : "Nova station por clima"}
               </button>
             </div>
           </div>

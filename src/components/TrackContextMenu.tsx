@@ -228,18 +228,18 @@ export function TrackContextMenu() {
             <Show when={multi()} fallback={
               <>
             <button class="track-ctx-menu__item" type="button" onClick={doPlay} role="menuitem" tabIndex={-1}>
-              <Icon name={ICONS.play} size={14} /><span>Play</span>
+              <Icon name={ICONS.play} size={14} /><span>Tocar</span>
             </button>
             <Show when={(st().list?.length ?? 0) > 1}>
               <button class="track-ctx-menu__item" type="button" onClick={doShuffle} role="menuitem" tabIndex={-1}>
-                <Icon name={ICONS.shuffle} size={14} /><span>Shuffle</span>
+                <Icon name={ICONS.shuffle} size={14} /><span>Aleatório</span>
               </button>
             </Show>
             <button class="track-ctx-menu__item" type="button" onClick={doPlayNext} role="menuitem" tabIndex={-1}>
-              <Icon name={ICONS.next} size={14} /><span>Play Next</span>
+              <Icon name={ICONS.next} size={14} /><span>Tocar a seguir</span>
             </button>
             <button class="track-ctx-menu__item" type="button" onClick={doAddQueue} role="menuitem" tabIndex={-1}>
-              <Icon name={ICONS.queue} size={14} /><span>Add to Queue</span>
+              <Icon name={ICONS.queue} size={14} /><span>Adicionar à fila</span>
             </button>
 
             <div class="track-ctx-menu__sep" />
@@ -247,7 +247,7 @@ export function TrackContextMenu() {
               <span class="track-ctx-menu__icon" data-liked={liked() ? "true" : "false"}>
                 <Icon name={liked() ? ICONS.heartFilled : ICONS.heart} size={14} />
               </span>
-              <span>{liked() ? "Unlike" : "Like"}</span>
+              <span>{liked() ? "Descurtir" : "Curtir"}</span>
             </button>
 
             <button class="track-ctx-menu__item" type="button" onClick={doMove} role="menuitem" tabIndex={-1}>
@@ -271,12 +271,12 @@ export function TrackContextMenu() {
             </Show>
             <Show when={st().track.album_title}>
               <button class="track-ctx-menu__item" type="button" onClick={goAlbum} role="menuitem" tabIndex={-1}>
-                <Icon name={ICONS.albums} size={14} /><span>Go to Album</span>
+                <Icon name={ICONS.albums} size={14} /><span>Ir para o álbum</span>
               </button>
             </Show>
             <Show when={st().track.artist_name}>
               <button class="track-ctx-menu__item" type="button" onClick={goArtist} role="menuitem" tabIndex={-1}>
-                <Icon name={ICONS.artists} size={14} /><span>Go to Artist</span>
+                <Icon name={ICONS.artists} size={14} /><span>Ir para o artista</span>
               </button>
             </Show>
               </>

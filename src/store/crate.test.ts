@@ -209,10 +209,10 @@ describe("Tidal no store (A17)", () => {
     vi.mocked(ipc.crateTidalJobs).mockResolvedValue({ jobs: [tjob("a", "fila")], pastas: [] });
     await bootCrateStore();
     await refreshTidal();
-    vi.mocked(ipc.crateTidalJobs).mockRejectedValue("A fila da Tidal na VM não respondeu.");
+    vi.mocked(ipc.crateTidalJobs).mockRejectedValue("Não consegui falar com a fila de downloads da Tidal.");
     await refreshTidal();
     expect(tidal.load).toBe("error");
-    expect(tidal.loadError).toBe("A fila da Tidal na VM não respondeu.");
+    expect(tidal.loadError).toBe("Não consegui falar com a fila de downloads da Tidal.");
     expect(tidal.jobs.map((j) => j.id)).toEqual(["a"]);
   });
 });

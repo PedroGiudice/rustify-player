@@ -62,6 +62,7 @@ export default function Library() {
   const countOf = (r: Loaded<unknown[]> | undefined) =>
     r === undefined ? undefined : r.ok ? fmtN(r.data.length) : "—";
   const albumsCount = () => countOf(peek(albumRes));
+  const albumsN = () => { const r = peek(albumRes); return r?.ok ? r.data.length : undefined; };
   const artistsCount = () => countOf(peek(artistRes));
   const tabCount = (t: Tab): string | undefined => {
     switch (t) {
@@ -77,13 +78,13 @@ export default function Library() {
     <article class="view">
       <header class="view__head">
         <div>
-          <h1>Library</h1>
+          <h1>Biblioteca</h1>
           <p class="view__head-hint">
             <Show when={meta()} fallback="…">
               {(m) => (
                 <>
-                  {albumsCount() ?? "…"} albums · {snap() ? fmtN(snap()!.tracks_total) : "—"} tracks ·{" "}
-                  {m().genres.length} playlists
+                  {albumsCount() ?? "…"} {albumsN() === 1 ? "álbum" : "álbuns"} · {snap() ? fmtN(snap()!.tracks_total) : "—"}{" "}
+                  {snap()?.tracks_total === 1 ? "faixa" : "faixas"} · {plural(m().genres.length, "playlist", "playlists")}
                 </>
               )}
             </Show>
@@ -92,8 +93,8 @@ export default function Library() {
         <Show when={snap()}>
           {(s) => (
             <div class="view__stats">
-              <span><b>{fmtInt(s().embeddings_done)}</b> embedded</span>
-              <span><b>{fmtInt(s().tracks_total - s().embeddings_done)}</b> pending</span>
+              <span title="Vetor = o que o rádio usa para achar faixas parecidas"><b>{fmtInt(s().embeddings_done)}</b> com vetor</span>
+              <span title="Vetor = o que o rádio usa para achar faixas parecidas"><b>{fmtInt(s().tracks_total - s().embeddings_done)}</b> sem vetor</span>
             </div>
           )}
         </Show>

@@ -73,7 +73,7 @@ describe("sync do celular na Biblioteca (B14)", () => {
     ]);
     const { findByText, container } = render(() => <Settings />);
     expect(await findByText("S24: último sync há 12 min")).toBeTruthy();
-    expect(container.textContent).toContain("34 plays, 2 curtidas");
+    expect(container.textContent).toContain("34 escutas, 2 curtidas");
     expect(container.querySelector(".set-sync")!.hasAttribute("data-stale")).toBe(false);
   });
 
@@ -101,7 +101,7 @@ describe("sync do celular na Biblioteca (B14)", () => {
 describe("Settings view", () => {
   it("renderiza heading", () => {
     const { getByText } = render(() => <Settings />);
-    expect(getByText("Settings")).toBeTruthy();
+    expect(getByText("Configurações")).toBeTruthy();
   });
 
   // B20 (31/10): Settings só com o que é dela; o texto técnico vai para
@@ -152,7 +152,7 @@ describe("Settings view", () => {
   // A31: o interruptor é um switch com nome (o rótulo visível da linha).
   it("Retomar ao abrir é um switch com nome e grava a preferência lida no boot", () => {
     const { getByRole } = render(() => <Settings />);
-    const sw = getByRole("switch", { name: "Retomar ao abrir" });
+    const sw = getByRole("switch", { name: "Continuar de onde parou ao abrir" });
     expect(resumeOnLaunch()).toBe(true);
     expect(sw.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(sw);
@@ -191,7 +191,7 @@ describe("Settings view", () => {
     const labels = Array.from(items).map((i) =>
       (i.querySelector(".set-about-item__label")?.textContent ?? "").toLowerCase()
     );
-    expect(labels).toEqual(["version", "tauri", "backend", "identifier", "license"]);
+    expect(labels).toEqual(["versão", "tauri", "base", "identificador", "licença"]);
   });
 
   // cfg-2: placeholders do mockup exibidos como fato.
@@ -228,16 +228,16 @@ describe("Settings view", () => {
         Array.from(container.querySelectorAll(".set-about-item")).find(
           (i) => (i.querySelector(".set-about-item__label")?.textContent ?? "").toLowerCase() === label,
         )!.querySelector(".set-about-item__value")!.textContent;
-      expect(value("backend")).not.toMatch(/cpal/i);
-      expect(value("license")).toBe("MIT");
+      expect(value("base")).not.toMatch(/cpal/i);
+      expect(value("licença")).toBe("MIT");
     });
   });
 
   it("Update flow: botao Check for updates dispara checkForUpdate", async () => {
     const { container } = render(() => <Settings />);
-    // Procura BUTTON cujo textContent == "Check for updates"
+    // Procura BUTTON cujo textContent == "Verificar atualizações"
     const allBtns = Array.from(container.querySelectorAll("button"));
-    const checkBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Check for updates");
+    const checkBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Verificar atualizações");
     expect(checkBtn).toBeTruthy();
     fireEvent.click(checkBtn as HTMLElement);
     expect(ipc.checkForUpdate).toHaveBeenCalled();
@@ -291,7 +291,7 @@ describe("Settings view", () => {
     const r = render(() => <Settings />);
     const select = (await r.findByRole("combobox")) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "t.yaml" } });
-    await r.findByText("Contraste WCAG", { exact: false });
+    await r.findByText("Contraste (WCAG)", { exact: false });
     return r;
   }
 
@@ -302,8 +302,8 @@ describe("Settings view", () => {
       { pair: "par-fail",  ratio: 2.1, pass_aa: false, pass_aaa: false },
     ]);
     expect((await findByText("AAA")).className).toContain("status-pill--ok");
-    expect((await findByText("AA-large")).className).toContain("status-pill--warn");
-    expect((await findByText("fail")).className).toContain("status-pill--err");
+    expect((await findByText("AA texto grande")).className).toContain("status-pill--warn");
+    expect((await findByText("falha")).className).toContain("status-pill--err");
   });
 
   it("contador de falhas não soma AA-large; AA-large tem contagem própria", async () => {
@@ -311,7 +311,7 @@ describe("Settings view", () => {
       { pair: "par-large", ratio: 3.5, pass_aa: false, pass_aaa: false },
     ]);
     expect(queryByText(/falha/)).toBeNull();
-    expect((await findByText("1 só AA-large")).className).toContain("status-pill--warn");
+    expect((await findByText("1 só em texto grande")).className).toContain("status-pill--warn");
   });
 
   it("falha real (< 3:1) aparece no contador com a classe de erro", async () => {
@@ -328,12 +328,12 @@ describe("Settings view", () => {
     vi.mocked(ipc.listThemes).mockResolvedValue([
       { filename: "quebrado.yaml", name: "Quebrado", author: "CI" },
     ] as any);
-    vi.mocked(ipc.applyThemeByName).mockRejectedValueOnce("Invalid YAML: mapping values are not allowed");
+    vi.mocked(ipc.applyThemeByName).mockRejectedValueOnce("O tema x.yaml tem um erro de YAML na linha 3.");
     const { findByRole } = render(() => <Settings />);
     const select = (await findByRole("combobox")) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "quebrado.yaml" } });
     const alert = await findByRole("alert");
-    expect(alert.textContent).toContain("Invalid YAML");
+    expect(alert.textContent).toContain("erro de YAML na linha 3");
     expect(select.value).toBe("");
     expect(ipc.watchTheme).not.toHaveBeenCalled();
   });
@@ -400,7 +400,7 @@ describe("Settings view", () => {
     const select = (await findByRole("combobox")) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "t.yaml" } });
 
-    expect(await findByText(/AA = 4\.5:1/)).toBeTruthy();
+    expect(await findByText(/AA = 4,5:1/)).toBeTruthy();
   });
 
   // ── Tier 0: controles removidos NAO devem existir ────────────
@@ -423,7 +423,7 @@ describe("Settings view", () => {
       const { container } = render(() => <Settings />);
       // A row de Embeddings ainda existe como stat read-only
       const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
-      const embedLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("embeddings"));
+      const embedLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("vetores"));
       expect(embedLabel).toBeTruthy();
       // Mas o botao "Generate missing" nao existe
       const allBtns = Array.from(container.querySelectorAll("button"));
@@ -475,7 +475,7 @@ describe("Settings view", () => {
       );
       expect(rescanBtn).toBeTruthy();
       const allBtns = Array.from(container.querySelectorAll("button"));
-      const checkBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Check for updates");
+      const checkBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Verificar atualizações");
       expect(checkBtn).toBeTruthy();
     });
   });

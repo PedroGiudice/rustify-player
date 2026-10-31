@@ -32,7 +32,7 @@ export function syncLine(d: DeviceSync, now: number = Date.now()): string {
 export function syncDetail(d: DeviceSync): string {
   const parts: string[] = [];
   if (d.plays > 0 || d.likes > 0) {
-    parts.push(`${d.plays === 1 ? "1 play" : `${d.plays} plays`}, ${d.likes === 1 ? "1 curtida" : `${d.likes} curtidas`}`);
+    parts.push(`${d.plays === 1 ? "1 escuta" : `${d.plays} escutas`}, ${d.likes === 1 ? "1 curtida" : `${d.likes} curtidas`}`);
   } else if (d.accepted > 0) {
     parts.push(d.accepted === 1 ? "1 evento" : `${d.accepted} eventos`);
   } else {

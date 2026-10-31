@@ -139,20 +139,26 @@ const BACKEND_ERRORS: Record<string, string> = {
     slskd devolve o estado cru da transferência ("Completed, Errored"); o
     texto cru continua no title da linha, para diagnóstico. */
 const FAIL_REASONS: Record<string, string> = {
-  "Completed, Errored": "o peer interrompeu a transferência",
-  "Completed, TimedOut": "o peer não respondeu",
-  "Completed, Rejected": "o peer recusou o pedido",
-  "Completed, Cancelled": "o peer cancelou a transferência",
-  "Completed, Aborted": "o peer cancelou a transferência",
-  "slskd inalcancavel": "o slskd não respondeu",
-  "transfer sumiu do slskd": "a transferência sumiu do slskd",
+  "Completed, Errored": "a origem interrompeu a transferência",
+  "Completed, TimedOut": "a origem não respondeu a tempo",
+  "Completed, Rejected": "a origem recusou o pedido",
+  "Completed, Cancelled": "a origem cancelou a transferência",
+  "Completed, Aborted": "a origem cancelou a transferência",
+  // As duas grafias: jobs gravados antes do acento (31/10) seguem no board.
+  "slskd inalcancavel": "o Soulseek local não respondeu",
+  "slskd inalcançável": "o Soulseek local não respondeu",
+  "transfer sumiu do slskd": "o download sumiu do Soulseek local",
+  "a transferência sumiu do slskd": "o download sumiu do Soulseek local",
+  "token do SoundCloud recusado": "o SoundCloud recusou a chave de acesso",
   "transfer com erro apos reinicio": "a transferência falhou enquanto o app estava fechado",
+  "transfer com erro após reinício": "a transferência falhou enquanto o app estava fechado",
+  "Qdrant indisponível para checagem de dedup": "não consegui conferir se a faixa já está no acervo; tente de novo daqui a pouco",
 };
 
 export function failReasonText(raw: string): { text: string; raw: string | null } {
   const known = FAIL_REASONS[raw.trim()];
   if (known) return { text: known, raw };
-  if (/^Completed,/.test(raw)) return { text: "a transferência falhou no slskd", raw };
+  if (/^Completed,/.test(raw)) return { text: "a transferência falhou no Soulseek local", raw };
   return { text: raw, raw: null };
 }
 
@@ -216,7 +222,7 @@ function khz(hz: number): string {
 }
 
 function rejectReasonText(reason: RejectReason): string {
-  if (isAlreadyOwnedReason(reason)) return "você já tinha esta faixa; o arquivo ficou em downloads";
+  if (isAlreadyOwnedReason(reason)) return "você já tem esta faixa no acervo; o arquivo baixado ficou em downloads";
   if (typeof reason === "object" && reason !== null && "lossy_format" in reason) {
     return `${reason.lossy_format.format} não entra: só lossless`;
   }
@@ -332,15 +338,15 @@ export type SourceIssue = { key: "rede" | "soundcloud" | "conversor"; label: str
 export function sourceIssuesOf(net: SlskStatus | null, st: SourcesStatus | null): SourceIssue[] {
   const out: SourceIssue[] = [];
   if (net && !net.network_connected) {
-    out.push({ key: "rede", label: "Soulseek fora da rede", tone: "rose", detail: "O slskd não está conectado à rede Soulseek: a busca não devolve nada." });
+    out.push({ key: "rede", label: "Soulseek fora da rede", tone: "rose", detail: "O Soulseek local não está conectado à rede: a busca não devolve nada." });
   }
   if (st?.soundcloud === "no_token") {
-    out.push({ key: "soundcloud", label: "SoundCloud sem token", tone: "amber", detail: "Sem o token do SoundCloud só o stream transcodificado aparece; o original não baixa." });
+    out.push({ key: "soundcloud", label: "SoundCloud sem chave de acesso", tone: "amber", detail: "Sem a chave de acesso do SoundCloud só aparece a versão comprimida; o original não baixa." });
   } else if (st?.soundcloud === "api_down") {
     out.push({ key: "soundcloud", label: "SoundCloud fora do ar", tone: "rose", detail: "A API do SoundCloud não respondeu." });
   }
   if (st && !st.ffmpeg) {
-    out.push({ key: "conversor", label: "conversor ausente", tone: "amber", detail: "ffmpeg não encontrado: o original do SoundCloud não vira FLAC." });
+    out.push({ key: "conversor", label: "conversor ausente", tone: "amber", detail: "Falta o conversor de áudio (ffmpeg): o original do SoundCloud não vira FLAC." });
   }
   return out;
 }
@@ -348,9 +354,9 @@ export function sourceIssuesOf(net: SlskStatus | null, st: SourcesStatus | null)
 /** Detalhe de todas as fontes, para o title do grupo. */
 export function sourcesDetailOf(net: SlskStatus | null, st: SourcesStatus | null): string {
   const rede = net ? (net.network_connected ? "conectado" : "fora da rede") : "verificando";
-  const sc = !st ? "verificando" : st.soundcloud === "token_ok" ? "token ok" : st.soundcloud === "no_token" ? "sem token" : "fora do ar";
+  const sc = !st ? "verificando" : st.soundcloud === "token_ok" ? "conectado" : st.soundcloud === "no_token" ? "sem chave de acesso" : "fora do ar";
   const conv = !st ? "verificando" : st.ffmpeg ? "pronto" : "ausente";
-  return `Soulseek: ${rede} · SoundCloud: ${sc} · Conversor (ffmpeg): ${conv}`;
+  return `Soulseek ${rede} · SoundCloud ${sc} · Conversor ${conv}`;
 }
 
 /** Veredito do portão espectral da faixa pronta, lido do acervo (o ingest grava
@@ -379,7 +385,7 @@ function ReadyVerdict(props: { trackId: string }): JSX.Element {
   });
   return (
     <Show when={text()}>
-      {(t) => <span class="crate-st-txt--ready" title="Medido no conteúdo pelo portão espectral: não é MP3 disfarçado.">{t()}</span>}
+      {(t) => <span class="crate-st-txt--ready" title="Medido pela análise do som: não é MP3 disfarçado.">{t()}</span>}
     </Show>
   );
 }
@@ -485,9 +491,9 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
             return (
               <>
                 <Show when={pos != null}>
-                  <span class="crate-st-mono crate-st-dim">fila do peer: {pos}</span>
+                  <span class="crate-st-mono crate-st-dim">fila da origem: {pos}</span>
                 </Show>
-                <span class="crate-st-dim">sem estimativa — o peer decide a ordem</span>
+                <span class="crate-st-dim">sem estimativa: a origem decide a ordem</span>
               </>
             );
           })()}
@@ -633,7 +639,7 @@ function SourcesPanel(props: {
   return (
     <div class="crate-sources">
       <div class="crate-src-head">
-        <div>Peer</div><div>Qualidade</div><div>Tamanho</div><div>Fila</div><div>Velocidade</div><div />
+        <div>Origem</div><div>Qualidade</div><div>Tamanho</div><div>Fila</div><div>Velocidade</div><div />
       </div>
       <For each={order()}>
         {(id) => (
@@ -1239,13 +1245,13 @@ function ConfirmCard(props: {
         <div class="crate-fmt" data-tone={fmtTone()}>
           <Show when={!props.c.probe && !props.c.probeErr}>sondando formato…</Show>
           <Show when={props.c.probeErr === "no_token"}>
-            sem token do SoundCloud
+            sem chave de acesso do SoundCloud
             <button type="button" class="crate-fmt__link" onClick={props.onShowStatus}>
               ver status das fontes
             </button>
           </Show>
           <Show when={props.c.probeErr && props.c.probeErr !== "no_token"}>
-            não deu pra sondar o formato: {props.c.probeErr}
+            não consegui ler o formato: {props.c.probeErr}
           </Show>
           <Show when={props.c.probe}>
             {(p) => (
@@ -1602,7 +1608,7 @@ export default function Crate(props: { param?: string | null }) {
       if (seq === cardSeq) closeCard();
     } catch (e) {
       console.error("[crate] crateDownload falhou:", e);
-      setNotice(`Não deu pra baixar "${title}": ${errorText(e)}.`);
+      setNotice(`Não consegui baixar "${title}": ${errorText(e)}.`);
       if (seq === cardSeq) setCardSubmitting(false);
     }
   }
@@ -1626,7 +1632,7 @@ export default function Crate(props: { param?: string | null }) {
     try {
       await crateTidalResend(j.id);
     } catch (e) {
-      setNotice(`Não deu pra reenviar "${j.titulo || "Seleção"}": ${errorText(e)}`);
+      setNotice(`Não consegui reenviar "${j.titulo || "Seleção"}": ${errorText(e)}`);
     }
     void refreshTidal();
   }
@@ -1636,7 +1642,7 @@ export default function Crate(props: { param?: string | null }) {
     try {
       await slskClearFinished();
     } catch (e) {
-      setNotice(`Não deu pra limpar as terminadas: ${errorText(e)}.`);
+      setNotice(`Não consegui limpar as terminadas: ${errorText(e)}.`);
     }
   }
 
@@ -1747,9 +1753,9 @@ export default function Crate(props: { param?: string | null }) {
       else if (parsed.kind === "busy") {
         setNotice("Limite de 40 buscas por hora atingido. Espere alguns minutos antes de buscar de novo.");
       } else if (parsed.kind === "offline") {
-        setNotice("O slskd não está respondendo. Confira se ele está rodando.");
+        setNotice("O Soulseek local não está respondendo. Confira se o slskd está rodando.");
       } else {
-        setNotice(`Não deu pra buscar: ${errorText(e)}.`);
+        setNotice(`Não consegui buscar: ${errorText(e)}.`);
       }
     } finally {
       if (seq === searchSeq) setPending(false);
@@ -1766,7 +1772,7 @@ export default function Crate(props: { param?: string | null }) {
       saveLastDest(dest);
     } catch (e) {
       console.error("[crate] slskDownload falhou:", e);
-      setNotice(`Não deu pra baixar "${g.display_title}": ${errorText(e)}.`);
+      setNotice(`Não consegui baixar "${g.display_title}": ${errorText(e)}.`);
     }
   }
 
@@ -1776,7 +1782,7 @@ export default function Crate(props: { param?: string | null }) {
       await slskCancel(jobId);
     } catch (e) {
       console.error("[crate] slskCancel falhou:", e);
-      setNotice(`Não deu pra cancelar o download: ${errorText(e)}.`);
+      setNotice(`Não consegui cancelar o download: ${errorText(e)}.`);
     }
   }
 
@@ -1788,7 +1794,7 @@ export default function Crate(props: { param?: string | null }) {
       await crateDownload(job.source, job.meta, job.dest_playlist, job.artwork_url);
     } catch (e) {
       console.error("[crate] crateDownload (tentar de novo) falhou:", e);
-      setNotice(`Não deu pra tentar de novo "${job.display}": ${errorText(e)}.`);
+      setNotice(`Não consegui tentar de novo "${job.display}": ${errorText(e)}.`);
     }
   }
 
@@ -1798,7 +1804,7 @@ export default function Crate(props: { param?: string | null }) {
       await slskTryOtherSource(jobId);
     } catch (e) {
       console.error("[crate] slskTryOtherSource falhou:", e);
-      setNotice(`Não deu pra trocar a fonte: ${errorText(e)}.`);
+      setNotice(`Não consegui trocar a fonte: ${errorText(e)}.`);
     }
   }
 
@@ -2097,7 +2103,7 @@ export default function Crate(props: { param?: string | null }) {
             <FolderPicker
               variant="toolbar"
               value={destOverride()}
-              placeholder="destino padrão"
+              placeholder="pasta padrão"
               open={openDest() === TOOLBAR_DEST}
               folders={folderNames()}
               onToggle={() => setOpenDest((k) => (k === TOOLBAR_DEST ? null : TOOLBAR_DEST))}
@@ -2337,7 +2343,7 @@ export default function Crate(props: { param?: string | null }) {
             <div class="crate-banners">
               <div class="crate-banner" data-tone="rose" role="alert" title="Endereço da fila e motivo no log do app">
                 <Icon name={ICONS.alert} size={15} />
-                <p>{tidal.loadError ?? "A fila da Tidal na VM não respondeu."} Os downloads da Tidal abaixo podem estar desatualizados.</p>
+                <p>{tidal.loadError ?? "Não consegui falar com a fila de downloads da Tidal."} Os downloads da Tidal abaixo podem estar desatualizados.</p>
                 <span class="crate-banner__sp" />
                 <button type="button" class="crate-banner__act" onClick={() => void refreshTidal()}>Tentar de novo</button>
               </div>
