@@ -170,20 +170,107 @@ describe("TidalTab", () => {
     );
   });
 
-  it("prévia com mais de 200 faixas: padrão marca 200, 'Marcar todas' trava o Baixar e avisa", async () => {
+  it("prévia com mais de 200 faixas: marca todas e divide em pedidos de até 200 (B27)", async () => {
     await abrePrevia(Array.from({ length: 250 }, (_, i) => faixa(i + 1, `Faixa ${i + 1}`)));
-    await waitFor(() => expect(screen.getByText("200 de 250")).toBeTruthy());
-    expect(screen.getByText(/marcadas as 200 primeiras novas/)).toBeTruthy();
-    const baixar = () => screen.getByRole("button", { name: /Baixar/ }) as HTMLButtonElement;
-    expect(baixar().disabled).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Marcar todas" }));
-    expect(screen.getByText("250 de 250")).toBeTruthy();
-    expect(screen.getByText("máx. 200 por vez")).toBeTruthy();
-    expect(baixar().disabled).toBe(true);
-    fireEvent.click(baixar());
-    expect(mocks.crateTidalEnqueueSelection).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Só as novas" }));
-    expect(baixar().disabled).toBe(false);
+    await waitFor(() => expect(screen.getByText("250 de 250")).toBeTruthy());
+    expect(screen.getByText(/vai em 2 pedidos/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Baixar 250/ }));
+    await waitFor(() => expect(mocks.crateTidalEnqueueSelection).toHaveBeenCalledTimes(2));
+    const [a, b] = mocks.crateTidalEnqueueSelection.mock.calls;
+    expect(a[0]).toEqual(Array.from({ length: 200 }, (_, i) => i + 1));
+    expect(a.slice(1)).toEqual(["Rádio de Mitsubishi (parte 1 de 2)", "radio-faixa:1", "Rap & Hip-Hop"]);
+    expect(b[0]).toEqual(Array.from({ length: 50 }, (_, i) => i + 201));
+    expect(b[1]).toBe("Rádio de Mitsubishi (parte 2 de 2)");
+    // Tudo foi: a prévia fecha e o aviso conta as faixas e os pedidos.
+    await waitFor(() => expect(document.querySelector(".tdl-row--pick")).toBeNull());
+    expect(screen.getByText(/250 faixas de "Rádio de Mitsubishi" foram para a fila em 2 pedidos/)).toBeTruthy();
+  });
+
+  it("lote dividido que falha no meio: o que foi sai da seleção, o resto fica marcado (B27)", async () => {
+    mocks.crateTidalEnqueueSelection
+      .mockResolvedValueOnce("job-1")
+      .mockRejectedValueOnce("fila indisponível");
+    await abrePrevia(Array.from({ length: 250 }, (_, i) => faixa(i + 1, `Faixa ${i + 1}`)));
+    await waitFor(() => expect(screen.getByText("250 de 250")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Baixar 250/ }));
+    await waitFor(() => expect(document.querySelector(".tdl-foot [role=alert]")?.textContent).toContain("1 de 2 pedidos"));
+    expect(document.querySelector(".tdl-foot [role=alert]")!.textContent).toContain("fila indisponível");
+    expect(screen.getByText("50 de 250")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Baixar 50/ })).toBeTruthy();
+  });
+
+  it("Shift+clique marca ou desmarca o intervalo inteiro (B27)", async () => {
+    await abrePrevia([1, 2, 3, 4, 5].map((i) => faixa(i, `F${i}`)));
+    await waitFor(() => expect(screen.getByText("5 de 5")).toBeTruthy());
+    const boxes = () => [...document.querySelectorAll<HTMLInputElement>(".tdl-row--pick input[type=checkbox]")];
+    fireEvent.click(boxes()[1]); // desmarca F2: âncora
+    fireEvent.click(boxes()[3], { shiftKey: true }); // F4 desmarca, e F3 junto
+    expect(boxes().map((b) => b.checked)).toEqual([true, false, false, false, true]);
+    expect(screen.getByText("2 de 5")).toBeTruthy();
+    fireEvent.click(boxes()[4], { shiftKey: true }); // F5 desmarca a partir da âncora F4
+    expect(boxes().map((b) => b.checked)).toEqual([true, false, false, false, false]);
+  });
+
+  it("arrastar pela coluna das caixas pinta a seleção com o estado da primeira (B27)", async () => {
+    await abrePrevia([1, 2, 3, 4, 5].map((i) => faixa(i, `F${i}`)));
+    await waitFor(() => expect(screen.getByText("5 de 5")).toBeTruthy());
+    const rows = () => [...document.querySelectorAll<HTMLElement>(".tdl-row--pick")];
+    const boxes = () => [...document.querySelectorAll<HTMLInputElement>(".tdl-row--pick input[type=checkbox]")];
+    fireEvent.pointerDown(rows()[1].querySelector(".tdl-pick")!, { button: 0, buttons: 1 });
+    fireEvent.pointerEnter(rows()[2], { buttons: 1 });
+    fireEvent.pointerEnter(rows()[4], { buttons: 1 }); // pulou a 4 no movimento rápido: entra também
+    fireEvent.pointerUp(window);
+    expect(boxes().map((b) => b.checked)).toEqual([true, false, false, false, false]);
+    // Sem botão apertado, passar por cima não pinta.
+    fireEvent.pointerEnter(rows()[0], { buttons: 0 });
+    expect(boxes()[0].checked).toBe(true);
+  });
+
+  it("prévia de álbum: capa em cartaz no cabeçalho, linhas com número em vez da capa repetida (B27)", async () => {
+    const alb = { ...album(9, "Celebridade"), tipo: "album", capa: "https://resources.tidal.com/images/x/320x320.jpg" };
+    mocks.crateTidalSearch.mockResolvedValue({ ...busca("orochi", []), albuns: [alb] });
+    mocks.crateTidalPreview.mockResolvedValue({
+      tipo: "album", titulo: "Orochi - Celebridade", ref: "album:9", duracao_s: 360,
+      faixas: [faixa(1, "Um"), faixa(2, "Dois")],
+    });
+    renderTab();
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    await waitFor(() => expect(screen.getByText("Celebridade")).toBeTruthy());
+    fireEvent.click(screen.getByText("Celebridade"));
+    await waitFor(() => expect(document.querySelector(".tdl-row--pick")).toBeTruthy());
+    const head = document.querySelector(".tdl-page--preview .tdl-head")!;
+    expect(head.querySelector('.tdl-cover[data-size="lg"]')).toBeTruthy();
+    expect(mocks.crateTidalCover).toHaveBeenCalledWith(alb.capa);
+    expect(document.querySelector(".tdl-row--pick .tdl-cover")).toBeNull();
+    expect([...document.querySelectorAll(".tdl-row--pick .tdl-pos")].map((e) => e.textContent)).toEqual(["1", "2"]);
+  });
+
+  it("página do artista abre com a foto em cartaz (B27)", async () => {
+    mocks.crateTidalSearch.mockResolvedValue({
+      ...busca("orochi", []), artistas: [{ id: 5, nome: "Orochi", foto: "https://resources.tidal.com/images/f/320x320.jpg", url: "u" }],
+    });
+    mocks.crateTidalArtist.mockResolvedValue({
+      id: 5, nome: "Orochi", foto: "https://resources.tidal.com/images/f/320x320.jpg", url: "u",
+      populares: [faixa(1, "Mitsubishi")], albuns: [], eps_singles: [], radio: null,
+    });
+    renderTab();
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    await waitFor(() => expect(screen.getByText("Artista")).toBeTruthy());
+    fireEvent.click(screen.getByText("Artista"));
+    await waitFor(() => expect(screen.getByText("Mitsubishi")).toBeTruthy());
+    const cover = document.querySelector('.tdl-head .tdl-cover[data-size="lg"]')!;
+    expect(cover.getAttribute("data-round")).toBe("true");
+  });
+
+  it("campo, botão e pasta na ordem da aba Buscar (A36)", () => {
+    renderTab();
+    const row = document.querySelector(".crate-tidal-form__row")!;
+    const kinds = [...row.children].map((el) =>
+      el.classList.contains("tdl-field") ? "campo" : el.matches("button[type=submit]") ? "botão" : el.classList.contains("crate-dest") ? "pasta" : el.className,
+    );
+    expect(kinds).toEqual(["campo", "botão", "pasta"]);
   });
 
   it("erro do enfileiramento da seleção aparece dentro do rodapé", async () => {

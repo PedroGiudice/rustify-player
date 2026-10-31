@@ -166,11 +166,12 @@ export function findOwned(t: Pick<TidalTrack, "titulo" | "artistas">, idx: Owned
 /** Teto do pedido (o mesmo `MAX_FAIXAS` da fila e `MAX_TRACK_IDS` do Rust). */
 export const MAX_SELECTION = 200;
 
-/** Padrão: as primeiras `max` faixas que não estão no acervo, na ordem da lista. */
+/** Padrão: as faixas que não estão no acervo, na ordem da lista. Sem teto
+    desde o B27 (31/10): acima de 200 a tela divide em vários pedidos. */
 export function defaultSelection(
   tracks: Pick<TidalTrack, "id">[],
   owned: (id: number) => boolean,
-  max: number = MAX_SELECTION,
+  max: number = Infinity,
 ): Set<number> {
   return new Set(tracks.filter((t) => !owned(t.id)).slice(0, max).map((t) => t.id));
 }
@@ -178,6 +179,31 @@ export function defaultSelection(
 /** Ids marcados na ordem da lista (a fila baixa nessa ordem). */
 export function orderedSelection(tracks: Pick<TidalTrack, "id">[], sel: Set<number>): number[] {
   return tracks.filter((t) => sel.has(t.id)).map((t) => t.id);
+}
+
+/** Mais de 200 marcadas (B27): a tela divide em pedidos de até `max`, na
+    ordem da lista. O teto de 200 por pedido continua valendo no Rust e na
+    fila; o contrato da fila não muda. */
+export function chunkIds(ids: number[], max: number = MAX_SELECTION): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < ids.length; i += max) out.push(ids.slice(i, i + max));
+  return out;
+}
+
+/** Título de cada pedido de um lote dividido: "X (parte 2 de 3)"; sozinho, "X". */
+export function partTitle(titulo: string, i: number, n: number): string {
+  return n > 1 ? `${titulo} (parte ${i + 1} de ${n})` : titulo;
+}
+
+/** Shift+clique (B27): ids entre a âncora e a clicada, inclusive, na ordem da
+    lista. Âncora fora da lista = só a clicada. */
+export function rangeIds(tracks: Pick<TidalTrack, "id">[], anchor: number, to: number): number[] {
+  const a = tracks.findIndex((t) => t.id === anchor);
+  const b = tracks.findIndex((t) => t.id === to);
+  if (b < 0) return [];
+  if (a < 0) return [to];
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  return tracks.slice(lo, hi + 1).map((t) => t.id);
 }
 
 // ── resposta atrasada ─────────────────────────────────────────────

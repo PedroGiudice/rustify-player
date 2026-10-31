@@ -5706,10 +5706,17 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 
 .tdl-sec { display: flex; flex-direction: column; gap: 6px; }
 .tdl-sec + .tdl-sec { margin-top: 10px; }
+/* Título de seção na receita de rótulo do Crate (A36): o mesmo das seções
+   do Buscar e da Fila. O texto fica em caixa de sentença no código; a caixa
+   alta é do CSS. */
 .tdl-sec__h {
   display: flex; align-items: baseline; gap: 8px;
-  margin: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-1);
+  margin: 0;
+  font-size: var(--fs-label); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-5);
 }
+.tdl-sec__n { font-weight: 500; color: var(--fg-6); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 /* Vidro barato (A27): o mesmo da .crate-list-inner. */
 .tdl-list {
   background: rgba(var(--glass-tint), calc(var(--glass-alpha) - 0.07));
@@ -5762,6 +5769,9 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   background: var(--bg-tint);
 }
 .tdl-cover[data-round="true"] { border-radius: var(--radius-pill); }
+/* Cartaz (B27): capa do álbum ou da playlist e foto do artista no cabeçalho. */
+.tdl-cover[data-size="lg"] { width: 120px; height: 120px; border-radius: var(--radius-xl); }
+.tdl-cover[data-size="lg"][data-round="true"] { border-radius: var(--radius-pill); }
 .tdl-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .tdl-marks { display: flex; align-items: center; gap: 8px; justify-self: end; }
@@ -5783,6 +5793,13 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   padding-bottom: 12px; border-bottom: 1px solid var(--line-2);
 }
 .tdl-head .tdl-main { flex: 1; }
+/* Sem cartaz, o Voltar fica na linha do título; com cartaz, ganha a linha de
+   cima e capa, título e ações alinham pela base. */
+.tdl-head__back { display: contents; }
+.tdl-head[data-poster="true"] { flex-wrap: wrap; align-items: flex-end; column-gap: 16px; row-gap: 10px; }
+.tdl-head[data-poster="true"] .tdl-head__back { display: block; flex: 0 0 100%; }
+.tdl-head[data-poster="true"] .tdl-main { gap: 4px; padding-bottom: 2px; }
+.tdl-title--page { font-size: var(--fs-lead); line-height: 1.25; letter-spacing: -0.01em; }
 .tdl-head .crate-btn .tdl-num { margin-left: 2px; }
 .tdl-more { align-self: flex-start; }
 .tdl-placeholder {
@@ -5796,6 +5813,20 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 .tdl-row--pick {
   grid-template-columns: 18px 40px minmax(0, 1fr) auto 56px;
   cursor: pointer;
+  /* Arrastar pela coluna das caixas pinta a seleção (B27): sem isso o
+     gesto selecionaria o texto das linhas. */
+  user-select: none;
+}
+/* Célula da caixa: alvo maior que os 16 px da caixa, sem mexer na grade. */
+.tdl-pick {
+  display: grid; place-items: center;
+  margin: -10px -8px; padding: 10px 8px;
+}
+/* Álbum: o número da faixa no lugar da capa repetida. */
+.tdl-list[data-nocover="true"] .tdl-row--pick { grid-template-columns: 18px 24px minmax(0, 1fr) auto 56px; }
+.tdl-pos {
+  font-size: 12px; color: var(--fg-6); text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .tdl-row--pick input[type="checkbox"] {
   width: 16px; height: 16px; margin: 0;
@@ -5815,7 +5846,7 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 .tdl-foot .crate-dest__menu { top: auto; bottom: calc(100% + 4px); }
 .tdl-foot__sum { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .tdl-foot__err { flex: 1 0 100%; }
-.tdl-warn { color: var(--rose-fg); font-weight: 600; }
+.tdl-foot__parts { color: var(--fg-5); }
 
 .tdl-queue-note { margin: 0; }
 .tdl-linkbtn {
