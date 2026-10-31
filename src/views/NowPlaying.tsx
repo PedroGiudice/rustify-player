@@ -15,7 +15,8 @@ import { dsp } from "../store/dsp";
 import { Icon, ICONS } from "../components/Icon";
 import { CoverArt } from "../components/CoverArt";
 import { useRenderer, useShape } from "../components/SpectrumCanvas";
-import { libGetLyrics, libListHistory, coverUrl, type LyricLine, type Track } from "../tauri";
+import { libListHistory, coverUrl, type LyricLine, type Track } from "../tauri";
+import { lyricsState, reloadLyrics } from "../store/lyrics";
 import { tweaks, setTweaksOpen, updateTweak } from "../store/tweaks";
 import { RELIEF_LINE_KEYS, glEngineWanted, glStatus } from "../gl/meta";
 import { GL_CANVAS, parseColor, type Rgb } from "../gl/palette";
@@ -116,17 +117,19 @@ export default function NowPlaying() {
     onCleanup(() => window.removeEventListener("rustify:cinema", onCinema));
   });
 
-  // Letra da faixa atual. A view roda dentro do <Suspense> do router: ler
-  // `resource()` com a busca pendente liga o fallback "Loading…" e derruba
-  // o Now Playing inteiro a cada troca de faixa. Com initialValue o resource
-  // já nasce resolvido e `.latest` devolve o último valor sem suspender —
-  // durante os milissegundos do IPC fica a letra anterior, depois troca.
-  const [lyricsRes] = createResource(
-    () => player.currentTrack?.id ?? null,
-    async (id) => (id ? await libGetLyrics(id).catch(() => [] as LyricLine[]) : [] as LyricLine[]),
-    { initialValue: [] as LyricLine[] },
-  );
-  const lyrics = () => lyricsRes.latest;
+  // Letra da faixa atual: estado único em store/lyrics (uma busca por troca
+  // de faixa, a mesma que o botão de letra da barra lê). Durante os
+  // milissegundos do IPC fica a letra anterior, depois troca: o card não
+  // desmonta e remonta a cada faixa. Falha não vira lista vazia: o card
+  // diz que falhou e oferece tentar de novo.
+  let lastLines: LyricLine[] = [];
+  const lyrics = createMemo<LyricLine[]>(() => {
+    const st = lyricsState();
+    if (st.status === "carregando") return lastLines;
+    lastLines = st.lines;
+    return st.lines;
+  });
+  const lyricsFailed = () => lyricsState().status === "erro";
 
   // Letra SEM sincronismo chega com t=0 em todas as linhas (lyrics_from_embedded
   // faz esse fallback quando o texto não tem timestamps — caso de tag ID3 com
@@ -272,7 +275,7 @@ export default function NowPlaying() {
   let metaEl!: HTMLDivElement;
 
   const longTitle = () => (player.currentTrack?.title?.length ?? 0) > LONG_TITLE;
-  const cardShown = createMemo(() => !!tweaks().lyricsVisible && lyrics().length > 0);
+  const cardShown = createMemo(() => !!tweaks().lyricsVisible && (lyrics().length > 0 || lyricsFailed()));
 
   // ── O título cede ao card (A4) ──
   // A posição do card é do dono (salva no arraste); quem se ajusta é o
@@ -629,15 +632,25 @@ export default function NowPlaying() {
                 <span class="np__lyrics-label">
                   Lyrics{isSynced() ? " · synced" : ""}
                 </span>
-                <span class="np__lyrics-source mono">
-                  {isSynced() ? "aligned" : "unsynced"}
-                </span>
+                <Show when={!lyricsFailed()}>
+                  <span class="np__lyrics-source mono">
+                    {isSynced() ? "aligned" : "unsynced"}
+                  </span>
+                </Show>
               </div>
               <div
                 class="np__lyrics-viewport"
                 classList={{ "is-unsynced": !isSynced() }}
                 ref={attachViewport}
               >
+                <Show when={lyricsFailed()}>
+                  <div class="np__lyrics-fail" role="status">
+                    <p>Não consegui carregar a letra desta faixa.</p>
+                    <button type="button" class="np__lyrics-retry" onClick={() => reloadLyrics()}>
+                      Tentar de novo
+                    </button>
+                  </div>
+                </Show>
                 <div class="np__lyrics-rail" ref={railEl!}>
                   <For each={lyrics()}>
                     {(line, i) => {

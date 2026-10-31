@@ -1215,6 +1215,22 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   color: var(--fg-5);
 }
 
+/* Busca da letra que falhou (store/lyrics "erro"): o card diz e oferece
+   tentar de novo, em vez de sumir como se a faixa não tivesse letra. As
+   cores vêm da escala do vidro (--fg-* inline, lib/lyricsInk.ts). */
+.np__lyrics-fail { display: grid; justify-items: start; gap: 12px; }
+.np__lyrics-fail p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--fg-2); }
+.np__lyrics-retry {
+  height: 28px; padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--fg-6);
+  color: var(--fg-1);
+  font-size: 12px; font-weight: 600;
+  transition: border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
+}
+.np__lyrics-retry:hover { border-color: var(--fg-4); background: color-mix(in srgb, var(--fg-1) 8%, transparent); }
+.np__lyrics-retry:focus-visible { box-shadow: var(--ring-focus); outline: none; }
+
 /* Now Playing corner controls */
 .np__corner {
   position: absolute; top: 16px; right: 16px;

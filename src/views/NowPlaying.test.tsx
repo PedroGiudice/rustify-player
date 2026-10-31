@@ -20,7 +20,7 @@ const { mockTrack, mockOpenTrackMenu, state } = vi.hoisted(() => ({
   },
   mockOpenTrackMenu: vi.fn(),
   // Holder mutavel pra alternar currentTrack entre os testes.
-  state: { currentTrack: null as any, isPlaying: false },
+  state: { currentTrack: null as any, isPlaying: false, lyricsVisible: false },
 }));
 
 vi.mock("../store/contextMenu", () => ({
@@ -47,8 +47,15 @@ vi.mock("../store/dsp", () => ({
 }));
 
 vi.mock("../store/tweaks", () => ({
-  tweaks: () => ({ lyricsVisible: false }),
+  tweaks: () => ({ lyricsVisible: state.lyricsVisible }),
 }));
+
+// Letra vem do store único (store/lyrics); o teste controla o estado.
+vi.mock("../store/lyrics", async () => {
+  const { createSignal } = await import("solid-js");
+  const [lyricsState, setLyricsState] = createSignal<any>({ trackId: null, status: "sem", lines: [] });
+  return { lyricsState, reloadLyrics: vi.fn(), __setLyrics: setLyricsState };
+});
 
 vi.mock("../tauri", () => ({
   themeVar: () => null,
@@ -89,6 +96,7 @@ beforeEach(() => {
   mockOpenTrackMenu.mockClear();
   state.currentTrack = null;
   state.isPlaying = false;
+  state.lyricsVisible = false;
   // jsdom não tem ResizeObserver; o NowPlaying observa o .np para
   // reposicionar o card de letras (o WebKitGTK do app tem).
   (globalThis as any).ResizeObserver = class {
@@ -139,5 +147,46 @@ describe("NowPlaying — ponto do selo", () => {
     state.isPlaying = true;
     const playing = render(() => <NowPlaying />);
     expect(playing.container.querySelector(".np__tag-playing")!.getAttribute("data-playing")).toBe("true");
+  });
+});
+
+describe("NowPlaying — letra pelo store único", () => {
+  it("não busca a letra por conta própria (o store/lyrics já busca)", async () => {
+    const tauri = await import("../tauri");
+    state.currentTrack = mockTrack;
+    render(() => <NowPlaying />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(tauri.libGetLyrics)).not.toHaveBeenCalled();
+  });
+
+  it("letra ok aparece no card", async () => {
+    const lyr: any = await import("../store/lyrics");
+    state.currentTrack = mockTrack;
+    state.lyricsVisible = true;
+    lyr.__setLyrics({ trackId: "42", status: "ok", lines: [{ t: 1, line: "primeiro verso" }, { t: 4, line: "segundo verso" }] });
+    const { container } = render(() => <NowPlaying />);
+    expect(container.querySelector(".np__lyrics-card")).toBeTruthy();
+    expect(container.textContent).toContain("primeiro verso");
+  });
+
+  it("busca que falhou não vira card vazio: diz que falhou e tenta de novo", async () => {
+    const lyr: any = await import("../store/lyrics");
+    state.currentTrack = mockTrack;
+    state.lyricsVisible = true;
+    lyr.__setLyrics({ trackId: "42", status: "erro", lines: [] });
+    const { container, getByText } = render(() => <NowPlaying />);
+    expect(container.querySelector(".np__lyrics-card")).toBeTruthy();
+    expect(container.textContent).toContain("Não consegui carregar a letra");
+    fireEvent.click(getByText("Tentar de novo"));
+    expect(lyr.reloadLyrics).toHaveBeenCalled();
+  });
+
+  it("faixa sem letra não monta o card", async () => {
+    const lyr: any = await import("../store/lyrics");
+    state.currentTrack = mockTrack;
+    state.lyricsVisible = true;
+    lyr.__setLyrics({ trackId: "42", status: "sem", lines: [] });
+    const { container } = render(() => <NowPlaying />);
+    expect(container.querySelector(".np__lyrics-card")).toBeNull();
   });
 });
