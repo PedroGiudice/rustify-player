@@ -18,7 +18,7 @@
    vivem nos componentes responsaveis.
    ============================================================ */
 
-import { createMemo, createSignal, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
+import { createMemo, createSignal, ErrorBoundary, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { Titlebar } from "./components/Titlebar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
@@ -27,7 +27,8 @@ import { QueueDrawer } from "./components/QueueDrawer";
 import { TrackContextMenu } from "./components/TrackContextMenu";
 import { MoveToPlaylistDialog } from "./components/MoveToPlaylistDialog";
 import { SelectionBar } from "./components/SelectionBar";
-import { applyMovedReport } from "./store/moveDialog";
+import { applyMovedReport, closeMoveDialog } from "./store/moveDialog";
+import { EmptyState } from "./components/EmptyState";
 import { onTracksMoved } from "./tauri";
 import { SpectrumCanvas } from "./components/SpectrumCanvas";
 import { RouterView, navigate, route } from "./router";
@@ -142,7 +143,26 @@ export default function App() {
       <QueueDrawer />
       <Tweaks />
       <TrackContextMenu />
-      <MoveToPlaylistDialog />
+      {/* O diálogo de mover tem limite próprio: se ele quebrar, some com um
+          aviso, sem levar a tela junto (a barra do player fica de fora). */}
+      <ErrorBoundary
+        fallback={(err, reset) => {
+          console.error("[mover] o diálogo falhou:", err);
+          return (
+            <div class="view-crash view-crash--float">
+              <EmptyState
+                tone="erro"
+                compact
+                title="O diálogo de mover falhou."
+                text="Confira na playlist de destino o que já foi movido antes de tentar de novo."
+                actions={[{ label: "Fechar", onClick: () => { closeMoveDialog(); reset(); } }]}
+              />
+            </div>
+          );
+        }}
+      >
+        <MoveToPlaylistDialog />
+      </ErrorBoundary>
     </div>
   );
 }

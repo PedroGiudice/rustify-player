@@ -1,27 +1,51 @@
 /* ============================================================
-   views/Albums.tsx — Grid of all albums, click to play.
+   views/Albums.tsx — Grade de todos os álbuns.
+
+   Clicar no card ABRE o álbum (B1, varredura de 31/10): antes tocava e
+   trocava a fila, e a grade não tinha caminho para a página do álbum. Só
+   o play do hover toca. Abrir é o nome (<button class="card__open">), cujo
+   ::after cobre o card (mesmo padrão da Playlists); o play é um botão
+   irmão, nenhum controle aninhado em outro.
    ============================================================ */
 
-import { createResource, For, Show, type Accessor } from "solid-js";
-import { libGetAlbums, libGetTracksByAlbum, coverUrl, type Album } from "../tauri";
+import { createResource, For, Show, Switch, Match, type Accessor } from "solid-js";
+import { libGetAlbums, libGetTracks, coverUrl, type Album } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate, route } from "../router";
 import { CoverArt } from "../components/CoverArt";
 import { Icon, ICONS } from "../components/Icon";
+import { EmptyState } from "../components/EmptyState";
+import { dataOf, listState, peek, settle, type Loaded } from "../lib/loaded";
+import { ALBUM_TRACK_LIMIT, albumHref } from "../lib/albumRoute";
+import { truncTipEvent } from "../lib/truncTip";
+
+/** Toca o álbum inteiro: título E artista, para dois "Greatest Hits" não
+    virarem uma fila só (A19). */
+export async function playAlbum(album: Album) {
+  const tracks = await libGetTracks({ album: album.title, artist: album.artist_name ?? undefined, limit: ALBUM_TRACK_LIMIT });
+  // scope "curated": album e uma unidade coerente — shuffle embaralha so este.
+  if (tracks.length) { setQueue(tracks, 0, "curated", { kind: "album", name: album.title }); playTrack(tracks[0]); }
+}
 
 /** `list`: listagem já buscada pela Library (que a usa na contagem da
-    aba). Sem ela — rota /albums direta — a view busca a própria. */
-export default function Albums(props: { param?: string; list?: Accessor<Album[] | undefined> }) {
-  const albums: Accessor<Album[] | undefined> = props.list ?? createResource(async () => {
-    try { return await libGetAlbums({ limit: null }); } catch { return [] as Album[]; }
-  })[0];
-
-  async function play(album: Album) {
-    const tracks = await libGetTracksByAlbum(album.title);
-    // scope "curated": album e uma unidade coerente — shuffle embaralha so este.
-    if (tracks.length) { setQueue(tracks, 0, "curated", { kind: "album", name: album.title }); playTrack(tracks[0]); }
+    aba), com `onRetry` para refazê-la. Sem ela — rota /albums direta — a
+    view busca a própria. */
+export default function Albums(props: {
+  param?: string;
+  list?: Accessor<Loaded<Album[]> | undefined>;
+  onRetry?: () => void;
+}) {
+  let retry = () => props.onRetry?.();
+  let result: Accessor<Loaded<Album[]> | undefined>;
+  if (props.list) {
+    result = props.list;
+  } else {
+    const [r, { refetch }] = createResource(() => settle(libGetAlbums({ limit: null })));
+    result = () => peek(r);
+    retry = () => void refetch();
   }
+  const albums = () => dataOf(result());
 
   // Aberta direto (/albums) a view traz o proprio .view — o unico
   // container que rola (.main tem overflow:hidden). Como aba, a Library
@@ -30,25 +54,55 @@ export default function Albums(props: { param?: string; list?: Accessor<Album[] 
 
   const body = () => (
     <div class="view__body">
-      <div class="card-grid">
-        <For each={albums() ?? []}>
-          {(a) => (
-            <div class="card" onClick={() => play(a)}>
-              <CoverArt
-                seed={a.title}
-                src={coverUrl(a.cover_path)}
-                size="md"
-                class="card__cover"
-              >
-                <button class="card__play" type="button" aria-label={`Tocar ${a.title}`} onClick={(e) => { e.stopPropagation(); play(a); }}><Icon name={ICONS.play} size={12} /></button>
-              </CoverArt>
-              <div class="card__title">{a.title}</div>
-              <div class="card__sub">{a.artist_name ?? "—"}</div>
-              <div class="card__meta">{a.track_count} tracks{a.year ? ` · ${a.year}` : ""}</div>
-            </div>
-          )}
-        </For>
-      </div>
+      <Switch>
+        <Match when={listState(result()) === "carregando"}>
+          <EmptyState tone="carregando" title="Carregando o acervo…" />
+        </Match>
+        <Match when={listState(result()) === "erro"}>
+          <EmptyState
+            tone="erro"
+            title="Não consegui ler o acervo agora."
+            text="O índice não respondeu. Os álbuns continuam no disco."
+            actions={[{ label: "Tentar de novo", onClick: retry, icon: ICONS.refresh }]}
+          />
+        </Match>
+        <Match when={listState(result()) === "vazio"}>
+          <EmptyState
+            icon={ICONS.albums}
+            title="Nenhum álbum no acervo."
+            text="Faixa sem a tag de álbum fica fora desta grade; ela aparece em Faixas."
+          />
+        </Match>
+        <Match when={listState(result()) === "pronto"}>
+          <div class="card-grid">
+            <For each={albums()}>
+              {(a) => (
+                <div class="card" onPointerEnter={truncTipEvent}>
+                  <CoverArt
+                    seed={a.title}
+                    src={coverUrl(a.cover_path)}
+                    size="md"
+                    class="card__cover"
+                  >
+                    <button class="card__play" type="button" aria-label={`Tocar ${a.title}`} onClick={(e) => { e.stopPropagation(); void playAlbum(a); }}><Icon name={ICONS.play} size={12} /></button>
+                  </CoverArt>
+                  <button
+                    type="button"
+                    class="card__title card__open"
+                    data-trunc
+                    onClick={() => navigate(albumHref(a.title, a.artist_name))}
+                    onFocus={truncTipEvent}
+                  >
+                    {a.title}
+                  </button>
+                  <div class="card__sub" data-trunc>{a.artist_name ?? "—"}</div>
+                  <div class="card__meta">{a.track_count} tracks{a.year ? ` · ${a.year}` : ""}</div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Match>
+      </Switch>
     </div>
   );
 

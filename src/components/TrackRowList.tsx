@@ -11,6 +11,7 @@ import {
   claimList, focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionActive, toggleTrack,
 } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
+import { truncTipEvent } from "../lib/truncTip";
 
 interface TrackRowListProps {
   track: Track;
@@ -64,7 +65,8 @@ export function TrackRowList(props: TrackRowListProps) {
       aria-selected={selectable() ? selected() : undefined}
       onClick={(e) => rowClick(e, selectable() ? props.contextList : undefined, props.track.id, props.onClick)}
       onMouseDown={(e) => rowMouseDown(e, selectable() ? props.contextList : undefined)}
-      onFocus={() => { if (selectable()) focusList(props.contextList!); }}
+      onFocus={(e) => { truncTipEvent(e); if (selectable()) focusList(props.contextList!); }}
+      onPointerEnter={truncTipEvent}
       onContextMenu={(e) =>
         openTrackMenu(e, props.track, {
           list: props.contextList,
@@ -128,11 +130,12 @@ export function TrackRowList(props: TrackRowListProps) {
       <div class={isCompact() ? "qrow__meta" : "row__meta"}>
         <div
           class={isCompact() ? "qrow__title" : "row__title"}
+          data-trunc
           style={{ color: !isCompact() && isCurrent() ? "var(--blue-fg)" : undefined }}
         >
           {props.track.title || "—"}
         </div>
-        <div class={isCompact() ? "qrow__sub" : "row__sub"}>
+        <div class={isCompact() ? "qrow__sub" : "row__sub"} data-trunc>
           {props.track.artist_name || "—"}
           {props.track.album_title && <> · {props.track.album_title}</>}
         </div>

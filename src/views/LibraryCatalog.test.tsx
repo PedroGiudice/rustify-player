@@ -54,7 +54,8 @@ vi.mock("../tauri", () => ({
     applyLimit([...ALBUMS].sort(byTitle).filter((a) => a.artist_name === artist), limit, 100)),
   libGetArtists: vi.fn(async (opts?: { limit?: number | null }) =>
     applyLimit([...ARTISTS].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())), opts?.limit, 500)),
-  libGetTracksByAlbum: vi.fn().mockResolvedValue([]),
+  libGetTracks: vi.fn().mockResolvedValue([]),
+  libGetTracksByArtist: vi.fn().mockResolvedValue([]),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
@@ -72,7 +73,7 @@ vi.mock("../router", () => ({
 
 vi.mock("../components/Icon", () => ({
   Icon: () => <span />,
-  ICONS: { play: "play" },
+  ICONS: { play: "play", refresh: "refresh", artists: "artists", albums: "albums", moveTo: "moveTo", alert: "alert" },
 }));
 
 import Albums from "./Albums";
@@ -107,7 +108,7 @@ describe("acervo inteiro na navegação por álbuns e artistas", () => {
       const titles = Array.from(container.querySelectorAll(".card__title")).map((e) => e.textContent);
       expect(titles).toEqual(["Zulu"]);
     });
-    expect(container.querySelector(".view__head-hint")?.textContent).toBe("1 albums");
+    expect(container.querySelector(".view__head-hint")?.textContent).toBe("1 albums · 0 tracks");
   });
 
   it("a página de um álbum do fim do alfabeto mostra capa e artista", async () => {

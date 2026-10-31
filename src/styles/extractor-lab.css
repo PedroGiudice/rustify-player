@@ -611,6 +611,46 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .empty-state__title { font-size: 14px; font-weight: 600; color: var(--fg-2); margin: 0; }
 .empty-state__hint  { font-size: 13px; color: var(--fg-5); margin: 0; }
 
+/* Bloco de estado (components/EmptyState.tsx): vazio, erro e carregando
+   com caras diferentes. Vazio = moldura tracejada do Crate; erro = banner
+   rosa (sinal, nunca decoração) com saída; carregando = só o texto. */
+.empty-block {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 72px 40px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius-xl);
+  background: var(--bg-paper);
+  animation: state-in var(--dur-med) var(--ease-out);
+}
+.empty-block--compact { padding: 28px 24px; }
+.empty-block__icon { color: var(--fg-7); }
+.empty-block__title {
+  font-size: 14px; font-weight: 600; color: var(--fg-1);
+  margin: 0; text-wrap: balance;
+}
+.empty-block__text {
+  font-size: 13px; color: var(--fg-5);
+  margin: 0; max-width: 52ch; text-wrap: pretty;
+}
+.empty-block__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.empty-block[data-tone="erro"] {
+  border-style: solid;
+  background: color-mix(in srgb, var(--rose-ring) 10%, var(--bg-paper));
+  border-color: color-mix(in srgb, var(--rose-ring) 28%, var(--bg-paper));
+}
+.empty-block[data-tone="erro"] .empty-block__icon { color: var(--rose-fg); }
+.empty-block[data-tone="erro"] .empty-block__text { color: var(--fg-4); }
+.empty-block[data-tone="carregando"] { border-color: transparent; background: transparent; }
+.empty-block[data-tone="carregando"] .empty-block__title { color: var(--fg-5); font-weight: 500; }
+/* Tela que caiu (ErrorBoundary do RouterView): o bloco no lugar da vista. */
+.view-crash { padding: 40px; }
+.view-crash--float {
+  position: fixed; right: 16px; bottom: calc(var(--playerbar-h) + 16px);
+  z-index: 60; width: min(420px, calc(100vw - 32px)); padding: 0;
+}
+
 /* ────────────────────────────────────────────────────────────
    COVER ART (real img or cassette fallback)
    ──────────────────────────────────────────────────────────── */
@@ -807,12 +847,29 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row--static:hover { background: transparent; }
 
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 16px; }
-.card { cursor: pointer; }
+/* Abrir é o nome (<button class="card__open">); o ::after dele estende a
+   área de clique ao card inteiro e leva o anel de foco (padrão da
+   Playlists, A18/B1). A capa fica por cima do ::after só para pintar e
+   para o play do hover receber o clique: ela mesma deixa o clique passar
+   (pointer-events: none), e o play o recupera. */
+.card { cursor: pointer; position: relative; }
 .card__cover {
   aspect-ratio: 1;
   margin-bottom: 12px;
+  z-index: 1;
+  pointer-events: none;
   transition: transform var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out);
 }
+.card__cover .card__play { pointer-events: auto; }
+.card__open { display: block; width: 100%; text-align: start; }
+.card__open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-xl);
+}
+.card__open:focus-visible { outline: 0; }
+.card__open:focus-visible::after { outline: var(--focus-outline); outline-offset: 4px; }
 .card:hover .card__cover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
 .card__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0 0 2px; }
 .card__sub   { font-size: 12px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1219,6 +1276,22 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .tab.active::after { transform: none; }
 .tab__count { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-6); margin-left: 6px; font-weight: 400; }
 
+/* Library: as abas grudam no topo da vista ao rolar e o cabeçalho da
+   tabela gruda logo abaixo delas (A38). A altura das abas é 13 px x 1,5 +
+   padding (11 + 11, ou 8 + 8 no compacto) + 1 px de borda; o topo do
+   cabeçalho fica meio pixel por baixo delas, nunca com fresta. */
+.lib-tabs { position: sticky; top: 0; z-index: 3; }
+.lib-panel { --lib-sticky-top: 42px; }
+html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
+/* Filtro e tabela num grupo: o chip filtra o que está logo abaixo. */
+.lib-tracks { display: flex; flex-direction: column; gap: 14px; }
+.lib-tracks > .toolbar { margin-bottom: 0; align-items: center; }
+.lib-busy { font-size: 12px; color: var(--fg-5); margin-left: 6px; animation: state-in var(--dur-med) var(--ease-out); }
+.lib-note { font-size: 12.5px; color: var(--fg-4); margin: 0; }
+/* Aba de playlists da Library (era "Genres"): linhas informativas na
+   mesma lista de vidro das outras. */
+.lib-folders .row { padding-block: 12px; }
+
 .toolbar { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
 .chip {
   padding: 5px 11px;
@@ -1245,18 +1318,24 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: rgba(var(--glass-tint), calc(var(--glass-alpha) - 0.07));
   border: 1px solid var(--line-2);
   border-radius: var(--radius-xl);
-  overflow: hidden;
+  /* clip e não hidden: hidden faz da tabela um contêiner de rolagem e o
+     cabeçalho sticky grudaria nela, não na vista (A38). */
+  overflow: clip;
   display: grid;
-  /* 5 colunas: idx | title (flex) | album | genre | length.
-     Tinha 6 antes (sobrava 70px) — com as rows em display:contents
-     (ate 25/09), o slot vago empurrava todas uma coluna pra direita. */
-  grid-template-columns: 48px 1fr 180px 120px 70px;
+  /* 5 colunas: idx | título | álbum | playlist | duração. O título cresce
+     mais que o álbum, mas o álbum não cai abaixo de 160 px (com 180 fixos
+     e o título em 1fr, o título tinha ~900 px e o álbum truncava). */
+  grid-template-columns: 48px minmax(240px, 1.6fr) minmax(160px, 1.2fr) minmax(100px, 0.7fr) 70px;
   font-size: 13px;
 }
-/* Variante com cover por linha (usado em Playlist).
-   6 colunas: idx | cover | title (flex) | album | genre | length. */
+/* Variante com cover por linha (Playlist): sem a coluna de playlist, que
+   seria a mesma em toda linha. idx | capa | título | álbum | duração. */
 .tracks--with-cover {
-  grid-template-columns: 48px 44px 1fr 180px 110px 70px;
+  grid-template-columns: 48px 44px minmax(240px, 1.6fr) minmax(160px, 1.2fr) 70px;
+}
+/* Página do álbum: o álbum e a playlist repetiriam em toda linha. */
+.tracks--album {
+  grid-template-columns: 48px minmax(0, 1fr) 70px;
 }
 /* Celulas: os cabecalhos sao filhos diretos de .tracks, mas as celulas
    das linhas sao NETAS — o TrackRowTable as envolve num .tracks__row.
@@ -1277,11 +1356,17 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    ellipsis. align-content centra o bloco na altura da linha. */
 .tracks > .tracks__row > .tracks__title,
 .tracks > .tracks__row > .tracks__cell { display: block; align-content: center; }
-.tracks__head {
+/* Cabeçalho gruda no topo da vista ao rolar (abaixo das abas da Library,
+   que declaram --lib-sticky-top). `.tracks >` vence o font-size das
+   classes irmãs (.tracks__idx 11, .tracks__mono 11,5). */
+.tracks > .tracks__head {
   font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 600;
   color: var(--fg-5); text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line-2) !important;
+  position: sticky;
+  top: var(--lib-sticky-top, 0px);
+  z-index: 2;
 }
 /* A linha e item do grid .tracks com subgrid: ocupa todas as colunas e
    as celulas caem nas trilhas dos cabecalhos. Era display:contents, e no
@@ -3110,6 +3195,9 @@ html { --glow: 0; }
   object-fit: cover;
   display: block;
 }
+/* Uma capa só ocupa o mosaico inteiro (A42). */
+.pl-card__quad--full,
+.pl-hero-cover__quad--full { grid-column: 1 / -1; grid-row: 1 / -1; }
 .pl-card__title {
   font-size: 13.5px; font-weight: 600;
   color: var(--fg-1);

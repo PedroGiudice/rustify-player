@@ -31,6 +31,7 @@ vi.mock("../tauri", () => ({
 
 import Playlists from "./Playlists";
 import { pins, unpinPlaylist, pinPlaylist } from "../store/pins";
+import * as tauri from "../tauri";
 
 afterEach(() => {
   cleanup();
@@ -234,5 +235,50 @@ describe("cards de playlist: teclado (ds-2)", () => {
     const pinnedCard = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
     fireEvent.click(pinnedCard.querySelector(".pl-card__open")!);
     expect(window.location.hash).toBe(`#/playlist/${encodeURIComponent("Middle Road")}`);
+  });
+});
+
+// A7: "Sem playlists." nunca aparecia ([] é verdadeiro) e falha parecia vazio.
+describe("Playlists — carregando, erro, vazio e filtro sem resultado (A7)", () => {
+  it("falha do índice mostra erro com Tentar de novo", async () => {
+    vi.mocked(tauri.libListFolders).mockRejectedValueOnce(new Error("fora"));
+    const { findByRole, container } = render(() => <Playlists />);
+    const alert = await findByRole("alert");
+    expect(alert.textContent).toContain("Não consegui ler o acervo agora.");
+    fireEvent.click(alert.querySelector("button")!);
+    await vi.waitFor(() => expect(container.querySelectorAll(".pl-card").length).toBe(mockFolders.length));
+  });
+
+  it("sem pasta nenhuma diz como nasce uma playlist", async () => {
+    vi.mocked(tauri.libListFolders).mockResolvedValueOnce([]);
+    const { findByText } = render(() => <Playlists />);
+    expect(await findByText("Nenhuma playlist ainda.")).toBeTruthy();
+  });
+
+  it("filtro sem resultado avisa e oferece limpar", async () => {
+    const { container, getByPlaceholderText, findByText, getByRole } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(container.querySelectorAll(".pl-card").length).toBe(3));
+    fireEvent.input(getByPlaceholderText("Filter playlists…"), { target: { value: "xyz" } });
+    expect(await findByText('Nenhuma playlist com "xyz".')).toBeTruthy();
+    fireEvent.click(getByRole("button", { name: "Limpar filtro" }));
+    await vi.waitFor(() => expect(container.querySelectorAll(".pl-card").length).toBe(3));
+  });
+});
+
+// A42: pasta com poucas capas não mostra quadrante vazio.
+describe("Playlists — mosaico com poucas capas (A42)", () => {
+  it("uma capa ocupa o quadro inteiro; sem capa, os tons", async () => {
+    vi.mocked(tauri.libListFolders).mockResolvedValueOnce([
+      { name: "Uma", track_count: 2, cover_path: "/c/1.webp", cover_paths: ["/c/1.webp"] },
+      { name: "Nenhuma", track_count: 2, cover_path: null, cover_paths: [] },
+    ]);
+    const { container } = render(() => <Playlists />);
+    await vi.waitFor(() => expect(container.querySelectorAll(".pl-card").length).toBe(2));
+    const [uma, nenhuma] = Array.from(container.querySelectorAll(".pl-card"));
+    const quads = uma.querySelectorAll(".pl-card__quad");
+    expect(quads.length).toBe(1);
+    expect(quads[0].classList.contains("pl-card__quad--full")).toBe(true);
+    expect(nenhuma.querySelectorAll(".pl-card__quad--cover").length).toBe(0);
+    expect(nenhuma.querySelectorAll(".pl-card__quad").length).toBe(4);
   });
 });

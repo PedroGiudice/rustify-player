@@ -16,7 +16,8 @@ const { routeState, mockAlbums } = vi.hoisted(() => ({
 vi.mock("../tauri", () => ({
   libGetAlbumsByArtist: vi.fn().mockResolvedValue(mockAlbums),
   libGetAlbums: vi.fn().mockResolvedValue(mockAlbums),
-  libGetTracksByAlbum: vi.fn().mockResolvedValue([]),
+  libGetTracks: vi.fn().mockResolvedValue([]),
+  libGetTracksByArtist: vi.fn().mockResolvedValue([]),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
@@ -34,7 +35,7 @@ vi.mock("../router", () => ({
 
 vi.mock("../components/Icon", () => ({
   Icon: () => <span />,
-  ICONS: { play: "play" },
+  ICONS: { play: "play", refresh: "refresh", artists: "artists", albums: "albums", moveTo: "moveTo", alert: "alert" },
 }));
 
 vi.mock("../components/TrackRowTable", () => ({
@@ -55,12 +56,18 @@ describe("botões de tocar só com ícone têm nome (ds-2)", () => {
     expect(container.querySelector(".card__play")!.getAttribute("aria-label")).toBe("Tocar Great Album");
   });
 
-  it("play do cabeçalho do álbum diz o nome do álbum", () => {
-    routeState.path = "/album";
-    routeState.param = encodeURIComponent("Great Album");
-    const { container } = render(() => <AlbumView />);
-    const btn = container.querySelector(".view__head .hero-tile__cta")!;
-    expect(btn.getAttribute("aria-label")).toBe("Tocar Great Album");
-    expect(btn.getAttribute("type")).toBe("button");
+  // A20: o play do cabeçalho deixou de ser um círculo só com ícone; é o
+  // botão "Tocar" com texto, igual ao da Playlist e ao do Artista.
+  it("o cabeçalho do álbum e o do artista têm o botão Tocar com texto", async () => {
+    for (const [path, param, View] of [["/album", encodeURIComponent("Great Album"), AlbumView], ["/artist", "Band", ArtistView]] as const) {
+      routeState.path = path;
+      routeState.param = param;
+      const { container, unmount } = render(() => <View />);
+      const btn = container.querySelector(".view__head .pl-action-btn--primary")!;
+      expect(btn.textContent, path).toBe("Tocar");
+      expect(btn.getAttribute("type"), path).toBe("button");
+      expect(container.querySelector(".hero-tile__cta"), path).toBeNull();
+      unmount();
+    }
   });
 });

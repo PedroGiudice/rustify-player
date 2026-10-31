@@ -26,7 +26,6 @@ vi.mock("../tauri", () => ({
   libGetAlbums: vi.fn().mockResolvedValue(mockAlbums),
   libGetArtists: vi.fn().mockResolvedValue(mockArtists),
   libGetTracks: vi.fn().mockResolvedValue([]),
-  libGetTracksByAlbum: vi.fn().mockResolvedValue([]),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
@@ -54,17 +53,26 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Library — aba Genres", () => {
-  it("linhas de gênero são informativas e de coluna única (sem o grid de faixa do .row)", async () => {
+// O campo genre do índice é a pasta de primeiro nível: a aba lista as
+// playlists e diz isso (A21).
+describe("Library — aba Playlists (o antigo Genres)", () => {
+  it("linhas de playlist são informativas, de coluna única, dentro da lista de vidro", async () => {
     const { container, getByText } = render(() => <Library />);
     await vi.waitFor(() => expect(container.querySelector(".tab__count")).toBeTruthy());
-    const tab = Array.from(container.querySelectorAll(".tab")).find((b) => b.textContent?.startsWith("Genres"))!;
+    const tab = Array.from(container.querySelectorAll(".tab")).find((b) => b.textContent?.startsWith("Playlists"))!;
     fireEvent.click(tab);
 
     await vi.waitFor(() => expect(getByText("Rap nacional contemporâneo")).toBeTruthy());
     const rows = container.querySelectorAll(".view__body .row");
     expect(rows.length).toBe(1); // gênero com 0 faixas fica fora
     expect(rows[0].classList.contains("row--static")).toBe(true);
+    expect(rows[0].closest(".row-list")).toBeTruthy();
+  });
+
+  it("o cabeçalho conta playlists, não gêneros", async () => {
+    const { container } = render(() => <Library />);
+    await vi.waitFor(() => expect(container.querySelector(".view__head-hint")!.textContent).toContain("1 playlists"));
+    expect(container.textContent).not.toMatch(/genres/i);
   });
 });
 
@@ -130,7 +138,7 @@ describe("Library — semântica das abas", () => {
     const selected = () => tabs.filter((t) => t.getAttribute("aria-selected") === "true").map((t) => t.textContent?.split(" ")[0]);
     expect(selected()).toEqual(["Tracks"]);
     fireEvent.click(tabs[3]);
-    expect(selected()).toEqual(["Genres"]);
+    expect(selected()).toEqual(["Playlists"]);
   });
 
   it("a aba ativa aponta para o painel que ela controla", async () => {

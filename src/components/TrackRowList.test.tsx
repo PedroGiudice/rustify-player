@@ -111,3 +111,18 @@ describe("TrackRowList teclado", () => {
     }
   });
 });
+
+describe("TrackRowList — texto cortado mostra o inteiro no hover (A37)", () => {
+  it("ao entrar na linha, título e subtítulo cortados ganham title", () => {
+    const { container } = render(() => <TrackRowList track={TRACK} onClick={() => {}} />);
+    const title = container.querySelector(".row__title") as HTMLElement;
+    const sub = container.querySelector(".row__sub") as HTMLElement;
+    for (const e of [title, sub]) {
+      Object.defineProperty(e, "scrollWidth", { value: 500, configurable: true });
+      Object.defineProperty(e, "clientWidth", { value: 100, configurable: true });
+    }
+    fireEvent.pointerEnter(row(container));
+    expect(title.title).toBe("Song");
+    expect(sub.title).toBe("Artist · Album");
+  });
+});
