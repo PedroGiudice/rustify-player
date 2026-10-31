@@ -22,6 +22,7 @@ import { GL_CANVAS, parseColor, type Rgb } from "../gl/palette";
 import { cssColorToRgb } from "../lib/color";
 import { glassSurface, lyricsInk, type LyricsInkVar } from "../lib/lyricsInk";
 import { navigate } from "../router";
+import { albumHref } from "../lib/albumRoute";
 import { isTypingContext } from "../lib/keyboard";
 import { openTrackMenu } from "../store/contextMenu";
 import { qualityBadge } from "../lib/quality";
@@ -568,7 +569,7 @@ export default function NowPlaying() {
                     <button
                       type="button"
                       class="np__album"
-                      onClick={() => navigate(`/album/${encodeURIComponent(title())}`)}
+                      onClick={() => navigate(albumHref(title(), player.currentTrack?.artist_name))}
                     >
                       {title()}{player.currentTrack?.album_year ? ` · ${player.currentTrack.album_year}` : ""}
                     </button>

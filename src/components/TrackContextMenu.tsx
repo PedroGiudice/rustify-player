@@ -23,6 +23,7 @@ import {
 } from "../store/player";
 import { playTrack } from "./PlayerBar";
 import { navigate } from "../router";
+import { albumHref } from "../lib/albumRoute";
 import { openMoveDialog } from "../store/moveDialog";
 import { clearSelection } from "../store/selection";
 import { moveLabel } from "../lib/selection";
@@ -162,7 +163,7 @@ export function TrackContextMenu() {
 
   const goAlbum = () => {
     const st = trackMenu(); if (!st?.track.album_title) return;
-    navigate(`/album/${encodeURIComponent(st.track.album_title)}`);
+    navigate(albumHref(st.track.album_title, st.track.artist_name));
     closeTrackMenu();
   };
 

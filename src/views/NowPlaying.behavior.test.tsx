@@ -218,7 +218,8 @@ describe("NowPlaying — artista e álbum (np-10, shell-v1, biblioteca-v2)", () 
     artist.click();
     expect(h.navigate).toHaveBeenLastCalledWith(`/artist/${encodeURIComponent("Sade & Co")}`);
     album.click();
-    expect(h.navigate).toHaveBeenLastCalledWith(`/album/${encodeURIComponent("Love Deluxe")}`);
+    // Com o artista na rota: dois álbuns homônimos não se misturam (A19).
+    expect(h.navigate).toHaveBeenLastCalledWith(`/album/${encodeURIComponent("Love Deluxe")}?artista=${encodeURIComponent("Sade & Co")}`);
   });
 
   it("sem faixa não oferece link nenhum", () => {
