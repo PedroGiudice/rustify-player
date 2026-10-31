@@ -133,7 +133,7 @@ export default function Albums(props: {
     <Show when={standalone()} fallback={body()}>
       <article class="view">
         <header class="view__head">
-          <div><h1>Albums</h1></div>
+          <div><h1>Álbuns</h1></div>
         </header>
         {body()}
       </article>

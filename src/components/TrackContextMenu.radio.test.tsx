@@ -74,7 +74,7 @@ describe("curtir que falha avisa (B5)", () => {
     vi.mocked(libToggleLike).mockRejectedValue("qdrant fora");
     open();
     await new Promise((r) => setTimeout(r, 0));
-    fireEvent.click(item("Like")!);
+    fireEvent.click(item("Curtir")!);
     await vi.waitFor(() => expect(toast()?.message).toBe("Não consegui curtir “Faixa”."));
     expect(toast()?.action?.label).toBe("Tentar de novo");
   });

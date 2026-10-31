@@ -186,10 +186,10 @@ describe("Sidebar — modo icons (shell-22)", () => {
       Array.from(container.querySelectorAll<HTMLElement>(".nav-item"))
         .find((el) => el.querySelector(".nav-tip")?.textContent?.startsWith(label))
         ?.querySelector(".nav-tip__kbd")?.textContent;
-    expect(kbdOf("Search")).toBe("Ctrl+K");
-    expect(kbdOf("Home")).toBe("H");
-    expect(kbdOf("Library")).toBe("L");
-    expect(kbdOf("Now Playing")).toBe("N");
+    expect(kbdOf("Buscar")).toBe("Ctrl+K");
+    expect(kbdOf("Início")).toBe("H");
+    expect(kbdOf("Biblioteca")).toBe("L");
+    expect(kbdOf("Tocando agora")).toBe("N");
   });
 
   it("no modo labels o rótulo está visível e não há tooltip redundante", () => {
@@ -282,14 +282,14 @@ describe("Sidebar — rota ativa (ds-2)", () => {
     window.dispatchEvent(new Event("hashchange"));
     const { container } = render(() => <Sidebar />);
     const current = Array.from(container.querySelectorAll("[aria-current]"));
-    expect(current.map((el) => el.textContent)).toEqual(["Library"]);
+    expect(current.map((el) => el.textContent)).toEqual(["Biblioteca"]);
     expect(current[0].getAttribute("aria-current")).toBe("page");
     expect(current[0].classList.contains("active")).toBe(true);
 
     window.location.hash = "#/settings";
     window.dispatchEvent(new Event("hashchange"));
     const now = Array.from(container.querySelectorAll("[aria-current]"));
-    expect(now.map((el) => el.textContent)).toEqual(["Settings"]);
+    expect(now.map((el) => el.textContent)).toEqual(["Configurações"]);
   });
 });
 

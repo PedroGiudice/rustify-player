@@ -24,12 +24,12 @@ import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import { coverUrl } from "../tauri";
 
 const PRIMARY = [
-  { route: "/home",    icon: ICONS.home,    label: "Home", shortcut: "H" },
-  { route: "/search",  icon: ICONS.search,  label: "Search", kbd: modCombo("K"), action: "search" as const },
+  { route: "/home",    icon: ICONS.home,    label: "Início", shortcut: "H" },
+  { route: "/search",  icon: ICONS.search,  label: "Buscar", kbd: modCombo("K"), action: "search" as const },
   // Logo abaixo de Search (spec §4.1): é busca, só que além do acervo.
   // Badge de jobs ativos (não-terminais) via store/crate — some em 0.
   { route: "/crate",   icon: ICONS.packageOpen, label: "Crate" },
-  { route: "/library", icon: ICONS.library, label: "Library", shortcut: "L" },
+  { route: "/library", icon: ICONS.library, label: "Biblioteca", shortcut: "L" },
 ];
 
 const COLECOES = [
@@ -39,7 +39,7 @@ const COLECOES = [
 
 const FOOTER = [
   { route: "/signal",   icon: ICONS.signal,   label: "Signal" },
-  { route: "/settings", icon: ICONS.settings, label: "Settings" },
+  { route: "/settings", icon: ICONS.settings, label: "Configurações" },
 ];
 
 /** Tiny event used by the search nav item to open the command palette. */
@@ -124,7 +124,7 @@ export function Sidebar() {
           <BrandMark />
         </div>
         <div class="brand__word">Rustify</div>
-        <div class="brand__dot" title="Bit-perfect output" />
+        <div class="brand__dot" title="Saída bit-perfect" />
       </div>
 
       <div class="sidebar__section">
@@ -217,9 +217,9 @@ export function Sidebar() {
           onClick={(e) => { e.preventDefault(); navigate("/now-playing"); }}
         >
           <Icon name={ICONS.music} size={16} />
-          <span>Now Playing</span>
+          <span>Tocando agora</span>
           <span class="nav-item__kbd">N</span>
-          <NavTip label="Now Playing" kbd="N" />
+          <NavTip label="Tocando agora" kbd="N" />
         </a>
 
         <For each={FOOTER}>
@@ -247,7 +247,7 @@ export function Sidebar() {
           onClick={() => window.dispatchEvent(new CustomEvent("toggle-tweaks"))}
           aria-controls="tweaks-panel"
           aria-expanded={tweaksOpen() ? "true" : "false"}
-          title={iconsMode() ? undefined : "Tweaks (appearance, background, loudness)"}
+          title={iconsMode() ? undefined : "Tweaks (aparência, fundo, volume)"}
         >
           <Icon name={ICONS.bolt} size={16} />
           <span>Tweaks</span>

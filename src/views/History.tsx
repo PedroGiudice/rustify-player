@@ -34,7 +34,7 @@ export default function History() {
     <article class="view">
       <header class="view__head">
         <div>
-          <h1>History</h1>
+          <h1>Histórico</h1>
           <p class="view__head-hint">
             {state() === "pronto" ? `Últimas ${tracks().length} faixas tocadas` : "Faixas tocadas, da mais recente"}
           </p>

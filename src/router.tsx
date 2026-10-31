@@ -92,7 +92,7 @@ function ViewCrash(props: { error: unknown; reset: () => void }) {
         text="O resto do app segue funcionando e a música não parou."
         actions={[
           { label: "Tentar de novo", onClick: props.reset, primary: true },
-          { label: "Ir para a Home", onClick: () => navigate("/home") },
+          { label: "Ir para o Início", onClick: () => navigate("/home") },
         ]}
       />
     </div>
@@ -103,7 +103,7 @@ export function RouterView() {
   const view = () => VIEWS[route().path] ?? VIEWS[DEFAULT_ROUTE];
   return (
     <ErrorBoundary fallback={(err, reset) => <ViewCrash error={err} reset={reset} />}>
-      <Suspense fallback={<div class="empty-state"><p class="empty-state__hint">Loading…</p></div>}>
+      <Suspense fallback={<div class="empty-state"><p class="empty-state__hint">Carregando…</p></div>}>
         <Dynamic component={view()} param={route().param} />
       </Suspense>
     </ErrorBoundary>

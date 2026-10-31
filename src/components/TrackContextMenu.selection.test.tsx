@@ -44,7 +44,7 @@ describe("menu de contexto com seleção", () => {
     fireEvent.contextMenu(rows[2]);
     const items = [...document.querySelectorAll(".track-ctx-menu__item")].map((b) => b.textContent);
     expect(items).toContain("Mover 2 faixas para playlist…");
-    expect(items).not.toContain("Play");
+    expect(items).not.toContain("Tocar");
     const move = [...document.querySelectorAll(".track-ctx-menu__item")].find((b) => b.textContent?.startsWith("Mover"))!;
     fireEvent.click(move);
     expect(moveRequest()!.tracks.map((t) => t.id)).toEqual(["1", "3"]);
@@ -57,7 +57,7 @@ describe("menu de contexto com seleção", () => {
     fireEvent.click(rows[2], { ctrlKey: true });
     fireEvent.contextMenu(rows[1]);
     const items = [...document.querySelectorAll(".track-ctx-menu__item")].map((b) => b.textContent);
-    expect(items).toContain("Play");
+    expect(items).toContain("Tocar");
     expect(items).toContain("Mover para playlist…");
   });
 });

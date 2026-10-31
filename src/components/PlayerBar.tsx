@@ -48,6 +48,13 @@ import { createSwapKey } from "../lib/motion";
 // Re-export para que outros call-sites possam importar daqui.
 export { CMD_PALETTE_EVENT };
 
+/** Dica do botão de repetir por modo (o modo interno não aparece na tela). */
+const REPEAT_TITLE: Record<string, string> = {
+  off: "Repetir: desligado",
+  all: "Repetir: a fila",
+  one: "Repetir: esta faixa",
+};
+
 // Exclusão do autoplay: vive no store (rememberRecent/recentlyPlayed) —
 // os setters de fila são o choke point que registra qualquer troca.
 
@@ -616,13 +623,13 @@ export function PlayerBar() {
   // Com as três etapas, "DSP 3" (a lista por extenso vai no rótulo): a
   // pílula não pode quebrar em duas linhas na coluna da direita (A3).
   const dspSummary = () => {
-    if (dsp.bypass) return "BYPASS";
+    if (dsp.bypass) return "Sem DSP";
     const parts: string[] = [];
     if (dsp.eq.enabled) parts.push("EQ");
     if (dsp.limiter.enabled) parts.push("LIM");
     if (dsp.bass.enabled) parts.push("BASS");
     if (parts.length >= 3) return `DSP ${parts.length}`;
-    return parts.length ? parts.join(" · ") : "DSP OFF";
+    return parts.length ? parts.join(" · ") : "Sem DSP";
   };
 
   // A mesma cadeia por extenso, para o title/aria-label da pílula.
@@ -680,7 +687,7 @@ export function PlayerBar() {
   const nextDisabled = () => !player.currentTrack;
 
   return (
-    <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
+    <footer class="playerbar" id="player-bar" data-screen-label="Barra do player">
       {/* O footer é o container de largura (B23); o grid mora aqui dentro. */}
       <div class="playerbar__grid">
 
@@ -767,8 +774,8 @@ export function PlayerBar() {
           <button
             class="pb-icon-btn"
             id="pb-more"
-            aria-label="More"
-            title="More"
+            aria-label="Mais opções"
+            title="Mais opções"
             onClick={(e) => { if (player.currentTrack) openTrackMenu(e, player.currentTrack); }}
           >
             <Icon name={ICONS.more} size={14} />
@@ -782,9 +789,9 @@ export function PlayerBar() {
           <button
             class="pb-btn"
             id="pb-shuffle"
-            aria-label="Shuffle"
+            aria-label="Aleatório"
             aria-pressed={player.shuffle ? "true" : "false"}
-            title="Shuffle"
+            title={player.shuffle ? "Aleatório ligado" : "Aleatório"}
             onClick={toggleShuffle}
           >
             <Icon name={ICONS.shuffle} size={14} />
@@ -794,8 +801,8 @@ export function PlayerBar() {
             class="pb-btn"
             id="pb-prev"
             aria-disabled={prevDisabled()}
-            aria-label="Previous"
-            title="Previous"
+            aria-label="Anterior"
+            title="Anterior"
             onClick={() => {
               if (prevDisabled()) return;
               const t = retreatQueue();
@@ -809,8 +816,8 @@ export function PlayerBar() {
           <button
             class="pb-btn pb-btn--primary"
             id="pb-play-pause"
-            aria-label={player.isPlaying ? "Pause" : "Play"}
-            title={player.isPlaying ? "Pause" : player.currentTrack ? "Play" : "Tocar a última faixa"}
+            aria-label={player.isPlaying ? "Pausar" : "Tocar"}
+            title={player.isPlaying ? "Pausar" : player.currentTrack ? "Tocar" : "Tocar a última faixa"}
             onClick={() => {
               if (!player.currentTrack) { void playFromNothing(); return; }
               if (player.isPlaying) {
@@ -834,8 +841,8 @@ export function PlayerBar() {
             class="pb-btn"
             id="pb-next"
             aria-disabled={nextDisabled()}
-            aria-label="Next"
-            title="Next"
+            aria-label="Próxima"
+            title="Próxima"
             onClick={() => {
               if (nextDisabled()) return;
               const skippedTrack = player.currentTrack;
@@ -858,10 +865,10 @@ export function PlayerBar() {
           <button
             class="pb-btn"
             id="pb-repeat"
-            aria-label="Repeat"
+            aria-label="Repetir"
             aria-pressed={player.repeatMode !== "off" ? "true" : "false"}
             data-repeat-mode={player.repeatMode}
-            title={`Repeat: ${player.repeatMode}`}
+            title={REPEAT_TITLE[player.repeatMode] ?? "Repetir"}
             onClick={() => {
               cycleRepeat();
               // Re-alinha o preload gapless: o engine consome o next_path
@@ -960,8 +967,8 @@ export function PlayerBar() {
           <button
             class="pb-btn"
             id="pb-queue"
-            title="Queue (Q)"
-            aria-label="Queue"
+            title="Fila (Q)"
+            aria-label="Fila"
             aria-expanded={queueDrawerOpen() ? "true" : "false"}
             onClick={() => window.dispatchEvent(new CustomEvent(QUEUE_EVENT))}
           >
@@ -981,9 +988,9 @@ export function PlayerBar() {
             id="pb-vol-btn"
             // Toggle: rótulo fixo + aria-pressed. Rótulo dinâmico com
             // aria-pressed virava "Unmute, pressionado" no leitor de tela.
-            aria-label="Mute"
+            aria-label="Silenciar"
             aria-pressed={player.isMuted ? "true" : "false"}
-            title={player.isMuted ? "Unmute" : "Mute"}
+            title={player.isMuted ? "Reativar som" : "Silenciar"}
             onClick={() => { toggleMute().catch(console.error); }}
           >
             <Icon name={player.isMuted ? ICONS.volumeMute : ICONS.volume} size={14} />

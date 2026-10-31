@@ -116,7 +116,7 @@ describe("NowPlaying — botao More", () => {
   it("esta desabilitado quando nao ha track tocando", () => {
     state.currentTrack = null;
     const { container } = render(() => <NowPlaying />);
-    const btn = container.querySelector('button[title="More"]') as HTMLButtonElement;
+    const btn = container.querySelector('button[title="Mais opções"]') as HTMLButtonElement;
     expect(btn).toBeTruthy();
     expect(btn.disabled).toBe(true);
   });
@@ -124,7 +124,7 @@ describe("NowPlaying — botao More", () => {
   it("chama openTrackMenu com a track atual ao clicar", () => {
     state.currentTrack = mockTrack;
     const { container } = render(() => <NowPlaying />);
-    const btn = container.querySelector('button[title="More"]') as HTMLButtonElement;
+    const btn = container.querySelector('button[title="Mais opções"]') as HTMLButtonElement;
     expect(btn).toBeTruthy();
     expect(btn.disabled).toBe(false);
 

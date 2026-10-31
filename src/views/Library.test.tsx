@@ -76,7 +76,7 @@ describe("Library — aba Playlists (o antigo Genres)", () => {
 
   it("o cabeçalho conta playlists, não gêneros", async () => {
     const { container } = render(() => <Library />);
-    await vi.waitFor(() => expect(container.querySelector(".view__head-hint")!.textContent).toContain("1 playlists"));
+    await vi.waitFor(() => expect(container.querySelector(".view__head-hint")!.textContent).toContain("1 playlist"));
     expect(container.textContent).not.toMatch(/genres/i);
   });
 });
@@ -91,7 +91,7 @@ describe("Library — contagens do cabeçalho e das abas", () => {
     const { container } = render(() => <Library />);
     await vi.waitFor(() => expect(tabCount(container, "Álbuns")).toBe("7"));
     expect(tabCount(container, "Artistas")).toBe("4");
-    expect(container.querySelector(".view__head-hint")!.textContent).toContain("7 albums");
+    expect(container.querySelector(".view__head-hint")!.textContent).toContain("7 álbuns");
     expect(tauri.libGetAlbums).toHaveBeenCalledWith({ limit: null });
     expect(tauri.libGetArtists).toHaveBeenCalledWith({ limit: null });
   });

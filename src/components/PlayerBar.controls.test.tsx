@@ -180,13 +180,13 @@ describe("botão de mudo (shell-v3)", () => {
     setPlayer({ volume: 0.6, isMuted: false });
     const { container } = render(() => <PlayerBar />);
     const btn = container.querySelector("#pb-vol-btn") as HTMLElement;
-    expect(btn.getAttribute("aria-label")).toBe("Mute");
-    expect(btn.getAttribute("title")).toBe("Mute");
+    expect(btn.getAttribute("aria-label")).toBe("Silenciar");
+    expect(btn.getAttribute("title")).toBe("Silenciar");
     expect(btn.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(btn);
     expect(player.isMuted).toBe(true);
-    expect(btn.getAttribute("aria-label")).toBe("Mute");
-    expect(btn.getAttribute("title")).toBe("Unmute");
+    expect(btn.getAttribute("aria-label")).toBe("Silenciar");
+    expect(btn.getAttribute("title")).toBe("Reativar som");
     expect(btn.getAttribute("aria-pressed")).toBe("true");
   });
 

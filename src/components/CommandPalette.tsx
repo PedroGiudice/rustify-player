@@ -21,6 +21,7 @@ import { openTrackMenu } from "../store/contextMenu";
 import { libSearch, libShuffle, coverUrl, type Track, type Album, type Artist } from "../tauri";
 import { modCombo } from "../lib/keyboard";
 import { fmtDur } from "../lib/format";
+import { plural } from "../lib/count";
 
 export const CMD_PALETTE_EVENT = "rustify:open-palette";
 
@@ -109,7 +110,7 @@ export function CommandPalette() {
     if (!q) return null;
     return {
       kind: "action", id: "crate-search", icon: ICONS.packageOpen,
-      title: `Procurar "${q}" na rede →`, sub: "busca no Soulseek e no SoundCloud (Crate)",
+      title: `Procurar "${q}" na rede`, sub: "busca no Soulseek e no SoundCloud (Crate)",
       run: () => { navigate(`/crate/${encodeURIComponent(q)}`); close(); },
     };
   };
@@ -117,7 +118,7 @@ export function CommandPalette() {
   const actions = (): ActionItem[] => [
     {
       kind: "action", id: "shuffle", icon: ICONS.bolt,
-      title: "Shuffle all", sub: "play library tracks in random order",
+      title: "Tocar tudo em aleatório", sub: "faixas do acervo em ordem aleatória",
       run: async () => {
         try {
           const tracks = await libShuffle(50);
@@ -133,7 +134,7 @@ export function CommandPalette() {
     },
     {
       kind: "action", id: "queue", icon: ICONS.queue,
-      title: "Open queue", sub: "see what's up next",
+      title: "Abrir a fila", sub: "ver o que toca em seguida",
       // detail.open: abre (ou mantém aberta). Sem ele o QueueDrawer
       // alterna, e a ação fechava a fila que já estava aberta.
       run: () => {
@@ -143,12 +144,12 @@ export function CommandPalette() {
     },
     {
       kind: "action", id: "signal", icon: ICONS.signal,
-      title: "Open Signal", sub: "DSP · EQ · normalization",
+      title: "Abrir Signal", sub: "DSP, equalizador e normalização",
       run: () => { navigate("/signal"); close(); },
     },
     {
       kind: "action", id: "settings", icon: ICONS.settings,
-      title: "Open Settings", sub: "library, audio, theme",
+      title: "Abrir Configurações", sub: "biblioteca, áudio, tema",
       run: () => { navigate("/settings"); close(); },
     },
   ];
@@ -299,7 +300,7 @@ export function CommandPalette() {
             ref={inputEl}
             class="palette__input"
             value={query()}
-            placeholder="Buscar tracks, albums, artists ou comandos…"
+            placeholder="Buscar faixas, álbuns, artistas ou comandos…"
             onInput={(e) => {
               const val = e.currentTarget.value;
               batch(() => { setQuery(val); setActive(0); setPendingEnter(null); });
@@ -307,14 +308,14 @@ export function CommandPalette() {
               debounceTimer = setTimeout(() => setDebouncedQuery(val), 150);
             }}
           />
-          <span class="palette__esc">ESC</span>
+          <span class="palette__esc">Esc</span>
         </div>
         <div class="palette__list" ref={listEl}>
           {/* Sempre montada: leitor de tela só anuncia mudança dentro de
               uma região viva que já existia. Inserida junto com o texto,
               a falha passava em silêncio. */}
           <div class="palette__error" role="status">
-            {searchResults()?.failed ? "Busca local falhou" : ""}
+            {searchResults()?.failed ? "Não consegui buscar no acervo" : ""}
           </div>
           <For each={items()}>
             {(it, i) => {
@@ -338,16 +339,16 @@ export function CommandPalette() {
               return (
                 <>
                   <Show when={showTracksHeader()}>
-                    <div class="palette__section">Tracks</div>
+                    <div class="palette__section">Faixas</div>
                   </Show>
                   <Show when={showAlbumsHeader()}>
-                    <div class="palette__section">Albums</div>
+                    <div class="palette__section">Álbuns</div>
                   </Show>
                   <Show when={showArtistsHeader()}>
-                    <div class="palette__section">Artists</div>
+                    <div class="palette__section">Artistas</div>
                   </Show>
                   <Show when={showActionsHeader()}>
-                    <div class="palette__section">Actions</div>
+                    <div class="palette__section">Ações</div>
                   </Show>
                   <div
                     class={`palette__item${active() === i() ? " active" : ""}`}
@@ -428,15 +429,15 @@ export function CommandPalette() {
                           : it.kind === "track"
                             ? `${it.track.artist_name ?? "—"} · ${it.track.album_title ?? "—"} · ${durOrDash(it.track.duration_ms)}`
                             : it.kind === "album"
-                              ? `${it.album.artist_name ?? "—"} · ${it.album.track_count} tracks`
-                              : `${it.artist.track_count} tracks · ${it.artist.album_count} albums`}
+                              ? `${it.album.artist_name ?? "—"} · ${plural(it.album.track_count, "faixa", "faixas")}`
+                              : `${plural(it.artist.track_count, "faixa", "faixas")} · ${plural(it.artist.album_count, "álbum", "álbuns")}`}
                       </div>
                     </div>
                     <div class="palette__item-hint">
                       {it.kind === "track"
-                        ? `↵ play · ${modCombo("↵")} next · ⇧↵ queue`
+                        ? `↵ tocar · ${modCombo("↵")} a seguir · ⇧↵ fila`
                         : it.kind === "album" || it.kind === "artist"
-                          ? "↵ open"
+                          ? "↵ abrir"
                           : "↵"}
                     </div>
                   </div>
@@ -446,10 +447,10 @@ export function CommandPalette() {
           </For>
         </div>
         <div class="palette__footer">
-          <span><span class="kbd">↑↓</span> navigate</span>
-          <span><span class="kbd">↵</span> play</span>
-          <span><span class="kbd">{modCombo("↵")}</span> play next</span>
-          <span><span class="kbd">⇧↵</span> add to queue</span>
+          <span><span class="kbd">↑↓</span> navegar</span>
+          <span><span class="kbd">↵</span> tocar</span>
+          <span><span class="kbd">{modCombo("↵")}</span> tocar a seguir</span>
+          <span><span class="kbd">⇧↵</span> adicionar à fila</span>
         </div>
       </div>
     </div>

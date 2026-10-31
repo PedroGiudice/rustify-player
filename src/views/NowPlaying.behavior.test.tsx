@@ -437,7 +437,7 @@ describe("NowPlaying — botão de ajustes do fundo (np-7)", () => {
     sec.getBoundingClientRect = () => ({ top: 520 }) as DOMRect;
 
     const { container } = render(() => <NowPlaying />);
-    const btn = container.querySelector('button[title="Spectrum settings"]') as HTMLButtonElement;
+    const btn = container.querySelector('button[title="Ajustes do espectro"]') as HTMLButtonElement;
     btn.click();
     expect(h.setTweaksOpen).toHaveBeenCalledWith(true);
 

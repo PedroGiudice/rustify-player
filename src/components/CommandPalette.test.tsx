@@ -115,7 +115,7 @@ describe("CommandPalette — ação Open queue (shell-v4)", () => {
     const { container } = render(() => <CommandPalette />);
     openPalette();
     const item = Array.from(container.querySelectorAll(".palette__item"))
-      .find((el) => el.textContent?.includes("Open queue")) as HTMLElement;
+      .find((el) => el.textContent?.includes("Abrir a fila")) as HTMLElement;
     fireEvent.click(item);
     window.removeEventListener("rustify:open-queue", onQ);
     expect(seen).toEqual([{ open: true }]);
@@ -201,7 +201,7 @@ describe("CommandPalette — dicas de atalho (shell-13)", () => {
     const footer = container.querySelector(".palette__footer")!.textContent ?? "";
     expect(footer).toContain("Ctrl+↵");
     const hints = Array.from(container.querySelectorAll(".palette__item-hint")).map((el) => el.textContent ?? "");
-    expect(hints.some((t) => t.includes("Ctrl+↵ next"))).toBe(true);
+    expect(hints.some((t) => t.includes("Ctrl+↵ a seguir"))).toBe(true);
     expect(container.textContent).not.toContain("⌘");
   });
 });
@@ -210,13 +210,13 @@ describe("CommandPalette — dicas de atalho (shell-13)", () => {
 // busca local aparecia como "nada encontrado" (o "Procurar na rede" no
 // topo). Agora uma linha diz que a busca falhou.
 describe("CommandPalette — falha da busca local (shell-8)", () => {
-  it("libSearch rejeitado mostra 'Busca local falhou'", async () => {
+  it("libSearch rejeitado mostra a linha de falha", async () => {
     vi.mocked(tauriApi.libSearch).mockRejectedValue(new Error("indexer caiu"));
     const { container, findByText } = render(() => <CommandPalette />);
     openPalette();
     const input = container.querySelector(".palette__input") as HTMLInputElement;
     fireEvent.input(input, { target: { value: "sicko" } });
-    const line = await findByText("Busca local falhou");
+    const line = await findByText("Não consegui buscar no acervo");
     expect(line.getAttribute("role")).toBe("status");
     // A saída pela rede continua lá.
     expect(container.textContent).toContain('Procurar "sicko" na rede');
@@ -234,7 +234,7 @@ describe("CommandPalette — falha da busca local (shell-8)", () => {
     expect(region!.textContent).toBe("");
     const input = container.querySelector(".palette__input") as HTMLInputElement;
     fireEvent.input(input, { target: { value: "sicko" } });
-    const line = await findByText("Busca local falhou");
+    const line = await findByText("Não consegui buscar no acervo");
     expect(line).toBe(region);
   });
 
@@ -246,6 +246,6 @@ describe("CommandPalette — falha da busca local (shell-8)", () => {
     fireEvent.input(input, { target: { value: "sicko" } });
     await waitFor(() => expect(tauriApi.libSearch).toHaveBeenCalledWith("sicko", 6));
     await waitFor(() => expect(container.querySelector(".palette__item")?.textContent).toContain("Procurar"));
-    expect(container.textContent).not.toContain("Busca local falhou");
+    expect(container.textContent).not.toContain("Não consegui buscar no acervo");
   });
 });

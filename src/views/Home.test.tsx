@@ -157,7 +157,7 @@ describe("Home — cabeçalho e prateleira de álbuns", () => {
     const { container } = render(() => <Home />);
     await vi.waitFor(() => expect(container.querySelector(".view__stats")).toBeTruthy());
     const stats = container.querySelector(".view__stats")!.textContent ?? "";
-    expect(stats).toContain("30 albums");
+    expect(stats).toContain("30 álbuns");
     expect(tauri.libGetAlbums).toHaveBeenCalledWith({ limit: null });
   });
 
@@ -172,7 +172,7 @@ describe("Home — cabeçalho e prateleira de álbuns", () => {
     vi.mocked(tauri.libGetAlbums).mockRejectedValueOnce(new Error("indexer fora"));
     const { container } = render(() => <Home />);
     await vi.waitFor(() => expect(container.querySelector(".view__stats")).toBeTruthy());
-    expect(container.querySelector(".view__stats")!.textContent).not.toMatch(/albums/);
+    expect(container.querySelector(".view__stats")!.textContent).not.toMatch(/álbu/);
   });
 });
 
@@ -231,7 +231,7 @@ describe("Home — descoberta do dia (B5)", () => {
     expect(tile.querySelector(".hero-tile__sub")!.textContent).toBe("Artista X · nunca tocada, perto do que você curte");
     expect(tile.classList.contains("hero-tile--has-cover")).toBe(true);
     expect(tile.querySelector(".hero-tile__bg")).toBeTruthy();
-    expect(container.textContent).not.toContain("From your library");
+    expect(container.textContent).not.toContain("Do seu acervo");
 
     fireEvent.click(tile);
     expect(mockResetRadio).toHaveBeenCalled();
@@ -250,7 +250,7 @@ describe("Home — descoberta do dia (B5)", () => {
     const { container } = render(() => <Home />);
     await vi.waitFor(() => expect(container.querySelectorAll(".hero-tile").length).toBe(3));
     expect(container.querySelector(".hero-tile--discovery")).toBeNull();
-    expect(container.textContent).toContain("From your library");
+    expect(container.textContent).toContain("Do seu acervo");
   });
 });
 

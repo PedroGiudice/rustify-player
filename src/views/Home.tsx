@@ -142,17 +142,17 @@ export default function Home() {
     <article class="view">
       <header class="view__head">
         <div>
-          <h1>Home</h1>
-          <p class="view__head-hint">Local · PipeWire</p>
+          <h1>Início</h1>
+          <p class="view__head-hint">Seu acervo, tocado localmente</p>
         </div>
         <Show when={snap()}>
           {(s) => (
             <div class="view__stats">
-              <span><b>{s().tracks_total.toLocaleString()}</b> tracks</span>
+              <span><b>{s().tracks_total.toLocaleString("pt-BR")}</b> {s().tracks_total === 1 ? "faixa" : "faixas"}</span>
               <Show when={albumsAll()}>
-                {(a) => <span><b>{a().length.toLocaleString()}</b> albums</span>}
+                {(a) => <span><b>{a().length.toLocaleString("pt-BR")}</b> {a().length === 1 ? "álbum" : "álbuns"}</span>}
               </Show>
-              <span><b>{s().embeddings_done.toLocaleString()}</b> embedded</span>
+              <span title="Vetor = o que o rádio usa para achar faixas parecidas"><b>{s().embeddings_done.toLocaleString("pt-BR")}</b> com vetor</span>
             </div>
           )}
         </Show>
@@ -193,12 +193,12 @@ export default function Home() {
                     <span class="dot" />
                     {player.currentTrack
                       ? (player.isPlaying ? "Tocando agora" : "Continuar de onde parou")
-                      : "Quick start"}
+                      : "Início rápido"}
                   </div>
                   <h2 class="hero-tile__title">
                     {player.currentTrack
                       ? `${player.currentTrack.title} · ${player.currentTrack.artist_name ?? ""}`
-                      : "Shuffle all"}
+                      : "Tocar tudo em aleatório"}
                   </h2>
                   <div class="hero-tile__sub">
                     {player.currentTrack ? resumeSub() : libraryCount()}
@@ -207,8 +207,8 @@ export default function Home() {
                 </button>
 
                 <button class="hero-tile" onClick={shuffleAll}>
-                  <div class="hero-tile__eyebrow">Quick start</div>
-                  <h2 class="hero-tile__title">Shuffle all</h2>
+                  <div class="hero-tile__eyebrow">Início rápido</div>
+                  <h2 class="hero-tile__title">Tocar tudo em aleatório</h2>
                   <div class="hero-tile__sub">{libraryCount()}</div>
                   <span class="hero-tile__cta"><Icon name={ICONS.play} size={12} /></span>
                 </button>
@@ -220,8 +220,8 @@ export default function Home() {
                       when={shelfAlbums()[0]}
                       fallback={
                         <button class="hero-tile" onClick={shuffleAll}>
-                          <div class="hero-tile__eyebrow">Discover</div>
-                          <h2 class="hero-tile__title">Surprise me</h2>
+                          <div class="hero-tile__eyebrow">Descoberta</div>
+                          <h2 class="hero-tile__title">Me surpreenda</h2>
                           <div class="hero-tile__sub">{libraryCount()}</div>
                           <span class="hero-tile__cta"><Icon name={ICONS.play} size={12} /></span>
                         </button>
@@ -229,7 +229,7 @@ export default function Home() {
                     >
                       {(top) => (
                         <button class="hero-tile" onClick={() => void playAlbum(top())}>
-                          <div class="hero-tile__eyebrow">From your library</div>
+                          <div class="hero-tile__eyebrow">Do seu acervo</div>
                           <h2 class="hero-tile__title">{top().title}</h2>
                           <div class="hero-tile__sub">
                             {top().artist_name ?? "—"} · {faixas(top().track_count)}
@@ -317,12 +317,12 @@ export default function Home() {
               </button>
             </Show>
 
-            {/* Recently played */}
+            {/* Tocadas recentemente */}
             <Show when={recent().length > 0}>
               <section class="row-list">
                 <div class="section__head">
-                  <h2 class="section__title">Recently played</h2>
-                  <a class="section__action" href="#/history">View history →</a>
+                  <h2 class="section__title">Tocadas recentemente</h2>
+                  <a class="section__action" href="#/history">Ver histórico</a>
                 </div>
                 <div class="row-list__rows">
                   <For each={recent()}>

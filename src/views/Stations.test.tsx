@@ -197,7 +197,8 @@ describe("Stations view", () => {
     const { container, getByText } = render(() => <Stations />);
     await waitFor(() => expect(container.querySelector(".st-empty")).toBeTruthy());
     expect(container.querySelector(".st-empty__title")!.textContent).toBe("Nenhuma station ainda");
-    expect(getByText("Nova station por clima").tagName).toBe("BUTTON");
+    const byClimate = Array.from(container.querySelectorAll(".st-empty button")).find((el) => el.textContent === "Nova station por clima");
+    expect(byClimate?.tagName).toBe("BUTTON");
     // Sem faixa tocando, criar a partir da atual fica desligado e diz por quê.
     const fromCurrent = getByText(/Criar a partir/).closest("button")!;
     expect(fromCurrent.disabled).toBe(true);
@@ -275,7 +276,7 @@ describe("Stations view", () => {
     expect(container.querySelector(".st-feature__title")!.textContent).toBe(MOCK_STATIONS[0].name);
     expect(container.querySelector(".st-card__live")).toBeNull();
     expect(container.textContent).not.toMatch(/Live|streaming now/);
-    expect(container.querySelector(".st-feature__eyebrow")?.textContent).toBe("Most played");
+    expect(container.querySelector(".st-feature__eyebrow")?.textContent).toBe("Mais tocada");
   });
 
   it("CTA do destaque usa ícone do bundle offline e diz o que faz (estsig-20, estsig-13)", async () => {
@@ -291,7 +292,7 @@ describe("Stations view", () => {
     });
     const cta = container.querySelector(".st-feature__cta")!;
     // Tocar uma station inicia sessão nova: não é "Resume".
-    expect(cta.textContent).toContain("Play station");
+    expect(cta.textContent).toContain("Tocar station");
     const icon = cta.querySelector("iconify-icon")!.getAttribute("icon")!;
     expect(iconLoaded(icon)).toBe(true);
   });
@@ -337,8 +338,8 @@ describe("Stations view", () => {
     await waitFor(() => {
       expect(vi.mocked(tauriApi.libPlayStation)).toHaveBeenCalledWith("sunday-slow-2", expect.any(Number));
     });
-    expect(getByText(/New from current track/).tagName).toBe("BUTTON");
-    expect(getByText(/Nova mood station/).tagName).toBe("BUTTON");
+    expect(getByText(/Nova a partir da faixa atual/).tagName).toBe("BUTTON");
+    expect(getByText(/Nova station por clima/).tagName).toBe("BUTTON");
   });
 
   it("estado loading diz que carrega, sem cartões-fantasma", () => {
@@ -481,9 +482,9 @@ describe("New from current track usa a track atual como seed (fix: stub)", () =>
     setQueue([STATION_TRACKS[0]], 0); // currentTrack = Alpha
     const { getByText } = render(() => <Stations />);
     await waitFor(() => {
-      expect(getByText(/New from current track/)).toBeTruthy();
+      expect(getByText(/Nova a partir da faixa atual/)).toBeTruthy();
     });
-    fireEvent.click(getByText(/New from current track/));
+    fireEvent.click(getByText(/Nova a partir da faixa atual/));
     await waitFor(() => {
       expect(vi.mocked(tauriApi.libCreateStation)).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -499,9 +500,9 @@ describe("New from current track usa a track atual como seed (fix: stub)", () =>
     setQueue([], 0); // currentTrack = null
     const { getByText } = render(() => <Stations />);
     await waitFor(() => {
-      expect(getByText(/New from current track/)).toBeTruthy();
+      expect(getByText(/Nova a partir da faixa atual/)).toBeTruthy();
     });
-    fireEvent.click(getByText(/New from current track/));
+    fireEvent.click(getByText(/Nova a partir da faixa atual/));
     // da tempo do handler async rodar
     await new Promise((r) => setTimeout(r, 20));
     expect(vi.mocked(tauriApi.libCreateStation)).not.toHaveBeenCalled();
@@ -547,8 +548,8 @@ describe("aviso de falha nas stations (B5)", () => {
     vi.mocked(tauriApi.libCreateStation).mockRejectedValueOnce(new Error("disco cheio"));
     setQueue([STATION_TRACKS[0]], 0);
     const { getByText } = render(() => <Stations />);
-    await waitFor(() => expect(getByText(/New from current track/)).toBeTruthy());
-    fireEvent.click(getByText(/New from current track/));
+    await waitFor(() => expect(getByText(/Nova a partir da faixa atual/)).toBeTruthy());
+    fireEvent.click(getByText(/Nova a partir da faixa atual/));
     await waitFor(() => expect(toast()?.message).toMatch(/^Não consegui criar a station/));
   });
 });
@@ -607,24 +608,24 @@ describe("Criacao de mood station", () => {
 
   it("abre o painel e lista chips de mood/activity do vocabulario mockado", async () => {
     const { getByText, container } = render(() => <Stations />);
-    fireEvent.click(getByText(/Nova mood station/));
+    fireEvent.click(getByText(/Nova station por clima/));
     await waitFor(() => {
       expect(container.querySelector(".st-mood-create")).toBeTruthy();
     });
-    expect(getByText("dark")).toBeTruthy();
-    expect(getByText("uplifting")).toBeTruthy();
-    expect(getByText("chill")).toBeTruthy();
-    expect(getByText("workout")).toBeTruthy();
-    expect(getByText("study")).toBeTruthy();
+    expect(getByText("sombrio")).toBeTruthy();
+    expect(getByText("inspirador")).toBeTruthy();
+    expect(getByText("tranquilo")).toBeTruthy();
+    expect(getByText("treino")).toBeTruthy();
+    expect(getByText("estudar")).toBeTruthy();
   });
 
   it("chips expõem seleção e os campos têm rótulo (estsig-2)", async () => {
     const { getByText, container } = render(() => <Stations />);
-    fireEvent.click(getByText(/Nova mood station/));
+    fireEvent.click(getByText(/Nova station por clima/));
     await waitFor(() => {
       expect(container.querySelector(".st-mood-create")).toBeTruthy();
     });
-    const chip = getByText("dark");
+    const chip = getByText("sombrio");
     expect(chip.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(chip);
     expect(chip.getAttribute("aria-pressed")).toBe("true");
@@ -634,24 +635,24 @@ describe("Criacao de mood station", () => {
 
   it("botao de criar fica desabilitado sem nenhum chip selecionado", async () => {
     const { getByText, container } = render(() => <Stations />);
-    fireEvent.click(getByText(/Nova mood station/));
+    fireEvent.click(getByText(/Nova station por clima/));
     await waitFor(() => {
       expect(container.querySelector(".st-mood-create")).toBeTruthy();
     });
-    const createBtn = getByText("Criar mood station") as HTMLButtonElement;
+    const createBtn = getByText("Criar station por clima") as HTMLButtonElement;
     expect(createBtn.disabled).toBe(true);
   });
 
   it("selecionar 2 chips habilita o botao e chama libCreateStation com kind mood e query com os tokens", async () => {
     vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
     const { getByText, container } = render(() => <Stations />);
-    fireEvent.click(getByText(/Nova mood station/));
+    fireEvent.click(getByText(/Nova station por clima/));
     await waitFor(() => {
       expect(container.querySelector(".st-mood-create")).toBeTruthy();
     });
-    fireEvent.click(getByText("dark"));
-    fireEvent.click(getByText("workout"));
-    const createBtn = getByText("Criar mood station") as HTMLButtonElement;
+    fireEvent.click(getByText("sombrio"));
+    fireEvent.click(getByText("treino"));
+    const createBtn = getByText("Criar station por clima") as HTMLButtonElement;
     expect(createBtn.disabled).toBe(false);
     fireEvent.click(createBtn);
     await waitFor(() => {
@@ -670,14 +671,14 @@ describe("Criacao de mood station", () => {
     // (single-token "funk" seta genero pra "Funk Brasileiro" por engano).
     vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
     const { getByText, container } = render(() => <Stations />);
-    fireEvent.click(getByText(/Nova mood station/));
+    fireEvent.click(getByText(/Nova station por clima/));
     await waitFor(() => {
       expect(container.querySelector(".st-mood-create")).toBeTruthy();
     });
-    fireEvent.click(getByText("dark"));
+    fireEvent.click(getByText("sombrio"));
     const genreSelect = container.querySelector(".st-mood-create__genre") as HTMLSelectElement;
     fireEvent.change(genreSelect, { target: { value: "Funk & Soul" } });
-    fireEvent.click(getByText("Criar mood station"));
+    fireEvent.click(getByText("Criar station por clima"));
     await waitFor(() => {
       expect(vi.mocked(tauriApi.libCreateStation)).toHaveBeenCalled();
     });
