@@ -2279,6 +2279,36 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
    linha em vez de estourar a largura do painel. */
 .segmented--wrap { display: flex; flex-wrap: wrap; }
 .tweaks__btn:disabled { opacity: 0.5; cursor: progress; }
+/* Marca curta numa opção do segmentado (B19: cena fora do critério de
+   60 fps). Leitura, não alarme: o mesmo cinza das dicas, sem âmbar. */
+.segmented__mark {
+  margin-left: 5px;
+  font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 500;
+  color: var(--fg-5);
+  font-variant-numeric: tabular-nums;
+}
+/* Avançado (B19): variantes do Relevo recolhidas. O resumo diz a variante
+   salva sem abrir; aberto, os eixos ficam recuados sob o resumo. */
+.tweaks__advanced-sum {
+  display: flex; align-items: center; gap: 6px;
+  list-style: none; cursor: pointer;
+  padding: 2px 0;
+  font-size: var(--fs-label); font-weight: 600; color: var(--fg-4);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  border-radius: var(--radius-sm);
+}
+.tweaks__advanced-sum::-webkit-details-marker { display: none; }
+.tweaks__advanced-sum:hover { color: var(--fg-1); }
+.tweaks__advanced-sum:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.tweaks__advanced-chev { flex: none; transition: transform var(--dur-base) var(--ease-out); }
+.tweaks__advanced[open] .tweaks__advanced-chev { transform: rotate(90deg); }
+.tweaks__advanced-cur {
+  margin-left: auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--fg-5);
+}
+/* <details> não vira flex no WebKit: o espaçamento mora no corpo. */
+.tweaks__advanced-body { display: flex; flex-direction: column; gap: 12px; padding: 12px 0 0 18px; }
 
 /* Medição de cenas (gl/bench.ts): tabela da última medição. */
 .tweaks__bench { display: flex; flex-direction: column; gap: 6px; }
