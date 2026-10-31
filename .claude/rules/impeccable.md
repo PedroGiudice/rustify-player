@@ -49,6 +49,15 @@ scripts/impeccable/app_eval.sh js 'return location.pathname'
 - Na `critique`/`audit`, a avaliação B é `app_eval.sh detect` + `impeccable detect` no
   código; a A olha as capturas. A janela é uma só: as duas avaliações se revezam, nas
   mesmas condições de autorização acima.
+- **Tocar faixa pela ponte grava escuta de verdade.** Faixa que chega ao fim vira
+  `track_ended` no `play_events` (familiaridade, sinal positivo do motor) mesmo com o
+  volume do app em 0. Pausar antes do fim e listar no relatório o que foi gravado
+  (31/10/2026: 3 eventos de teste). O medidor e o espectro leem o monitor do sink, DEPOIS
+  do volume: volume 0 = medidor e fundo parados, não é defeito. Para ver a reação sem som,
+  emitir `audio-fft` sintético pelo `window.__TAURI__.event.emit` (com os `level_*`).
+- O detector roda por `setTimeout` no `app_eval.mjs` (microtarefa estourava o corte de 5 s
+  da ponte no Now Playing). O `:focus`/`:focus-within` não casa com a janela sem foco do
+  sistema: alça ou botão "invisível ao focar" num teste remoto não é defeito.
 
 ## Leitura dos achados
 

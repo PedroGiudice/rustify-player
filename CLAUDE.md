@@ -140,8 +140,8 @@ Avaliação completa de 26/10/2026 (17 comandos em modo proposta, consolidada em
 - **Seek com perfil**: `library-indexer/src/waveform.rs` grava `wave_profile` (400 u8, RMS
   mono, 0 = -60 dBFS, 255 = 0 dBFS) e `wave_profile_v` (1 ok, 0 falha) no payload, no ingest
   (terceira decodificação completa, ~0,4 s/faixa em release) e no backfill do boot (depois do
-  de qualidade, 200 ms entre faixas; ~2.200 faixas = 25-40 min estimados na cmr-auto, não
-  medido). Recalcula em todo ingest de propósito (troca de áudio mantém o id). Listagens
+  de qualidade, 200 ms entre faixas; medido na cmr-auto em 30/10: 2.181 faixas em ~37 min,
+  0 falhas). Recalcula em todo ingest de propósito (troca de áudio mantém o id). Listagens
   excluem o campo. `lib_track_profile` -> o trilho vira contorno normalizado pela faixa
   (`src/lib/waveProfile.ts`, máscara em `components/waveMask.ts`).
 - **Fila editável** (`QueueDrawer`, classe `.qedit`; `.qrow` é a linha compacta de faixa,
