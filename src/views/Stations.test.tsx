@@ -155,6 +155,7 @@ import Stations, { SeedMosaic, StationCard, repeatsName, moodWords } from "./Sta
 import { createSignal } from "solid-js";
 import { fireEvent, waitFor } from "@solidjs/testing-library";
 import { player, setQueue } from "../store/player";
+import { toast, dismissToast, runToastAction } from "../store/toast";
 
 describe("Stations view", () => {
   it("apagar station chama o backend e recarrega a lista", async () => {
@@ -503,6 +504,51 @@ describe("New from current track usa a track atual como seed (fix: stub)", () =>
     // da tempo do handler async rodar
     await new Promise((r) => setTimeout(r, 20));
     expect(vi.mocked(tauriApi.libCreateStation)).not.toHaveBeenCalled();
+  });
+});
+
+// B5: tocar, apagar e criar station que falham avisam pelo store/toast.
+describe("aviso de falha nas stations (B5)", () => {
+  afterEach(() => {
+    dismissToast();
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    vi.mocked(tauriApi.libPlayStation).mockImplementation(async () => []);
+    vi.mocked(tauriApi.libDeleteStation).mockImplementation(async () => true);
+    vi.mocked(tauriApi.libCreateStation).mockImplementation(async () => null as any);
+  });
+
+  it("tocar station que falha avisa e tenta de novo pelo aviso", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libPlayStation).mockRejectedValueOnce(new Error("motor fora"));
+    setQueue([], 0);
+    const { container } = render(() => <Stations />);
+    await waitFor(() => expect(container.querySelector(".st-feature__cta")).toBeTruthy());
+    fireEvent.click(container.querySelector(".st-feature__cta")!);
+    await waitFor(() => expect(toast()?.message).toMatch(/^Não consegui tocar a station/));
+    expect(toast()?.action?.label).toBe("Tentar de novo");
+    runToastAction();
+    await waitFor(() => expect(vi.mocked(tauriApi.libPlayStation)).toHaveBeenCalledTimes(2));
+  });
+
+  it("apagar station que falha avisa", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libDeleteStation).mockRejectedValueOnce(new Error("negado"));
+    const { container } = render(() => <Stations />);
+    await waitFor(() => expect(container.querySelector(".st-card__delete")).toBeTruthy());
+    const btn = container.querySelector(".st-card__delete") as HTMLButtonElement;
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(toast()?.message).toMatch(/^Não consegui apagar a station/));
+  });
+
+  it("criar a partir da faixa atual que falha avisa", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libCreateStation).mockRejectedValueOnce(new Error("disco cheio"));
+    setQueue([STATION_TRACKS[0]], 0);
+    const { getByText } = render(() => <Stations />);
+    await waitFor(() => expect(getByText(/New from current track/)).toBeTruthy());
+    fireEvent.click(getByText(/New from current track/));
+    await waitFor(() => expect(toast()?.message).toMatch(/^Não consegui criar a station/));
   });
 });
 

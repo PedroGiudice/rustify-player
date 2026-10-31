@@ -38,7 +38,8 @@ import { CoverArt } from "./CoverArt";
 import { LevelMeter } from "./LevelMeter";
 import { makeWaveMask } from "./waveMask";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
-import { QUEUE_EVENT } from "./QueueDrawer";
+import { QUEUE_EVENT, queueDrawerOpen } from "./QueueDrawer";
+import { failNotice } from "../lib/failNotice";
 import { navigate, route } from "../router";
 import { describeFile, qualityBadge } from "../lib/quality";
 import { fmtDur } from "../lib/format";
@@ -342,7 +343,9 @@ export function PlayerBar() {
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open", { kind: "radio" });
     } catch (e) {
-      console.error("[shuffle] radio populate failed:", e);
+      // O botão não fica aceso mentindo: a fila não virou rádio.
+      setPlayer("shuffle", false);
+      failNotice("Não consegui embaralhar a partir desta faixa.", e, () => { void toggleShuffle(); });
     }
   }
 
@@ -586,7 +589,11 @@ export function PlayerBar() {
         setLikePulse(false);
       }
     } catch (e) {
-      console.error("[like] toggle failed:", e);
+      failNotice(
+        player.isLiked ? "Não consegui tirar a curtida desta faixa." : "Não consegui curtir esta faixa.",
+        e,
+        () => { void onLike(); },
+      );
     }
   }
 
@@ -949,6 +956,7 @@ export function PlayerBar() {
             id="pb-queue"
             title="Queue (Q)"
             aria-label="Queue"
+            aria-expanded={queueDrawerOpen() ? "true" : "false"}
             onClick={() => window.dispatchEvent(new CustomEvent(QUEUE_EVENT))}
           >
             <Icon name={ICONS.queue} size={14} />
@@ -1254,9 +1262,20 @@ export async function playTrack(
     setLiked(false);
   }
 
-  playerPlay(track.path, origin, track.id ?? null, contextId ?? null).catch((e) =>
-    console.error("[player] play failed:", e)
-  );
+  // O play só conta (record_play, 1x por play) depois que o motor aceitou:
+  // faixa que não tocou não sobe a contagem.
+  try {
+    await playerPlay(track.path, origin, track.id ?? null, contextId ?? null);
+  } catch (e) {
+    // Compara pelo caminho: o store devolve proxy, nunca o objeto passado.
+    if (player.currentTrack?.path === track.path) setPlayer("isTransitioning", false);
+    failNotice(
+      "Não consegui tocar esta faixa. O arquivo pode ter sido movido; reescaneie a biblioteca.",
+      e,
+      () => { void playTrack(track, origin, contextId); },
+    );
+    return;
+  }
 
   if (track.id) {
     libRecordPlay(track.id).catch(console.error);
