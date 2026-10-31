@@ -26,6 +26,9 @@ export interface Track {
   last_played?: number | null;
   play_count?: number;
   liked_at?: number | null;
+  /** Quando o ingest gravou a faixa (segundos Unix). Re-ingest de arquivo
+      retagueado renova o valor. */
+  indexed_at?: number | null;
   /** Qualidade medida no conteúdo (corte espectral do indexador). Ausente =
       ainda não medida. Ver `lib/quality.ts`. */
   quality_class?: QualityClass | null;
@@ -228,6 +231,11 @@ export const libGetAlbumsByArtist = (artistName: string, limit?: number | null) 
   invoke<Album[]>("lib_list_albums", { artist: artistName, limit: limit === undefined ? 100 : limit });
 export const libGetTracksByArtist = (artistName: string, limit?: number) =>
   invoke<Track[]>("lib_list_tracks", { artist: artistName, limit: limit ?? 200 });
+/** Faixas que o ingest gravou desde `sinceSec` (segundos Unix), da chegada
+    mais nova para a mais velha: "Chegou esta semana" da Home (B12). Vale
+    para toda porta de entrada (Crate, Tidal, Bandcamp, cópia manual). */
+export const libListArrivals = (sinceSec: number, limit = 200) =>
+  invoke<Track[]>("lib_list_tracks", { indexedSince: Math.floor(sinceSec), limit });
 export const libToggleLike = (trackId: string) => invoke<boolean>("lib_toggle_like", { trackId });
 export const libIsLiked = (trackId: string) => invoke<boolean>("lib_is_liked", { trackId });
 export const libGetLyrics = (trackId: string) => invoke<LyricLine[]>("lib_get_lyrics", { trackId });

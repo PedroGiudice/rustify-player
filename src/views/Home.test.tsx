@@ -47,6 +47,7 @@ vi.mock("../tauri", () => ({
   libRecommendations: vi.fn().mockResolvedValue({ most_played: [], based_on_top: [], discover: [] }),
   libShuffle: vi.fn().mockResolvedValue([]),
   libGetTracks: vi.fn().mockResolvedValue(mockTracks),
+  libListArrivals: vi.fn().mockResolvedValue([]),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
@@ -88,6 +89,7 @@ vi.mock("../lib/format", () => ({
 
 beforeEach(() => {
   arrivals.n = 0;
+  localStorage.clear();
   mockSetQueue.mockClear();
   mockPlayTrack.mockClear();
   mockResetRadio.mockClear();
@@ -303,5 +305,67 @@ describe("Home — escuta e chegadas (B12)", () => {
     vi.mocked(tauri.libListHistory).mockRejectedValueOnce(new Error("fora"));
     const { findByRole } = render(() => <Home />);
     expect((await findByRole("alert")).textContent).toContain("Parte da Home não carregou.");
+  });
+});
+
+// B12 restante: "Chegou esta semana" pelo indexed_at, com marca de já visto.
+describe("Home — Chegou esta semana (B12)", () => {
+  const ch = (id: string, title: string, indexed_at: number) => ({
+    id, title, artist_name: "Band", album_title: "Novo", album_cover_path: null, album_year: 2026, duration_ms: 1, path: `/${id}`, lrc_path: null, indexed_at,
+  });
+  const shelf = (c: HTMLElement) => c.querySelector('[aria-label="Chegou esta semana"]');
+  const rows = (c: HTMLElement) => Array.from(shelf(c)!.querySelectorAll(".track-row-mock")).map((r) => [r.textContent, r.getAttribute("data-when")]);
+
+  let nowSpy: { mockRestore: () => void } | null = null;
+  afterEach(() => { nowSpy?.mockRestore(); nowSpy = null; });
+
+  it("pede ao índice o que entrou nos últimos 7 dias e marca as novas desde a última visita", async () => {
+    nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000_000_000_000);
+    localStorage.setItem("kv-home-arrivals-seen", "999999000");
+    vi.mocked(tauri.libListArrivals).mockResolvedValueOnce([ch("a", "Nova", 999_999_500), ch("b", "Vista", 999_998_000)]);
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(shelf(container)).toBeTruthy());
+    expect(tauri.libListArrivals).toHaveBeenCalledWith(1_000_000_000 - 7 * 86_400, expect.any(Number));
+    expect(rows(container)).toEqual([["Nova", "nova · just now"], ["Vista", "just now"]]);
+    expect(shelf(container)!.textContent).toContain("1 nova");
+  });
+
+  it("sair da Home grava a visita: na próxima, as mesmas faixas não aparecem como novas", async () => {
+    vi.mocked(tauri.libListArrivals)
+      .mockResolvedValueOnce([ch("a", "Nova", 999_999_500)])
+      .mockResolvedValueOnce([ch("a", "Nova", 999_999_500)]);
+    const first = render(() => <Home />);
+    await vi.waitFor(() => expect(shelf(first.container)).toBeTruthy());
+    expect(rows(first.container)[0][1]).toBe("nova · just now");
+    first.unmount();
+    expect(localStorage.getItem("kv-home-arrivals-seen")).toBe("999999500");
+    const again = render(() => <Home />);
+    await vi.waitFor(() => expect(shelf(again.container)).toBeTruthy());
+    expect(rows(again.container)[0][1]).toBe("just now");
+  });
+
+  it("Marcar como vistas tira a marca na hora", async () => {
+    vi.mocked(tauri.libListArrivals).mockResolvedValueOnce([ch("a", "Nova", 999_999_500)]);
+    const { container, getByRole } = render(() => <Home />);
+    await vi.waitFor(() => expect(shelf(container)).toBeTruthy());
+    fireEvent.click(getByRole("button", { name: "Marcar como vistas" }));
+    expect(rows(container)[0][1]).toBe("just now");
+    expect(localStorage.getItem("kv-home-arrivals-seen")).toBe("999999500");
+  });
+
+  it("clicar numa chegada toca a lista de chegadas a partir dela", async () => {
+    const list = [ch("a", "Uma", 3), ch("b", "Outra", 2)];
+    vi.mocked(tauri.libListArrivals).mockResolvedValueOnce(list);
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(shelf(container)).toBeTruthy());
+    fireEvent.click(shelf(container)!.querySelectorAll(".track-row-mock")[1]);
+    expect(mockSetQueue).toHaveBeenCalledWith(list, 1);
+    expect(mockPlayTrack).toHaveBeenCalledWith(list[1]);
+  });
+
+  it("semana sem chegadas: a seção não aparece", async () => {
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelector(".hero-grid")).toBeTruthy());
+    expect(shelf(container)).toBeNull();
   });
 });

@@ -118,6 +118,12 @@ pub struct Track {
     pub liked_at: Option<i64>,
 
     pub lrc_path: Option<PathBuf>,
+
+    /// Quando o ingest gravou o ponto (segundos Unix, `indexed_at` do
+    /// payload). A Home lê para "Chegou esta semana" (B12). Re-ingest de
+    /// arquivo retagueado regrava o ponto e renova o valor.
+    #[serde(default)]
+    pub indexed_at: Option<i64>,
 }
 
 /// Filter applied to list_tracks queries.
@@ -129,6 +135,8 @@ pub struct TrackFilter {
     pub tags: Vec<String>,
     pub limit: Option<usize>,
     pub order: TrackOrder,
+    /// Só faixas com `indexed_at >= indexed_since` (segundos Unix). B12.
+    pub indexed_since: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

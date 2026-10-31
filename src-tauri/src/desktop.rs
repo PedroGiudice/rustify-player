@@ -376,23 +376,38 @@ fn lib_mood_vocabulary_blocking(lib: &Library) -> Result<MoodVocabulary, String>
 }
 
 #[tauri::command]
-async fn lib_list_tracks(lib: State<'_, Library>, genre: Option<String>, artist: Option<String>, album: Option<String>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+async fn lib_list_tracks(
+    lib: State<'_, Library>,
+    genre: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
+    limit: Option<usize>,
+    indexed_since: Option<i64>,
+) -> Result<Vec<Track>, String> {
     let lib = lib.inner().clone();
-    off_main("lib_list_tracks", IPC_SCAN, move || lib_list_tracks_blocking(&lib, genre, artist, album, limit)).await
+    off_main("lib_list_tracks", IPC_SCAN, move || {
+        lib_list_tracks_blocking(&lib, genre, artist, album, limit, indexed_since)
+    })
+    .await
 }
 
+/// `indexed_since` (segundos Unix): só o que o ingest gravou desde então, da
+/// chegada mais nova para a mais velha ("Chegou esta semana" da Home, B12).
 fn lib_list_tracks_blocking(
     lib: &Library,
     genre: Option<String>,
     artist: Option<String>,
     album: Option<String>,
     limit: Option<usize>,
+    indexed_since: Option<i64>,
 ) -> Result<Vec<Track>, String> {
     let filter = TrackFilter {
         genre,
         artist,
         album,
         limit,
+        indexed_since,
+        order: if indexed_since.is_some() { TrackOrder::RecentlyAdded } else { TrackOrder::default() },
         ..Default::default()
     };
     let mut tracks = lib.handle.list_tracks(filter).map_err(err)?;
@@ -6422,6 +6437,7 @@ signal:
             last_played: None,
             liked_at: None,
             lrc_path: None,
+            indexed_at: None,
         }
     }
 

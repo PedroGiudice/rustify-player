@@ -818,6 +818,24 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row-list > .section__head { padding: 12px 12px 0; margin-bottom: 4px; }
 /* Home (B12): dica curta ao lado do título da seção ("Para descobrir"). */
 .section__hint { font-size: 12px; color: var(--fg-5); margin-right: auto; }
+/* "Chegou esta semana" (B12): contagem com as novas, "Marcar como vistas"
+   na linha do título e "Mostrar todas" no pé da lista. */
+.home-shelf__count { font-variant-numeric: tabular-nums; }
+button.section__action { background: none; border: 0; padding: 0; }
+.section__action:focus-visible { outline: var(--focus-outline); outline-offset: 2px; border-radius: var(--radius-xs); }
+.home-shelf__more {
+  align-self: flex-start;
+  margin: 4px 6px 8px;
+  padding: 6px 10px;
+  border: 0; border-radius: var(--radius-md);
+  background: none;
+  font-size: 12px; font-weight: 600; color: var(--fg-3);
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+.home-shelf__more:hover { background: var(--bg-soft); color: var(--fg-1); }
+.home-shelf__more:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.home-shelf__more-n { margin-left: 4px; color: var(--fg-5); font-weight: 500; font-variant-numeric: tabular-nums; }
 /* Aviso de chegadas do Crate na Home (B12): linha quieta, uma ação só. */
 .home-arrivals {
   display: flex; align-items: center; gap: 10px;
