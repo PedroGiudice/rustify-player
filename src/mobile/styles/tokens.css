@@ -186,7 +186,9 @@ body {
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 20px;
-  touch-action: pan-x;
+  /* Sem touch-action aqui (A52): com `pan-x` o toque que começava num card
+     só rolava na horizontal e a Home não subia. O `auto` padrão deixa o
+     carrossel (scroll-snap) e a página vertical funcionarem juntos. */
 }
 .qs-row::-webkit-scrollbar {
   display: none;
