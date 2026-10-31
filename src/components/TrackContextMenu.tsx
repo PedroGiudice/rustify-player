@@ -18,6 +18,7 @@ import { trackMenu, closeTrackMenu } from "../store/contextMenu";
 import { pushEscLayer } from "../lib/escLayers";
 import { rememberFocus } from "../lib/focusReturn";
 import { libToggleLike, libIsLiked } from "../tauri";
+import type { Track } from "../tauri";
 import {
   setQueue, enqueueNext, enqueueEnd, enqueueNextMany, enqueueEndMany, shuffleQueue, player, setLiked,
 } from "../store/player";
@@ -28,6 +29,22 @@ import { openMoveDialog } from "../store/moveDialog";
 import { clearSelection } from "../store/selection";
 import { moveLabel } from "../lib/selection";
 import { Icon, ICONS } from "./Icon";
+import { failNotice } from "../lib/failNotice";
+import { refuseFromRadio } from "../lib/radioRefusal";
+import { currentSession } from "../store/radioSession";
+
+// Recusa com escopo (B9). Literais para o gen-icons achar.
+const ICON_NEVER_RADIO = "lucide:radio-off";
+const ICON_OFF_STATION = "lucide:circle-slash";
+
+/** A faixa veio da station que está tocando? (está na fila de uma station
+    com rodada ativa). Só então "Não tocar nesta station" faz sentido. */
+export function stationOf(trackId: string): { id: string; name?: string } | null {
+  const sid = currentSession().stationId;
+  if (player.queueSource?.kind !== "station" || !sid) return null;
+  if (!player.queue.some((t) => t.id === trackId)) return null;
+  return { id: sid, name: player.queueSource.name };
+}
 
 export function TrackContextMenu() {
   let menuEl: HTMLDivElement | undefined;
@@ -128,13 +145,33 @@ export function TrackContextMenu() {
   };
 
   // Like NÃO fecha o menu — dá feedback imediato (label/ícone alternam).
-  const doToggleLike = async () => {
-    const st = trackMenu(); if (!st || !st.track.id) return;
+  // Falha avisa pelo failNotice (B5) com Tentar de novo; o retry age na
+  // MESMA faixa, mesmo com o menu já fechado.
+  const toggleLikeOf = async (track: Track, wasLiked: boolean) => {
     try {
-      const now = await libToggleLike(st.track.id);
-      setLikedLocal(now);
-      if (player.currentTrack?.id === st.track.id) setLiked(now); // sincroniza PlayerBar
-    } catch { /* no-op */ }
+      const now = await libToggleLike(track.id);
+      if (trackMenu()?.track.id === track.id) setLikedLocal(now);
+      if (player.currentTrack?.id === track.id) setLiked(now); // sincroniza PlayerBar
+    } catch (err) {
+      failNotice(
+        `Não consegui ${wasLiked ? "descurtir" : "curtir"} “${track.title || "faixa"}”.`,
+        err,
+        () => { void toggleLikeOf(track, wasLiked); },
+      );
+    }
+  };
+  const doToggleLike = () => {
+    const st = trackMenu(); if (!st || !st.track.id) return;
+    void toggleLikeOf(st.track, liked());
+  };
+
+  // Recusa com escopo (B9): fecha o menu; o aviso traz Desfazer.
+  const doRefuse = (scope: "never" | "station") => {
+    const st = trackMenu(); if (!st || !st.track.id) return;
+    const station = scope === "station" ? stationOf(st.track.id) : null;
+    if (scope === "station" && !station) return;
+    closeTrackMenu();
+    void refuseFromRadio(st.track, scope, station ?? undefined);
   };
 
   // Fecha ANTES de abrir o diálogo: o foco volta ao gatilho primeiro e o
@@ -216,6 +253,18 @@ export function TrackContextMenu() {
             <button class="track-ctx-menu__item" type="button" onClick={doMove} role="menuitem" tabIndex={-1}>
               <Icon name={ICONS.moveTo} size={14} /><span>Mover para playlist…</span>
             </button>
+
+            <Show when={st().track.id}>
+              <div class="track-ctx-menu__sep" />
+              <Show when={stationOf(st().track.id)}>
+                <button class="track-ctx-menu__item" type="button" onClick={() => doRefuse("station")} role="menuitem" tabIndex={-1}>
+                  <Icon name={ICON_OFF_STATION} size={14} /><span>Não tocar nesta station</span>
+                </button>
+              </Show>
+              <button class="track-ctx-menu__item" type="button" onClick={() => doRefuse("never")} role="menuitem" tabIndex={-1}>
+                <Icon name={ICON_NEVER_RADIO} size={14} /><span>Nunca no rádio</span>
+              </button>
+            </Show>
 
             <Show when={st().track.album_title || st().track.artist_name}>
               <div class="track-ctx-menu__sep" />
