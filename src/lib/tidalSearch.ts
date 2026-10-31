@@ -46,49 +46,6 @@ export function estimateSelection(tracks: Pick<TidalTrack, "duracao_s" | "hires"
   return { count: tracks.length, bytes: Math.round(mb * 1_000_000), seconds: tracks.length * SECONDS_PER_TRACK };
 }
 
-const nf1 = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-
-/** "~1,1 GB", "~240 MB"; 0 -> "0 MB". */
-export function formatSize(bytes: number): string {
-  if (bytes <= 0) return "0 MB";
-  const mb = bytes / 1_000_000;
-  if (mb >= 1000) return `~${nf1.format(mb / 1000)} GB`;
-  return `~${Math.max(1, Math.round(mb))} MB`;
-}
-
-/** Tempo estimado de chegada: "<1 min", "~6 min", "~1 h 20 min". */
-export function formatEta(seconds: number): string {
-  if (seconds <= 0) return "0 min";
-  if (seconds < 60) return "<1 min";
-  const min = Math.round(seconds / 60);
-  if (min < 60) return `~${min} min`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m ? `~${h} h ${m} min` : `~${h} h`;
-}
-
-/** Duração de faixa "3:02" / "1:02:03". */
-export function formatTrackTime(s: number): string {
-  const total = Math.max(0, Math.round(s));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const sec = String(total % 60).padStart(2, "0");
-  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
-}
-
-/** Duração de lista: "32 min", "5 h 32 min". */
-export function formatListTime(s: number): string {
-  const min = Math.round(s / 60);
-  if (min < 60) return `${min} min`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m ? `${h} h ${m} min` : `${h} h`;
-}
-
-export function plural(n: number, um: string, varios: string): string {
-  return `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
-}
-
 // ── no acervo ─────────────────────────────────────────────────────
 /* A MESMA chave do baixador (`tidal_mix_dl.py`: `title_key` + `split_artists` + `loose`), para a
    tela e o "JÁ NO ACERVO" do download concordarem: título igual depois de tirar só o que não é marca

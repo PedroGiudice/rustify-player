@@ -1261,7 +1261,7 @@ describe("Crate: SoundCloud", () => {
     expect(within(card).getByLabelText("Artista")).toHaveValue("DJ Arana");
     expect(within(card).getByLabelText("Título")).toHaveValue("Festa do Pente Rala");
     expect(within(card).getByLabelText("Ano")).toHaveValue(2024);
-    expect(await within(card).findByText(/WAV · 7,1 MB/)).toBeInTheDocument();
+    expect(await within(card).findByText(/WAV · 7,4 MB/)).toBeInTheDocument();
     expect(mocks.crateScProbe).toHaveBeenCalledWith(1, 183000);
     await userEvent.clear(within(card).getByLabelText("Artista"));
     await userEvent.type(within(card).getByLabelText("Artista"), "DJ Arana{enter}");

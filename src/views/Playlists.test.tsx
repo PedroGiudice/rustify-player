@@ -154,7 +154,7 @@ describe("Playlists — card fixado (lib-26)", () => {
     const { getByText } = render(() => <Playlists />);
     await vi.waitFor(() => expect(getByText("Pinned")).toBeTruthy());
     const card = getByText("Pinned").closest("section")!.querySelector<HTMLElement>(".pl-card")!;
-    const hits = (card.textContent ?? "").match(/8 tracks/g) ?? [];
+    const hits = (card.textContent ?? "").match(/8 faixas/g) ?? [];
     expect(hits.length).toBe(1);
   });
 });

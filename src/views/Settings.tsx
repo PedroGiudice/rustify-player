@@ -23,6 +23,7 @@
 
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Icon, ICONS } from "../components/Icon";
+import { plural } from "../lib/format";
 import { Switch } from "../components/Switch";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
@@ -300,7 +301,7 @@ export default function Settings() {
                       class="status-pill status-pill--err"
                       style={{ "margin-left": "8px", "vertical-align": "middle" }}
                     >
-                      {`${failingContrast().length} falha(s)`}
+                      {plural(failingContrast().length, "falha", "falhas")}
                     </span>
                   </Show>
                   <Show when={largeOnlyContrast().length > 0}>
@@ -366,7 +367,7 @@ export default function Settings() {
             <div>
               <div class="set-row__label set-num">
                 <Show when={data()} fallback="Contando…">
-                  {tracksTotal()} faixas · {albumsCount()} álbuns · {artistsCount()} artistas
+                  {plural(tracksTotal(), "faixa", "faixas")} · {plural(albumsCount(), "álbum", "álbuns")} · {plural(artistsCount(), "artista", "artistas")}
                 </Show>
               </div>
               <div class="set-row__hint">Relê a pasta ~/Music e indexa o que mudou.</div>

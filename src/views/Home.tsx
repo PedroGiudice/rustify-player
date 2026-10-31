@@ -35,6 +35,7 @@ import { fmtDur, relTime } from "../lib/format";
 import { shuffleAll } from "../lib/quickPlay";
 import { peek, settle } from "../lib/loaded";
 import { plural } from "../lib/count";
+import { fmtInt } from "../lib/format";
 import { albumHref } from "../lib/albumRoute";
 import { listenedAlbums } from "../lib/homeShelves";
 import { arrivalsCutoff, countUnseen, isUnseen, loadArrivalsSeen, saveArrivalsSeen } from "../lib/arrivals";
@@ -50,7 +51,7 @@ const ARRIVALS_MAX = 200;
 
 /** "1 faixa", "12 faixas" (com separador de milhar). */
 function faixas(n: number): string {
-  return `${n.toLocaleString()} ${n === 1 ? "faixa" : "faixas"}`;
+  return plural(n, "faixa", "faixas");
 }
 
 /** Descoberta do dia: a primeira de `discover` (perto do gosto, nunca
@@ -148,11 +149,11 @@ export default function Home() {
         <Show when={snap()}>
           {(s) => (
             <div class="view__stats">
-              <span><b>{s().tracks_total.toLocaleString()}</b> tracks</span>
+              <span><b>{fmtInt(s().tracks_total)}</b> tracks</span>
               <Show when={albumsAll()}>
-                {(a) => <span><b>{a().length.toLocaleString()}</b> albums</span>}
+                {(a) => <span><b>{fmtInt(a().length)}</b> albums</span>}
               </Show>
-              <span><b>{s().embeddings_done.toLocaleString()}</b> embedded</span>
+              <span><b>{fmtInt(s().embeddings_done)}</b> embedded</span>
             </div>
           )}
         </Show>

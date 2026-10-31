@@ -33,6 +33,7 @@ import { ICONS } from "../components/Icon";
 import { dataOf, listState, peek, settle } from "../lib/loaded";
 import { mosaicCells } from "../lib/mosaic";
 import { truncTipEvent } from "../lib/truncTip";
+import { plural } from "../lib/format";
 
 function openPlaylist(folder: FolderPlaylist) {
   navigate(`/playlist/${encodeURIComponent(folder.name)}`);
@@ -120,7 +121,7 @@ function PlaylistCard(props: { folder: FolderPlaylist; children?: JSX.Element })
 
 // ── Helpers ─────────────────────────────────────────────────────
 function fmtTracks(n: number): string {
-  return `${n} ${n === 1 ? "track" : "tracks"}`;
+  return plural(n, "faixa", "faixas");
 }
 
 export default function Playlists() {

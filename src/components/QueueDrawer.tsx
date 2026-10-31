@@ -27,7 +27,7 @@ import {
 import { dropIndex, shiftFor } from "../lib/queueDrag";
 import { playQueueUpcoming } from "./PlayerBar";
 import { navigate } from "../router";
-import { fmtDur } from "../lib/format";
+import { fmtListDur, plural } from "../lib/format";
 import { isTypingContext } from "../lib/keyboard";
 import { pushEscLayer } from "../lib/escLayers";
 import { rememberFocus, trapTab, type FocusReturn } from "../lib/focusReturn";
@@ -40,13 +40,13 @@ const [drawerOpen, setDrawerOpen] = createSignal(false);
 /** Gaveta aberta (para o aria-expanded do botão da fila na barra). */
 export const queueDrawerOpen = drawerOpen;
 
-const faixas = (n: number) => `${n} ${n === 1 ? "faixa" : "faixas"}`;
+const faixas = (n: number) => plural(n, "faixa", "faixas");
 
 /** Linha de resumo do cabeçalho. */
 export function queueMeta(upcoming: readonly Track[], hasCurrent: boolean): string {
   if (upcoming.length === 0) return hasCurrent ? "só esta faixa" : "vazia";
   const ms = upcoming.reduce((acc, t) => acc + (t.duration_ms ?? 0), 0);
-  return `${faixas(upcoming.length)} a seguir · ${fmtDur(ms)}`;
+  return `${faixas(upcoming.length)} a seguir · ${fmtListDur(ms)}`;
 }
 
 /** O que acontece quando a fila acaba (PlayerBar, TrackEnded): repetir

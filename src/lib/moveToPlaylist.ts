@@ -72,9 +72,8 @@ export function existingFolderMatch(names: string[], query: string): string | nu
   return names.find((n) => n.toLowerCase() === lower || sanitizePlaylistName(n).toLowerCase() === lower) ?? null;
 }
 
-export function plural(n: number, um: string, varios: string): string {
-  return `${n} ${n === 1 ? um : varios}`;
-}
+export { plural } from "./format";
+import { plural } from "./format";
 
 /** Linha de confirmação de lote: "Mover 14 faixas de X para Y?". */
 export function confirmText(count: number, label: string | null, dest: string): string {

@@ -164,7 +164,8 @@ describe("só a faixa atual (A9)", () => {
   });
 
   it("textos puros: contagem, total e o que acontece no fim", () => {
-    expect(queueMeta([mk("x", 61_900)], true)).toBe("1 faixa a seguir · 1:01");
+    expect(queueMeta([mk("x", 61_900)], true)).toBe("1 faixa a seguir · 1 min");
+    expect(queueMeta(Array.from({ length: 2203 }, (_, i) => mk(`t${i}`, 180_000)), true)).toBe("2.203 faixas a seguir · 110 h 09 min");
     expect(queueMeta([], false)).toBe("vazia");
     expect(queueEndNote(false, "all")).toBe("Depois desta, a fila recomeça.");
     expect(queueEndNote(true, "off")).toBe("Fim da lista. O rádio continua depois dela.");

@@ -3,6 +3,7 @@
    Ids são sempre string (u64 do Qdrant passa de Number.MAX_SAFE_INTEGER):
    nada aqui converte id em número.
    ============================================================ */
+import { plural } from "./format";
 
 export interface SelState {
   ids: ReadonlySet<string>;
@@ -57,7 +58,7 @@ export function pickSelected<T extends { id: string }>(s: SelState, list: readon
 }
 
 export function selLabel(n: number): string {
-  return `${n} ${n === 1 ? "selecionada" : "selecionadas"}`;
+  return plural(n, "selecionada", "selecionadas");
 }
 
 export function moveLabel(n: number): string {
