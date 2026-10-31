@@ -412,7 +412,7 @@ export function QueueDrawer() {
             <Show when={upcoming().length === 0 && !player.currentTrack}>
               <div class="empty-state">
                 <p class="empty-state__title">Fila vazia</p>
-                <p class="empty-state__hint">Toque algo pra começar.</p>
+                <p class="empty-state__hint">Toque algo para começar.</p>
               </div>
             </Show>
           </div>

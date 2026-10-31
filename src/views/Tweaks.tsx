@@ -166,7 +166,7 @@ function FontSelect(props: {
           value={tweaks()[props.key]}
           onChange={(e) => updateTweak(props.key, e.currentTarget.value)}
         >
-          <option value="">Default</option>
+          <option value="">Padrão</option>
           <For each={props.fonts}>
             {(f) => <option value={f}>{f}</option>}
           </For>
@@ -661,15 +661,15 @@ export function Tweaks() {
           </Show>
           <Show when={t().bgEngine === "2d"}>
             <div class="tweaks__hint">
-              Shape e renderer do fundo 2D seguem no Now Playing ([ ] e , .)
+              Forma e estilo do fundo 2D ficam no Now Playing ([ ] e , .)
             </div>
           </Show>
           <BgInkSection />
-          <NumberSlider label="Bass" key="bgBassGain" min={0} max={2} step={0.05} format={fmt2} />
-          <NumberSlider label="Mid" key="bgMidGain" min={0} max={2} step={0.05} format={fmt2} />
-          <NumberSlider label="Treble" key="bgTrebleGain" min={0} max={2} step={0.05} format={fmt2} />
+          <NumberSlider label="Grave" key="bgBassGain" min={0} max={2} step={0.05} format={fmt2} />
+          <NumberSlider label="Médio" key="bgMidGain" min={0} max={2} step={0.05} format={fmt2} />
+          <NumberSlider label="Agudo" key="bgTrebleGain" min={0} max={2} step={0.05} format={fmt2} />
           <NumberSlider
-            label="Smoothing"
+            label="Suavização"
             key="bgSmoothing"
             min={0}
             max={1}
@@ -677,7 +677,7 @@ export function Tweaks() {
             format={(v) => `${Math.round(v * 100)}%`}
           />
           <NumberSlider
-            label="Speed"
+            label="Velocidade"
             key="bgSpeed"
             min={0}
             max={2}
@@ -685,22 +685,22 @@ export function Tweaks() {
             format={(v) => `${fmt2(v)}x`}
           />
           <Segmented
-            label="Beat sync"
+            label="Sincronia com a batida"
             key="bgBeatMode"
-            options={[["off", "Off"], ["speed", "Speed"], ["pulse", "Pulse"]]}
+            options={[["off", "Desligada"], ["speed", "Velocidade"], ["pulse", "Pulso"]]}
           />
-          <div class="tweaks__hint">Speed: kick acelera o movimento · Pulse: pulso de amplitude no tempo</div>
+          <div class="tweaks__hint">Velocidade: o kick acelera o movimento. Pulso: a amplitude pulsa no tempo.</div>
           {/* Slider contínuo (2026-07-19): o pipeline sempre foi contínuo
               (bgBeatDepth); os 3 presets eram só amarra da UI. 0.55 segue o
               default calibrado. Sem Beat sync, não tem efeito (A30). */}
           <NumberSlider
-            label="Beat depth"
+            label="Profundidade da batida"
             key="bgBeatDepth"
             min={0}
             max={1}
             step={0.05}
             format={fmt2}
-            dep={{ on: t().bgBeatMode !== "off", parent: "Beat sync ligado" }}
+            dep={{ on: t().bgBeatMode !== "off", parent: "Sincronia com a batida ligada" }}
           />
           <BenchSection />
 
@@ -709,10 +709,10 @@ export function Tweaks() {
           <Segmented
             label="Normalização"
             key="loudnessNorm"
-            options={[[true, "On"], [false, "Off"]]}
+            options={[[true, "Ligada"], [false, "Desligada"]]}
           />
           <NumberSlider
-            label="Target"
+            label="Alvo"
             key="loudnessTarget"
             min={-20}
             max={-6}
@@ -721,39 +721,39 @@ export function Tweaks() {
             dep={{ on: t().loudnessNorm, parent: "Normalização ligada" }}
           />
           <Segmented
-            label="EQ spectrum"
+            label="Espectro sobre o EQ"
             key="eqSpectrumOverlay"
-            options={[[true, "On"], [false, "Off"]]}
+            options={[[true, "Ligado"], [false, "Desligado"]]}
           />
 
           {/* ── Aparência ──────────────────────────────────────── */}
           <SectionHead key="aparencia" label="Aparência" />
           <Segmented
-            label="Density"
+            label="Densidade"
             key="density"
-            options={[["normal", "Normal"], ["compact", "Compact"]]}
+            options={[["normal", "Normal"], ["compact", "Compacta"]]}
           />
           <Segmented
-            label="Sidebar"
+            label="Barra lateral"
             key="sidebar"
-            options={[["icons", "Icons"], ["labels", "Labels"]]}
+            options={[["icons", "Ícones"], ["labels", "Rótulos"]]}
           />
           <Segmented
-            label="Type"
+            label="Tipo"
             key="type"
             options={[["body", "Sans"], ["mono", "Mono"]]}
           />
           <Show when={!fonts.loading}>
             <FontSelect
-              label="UI Font"
+              label="Fonte da interface"
               key="fontUI"
               fonts={fonts() ?? []}
-              dep={{ on: t().type !== "mono", parent: "Type: Sans" }}
+              dep={{ on: t().type !== "mono", parent: "Tipo: Sans" }}
             />
-            <FontSelect label="Mono Font" key="fontMono" fonts={fonts() ?? []} />
+            <FontSelect label="Fonte mono" key="fontMono" fonts={fonts() ?? []} />
           </Show>
           <NumberSlider
-            label="Scale"
+            label="Escala"
             key="scale"
             min={0.85}
             max={1.25}
@@ -762,7 +762,7 @@ export function Tweaks() {
             commitOnRelease
           />
           <NumberSlider
-            label="Glow"
+            label="Brilho"
             key="glow"
             min={0}
             max={1}
@@ -771,7 +771,7 @@ export function Tweaks() {
             themeGoverned
           />
           <NumberSlider
-            label="Lyrics glass"
+            label="Vidro da letra"
             key="lyricsGlass"
             min={0}
             max={1}
@@ -780,9 +780,9 @@ export function Tweaks() {
             themeGoverned
           />
           <Segmented
-            label="Adaptive accent"
+            label="Acento adaptativo"
             key="adaptiveAccent"
-            options={[[true, "Album"], [false, "Off"]]}
+            options={[[true, "Da capa"], [false, "Desligado"]]}
           />
 
           {/* ── Controle remoto ─────────────────────────────────
@@ -795,7 +795,7 @@ export function Tweaks() {
           <Segmented
             label="Ponte MCP"
             key="remoteBridge"
-            options={[[true, "On"], [false, "Off"]]}
+            options={[[true, "Ligada"], [false, "Desligada"]]}
           />
           <div
             class="tweaks__hint tweaks__gl-status"

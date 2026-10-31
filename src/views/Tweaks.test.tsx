@@ -187,7 +187,7 @@ describe("Tweaks: organização e controles (31/10)", () => {
   it("segmentados são radiogroups que dizem o ativo (inclusive a Ponte MCP)", () => {
     render(() => <Tweaks />);
     const ponte = screen.getByRole("radiogroup", { name: "Ponte MCP" });
-    const off = Array.from(ponte.querySelectorAll('[role="radio"]')).find((b) => b.textContent === "Off")!;
+    const off = Array.from(ponte.querySelectorAll('[role="radio"]')).find((b) => b.textContent === "Desligada")!;
     expect(off.getAttribute("aria-checked")).toBe("true");
   });
 
@@ -209,17 +209,17 @@ describe("Tweaks: organização e controles (31/10)", () => {
   it("filho de pai desligado diz de quem depende e não muda", () => {
     updateTweak("bgBeatMode", "off");
     render(() => <Tweaks />);
-    expect(screen.getByText("Depende de Beat sync ligado")).toBeTruthy();
-    const depth = screen.getByRole("slider", { name: "Beat depth" }) as HTMLInputElement;
+    expect(screen.getByText("Depende de Sincronia com a batida ligada")).toBeTruthy();
+    const depth = screen.getByRole("slider", { name: "Profundidade da batida" }) as HTMLInputElement;
     expect(depth.disabled).toBe(true);
     updateTweak("bgBeatMode", "speed");
-    expect(screen.queryByText("Depende de Beat sync ligado")).toBeNull();
+    expect(screen.queryByText("Depende de Sincronia com a batida ligada")).toBeNull();
     expect(depth.disabled).toBe(false);
   });
 
   it("Scale só aplica ao soltar; o valor exibido acompanha o arrasto", () => {
     render(() => <Tweaks />);
-    const scale = screen.getByRole("slider", { name: "Scale" }) as HTMLInputElement;
+    const scale = screen.getByRole("slider", { name: "Escala" }) as HTMLInputElement;
     scale.value = "1.1";
     fireEvent.input(scale);
     expect(tweaks().scale).toBe(1);

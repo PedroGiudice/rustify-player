@@ -33,6 +33,7 @@ import {
   libSyncStatus, onSyncReceived,
   type ContrastCheck, type DeviceSync,
 } from "../tauri";
+import { plural } from "../lib/count";
 import { mergeSync, syncDetail, syncLine, syncStale } from "../lib/syncStatus";
 import { applyTweaks, setTweaksOpen } from "../store/tweaks";
 import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
@@ -57,15 +58,23 @@ function wcagBadgeClass(c: ContrastCheck): string {
   return "status-pill status-pill--err";
 }
 
+/** Rótulo de tela da classe de contraste (a classe interna segue em inglês). */
+function wcagText(c: ContrastCheck): string {
+  const label = wcagLabel(c);
+  if (label === "AA-large") return "AA texto grande";
+  if (label === "fail") return "falha";
+  return label;
+}
+
 function relativeTime(isoStr: string | null | undefined): string {
   if (!isoStr) return "";
   try {
     const then = new Date(isoStr);
     const diffSecs = Math.floor((Date.now() - then.getTime()) / 1000);
-    if (diffSecs < 60) return "just now";
-    if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)} min ago`;
-    if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)} h ago`;
-    return then.toLocaleDateString();
+    if (diffSecs < 60) return "agora há pouco";
+    if (diffSecs < 3600) return `há ${Math.floor(diffSecs / 60)} min`;
+    if (diffSecs < 86400) return `há ${Math.floor(diffSecs / 3600)} h`;
+    return `em ${then.toLocaleDateString("pt-BR")}`;
   } catch { return ""; }
 }
 
@@ -196,22 +205,29 @@ export default function Settings() {
   }
 
   // ── Update flow (preservado) ─────────────────────────────────
-  const [updateStatus, setUpdateStatus] = createSignal<string | null>(null);
+  // Estado da atualização por CÓDIGO; o texto de tela sai de updateHint().
+  // O detalhe técnico de uma falha fica em updateError (vai para o title).
+  type UpdateStatus = "checking" | "update_available" | "up_to_date" | "installed" | "check_failed" | "install_failed";
+  const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus | null>(null);
+  const [updateError, setUpdateError] = createSignal<string | null>(null);
   const [updateResult, setUpdateResult] = createSignal<any>(null);
   const [checking, setChecking] = createSignal(false);
   const [installing, setInstalling] = createSignal(false);
 
   async function handleCheckUpdate() {
     setChecking(true);
-    setUpdateStatus("Checking...");
+    setUpdateStatus("checking");
+    setUpdateError(null);
     try {
       const result = await checkForUpdate();
       setUpdateResult(result);
-      if (result?.error) setUpdateStatus(result.message ?? "Check failed");
+      if (result?.error) { setUpdateError(result.message ?? null); setUpdateStatus("check_failed"); }
       else if (result?.update_available) setUpdateStatus("update_available");
       else setUpdateStatus("up_to_date");
     } catch (err) {
-      setUpdateStatus(`Check failed: ${err}`);
+      console.warn("[update] verificação falhou:", err);
+      setUpdateError(String(err));
+      setUpdateStatus("check_failed");
     } finally {
       setChecking(false);
     }
@@ -223,7 +239,9 @@ export default function Settings() {
       await installUpdate();
       setUpdateStatus("installed");
     } catch (err) {
-      setUpdateStatus(`Install failed: ${err}`);
+      console.warn("[update] instalação falhou:", err);
+      setUpdateError(String(err));
+      setUpdateStatus("install_failed");
       setInstalling(false);
     }
   }
@@ -239,7 +257,7 @@ export default function Settings() {
     <article class="view">
       <header class="view__head">
         <div>
-          <h1>Settings</h1>
+          <h1>Configurações</h1>
           <p class="view__head-hint">Tema, retomada, biblioteca e atualização · v{version() ?? "—"}</p>
         </div>
       </header>
@@ -260,7 +278,7 @@ export default function Settings() {
             <div class="set-row__control">
               <Show
                 when={themes()}
-                fallback={<span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)" }}>loading…</span>}
+                fallback={<span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)" }}>carregando…</span>}
               >
                 {(t) => (
                   <span class="select-shell">
@@ -270,7 +288,7 @@ export default function Settings() {
                     value={activeTheme()}
                     onChange={(e) => selectThemeFile(e.currentTarget.value, e.currentTarget)}
                   >
-                    <option value="">Default (Extractor Lab)</option>
+                    <option value="">Tema do app</option>
                     <For each={t()}>
                       {(theme) => <option value={theme.filename}>{theme.name}</option>}
                     </For>
@@ -285,7 +303,7 @@ export default function Settings() {
           <Show when={themeError()}>
             <div class="set-row">
               <div class="set-row__hint" role="alert" style={{ color: "var(--rose-fg)" }}>
-                Tema não aplicado: {themeError()}
+                Não consegui aplicar o tema. {themeError()}
               </div>
             </div>
           </Show>
@@ -294,13 +312,13 @@ export default function Settings() {
             <div class="set-row set-row--col">
               <div style={{ width: "100%" }}>
                 <div class="set-row__label" style={{ "margin-bottom": "8px" }}>
-                  Contraste WCAG
+                  Contraste (WCAG)
                   <Show when={failingContrast().length > 0}>
                     <span
                       class="status-pill status-pill--err"
                       style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
                     >
-                      {`${failingContrast().length} falha(s)`}
+                      {failingContrast().length === 1 ? "1 falha" : `${failingContrast().length} falhas`}
                     </span>
                   </Show>
                   <Show when={largeOnlyContrast().length > 0}>
@@ -308,7 +326,7 @@ export default function Settings() {
                       class="status-pill status-pill--warn"
                       style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
                     >
-                      {`${largeOnlyContrast().length} só AA-large`}
+                      {`${largeOnlyContrast().length} só em texto grande`}
                     </span>
                   </Show>
                   <Show when={failingContrast().length === 0 && largeOnlyContrast().length === 0}>
@@ -316,7 +334,7 @@ export default function Settings() {
                       class="status-pill status-pill--ok"
                       style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
                     >
-                      AA ok
+                      Contraste ok
                     </span>
                   </Show>
                 </div>
@@ -327,13 +345,13 @@ export default function Settings() {
                       <>
                         <span style={{ color: "var(--fg-4)", "overflow": "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{c.pair}</span>
                         <span style={{ color: "var(--fg-3)", "text-align": "right" }}>{c.ratio.toFixed(2)}:1</span>
-                        <span class={wcagBadgeClass(c)} style={{ padding: "1px 5px", "font-size": "9px", "line-height": "1.6" }}>{wcagLabel(c)}</span>
+                        <span class={wcagBadgeClass(c)} style={{ padding: "1px 5px", "font-size": "9px", "line-height": "1.6" }}>{wcagText(c)}</span>
                       </>
                     )}
                   </For>
                 </div>
                 <div class="set-row__hint" style={{ "margin-top": "6px" }}>
-                  AA = 4.5:1 · AAA = 7:1 · AA-large = 3:1 (texto grande)
+                  AA = 4,5:1 · AAA = 7:1 · AA texto grande = 3:1
                 </div>
               </div>
             </div>
@@ -428,26 +446,29 @@ export default function Settings() {
           {/* Update flow (preservado) ────────────────────────── */}
           <div class="set-row">
             <div>
-              <div class="set-row__label">Updates</div>
-              <div class="set-row__hint">
+              <div class="set-row__label">Atualizações</div>
+              <div class="set-row__hint" title={updateError() ?? undefined}>
                 <Show when={updateStatus() === "update_available"}>
-                  v{updateResult()?.current_version} → v{updateResult()?.latest_version}
+                  v{updateResult()?.current_version} para v{updateResult()?.latest_version}
                   {updateResult()?.published_at ? ` (publicado ${relativeTime(updateResult().published_at)})` : ""}
                 </Show>
                 <Show when={updateStatus() === "up_to_date"}>
-                  Você está na última — v{updateResult()?.current_version ?? version()}
+                  Você está na versão mais recente (v{updateResult()?.current_version ?? version()}).
                 </Show>
                 <Show when={updateStatus() === "installed"}>
-                  Update instalado — reinicie pra aplicar.
+                  Atualização instalada. Reinicie para aplicar.
                 </Show>
-                <Show when={updateStatus() && !["update_available", "up_to_date", "installed", "Checking..."].includes(updateStatus()!)}>
-                  {updateStatus()}
+                <Show when={updateStatus() === "check_failed"}>
+                  Não consegui verificar atualizações. Veja a conexão e tente de novo.
                 </Show>
-                <Show when={updateStatus() === "Checking..."}>
-                  Verificando no GitHub releases…
+                <Show when={updateStatus() === "install_failed"}>
+                  Não consegui instalar a atualização. Tente de novo.
+                </Show>
+                <Show when={updateStatus() === "checking"}>
+                  Verificando no GitHub…
                 </Show>
                 <Show when={!updateStatus()}>
-                  Clique em "Check for updates" pra verificar no GitHub releases.
+                  Consulta a versão nova no GitHub.
                 </Show>
               </div>
             </div>
@@ -456,26 +477,26 @@ export default function Settings() {
                 when={updateStatus() === "installed"}
                 fallback={
                   <Show
-                    when={updateStatus() === "update_available"}
+                    when={updateStatus() === "update_available" || updateStatus() === "install_failed"}
                     fallback={
                       <button class="set-folder-btn" disabled={checking()} onClick={handleCheckUpdate} type="button">
-                        {checking() ? "Checking..." : "Check for updates"}
+                        {checking() ? "Verificando…" : "Verificar atualizações"}
                       </button>
                     }
                   >
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button class="set-folder-btn set-folder-btn--accent" disabled={installing()} onClick={handleInstall} type="button">
-                        {installing() ? "Installing..." : "Install Update"}
+                        {installing() ? "Instalando…" : "Instalar atualização"}
                       </button>
                       <button class="set-folder-btn" disabled={checking()} onClick={handleCheckUpdate} type="button">
-                        Recheck
+                        Verificar de novo
                       </button>
                     </div>
                   </Show>
                 }
               >
                 <button class="set-folder-btn set-folder-btn--accent" onClick={() => restartApp()} type="button">
-                  Restart Now
+                  Reiniciar agora
                 </button>
               </Show>
             </div>
@@ -522,15 +543,15 @@ export default function Settings() {
           </div>
           <div class="set-row">
             <div>
-              <div class="set-row__label">Embeddings</div>
+              <div class="set-row__label">Vetores</div>
               <div class="set-row__hint set-num">
-                {embedDone()} de {tracksTotal()} faixas com embedding; alimentam as stations e o rádio.
+                {embedDone()} de {plural(tracksTotal(), "faixa", "faixas")} com vetor de som e de letra; alimentam as stations e o rádio.
               </div>
             </div>
           </div>
           <div class="set-row">
             <div>
-              <div class="set-row__label">qdrant</div>
+              <div class="set-row__label">Banco de vetores (qdrant)</div>
               <div class="set-row__hint mono">localhost:6333 · vectors mert 768 · lyrics 1024</div>
             </div>
           </div>
@@ -547,31 +568,31 @@ export default function Settings() {
           <Show when={data()}>
             <div class="stat-grid set-diag__stats">
               <div class="stat-tile">
-                <span class="stat-tile__label">TRACKS</span>
+                <span class="stat-tile__label">FAIXAS</span>
                 <span class="stat-tile__value">{tracksTotal()}</span>
-                <span class="stat-tile__sub">indexed</span>
+                <span class="stat-tile__sub">indexadas</span>
               </div>
               <div class="stat-tile">
-                <span class="stat-tile__label">ALBUMS</span>
+                <span class="stat-tile__label">ÁLBUNS</span>
                 <span class="stat-tile__value">{albumsCount()}</span>
-                <span class="stat-tile__sub">distinct</span>
+                <span class="stat-tile__sub">distintos</span>
               </div>
               <div class="stat-tile">
-                <span class="stat-tile__label">ARTISTS</span>
+                <span class="stat-tile__label">ARTISTAS</span>
                 <span class="stat-tile__value">{artistsCount()}</span>
-                <span class="stat-tile__sub">distinct</span>
+                <span class="stat-tile__sub">distintos</span>
               </div>
               <div class="stat-tile">
-                <span class="stat-tile__label">GENRES</span>
+                <span class="stat-tile__label">GÊNEROS</span>
                 <span class="stat-tile__value">{genresPopulated()}</span>
-                <span class="stat-tile__sub">populated</span>
+                <span class="stat-tile__sub">preenchidos</span>
               </div>
             </div>
           </Show>
 
           <div class="set-about-grid">
             <div class="set-about-item">
-              <span class="set-about-item__label">Version</span>
+              <span class="set-about-item__label">Versão</span>
               <span class="set-about-item__value is-mono-strong">{version() ?? "—"}</span>
             </div>
             <div class="set-about-item">
@@ -579,15 +600,15 @@ export default function Settings() {
               <span class="set-about-item__value">2.x</span>
             </div>
             <div class="set-about-item">
-              <span class="set-about-item__label">Backend</span>
+              <span class="set-about-item__label">Base</span>
               <span class="set-about-item__value">Rust · GStreamer</span>
             </div>
             <div class="set-about-item">
-              <span class="set-about-item__label">Identifier</span>
+              <span class="set-about-item__label">Identificador</span>
               <span class="set-about-item__value">dev.cmr.rustifyplayer</span>
             </div>
             <div class="set-about-item">
-              <span class="set-about-item__label">License</span>
+              <span class="set-about-item__label">Licença</span>
               <span class="set-about-item__value">MIT</span>
             </div>
           </div>
