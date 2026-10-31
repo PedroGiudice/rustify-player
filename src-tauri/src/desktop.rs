@@ -869,18 +869,104 @@ fn autoplay_pick(f: familiarity::TrackFamiliarity, liked: bool) -> AutoplayPick 
     }
 }
 
+/// Motivo curto e estruturado da escolha do radio (B10), para a fila e o Now
+/// Playing dizerem por que a faixa veio. Vem em TODA faixa de
+/// `lib_autoplay_next`, nas tres camadas; `autoplay_pick` fica como estava
+/// (o chip da barra le ele). O S24 nao manda: no frontend e opcional.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct AutoplayReason {
+    /// "known" (conhecida: 3+ fins ou curtida), "discovery" (descoberta),
+    /// "similar" (parecida com a semente, sem o indice de familiaridade ou
+    /// pela camada 2) ou "shuffle" (camada 3, sorteio do acervo).
+    kind: &'static str,
+    /// Vezes ouvida ate o fim; `None` sem o indice de familiaridade.
+    ended: Option<u32>,
+    /// Curtida; `None` quando o motor nao consultou (camadas 2 e 3, ou o
+    /// batch de enrichments falhou).
+    liked: Option<bool>,
+    /// Camada 1: de onde a candidata veio. "seed" = vizinhanca da semente,
+    /// "taste" = gosto geral, "both" = as duas. `None` nas camadas 2 e 3.
+    pool: Option<&'static str>,
+    /// A faixa que semeou o pedido (texto: u64 passa de 2^53).
+    seed_id: String,
+}
+
+/// Camada do autoplay que produziu a faixa.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AutoplayLayer {
+    Mix,
+    Similar,
+    Shuffle,
+}
+
+fn autoplay_reason(
+    layer: AutoplayLayer,
+    fam: Option<familiarity::TrackFamiliarity>,
+    liked: Option<bool>,
+    pool: Option<&'static str>,
+    seed_id: u64,
+) -> AutoplayReason {
+    let kind = match (layer, fam) {
+        (AutoplayLayer::Shuffle, _) => "shuffle",
+        (AutoplayLayer::Mix, Some(f)) => {
+            if familiarity::is_known(f, liked.unwrap_or(false)) {
+                "known"
+            } else {
+                "discovery"
+            }
+        }
+        _ => "similar",
+    };
+    AutoplayReason {
+        kind,
+        ended: fam.map(|f| f.ended),
+        liked,
+        pool: if layer == AutoplayLayer::Mix { pool } else { None },
+        seed_id: seed_id.to_string(),
+    }
+}
+
+/// De qual pool da camada 1 a faixa veio.
+fn pool_of(
+    id: u64,
+    seed_pool: &std::collections::HashSet<u64>,
+    taste_pool: &std::collections::HashSet<u64>,
+) -> Option<&'static str> {
+    match (seed_pool.contains(&id), taste_pool.contains(&id)) {
+        (true, true) => Some("both"),
+        (true, false) => Some("seed"),
+        (false, true) => Some("taste"),
+        (false, false) => None,
+    }
+}
+
 /// Track + o motivo da escolha. `flatten` mantem o JSON de `Track` intacto:
-/// quem nao le `autoplay_pick` nao percebe a diferenca.
+/// quem nao le `autoplay_pick`/`autoplay_reason` nao percebe a diferenca.
 #[derive(Serialize)]
 struct AutoplayTrack {
     #[serde(flatten)]
     track: Track,
     #[serde(skip_serializing_if = "Option::is_none")]
     autoplay_pick: Option<AutoplayPick>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    autoplay_reason: Option<AutoplayReason>,
 }
 
-fn unpicked(tracks: Vec<Track>) -> Vec<AutoplayTrack> {
-    tracks.into_iter().map(|track| AutoplayTrack { track, autoplay_pick: None }).collect()
+/// Faixas das camadas 2 e 3: sem `autoplay_pick` (o chip segue "radio"
+/// puro), com o motivo da camada.
+fn fallback_picks(
+    tracks: Vec<Track>,
+    layer: AutoplayLayer,
+    fam: Option<&familiarity::FamiliarityIndex>,
+    seed_id: u64,
+) -> Vec<AutoplayTrack> {
+    tracks
+        .into_iter()
+        .map(|track| {
+            let reason = autoplay_reason(layer, fam.map(|f| f.get(track.id)), None, None, seed_id);
+            AutoplayTrack { track, autoplay_pick: None, autoplay_reason: Some(reason) }
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -995,6 +1081,8 @@ fn lib_autoplay_next_blocking(
                         out
                     };
                     let pools = vec![resolve(&seed_pool), resolve(&taste_pool)];
+                    let seed_ids: std::collections::HashSet<u64> = seed_pool.iter().map(|(id, _)| *id).collect();
+                    let taste_ids: std::collections::HashSet<u64> = taste_pool.iter().map(|(id, _)| *id).collect();
 
                     // Re-rank da uniao pela vibe do seed, depois familiaridade
                     // (filtro de nunca-termina + mistura 2:1) e cap de 2 por
@@ -1032,11 +1120,17 @@ fn lib_autoplay_next_blocking(
                         let picked = ranked
                             .into_iter()
                             .map(|track| {
-                                let autoplay_pick = fam.as_deref().map(|fam| {
-                                    let liked = out.liked.as_ref().is_some_and(|l| l.contains(&track.id));
-                                    autoplay_pick(fam.get(track.id), liked)
-                                });
-                                AutoplayTrack { track, autoplay_pick }
+                                let liked = out.liked.as_ref().map(|l| l.contains(&track.id));
+                                let f = fam.as_deref().map(|fam| fam.get(track.id));
+                                let autoplay_pick = f.map(|f| autoplay_pick(f, liked.unwrap_or(false)));
+                                let reason = autoplay_reason(
+                                    AutoplayLayer::Mix,
+                                    f,
+                                    liked,
+                                    pool_of(track.id, &seed_ids, &taste_ids),
+                                    track_id,
+                                );
+                                AutoplayTrack { track, autoplay_pick, autoplay_reason: Some(reason) }
                             })
                             .collect();
                         return Ok(picked);
@@ -1075,7 +1169,8 @@ fn lib_autoplay_next_blocking(
             }
         }
         if !tracks.is_empty() {
-            return Ok(unpicked(tracks));
+            let fam = client.familiarity();
+            return Ok(fallback_picks(tracks, AutoplayLayer::Similar, fam.as_deref(), track_id));
         }
     }
 
@@ -1096,7 +1191,8 @@ fn lib_autoplay_next_blocking(
         }
     }
 
-    Ok(unpicked(tracks))
+    let fam = client.familiarity();
+    Ok(fallback_picks(tracks, AutoplayLayer::Shuffle, fam.as_deref(), track_id))
 }
 
 #[tauri::command]
@@ -6117,13 +6213,58 @@ fg-8: '#404040'
         let v = serde_json::to_value(AutoplayTrack {
             track: mix_track(42, "a"),
             autoplay_pick: Some(autoplay_pick(f(2), false)),
+            autoplay_reason: None,
         })
         .unwrap();
         assert_eq!(v["id"], "42");
         assert_eq!(v["autoplay_pick"]["kind"], "discovery");
         assert_eq!(v["autoplay_pick"]["ended"], 2);
-        let sem = serde_json::to_value(AutoplayTrack { track: mix_track(1, "a"), autoplay_pick: None }).unwrap();
+        let sem = serde_json::to_value(AutoplayTrack { track: mix_track(1, "a"), autoplay_pick: None, autoplay_reason: None }).unwrap();
         assert!(sem.get("autoplay_pick").is_none());
+    }
+
+    #[test]
+    fn motivo_do_radio_diz_grupo_fins_pool_e_semente() {
+        let f = |ended| familiarity::TrackFamiliarity { ended, ..Default::default() };
+        let big = u64::MAX - 2;
+        let r = autoplay_reason(AutoplayLayer::Mix, Some(f(9)), Some(false), Some("seed"), big);
+        assert_eq!(
+            r,
+            AutoplayReason {
+                kind: "known",
+                ended: Some(9),
+                liked: Some(false),
+                pool: Some("seed"),
+                seed_id: big.to_string(),
+            }
+        );
+        assert_eq!(autoplay_reason(AutoplayLayer::Mix, Some(f(0)), Some(true), None, 1).kind, "known");
+        assert_eq!(autoplay_reason(AutoplayLayer::Mix, Some(f(1)), None, Some("taste"), 1).kind, "discovery");
+        // Sem índice de familiaridade a camada 1 só sabe que é parecida.
+        let sem = autoplay_reason(AutoplayLayer::Mix, None, Some(false), Some("both"), 1);
+        assert_eq!((sem.kind, sem.ended, sem.pool), ("similar", None, Some("both")));
+        // Camadas 2 e 3 não têm pool e não consultaram like.
+        let c2 = autoplay_reason(AutoplayLayer::Similar, Some(f(4)), None, Some("seed"), 1);
+        assert_eq!((c2.kind, c2.ended, c2.liked, c2.pool), ("similar", Some(4), None, None));
+        assert_eq!(autoplay_reason(AutoplayLayer::Shuffle, Some(f(4)), None, None, 1).kind, "shuffle");
+
+        let seed: std::collections::HashSet<u64> = [1, 2].into_iter().collect();
+        let taste: std::collections::HashSet<u64> = [2, 3].into_iter().collect();
+        assert_eq!(pool_of(1, &seed, &taste), Some("seed"));
+        assert_eq!(pool_of(2, &seed, &taste), Some("both"));
+        assert_eq!(pool_of(3, &seed, &taste), Some("taste"));
+        assert_eq!(pool_of(4, &seed, &taste), None);
+
+        let v = serde_json::to_value(AutoplayTrack {
+            track: mix_track(42, "a"),
+            autoplay_pick: None,
+            autoplay_reason: Some(autoplay_reason(AutoplayLayer::Shuffle, None, None, None, big)),
+        })
+        .unwrap();
+        assert_eq!(v["autoplay_reason"]["kind"], "shuffle");
+        assert_eq!(v["autoplay_reason"]["seed_id"], big.to_string());
+        assert!(v["autoplay_reason"]["ended"].is_null());
+        assert!(v.get("autoplay_pick").is_none(), "o chip segue sem pick nas camadas 2/3");
     }
 
     #[test]

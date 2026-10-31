@@ -33,6 +33,9 @@ export interface Track {
   /** Só nas faixas que o rádio escolheu (`lib_autoplay_next`, desktop) com a
       mistura conhecida/descoberta ativa. O S24 não manda. */
   autoplay_pick?: AutoplayPick | null;
+  /** B10: motivo da escolha em TODA faixa de `lib_autoplay_next` (desktop,
+      três camadas). O S24 não manda. */
+  autoplay_reason?: AutoplayReason | null;
 }
 
 /** `AutoplayPick` de `desktop.rs`: por que o rádio escolheu a faixa. */
@@ -41,6 +44,24 @@ export interface AutoplayPick {
   /** Vezes ouvida até o fim. */
   ended: number;
   liked: boolean;
+}
+
+/** `AutoplayReason` de `desktop.rs` (B10): o motivo curto que a fila e o Now
+    Playing mostram. */
+export interface AutoplayReason {
+  /** "known" = conhecida (3+ fins ou curtida); "discovery" = descoberta;
+      "similar" = parecida com a semente (camada 2, ou camada 1 sem o índice
+      de familiaridade); "shuffle" = sorteio do acervo (camada 3). */
+  kind: "known" | "discovery" | "similar" | "shuffle";
+  /** Vezes ouvida até o fim; null sem o índice do motor. */
+  ended: number | null;
+  /** Curtida; null quando o motor não consultou. */
+  liked: boolean | null;
+  /** Só na camada 1: "seed" = vizinhança da semente, "taste" = gosto geral,
+      "both" = as duas. */
+  pool: "seed" | "taste" | "both" | null;
+  /** A faixa que semeou o pedido (o `trackId` passado ao libAutoplayNext). */
+  seed_id: string;
 }
 
 /** `library_indexer::spectral::QualityClass`. */
