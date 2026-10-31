@@ -18,6 +18,7 @@ import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from
 import { originLabel, originSrc } from "../derive";
 import { scrollBehavior } from "../motion";
 import { subscribeFft } from "../bg/spectrum";
+import { createSwapKey } from "../../lib/motion";
 
 const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/home", label: "Home", icon: Icon.home },
@@ -80,6 +81,8 @@ function Vu() {
 }
 
 export function Dock() {
+  // Título e artista do mini trocam por subida de 3 px fora de rajada (A61).
+  const swap = createSwapKey(() => current()?.id ?? null);
   const progress = () => (pb.durationMs > 0 ? Math.min(1, pb.positionMs / pb.durationMs) : 0);
 
   // Gestos do mini (porte do protótipo)
@@ -152,6 +155,7 @@ export function Dock() {
               style={{ flex: 1, "min-width": 0 }}
               role="button"
               tabindex="0"
+              attr:data-swap={swap()}
               aria-label={`Abrir Now Playing: ${t().title}`}
               onClick={onInfoClick}
               onKeyDown={onInfoKey}

@@ -43,3 +43,18 @@ describe("Cover", () => {
     expect(r.container.querySelector("img")).toBeNull();
   });
 });
+
+// A61: a capa aparece por opacidade quando carrega; na troca de faixa a
+// nova não estala por cima da anterior.
+describe("Cover — entrada da capa (A61)", () => {
+  it("só marca carregada depois do load, e a troca de capa zera a marca", () => {
+    const [path, setPath] = createSignal<string | null>("/covers/a.jpg");
+    const r = render(() => <Cover path={path()} seed="x" />);
+    const img = r.container.querySelector("img")!;
+    expect(img.hasAttribute("data-loaded")).toBe(false);
+    fireEvent.load(img);
+    expect(img.hasAttribute("data-loaded")).toBe(true);
+    setPath("/covers/b.jpg");
+    expect(r.container.querySelector("img")!.hasAttribute("data-loaded")).toBe(false);
+  });
+});

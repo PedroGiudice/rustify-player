@@ -27,6 +27,9 @@ export function Cover(props: {
     const p = props.path ?? null;
     return p && p === failedPath() ? null : assetSrc(p);
   });
+  // Capa entra por opacidade quando carrega (A61): a marca é do src, então
+  // a troca de faixa no mesmo <img> volta a 0 até a nova chegar.
+  const [loadedSrc, setLoadedSrc] = createSignal<string | null>(null);
   const tone = createMemo(() => toneFor(props.seed));
   const Glyph = () => {
     const k = props.icon ?? "note";
@@ -41,7 +44,15 @@ export function Cover(props: {
       }}
     >
       <Show when={src()} fallback={<Glyph />}>
-        <img src={src()!} alt="" loading="lazy" decoding="async" onError={() => setFailedPath(props.path ?? null)} />
+        <img
+          src={src()!}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          attr:data-loaded={loadedSrc() === src() ? "" : undefined}
+          onLoad={(e) => setLoadedSrc(e.currentTarget.getAttribute("src"))}
+          onError={() => setFailedPath(props.path ?? null)}
+        />
       </Show>
     </div>
   );

@@ -610,18 +610,62 @@
   padding: 8px 15px;
   font-size: 12px;
   color: var(--t1);
-  opacity: 0;
-  transition: opacity var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out);
+  transform: translate(-50%, 0);
   pointer-events: none;
   box-shadow: var(--sh-hover);
   max-width: 80%;
   text-align: center;
+  /* Entra subindo 8 px, sai descendo mais rápido (A61). O componente espera
+     a saída (--dur-med) antes de desmontar. */
+  animation: toast-in var(--dur-enter) var(--ease-out) both;
 }
-.toast[data-on] {
-  opacity: 1;
-  transform: translate(-50%, 0);
+.toast[data-leaving] {
+  animation: toast-out var(--dur-med) var(--ease-in) both;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 8px); }
+}
+@keyframes toast-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes toast-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
+/* Vocabulário de entrada (o do desktop, extractor-lab.css): estado que
+   aparece só por opacidade; troca de conteúdo sobe 3 px. data-swap alterna
+   "a"/"b" para a animação recomeçar; "off" = corte seco (rajada de pulos,
+   lib/motion.ts). */
+@keyframes state-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes swap-rise-a { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes swap-rise-b { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes swap-fade-a { from { opacity: 0; } to { opacity: 1; } }
+@keyframes swap-fade-b { from { opacity: 0; } to { opacity: 1; } }
+[data-swap="a"] { animation: swap-rise-a var(--dur-enter) var(--ease-out); }
+[data-swap="b"] { animation: swap-rise-b var(--dur-enter) var(--ease-out); }
+/* Capa entra por opacidade quando carrega; na troca de faixa a anterior some
+   e a nova aparece sobre o tom do álbum (Cover.tsx, data-loaded). */
+.cov img,
+.art img,
+.cover img {
+  opacity: 0;
+  transition: opacity var(--dur-enter) var(--ease-out);
+}
+.cov img[data-loaded],
+.art img[data-loaded],
+.cover img[data-loaded] {
+  opacity: 1;
+}
 .icon {
   width: 16px;
   height: 16px;
@@ -968,6 +1012,11 @@
   position: relative;
   mask-image: linear-gradient(180deg, transparent, #000 22%, #000 72%, transparent);
 }
+/* A letra entra por opacidade depois de a capa começar a encolher (A61):
+   o atraso de --dur-base evita os dois movimentos no mesmo quadro. */
+.np .lyrics {
+  animation: state-in var(--dur-enter) var(--ease-out) var(--dur-base) both;
+}
 .np .lyrics[data-static] {
   overflow-y: auto;
   scrollbar-width: none;
@@ -1003,19 +1052,32 @@
    O primitivo das ações secundárias: long-press de faixa, info,
    e o que vier depois (fila, like). Fecha por scrim, arraste do
    grab e botão voltar do Android (sentinela em sheet.ts). */
+/* Montada sempre, como a paleta do desktop (A61): entra em --dur-enter com
+   --ease-out, sai em --dur-med com --ease-in, e só fica invisível
+   (visibility) depois da saída. Antes era display: none -> block, num corte. */
 .sheet {
   position: absolute;
   inset: 0;
   z-index: 40;
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
+  transition: visibility 0s linear var(--dur-med);
 }
 .sheet[data-open] {
-  display: block;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
 }
 .sheet .scrim {
   position: absolute;
   inset: 0;
   background: rgba(5, 5, 5, 0.6);
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-in);
+}
+.sheet[data-open] .scrim {
+  opacity: 1;
+  transition: opacity var(--dur-enter) var(--ease-out);
 }
 .sheet .panel {
   position: absolute;
@@ -1032,7 +1094,16 @@
   max-height: 76%;
   overflow-y: auto;
   scrollbar-width: none;
-  transition: transform var(--dur-base) var(--ease-out);
+  transform: translateY(100%);
+  transition: transform var(--dur-med) var(--ease-in);
+}
+.sheet[data-open] .panel {
+  transform: none;
+  transition: transform var(--dur-enter) var(--ease-out);
+}
+/* Arrastando pela alça: o painel segue o dedo sem atraso. */
+.sheet .panel[data-drag] {
+  transition: none;
 }
 .sheet .panel::-webkit-scrollbar {
   display: none;
@@ -1179,8 +1250,19 @@
   .np,
   .np .lrail,
   .np[data-lyr] .cover,
-  .vu i,
-  .sheet .panel { transition: none; }
-  .toast { transition: opacity 0.18s linear; }
+  .vu i { transition: none; }
+  /* Calma = só opacidade: a folha aparece sem subir, o toast e a troca de
+     faixa sem deslocamento. */
+  .sheet .panel,
+  .sheet[data-open] .panel {
+    transform: none;
+    opacity: 0;
+    transition: opacity var(--dur-med) linear;
+  }
+  .sheet[data-open] .panel { opacity: 1; }
+  .toast { animation-name: toast-fade-in; }
+  .toast[data-leaving] { animation-name: toast-fade-out; }
+  [data-swap="a"] { animation-name: swap-fade-a; }
+  [data-swap="b"] { animation-name: swap-fade-b; }
   .app-bg { transition: opacity 0.18s linear; }
 }

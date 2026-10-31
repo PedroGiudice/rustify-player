@@ -255,6 +255,14 @@ function InfoSheet(props: { track: Track }) {
 
 export function Sheet() {
   const [dragY, setDragY] = createSignal(0);
+  /* A folha fica montada e sai animando (A61): o conteúdo da última abertura
+     segue desenhado enquanto ela desce. Fechada, o CSS a esconde
+     (visibility depois da saída) e o aria-hidden a tira do leitor de tela. */
+  const [shown, setShown] = createSignal<SheetSpec | null>(null);
+  createEffect(() => {
+    const s = sheet();
+    if (s) setShown(s);
+  });
   let startY: number | null = null;
   let panelEl: HTMLDivElement | undefined;
 
@@ -296,6 +304,7 @@ export function Sheet() {
     <div
       class="sheet"
       attr:data-open={sheet() ? "" : undefined}
+      aria-hidden={sheet() ? undefined : "true"}
       role="dialog"
       aria-modal="true"
       aria-labelledby={sheet() ? TITLE_ID : undefined}
@@ -305,6 +314,7 @@ export function Sheet() {
         class="panel"
         ref={panelEl}
         tabindex="-1"
+        attr:data-drag={dragY() ? "" : undefined}
         style={dragY() ? { transform: `translateY(${dragY()}px)` } : undefined}
       >
         <div
@@ -314,7 +324,7 @@ export function Sheet() {
           onPointerUp={onUp}
           onPointerCancel={onUp}
         />
-        <Show when={sheet()}>
+        <Show when={shown()}>
           {(spec) => (
             <Switch fallback={<InfoSheet track={spec().track} />}>
               <Match when={spec().kind === "track" ? (spec() as Extract<SheetSpec, { kind: "track" }>) : null}>

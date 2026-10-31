@@ -100,3 +100,22 @@ describe("Sheet — acessibilidade", () => {
     expect(document.activeElement).not.toBe(opener);
   });
 });
+
+// A61: a folha entrava e saía num corte (display: none -> block). Agora ela
+// fica montada e o conteúdo da última abertura segue lá durante a saída.
+describe("Sheet — entrada e saída (A61)", () => {
+  it("fechada, sai da árvore de acessibilidade, mas o conteúdo fica para a saída animar", async () => {
+    const r = render(() => <Sheet />);
+    openSheet({ kind: "info", track });
+    const root = r.container.querySelector(".sheet")!;
+    expect(root.hasAttribute("data-open")).toBe(true);
+    expect(root.getAttribute("aria-hidden")).toBeNull();
+
+    const popped = new Promise((res) => window.addEventListener("popstate", res, { once: true }));
+    closeSheet();
+    await popped;
+    expect(root.hasAttribute("data-open")).toBe(false);
+    expect(root.getAttribute("aria-hidden")).toBe("true");
+    expect(r.container.textContent).toContain("Informações");
+  });
+});

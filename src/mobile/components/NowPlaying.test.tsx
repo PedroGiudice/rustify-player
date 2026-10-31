@@ -235,3 +235,10 @@ describe("NowPlaying — arrastar para fechar (A58)", () => {
     expect(h.back).not.toHaveBeenCalled();
   });
 });
+
+describe("NowPlaying — troca de faixa (A61)", () => {
+  it("o título e o artista carregam a chave de troca (data-swap)", () => {
+    const r = render(() => <NowPlaying />);
+    expect(r.container.querySelector(".title")!.getAttribute("data-swap")).toBe("off");
+  });
+});

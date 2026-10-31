@@ -107,11 +107,31 @@ export function LibGate(props: { children: JSX.Element }) {
  *  forma confiável pelo TalkBack (mobile-20). O wrapper é estático e sem
  *  tamanho — o .toast continua posicionado contra o .device. */
 export function Toast() {
+  // Entrada por keyframe e saída esperando a animação (A61): antes o .toast
+  // nascia já com data-on e a transição do CSS nunca corria.
+  const [shown, setShown] = createSignal<string | null>(null);
+  const [leaving, setLeaving] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const msg = toast();
+    clearTimeout(timer);
+    if (msg) {
+      setShown(msg);
+      setLeaving(false);
+    } else if (shown()) {
+      setLeaving(true);
+      timer = setTimeout(() => {
+        setShown(null);
+        setLeaving(false);
+      }, TOAST_EXIT_MS);
+    }
+  });
+  onCleanup(() => clearTimeout(timer));
   return (
     <div role="status" aria-live="polite">
-      <Show when={toast()}>
+      <Show when={shown()}>
         {(msg) => (
-          <div class="toast" attr:data-on="">
+          <div class="toast" attr:data-leaving={leaving() ? "" : undefined}>
             {msg()}
           </div>
         )}
@@ -119,6 +139,9 @@ export function Toast() {
     </div>
   );
 }
+
+/** --dur-med do tokens.css: a saída do toast. */
+const TOAST_EXIT_MS = 180;
 
 /** Subtítulo das telas de acervo: contagens só quando elas são verdade. */
 export function libSub(ok: () => string): string {

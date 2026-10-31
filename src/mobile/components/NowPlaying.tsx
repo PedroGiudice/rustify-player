@@ -53,11 +53,15 @@ import { canShuffleUpcoming } from "../queueModel";
 import { openSheet } from "../sheet";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
+import { createSwapKey } from "../../lib/motion";
 
 const LYR_KEY = "kv-mobile-lyrics";
 
 export function NowPlaying() {
   const [scrub, setScrub] = createSignal<number | null>(null);
+  // Troca de faixa anima o CONTEÚDO (título e artista sobem 3 px), só fora
+  // de rajada de pulos; o controle nunca se mexe (A61, lib/motion.ts).
+  const swap = createSwapKey(() => current()?.id ?? null);
   let trackEl: HTMLDivElement | undefined;
 
   // ── Letras (sidecar .lrc via lib_get_lyrics) ────────────────
@@ -255,8 +259,10 @@ export function NowPlaying() {
           {(t) => (
             <>
               <Cover path={t().album_cover_path} seed={t().id} cls="cover" icon="disc" />
-              <div class="title">{t().title}</div>
-              <div class="artist">
+              <div class="title" attr:data-swap={swap()}>
+                {t().title}
+              </div>
+              <div class="artist" attr:data-swap={swap()}>
                 <span class="srcbadge" attr:data-src={originSrc(queueOrigin(), queueContextId())}>
                   {originLabel(queueOrigin(), queueContextId())}
                 </span>
