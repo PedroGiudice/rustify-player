@@ -127,3 +127,31 @@ describe("alvos de toque no S24 (A59)", () => {
     expect(padTop(".np .npmeta__link")).toBeGreaterThanOrEqual(12);
   });
 });
+
+describe("movimento do S24 (A60)", () => {
+  it("tokens do desktop: curvas e durações", () => {
+    expect(tokens["--ease-out"]).toBe("cubic-bezier(0.16, 1, 0.3, 1)");
+    expect(tokens["--ease-in"]).toBe("cubic-bezier(0.4, 0, 1, 1)");
+    for (const [k, v] of [["--dur-base", "0.15s"], ["--dur-med", "0.18s"], ["--dur-enter", "0.24s"],
+      ["--dur-screen", "0.36s"], ["--dur-press", "0.08s"]]) expect(tokens[k], k).toBe(v);
+    // a curva Material saiu
+    expect(css).not.toContain("cubic-bezier(0.4, 0, 0.2, 1)");
+  });
+
+  it("Now Playing sobe em --dur-screen e desce em --dur-med com --ease-in", () => {
+    expect(prop(".np", "transition")).toBe("transform var(--dur-med) var(--ease-in)");
+    expect(prop(".np[data-open]", "transition-duration")).toBe("var(--dur-screen)");
+    expect(prop(".np[data-open]", "transition-timing-function")).toBe("var(--ease-out)");
+  });
+
+  it("o trilho da letra desliza em --dur-screen, não em 600 ms", () => {
+    expect(prop(".np .lrail", "transition")).toBe("transform var(--dur-screen) var(--ease-out)");
+  });
+
+  it("toque afunda aba, chip e cards; o transporte não anima", () => {
+    expect(prop(".tab:active", "transform")).toBe("scale(0.96)");
+    expect(prop(".chip:active", "transform")).toBe("scale(0.96)");
+    expect(prop(".qs:active", "transform")).toBe("scale(0.985)");
+    expect(css).not.toMatch(/\.fab:active|\.ctrls \.iconbtn:active/);
+  });
+});

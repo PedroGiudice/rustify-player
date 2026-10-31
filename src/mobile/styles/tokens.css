@@ -51,7 +51,17 @@
   --r-pill: 999px;
   --sh-card: 0 1px 4px rgba(0, 0, 0, 0.5);
   --sh-hover: 0 8px 24px rgba(0, 0, 0, 0.6);
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Movimento: os tokens do desktop (A60). A curva Material antiga
+     (0.4, 0, 0.2, 1) arrancava devagar e a folha parecia arrastada.
+     --ease-in só para saídas. --ease fica como apelido do --ease-out. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease: var(--ease-out);
+  --dur-base: 0.15s;
+  --dur-med: 0.18s;
+  --dur-enter: 0.24s;
+  --dur-screen: 0.36s;
+  --dur-press: 0.08s;
   --bg-ink-rgb: 240, 240, 240;
   --bg-bass-gain: 1;
   --bg-mid-gain: 1;
@@ -402,6 +412,18 @@ body {
   color: var(--t3);
   font-size: 9.5px;
   letter-spacing: 0.02em;
+}
+/* Toque afunda (A60): aba e chip a 0,96, cards a 0,985, em --dur-press.
+   Transporte (tocar, anterior, próxima, seek) nunca anima. */
+.tab,
+.qs {
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.tab:active {
+  transform: scale(0.96);
+}
+.qs:active {
+  transform: scale(0.985);
 }
 .tab svg {
   width: 21px;

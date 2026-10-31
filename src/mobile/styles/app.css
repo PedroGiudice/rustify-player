@@ -34,7 +34,7 @@
   display: none;
 }
 .screen {
-  animation: fade 0.25s var(--ease);
+  animation: fade var(--dur-screen) var(--ease-out);
 }
 @keyframes fade {
   from {
@@ -71,11 +71,23 @@
   padding: 6px 12px;
   white-space: nowrap;
   font-family: inherit;
+  transition: transform var(--dur-press) var(--ease-out);
 }
 .chip::after {
   content: "";
   position: absolute;
   inset: -8px 0;
+}
+.chip:active {
+  transform: scale(0.96);
+}
+.alb:active .art,
+.stcard__body:active {
+  transform: scale(0.985);
+}
+.alb .art,
+.stcard__body {
+  transition: transform var(--dur-press) var(--ease-out);
 }
 .chip[data-on] {
   background: var(--accent-c);
@@ -356,13 +368,17 @@
   z-index: 30;
   background: transparent;
   transform: translateY(100%);
-  transition: transform 0.28s var(--ease);
+  /* Sai mais rápido do que entra (A60): desce em --dur-med com --ease-in,
+     sobe em --dur-screen com --ease-out (regra do [data-open]). */
+  transition: transform var(--dur-med) var(--ease-in);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .np[data-open] {
   transform: none;
+  transition-duration: var(--dur-screen);
+  transition-timing-function: var(--ease-out);
 }
 .np .veil {
   position: absolute;
@@ -595,7 +611,7 @@
   font-size: 12px;
   color: var(--t1);
   opacity: 0;
-  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  transition: opacity var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out);
   pointer-events: none;
   box-shadow: var(--sh-hover);
   max-width: 80%;
@@ -939,7 +955,7 @@
 .np[data-lyr] .cover {
   width: 172px;
   height: 172px;
-  transition: width var(--dur-med, 180ms) var(--ease), height var(--dur-med, 180ms) var(--ease);
+  transition: width var(--dur-med) var(--ease-out), height var(--dur-med) var(--ease-out);
 }
 .np[data-lyr] .bar {
   margin-top: 12px;
@@ -957,7 +973,7 @@
   scrollbar-width: none;
 }
 .np .lrail {
-  transition: transform 0.6s var(--ease);
+  transition: transform var(--dur-screen) var(--ease-out);
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -968,7 +984,7 @@
   font-size: 15px;
   line-height: 1.35;
   color: var(--t3);
-  transition: color 0.3s var(--ease);
+  transition: color var(--dur-enter) var(--ease-out);
   margin: 0;
 }
 .np .lrail p[data-on] {
@@ -1016,7 +1032,7 @@
   max-height: 76%;
   overflow-y: auto;
   scrollbar-width: none;
-  transition: transform 0.16s var(--ease);
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .sheet .panel::-webkit-scrollbar {
   display: none;
