@@ -818,6 +818,24 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .row-list > .section__head { padding: 12px 12px 0; margin-bottom: 4px; }
 /* Home (B12): dica curta ao lado do título da seção ("Para descobrir"). */
 .section__hint { font-size: 12px; color: var(--fg-5); margin-right: auto; }
+/* "Chegou esta semana" (B12): contagem com as novas, "Marcar como vistas"
+   na linha do título e "Mostrar todas" no pé da lista. */
+.home-shelf__count { font-variant-numeric: tabular-nums; }
+button.section__action { background: none; border: 0; padding: 0; }
+.section__action:focus-visible { outline: var(--focus-outline); outline-offset: 2px; border-radius: var(--radius-xs); }
+.home-shelf__more {
+  align-self: flex-start;
+  margin: 4px 6px 8px;
+  padding: 6px 10px;
+  border: 0; border-radius: var(--radius-md);
+  background: none;
+  font-size: 12px; font-weight: 600; color: var(--fg-3);
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+.home-shelf__more:hover { background: var(--bg-soft); color: var(--fg-1); }
+.home-shelf__more:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.home-shelf__more-n { margin-left: 4px; color: var(--fg-5); font-weight: 500; font-variant-numeric: tabular-nums; }
 /* Aviso de chegadas do Crate na Home (B12): linha quieta, uma ação só. */
 .home-arrivals {
   display: flex; align-items: center; gap: 10px;
@@ -2934,7 +2952,7 @@ html { --glow: 0; }
 }
 .eq-legend__bar,
 .eq-legend__tick { display: inline-block; flex: none; width: 10px; }
-.eq-legend__bar { height: 8px; background: rgba(var(--bg-ink-rgb, 23, 23, 23), 0.35); border-radius: 1px; }
+.eq-legend__bar { height: 8px; background: rgba(var(--bg-ink-rgb, 23, 23, 23), 0.35); border-radius: var(--radius-xs); }
 .eq-legend__tick { height: 1px; background: var(--fg-1); opacity: 0.5; margin-left: 10px; }
 
 /* Faders row — 16 bands */
@@ -4824,6 +4842,9 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-dest { position: relative; }
 .crate-dest__btn {
   display: inline-flex; align-items: center; gap: 6px;
+  /* Encolhe com o contêiner (B23): sem min-width 0 o nome da pasta
+     empurrava a linha e a reticência abaixo nunca aparecia. */
+  min-width: 0; max-width: 100%;
   height: 40px; padding: 0 12px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-lg);
@@ -4835,6 +4856,9 @@ html[data-sidebar="icons"] .bridge-chip__text {
               color var(--dur-base) var(--ease-out);
 }
 .crate-dest__btn:hover { border-color: var(--fg-8); color: var(--fg-1); }
+/* O nome da pasta (último span: rótulo e seta vêm antes) corta com reticência. */
+.crate-dest__btn > span:last-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.crate-dest__btn > iconify-icon { flex: none; }
 .crate-dest__btn iconify-icon { width: 12px; height: 12px; color: var(--fg-6); }
 .crate-dest__lbl {
   font-size: var(--fs-label); font-weight: 700;
@@ -5518,6 +5542,26 @@ html[data-sidebar="icons"] .bridge-chip__text {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+.crate-tidal-row > .crate-tag--dest { min-width: 0; }
+/* Mesmos cortes da linha do Soulseek (B23, container `crate` do corpo):
+   abaixo de 1.050 px a pasta e a hora encolhem; abaixo de 760 o pedido
+   ganha a linha de baixo inteira e estado, pasta, Reenviar e hora ficam
+   em cima, sem rolagem lateral. */
+@container crate (max-width: 1049.98px) {
+  .crate-tidal-row { grid-template-columns: 96px minmax(72px, 130px) minmax(0, 1fr) auto 72px; column-gap: 12px; }
+}
+@container crate (max-width: 759.98px) {
+  .crate-tidal-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "state dest act time" "main main main main";
+    row-gap: 6px;
+  }
+  .crate-tidal-row > .crate-pill { grid-area: state; }
+  .crate-tidal-row > .crate-tag--dest { grid-area: dest; }
+  .crate-tidal-row > .crate-tidal-row__main { grid-area: main; }
+  .crate-tidal-row > .crate-tidal-row__act { grid-area: act; }
+  .crate-tidal-row > .crate-tidal-row__time { grid-area: time; }
+}
 
 /* === Seleção múltipla === */
 :root {
@@ -5735,10 +5779,17 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 
 .tdl-sec { display: flex; flex-direction: column; gap: 6px; }
 .tdl-sec + .tdl-sec { margin-top: 10px; }
+/* Título de seção na receita de rótulo do Crate (A36): o mesmo das seções
+   do Buscar e da Fila. O texto fica em caixa de sentença no código; a caixa
+   alta é do CSS. */
 .tdl-sec__h {
   display: flex; align-items: baseline; gap: 8px;
-  margin: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-1);
+  margin: 0;
+  font-size: var(--fs-label); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-5);
 }
+.tdl-sec__n { font-weight: 500; color: var(--fg-6); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 /* Vidro barato (A27): o mesmo da .crate-list-inner. */
 .tdl-list {
   background: rgba(var(--glass-tint), calc(var(--glass-alpha) - 0.07));
@@ -5791,6 +5842,9 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   background: var(--bg-tint);
 }
 .tdl-cover[data-round="true"] { border-radius: var(--radius-pill); }
+/* Cartaz (B27): capa do álbum ou da playlist e foto do artista no cabeçalho. */
+.tdl-cover[data-size="lg"] { width: 120px; height: 120px; border-radius: var(--radius-xl); }
+.tdl-cover[data-size="lg"][data-round="true"] { border-radius: var(--radius-pill); }
 .tdl-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .tdl-marks { display: flex; align-items: center; gap: 8px; justify-self: end; }
@@ -5812,6 +5866,13 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   padding-bottom: 12px; border-bottom: 1px solid var(--line-2);
 }
 .tdl-head .tdl-main { flex: 1; }
+/* Sem cartaz, o Voltar fica na linha do título; com cartaz, ganha a linha de
+   cima e capa, título e ações alinham pela base. */
+.tdl-head__back { display: contents; }
+.tdl-head[data-poster="true"] { flex-wrap: wrap; align-items: flex-end; column-gap: 16px; row-gap: 10px; }
+.tdl-head[data-poster="true"] .tdl-head__back { display: block; flex: 0 0 100%; }
+.tdl-head[data-poster="true"] .tdl-main { gap: 4px; padding-bottom: 2px; }
+.tdl-title--page { font-size: var(--fs-lead); line-height: 1.25; letter-spacing: -0.01em; }
 .tdl-head .crate-btn .tdl-num { margin-left: 2px; }
 .tdl-more { align-self: flex-start; }
 .tdl-placeholder {
@@ -5825,6 +5886,20 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 .tdl-row--pick {
   grid-template-columns: 18px 40px minmax(0, 1fr) auto 56px;
   cursor: pointer;
+  /* Arrastar pela coluna das caixas pinta a seleção (B27): sem isso o
+     gesto selecionaria o texto das linhas. */
+  user-select: none;
+}
+/* Célula da caixa: alvo maior que os 16 px da caixa, sem mexer na grade. */
+.tdl-pick {
+  display: grid; place-items: center;
+  margin: -10px -8px; padding: 10px 8px;
+}
+/* Álbum: o número da faixa no lugar da capa repetida. */
+.tdl-list[data-nocover="true"] .tdl-row--pick { grid-template-columns: 18px 24px minmax(0, 1fr) auto 56px; }
+.tdl-pos {
+  font-size: 12px; color: var(--fg-6); text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .tdl-row--pick input[type="checkbox"] {
   width: 16px; height: 16px; margin: 0;
@@ -5844,7 +5919,7 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 .tdl-foot .crate-dest__menu { top: auto; bottom: calc(100% + 4px); }
 .tdl-foot__sum { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .tdl-foot__err { flex: 1 0 100%; }
-.tdl-warn { color: var(--rose-fg); font-weight: 600; }
+.tdl-foot__parts { color: var(--fg-5); }
 
 .tdl-queue-note { margin: 0; }
 .tdl-linkbtn {

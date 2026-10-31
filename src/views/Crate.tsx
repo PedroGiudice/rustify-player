@@ -1332,8 +1332,8 @@ function TidalJobRow(props: { job: TidalJob; onResend: (j: TidalJob) => void }) 
             <p class="crate-tidal-row__resumo" title={props.job.resumo}>{props.job.resumo}</p>
           </Show>
         </div>
-        <Show when={canResend()} fallback={<span />}>
-          <button type="button" class="crate-btn crate-btn--quiet" title="Volta para a fila com as mesmas faixas"
+        <Show when={canResend()} fallback={<span class="crate-tidal-row__act" />}>
+          <button type="button" class="crate-btn crate-btn--quiet crate-tidal-row__act" title="Volta para a fila com as mesmas faixas"
             onClick={() => props.onResend(props.job)}>
             Reenviar
           </button>

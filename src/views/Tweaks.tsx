@@ -51,9 +51,9 @@ import {
   glActiveScene,
   resetGlStatus,
   SCENE_HINTS,
+  SCENE_OFF_BUDGET,
   SCENE_KEYS,
   SCENE_LABELS,
-  type SceneKey,
 } from "../gl/meta";
 import { GL_BENCH_EVENT, glBenchProgress, glBenchResult, runGlBench } from "../gl/bench";
 import { bridgeLine, bridgeStatus, chipVisible } from "../store/bridge";
@@ -283,12 +283,8 @@ export function glFpsView(fps: number): { text: string; low: boolean } {
   return { text: `${fps} fps`, low: fps < GL_FPS_OK };
 }
 
-/** Cenas medidas fora do critério de 60 fps na tela do dono (B19): a
-    Nébula custa 46-48 ms por quadro a 1857 x 1048 (CLAUDE.md, 26/09). Marca
-    no seletor, não proibição: a cena segue escolhível. */
-const SCENE_OFF_BUDGET: Partial<Record<SceneKey, string>> = {
-  nebula: "46 a 48 ms por quadro na sua tela (1857 x 1048)",
-};
+/** Marca das cenas fora do critério de 60 fps (B19). Quais e por quê moram
+    no `offBudget` do SCENE_META (gl/meta.ts). */
 const OFF_BUDGET = "fora do critério de 60 fps";
 
 /** Seleção da cena + o que o motor está entregando de fato (cena e fps

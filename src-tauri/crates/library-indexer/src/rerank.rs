@@ -301,6 +301,7 @@ mod tests {
             last_played: None,
             liked_at: None,
             lrc_path: None,
+            indexed_at: None,
         }
     }
 

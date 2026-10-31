@@ -3,6 +3,7 @@ import type { Track } from "../tauri";
 import {
   classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime,
   buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, titleKey, MAX_SELECTION,
+  chunkIds, rangeIds, partTitle,
 } from "./tidalSearch";
 
 function lib(title: string, artist: string): Track {
@@ -113,14 +114,14 @@ describe("seleção padrão", () => {
   it("desmarca o que está no acervo", () => {
     expect([...defaultSelection(tracks, (id) => id === 2)].sort()).toEqual([1, 3]);
   });
-  it("nunca passa de 200: marca as 200 primeiras novas", () => {
+  it("acima de 200 marca todas as novas (a tela divide em pedidos, B27)", () => {
     const many = Array.from({ length: 350 }, (_, i) => ({ id: i + 1 }));
     const sel = defaultSelection(many, (id) => id <= 10);
-    expect(sel.size).toBe(MAX_SELECTION);
+    expect(sel.size).toBe(340);
     expect(sel.has(10)).toBe(false);
     expect(sel.has(11)).toBe(true);
-    expect(sel.has(210)).toBe(true);
-    expect(sel.has(211)).toBe(false);
+    expect(sel.has(350)).toBe(true);
+    expect(defaultSelection(many, () => false, MAX_SELECTION).size).toBe(MAX_SELECTION);
   });
   it("ordem da lista no pedido", () => {
     expect(orderedSelection(tracks, new Set([3, 1]))).toEqual([1, 3]);
@@ -136,5 +137,31 @@ describe("latestOnly", () => {
     expect(seq.isCurrent(b)).toBe(true);
     seq.cancel();
     expect(seq.isCurrent(b)).toBe(false);
+  });
+});
+
+describe("seleção em massa da prévia (B27)", () => {
+  const ts = [1, 2, 3, 4, 5].map((id) => ({ id }));
+
+  it("chunkIds divide em pedidos de até 200, na ordem", () => {
+    const ids = Array.from({ length: 450 }, (_, i) => i + 1);
+    const parts = chunkIds(ids);
+    expect(parts.map((p) => p.length)).toEqual([200, 200, 50]);
+    expect(parts[1][0]).toBe(201);
+    expect(chunkIds([7, 8], 200)).toEqual([[7, 8]]);
+    expect(chunkIds([])).toEqual([]);
+  });
+
+  it("rangeIds pega o intervalo entre as duas, em qualquer direção", () => {
+    expect(rangeIds(ts, 2, 4)).toEqual([2, 3, 4]);
+    expect(rangeIds(ts, 4, 2)).toEqual([2, 3, 4]);
+    expect(rangeIds(ts, 3, 3)).toEqual([3]);
+    // âncora que não está mais na lista: só a clicada
+    expect(rangeIds(ts, 99, 2)).toEqual([2]);
+  });
+
+  it("partTitle numera só quando há mais de um pedido", () => {
+    expect(partTitle("Rádio de X", 0, 1)).toBe("Rádio de X");
+    expect(partTitle("Rádio de X", 1, 3)).toBe("Rádio de X (parte 2 de 3)");
   });
 });

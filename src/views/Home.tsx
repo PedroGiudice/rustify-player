@@ -17,9 +17,9 @@
    avisa no topo, em vez de derrubar a Home ou travar no carregando (A7).
    ============================================================ */
 
-import { createMemo, createResource, For, Show } from "solid-js";
+import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import {
-  libSnapshot, libListHistory, libGetAlbums, libRecommendations, coverUrl,
+  libSnapshot, libListHistory, libGetAlbums, libRecommendations, libListArrivals, coverUrl,
   type Track, type Recommendations,
 } from "../tauri";
 import { setQueue, player } from "../store/player";
@@ -37,12 +37,16 @@ import { peek, settle } from "../lib/loaded";
 import { plural } from "../lib/count";
 import { albumHref } from "../lib/albumRoute";
 import { listenedAlbums } from "../lib/homeShelves";
+import { arrivalsCutoff, countUnseen, isUnseen, loadArrivalsSeen, saveArrivalsSeen } from "../lib/arrivals";
 import { truncTipEvent } from "../lib/truncTip";
 import { playAlbum } from "./Albums";
 
 const EMPTY_RECS: Recommendations = { most_played: [], based_on_top: [], discover: [] };
 /** Linhas por prateleira de faixas. */
 const SHELF_ROWS = 6;
+/** "Chegou esta semana": linhas antes do "Mostrar todas" e teto do pedido. */
+const ARRIVALS_ROWS = 8;
+const ARRIVALS_MAX = 200;
 
 /** "1 faixa", "12 faixas" (com separador de milhar). */
 function faixas(n: number): string {
@@ -61,7 +65,7 @@ function pickDiscovery(recs: Recommendations): { track: Track; reason: string } 
 
 export default function Home() {
   const [res, { refetch }] = createResource(async () => {
-    const [snap, recent, albums, recs] = await Promise.all([
+    const [snap, recent, albums, recs, arrivals] = await Promise.all([
       settle(libSnapshot()),
       settle(libListHistory(8)),
       // Lista completa: o backend agrupa o acervo inteiro de qualquer forma
@@ -69,8 +73,10 @@ export default function Home() {
       // nao tem albums_total.
       settle(libGetAlbums({ limit: null })),
       settle(libRecommendations()),
+      // B12: o que o ingest gravou na última semana, por qualquer porta.
+      settle(libListArrivals(arrivalsCutoff(), ARRIVALS_MAX)),
     ]);
-    return { snap, recent, albums, recs };
+    return { snap, recent, albums, recs, arrivals };
   });
   const data = () => peek(res);
   const snap = () => { const s = data()?.snap; return s?.ok ? s.data : null; };
@@ -79,8 +85,26 @@ export default function Home() {
   const albumsAll = () => { const a = data()?.albums; return a?.ok ? a.data : null; };
   const failed = () => {
     const d = data();
-    return !!d && (!d.snap.ok || !d.recent.ok || !d.albums.ok || !d.recs.ok);
+    return !!d && (!d.snap.ok || !d.recent.ok || !d.albums.ok || !d.recs.ok || !d.arrivals.ok);
   };
+
+  // "Chegou esta semana" (B12): a marca de nova vale contra a visita anterior
+  // durante toda esta visita; sair da Home (ou "Marcar como vistas") grava a
+  // chegada mais nova mostrada, então o que entrar depois continua novo.
+  const arrivals = (): Track[] => { const a = data()?.arrivals; return a?.ok ? a.data : []; };
+  const [seenAt, setSeenAt] = createSignal(loadArrivalsSeen());
+  const [allArrivals, setAllArrivals] = createSignal(false);
+  const newestArrival = () => arrivals().reduce((m, t) => Math.max(m, t.indexed_at ?? 0), 0);
+  const unseenArrivals = createMemo(() => countUnseen(arrivals(), seenAt()));
+  const shownArrivals = createMemo(() => (allArrivals() ? arrivals() : arrivals().slice(0, ARRIVALS_ROWS)));
+  function markArrivalsSeen() {
+    const at = newestArrival();
+    if (!at) return;
+    saveArrivalsSeen(at);
+    setSeenAt((s) => Math.max(s ?? 0, at));
+  }
+  onCleanup(() => { const at = newestArrival(); if (at) saveArrivalsSeen(at); });
+  const arrivalWhen = (t: Track) => (isUnseen(t, seenAt()) ? `nova · ${relTime(t.indexed_at)}` : relTime(t.indexed_at));
 
   const mostPlayed = createMemo(() => recs().most_played.slice(0, SHELF_ROWS));
   // A primeira descoberta já está no hero; a prateleira mostra as outras.
@@ -244,8 +268,45 @@ export default function Home() {
               </div>
             </section>
 
-            {/* Chegadas do Crate: o mesmo contador da barra lateral. */}
-            <Show when={newArrivals() > 0}>
+            {/* Chegou esta semana (B12): toda porta de entrada, pelo indexed_at. */}
+            <Show when={arrivals().length > 0}>
+              <section class="row-list home-shelf" aria-label="Chegou esta semana">
+                <div class="section__head">
+                  <h2 class="section__title">Chegou esta semana</h2>
+                  <span class="section__hint home-shelf__count">
+                    {plural(arrivals().length, "faixa", "faixas")}
+                    <Show when={unseenArrivals() > 0}>{` · ${plural(unseenArrivals(), "nova", "novas")}`}</Show>
+                  </span>
+                  <Show when={unseenArrivals() > 0}>
+                    <button type="button" class="section__action home-shelf__act" onClick={markArrivalsSeen}>
+                      Marcar como vistas
+                    </button>
+                  </Show>
+                </div>
+                <div class="row-list__rows">
+                  <For each={shownArrivals()}>
+                    {(t) => (
+                      <TrackRowList
+                        track={t}
+                        onClick={() => playRow(t, arrivals())}
+                        whenText={arrivalWhen(t)}
+                        contextList={shownArrivals()}
+                      />
+                    )}
+                  </For>
+                </div>
+                <Show when={!allArrivals() && arrivals().length > ARRIVALS_ROWS}>
+                  <button type="button" class="home-shelf__more" onClick={() => setAllArrivals(true)}>
+                    Mostrar todas <span class="home-shelf__more-n">{arrivals().length}</span>
+                  </button>
+                </Show>
+              </section>
+            </Show>
+
+            {/* Chegadas do Crate: o mesmo contador da barra lateral. Com a
+                prateleira acima já mostrando o que entrou, o aviso sairia
+                repetido; fica só para quando ela está vazia. */}
+            <Show when={newArrivals() > 0 && arrivals().length === 0}>
               <button type="button" class="home-arrivals" onClick={() => navigate("/crate")}>
                 <Icon name={ICONS.download} size={16} class="home-arrivals__icon" />
                 <span class="home-arrivals__text">

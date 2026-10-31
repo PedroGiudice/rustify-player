@@ -15,18 +15,24 @@
      de página; 12 px/400 secundário e botões (botão 600, padrão do
      Crate); 11,5 px tabular-nums para duração e contagens.
    - Layout:
-       [ lupa | campo único ............ buscando… ] [→ pasta v] [Buscar|Baixar]
+       [ lupa | campo único ............ buscando… ] [Buscar|Baixar] [→ pasta v]
+       (ordem da aba Buscar, A36)
        aviso de uma linha (foi para a fila / erro)
        home: estado vazio (os jobs moram na aba Fila desde 31/10, B6)
        busca: seções (o "top" primeiro) Faixas / Álbuns / Artistas /
               Playlists; linha = capa 40 | título + sub | marcas |
               duração | ações
-       artista: [< Busca] foto Nome · contagens [Rádio do artista]
+       artista: [< Busca]
+                foto 120 (cartaz, B27) Nome 18 · contagens [Rádio do artista]
                 Populares / Álbuns / EPs e singles
-       prévia:  [< voltar] Título · tipo · n faixas · duração
+       prévia:  [< voltar] (álbum e playlist: capa 120 em cartaz)
+                Título · tipo · n faixas · duração
                 Marcar todas · Desmarcar todas · Só as novas
-                [x] capa | título + sub | marcas | duração
+                [x] capa | título + sub | marcas | duração  (álbum: nº no lugar da capa)
                 rodapé fixo: 18 de 100 · ~1,1 GB · ~6 min [pasta v] [Baixar]
+       Seleção em massa (B27): arrastar pela coluna das caixas pinta as
+       linhas com o estado da primeira; Shift+clique marca o intervalo. Mais
+       de 200 marcadas = vários pedidos de até 200 (o teto da fila e do Rust).
    - Linha com job (A16): a pílula do job fica no lugar dos botões; em voo,
      "Enviando…" desligado (dois cliques não viram dois jobs); faixa que já
      está no acervo só oferece Tocar.
@@ -49,6 +55,7 @@ import { FolderPicker, mergeFolders } from "./FolderPicker";
 import {
   classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime, plural,
   buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, SEARCH_DEBOUNCE_MS, MAX_SELECTION,
+  chunkIds, partTitle, rangeIds,
   type OwnedIndex,
 } from "../../lib/tidalSearch";
 import { pushEscLayer } from "../../lib/escLayers";
@@ -75,7 +82,7 @@ interface Props {
 
 type Page =
   | { kind: "artist"; id: number; nome: string }
-  | { kind: "preview"; ref: string; titulo: string };
+  | { kind: "preview"; ref: string; titulo: string; capa?: string | null };
 
 type Flash = { text: string; tone: "ok" | "err" };
 
@@ -280,7 +287,7 @@ function PlaylistRow(props: { p: TidalPlaylist; onOpen: (p: TidalPlaylist) => vo
 function Section(props: { title: string; count: number; children: any; more?: any }) {
   return (
     <section class="tdl-sec">
-      <h3 class="tdl-sec__h">{props.title} <span class="tdl-num">{props.count}</span></h3>
+      <h3 class="tdl-sec__h">{props.title} <span class="tdl-sec__n">{props.count}</span></h3>
       <div class="tdl-list">{props.children}</div>
       {props.more}
     </section>
@@ -315,13 +322,15 @@ function ArtistView(props: {
   const eps = () => (allEps() ? data()?.eps_singles ?? [] : (data()?.eps_singles ?? []).slice(0, EPS_VISIBLE));
   return (
     <div class="tdl-page">
-      <header class="tdl-head">
-        <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onBack} title="Voltar (Esc)">
-          <Icon name={ICONS.chevronLeft} size={12} /> {props.backLabel}
-        </button>
-        <Cover url={data()?.foto ?? null} round />
+      <header class="tdl-head" data-poster="true">
+        <div class="tdl-head__back">
+          <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onBack} title="Voltar (Esc)">
+            <Icon name={ICONS.chevronLeft} size={12} /> {props.backLabel}
+          </button>
+        </div>
+        <Cover url={data()?.foto ?? null} round size="lg" />
         <div class="tdl-main">
-          <span class="tdl-title">{data()?.nome ?? props.page.nome}</span>
+          <span class="tdl-title tdl-title--page">{data()?.nome ?? props.page.nome}</span>
           <span class="tdl-sub tdl-num-inline">
             <Show when={data()} fallback="carregando…">
               {(d) => `${plural(d().albuns.length, "álbum", "álbuns")} · ${plural(d().eps_singles.length, "EP ou single", "EPs e singles")}`}
@@ -398,15 +407,17 @@ const TIPO_LABEL: Record<TidalPreview["tipo"], string> = {
 };
 
 function PreviewView(props: {
-  page: { ref: string; titulo: string };
+  page: { ref: string; titulo: string; capa?: string | null };
   backLabel: string;
   onBack: () => void;
   owned: OwnedIndex;
   dest: () => string;
   destPicker: any;
   tokenMissing: boolean;
-  /** Devolve null se foi para a fila, ou o texto do erro (mostrado junto do rodapé). */
+  /** Um pedido (até 200 faixas). Devolve null se foi para a fila, ou o texto do erro. */
   onEnqueue: (ids: number[], titulo: string, ref: string) => Promise<string | null>;
+  /** Todos os pedidos foram: aviso e volta. */
+  onSent: (count: number, titulo: string, parts: number) => void;
 }) {
   const [data, setData] = createSignal<TidalPreview | null>(null);
   const [err, setErr] = createSignal<string | null>(null);
@@ -441,24 +452,86 @@ function PreviewView(props: {
     rootEl?.focus({ preventScroll: true }); // o Ctrl+A da prévia vale logo, sem clicar numa caixa
   });
 
-  function toggle(id: number) {
+  /** Marca (`on`) ou desmarca as `ids` de uma vez. */
+  function setMany(ids: number[], on: boolean) {
     setTouched(true);
     setSendErr(null);
     setSel((s) => {
       const n = new Set(s);
-      if (n.has(id)) n.delete(id); else n.add(id);
+      for (const id of ids) if (on) n.add(id); else n.delete(id);
       return n;
     });
   }
+
+  // ── seleção em massa (B27) ──
+  // Shift+clique: intervalo da última caixa clicada até esta, com o estado
+  // novo da clicada. Arrastar: começa na coluna da caixa (pointerdown), e
+  // cada linha em que o ponteiro entra recebe o estado oposto ao da primeira;
+  // linha pulada num movimento rápido entra junto (intervalo desde a última
+  // pintada). Um clique simples, sem sair da linha, segue o caminho normal.
+  let anchor: number | null = null;
+  let shiftDown = false;
+  let drag: { start: number; on: boolean; last: number; painted: boolean } | null = null;
+  let swallowClick = false;
+  const faixas = () => data()?.faixas ?? [];
+
+  function onBoxClick(e: MouseEvent & { currentTarget: HTMLInputElement }, id: number) {
+    const shift = e.shiftKey || shiftDown;
+    shiftDown = false;
+    if (swallowClick) {
+      // O arrasto já pintou esta caixa: o clique que fecha o gesto não desfaz.
+      e.preventDefault();
+      swallowClick = false;
+      return;
+    }
+    const on = e.currentTarget.checked;
+    setMany(shift && anchor != null ? rangeIds(faixas(), anchor, id) : [id], on);
+    anchor = id;
+  }
+
+  function onPickDown(e: PointerEvent, id: number) {
+    if (e.button > 0) return; // só o botão principal (ou toque)
+    drag = { start: id, on: !sel().has(id), last: id, painted: false };
+  }
+
+  function onRowEnter(e: PointerEvent, id: number) {
+    if (!drag) return;
+    if (e.buttons === 0) { drag = null; return; } // soltou fora da janela
+    if (id === drag.last) return;
+    if (!drag.painted) {
+      drag.painted = true;
+      setMany([drag.start], drag.on);
+    }
+    setMany(rangeIds(faixas(), drag.last, id), drag.on);
+    drag.last = id;
+    anchor = id;
+  }
+
+  function endDrag() {
+    if (drag?.painted) {
+      swallowClick = true;
+      setTimeout(() => { swallowClick = false; }, 0);
+    }
+    drag = null;
+  }
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+  onCleanup(() => {
+    window.removeEventListener("pointerup", endDrag);
+    window.removeEventListener("pointercancel", endDrag);
+  });
   const all = () => { setTouched(true); setSendErr(null); setSel(new Set((data()?.faixas ?? []).map((t) => t.id))); };
   const none = () => { setTouched(true); setSendErr(null); setSel(new Set<number>()); };
   const onlyNew = () => { setTouched(true); setSendErr(null); setSel(defaultSelection(data()?.faixas ?? [], (id) => ownedIds().has(id))); };
 
   const chosen = createMemo(() => (data()?.faixas ?? []).filter((t) => sel().has(t.id)));
   const est = createMemo(() => estimateSelection(chosen()));
-  const overMax = () => est().count > MAX_SELECTION;
-  // Mais de 200 novas: a seleção padrão marca só as 200 primeiras; o rodapé avisa.
-  const cappedDefault = () => !touched() && (data()?.faixas.length ?? 0) - ownedIds().size > MAX_SELECTION;
+  /** Pedidos que o Baixar vai mandar (B27): até 200 faixas cada. */
+  const parts = () => Math.ceil(est().count / MAX_SELECTION);
+  /** Álbum: todas as linhas teriam a mesma capa; o número da faixa ocupa o lugar. */
+  const noRowCover = () => data()?.tipo === "album";
+  const posterUrl = () => props.page.capa ?? (data()?.tipo === "album" ? data()?.faixas[0]?.capa ?? null : null);
+  const poster = () => !!props.page.capa || data()?.tipo === "album" || data()?.tipo === "playlist";
 
   /** Ctrl/Cmd+A em qualquer ponto da prévia marca todas, menos dentro de um campo de texto ou
       seletor (ali é o do próprio campo). */
@@ -484,16 +557,31 @@ function PreviewView(props: {
     }
   }
 
+  /** Manda a seleção em pedidos de até 200, um depois do outro. Se um falha,
+      o que já foi sai da seleção e o resto fica marcado para tentar de novo. */
   async function send() {
     const d = data();
     if (!d || sending()) return;
     const ids = orderedSelection(d.faixas, sel());
-    if (!ids.length || ids.length > MAX_SELECTION) return;
+    if (!ids.length) return;
+    const lotes = chunkIds(ids);
     setSending(true);
     setSendErr(null);
     try {
-      const err = await props.onEnqueue(ids, d.titulo, d.ref);
-      if (alive && err) setSendErr(err);
+      const sent: number[] = [];
+      for (let i = 0; i < lotes.length; i++) {
+        const err = await props.onEnqueue(lotes[i], partTitle(d.titulo, i, lotes.length), d.ref);
+        if (err) {
+          if (!alive) return;
+          if (sent.length) setMany(sent, false);
+          setSendErr(sent.length
+            ? `${i} de ${lotes.length} pedidos foram para a fila (${plural(sent.length, "faixa", "faixas")}); as que faltam continuam marcadas. ${err}`
+            : err);
+          return;
+        }
+        sent.push(...lotes[i]);
+      }
+      if (alive) props.onSent(ids.length, d.titulo, lotes.length);
     } finally {
       if (alive) setSending(false);
     }
@@ -501,12 +589,17 @@ function PreviewView(props: {
 
   return (
     <div class="tdl-page tdl-page--preview" ref={rootEl} tabindex="-1" onKeyDown={onPageKey}>
-      <header class="tdl-head">
-        <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onBack} title="Voltar (Esc)">
-          <Icon name={ICONS.chevronLeft} size={12} /> {props.backLabel}
-        </button>
+      <header class="tdl-head" data-poster={poster() ? "true" : undefined}>
+        <div class="tdl-head__back">
+          <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onBack} title="Voltar (Esc)">
+            <Icon name={ICONS.chevronLeft} size={12} /> {props.backLabel}
+          </button>
+        </div>
+        <Show when={poster()}>
+          <Cover url={posterUrl()} size="lg" />
+        </Show>
         <div class="tdl-main">
-          <span class="tdl-title">{data()?.titulo ?? props.page.titulo}</span>
+          <span class="tdl-title" classList={{ "tdl-title--page": poster() }}>{data()?.titulo ?? props.page.titulo}</span>
           <span class="tdl-sub">
             <Show when={data()} fallback="carregando…">
               {(d) => (
@@ -550,12 +643,21 @@ function PreviewView(props: {
                 <p>A Tidal devolveu a lista vazia: as faixas podem ter saído do catálogo.</p>
               </div>
             </Show>
-            <div class="tdl-list" ref={listEl} onKeyDown={onListKey}>
+            <div class="tdl-list" ref={listEl} onKeyDown={onListKey} data-nocover={noRowCover() ? "true" : undefined}>
               <For each={d().faixas}>
-                {(t) => (
-                  <label class="tdl-row tdl-row--pick" data-off={sel().has(t.id) ? undefined : "true"}>
-                    <input type="checkbox" checked={sel().has(t.id)} onChange={() => toggle(t.id)} />
-                    <Cover url={t.capa} />
+                {(t, i) => (
+                  <label
+                    class="tdl-row tdl-row--pick"
+                    data-off={sel().has(t.id) ? undefined : "true"}
+                    onPointerDown={(e) => { shiftDown = e.shiftKey; }}
+                    onPointerEnter={(e) => onRowEnter(e, t.id)}
+                  >
+                    <span class="tdl-pick" onPointerDown={(e) => onPickDown(e, t.id)}>
+                      <input type="checkbox" checked={sel().has(t.id)} onClick={(e) => onBoxClick(e, t.id)} />
+                    </span>
+                    <Show when={!noRowCover()} fallback={<span class="tdl-pos">{i() + 1}</span>}>
+                      <Cover url={t.capa} />
+                    </Show>
                     <span class="tdl-main">
                       <span class="tdl-title">{t.titulo}</span>
                       <span class="tdl-sub">{trackSub(t)}</span>
@@ -576,11 +678,8 @@ function PreviewView(props: {
                 <span class="tdl-num-inline">{est().count} de {d().faixas.length}</span>
                 {" · "}<span class="tdl-num-inline">{formatSize(est().bytes)}</span>
                 {" · "}<span class="tdl-num-inline">{formatEta(est().seconds)}</span>
-                <Show when={overMax()}>
-                  {" · "}<span class="tdl-warn" role="alert">máx. {MAX_SELECTION} por vez</span>
-                </Show>
-                <Show when={cappedDefault() && !overMax()}>
-                  {" · "}<span class="tdl-warn">marcadas as {MAX_SELECTION} primeiras novas (máx. por vez)</span>
+                <Show when={parts() > 1}>
+                  {" · "}<span class="tdl-foot__parts">vai em {parts()} pedidos de até {MAX_SELECTION}</span>
                 </Show>
               </span>
               <span class="tdl-tools__sp" />
@@ -588,7 +687,7 @@ function PreviewView(props: {
               <button
                 type="button"
                 class="crate-btn crate-btn--primary"
-                disabled={sending() || est().count === 0 || overMax() || !props.dest() || props.tokenMissing}
+                disabled={sending() || est().count === 0 || !props.dest() || props.tokenMissing}
                 onClick={() => void send()}
               >
                 <Icon name={ICONS.download} size={12} />
@@ -773,20 +872,25 @@ export default function TidalTab(props: Props) {
     }
   }
 
-  /** null = foi para a fila; texto = erro, que a prévia mostra junto do rodapé (o aviso do topo fica fora da vista). */
+  /** Um pedido de seleção (até 200). null = foi para a fila; texto = erro, que a
+      prévia mostra junto do rodapé (o aviso do topo fica fora da vista). */
   async function enqueueSelection(ids: number[], titulo: string, ref: string): Promise<string | null> {
     const d = resolvedDest();
     if (!d) return "Escolha a pasta de destino antes de baixar.";
     try {
       await crateTidalEnqueueSelection(ids, titulo, ref, d);
       rememberDest(d);
-      say(`${plural(ids.length, "faixa", "faixas")} de "${titulo}" foram para a fila (${d}).`);
       props.refresh();
-      goBack();
       return null;
     } catch (e) {
       return errText(e);
     }
+  }
+
+  function selectionSent(count: number, titulo: string, parts: number) {
+    const em = parts > 1 ? ` em ${parts} pedidos` : "";
+    say(`${plural(count, "faixa", "faixas")} de "${titulo}" foram para a fila${em} (${resolvedDest()}).`);
+    goBack();
   }
 
   async function onSubmit(e: Event) {
@@ -810,10 +914,10 @@ export default function TidalTab(props: Props) {
   // ações das linhas
   const trackDownload = (t: TidalTrack) => void enqueueLink(t.url, `"${t.titulo}"`);
   const trackRadio = (t: TidalTrack) => push({ kind: "preview", ref: `radio-faixa:${t.id}`, titulo: `Rádio de ${t.titulo}` });
-  const albumOpen = (a: TidalAlbum) => push({ kind: "preview", ref: `album:${a.id}`, titulo: `${a.artista} - ${a.titulo}` });
+  const albumOpen = (a: TidalAlbum) => push({ kind: "preview", ref: `album:${a.id}`, titulo: `${a.artista} - ${a.titulo}`, capa: a.capa });
   const albumDownload = (a: TidalAlbum) => void enqueueLink(a.url, `"${a.titulo}"`);
   const artistOpen = (a: TidalArtist) => push({ kind: "artist", id: a.id, nome: a.nome });
-  const playlistOpen = (p: TidalPlaylist) => push({ kind: "preview", ref: `playlist:${p.id}`, titulo: p.titulo });
+  const playlistOpen = (p: TidalPlaylist) => push({ kind: "preview", ref: `playlist:${p.id}`, titulo: p.titulo, capa: p.capa });
   const openPreview = (ref: string, titulo: string) => push({ kind: "preview", ref, titulo });
 
   const sectionOrder = createMemo<SectionKey[]>(() => {
@@ -898,7 +1002,6 @@ export default function TidalTab(props: Props) {
               {searchState() === "loading" ? "buscando…" : ""}
             </span>
           </div>
-          {destPicker("top")}
           <button
             type="submit"
             class="crate-btn crate-btn--primary"
@@ -911,6 +1014,7 @@ export default function TidalTab(props: Props) {
               <Icon name={ICONS.download} size={12} /> {submitting() ? "Enviando…" : "Baixar"}
             </Show>
           </button>
+          {destPicker("top")}
         </div>
         <Show when={flash()}>
           {(f) => (
@@ -972,6 +1076,7 @@ export default function TidalTab(props: Props) {
               destPicker={destPicker("foot")}
               tokenMissing={props.tokenMissing}
               onEnqueue={enqueueSelection}
+              onSent={selectionSent}
             />
           )}
         </Match>

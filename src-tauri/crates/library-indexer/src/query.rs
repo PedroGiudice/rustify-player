@@ -61,6 +61,7 @@ pub(crate) fn payload_to_track(id: u64, p: &Value) -> Track {
         last_played: p["last_played"].as_i64(),
         liked_at: p["liked_at"].as_i64(),
         lrc_path: lrc_str,
+        indexed_at: p["indexed_at"].as_i64(),
     }
 }
 
@@ -155,6 +156,9 @@ fn build_track_filter(filter: &TrackFilter) -> Option<Value> {
     }
     for tag in &filter.tags {
         must.push(json!({"key": "tags", "match": {"value": tag}}));
+    }
+    if let Some(since) = filter.indexed_since {
+        must.push(json!({"key": "indexed_at", "range": {"gte": since}}));
     }
 
     if must.is_empty() {
@@ -714,6 +718,7 @@ pub fn shuffle(
         album: filter.album.clone(),
         tags: filter.tags.clone(),
         order: TrackOrder::AlbumDiscTrack,
+        indexed_since: filter.indexed_since,
     };
     let mut tracks = list_tracks(client, &fetch_filter)?;
     let mut rng = seed;
@@ -943,7 +948,8 @@ fn unix_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{aggregate_artists, match_score, norm, payload_to_track};
+    use super::{aggregate_artists, build_track_filter, match_score, norm, payload_to_track};
+    use crate::types::TrackFilter;
     use crate::spectral::QualityClass;
     use crate::types::ArtistFilter;
     use std::path::PathBuf;
@@ -1024,6 +1030,29 @@ mod tests {
         assert_eq!(t.quality_class, None);
         let t = payload_to_track(1, &serde_json::json!({}));
         assert_eq!((t.quality_class, t.quality_cutoff_hz), (None, None));
+    }
+
+    // B12 (31/10): "Chegou esta semana" na Home = faixas com `indexed_at`
+    // (segundos, gravado no ingest) a partir de um corte.
+    #[test]
+    fn indexed_at_vem_do_payload() {
+        let t = payload_to_track(1, &serde_json::json!({ "indexed_at": 1_761_900_000_i64 }));
+        assert_eq!(t.indexed_at, Some(1_761_900_000));
+        assert_eq!(payload_to_track(1, &serde_json::json!({})).indexed_at, None);
+    }
+
+    #[test]
+    fn filtro_por_chegada_vira_range_no_indexed_at_e_soma_aos_outros() {
+        let f = TrackFilter { indexed_since: Some(1_761_300_000), ..Default::default() };
+        assert_eq!(
+            build_track_filter(&f),
+            Some(serde_json::json!({ "must": [{ "key": "indexed_at", "range": { "gte": 1_761_300_000_i64 } }] })),
+        );
+        let f = TrackFilter { genre: Some("Rap".into()), indexed_since: Some(10), ..Default::default() };
+        let must = build_track_filter(&f).unwrap()["must"].as_array().unwrap().len();
+        assert_eq!(must, 2);
+        // Sem corte, o filtro de sempre.
+        assert_eq!(build_track_filter(&TrackFilter::default()), None);
     }
 
     #[test]
