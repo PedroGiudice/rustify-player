@@ -248,17 +248,20 @@ function mutateQueueRealign(mutate: () => void) {
   if (next && next.path !== before) playerEnqueueNext(next.path).catch(console.error);
 }
 
-/** Último gesto de enfileirar que pôs algo na fila: a barra do player mostra
-    "+N" ao lado do ícone da fila. `seq` muda a cada gesto (reinicia a animação). */
+/** Último gesto de enfileirar: a barra do player mostra "+N" sobre o ícone da
+    fila (n = 0: só a faixa que já toca, "já está tocando"). `seq` muda a cada
+    gesto (reinicia a animação). */
 export interface QueueAck { n: number; where: "next" | "end"; seq: number }
 const [queueAck, setQueueAck] = createSignal<QueueAck | null>(null);
 export { queueAck };
 let ackSeq = 0;
 const ack = (n: number, where: QueueAck["where"]) => setQueueAck({ n, where, seq: ++ackSeq });
 
-/** A faixa que está tocando não entra de novo na fila (tocaria duas vezes seguidas). */
-export function enqueueNext(track: Track) {
-  if (track.id === player.currentTrack?.id) return;
+/** A faixa que está tocando não entra de novo na fila (tocaria duas vezes seguidas).
+    Devolve quantas entraram; 0 ainda confirma ("já está tocando") para o gesto
+    não parecer ignorado. */
+export function enqueueNext(track: Track): number {
+  if (track.id === player.currentTrack?.id) { ack(0, "next"); return 0; }
   ack(1, "next");
   mutateQueueRealign(() =>
     setPlayer("queue", (q) => {
@@ -266,20 +269,22 @@ export function enqueueNext(track: Track) {
       next.splice(player.queueIndex + 1, 0, track);
       return next;
     }));
+  return 1;
 }
 
-export function enqueueEnd(track: Track) {
+export function enqueueEnd(track: Track): number {
   ack(1, "end");
   mutateQueueRealign(() => setPlayer("queue", (q) => [...q, track]));
+  return 1;
 }
 
 /** Vários de uma vez, mantendo a ordem recebida (enqueueNext em laço a inverteria).
     A faixa que está tocando fica de fora do lote: inseri-la de novo a tocaria
     duas vezes em seguida. */
-export function enqueueNextMany(tracks: Track[]) {
+export function enqueueNextMany(tracks: Track[]): number {
   const curId = player.currentTrack?.id;
   const batch = tracks.filter((t) => t.id !== curId);
-  if (batch.length === 0) return;
+  if (batch.length === 0) { if (tracks.length) ack(0, "next"); return 0; }
   ack(batch.length, "next");
   mutateQueueRealign(() =>
     setPlayer("queue", (q) => {
@@ -287,15 +292,17 @@ export function enqueueNextMany(tracks: Track[]) {
       next.splice(player.queueIndex + 1, 0, ...batch);
       return next;
     }));
+  return batch.length;
 }
 
 /** Mesmo filtro do enqueueNextMany: a faixa que está tocando fica de fora do lote. */
-export function enqueueEndMany(tracks: Track[]) {
+export function enqueueEndMany(tracks: Track[]): number {
   const curId = player.currentTrack?.id;
   const batch = tracks.filter((t) => t.id !== curId);
-  if (batch.length === 0) return;
+  if (batch.length === 0) { if (tracks.length) ack(0, "end"); return 0; }
   ack(batch.length, "end");
   mutateQueueRealign(() => setPlayer("queue", (q) => [...q, ...batch]));
+  return batch.length;
 }
 
 /** Move uma faixa dentro do "a seguir" (índices relativos a ele: 0 = a próxima).
