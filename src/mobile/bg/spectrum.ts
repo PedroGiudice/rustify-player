@@ -18,6 +18,7 @@ import { createSignal } from "solid-js";
 import { SHAPES, type ShapeFn } from "./shapes";
 import { RENDERERS } from "./renderers";
 import * as BP from "./beatPll";
+import { calmBgKnobs, reducedMotion } from "../motion";
 
 const SHAPE_KEY = "rustify-shape-mobile";
 const RENDER_KEY = "rustify-renderer-mobile";
@@ -216,9 +217,12 @@ export function mountSpectrum(canvas: HTMLCanvasElement): () => void {
     const fresh = lastFftAt !== 0 && tMs - lastFftAt < FFT_STALE_MS;
     BP.pllStep(pll, lastLow, tMs * 0.001, dt, fresh);
 
-    const speedTarget = fresh && beatSync > 0.5 && beatMode === 1 ? BP.expandKick(lastLow) : 0;
+    // "Remover animações" (A53): relógio a CALM_SPEED e sem kick/pulso,
+    // a mesma calma do WebGL (calmGlCfg).
+    const mv = calmBgKnobs({ speed, beatSync }, reducedMotion());
+    const speedTarget = fresh && mv.beatSync > 0.5 && beatMode === 1 ? BP.expandKick(lastLow) : 0;
     beatEnv += (speedTarget - beatEnv) * (1 - Math.exp(-dt / BP.BEAT_TAU));
-    bgClock += dt * speed * (1 + BP.speedBoostGain(beatDepth) * beatEnv);
+    bgClock += dt * mv.speed * (1 + BP.speedBoostGain(beatDepth) * beatEnv);
     const t = bgClock;
     ctx.clearRect(0, 0, w, h);
 
@@ -232,7 +236,7 @@ export function mountSpectrum(canvas: HTMLCanvasElement): () => void {
     smoothedEnv += (target - smoothedEnv) * (1 - Math.exp(-dt / tau));
 
     const breath = 0.85 + 0.15 * Math.sin(t * 0.4);
-    const pulse = beatSync > 0.5 && beatMode === 2 ? BP.beatPulse(pll, beatDepth) : 0;
+    const pulse = mv.beatSync > 0.5 && beatMode === 2 ? BP.beatPulse(pll, beatDepth) : 0;
     const reactive = 1 + ENV_GAIN * smoothedEnv + pulse;
     const amp = h * 0.17 * breath * reactive;
     const inkBoost = 1 + BP.INK_PULSE * (beatDepth > 0 ? pulse / beatDepth : 0);

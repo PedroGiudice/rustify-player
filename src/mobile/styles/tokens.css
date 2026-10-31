@@ -19,6 +19,8 @@
   --s-c: #161616;
   --s-high: #1c1c1c;
   --s-highest: #242424;
+  /* Folha de ações: quase opaca e sem desfoque (A55). */
+  --s-sheet: rgba(12, 12, 12, 0.96);
   --div-subtle: rgba(255, 255, 255, 0.08);
   --div-prom: rgba(255, 255, 255, 0.16);
   --accent: #997081;

@@ -16,6 +16,7 @@ import { Icon } from "../icons";
 import { activeTab, baseRoute, navigate, openNowPlaying } from "../nav";
 import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from "../store";
 import { originLabel, originSrc } from "../derive";
+import { scrollBehavior } from "../motion";
 
 const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/home", label: "Home", icon: Icon.home },
@@ -28,7 +29,7 @@ const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
 function scrollViewToTop() {
   const view = document.querySelector<HTMLElement>(".view");
   if (!view) return;
-  if (typeof view.scrollTo === "function") view.scrollTo({ top: 0, behavior: "smooth" });
+  if (typeof view.scrollTo === "function") view.scrollTo({ top: 0, behavior: scrollBehavior() });
   else view.scrollTop = 0;
 }
 
