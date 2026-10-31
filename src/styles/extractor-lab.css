@@ -913,6 +913,14 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   background: var(--blue-ring);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 140%), transparent);
   animation: pulse 1.4s ease-in-out infinite;
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+/* Pausado: ponto neutro, sem halo nem pulso (A12). O pulso que resta é
+   estado ao vivo (tocando), não decoração. */
+.np__tag-playing[data-playing="false"] .dot {
+  animation: none;
+  background: var(--fg-7);
+  box-shadow: none;
 }
 @keyframes pulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
 
@@ -3166,18 +3174,69 @@ html { --glow: 0; }
   display: flex; align-items: center; gap: 7px;
   margin-bottom: 8px;
 }
-.st-feature__eyebrow .dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--blue-ring);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 100%), transparent);
-  animation: stPulse 1.4s ease-in-out infinite;
+/* Stations vazia (A12): sem ponto pulsante, chips falsos nem cartões-
+   fantasma. Título, uma frase do que é uma station e as duas formas de
+   criar. */
+.st-empty {
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  padding: 28px 24px;
 }
-@keyframes stPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+.st-empty__title {
+  font-size: var(--fs-feature);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--fg-1);
+  margin: 0 0 8px;
+  text-wrap: balance;
 }
-@media (prefers-reduced-motion: reduce) {
-  .st-feature__eyebrow .dot { animation: none; }
+.st-empty__hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-4);
+  max-width: 56ch;
+  margin: 0 0 18px;
+}
+.st-empty__actions,
+.st-noplay__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-empty__btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-1);
+  background: var(--bg-paper);
+  color: var(--fg-1);
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+.st-empty__btn:hover:not(:disabled) { background: var(--bg-tint); }
+.st-empty__btn--primary { background: var(--fg-1); color: var(--bg-paper); border-color: var(--fg-1); }
+.st-empty__btn--primary:hover:not(:disabled) { background: var(--fg-2); }
+.st-empty__btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.st-empty__btn:focus-visible,
+.st-noplay__dismiss:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.st-loading { font-size: 13px; color: var(--fg-5); margin: 4px 0; }
+/* Station que não achou faixas: aviso com a saída (apagar). */
+.st-noplay {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+}
+.st-noplay__title { margin: 0; font-size: 13px; font-weight: 600; }
+.st-noplay__legend { margin: 2px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.st-noplay__dismiss {
+  border: 0; background: none; padding: 8px 6px;
+  font: inherit; font-size: 12.5px; color: inherit; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
 }
 .st-feature__title {
   font-size: var(--fs-feature);
@@ -5145,7 +5204,6 @@ html[data-sidebar="icons"] .bridge-chip__text {
   .view,
   .track-ctx-menu,
   .np__tag-playing .dot,
-  .st-feature__eyebrow .dot,
   .sel-bar { animation: none; }
 
 

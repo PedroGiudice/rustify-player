@@ -188,22 +188,31 @@ describe("Stations view", () => {
     expect(container.querySelector(".view__stats")).toBeTruthy();
   });
 
-  it("renderiza feature card com eyebrow, titulo grande, seeds chips", async () => {
-    // Nota: o stub global de __TAURI__ (test-setup.ts) captura invoke no load
-    // do tauri.ts e retorna undefined, entao libListStations resolve vazio e a
-    // view renderiza o empty-state (.st-feature fallback). Este teste valida a
-    // estrutura compartilhada do feature card (eyebrow, titulo, seed-chips).
-    // O botao "Resume station" disabled foi REMOVIDO no Tier 0 — nao se asserta.
+  // A12: o vazio era a tela mais fraca (ponto pulsante, chips que pareciam
+  // sementes, seis cartões-fantasma "0 played"). Agora diz o que é e entrega
+  // as duas formas de criar.
+  it("vazio: título, as duas ações de criar e nenhum cartão-fantasma (A12)", async () => {
+    const { container, getByText } = render(() => <Stations />);
+    await waitFor(() => expect(container.querySelector(".st-empty")).toBeTruthy());
+    expect(container.querySelector(".st-empty__title")!.textContent).toBe("Nenhuma station ainda");
+    expect(getByText("Nova station por clima").tagName).toBe("BUTTON");
+    // Sem faixa tocando, criar a partir da atual fica desligado e diz por quê.
+    const fromCurrent = getByText(/Criar a partir/).closest("button")!;
+    expect(fromCurrent.disabled).toBe(true);
+    expect(container.querySelectorAll(".st-card").length).toBe(0);
+    expect(container.querySelector(".st-seed-chip")).toBeNull();
+    expect(container.querySelector(".dot")).toBeNull();
+  });
+
+  it("vazio com faixa tocando: o botão leva o nome dela e cria a station", async () => {
+    setQueue([STATION_TRACKS[0]], 0);
+    onTestFinished(() => setQueue([], 0));
     const { container } = render(() => <Stations />);
-    await waitFor(() => {
-      const feature = container.querySelector(".st-feature");
-      expect(feature).toBeTruthy();
-    });
-    const feature = container.querySelector(".st-feature");
-    expect(feature!.querySelector(".st-feature__eyebrow")).toBeTruthy();
-    expect(feature!.querySelector(".st-feature__title")).toBeTruthy();
-    const seeds = feature!.querySelectorAll(".st-seed-chip");
-    expect(seeds.length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => expect(container.querySelector(".st-empty")).toBeTruthy());
+    const btn = container.querySelector<HTMLButtonElement>(".st-empty__btn--primary")!;
+    expect(btn.textContent).toBe("Criar a partir de “Alpha”");
+    fireEvent.click(btn);
+    await waitFor(() => expect(vi.mocked(tauriApi.libCreateStation)).toHaveBeenCalled());
   });
 
   it("destaque seed mostra as capas das sementes em leque, na ordem das sementes (B1)", async () => {
@@ -234,16 +243,18 @@ describe("Stations view", () => {
     expect(container.querySelector(".st-feature canvas")).toBeNull();
   });
 
-  it("renderiza grid com 6 st-cards quando backend retorna 6 stations", async () => {
+  // Passava só por causa dos 6 cartões-fantasma do vazio (o mock devolvia
+  // []). Com 6 stations de verdade, a 1ª vai ao destaque e a grade tem 5.
+  it("6 stations: a primeira no destaque e as outras 5 na grade", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
     const { container } = render(() => <Stations />);
     await waitFor(() => {
-      const cards = container.querySelectorAll(".st-card");
-      expect(cards.length).toBe(6);
+      expect(container.querySelectorAll(".st-grid .st-card").length).toBe(MOCK_STATIONS.length - 1);
     });
-    const grid = container.querySelector(".st-grid");
-    expect(grid).toBeTruthy();
-    const cards = grid!.querySelectorAll(".st-card");
-    expect(cards.length).toBe(6);
+    expect(container.querySelector(".st-feature__title")!.textContent).toBe("Midnight station");
   });
 
   it("nenhum card nem o destaque afirmam reprodução ao vivo (estsig-1)", async () => {
@@ -328,32 +339,22 @@ describe("Stations view", () => {
     expect(getByText(/Nova mood station/).tagName).toBe("BUTTON");
   });
 
-  it("estado loading mostra fallback antes do backend responder", () => {
-    // Invoke com delay para capturar o estado de loading
-    (globalThis as any).window.__TAURI__.core.invoke = vi.fn(
+  it("estado loading diz que carrega, sem cartões-fantasma", () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(
       () => new Promise((res) => setTimeout(() => res([]), 200)),
     );
+    onTestFinished(() => {
+      vi.mocked(tauriApi.libListStations).mockImplementation(async () => []);
+    });
     const { container } = render(() => <Stations />);
-    // Durante o loading, o fallback exibe 6 cards placeholder
-    const cards = container.querySelectorAll(".st-card");
-    expect(cards.length).toBe(6);
+    expect(container.querySelector(".st-loading")!.textContent).toBe("Carregando stations…");
+    expect(container.querySelectorAll(".st-card").length).toBe(0);
   });
 
-  it("0.5 empty-state nao tem o botao disabled de tocar station", async () => {
-    // Simula backend sem stations (empty-state)
-    (globalThis as any).window.__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
-      if (cmd === "lib_list_stations") return [];
-      return null;
-    });
+  it("0.5 empty-state nao tem o botao de tocar station", async () => {
     const { container } = render(() => <Stations />);
-    await waitFor(() => {
-      // O feature card fallback (empty-state) deve estar visivel
-      expect(container.querySelector(".st-feature")).toBeTruthy();
-    });
-    // CTA de tocar (era disabled, agora removido) NAO deve existir
-    expect(container.querySelector(".st-feature .st-feature__cta")).toBeNull();
-    // O texto explicativo do empty-state continua presente
-    expect((container.querySelector(".st-feature")?.textContent ?? "")).toContain("Stations aparecem aqui");
+    await waitFor(() => expect(container.querySelector(".st-empty")).toBeTruthy());
+    expect(container.querySelector(".st-feature__cta")).toBeNull();
   });
 
   it("destaque mood mostra as palavras do clima, sem buscar capas (B1)", async () => {
@@ -447,6 +448,24 @@ describe("Resume station inicia playback (fix: tracks eram descartadas)", () => 
     expect(player.queue.length).toBe(0);
     expect(player.currentTrack).toBeNull();
     expect(vi.mocked(playTrack)).not.toHaveBeenCalled();
+  });
+
+  // A12: "Play station" sem sementes no acervo não fazia nada e não avisava.
+  it("station sem faixas avisa o motivo, conta as sementes e oferece apagar", async () => {
+    vi.mocked(tauriApi.libListStations).mockImplementation(async () => MOCK_STATIONS);
+    vi.mocked(tauriApi.libPlayStation).mockImplementation(async () => []);
+    vi.mocked(tauriApi.libGetTracksByIds).mockImplementation(async () => []);
+    setQueue([], 0);
+    const { container, findByRole } = render(() => <Stations />);
+    await waitFor(() => expect(container.querySelector(".st-feature__cta")).toBeTruthy());
+    fireEvent.click(container.querySelector(".st-feature__cta")!);
+    const alert = await findByRole("alert");
+    expect(alert.textContent).toContain("Esta station não achou faixas no acervo.");
+    expect(alert.querySelector(".st-noplay__legend")!.textContent).toBe("0 de 3 sementes no acervo");
+    const apagar = Array.from(alert.querySelectorAll("button")).find((b) => b.textContent === "Apagar")!;
+    fireEvent.click(apagar);
+    await waitFor(() => expect(vi.mocked(tauriApi.libDeleteStation)).toHaveBeenCalledWith("midnight-1"));
+    await waitFor(() => expect(container.querySelector(".st-noplay")).toBeNull());
   });
 });
 

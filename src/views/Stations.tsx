@@ -468,6 +468,10 @@ export default function Stations() {
   // todos (For por referência) e não pode fazê-los subir de novo.
   const entering = createEnterWindow();
   const [moodPanelOpen, setMoodPanelOpen] = createSignal(false);
+  // Station que tocou zero faixas: id + quantas sementes ainda estão no acervo.
+  const [emptyPlay, setEmptyPlay] = createSignal<
+    { id: string; found: number; total: number } | null
+  >(null);
 
   async function handleResume(id: string) {
     try {
@@ -488,6 +492,17 @@ export default function Stations() {
         setQueue(tracks, 0, "curated", { kind: "station", name });
         registerSeen(tracks.map((t) => t.id));
         playTrack(tracks[0], "station", contextId);
+        setEmptyPlay(null);
+      } else {
+        // Nada para tocar: conta as sementes que sobraram no acervo para o
+        // aviso dizer o motivo provável (mood não tem sementes: total 0).
+        const st = stations()?.find((s) => s.id === id);
+        const seeds = st?.kind === "seed" ? st.seed_track_ids : [];
+        let found = 0;
+        if (seeds.length > 0) {
+          try { found = ((await libGetTracksByIds(seeds)) ?? []).length; } catch { found = 0; }
+        }
+        setEmptyPlay({ id, found, total: seeds.length });
       }
       // Refetch para atualizar estatisticas de played/last_played_at.
       refetch();
@@ -552,48 +567,80 @@ export default function Stations() {
 
       <div class="coll">
         {/* ── Feature station ──────────────────────────── */}
+        {/* Station que tocou zero faixas (sementes fora do acervo): diz por
+            quê e oferece apagar, em vez de um clique que não faz nada (A12). */}
+        <Show when={emptyPlay()}>
+          {(e) => (
+            <div class="st-noplay" role="alert">
+              <div class="st-noplay__text">
+                <p class="st-noplay__title">
+                  Esta station não achou faixas no acervo. As sementes podem ter sido movidas.
+                </p>
+                <Show when={e().total > 0}>
+                  <p class="st-noplay__legend">
+                    {e().found} de {e().total} {e().total === 1 ? "semente" : "sementes"} no acervo
+                  </p>
+                </Show>
+              </div>
+              <div class="st-noplay__actions">
+                <button
+                  type="button"
+                  class="st-empty__btn"
+                  onClick={async () => {
+                    const id = e().id;
+                    setEmptyPlay(null);
+                    await handleDelete(id);
+                  }}
+                >
+                  Apagar
+                </button>
+                <button type="button" class="st-noplay__dismiss" onClick={() => setEmptyPlay(null)}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+          )}
+        </Show>
+
+        {/* ── Feature station ──────────────────────────── */}
         <Show
           when={(stations()?.length ?? 0) > 0}
           fallback={
-            <section class="st-feature st-feature--solo">
-              <div>
-                <div class="st-feature__eyebrow">
-                  <span class="dot" />
-                  {stations.loading ? "Carregando..." : "Nenhuma station"}
-                </div>
-                <h2 class="st-feature__title">
-                  {stations.loading ? "Aguarde" : "Crie sua primeira station"}
-                </h2>
-                <p class="st-feature__hint">
-                  {stations.loading
-                    ? "Buscando stations salvas..."
-                    : "Use o botao abaixo para criar uma station a partir da track atual."}
+            <Show
+              when={!stations.loading}
+              fallback={<p class="st-loading" role="status">Carregando stations…</p>}
+            >
+              {/* Vazio de verdade (A12): diz o que é uma station e entrega as
+                  duas formas de criar, sem cartões-fantasma nem chips falsos. */}
+              <section class="st-empty">
+                <h2 class="st-empty__title">Nenhuma station ainda</h2>
+                <p class="st-empty__hint">
+                  Uma station toca o que soa parecido com uma faixa ou com um clima, e
+                  aprende com o que você pula.
                 </p>
-                <div class="st-feature__seeds">
-                  <span class="st-seed-chip">
-                    <span class="st-seed-chip__cover tone-lavender">
-                      {/* @ts-ignore */}
-                      <iconify-icon icon="lucide:sparkles" noobserver />
-                    </span>
-                    Nenhuma seed ainda
-                  </span>
-                  <span class="st-seed-chip">
-                    <span class="st-seed-chip__cover tone-mint">
-                      {/* @ts-ignore */}
-                      <iconify-icon icon="lucide:waves" noobserver />
-                    </span>
-                    Toque musicas para gerar seeds
-                  </span>
-                  <span class="st-seed-chip">
-                    <span class="st-seed-chip__cover tone-bone">
-                      {/* @ts-ignore */}
-                      <iconify-icon icon="lucide:rainbow" noobserver />
-                    </span>
-                    Stations aparecem aqui
-                  </span>
+                <div class="st-empty__actions">
+                  <button
+                    type="button"
+                    class="st-empty__btn st-empty__btn--primary"
+                    disabled={!player.currentTrack}
+                    title={player.currentTrack ? undefined : "Toque uma faixa para usá-la como semente"}
+                    onClick={handleNewFromCurrent}
+                  >
+                    <Show when={player.currentTrack} fallback="Criar a partir da faixa atual">
+                      {(t) => <>Criar a partir de “{t().title}”</>}
+                    </Show>
+                  </button>
+                  <button
+                    type="button"
+                    class="st-empty__btn"
+                    aria-expanded={moodPanelOpen() ? "true" : "false"}
+                    onClick={() => setMoodPanelOpen((v) => !v)}
+                  >
+                    Nova station por clima
+                  </button>
                 </div>
-              </div>
-            </section>
+              </section>
+            </Show>
           }
         >
           <FeatureCard
@@ -634,34 +681,7 @@ export default function Stations() {
             />
           </Show>
           <div class="st-grid" data-enter={entering() ? "" : undefined}>
-            <Show
-              when={(stations()?.length ?? 0) > 0}
-              fallback={
-                <For each={Array.from({ length: 6 })}>
-                  {() => (
-                    <div class="st-card st-card--ph" style={{ opacity: "0.35" }}>
-                      <div class="st-card__top">
-                        <div class="st-card__cover tone-lavender">
-                          {/* @ts-ignore */}
-                          <iconify-icon icon="lucide:radio" noobserver />
-                        </div>
-                        <div class="st-card__head">
-                          <span class="st-card__name">—</span>
-                          <span class="st-card__seed-line">sem stations</span>
-                        </div>
-                      </div>
-                      <p class="st-card__desc">
-                        Toque musicas para gerar stations automaticamente.
-                      </p>
-                      <div class="st-card__stats">
-                        <span>0 played</span>
-                        <span>last: —</span>
-                      </div>
-                    </div>
-                  )}
-                </For>
-              }
-            >
+            <Show when={(stations()?.length ?? 0) > 0}>
               {/* A primeira já está no destaque: a grade lista as demais. */}
               <For each={stations()!.slice(1)}>
                 {(s) => (
