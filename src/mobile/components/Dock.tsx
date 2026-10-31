@@ -90,10 +90,17 @@ export function Dock() {
   const onDown = (e: PointerEvent) => {
     sx = e.clientX; sy = e.clientY; st = Date.now();
   };
+  /* O navegador pode assumir o toque (pointercancel) e nunca mandar o
+     pointerup; o mini tem touch-action: none para os dois eixos serem do
+     JS, e o cancel zera o gesto (A58). */
+  const onCancel = () => {
+    st = 0;
+  };
   const onUp = (e: PointerEvent) => {
     lastUp = Date.now();
     const dx = e.clientX - sx, dy = e.clientY - sy;
-    if (Date.now() - st > 600) return;
+    if (!st || Date.now() - st > 600) return;
+    st = 0;
     if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
       void (dx < 0 ? next() : previous());
       return;
@@ -138,7 +145,7 @@ export function Dock() {
         }
       >
         {(t) => (
-          <div class="mini" onPointerDown={onDown} onPointerUp={onUp}>
+          <div class="mini" onPointerDown={onDown} onPointerUp={onUp} onPointerCancel={onCancel}>
             <Cover path={t().album_cover_path} seed={t().id} />
             <div
               class="info"

@@ -206,3 +206,32 @@ describe("NowPlaying — acessibilidade (mobile-20)", () => {
     expect(h.seek).toHaveBeenCalledWith(5000);
   });
 });
+
+// A58: o arrastar-para-fechar era do .np inteiro e só decidia no pointerup;
+// rolar a letra sem sincronia para baixo fechava a tela, e o pointercancel
+// (o navegador assumindo o pan) deixava o gesto pela metade.
+describe("NowPlaying — arrastar para fechar (A58)", () => {
+  const drag = (el: Element, dy: number, cancel = false) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 });
+    if (cancel) fireEvent.pointerCancel(el, { clientX: 100, clientY: 100 + dy });
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 + dy });
+  };
+
+  it("pela faixa de cima (cabeçalho), fecha", () => {
+    const r = render(() => <NowPlaying />);
+    drag(r.container.querySelector(".nphead")!, 120);
+    expect(h.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("de fora da faixa de cima (título, letra), não fecha", () => {
+    const r = render(() => <NowPlaying />);
+    drag(r.container.querySelector(".title")!, 120);
+    expect(h.back).not.toHaveBeenCalled();
+  });
+
+  it("pointercancel zera o gesto", () => {
+    const r = render(() => <NowPlaying />);
+    drag(r.container.querySelector(".nphead")!, 120, true);
+    expect(h.back).not.toHaveBeenCalled();
+  });
+});

@@ -148,3 +148,26 @@ describe("VU do mini (A56)", () => {
     expect(bars(r)).toEqual(rest);
   });
 });
+
+describe("gestos do mini (A58)", () => {
+  const playing = { id: "1", title: "Faixa", artist_name: "Fulano", album_cover_path: null };
+
+  it("arrastar para cima abre o Now Playing", () => {
+    nav.playing = playing;
+    const r = render(() => <Dock />);
+    const mini = r.container.querySelector(".mini")!;
+    fireEvent.pointerDown(mini, { clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(mini, { clientX: 100, clientY: 30 });
+    expect(nav.openNowPlaying).toHaveBeenCalledTimes(1);
+  });
+
+  it("pointercancel no meio zera o gesto: o pointerup que sobrar não abre", () => {
+    nav.playing = playing;
+    const r = render(() => <Dock />);
+    const mini = r.container.querySelector(".mini")!;
+    fireEvent.pointerDown(mini, { clientX: 100, clientY: 100 });
+    fireEvent.pointerCancel(mini, { clientX: 100, clientY: 60 });
+    fireEvent.pointerUp(mini, { clientX: 100, clientY: 30 });
+    expect(nav.openNowPlaying).not.toHaveBeenCalled();
+  });
+});

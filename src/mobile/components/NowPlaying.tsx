@@ -157,15 +157,25 @@ export function NowPlaying() {
     void seek(Math.max(0, Math.min(dur, to)));
   };
 
-  // Arrastar pra baixo fecha (porte do protótipo)
+  /* Arrastar pra baixo fecha (porte do protótipo), mas só a partir da
+     faixa de cima: alça, cabeçalho e capa (A58). A letra sem sincronia é
+     rolável e rolar para reler o começo fechava a tela. O pointercancel
+     (o navegador assumindo o pan) zera o gesto. */
+  const DRAG_ZONE = ".grab, .nphead, .cover";
   let ny = 0, nt = 0;
   const onDown = (e: PointerEvent) => {
+    const t = e.target as Element | null;
+    if (!t?.closest?.(DRAG_ZONE)) {
+      nt = 0;
+      return;
+    }
     ny = e.clientY;
     nt = Date.now();
   };
   const onUp = (e: PointerEvent) => {
-    if (scrub() != null) return;
+    if (scrub() != null || !nt) return;
     if (Date.now() - nt < 600 && e.clientY - ny > 60) back();
+    nt = 0;
   };
 
   return (
@@ -179,6 +189,7 @@ export function NowPlaying() {
       aria-hidden={isNpOpen() ? undefined : "true"}
       onPointerDown={onDown}
       onPointerUp={onUp}
+      onPointerCancel={() => (nt = 0)}
     >
       <div class="veil" />
       <div class="inner">

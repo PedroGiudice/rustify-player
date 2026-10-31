@@ -315,7 +315,9 @@
   border-top: 0;
   border-bottom: 1px solid var(--div-subtle);
   height: 60px;
-  touch-action: pan-y;
+  /* Os dois eixos são do JS (prev/next na horizontal, abrir na vertical):
+     com pan-y o navegador assumia o arraste vertical e cancelava (A58). */
+  touch-action: none;
 }
 .dock .tabbar {
   background: none;
@@ -373,6 +375,19 @@
   border-radius: 2px;
   background: var(--div-prom);
   margin: 2px auto 10px;
+  position: relative;
+}
+/* Faixa de arrastar para fechar (A58): alça com alvo real, cabeçalho e capa.
+   Fora dela (letra, seek, controles) o toque não fecha a tela. */
+.np .grab::after {
+  content: "";
+  position: absolute;
+  inset: -12px -40px;
+}
+.np .grab,
+.np .nphead,
+.np .cover {
+  touch-action: none;
 }
 .np .nphead {
   display: flex;
