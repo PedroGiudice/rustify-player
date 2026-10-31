@@ -1341,7 +1341,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--bg-paper);
   border-top: 1px solid var(--line-2);
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 1.4fr minmax(240px, 1fr);
+  /* A direita pede ~430 px (medidor, pílula, letra, fila, mudo, volume): com
+     240 px de piso ela encolhia os botões e quebrava a pílula (A3). A esquerda
+     cede primeiro, com reticências no título e no artista. */
+  grid-template-columns: minmax(0, 1fr) 1.2fr minmax(430px, 1fr);
   align-items: center;
   padding: 0 16px; gap: 24px;
 }
@@ -1350,25 +1353,26 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
 .pb-title { font-size: 13px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .pb-title:hover { text-decoration: underline; text-decoration-color: var(--fg-7); text-underline-offset: 3px; }
-.pb-artist { font-size: 12px; color: var(--fg-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Selos não encolhem; quem cede é o texto do artista, com reticências (A2). */
+.pb-artist { display: flex; align-items: center; min-width: 0; font-size: 12px; color: var(--fg-5); white-space: nowrap; }
+.pb-artist__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-/* Chip de proveniência da fila (station / playlist / álbum / rádio / solta).
-   Mono micro, uppercase, inline na linha do artista. Station ganha o accent
-   pra diferenciar escuta dirigida pelo motor. */
+/* Selo de proveniência da fila (station / playlist / rádio com o grau de
+   familiaridade; álbum e fila solta não têm selo). Mono, caixa-alta, na linha
+   do artista. Station e rádio ganham o acento: escuta dirigida pelo motor. */
 .pb-src {
-  display: inline-block;
+  flex: none;
   font-family: var(--font-mono);
-  font-size: 10px;   /* era 8.5px: no limite da legibilidade com DPR 1 */
-  font-weight: 650;
-  letter-spacing: 0.07em;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-6);
   border: 1px solid var(--line-2);
   border-radius: 4px;
-  padding: 0.5px 4px;
+  padding: 0 4px;
   margin-right: 7px;
-  vertical-align: 1.5px;
-  line-height: 1.25;  /* 10px x 1.25 mantém a altura do chip de 8.5px x 1.5 */
+  line-height: 1.3;
 }
 /* Selo de primeira escuta: aparece por opacidade junto com a faixa. */
 .pb-src--first { animation: state-in var(--dur-med) var(--ease-out); }
@@ -1379,6 +1383,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 
 .pb-icon-btn, .pb-btn {
+  flex: none;
   width: 28px; height: 28px;
   border-radius: var(--radius-md);
   display: grid; place-items: center;
@@ -1391,6 +1396,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    --blue-fg segue o tema e o accent adaptativo (mesmo token do chip de
    station). */
 .pb-icon-btn[aria-pressed="true"], .pb-btn[aria-pressed="true"] { color: var(--blue-fg); }
+/* Indisponível de verdade (anterior no começo da fila, faixa sem letra): o
+   clique não faz nada, então não acende no hover (A14, A15). */
+.pb-btn[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.pb-btn[aria-disabled="true"]:hover { color: var(--fg-5); background: none; }
 .pb-like[aria-pressed="true"] { color: var(--rose-fg); }
 /* Curtir confirma com um pulso único (B9). A classe só entra no gesto de
    curtir (PlayerBar.onLike): descurtir e carregar faixa curtida não pulsam.
@@ -1430,13 +1439,13 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-meter__ch[data-clip="true"] { background: color-mix(in srgb, var(--rose-ring) 28%, var(--line-2)); }
 .pb-meter__ch[data-clip="true"] .pb-meter__peak::after { width: 3px; background: var(--rose-ring); }
 
-/* Confirmação de enfileirar: "+N" ao lado do ícone da fila, em mono
-   tabular, entra subindo 3 px e some sozinho (PlayerBar, ACK_MS 1600 ms).
-   Fica fora do fluxo para não empurrar o volume. */
-.pb-queue { position: relative; display: inline-flex; }
-.pb-queue__ack {
-  position: absolute; left: 100%; top: 50%;
-  margin-left: -4px;
+/* Confirmação de enfileirar: "+N" (ou "já está tocando") ACIMA do ícone da
+   fila, em mono tabular; entra subindo 3 px e some sozinho (PlayerBar, ACK_MS
+   1600 ms). Ao lado ele cobria o mudo (A3). Fora do fluxo. */
+.pb-queue { position: relative; display: inline-flex; flex: none; }
+.pb-queue__ack,
+.pb-notice {
+  position: absolute; left: 50%; bottom: calc(100% + 2px);
   padding: 1px 5px;
   font: 600 var(--fs-label)/1.3 var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -1448,15 +1457,18 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   white-space: nowrap;
   animation: pb-queue-ack 1600ms var(--ease-out) forwards;
 }
+/* Aviso do Play sem faixa (B35: "Nada no acervo para tocar"), sobre o play. */
+.pb-play { position: relative; display: inline-flex; flex: none; }
+.pb-notice { animation-duration: 2400ms; }
 @keyframes pb-queue-ack {
-  0%   { opacity: 0; transform: translate(0, -50%) translateY(3px); }
-  12%  { opacity: 1; transform: translate(0, -50%); }
-  78%  { opacity: 1; transform: translate(0, -50%); }
-  100% { opacity: 0; transform: translate(0, -50%); }
+  0%   { opacity: 0; transform: translate(-50%, 3px); }
+  12%  { opacity: 1; transform: translate(-50%, 0); }
+  78%  { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0); }
 }
 @keyframes pb-queue-ack-calm {
-  0%, 100% { opacity: 0; transform: translate(0, -50%); }
-  12%, 78% { opacity: 1; transform: translate(0, -50%); }
+  0%, 100% { opacity: 0; transform: translate(-50%, 0); }
+  12%, 78% { opacity: 1; transform: translate(-50%, 0); }
 }
 .sr-only {
   position: absolute;
@@ -1485,15 +1497,27 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Stroke maior pra dar peso visual de "play/pause filled" usando line icons */
 .pb-btn--primary iconify-icon::part(svg) { stroke-width: 2.5; }
 
-/* minmax: faixa de mais de 1 h mostra H:MM:SS (fmtDur) e não cabe em 42 px. */
-.pb-seek { display: grid; grid-template-columns: minmax(42px, auto) 1fr minmax(42px, auto); gap: 10px; align-items: center; }
-.pb-time { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); font-variant-numeric: tabular-nums; text-align: center; }
+/* 7ch em mono = H:MM:SS (fmtDur): a coluna não cresce depois de 59:59 e o
+   trilho não encolhe no meio da faixa (A13). */
+.pb-seek { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+.pb-time { min-width: 7ch; font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); font-variant-numeric: tabular-nums; text-align: center; }
 
+/* Trilho do volume (e do seek sem perfil): carbono 7, o mesmo "resto" do
+   contorno do seek. O line-2 ficava a 1,19:1 e o trilho sumia (A1). */
 .progress {
   height: 3px;
-  background: var(--line-2);
+  background: var(--fg-7);
   border-radius: 999px;
   position: relative; cursor: pointer;
+}
+/* Seek: caixa de 14 px com ou sem perfil; sem perfil, o trilho de 3 px fica
+   centrado (.progress__rail). Trocar de faixa não muda a altura (A13). */
+.progress--seek { height: 14px; background: none; border-radius: 0; }
+.progress--seek::before { height: 22px; }
+.progress__rail {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 3px; margin-top: -1.5px;
+  background: var(--fg-7); border-radius: 999px;
 }
 .progress__fill {
   height: 100%; background: var(--fg-3); border-radius: inherit;
@@ -1510,8 +1534,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .progress:hover .progress__fill,
 .progress:focus-visible .progress__fill { background: var(--fg-1); }
+/* A cabeça anda por transform numa camada do tamanho do trilho. */
+.progress__head { position: absolute; inset: 0; pointer-events: none; }
 .progress__thumb {
-  position: absolute; top: 50%;
+  position: absolute; top: 50%; left: 0;
   width: 10px; height: 10px;
   border-radius: 50%; background: var(--fg-1);
   transform: translate(-50%, -50%);
@@ -1523,8 +1549,6 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Seek com a forma da música (perfil de volume da faixa): a mesma máscara
    em duas camadas, resto em carbono 7 e tocado em carbono 3 (carbono 1 no
    hover), recortado pela posição. 14 px cabem na barra de 72 px. */
-.progress--wave { height: 14px; background: none; border-radius: 0; }
-.progress--wave::before { height: 22px; }
 .progress__wave {
   position: absolute; inset: 0;
   background: var(--fg-7);
@@ -1540,26 +1564,27 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Sobre o contorno, a cabeça vira um traço vertical da altura do trilho. */
 .progress--wave .progress__thumb { width: 2px; height: 18px; border-radius: var(--radius-pill); }
 
-.pb-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.pb-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; min-width: 0; }
+/* Leitura, não botão (A4): sem cursor de mão nem hover. Não quebra nem
+   encolhe (A3); com as três etapas de DSP o texto vira "DSP 3". */
 .pb-tech {
   display: inline-flex; align-items: center; gap: 7px;
+  flex: none; white-space: nowrap;
   padding: 4px 10px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-md);
   font-family: var(--font-mono); font-size: 10.5px;
   color: var(--fg-4);
-  cursor: pointer;
-  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
-.pb-tech:hover { background: var(--bg-soft); border-color: var(--fg-8); }
 .pb-tech__sep { color: var(--fg-7); }
-.pb-tech__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent); }
+/* Verde sem halo: "tudo certo" não compete com o âmbar. Só o aviso brilha. */
+.pb-tech__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green-ring); }
 /* Faixa lossy por dentro (corte espectral medido): o ponto do caminho do sinal vira aviso. */
 .pb-tech--lossy .pb-tech__dot { background: var(--amber-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-ring) calc(var(--halo-alpha) * 160%), transparent); }
 /* Nunca medida (ou medição indeterminada): o verde fica só para o que o
    corte espectral conferiu; aqui o ponto é neutro e sem halo. */
 .pb-tech--unmeasured .pb-tech__dot { background: var(--fg-6); box-shadow: none; }
-.pb-vol { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.pb-vol { display: flex; align-items: center; gap: 8px; min-width: 130px; flex: none; }
 .pb-vol .progress { flex: 1; }
 
 /* ────────────────────────────────────────────────────────────
@@ -5172,7 +5197,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
 
   /* Confirmação da fila: aparece e some, sem subir. Chegada no acervo: o
      ponto só aparece (sem crescer). */
-  .pb-queue__ack { animation-name: pb-queue-ack-calm; }
+  .pb-queue__ack, .pb-notice { animation-name: pb-queue-ack-calm; }
   .qedit { transition: none; }
   .nav-item__new { animation: state-in var(--dur-base) linear; }
 

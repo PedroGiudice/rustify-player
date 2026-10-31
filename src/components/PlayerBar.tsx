@@ -28,7 +28,10 @@ import {
   libAutoplayNext, libStationNext, getState,
   coverUrl, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds, libTrackProfile, libTrackFamiliarity,
+  libListHistory, libShuffle,
 } from "../tauri";
+import type { TrackFamiliarity } from "../tauri";
+import { lyricsState, reloadLyrics } from "../store/lyrics";
 import { openTrackMenu } from "../store/contextMenu";
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
@@ -36,7 +39,7 @@ import { LevelMeter } from "./LevelMeter";
 import { makeWaveMask } from "./waveMask";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
 import { QUEUE_EVENT } from "./QueueDrawer";
-import { navigate } from "../router";
+import { navigate, route } from "../router";
 import { describeFile, qualityBadge } from "../lib/quality";
 import { fmtDur } from "../lib/format";
 import { createSwapKey } from "../lib/motion";
@@ -345,21 +348,39 @@ export function PlayerBar() {
 
   // ── Seek ──────────────────────────────────────────────────────
 
+  // Só o botão principal arrasta: o direito abria o menu do sistema por cima
+  // e o pointerup nunca chegava, congelando barra e relógio (A13).
   function onSeekPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
     if (!player.currentTrack || !player.durationSecs) return;
     setPlayer("isScrubbing", true);
     updateFromSeekEvent(e);
 
     const onMove = (ev: PointerEvent) => updateFromSeekEvent(ev);
+    const stop = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("blur", onCancel);
+      document.removeEventListener("visibilitychange", onCancel);
+    };
     const onUp = (ev: PointerEvent) => {
+      stop();
       setPlayer("isScrubbing", false);
       updateFromSeekEvent(ev);
       playerSeek(player.positionSecs).catch(console.error);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+    };
+    // Gesto interrompido (cancelado, janela perdeu o foco ou sumiu): solta
+    // sem buscar; o próximo Position do engine devolve a posição real.
+    const onCancel = () => {
+      stop();
+      setPlayer("isScrubbing", false);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("blur", onCancel);
+    document.addEventListener("visibilitychange", onCancel);
   }
 
   function updateFromSeekEvent(e: PointerEvent) {
@@ -382,6 +403,7 @@ export function PlayerBar() {
   // ── Volume ─────────────────────────────────────────────────────
 
   function onVolPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
     const update = (ev: PointerEvent) => {
       const rect = volBarRef.getBoundingClientRect();
       const vol = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
@@ -393,9 +415,13 @@ export function PlayerBar() {
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onUp);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onUp);
   }
 
   function onVolKeyDown(e: KeyboardEvent) {
@@ -410,25 +436,35 @@ export function PlayerBar() {
   // ── Seek com a forma da música ────────────────────────────────
   // Com o perfil de volume da faixa (lib_track_profile), o trilho de 3 px
   // vira o contorno da música inteira; sem perfil, fica o trilho de sempre.
+  // A caixa tem 14 px nos dois casos (sem perfil, o trilho fica centrado):
+  // trocar de faixa não muda a altura da barra.
   const WAVE_H = 14;
   const [waveMask, setWaveMask] = createSignal<string | null>(null);
   let waveProfile: number[] | null = null;
   function redrawWave() {
     if (!waveProfile || !seekBarRef) { setWaveMask(null); return; }
-    setWaveMask(makeWaveMask(waveProfile, seekBarRef.clientWidth, WAVE_H, window.devicePixelRatio || 1));
+    // O zoom do Tweaks (html { zoom }) multiplica os pixels de verdade: sem
+    // ele, as barras de 2 px saíam macias com zoom 1,15.
+    const dpr = (window.devicePixelRatio || 1) * (tweaks().scale || 1);
+    setWaveMask(makeWaveMask(waveProfile, seekBarRef.clientWidth, WAVE_H, dpr));
   }
+  // O contorno antigo fica até o perfil novo chegar (ou chegar vazio): apagar
+  // antes do IPC fazia o seek piscar a cada troca de faixa.
   createEffect(on(() => player.currentTrack?.id, (id) => {
-    waveProfile = null;
-    setWaveMask(null);
-    if (!id) return;
+    if (!id) { waveProfile = null; setWaveMask(null); return; }
     libTrackProfile(id)
       .then((p) => {
-        if (player.currentTrack?.id !== id || !p || p.length === 0) return;
-        waveProfile = p;
+        if (player.currentTrack?.id !== id) return;
+        waveProfile = p && p.length > 0 ? p : null;
         redrawWave();
       })
-      .catch(() => {});
+      .catch(() => {
+        if (player.currentTrack?.id !== id) return;
+        waveProfile = null;
+        setWaveMask(null);
+      });
   }));
+  createEffect(on(() => tweaks().scale, () => { if (waveProfile) redrawWave(); }, { defer: true }));
   onMount(() => {
     if (typeof ResizeObserver === "undefined" || !seekBarRef) return;
     let pending = 0;
@@ -440,18 +476,46 @@ export function PlayerBar() {
     onCleanup(() => { ro.disconnect(); cancelAnimationFrame(pending); });
   });
 
+  // Por que o rádio escolheu a faixa (B7). Sem autoplay_pick (seed, camadas
+  // 2/3, S24): a familiaridade vem do motor.
+  const srcPick = () =>
+    player.queueSource?.kind === "radio" ? player.currentTrack?.autoplay_pick ?? null : null;
+
   // ── Primeira escuta (delight) ──────────────────────────────────
   // Faixa nunca ouvida até o fim (mesma régua do motor: evento track_ended)
   // ganha o selo "1ª escuta". Familiaridade é o que separa aceite de pulo
   // na forense do autoplay: o dono sabe quando está diante de descoberta.
-  const [firstListen, setFirstListen] = createSignal(false);
-  createEffect(on(() => player.currentTrack?.id, (id) => {
-    setFirstListen(false);
+  // No rádio, o pick já traz quantas vezes a faixa foi ouvida até o fim e o
+  // motor não é consultado. Cache do motor ainda frio (null no boot): pergunta
+  // de novo em 3, 10 e 30 s, senão a 1ª escuta das primeiras faixas sumia e
+  // lia como "já ouvi" (A15).
+  const FAMILIARITY_RETRY_MS = [3000, 10_000, 30_000];
+  const [fullListens, setFullListens] = createSignal<number | null>(null);
+  let famTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(on(() => [player.currentTrack?.id, srcPick()?.ended] as const, ([id, pickEnded]) => {
+    clearTimeout(famTimer);
+    setFullListens(null);
     if (!id) return;
-    libTrackFamiliarity(id)
-      .then((f) => { if (player.currentTrack?.id === id) setFirstListen(!!f && f.full_listens === 0); })
-      .catch(() => {});
+    if (typeof pickEnded === "number") { setFullListens(pickEnded); return; }
+    let attempt = 0;
+    const ask = () => {
+      libTrackFamiliarity(id)
+        .then((f: TrackFamiliarity | null | undefined) => {
+          if (player.currentTrack?.id !== id) return;
+          if (f) { setFullListens(f.full_listens); return; }
+          // Marcas a partir da troca de faixa (3, 10, 30 s), não intervalos.
+          const at = FAMILIARITY_RETRY_MS[attempt];
+          if (at === undefined) return;
+          const wait = at - (FAMILIARITY_RETRY_MS[attempt - 1] ?? 0);
+          attempt++;
+          famTimer = setTimeout(ask, wait);
+        })
+        .catch(() => {});
+    };
+    ask();
   }));
+  onCleanup(() => clearTimeout(famTimer));
+  const firstListen = () => fullListens() === 0;
 
   // ── Confirmação de enfileirar ─────────────────────────────────
   // Tocar a seguir / adicionar à fila não tinham retorno nenhum: o "+N" ao
@@ -469,7 +533,37 @@ export function PlayerBar() {
   }, { defer: true }));
   onCleanup(() => clearTimeout(ackTimer));
   const ackText = (a: NonNullable<ReturnType<typeof queueAck>>) =>
-    `${a.n} ${a.n === 1 ? "faixa" : "faixas"} ${a.where === "next" ? "a seguir" : "no fim da fila"}`;
+    a.n === 0
+      ? "Essa faixa já está tocando"
+      : `${a.n} ${a.n === 1 ? "faixa" : "faixas"} ${a.where === "next" ? "a seguir" : "no fim da fila"}`;
+  const ackChip = (a: NonNullable<ReturnType<typeof queueAck>>) => (a.n === 0 ? "já está tocando" : `+${a.n}`);
+
+  // ── Play sem faixa (B35) ──────────────────────────────────────
+  // Retoma a última do histórico (o "Continuar" do Now Playing vazio); sem
+  // histórico, sorteia do acervo; acervo vazio avisa. Nunca finge que toca.
+  const NOTICE_MS = 2400;
+  const [notice, setNotice] = createSignal<string | null>(null);
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(noticeTimer));
+  function showNotice(text: string) {
+    clearTimeout(noticeTimer);
+    setNotice(text);
+    noticeTimer = setTimeout(() => setNotice(null), NOTICE_MS);
+  }
+  let startingFromNothing = false;
+  async function playFromNothing() {
+    if (startingFromNothing) return;
+    startingFromNothing = true;
+    try {
+      const last = (await libListHistory(1).catch(() => null))?.[0];
+      if (last) { setQueue([last], 0); await playTrack(last); return; }
+      const pool = (await libShuffle(50).catch(() => null)) ?? [];
+      if (pool.length) { setQueue(pool, 0); await playTrack(pool[0]); return; }
+      showNotice("Nada no acervo para tocar");
+    } finally {
+      startingFromNothing = false;
+    }
+  }
 
   // ── Like ───────────────────────────────────────────────────────
 
@@ -508,12 +602,15 @@ export function PlayerBar() {
 
   // DSP chain summary mostrado na tech pill. Reage ao store de dsp,
   // entao toggles na view Signal aparecem aqui imediatamente.
+  // Com as três etapas, "DSP 3" (a lista por extenso vai no rótulo): a
+  // pílula não pode quebrar em duas linhas na coluna da direita (A3).
   const dspSummary = () => {
     if (dsp.bypass) return "BYPASS";
     const parts: string[] = [];
     if (dsp.eq.enabled) parts.push("EQ");
     if (dsp.limiter.enabled) parts.push("LIM");
     if (dsp.bass.enabled) parts.push("BASS");
+    if (parts.length >= 3) return `DSP ${parts.length}`;
     return parts.length ? parts.join(" · ") : "DSP OFF";
   };
 
@@ -531,18 +628,45 @@ export function PlayerBar() {
 
   const techTitle = () => `${describeFile(player.techInfo)}. ${dspSentence()} ${badge().hint}`;
 
-  // Chip de origem: no rádio, a faixa que o motor trouxe como descoberta diz
-  // isso (B7). Sem autoplay_pick (seed, camadas 2/3, S24): "rádio" puro.
-  const srcPick = () =>
-    player.queueSource?.kind === "radio" ? player.currentTrack?.autoplay_pick ?? null : null;
   // Troca de faixa calma: título/artista e pílula aparecem por opacidade
   // (data-swap). Em rajada de pulos, corte seco. Os botões não animam.
   const swapKey = createSwapKey(() => player.currentTrack?.id);
 
+  // Um selo só (A2): no rádio, o grau de familiaridade entra no próprio selo;
+  // álbum e fila solta não ganham selo (B16), o artista fica com o espaço.
+  const isRadio = () => player.queueSource?.kind === "radio";
   const srcLabel = () =>
-    srcPick()?.kind === "discovery" ? "rádio · descoberta" : queueSourceLabel(player.queueSource?.kind);
+    isRadio() ? radioChipLabel(srcPick(), fullListens()) : queueSourceLabel(player.queueSource?.kind);
+  const showSrc = () => {
+    const kind = player.queueSource?.kind;
+    return !!player.currentTrack && (kind === "station" || kind === "playlist" || kind === "radio");
+  };
   const srcTitle = () =>
-    player.queueSource?.kind === "radio" ? radioPickTitle(srcPick()) : player.queueSource?.name;
+    isRadio() ? radioPickTitle(srcPick()) : player.queueSource?.name;
+
+  // ── Letra (A14, B16) ──────────────────────────────────────────
+  // O botão só existe no Now Playing (é lá que a letra aparece) e diz o
+  // estado da busca: sem letra apaga e não alterna; erro, clicar refaz.
+  const onNowPlaying = () => route().path === "/now-playing";
+  const lyr = () => lyricsState().status;
+  const lyricsTitle = () => {
+    switch (lyr()) {
+      case "sem": return "Sem letra nesta faixa";
+      case "erro": return "A letra não carregou. Clique para tentar de novo";
+      case "carregando": return "Buscando a letra…";
+      default: return tweaks().lyricsVisible ? "Esconder letra" : "Mostrar letra";
+    }
+  };
+  function onLyricsClick() {
+    if (lyr() === "sem") return;
+    if (lyr() === "erro") { reloadLyrics(); return; }
+    updateTweak("lyricsVisible", !tweaks().lyricsVisible);
+  }
+
+  // "Anterior" no começo da fila não faz nada; "Próxima" no fim segue no
+  // rádio (skipIntoAutoplay), então só não existe sem faixa (A15).
+  const prevDisabled = () => !player.currentTrack || player.queueIndex <= 0;
+  const nextDisabled = () => !player.currentTrack;
 
   return (
     <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
@@ -587,27 +711,30 @@ export function PlayerBar() {
             {player.currentTrack?.title ?? "—"}
           </span>
           <span class="pb-artist" id="pb-artist">
-            {/* Chip de proveniência: station / playlist / álbum / rádio /
-                solta. Nome completo (station/playlist) vai no tooltip. */}
-            <Show when={player.currentTrack}>
+            {/* Selo de proveniência: station / playlist / rádio (com o grau
+                de familiaridade). Nome completo (station/playlist) e motivo
+                do rádio vão no tooltip. Álbum e fila solta não têm selo. */}
+            <Show when={showSrc()}>
               <span
                 class="pb-src"
-                data-kind={player.queueSource?.kind ?? "solta"}
+                data-kind={player.queueSource?.kind}
                 data-pick={srcPick()?.kind}
                 title={srcTitle()}
               >
                 {srcLabel()}
               </span>
             </Show>
-            <Show when={firstListen()}>
+            <Show when={!isRadio() && firstListen()}>
               <span class="pb-src pb-src--first" title="Você nunca ouviu esta faixa até o fim">
                 1ª escuta
               </span>
             </Show>
-            {player.currentTrack?.artist_name ?? "—"}
-            <Show when={player.currentTrack?.album_title}>
-              {(album) => <> · {album()}</>}
-            </Show>
+            <span class="pb-artist__text">
+              {player.currentTrack?.artist_name ?? "—"}
+              <Show when={player.currentTrack?.album_title}>
+                {(album) => <> · {album()}</>}
+              </Show>
+            </span>
           </span>
         </div>
 
@@ -653,21 +780,26 @@ export function PlayerBar() {
           <button
             class="pb-btn"
             id="pb-prev"
-            aria-disabled={player.queueIndex <= 0}
+            aria-disabled={prevDisabled()}
             aria-label="Previous"
             title="Previous"
-            onClick={() => { const t = retreatQueue(); if (t) playTrack(t, contOrigin("queue"), contContextId()); }}
+            onClick={() => {
+              if (prevDisabled()) return;
+              const t = retreatQueue();
+              if (t) playTrack(t, contOrigin("queue"), contContextId());
+            }}
           >
             <Icon name={ICONS.prev} size={14} />
           </button>
 
+          <div class="pb-play">
           <button
             class="pb-btn pb-btn--primary"
             id="pb-play-pause"
-            aria-disabled={!player.currentTrack}
             aria-label={player.isPlaying ? "Pause" : "Play"}
-            title={player.isPlaying ? "Pause" : "Play"}
+            title={player.isPlaying ? "Pause" : player.currentTrack ? "Play" : "Tocar a última faixa"}
             onClick={() => {
+              if (!player.currentTrack) { void playFromNothing(); return; }
               if (player.isPlaying) {
                 setPlayingState(false);
                 playerPause().catch(console.error);
@@ -679,14 +811,20 @@ export function PlayerBar() {
           >
             <Icon name={player.isPlaying ? ICONS.pause : ICONS.play} size={12} />
           </button>
+          <span class="sr-only" role="status">{notice() ?? ""}</span>
+          <Show when={notice()} keyed>
+            {(text) => <span class="pb-notice" aria-hidden="true">{text}</span>}
+          </Show>
+          </div>
 
           <button
             class="pb-btn"
             id="pb-next"
-            aria-disabled={player.queueIndex >= player.queue.length - 1}
+            aria-disabled={nextDisabled()}
             aria-label="Next"
             title="Next"
             onClick={() => {
+              if (nextDisabled()) return;
               const skippedTrack = player.currentTrack;
               const posAtSkip = player.positionSecs;
               const durAtSkip = player.durationSecs;
@@ -730,7 +868,7 @@ export function PlayerBar() {
             {fmtDur(player.positionSecs * 1000)}
           </span>
           <div
-            class="progress"
+            class="progress progress--seek"
             classList={{ "progress--wave": !!waveMask() }}
             style={waveMask() ? { "--wave-mask": `url(${waveMask()})` } : undefined}
             id="pb-progress"
@@ -747,12 +885,20 @@ export function PlayerBar() {
           >
             <Show
               when={waveMask()}
-              fallback={<div class="progress__fill" id="pb-progress-fill" style={{ width: `${pct()}%` }} />}
+              fallback={
+                <div class="progress__rail">
+                  <div class="progress__fill" id="pb-progress-fill" style={{ width: `${pct()}%` }} />
+                </div>
+              }
             >
               <div class="progress__wave" />
               <div class="progress__wave progress__wave--played" style={{ "clip-path": `inset(0 ${100 - pct()}% 0 0)` }} />
             </Show>
-            <div class="progress__thumb" id="pb-progress-thumb" style={{ left: `${pct()}%` }} />
+            {/* A cabeça anda por transform (a camada ocupa o trilho inteiro, então
+                translateX em % é % do trilho): sem relayout a cada Position. */}
+            <div class="progress__head" style={{ transform: `translateX(${pct()}%)` }}>
+              <div class="progress__thumb" id="pb-progress-thumb" />
+            </div>
           </div>
           <span class="pb-time" id="pb-time-total">
             {fmtDur(player.durationSecs * 1000)}
@@ -764,11 +910,13 @@ export function PlayerBar() {
       <div class="pb-right">
         <LevelMeter />
         <Show when={player.techInfo.format && player.techInfo.format !== "—"}>
+          {/* Leitura, não botão (A4): sem cursor de mão nem hover. */}
           <div
             class="pb-tech"
             data-swap={swapKey()}
             classList={{ "pb-tech--lossy": badge().lossy, "pb-tech--unmeasured": badge().unmeasured }}
             id="pb-tech"
+            role="img"
             title={techTitle()}
             aria-label={techTitle()}
           >
@@ -779,16 +927,21 @@ export function PlayerBar() {
           </div>
         </Show>
 
-        <button
-          class="pb-btn"
-          id="pb-lyrics"
-          title={tweaks().lyricsVisible ? "Hide lyrics" : "Show lyrics"}
-          aria-label="Toggle lyrics"
-          aria-pressed={tweaks().lyricsVisible}
-          onClick={() => updateTweak("lyricsVisible", !tweaks().lyricsVisible)}
-        >
-          <Icon name={ICONS.lyrics} size={14} />
-        </button>
+        <Show when={onNowPlaying()}>
+          <button
+            class="pb-btn"
+            id="pb-lyrics"
+            data-lyrics={lyr()}
+            title={lyricsTitle()}
+            aria-label="Letra"
+            aria-pressed={lyr() !== "sem" && tweaks().lyricsVisible ? "true" : "false"}
+            aria-disabled={lyr() === "sem" ? "true" : undefined}
+            aria-busy={lyr() === "carregando" ? "true" : undefined}
+            onClick={onLyricsClick}
+          >
+            <Icon name={ICONS.lyrics} size={14} />
+          </button>
+        </Show>
 
         <div class="pb-queue">
           <button
@@ -803,7 +956,7 @@ export function PlayerBar() {
           <span class="sr-only" role="status">{ackShown() ? ackText(ackShown()!) : ""}</span>
           <Show when={ackShown()} keyed>
             {(a) => (
-              <span class="pb-queue__ack" aria-hidden="true" title={ackText(a)}>+{a.n}</span>
+              <span class="pb-queue__ack" aria-hidden="true" title={ackText(a)}>{ackChip(a)}</span>
             )}
           </Show>
         </div>
@@ -880,6 +1033,20 @@ export function radioPickTitle(pick: import("../tauri").AutoplayPick | null | un
       : `${base} Conhecida: você curtiu.`;
   }
   return `${base} Conhecida: você ouviu até o fim ${vezes}.`;
+}
+
+/** Selo do rádio com o grau de familiaridade (A2): nunca ouvida até o fim,
+    descoberta (1-2 fins) ou conhecida. `fullListens` vem do pick do motor ou,
+    sem pick, da familiaridade (null = ainda não se sabe). */
+export function radioChipLabel(
+  pick: import("../tauri").AutoplayPick | null | undefined,
+  fullListens: number | null,
+): string {
+  if (pick?.kind === "known") return "rádio";
+  const ended = pick ? pick.ended : fullListens;
+  if (ended === 0) return "rádio · 1ª escuta";
+  if (pick?.kind === "discovery") return "rádio · descoberta";
+  return "rádio";
 }
 
 /** Label PT do chip de proveniência da fila na barra. */
