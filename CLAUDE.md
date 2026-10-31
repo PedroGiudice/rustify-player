@@ -305,6 +305,20 @@ Riso 2,9 ms, Nebula reduzida 4,4 ms, Tinta 8,4 ms).
   camada), metas travadas no replay do sinal real com os ajustes do CEO
   de 11/10 (Bass 0,30 / Mid 0,10 / Treble 0,60 / suavizacao 1,0) e com
   os padrao (`paintRiso.test.ts`). Mid 0,10 limita a zona do meio.
+- **Pele da Riso (31/10, pedido do CEO: "não fundir direto de volta")**:
+  tocando, o grave infla as manchas e recolava o pedaço recém-solto (35%
+  das separações voltavam em até 2 s; parado, 0%). Agora a CPU acha os
+  pedaços numa grade 64 colunas a ~20 Hz (`scenes/risoSkin.ts`, centros
+  analíticos) e, no par que se separou, liga uma pele (sobe 2 s, cheia até
+  6 s, some até 12 s, tempo REAL: quem recola é o grave, não o relógio
+  virtual). A pele tira do par min·(min/max)² (só o pescoço; tirar min puro
+  encolhia as manchas num salto) e, no reencosto, o shader risca uma costura
+  de papel onde as duas manchas pesam igual. Metas no replay real
+  (`risoSkin.test.ts`): re-fusões em até 2 s tocando 0,5/min -> 0, blob
+  único tocando 60% -> 55%, parado igual. Shader DESENROLADO (5 manchas, 10
+  pares em escalares): com laço e `float f[5]` a GPU Intel foi a 15,5 ms.
+  Custo 3,5 ms sem pele (84% do tempo), 6,6-6,8 ms com. Câmera 2% mais longe
+  (`RISO_ZOOM`, shader e grade da CPU).
 - `src/gl/meta.ts` NAO importa codigo de GL (nomes das cenas +
   `glStatus`); e o que store e Tweaks consomem. O componente pesado
   (`components/GlBackground.tsx`) entra por `lazy()` no App e quem roda
