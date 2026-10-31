@@ -52,9 +52,11 @@ function usable(el: Element | null): el is HTMLElement {
     && !el.closest("[inert]");
 }
 
-/** Guarda o elemento focado agora. `fallback` responde quando ele sumiu ou era o <body>. */
-export function rememberFocus(fallback?: () => HTMLElement | null): FocusReturn {
-  const saved = document.activeElement;
+/** Guarda o elemento focado agora (ou `from`, quando quem chama já sabe de onde o
+    foco veio, como o `relatedTarget` de um focusin). `fallback` responde quando
+    ele sumiu ou era o <body>. */
+export function rememberFocus(fallback?: () => HTMLElement | null, from?: Element | null): FocusReturn {
+  const saved = from !== undefined ? from : document.activeElement;
   return {
     restore(opts) {
       const within = opts?.within ?? null;

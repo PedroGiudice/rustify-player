@@ -4980,6 +4980,13 @@ html[data-sidebar="icons"] .bridge-chip__text {
   z-index: 45; pointer-events: none;
 }
 .app[data-cinema="true"] .sel-bar-wrap { display: none; }
+/* Com a barra na tela (SelectionBar põe data-selbar no <html>), a vista
+   ganha 40 px no fim da rolagem e o foco por teclado para 72 px acima da
+   borda: a barra ocupa ~58 px (14 de folga + 44 de altura) e o corpo das
+   vistas tem 56 px embaixo (32 no compacto), então a última linha ficava
+   atrás dela (A41). O espaçador some com a barra. */
+html[data-selbar] .view { scroll-padding-bottom: 72px; }
+html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 .sel-bar {
   pointer-events: auto;
   display: flex; align-items: center; gap: 6px;
