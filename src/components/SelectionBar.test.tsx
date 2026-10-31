@@ -31,6 +31,23 @@ describe("SelectionBar", () => {
     expect(document.documentElement.hasAttribute("data-selbar")).toBe(false);
   });
 
+  it("ao limpar, a barra sai em vez de sumir, com a última contagem (A46)", () => {
+    vi.useFakeTimers();
+    try {
+      render(() => <SelectionBar />);
+      toggleTrack(LIST, "1");
+      toggleTrack(LIST, "2");
+      resetSelection();
+      const wrap = document.querySelector(".sel-bar-wrap")!;
+      expect(wrap.getAttribute("data-leaving")).toBe("true");
+      expect(wrap.querySelector(".sel-bar__count")!.textContent).toBe("2 selecionadas");
+      vi.advanceTimersByTime(180);
+      expect(document.querySelector(".sel-bar-wrap")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("Limpar pelo teclado devolve o foco à linha de onde ele veio", () => {
     const row = document.createElement("div");
     row.tabIndex = 0;

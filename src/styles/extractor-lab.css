@@ -557,6 +557,84 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 .palette__error,
 .move-dlg__msg { animation: state-in var(--dur-med) var(--ease-out); }
 
+/* Entradas que cortavam (A46, 31/10). O conteúdo que monta por <Show> ou
+   <Match> aparece por opacidade: o painel da aba (Library, Crate), o cartão
+   de confirmação e as fontes do Crate, a fase do Mover, a página da Tidal
+   (prévia, artista, resultados) e as capas que chegam do Rust, o selo do
+   estágio do Signal e os blocos do Tweaks que surgem ao trocar o motor ou a
+   cena. Só opacidade: o empurrão de layout é do próprio conteúdo, e deslocar
+   uma lista longa lê como erro. Roda uma vez por montagem (a aba Tidal fica
+   montada; voltar a ela, de display none para contents, repete o fade). */
+#library-panel > *,
+#crate-panel > *,
+.crate-tidal,
+.crate-card,
+.crate-sources,
+.tdl-flash,
+.tdl-cover img,
+.sig-panel__state,
+.move-dlg__body,
+.move-dlg .palette__list,
+.tweaks__row,
+.tweaks__hint,
+.tweaks__advanced { animation: state-in var(--dur-med) var(--ease-out); }
+.tdl-page,
+.tdl-results { animation: state-in var(--dur-enter) var(--ease-out); }
+
+/* Saídas que desmontavam (A46): Mover e barra de seleção ficam montados
+   por --dur-med (lib/motion.ts, createPresence) com data-leaving; saem
+   acelerando, mais rápido do que entram, e não aceitam mais clique. */
+@keyframes leave-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes panel-lift-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-6px) scale(0.99); }
+}
+@keyframes sel-bar-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(10px); }
+}
+.palette-scrim--mount[data-leaving="true"] {
+  pointer-events: none;
+  animation: leave-out var(--dur-med) var(--ease-in) forwards;
+}
+.palette-scrim--mount[data-leaving="true"] .palette { animation: panel-lift-out var(--dur-med) var(--ease-in) forwards; }
+.sel-bar-wrap[data-leaving="true"] .sel-bar {
+  pointer-events: none;
+  animation: sel-bar-out var(--dur-med) var(--ease-in) forwards;
+}
+
+/* Toque que afunda nos botões rotulados (A46; o grupo de ícones e chips é
+   da A23). Transporte e seek ficam de fora: na barra só afundam letra, fila
+   e mudo (.pb-right). Desabilitado não afunda. */
+.crate-btn:active:not(:disabled),
+.crate-btn-search:active:not(:disabled),
+.crate-dest__btn:active:not(:disabled),
+.sel-bar__btn:active,
+.toast__action:active,
+.pl-action-btn:active:not(:disabled),
+.tweaks__btn:active:not(:disabled),
+.st-empty__btn:active,
+.st-feature__cta:active,
+.set-folder-btn:active:not(:disabled),
+.sig-pbtn:active:not(:disabled),
+.np__action:active,
+.tdl-linkbtn:active,
+.pb-right .pb-btn:active:not([aria-disabled="true"]) {
+  transform: scale(0.97);
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
+/* Prévia da Tidal com até 200 linhas (A49): a linha fora da tela não é
+   desenhada (52-54 px reservados), e a capa dela só é pedida quando chega
+   perto (TidalTab.tsx, whenNear). */
+.tdl-list > .tdl-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 54px;
+}
+
 /* Entrada escalonada: Home (hero-tiles, montam uma vez com os dados) e
    Stations (cards; só na janela de entrada da vista, data-enter, porque o
    refetch depois de tocar recria os cards e não pode reescalonar). */
@@ -5354,7 +5432,9 @@ html[data-sidebar="icons"] .bridge-chip__text {
   position: absolute; inset: 0;
   background: var(--blue-ring);
   transform-origin: left center;
-  transition: transform var(--dur-med) var(--ease-out);
+  /* Progresso é dado, não gesto (A46): anda contínuo entre as leituras de
+     800 ms (POLL_MS do Crate), em vez de arrancar e parar a cada passo. */
+  transition: transform 800ms linear;
 }
 
 /* Chegada em quatro trechos (B29): baixar | organizar | indexar | pronto.
@@ -5982,6 +6062,15 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   /* Aba ativa: o sublinhado só aparece, sem abrir do centro. */
   .tab::after { transition: none; }
 
+  /* Saídas do Mover e da barra de seleção: só opacidade, curta (A46). As
+     entradas por state-in já são só opacidade e seguem. */
+  .palette-scrim--mount[data-leaving="true"],
+  .palette-scrim--mount[data-leaving="true"] .palette,
+  .sel-bar-wrap[data-leaving="true"] .sel-bar { animation: leave-out var(--dur-base) linear forwards; }
+  .sel-bar { animation: state-in var(--dur-base) linear; }
+  /* Barra da busca: salta a cada leitura (honesto, sem deslizar). */
+  .crate-prog i { transition: none; }
+
   /* Sem escalonamento: o conjunto aparece junto com a vista. */
   .hero-grid > .hero-tile,
   .st-grid[data-enter] > .st-card { animation: none; }
@@ -6000,5 +6089,19 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   .sm-toggle:active,
   .chip:active,
   .nav-item:active,
-  .hero-tile:active { transform: none; }
+  .hero-tile:active,
+  .crate-btn:active,
+  .crate-btn-search:active,
+  .crate-dest__btn:active,
+  .sel-bar__btn:active,
+  .toast__action:active,
+  .pl-action-btn:active,
+  .tweaks__btn:active,
+  .st-empty__btn:active,
+  .st-feature__cta:active,
+  .set-folder-btn:active,
+  .sig-pbtn:active,
+  .np__action:active,
+  .tdl-linkbtn:active,
+  .pb-right .pb-btn:active { transform: none; }
 }

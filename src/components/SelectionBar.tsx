@@ -7,6 +7,7 @@ import { escLayerCount, pushEscLayer } from "../lib/escLayers";
 import { rememberFocus, type FocusReturn } from "../lib/focusReturn";
 import { isTypingContext } from "../lib/keyboard";
 import { moveLabel, selLabel } from "../lib/selection";
+import { createPresence } from "../lib/motion";
 import { enqueueEndMany, enqueueNextMany } from "../store/player";
 import { openMoveDialog } from "../store/moveDialog";
 import {
@@ -28,6 +29,9 @@ function overlayAbove(e: KeyboardEvent, ownLayers: number): boolean {
 
 export function SelectionBar() {
   const active = createMemo(() => selectionCount() > 0);
+  // A barra sai em --dur-med em vez de sumir num corte (A46); durante a
+  // saída o rótulo mostra a última contagem, não "0 faixas".
+  const shown = createPresence(() => (active() ? selectionCount() : null));
 
   // Trocar de rota encerra a seleção e esquece a lista em foco.
   createEffect(on(() => route().path + "/" + (route().param ?? ""), () => resetSelection(), { defer: true }));
@@ -79,13 +83,14 @@ export function SelectionBar() {
   const doEnd = () => { if (enqueueEndMany(selectedTracks()) > 0) clearSelection(); };
 
   return (
-    <Show when={active()}>
-      <div class="sel-bar-wrap">
+    <Show when={shown.value()}>
+      {(count) => (
+      <div class="sel-bar-wrap" data-leaving={shown.leaving() ? "true" : undefined}>
         <div class="sel-bar" role="toolbar" aria-label="Ações da seleção" ref={barEl} onFocusIn={onFocusIn}>
-          <span class="sel-bar__count" aria-live="polite">{selLabel(selectionCount())}</span>
+          <span class="sel-bar__count" aria-live="polite">{selLabel(count())}</span>
           <span class="sel-bar__sep" />
           <button type="button" class="sel-bar__btn sel-bar__btn--primary" onClick={doMove}>
-            <Icon name={ICONS.moveTo} size={14} /><span>{moveLabel(selectionCount())}</span>
+            <Icon name={ICONS.moveTo} size={14} /><span>{moveLabel(count())}</span>
           </button>
           <button type="button" class="sel-bar__btn" onClick={doNext}>
             <Icon name={ICONS.next} size={14} /><span>Tocar a seguir</span>
@@ -99,6 +104,7 @@ export function SelectionBar() {
           </button>
         </div>
       </div>
+      )}
     </Show>
   );
 }
