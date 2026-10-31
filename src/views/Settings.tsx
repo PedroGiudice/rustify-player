@@ -366,7 +366,7 @@ export default function Settings() {
           </div>
           <div class="set-row">
             <div>
-              <div class="set-row__label" id="set-resume-label">Retomar ao abrir</div>
+              <div class="set-row__label" id="set-resume-label">Continuar de onde parou ao abrir</div>
               <div class="set-row__hint">Reabre a última faixa na última posição.</div>
             </div>
             <div class="set-row__control">

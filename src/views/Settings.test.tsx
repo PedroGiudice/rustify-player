@@ -152,7 +152,7 @@ describe("Settings view", () => {
   // A31: o interruptor é um switch com nome (o rótulo visível da linha).
   it("Retomar ao abrir é um switch com nome e grava a preferência lida no boot", () => {
     const { getByRole } = render(() => <Settings />);
-    const sw = getByRole("switch", { name: "Retomar ao abrir" });
+    const sw = getByRole("switch", { name: "Continuar de onde parou ao abrir" });
     expect(resumeOnLaunch()).toBe(true);
     expect(sw.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(sw);
