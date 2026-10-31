@@ -357,8 +357,17 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   outline: none;
   display: inline-block;
   box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18);
-  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out);
+  /* Neutro em repouso (B26): a moldura fica quieta; a cor de cada
+     papel só acende com o ponteiro ou o foco no grupo. */
+  background: var(--fg-7);
+  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
 }
+.tl-dot--close { --tl-color: #ff5f57; }
+.tl-dot--min   { --tl-color: #febc2e; }
+.tl-dot--max   { --tl-color: #28c840; }
+.titlebar__lights:hover .tl-dot,
+.titlebar__lights:focus-within .tl-dot { background: var(--tl-color); }
 .tl-dot:hover { filter: brightness(1.05); }
 /* O outline:none acima tirava o foco de teclado dos botões da janela. */
 .tl-dot:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
