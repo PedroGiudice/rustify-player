@@ -240,6 +240,39 @@ describe("Tweaks: organização e controles (31/10)", () => {
     expect(glStatus().ok).toBeNull();
   });
 
+  it("B19: as variantes do Relevo moram num Avançado recolhido; o valor salvo fica", () => {
+    updateTweak("bgEngine", "webgl");
+    updateTweak("bgScene", "relief");
+    const salvo = tweaks().reliefLines;
+    render(() => <Tweaks />);
+    setTweaksOpen(true);
+    const adv = document.querySelector<HTMLDetailsElement>("details.tweaks__advanced")!;
+    expect(adv).toBeTruthy();
+    expect(adv.open).toBe(false);
+    expect(adv.querySelector("summary")!.textContent).toContain("Avançado");
+    // Os três eixos ficam dentro do grupo, não soltos no painel.
+    const linhas = screen.getByRole("radiogroup", { name: "Linhas" });
+    expect(adv.contains(linhas)).toBe(true);
+    expect(tweaks().reliefLines).toBe(salvo);
+    resetTweaks();
+  });
+
+  it("B19: a Nébula leva a marca 'fora do critério de 60 fps' no seletor de cena", () => {
+    updateTweak("bgEngine", "webgl");
+    updateTweak("bgScene", "nebula");
+    render(() => <Tweaks />);
+    setTweaksOpen(true);
+    const cena = screen.getByRole("radiogroup", { name: "Cena" });
+    const neb = Array.from(cena.querySelectorAll("button")).find((b) => b.textContent!.startsWith("Nébula"))!;
+    expect(neb.getAttribute("aria-label")).toContain("fora do critério de 60 fps");
+    expect(neb.querySelector(".segmented__mark")).toBeTruthy();
+    // Selecionada, a dica embaixo diz por extenso.
+    expect(document.querySelector(".tweaks__panel, .tweaks")!.textContent).toContain("Fora do critério de 60 fps");
+    const relevo = Array.from(cena.querySelectorAll("button")).find((b) => b.textContent === "Relevo")!;
+    expect(relevo.querySelector(".segmented__mark")).toBeNull();
+    resetTweaks();
+  });
+
   it("fps 0 é 'medindo…' sem âmbar; abaixo de 58 é aviso", () => {
     expect(glFpsView(0)).toEqual({ text: "medindo…", low: false });
     expect(glFpsView(42)).toEqual({ text: "42 fps", low: true });

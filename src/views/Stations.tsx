@@ -26,6 +26,7 @@ import { player, setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { startRadioSession, registerSeen } from "../store/radioSession";
 import { relTime } from "../lib/format";
+import { failNotice } from "../lib/failNotice";
 
 // Lote inicial reduzido (Fase 2 do session-awareness): a station vira fila
 // incremental — o topup (PlayerBar.tsx topUpStation) busca mais conforme a
@@ -385,7 +386,8 @@ function MoodStationCreator(props: { onCreated: () => void }) {
       setCustomName("");
       props.onCreated();
     } catch (err) {
-      console.error("[stations] criar mood station falhou:", err);
+      // A seleção fica: tentar de novo cria a mesma station.
+      failNotice("Não consegui criar a station.", err, () => { void handleCreate(); });
     }
   }
 
@@ -507,7 +509,7 @@ export default function Stations() {
       // Refetch para atualizar estatisticas de played/last_played_at.
       refetch();
     } catch (err) {
-      console.error("[stations] play falhou:", err);
+      failNotice("Não consegui tocar a station.", err, () => { void handleResume(id); });
     }
   }
 
@@ -515,7 +517,7 @@ export default function Stations() {
     try {
       await libDeleteStation(id);
     } catch (err) {
-      console.error("[stations] apagar falhou:", err);
+      failNotice("Não consegui apagar a station.", err, () => { void handleDelete(id); });
     }
     // Refetch mesmo em erro: se o arquivo ja nao existia, a lista em tela
     // e que esta stale.
@@ -539,7 +541,7 @@ export default function Stations() {
       });
       refetch();
     } catch (err) {
-      console.error("[stations] create falhou:", err);
+      failNotice("Não consegui criar a station a partir desta faixa.", err, () => { void handleNewFromCurrent(); });
     }
   }
 

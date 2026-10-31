@@ -166,3 +166,61 @@ describe('data-sidebar="icons"', () => {
     expect(styleOf(".nav-item__kbd").display).toBe("none");
   });
 });
+
+describe("barra do player na densidade compacta (A41)", () => {
+  const BAR = `<footer class="playerbar"><div class="playerbar__grid">
+    <div class="pb-center"><div class="pb-transport"><button class="pb-btn pb-btn--primary"></button></div></div>
+  </div></footer>`;
+
+  it("o centro perde folga vertical: padding 2 px e gap 4 px", () => {
+    mount(BAR);
+    const { normal, compact } = inBoth(".pb-center", (s) => padY(s));
+    expect(normal).toBe(16);
+    expect(compact).toBe(4);
+    expect(rowGap(styleOf(".pb-center"))).toBe(4);
+  });
+
+  it("o play encolhe para 32 px (cabe com o seek nos 60 px da barra)", () => {
+    mount(BAR);
+    const { normal, compact } = inBoth(".pb-btn--primary", (s) => px(s.width));
+    expect(normal).toBe(36);
+    expect(compact).toBe(32);
+  });
+});
+
+// O jsdom não avalia @container: trava-se o texto das regras (B23).
+describe("reflow por largura da barra e do Crate (B23)", () => {
+  let css = "";
+  beforeAll(() => { css = document.head.querySelector("style")!.textContent ?? ""; });
+  const block = (head: string) => {
+    const i = css.indexOf(head);
+    if (i < 0) return "";
+    return css.slice(i, css.indexOf("\n}\n", i));
+  };
+
+  it("a barra e o lado esquerdo são containers de largura", () => {
+    expect(css).toMatch(/\.playerbar\s*\{[^}]*container:\s*pb\s*\/\s*inline-size/);
+    expect(css).toMatch(/\.pb-left\s*\{[^}]*container:\s*pbl\s*\/\s*inline-size/);
+  });
+
+  it("abaixo de 1.500 px some o medidor; de 1.300, o resumo do DSP; de 1.100, o volume vai a 72 px", () => {
+    expect(block("@container pb (max-width: 1499.98px)")).toMatch(/\.pb-meter\s*\{\s*display:\s*none/);
+    expect(block("@container pb (max-width: 1299.98px)")).toMatch(/\.pb-tech__dsp[^{]*\{\s*display:\s*none/);
+    expect(block("@container pb (max-width: 1099.98px)")).toMatch(/\.pb-vol\s*\{\s*min-width:\s*72px/);
+  });
+
+  it("o lado esquerdo corta o selo antes do artista", () => {
+    expect(block("@container pbl (max-width: 339.98px)")).toMatch(/\.pb-src__rest\s*\{\s*display:\s*none/);
+    expect(block("@container pbl (max-width: 259.98px)")).toMatch(/\.pb-src\s*\{\s*display:\s*none/);
+  });
+
+  it("colunas do Crate cedem: título e destino com minmax, sem rolagem lateral", () => {
+    mount(`<div class="crate-row"></div>`);
+    const cols = styleOf(".crate-row").gridTemplateColumns;
+    expect(cols).toContain("minmax(160px, 1fr)");
+    expect(cols).toContain("minmax(120px, 186px)");
+    expect(css).toMatch(/\.crate-body\s*\{[^}]*container:\s*crate\s*\/\s*inline-size/);
+    expect(block("@container crate (max-width: 1049.98px)")).toMatch(/\.crate-r-dur\s*\{\s*display:\s*none/);
+    expect(block("@container crate (max-width: 759.98px)")).toMatch(/\.crate-r-main\s*\{\s*grid-column:\s*1\s*\/\s*-1/);
+  });
+});

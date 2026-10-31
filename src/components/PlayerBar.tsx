@@ -38,7 +38,8 @@ import { CoverArt } from "./CoverArt";
 import { LevelMeter } from "./LevelMeter";
 import { makeWaveMask } from "./waveMask";
 import { CMD_PALETTE_EVENT } from "./CommandPalette";
-import { QUEUE_EVENT } from "./QueueDrawer";
+import { QUEUE_EVENT, queueDrawerOpen } from "./QueueDrawer";
+import { failNotice } from "../lib/failNotice";
 import { navigate, route } from "../router";
 import { describeFile, qualityBadge } from "../lib/quality";
 import { fmtDur } from "../lib/format";
@@ -342,7 +343,9 @@ export function PlayerBar() {
       const current = player.currentTrack!;
       setQueue([current, ...recs], 0, "open", { kind: "radio" });
     } catch (e) {
-      console.error("[shuffle] radio populate failed:", e);
+      // O botão não fica aceso mentindo: a fila não virou rádio.
+      setPlayer("shuffle", false);
+      failNotice("Não consegui embaralhar a partir desta faixa.", e, () => { void toggleShuffle(); });
     }
   }
 
@@ -586,7 +589,11 @@ export function PlayerBar() {
         setLikePulse(false);
       }
     } catch (e) {
-      console.error("[like] toggle failed:", e);
+      failNotice(
+        player.isLiked ? "Não consegui tirar a curtida desta faixa." : "Não consegui curtir esta faixa.",
+        e,
+        () => { void onLike(); },
+      );
     }
   }
 
@@ -670,6 +677,8 @@ export function PlayerBar() {
 
   return (
     <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
+      {/* O footer é o container de largura (B23); o grid mora aqui dentro. */}
+      <div class="playerbar__grid">
 
       {/* ── Esquerdo: cover + meta + like + more ── */}
       <div class="pb-left">
@@ -721,12 +730,12 @@ export function PlayerBar() {
                 data-pick={srcPick()?.kind}
                 title={srcTitle()}
               >
-                {srcLabel()}
+                <ChipText text={srcLabel()} />
               </span>
             </Show>
             <Show when={!isRadio() && firstListen()}>
               <span class="pb-src pb-src--first" title="Você nunca ouviu esta faixa até o fim">
-                1ª escuta
+                1ª<span class="pb-src__rest"> escuta</span>
               </span>
             </Show>
             <span class="pb-artist__text">
@@ -923,7 +932,7 @@ export function PlayerBar() {
             <span class="pb-tech__dot" />
             <span>{badge().label}</span>
             <span class="pb-tech__sep">·</span>
-            <span>{dspSummary()}</span>
+            <span class="pb-tech__dsp">{dspSummary()}</span>
           </div>
         </Show>
 
@@ -949,6 +958,7 @@ export function PlayerBar() {
             id="pb-queue"
             title="Queue (Q)"
             aria-label="Queue"
+            aria-expanded={queueDrawerOpen() ? "true" : "false"}
             onClick={() => window.dispatchEvent(new CustomEvent(QUEUE_EVENT))}
           >
             <Icon name={ICONS.queue} size={14} />
@@ -992,6 +1002,7 @@ export function PlayerBar() {
           </div>
         </div>
       </div>
+      </div>{/* .playerbar__grid */}
     </footer>
   );
 }
@@ -1038,6 +1049,19 @@ export function radioPickTitle(pick: import("../tauri").AutoplayPick | null | un
 /** Selo do rádio com o grau de familiaridade (A2): nunca ouvida até o fim,
     descoberta (1-2 fins) ou conhecida. `fullListens` vem do pick do motor ou,
     sem pick, da familiaridade (null = ainda não se sabe). */
+/** Texto do selo em duas partes (B23): a primeira palavra fica ("rádio"),
+    o resto (" · descoberta") é o que some primeiro em barra estreita. O
+    textContent continua sendo o rótulo inteiro. */
+function ChipText(props: { text: string }) {
+  const cut = () => props.text.indexOf(" · ");
+  return (
+    <Show when={cut() > 0} fallback={props.text}>
+      {props.text.slice(0, cut())}
+      <span class="pb-src__rest">{props.text.slice(cut())}</span>
+    </Show>
+  );
+}
+
 export function radioChipLabel(
   pick: import("../tauri").AutoplayPick | null | undefined,
   fullListens: number | null,
@@ -1254,9 +1278,20 @@ export async function playTrack(
     setLiked(false);
   }
 
-  playerPlay(track.path, origin, track.id ?? null, contextId ?? null).catch((e) =>
-    console.error("[player] play failed:", e)
-  );
+  // O play só conta (record_play, 1x por play) depois que o motor aceitou:
+  // faixa que não tocou não sobe a contagem.
+  try {
+    await playerPlay(track.path, origin, track.id ?? null, contextId ?? null);
+  } catch (e) {
+    // Compara pelo caminho: o store devolve proxy, nunca o objeto passado.
+    if (player.currentTrack?.path === track.path) setPlayer("isTransitioning", false);
+    failNotice(
+      "Não consegui tocar esta faixa. O arquivo pode ter sido movido; reescaneie a biblioteca.",
+      e,
+      () => { void playTrack(track, origin, contextId); },
+    );
+    return;
+  }
 
   if (track.id) {
     libRecordPlay(track.id).catch(console.error);

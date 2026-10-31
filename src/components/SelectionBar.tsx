@@ -73,8 +73,10 @@ export function SelectionBar() {
   }, { defer: true }));
 
   const doMove = () => openMoveDialog(selectedTracks());
-  const doNext = () => { enqueueNextMany(selectedTracks()); clearSelection(); };
-  const doEnd = () => { enqueueEndMany(selectedTracks()); clearSelection(); };
+  // Só limpa quando entrou alguma faixa: selecionar só a que toca e enfileirar
+  // não muda a fila (o "+0" explica), e a seleção fica para outro gesto.
+  const doNext = () => { if (enqueueNextMany(selectedTracks()) > 0) clearSelection(); };
+  const doEnd = () => { if (enqueueEndMany(selectedTracks()) > 0) clearSelection(); };
 
   return (
     <Show when={active()}>

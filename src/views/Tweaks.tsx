@@ -53,6 +53,7 @@ import {
   SCENE_HINTS,
   SCENE_KEYS,
   SCENE_LABELS,
+  type SceneKey,
 } from "../gl/meta";
 import { GL_BENCH_EVENT, glBenchProgress, glBenchResult, runGlBench } from "../gl/bench";
 import { bridgeLine, bridgeStatus, chipVisible } from "../store/bridge";
@@ -87,6 +88,9 @@ function Choice<T>(props: {
   wrap?: boolean;
   /** title por opção (dica longa). */
   titles?: (v: T) => string | undefined;
+  /** Marca curta ao lado do rótulo da opção (B19: cena fora do critério de
+      fps). `long` entra no nome acessível e no title. */
+  marks?: (v: T) => { short: string; long: string } | undefined;
 }) {
   const id = createUniqueId();
   const off = () => !!props.dep && !props.dep.on;
@@ -109,10 +113,14 @@ function Choice<T>(props: {
               classList={{ "is-active": props.value === val }}
               aria-checked={props.value === val ? "true" : "false"}
               aria-disabled={off() ? "true" : undefined}
-              title={props.titles?.(val)}
+              title={props.marks?.(val)?.long ?? props.titles?.(val)}
+              aria-label={props.marks?.(val) ? `${text}, ${props.marks!(val)!.long}` : undefined}
               onClick={() => { if (!off()) props.onPick(val); }}
             >
               {text}
+              <Show when={props.marks?.(val)}>
+                {(m) => <span class="segmented__mark" aria-hidden="true">{m().short}</span>}
+              </Show>
             </button>
           )}
         </For>
@@ -275,6 +283,14 @@ export function glFpsView(fps: number): { text: string; low: boolean } {
   return { text: `${fps} fps`, low: fps < GL_FPS_OK };
 }
 
+/** Cenas medidas fora do critério de 60 fps na tela do dono (B19): a
+    Nébula custa 46-48 ms por quadro a 1857 x 1048 (CLAUDE.md, 26/09). Marca
+    no seletor, não proibição: a cena segue escolhível. */
+const SCENE_OFF_BUDGET: Partial<Record<SceneKey, string>> = {
+  nebula: "46 a 48 ms por quadro na sua tela (1857 x 1048)",
+};
+const OFF_BUDGET = "fora do critério de 60 fps";
+
 /** Seleção da cena + o que o motor está entregando de fato (cena e fps
     medidos no app). O fps é o gate da feature: o critério é 60 na
     cmr-auto, e "Medir cenas" mede todas de uma vez. */
@@ -286,6 +302,7 @@ function GlSection() {
         value={tweaks().bgScene}
         options={SCENE_KEYS.map((k) => [k, SCENE_LABELS[k]] as [typeof k, string])}
         wrap
+        marks={(k) => (SCENE_OFF_BUDGET[k] ? { short: "< 60 fps", long: OFF_BUDGET } : undefined)}
         onPick={(k) => {
           // Cena que não compilou derrubou o motor pro 2D; escolher
           // outra é tentar de novo, como religar o WebGL.
@@ -294,8 +311,24 @@ function GlSection() {
         }}
       />
       <div class="tweaks__hint">{SCENE_HINTS[tweaks().bgScene]}</div>
+      <Show when={SCENE_OFF_BUDGET[tweaks().bgScene]}>
+        {(why) => <div class="tweaks__hint">Fora do critério de 60 fps: {why()}.</div>}
+      </Show>
       <Show when={tweaks().bgScene === "relief"}>
-        <ReliefControls />
+        {/* B19 (CEO, 31/10): as variantes saem do caminho, recolhidas; o
+            valor salvo continua valendo e aparece no resumo. */}
+        <details class="tweaks__advanced">
+          <summary class="tweaks__advanced-sum">
+            <Icon class="tweaks__advanced-chev" name={ICONS.chevronRight} size={12} />
+            <span>Avançado</span>
+            <span class="tweaks__advanced-cur">
+              {RELIEF_LINES.find((m) => m.key === tweaks().reliefLines)?.label ?? ""}
+            </span>
+          </summary>
+          <div class="tweaks__advanced-body">
+            <ReliefControls />
+          </div>
+        </details>
       </Show>
       <Show when={glStatus().ok === true}>
         {/* O nome do renderer vem mascarado pelo WebKitGTK ("Apple GPU"
@@ -326,9 +359,9 @@ function GlSection() {
   );
 }
 
-/** Variantes do Relevo em avaliação (gl/meta.ts). "Relevo" some na
-    Original (referência intacta); "Superfície" só existe nas variantes
-    desenhadas por pixel. B19 (qual Relevo fica) espera o CEO. */
+/** Variantes do Relevo (gl/meta.ts), dentro do Avançado recolhido (B19).
+    "Relevo" some na Original (referência intacta); "Superfície" só existe
+    nas variantes desenhadas por pixel. */
 function ReliefControls() {
   const lines = () => tweaks().reliefLines;
   // Variante que não compilou derrubou o motor pro 2D; escolher outra é

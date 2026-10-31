@@ -7,10 +7,18 @@
 import { libShuffle, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
+import { failNotice } from "./failNotice";
 
-/** 50 faixas sorteadas do acervo viram a fila. */
+/** 50 faixas sorteadas do acervo viram a fila. Falha no sorteio avisa (B5);
+    a falha de tocar a primeira avisa pelo próprio playTrack. */
 export async function shuffleAll() {
-  const tracks = await libShuffle(50);
+  let tracks: Track[];
+  try {
+    tracks = await libShuffle(50);
+  } catch (e) {
+    failNotice("Não consegui sortear faixas do acervo.", e, () => { void shuffleAll(); });
+    return;
+  }
   if (tracks.length) { setQueue(tracks, 0); playTrack(tracks[0]); }
 }
 
