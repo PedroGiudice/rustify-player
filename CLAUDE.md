@@ -94,6 +94,40 @@ CSP sem hosts externos: Instrument Sans é bundlada
 reintroduzir @import/CDN de fontes. JWT + rustify.aidvlabs.com ficaram
 RESERVADOS (sem serviço exposto a proteger); gatilho de reabertura na spec.
 
+## Regras duras de IPC e de tela (desde 31/10/2026)
+
+- **Comando IPC que fala com Qdrant, disco ou rede é `async` e passa por `off_main`**
+  (`desktop.rs`), com teto: `IPC_QUICK` 5 s no caminho quente da barra (perfil,
+  familiaridade, cor da capa, letra; também `slsk_dedup_probe`) ou `IPC_SCAN` 30 s (listas,
+  busca, rádio, escritas). Estourou: erro na hora, o trabalho termina e é descartado. Comando
+  síncrono prendia a thread da janela: Qdrant lento congelava fundo, barra e janela. A
+  gravação de escuta do player também roda fora da thread da janela e sem segurar o lock do
+  snapshot.
+- **`player-state` carrega `track_id`.** O frontend descarta `TrackEnded`/`Position` de outra
+  faixa com `isStalePlayerEvent` (`tauri.ts`, usado na PlayerBar); o `EngineTrackIds` da
+  thread de eventos (`desktop.rs`) lembra as 4 últimas faixas do motor.
+- **Estado de tela tem três saídas: vazio, erro e carregando.** Leitura passa por `settle`
+  (devolve `Loaded<T>`) e `listState`/`peek` (`src/lib/loaded.ts`), renderizada por
+  `EmptyState` (`tone` vazio/erro/carregando). Erro de leitura vira o tom de erro, nunca
+  lista vazia: proibido `catch(() => [])` em leitura de acervo (Qdrant fora parecia acervo
+  sumido). Dentro do Suspense da rota, a vista lê resource por `peek`, nunca `r()` nem
+  `.latest` (a exceção derrubava a tela). ErrorBoundary na rota (`router.tsx`) e no diálogo
+  Mover (`App.tsx`); a barra do player fica fora dele.
+- **Falha de ação avisa**: `failNotice` (`src/lib/failNotice.ts`, sobre `store/toast.ts`):
+  "Não consegui…" + [Tentar de novo]. `record_play` só roda depois que `playerPlay` aceitou.
+- **Overlay devolve o foco** com `rememberFocus` (`src/lib/focusReturn.ts`; menu de contexto,
+  Mover, gaveta da fila, SelectionBar). Abas trocam por setas com `tabKeyHandler`
+  (`src/lib/tabKeys.ts`). Componente que sai animado usa `createPresence`
+  (`src/lib/motion.ts`, atributo `data-leaving`).
+- **Poll dorme com a janela oculta**: todo `setInterval` de tela passa por
+  `pollWhileVisible` (`src/lib/poll.ts`).
+- **Densidade por tokens**: o espaço por papel vem de `--space-*` no `:root`; o modo compacto
+  troca esses tokens (e só mantém regra própria para o que não é papel de espaço, como a
+  altura do play). `src/styles/layout-modes.test.ts` resolve os `var()` à mão contra o CSS.
+- `src/js/`, `src/index.html`, `src/main.js` e `src/styles/tokens.css` não existem mais
+  (apagados em 31/10, A51); o `resources.js` mora em `src/components/`. As cópias da ponte em
+  `public/js/` são do plugin MCP e ficam.
+
 ## Branch atual
 
 `main` — trabalho commitado direto em `main`, com rolling dev release
@@ -146,10 +180,58 @@ Avaliação completa de 26/10/2026 (17 comandos em modo proposta, consolidada em
   (`src/lib/waveProfile.ts`, máscara em `components/waveMask.ts`).
 - **Fila editável** (`QueueDrawer`, classe `.qedit`; `.qrow` é a linha compacta de faixa,
   NÃO reusar): arrastar pela alça, tirar, Alt+setas e Delete; `moveUpcoming`/`removeUpcoming`
-  passam por `mutateQueueRealign`. Enfileirar confirma com "+N" (`queueAck`).
+  passam por `mutateQueueRealign`. Enfileirar confirma com "+N" (`queueAck`). Desde 31/10 a
+  edição é pela faixa, não pelo índice (ver leva abaixo).
 - **1ª escuta**: `lib_track_familiarity` (cache do motor; `full_listens` = `track_ended`) ->
   selo na barra do player.
 - Escala de fonte ganhou `--fs-feature` 28 / `--fs-lead` 18 / `--fs-subhead` 15 (DESIGN.md).
+
+### Leva Impeccable de 31/10 (varredura 2): A e B no código, sem .deb ainda
+
+Relatório, lista A/B e o que ficou de fora: `docs/contexto/31102026-impeccable-varredura-2.md`
+(seção "Estado em 31/10"). As regras transversais estão em "Regras duras de IPC e de tela";
+motor e Crate nas rules por área. Tokens e componentes novos: `DESIGN.md`.
+
+- **Barra do player** = container `pb`, grid em `.playerbar__grid` (`minmax(0,1fr) 1.2fr
+  minmax(430px,1fr)`), cortes pela largura da BARRA: < 1500 sai o medidor, < 1300 pílula sem
+  o DSP, < 1100 volume 72 px; `.pb-left` é o container `pbl` (< 340 selo curto, < 260 sem
+  selo). Selo único com o grau só no rádio ("rádio · 1ª escuta" / "rádio · descoberta" /
+  "rádio"); álbum e fila solta sem selo; letra só pelo Now Playing. `store/lyrics.ts` é a
+  fonte única da letra (barra e Now Playing). Play sem faixa retoma a última do histórico;
+  sem histórico sorteia 50; acervo vazio avisa (B35). Medidor oculto sem faixa
+  (`quantFrac`/`METER_STEPS` em `lib/meter.ts`).
+- **Fila editada pela faixa**: `moveUpcomingTrack`, `removeUpcomingTrack`, `restoreUpcoming`,
+  `clearUpcoming`, `restoreCleared` (`store/player.ts`). Limpar mantém histórico e origem;
+  desfazer por 6 s no toast (Ctrl+Z). `enqueue*Many` devolve a contagem: com 0 o "+N" diz
+  "já está tocando" e a seleção fica. Desfazer do Mover = `undoPlan` + `lib_move_tracks`.
+  `data-selbar` no `<html>` enquanto há seleção. Risco conhecido: o motor não descarta o
+  pré-carregado do gapless, então depois de "Limpar" a faixa pré-carregada pode começar e
+  ser trocada logo (já acontecia; pede comando novo no Rust).
+- **Biblioteca e Home**: rota de álbum `/album/<título>?artista=` (`lib/albumRoute.ts`; o
+  card abre, o play do hover toca). O campo `genre` aparece como "Playlist". `Artist.cover_path`
+  vem do `aggregate_artists` (`query.rs`), resolvido contra o cache em `lib_list_artists`. Aba
+  Curtidas (`views/Liked.tsx`; "Tocar curtidas" = fila aberta, sem origem de rádio). Histórico
+  por dia (`lib/historyDays.ts`), filtro de grade (`FilterField`, `lib/gridFilter.ts`). Home
+  "Chegou esta semana" por `indexed_since` em `lib_list_tracks` (`Track.indexed_at`,
+  `libListArrivals`, `lib/arrivals.ts`, visto em `kv-home-arrivals-seen`).
+- **Tweaks**: seções Fundo, Áudio, Aparência e Controle remoto com âncoras; "Cor do fundo" num
+  seletor de 4 modos (`bgInkMode`/`setBgInkMode`, schema do `kv-tweaks` inalterado); knob
+  que depende de outro diz "Depende de …"; Scale aplica ao soltar; Relevo em "Avançado"
+  recolhido (B19); "Redefinir tudo" arma e confirma. Cena acima de 16,7 ms por quadro leva
+  `SCENE_META.offBudget` (`gl/meta.ts`; hoje a Nébula). Settings só com o que é dela,
+  "Diagnóstico" recolhido, `Switch` com `role="switch"`. Signal: `dspError` com [Reaplicar]
+  (`applyFullDspState` devolve o nº de recusas), cartões na ordem do sinal, curva de 260 px,
+  traço "antes do EQ (estimado)".
+- **Cor**: acento da capa com alvo 5,2:1 contra `--bg-canvas`/`--bg-paper` (não contra o ink
+  do tema) e 4,5:1 sobre a lavagem de 12 %; capa acromática por croma OKLCH < 0,02; derivado
+  em OKLCH, croma 0,07-0,17 (B25; `hexToOklch`/`oklchToHex`/`isAchromatic` em `lib/color.ts`).
+  `ensureInkContrast`/`ensure_bg_ink_contrast`, `lyricsInk.ts` e `deriveInk` seguem em HSL.
+  O checker (`theme_contrast_checks`) e o
+  `validate.py` medem os sinais sobre soft, faint e o próprio `-bg`, compõem rgba sobre o paper
+  e avisam colapso por ΔE OKLab < 5: temas da cmr-auto que passavam podem reprovar, rodar o
+  `validate.py` lá antes do deploy.
+- **Régua**: a cobertura ganhou "Perfil do seek" (`wave_profile_v` = 1).
+- A27 de 26/10 (tokens de espaçamento) entrou aqui como A48 (`--space-*`).
 
 ## TweaksPanel e o hub de customizacao
 
@@ -197,9 +279,11 @@ so vale se dirty; botao "↺ tema" limpa. Ao aplicar tema, `applyTheme`
 dispara `rustify:theme-applied` e o store re-asserta os overrides.
 
 **Derivacao da cor da capa (v3, desde v0.2.39)**: `deriveInk`/`deriveAccent`
-em `src/lib/adaptiveInk.ts` sao contrast-driven — alvo >= 4:1 contra o
-canvas do tema (a v2 ancorava na "profundidade do tema" e produzia ink
-invisivel, ja que todos os temas declaram `background.ink` = canvas).
+em `src/lib/inkDerive.ts` (a fiação fica em `src/lib/adaptiveInk.ts`) sao
+contrast-driven — ink com alvo >= 4:1 contra o canvas do tema (a v2 ancorava
+na "profundidade do tema" e produzia ink invisivel, ja que todos os temas
+declaram `background.ink` = canvas); o accent, desde 31/10, em OKLCH com alvo
+5,2:1 (ver "Leva Impeccable de 31/10").
 Extracao no Rust (`cover.rs dominant_color`) = eleicao de familia de hue
 wrap-aware + nucleo saturado; enrichment `dominant_color_v3` (versoes
 antigas ignoradas, recalcula lazy no 1o play).
@@ -228,9 +312,10 @@ CMR-112 item 1) cobrindo knob manual e default. O knob mantem o valor
 escolhido; o APLICADO e o corrigido.
 
 **Accent adaptativo** (`adaptiveAccent`, default ON): `--primary`,
-`--primary-container/fixed-dim`, `--on-primary[-container]` e
-`--blue-fg/bg/ring` seguem o hue da capa (chips, halos, botoes). Capa
-acromatica => accent do tema permanece. Restaurar o tema exige os valores
+`--on-primary` e `--blue-fg/bg/ring` (`ACCENT_VARS` em `store/tweaks.ts`)
+seguem o hue da capa (chips, halos, botoes); desde 31/10 a família
+`--primary-container/fixed-dim`/`--on-primary-container` fica com o tema.
+Capa acromatica (croma OKLCH < 0,02) => accent do tema permanece. Restaurar o tema exige os valores
 originais: `applyTheme` (tauri.ts) guarda snapshot acessivel via
 `themeVar(name)`; `removeProperty` cairia nos defaults do :root, nao no
 tema. Checker `load_theme` valida os pares `on-primary/primary` e
@@ -863,224 +948,14 @@ calibração e números: `docs/contexto/15102026-qualidade-soundcloud.md`.
   Help Me (Sonny Boy) e Zip a di dou da (Henri Salvador) esperam o ouvido do CEO
   (`~/cmr297-ouvir/` na cmr-auto): outra transferência/mixagem, similaridade 0,72-0,77.
 
-## Motor de inteligencia — sinal v3 (v0.2.66, 2026-08-12)
+## Motor de inteligência e Crate (rules por área)
 
-Vistoria completa + redesign do sinal em
-`docs/contexto/12082026-autoplay-vistoria-sinal-v3.md` (regua, dados,
-decisoes). O que importa pro dia-a-dia:
-
-- **behavioral_signals v3** (`qdrant_client.rs`, derivacao pura testavel
-  `derive_behavioral_signals`): BALANCO LIQUIDO por track — cada evento
-  vira peso continuo `clamp((lp-0.30)/0.50, -0.6, 1.0)` (60% de escuta =
-  +0.6; skip imediato = -0.6; decisoes de produto do CEO 2026-08-12, nao
-  voltar a threshold binario nem a listas independentes), piso de
-  atencao 90s no lado positivo (full de skit nao vale full de musica),
-  desconto 0.6 pra origens passivas (`autoplay`/`station`/`playlist`;
-  skips sem desconto), decay 14d sobre TUDO, e o saldo decide o lado:
-  positives = saldo>0 + peso positivo >= 0.55 (top 25 + likes top-10);
-  negatives = saldo <= -0.30 (skip unico expira sozinho em ~2 semanas,
-  aversao recorrente fica). Positives DISTINTOS (weight por repeticao e
-  inocuo sob `best_score` — nao reintroduzir). Tunables sao as consts no
-  topo da funcao.
-- **Regua automatica**: `scripts/metrics/autoplay_regua.py` roda DIARIO
-  09:00 (systemd user timer `rustify-regua.timer` na VM), grava
-  `docs/metrics/regua-latest.md` + historico `.jsonl`; o hook
-  SessionStart do repo (`.claude/settings.json`) injeta o ultimo
-  veredito em TODA sessao — a promessa "medir depois" nao depende mais
-  de memoria de ninguem. Desde v0.2.69 reporta tambem a COBERTURA do
-  motor (MERT / letra / vibe): o gap reabre a cada leva do Crate e nao
-  havia alarme nenhum. A cobertura de letra e medida contra as
-  ALCANCAVEIS (total menos `lyrics_status` none/instrumental) — perseguir
-  100% e impossivel: instrumental nao tem letra.
-- **Proveniencia dos eventos (v0.2.72, spec 2026-08-13-event-provenance)**:
-  todo ponto novo em `play_events` sai estampado com `device_id` (slug do
-  hostname, persistido em `device.json` no data dir — IMUTAVEL depois de
-  criado), `app_version` (autoridade: tauri.conf.json via `package_info()`)
-  e `signal_schema` (const `SIGNAL_SCHEMA` em `qdrant_client.rs`). Like
-  grava `liked_device`. O backend estampa POR CIMA do que vier do frontend
-  (`log_event`). Mudou a semantica dos sinais/origins? Incrementar
-  `SIGNAL_SCHEMA` — a regua le o campo e o `V3_CUTOFF` por timestamp e so
-  fallback pra eventos legados. Sem migracao retroativa (padrao context_id).
-  E o pre-requisito do sync multi-dispositivo (uniao de conjuntos dos logs;
-  fase futura na spec). Eventos de dispositivo novo aparecem sozinhos na
-  regua (breakdown por device quando houver 2+).
-- **Origins**: continuacoes de fila radio logam `autoplay` (contOrigin,
-  PlayerBar.tsx), playlist loga `playlist`, repeat-one loga `repeat`.
-  `album_seq` segue FORA dos sinais. NAO comparar skip-rate por origin
-  cru com dados pre-v0.2.66 — o significado mudou.
-- **record_play roda 1x por play** (no playTrack; nunca re-adicionar no
-  TrackEnded — dobrava play_count).
-- **Anotacao de vibe NAO e automatica**: leva nova do Crate entra sem
-  energy/valence/moods (neutro 0.5 no re-rank) ate rodar o batch
-  (CMR-178; processo replicavel na doc de contexto). Cobertura em
-  2026-08-12: 1746/1746. E o unico dos tres vetores/anotacoes que
-  continua manual — MERT e letra fecham sozinhos no ingest desde
-  v0.2.69. Nenhum script commitado produz as anotacoes em uso: as tres
-  levas (372, 72, 368) sairam de subagentes LLM, e o processo e prosa em
-  doc, nao codigo. Decisao pendente do CEO: batch periodico agendado vs
-  chamada LLM no ingest (custo recorrente + latencia por faixa).
-- Deferidos rastreados: CMR-177 (double-load gapless), CMR-178
-  (anotacao automatica + GC orfaos), CMR-179 (restam station Mood e
-  restore de queueSource).
-- **Consciencia de sessao no RADIO (v0.2.75, 2026-08-18)**: a parte de
-  aversao do CMR-179 foi confirmada como causa-raiz do skip 68% da regua
-  (forense: 3 sessoes de martelo 88-96% dominavam o agregado; o picker
-  semeava o proximo pick pela faixa RECEM-REJEITADA e re-servia skipadas
-  alem do FIFO-30 — mesma faixa 12x). Fix = paridade com a station:
-  `radioSession` generalizado (rodada `radio:<ts>`, `lastAcceptedId`),
-  skip cedo (<35%) trunca a cauda e re-fetcha semeado pela ultima ACEITA,
-  seen da rodada e hard-filter, `lib_autoplay_next` ganha
-  `session_negative_ids` (uniao com negativos globais) e filtro
-  `is_junk_artist` (URL no campo artista). NAO regredir: semear re-fetch
-  pos-skip pela faixa skipada e o anti-pattern que causou o colapso.
-- **O vetor de som (`mert`) mede pouco estilo (medido 14/10, CMR-302)**: o container
-  `rustify-embed` devolve a média da ÚLTIMA camada do MERT-v1-95M, que é a pior para estilo
-  (playlists entre si, leave-one-artist-out: 0,457 de acurácia balanceada; camada 6 = 0,620;
-  gap de estilo da camada 7 é 2,4x o da 12) e captura mais o ARTISTA que o gênero. E a janela
-  não é o centro da faixa: `decode_flac` para em 60 s e `take_center_window` pega os segundos
-  15-45. Subgênero do funk não se separa em camada nenhuma (CMR-299). Sonda reprodutível:
-  `scripts/curator/mert_layer_probe.py` (relatório `docs/contexto/14102026-mert-camadas.md`).
-  Avaliação offline nas escolhas reais do autoplay (`mert_autoplay_eval.py`, relatório
-  `14102026-mert-camadas-autoplay.md`): desde a v0.2.75 a similaridade semente->faixa do vetor
-  do app NÃO prevê aceite (AUC 0,520); camada 7 com janela central 0,587, IC sobreposto (63
-  aceites só). Veredito: sem diferença clara, o app não muda; os 74% de skip não se explicam
-  pela distância acústica até a semente. Vetores das 13 camadas (janela central, float16) em
-  `~/.local/share/rustify-curator/mert-layers-20261014/` na VM, para reavaliar com mais eventos.
-- **Forense do autoplay (14/10, `scripts/metrics/autoplay_forense.py`, relatório
-  `docs/contexto/14102026-autoplay-forense.md`)**: desde a v0.2.75 o que separa aceite de pulo é
-  FAMILIARIDADE, não som: nº de vezes que a faixa já foi ouvida até o fim (AUC 0,72; 0,79 sem as 5
-  sessões dominantes) e like (pulo 72% curtida x 94% não curtida). Energia/valência, distância
-  acústica, duração, aparelho e repetição não separam. 72% das escolhas do motor são faixas
-  ouvidas até o fim no máximo 2 vezes; o rerank final (`rerank.rs`) usa só vibe (likes entram
-  apenas como exemplos na busca de candidatas). 77% dos pulos são em até 5 s (navegação, em
-  rajadas); sem eles o pulo do autoplay é 72%. O período anterior à v0.2.75 é contaminado pelo
-  S24 0.2.74 (96% de aceite, escuta em segundo plano) e não serve de linha de base.
-- **Familiaridade no autoplay (v0.2.92, desktop; S24 depois)**: `library-indexer/src/
-  familiarity.rs` conta por faixa as vezes ouvida até o fim e as tentativas do motor. Cache no
-  `QdrantClient`: `familiarity()` devolve `Option` e NUNCA faz I/O nem espera lock de varredura
-  (remonta em thread de fundo a cada 6 h ou após invalidação; backoff de 60 s após falha; sem
-  índice o rádio segue sem familiaridade); aquecimento no boot por `rebuild_familiarity()`;
-  atualização incremental por evento gravado, deduplicada pelo id do ponto (replay do S24 não
-  conta duas vezes); invalidação no mover. Aceite/pulo = definição da régua, travada pela
-  fixture `scripts/metrics/fixtures/familiaridade.json` lida pelos testes Rust e Python (mudar
-  um lado = mudar o outro; `release.sh` roda `test_autoplay_regua.py` antes do build).
-  Conhecida = 3+ fins ou curtida. Autoplay serve conhecida, conhecida, descoberta (`autoplay_mix`
-  em `desktop.rs`, `mix_slot` vindo de `radioSession.mixSlot`; o re-fetch pós-pulo recua o ciclo
-  só pelas faixas que o rádio serviu, `mixServedIds`; não zerar o slot no re-fetch). Nunca-termina
-  = 3+ pulos do motor com `listen_pct < 0.5`, 0 fins, sem like (escuta desconhecida/duração 0 e
-  pulos 0 ms do S24 não contam): sai do autoplay e das stations e não expira. Camada 2 do
-  fallback aplica lixo e nunca-termina; camada 3 respeita `exclude_ids`. Simulação nos dados
-  reais previa pulo ~87% (de 92%); medir pela régua, linha "desde a v0.2.92".
-
-## Crate — busca + download Soulseek in-app (v0.2.62)
-
-Aba **Crate** (sidebar abaixo de Search, rota `/crate`, entrada pelo ⌘K):
-busca na rede Soulseek via slskd local da cmr-auto e baixa direto pro
-acervo, com validacao, dedup e indexacao automatica. Substitui o fluxo
-CSV+scp+script pra **faixas avulsas**; levas grandes de curadoria continuam
-no `baixar_soulseek_teste.py`. Spec (fonte da verdade, com adendo do spike
-da API real): `docs/superpowers/specs/2026-08-07-crate-in-app-downloads-design.md`.
-QA manual roteirizado: `docs/soulseek/manual-qa.md`.
-
-- **Backend**: `src-tauri/crates/slskd-client` (protocolo puro, fixtures
-  reais) + `src-tauri/src/slsk/` (coordinator em thread unica `slsk-coord`,
-  JobBoard escritor unico com 11 estados tagged `kind`, staging em
-  `.rustify-incoming` + rename atomico pro layout canonico
-  `~/Music/<playlist>/<Artista>/<Album>/`). Indexacao deterministica via
-  `IndexerCommand::IngestPaths` (devolve track_id por path).
-- **Letras junto**: worker paralelo `slsk-lyrics`
-  (`library-indexer/src/lyrics_fetch.rs`) consulta lrclib.net pos-download.
-  Canal bounded(64), try_send — nunca bloqueia o coordinator. Desde
-  v0.2.69 ele FECHA O CICLO via `LyricsSink` (`QdrantLyricsSink`, injetado
-  por `IndexerHandle::lyrics_sink`): grava payload + vetor `lyrics` na hora,
-  em vez de esperar o `backfill_lyrics` do proximo boot. Sidecar `.lrc` so
-  nasce de letra SINCRONIZADA (a view de letra depende dos timestamps);
-  letra `plain` vai pro payload **`lyrics_text`** e alimenta so o vetor —
-  ~60% do que o lrclib tem e so plain, e descartar isso custava o vetor.
-  Sidecar preexistente nunca e sobrescrito, mas ainda fecha o ciclo.
-
-  **Nunca gravar letra externa em `embedded_lyrics`** (regra dura, v0.2.71):
-  aquele campo e a letra das TAGS do arquivo (`metadata.rs` le LYRICS/
-  UNSYNCEDLYRICS/USLT, costuma trazer LRC completo) e a aba de letra o
-  renderiza como LRC — texto sem timestamp volta com t=0 em todas as linhas
-  e o card trava no ultimo verso a musica inteira. Precedencia em
-  `resolve_lyrics`: tags > `lyrics_text` > `lrc_path` > sidecar novo no disco.
-  No frontend, `isSynced` (NowPlaying.tsx) detecta t=0 em tudo e desliga
-  auto-scroll/linha ativa, rotula "unsynced" e torna o viewport rolavel.
-
-  `lyrics_text`/`lyrics_status` NAO vem do arquivo, entao o re-ingest
-  (retag muda mtime => `upsert_tracks` faz PUT e reescreve o ponto inteiro)
-  os apagaria junto com o vetor; os dois caminhos de ingest preservam esses
-  campos (`external_lyrics_fields` + `merge_external_lyrics`).
-- **Destino**: playlist = pasta de 1o nivel. Precedencia (spec §4.5):
-  override da toolbar > artista ja no acervo (`suggested_dest`) > ultimo
-  usado (`kv-crate-dest`) > seletor obrigatorio. NUNCA semear o override
-  com o ultimo usado (bug IM-D1, corrigido em 63ec14f).
-- **Guard-rails de rede**: pacer (min 4s entre buscas, cap 40/h), cold-down
-  com banner + "buscar mesmo assim", sweep de searches persistidas no boot.
-  Nao contornar — a rede Soulseek pune burst (gotcha documentado acima).
-- **Config**: `http://127.0.0.1:5030` default; api key via
-  `RUSTIFY_SLSKD_API_KEY` ou config file no data dir do app. Creds do
-  Soulseek SO em `~/slskd_dados/slskd.yml` na cmr-auto (0600) — nunca em
-  log ou disco do app. CSP nao ganha `:5030` (o HTTP e feito no Rust).
-- **Opener**: capability restrita a `opener:allow-reveal-item-in-dir`
-  (estado `manual` abre o gerenciador de arquivos). Nao alargar.
-- **Fontes por job (fase 1, v0.2.87, spec
-  `docs/superpowers/specs/2026-10-12-crate-fontes-soundcloud-bandcamp-design.md`,
-  plano `docs/superpowers/plans/2026-10-12-crate-soundcloud-fase1.md`)**: o job
-  carrega `Source` (`Soulseek{username,remote_filename,size}` |
-  `SoundCloud{track_id,permalink_url}` | `Bandcamp{...}`, fase 2), meta confirmada
-  pelo CEO no card (artista, título, ano, playlist) e o estado `waiting` (compra ou
-  link por e-mail, fase 2). O coordinator roteia por origem: Soulseek segue no slskd;
-  fontes externas vão a um worker próprio (`sc_worker.rs`, teto 2 por vez, pacer),
-  que baixa o ORIGINAL do SoundCloud (API v2 em `crates/soundcloud-client`, token de
-  `~/.secrets/soundcloud-oauth.txt` lido sob demanda, nunca em log/Debug/evento),
-  converte para FLAC (`library-indexer/src/transcode.rs`, ffmpeg com teto de tempo),
-  escreve tags (`tagwrite.rs`, lofty) e capa JPEG <=1500 px, e entrega ao mesmo
-  staging/ingest do Soulseek. Política (CEO, 15/10/2026): só lossless de verdade. MP3
-  é recusado já no card (`probe_verdict`: "MP3 320 · não entra (só lossless)") e no
-  worker (`RejectReason::LossyFormat`); FLAC com corte espectral de lossy é recusado no
-  `stage_file`, que vale para o Soulseek E para o original do SoundCloud
-  (`LossyInside`, quarentena `lossy_inside`; no Soulseek, [Trocar fonte] pega outro
-  peer). Abaixo de 16 bit/44,1 kHz (pelo cabeçalho, antes da medição) é `BelowCd`;
-  mu-law/A-law e PCM 8 bit do SoundCloud são recusados no worker. A medição é injetável no coordinator (`stage::QualityCheck`): os testes de
-  tempo dele não medem (`new_sem_medicao`); a medição tem testes no `stage.rs`.
-  Config em `sources.json` no data dir (só CAMINHOS de segredo) ou env `RUSTIFY_*`
-  (`sources.rs`); status das fontes no topo do Crate (`crate_sources_status`).
-  Comandos: `crate_sc_search/resolve/probe/artwork`, `crate_download`,
-  `crate_sources_status`; sugestão de artista/título/ano em `src/lib/trackMetaGuess.ts`.
-  `canonical_dest` troca `" * : < > ? \ |` por `_` (storage do Android). Desvio
-  declarado da spec §5.1/5.3: links externos no Crate são "Copiar link", não "Abrir"
-  (capability do opener restrita; abrir URL exige `opener:allow-open-url` com
-  allowlist, decisão para a fase 2).
-- **Aba Tidal no Crate (v0.2.88, 13/10)**: terceira aba do Crate, "colar link + pasta +
-  Baixar". NÃO é cliente Tidal nativo: o app fala com a FILA DA VM (`scripts/curator/
-  tidal_fila.py`, API `GET/POST /<token>/api/fila` em `100.64.242.118:8470`) por `ureq` no
-  Rust (`src-tauri/src/slsk/tidal_fila.rs`, commands `crate_tidal_jobs`/`crate_tidal_enqueue`);
-  a VM baixa e envia para `~/Music` da cmr-auto (seção "Aquisicao Tidal"). Config em
-  `sources.rs`: `tidal_fila_url` (env `RUSTIFY_TIDAL_FILA_URL`) e `tidal_fila_token_file`
-  (default `~/.secrets/telemetria-token.txt`, só o caminho; o token nunca sai em log/erro,
-  `host_port` redige). Estados do job: na fila / baixando / na cmr-auto / parcial / falhou,
-  poll de 10 s enquanto a view está montada. Helpers puros em `src/lib/tidalFila.ts`.
-  Se a VM cair, a aba diz "fila indisponível"; a cmr-auto nunca baixa sozinha. Fase 3
-  (CMR-295) troca o motor por download nativo sem mudar a tela.
-- **Busca por texto na aba Tidal (v0.2.91, spec
-  `docs/superpowers/specs/2026-10-14-crate-tidal-busca-design.md`)**: o mesmo campo aceita link
-  (fluxo antigo) ou texto (busca 500 ms após a última tecla; resposta atrasada descartada).
-  Resultados Faixas/Álbuns/Artistas/Playlists com "Hi-Res" e "no acervo"; página de artista
-  (populares, álbuns, EPs e singles, rádio do artista); prévia de playlist/rádio/álbum com caixa
-  por faixa (o que está no acervo vem desmarcado; teto de 200 por pedido na tela, no Rust e na
-  fila) e rodapé com tamanho/tempo estimados. Tela em `src/views/crate/TidalTab.tsx` (o
-  `Crate.tsx` já tinha 2.377 linhas), helpers em `src/lib/tidalSearch.ts`, `dedupMatch` em
-  `src/lib/dedup.ts`. Commands: `crate_tidal_search/artist/preview/cover/resend` e
-  `crate_tidal_enqueue` com `track_ids`/`title`/`origin`. Capa da Tidal só via Rust
-  (`crate_tidal_cover`, prefixo `https://resources.tidal.com/images/`, `data:` URL): o CSP NÃO
-  ganha host da Tidal. A aba fica MONTADA e oculta ao trocar de aba do Crate (preserva busca,
-  prévia e página de artista): não voltar a desmontá-la com `<Show>`. Ordem de release: a fila
-  da VM sobe antes do .deb (é retrocompatível com o app antigo).
-- **v1.1 pendente**: handoff visual do claude design (usuario itera a tela);
-  popovers fechando em clique fora; Fase 2 = album inteiro e Bandcamp por link
-  (spec §6: NYP/free por `bcdl-free`, pago abre a página e espera a compra).
+- Motor (sinal v3, régua, proveniência, familiaridade, autoplay, stations, recusa com escopo,
+  motivo da escolha, escuta viva, sync do S24): `.claude/rules/motor-radio.md`.
+- Crate (Soulseek, SoundCloud e aba Tidal in-app: jobs, fontes, destino, letras junto,
+  guard-rails de rede, poll da fila): `.claude/rules/crate-tidal.md`.
+- Os dois carregam sozinhos ao tocar nos arquivos da área; ao trabalhar no tema sem abrir
+  esses arquivos, leia a rule antes.
 
 ## Mover para playlist (CMR-298)
 
@@ -1384,3 +1259,12 @@ ssh cmr-auto@100.102.249.9 'adb shell appops set dev.cmr.rustifyplayer MANAGE_EX
   UI em Settings > Appearance. O feed de FFT (SpectrumTap + mock)
   vive no SHELL (`MobileApp.tsx`), NAO no motor — trocar de motor nao
   pode derrubar o listener. three entra por `lazy()` tambem aqui.
+- **Leva de 31/10 no S24** (APK ainda não publicado): fora do Now Playing o
+  fundo WebGL desfoca NA GPU (modo `ambient`, como o desktop; sem filter CSS
+  de tela cheia); "reduzir movimento" próprio em `src/mobile/motion.ts`
+  (`reducedMotion`, `calmBgKnobs`); folha de ações sem desfoque (`--s-sheet`);
+  alvo de toque `--tap-min` 44 px; Curtir à direita do título no Now Playing
+  (B34); o shell grava `lang="pt-BR"` no boot (o `index.html` segue `en`). O
+  manifest passa a levar `quality_class`/`quality_cutoff_hz` (B15) e
+  `radio_never_at`/`radio_off_stations` (B9): reexportar o manifest depois do
+  .deb e do APK.
