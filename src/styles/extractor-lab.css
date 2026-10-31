@@ -2910,7 +2910,7 @@ html { --glow: 0; }
 }
 .eq-legend__bar,
 .eq-legend__tick { display: inline-block; flex: none; width: 10px; }
-.eq-legend__bar { height: 8px; background: rgba(var(--bg-ink-rgb, 23, 23, 23), 0.35); border-radius: 1px; }
+.eq-legend__bar { height: 8px; background: rgba(var(--bg-ink-rgb, 23, 23, 23), 0.35); border-radius: var(--radius-xs); }
 .eq-legend__tick { height: 1px; background: var(--fg-1); opacity: 0.5; margin-left: 10px; }
 
 /* Faders row — 16 bands */

@@ -9,7 +9,8 @@
    volta entre o motor e a UI.
 
    Cena nova: uma entrada em SCENE_META (aqui) e uma em SCENES
-   (gl/registry.ts). O contrato da cena está em gl/scene.ts.
+   (gl/registry.ts). Cena medida acima de 16,7 ms por quadro na tela do
+   dono ganha `offBudget` (o motivo) na entrada dela. O contrato da cena está em gl/scene.ts.
    ============================================================ */
 
 import { createSignal } from "solid-js";
@@ -35,6 +36,10 @@ export const SCENE_META = [
     key: "nebula",
     label: "Nébula",
     hint: "Fluido de ruído num shader só, sem geometria — custo todo em fillrate",
+    /** Medida fora do critério de 60 fps na tela do dono (B19): marca no
+        seletor do Tweaks, não proibição; a cena segue escolhível. Fonte:
+        CLAUDE.md, 26/09 (Nébula original a 1857 x 1048). */
+    offBudget: "46 a 48 ms por quadro na sua tela (1857 x 1048)",
   },
   {
     key: "paint",
@@ -66,6 +71,12 @@ export const SCENE_LABELS = Object.fromEntries(SCENE_META.map((m) => [m.key, m.l
 
 /** Uma linha por cena — o que o usuário lê no painel. */
 export const SCENE_HINTS = Object.fromEntries(SCENE_META.map((m) => [m.key, m.hint])) as Record<SceneKey, string>;
+
+/** Cenas fora do critério de 60 fps (campo `offBudget` do SCENE_META) ->
+    o motivo medido, que o Tweaks mostra junto da marca "< 60 fps". */
+export const SCENE_OFF_BUDGET = Object.fromEntries(
+  SCENE_META.flatMap((m) => ("offBudget" in m ? [[m.key, m.offBudget] as const] : [])),
+) as Partial<Record<SceneKey, string>>;
 
 export function isSceneKey(v: unknown): v is SceneKey {
   return typeof v === "string" && (SCENE_KEYS as readonly string[]).includes(v);

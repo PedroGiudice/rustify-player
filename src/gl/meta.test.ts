@@ -1,6 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import {
   RELIEF_DEFAULT,
+  SCENE_KEYS,
+  SCENE_META,
+  SCENE_OFF_BUDGET,
   effectiveReliefStyle,
   isReliefLines,
   reliefHasSurface,
@@ -54,5 +57,18 @@ describe("estilo do Relevo", () => {
     expect(effectiveReliefStyle()).toEqual(forced);
     setGlReliefOverride(null);
     expect(effectiveReliefStyle()).toEqual(pref);
+  });
+});
+
+describe("cenas fora do critério de 60 fps", () => {
+  it("a marca mora no SCENE_META: só a Nébula, com o motivo medido", () => {
+    expect(Object.keys(SCENE_OFF_BUDGET)).toEqual(["nebula"]);
+    expect(SCENE_OFF_BUDGET.nebula).toMatch(/46 a 48 ms/);
+    const neb = SCENE_META.find((m) => m.key === "nebula")!;
+    expect("offBudget" in neb && neb.offBudget).toBe(SCENE_OFF_BUDGET.nebula);
+  });
+
+  it("cena sem marca não aparece no mapa", () => {
+    for (const k of SCENE_KEYS) if (k !== "nebula") expect(SCENE_OFF_BUDGET[k]).toBeUndefined();
   });
 });
