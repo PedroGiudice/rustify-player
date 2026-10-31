@@ -16,7 +16,7 @@ import type { SheetSpec } from "../sheet";
 import { navigate, navigateFromNp } from "../nav";
 import { is2dActive } from "../bg/engine";
 import { useRenderer, useShape } from "../bg/spectrum";
-import { albumKey, fmtDuration } from "../derive";
+import { albumKey, fmtDuration, originalQuality } from "../derive";
 import {
   enqueueEnd,
   enqueueNext,
@@ -231,6 +231,8 @@ function InfoSheet(props: { track: Track }) {
     const pl = playlistOf(t);
     if (pl) list.push(["Playlist", pl]);
     list.push(["Arquivo", baseName(t.path)]);
+    const q = originalQuality(t);
+    if (q) list.push(["Qualidade", q.text]);
     list.push(["Letra", t.lrc_path ? "sincronizada" : "não disponível"]);
     list.push(["ID", t.id]);
     return list;

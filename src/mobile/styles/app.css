@@ -516,14 +516,60 @@
   object-fit: cover;
   display: block;
 }
+/* Título com o Curtir à direita (B34): o botão alinha à 1ª linha do título
+   e a margem negativa devolve o que o alvo de 44 px cresceu. */
+.np .np__titlerow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 18px;
+}
 .np .title {
+  flex: 1;
+  min-width: 0;
   font-family: var(--display);
   font-size: var(--fs-title);
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin-top: 18px;
   line-height: 1.14;
   text-wrap: pretty;
+}
+.np .np__like {
+  margin: -9px -10px 0 0;
+}
+.np .np__like[data-on] {
+  color: var(--accent);
+}
+/* O que toca e o original (B15): mono pequeno em --t3, com um ponto de
+   estado (--ok limpo, --warn lossy, --t4 não medido). */
+.np .npq {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--t3);
+  min-width: 0;
+  white-space: nowrap;
+}
+.np .npq span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.np .npq::before {
+  content: "";
+  flex: 0 0 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--t4);
+}
+.np .npq[data-tone="ok"]::before {
+  background: var(--ok);
+}
+.np .npq[data-tone="warn"]::before {
+  background: var(--warn);
 }
 .np .artist {
   font-size: 13px;

@@ -8,6 +8,8 @@ test_discover_tracks.py. Cobre o estado do like no manifest (CMR-220):
     sem like_state).
   - fetch_like_state pagina o scroll de track_enrichments e mapeia por
     track_id string (qpost substituído por um fake em memória).
+E a qualidade do original (B15): build_manifest emite `quality_class` e
+`quality_cutoff_hz` por track (null quando não medida).
 E as capas por álbum-key (CMR-212):
   - cover_rel troca `covers/<sha1>.webp` (cache do desktop) por
     `covers/<sha1>.jpg` (relativo a `.rustify/` no aparelho).
@@ -120,6 +122,32 @@ def test_fetch_like_state_pagina_e_mapeia():
     check("id não-inteiro ignorado", "uuid-nao-u64" in state, False)
     check("ponto sem like nem carimbo fica fora", "4" in state, False)
     check("chaves são string", all(isinstance(k, str) for k in state), True)
+
+
+def test_build_manifest_emite_qualidade_do_original():
+    """B15: o celular toca Opus e não sabia da auditoria do original. A classe
+    espectral e o corte vão por faixa; ponto não medido sai com null (shape
+    estável, o ManifestTrack do Rust tolera ausência em manifest antigo)."""
+    print("build_manifest (quality_class/quality_cutoff_hz):")
+    limpo = point(1, "A/a.flac")
+    limpo["payload"].update({"quality_class": "sem_corte", "quality_cutoff_hz": None})
+    lossy = point(2, "A/b.flac")
+    lossy["payload"].update({"quality_class": "lossy", "quality_cutoff_hz": 16075})
+    cd = point(3, "A/c.flac")
+    cd["payload"].update({"quality_class": "hires_de_cd", "quality_cutoff_hz": "21900"})
+    nada = point(4, "A/d.flac")
+    by_id = {t["track_id"]: t for t in E.build_manifest([limpo, lossy, cd, nada])["tracks"]}
+    check("sem corte: classe, corte null",
+          (by_id["1"]["quality_class"], by_id["1"]["quality_cutoff_hz"]), ("sem_corte", None))
+    check("lossy: classe e corte em Hz (int)",
+          (by_id["2"]["quality_class"], by_id["2"]["quality_cutoff_hz"]), ("lossy", 16075))
+    check("corte como string no payload vira int",
+          by_id["3"]["quality_cutoff_hz"], 21900)
+    check("não medido: as duas chaves presentes e null",
+          ("quality_class" in by_id["4"], by_id["4"]["quality_class"], by_id["4"]["quality_cutoff_hz"]),
+          (True, None, None))
+    check("os campos entram no with_payload do scroll",
+          {"quality_class", "quality_cutoff_hz"} <= set(E.FIELDS), True)
 
 
 def point_cover(tid, rel, cover):
@@ -330,6 +358,7 @@ def test_report_covers_job_ecoa_roteia_e_aborta():
 
 def main():
     for t in (test_build_manifest_like_state, test_fetch_like_state_pagina_e_mapeia,
+              test_build_manifest_emite_qualidade_do_original,
               test_cover_rel_troca_webp_por_jpg, test_build_manifest_emite_cover_por_track,
               test_cover_jobs_deduplica_capas_e_mantem_primeira_por_pasta,
               test_covers_job_source_compila_e_carrega_os_marcadores,

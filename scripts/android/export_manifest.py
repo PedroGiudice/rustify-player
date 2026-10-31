@@ -60,7 +60,7 @@ SYNC_TOKEN = "/home/cmr-auto/.local/share/rustify-player/sync-token"
 FIELDS = [
     "path", "title", "artist", "album_title", "duration_ms",
     "track_number", "disc_number", "genre", "album_year", "cover_path",
-    "dominant_color",
+    "dominant_color", "quality_class", "quality_cutoff_hz",
 ]
 
 # ── Constantes do sinal v3 — espelho de qdrant_client.rs (fonte da verdade) ──
@@ -205,6 +205,11 @@ def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
             # Capa por álbum-key (CMR-212): o aparelho usa se o arquivo existir
             # em .rustify/covers/, senão cai pro cover.jpg da pasta.
             "cover": cover_rel(pl.get("cover_path")),
+            # Qualidade do ORIGINAL (B15): o aparelho toca Opus e mostra se o
+            # FLAC de origem passou no corte espectral (quality_audit /
+            # spectral.rs). null = não medida; o Rust tolera ausência.
+            "quality_class": pl.get("quality_class") or None,
+            "quality_cutoff_hz": to_int(pl.get("quality_cutoff_hz")) or None,
         })
     tracks.sort(key=lambda t: t["rel_path"])
     if skipped:

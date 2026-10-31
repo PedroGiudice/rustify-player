@@ -8,6 +8,7 @@ import {
   normalize,
   originLabel,
   originSrc,
+  originalQuality,
   searchTracks,
   shuffled,
   toneFor,
@@ -175,5 +176,56 @@ describe("utilitários", () => {
   it("toneFor é estável para a mesma chave", () => {
     expect(toneFor("Rap")).toBe(toneFor("Rap"));
     expect(toneFor(3)).toBe(toneFor(11));
+  });
+});
+
+// B15: o S24 diz se o original é limpo. Exemplos trabalhados à mão a partir
+// das classes do corte espectral (quality_audit.py / spectral.rs).
+describe("originalQuality (B15)", () => {
+  const opus = (q: Partial<Track>) => track({ id: "1", path: "/sdcard/Music/A/x.opus", ...q });
+
+  it("sem corte: original FLAC conferido", () => {
+    expect(originalQuality(opus({ quality_class: "sem_corte", quality_cutoff_hz: null }))).toEqual({
+      text: "Opus 192 · original FLAC conferido",
+      tone: "ok",
+    });
+  });
+
+  // Cabe numa linha de 11 px mono nos 316 px úteis (~44 caracteres).
+  it("lossy: o corte em kHz com vírgula", () => {
+    expect(originalQuality(opus({ quality_class: "lossy", quality_cutoff_hz: 16075 }))).toEqual({
+      text: "Opus 192 · original lossy, corte 16,1 kHz",
+      tone: "warn",
+    });
+  });
+
+  it("provável lossy", () => {
+    expect(originalQuality(opus({ quality_class: "provavel_lossy", quality_cutoff_hz: 20100 }))!.text).toBe(
+      "Opus 192 · provável lossy, corte 20,1 kHz",
+    );
+  });
+
+  it("hi-res de CD é limpo, com qualidade de CD", () => {
+    expect(originalQuality(opus({ quality_class: "hires_de_cd", quality_cutoff_hz: 21900 }))).toEqual({
+      text: "Opus 192 · original FLAC, qualidade de CD",
+      tone: "ok",
+    });
+  });
+
+  it("medição que falhou: diz que não mediu, sem promessa", () => {
+    expect(originalQuality(opus({ quality_class: "indeterminado" }))).toEqual({
+      text: "Opus 192 · original não medido",
+      tone: "neutral",
+    });
+  });
+
+  it("manifest antigo (sem o campo): nada a dizer", () => {
+    expect(originalQuality(opus({}))).toBeNull();
+    expect(originalQuality(opus({ quality_class: null }))).toBeNull();
+  });
+
+  it("arquivo que não é Opus fala do próprio arquivo", () => {
+    const mp3 = track({ id: "2", path: "/m/a.mp3", quality_class: "lossy", quality_cutoff_hz: 16000 });
+    expect(originalQuality(mp3)!.text).toBe("MP3 · lossy, corte 16,0 kHz");
   });
 });

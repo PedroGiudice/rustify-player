@@ -22,9 +22,12 @@
      estado nem restauração da ordem, e a UI aplica o snapshot que
      volta. Não é origin — a fila mantém a origem por item. A fileira
      é shuffle | prev | play | next | repeat.
-   - cabeçalho (25/09, mobile-1): Letra, Curtir, Mais opções e Fechar
-     em alvos de 44px; Rádio da faixa, Fila e shape/render do fundo
-     moram na sheet de "Mais opções" (kind `np`).
+   - cabeçalho (25/09, mobile-1): Letra, Mais opções e Fechar em alvos
+     de 44px; Rádio da faixa, Fila e shape/render do fundo moram na
+     sheet de "Mais opções" (kind `np`). Curtir desceu para a direita do
+     título (31/10, B34), ao alcance do polegar;
+   - abaixo do artista, a linha do que toca e se o original é limpo
+     (B15, `originalQuality`).
    O seek É real: o contrato tem seek_to.
    ============================================================ */
 
@@ -48,7 +51,7 @@ import {
   toggle,
   toggleLike,
 } from "../store";
-import { albumKey, fmtDuration, originLabel, originSrc } from "../derive";
+import { albumKey, fmtDuration, originLabel, originSrc, originalQuality } from "../derive";
 import { canShuffleUpcoming } from "../queueModel";
 import { openSheet } from "../sheet";
 import { libGetLyrics } from "../ipc";
@@ -202,10 +205,9 @@ export function NowPlaying() {
         <div class="grab" />
         <div class="nphead">
           <div class="eyebrow">Now playing</div>
-          {/* Quatro alvos de 44px no máximo (mobile-1): na largura útil do S24
-              (316px) as sete ações de antes transbordavam ~90px e o overflow
-              cortava Fila e Fechar. Rádio, Fila e shape/render moram na sheet
-              de "Mais opções". */}
+          {/* Três alvos de 44px no máximo (mobile-1; Curtir desceu, B34): na
+              largura útil do S24 (316px) as sete ações de antes transbordavam
+              ~90px. Rádio, Fila e shape/render moram na sheet de "Mais opções". */}
           <div class="npacts">
             <Show when={lyrics().length > 0}>
               <button
@@ -220,27 +222,14 @@ export function NowPlaying() {
             </Show>
             <Show when={current()}>
               {(t) => (
-                <>
-                  <button
-                    class="iconbtn"
-                    aria-label="Curtir"
-                    aria-pressed={isLiked(t())}
-                    style={isLiked(t()) ? { color: "var(--accent)" } : undefined}
-                    onClick={() => void toggleLike(t())}
-                  >
-                    <Show when={isLiked(t())} fallback={<Icon.heart />}>
-                      <Icon.heartFilled />
-                    </Show>
-                  </button>
-                  <button
-                    class="iconbtn"
-                    aria-label="Mais opções"
-                    aria-haspopup="dialog"
-                    onClick={() => openSheet({ kind: "np", track: t() })}
-                  >
-                    <Icon.more />
-                  </button>
-                </>
+                <button
+                  class="iconbtn"
+                  aria-label="Mais opções"
+                  aria-haspopup="dialog"
+                  onClick={() => openSheet({ kind: "np", track: t() })}
+                >
+                  <Icon.more />
+                </button>
               )}
             </Show>
             <button class="iconbtn" aria-label="Fechar" onClick={() => back()}>
@@ -264,8 +253,23 @@ export function NowPlaying() {
           {(t) => (
             <>
               <Cover path={t().album_cover_path} seed={t().id} cls="cover" icon="disc" />
-              <div class="title" attr:data-swap={swap()}>
-                {t().title}
+              {/* Curtir à direita do título (B34): a ação mais frequente da
+                  tela sai do canto de cima, o mais longe do polegar. */}
+              <div class="np__titlerow">
+                <div class="title" attr:data-swap={swap()}>
+                  {t().title}
+                </div>
+                <button
+                  class="iconbtn np__like"
+                  aria-label="Curtir"
+                  aria-pressed={isLiked(t())}
+                  attr:data-on={isLiked(t()) ? "" : undefined}
+                  onClick={() => void toggleLike(t())}
+                >
+                  <Show when={isLiked(t())} fallback={<Icon.heart />}>
+                    <Icon.heartFilled />
+                  </Show>
+                </button>
               </div>
               <div class="artist" attr:data-swap={swap()}>
                 <span class="srcbadge" attr:data-src={originSrc(queueOrigin(), queueContextId())}>
@@ -296,6 +300,14 @@ export function NowPlaying() {
                   </Show>
                 </span>
               </div>
+              {/* O que toca e se o original passou no corte espectral (B15). */}
+              <Show when={originalQuality(t())}>
+                {(q) => (
+                  <div class="npq" attr:data-tone={q().tone} attr:data-swap={swap()}>
+                    <span>{q().text}</span>
+                  </div>
+                )}
+              </Show>
 
               <Show when={showLyrics()}>
                 <div class="lyrics" ref={lyricsEl} attr:data-static={isSynced() ? undefined : ""}>

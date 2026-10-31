@@ -186,3 +186,55 @@ export function shuffled<T>(arr: readonly T[]): T[] {
   }
   return a;
 }
+
+/** Linha "o que toca e de onde veio" do Now Playing (B15). */
+export interface OriginalQuality {
+  text: string;
+  /** ok = medido e limpo; warn = corte de lossy; neutral = não medido. */
+  tone: "ok" | "warn" | "neutral";
+}
+
+/** 16075 -> "16,1" (mesma escrita do desktop, lib/quality.ts). */
+const khz = (hz: number) => (hz / 1000).toFixed(1).replace(".", ",");
+
+/** O que o aparelho toca: Opus 192 kbps (phone_sync_encode.py) ou o formato
+ *  copiado como veio. */
+function deviceCodec(path: string): { label: string; transcoded: boolean } {
+  const ext = (path.split(".").pop() ?? "").toLowerCase();
+  if (ext === "opus") return { label: "Opus 192", transcoded: true };
+  return { label: ext ? ext.toUpperCase() : "Arquivo", transcoded: false };
+}
+
+/**
+ * O S24 diz se o original é limpo (B15). O Opus só existe a partir de FLAC
+ * (phone_sync_encode.py), então "original FLAC" vale para todo .opus; um
+ * arquivo copiado como veio (MP3, FLAC) fala de si mesmo. A classe vem do
+ * manifest (export_manifest.py), medida no desktop; `null` quando o manifest
+ * é anterior ao campo (reexportar o manifest liga a linha).
+ */
+export function originalQuality(
+  t: Pick<Track, "path" | "quality_class" | "quality_cutoff_hz">,
+): OriginalQuality | null {
+  // Sem o campo = manifest exportado antes do B15: não é "não medido".
+  if (!t.quality_class) return null;
+  const c = deviceCodec(t.path);
+  // Opus: fala do FLAC de origem; arquivo copiado como veio: de si mesmo.
+  const o = c.transcoded ? "original " : "";
+  const line = (rest: string, tone: OriginalQuality["tone"]) => ({ text: `${c.label} · ${rest}`, tone });
+  const cut = t.quality_cutoff_hz;
+  switch (t.quality_class) {
+    case "sem_corte":
+      return line(c.transcoded ? "original FLAC conferido" : "conferido, sem corte", "ok");
+    case "hires_de_cd":
+      return line(c.transcoded ? "original FLAC, qualidade de CD" : "qualidade de CD", "ok");
+    // Curto de propósito: a linha tem ~44 caracteres no S24 (mono 11 px em
+    // 316 px); a ficha da faixa mostra o mesmo texto.
+    case "lossy":
+      if (cut) return line(`${o}lossy, corte ${khz(cut)} kHz`, "warn");
+      break;
+    case "provavel_lossy":
+      if (cut) return line(`provável lossy, corte ${khz(cut)} kHz`, "warn");
+      break;
+  }
+  return line(`${o}não medido`, "neutral");
+}

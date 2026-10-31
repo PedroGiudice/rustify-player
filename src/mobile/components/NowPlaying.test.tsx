@@ -54,6 +54,8 @@ vi.mock("../store", () => {
     dominant_color: null,
     liked_at: null,
     like_updated_at: null,
+    quality_class: "sem_corte",
+    quality_cutoff_hz: null,
   } as Track;
   return {
     current: () => (h.empty ? null : track),
@@ -120,12 +122,12 @@ function openOverflow() {
 }
 
 describe("NowPlaying — cabeçalho cabe no S24 (mobile-1)", () => {
-  it("só ações de ícone no cabeçalho: Curtir, Mais opções, Fechar", () => {
+  it("só ações de ícone no cabeçalho: Mais opções e Fechar (Curtir desceu, B34)", () => {
     const r = render(() => <NowPlaying />);
     const head = r.container.querySelector(".nphead")!;
     const labels = [...head.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-    // Letra só entra quando a faixa tem letra (o mock não tem): 4 alvos no máximo.
-    expect(labels).toEqual(["Curtir", "Mais opções", "Fechar"]);
+    // Letra só entra quando a faixa tem letra (o mock não tem): 3 alvos no máximo.
+    expect(labels).toEqual(["Mais opções", "Fechar"]);
     expect(head.querySelector(".shapebtn")).toBeNull();
   });
 
@@ -261,5 +263,28 @@ describe("NowPlaying — nada tocando (A64)", () => {
     expect(h.playTrackFrom).toHaveBeenCalledWith([expect.objectContaining({ id: "7" })], 0);
     fireEvent.click(r.getByRole("button", { name: "Tudo em aleatório" }));
     expect(h.shuffleAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+// B34: Curtir, a ação mais frequente do Now Playing, estava no canto de cima
+// (o mais longe do polegar); desceu para a direita do título.
+describe("NowPlaying — Curtir ao alcance do polegar (B34)", () => {
+  it("Curtir mora na linha do título, não no cabeçalho, e curte a faixa", () => {
+    const r = render(() => <NowPlaying />);
+    const like = r.getByRole("button", { name: "Curtir" });
+    expect(like.closest(".np__titlerow")).not.toBeNull();
+    expect(like.closest(".nphead")).toBeNull();
+    fireEvent.click(like);
+    expect(h.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: "7" }));
+  });
+});
+
+// B15: o celular toca Opus e agora diz se o original passou na auditoria.
+describe("NowPlaying — qualidade do original (B15)", () => {
+  it("mostra o que toca e se o original é limpo", () => {
+    const r = render(() => <NowPlaying />);
+    const q = r.container.querySelector(".npq")!;
+    expect(q.textContent).toBe("Opus 192 · original FLAC conferido");
+    expect(q.getAttribute("data-tone")).toBe("ok");
   });
 });
