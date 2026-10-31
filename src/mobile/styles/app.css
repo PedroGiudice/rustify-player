@@ -308,6 +308,32 @@
   font: 500 13.5px var(--font);
   outline: none;
 }
+/* O "x" do <input type="search"> nativo sai: o nosso tem 44 px de alvo. */
+.searchfield input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.searchfield__clear {
+  flex: 0 0 auto;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin: -13px -13px -13px 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--t3);
+  border-radius: var(--r-pill);
+}
+.searchfield__clear svg {
+  width: 17px;
+  height: 17px;
+}
+/* Teclado aberto na Busca: o rodapé de ~115 px sai e a lista vai até o
+   teclado (A62). */
+.device:has(.searchfield input:focus) .dock {
+  display: none;
+}
 .searchfield input::placeholder {
   color: var(--t3);
 }
