@@ -40,6 +40,8 @@ vi.mock("../tauri", () => ({
   checkForUpdate: vi.fn().mockResolvedValue({ update_available: false, current_version: "0.1.0" }),
   installUpdate: vi.fn().mockResolvedValue(undefined),
   restartApp: vi.fn().mockResolvedValue(undefined),
+  libSyncStatus: vi.fn().mockResolvedValue([]),
+  onSyncReceived: vi.fn().mockResolvedValue(() => {}),
 }));
 
 beforeEach(() => {
@@ -61,6 +63,40 @@ import Settings from "./Settings";
 import * as ipc from "../tauri";
 import { tweaksOpen, setTweaksOpen } from "../store/tweaks";
 import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
+
+describe("sync do celular na Biblioteca (B14)", () => {
+  const nowS = () => Math.floor(Date.now() / 1000);
+
+  it("diz quando o S24 sincronizou e o que veio", async () => {
+    vi.mocked(ipc.libSyncStatus).mockResolvedValue([
+      { device_id: "s24", last_batch_at: nowS() - 12 * 60, accepted: 36, rejected: 0, plays: 34, likes: 2, total_accepted: 900 },
+    ]);
+    const { findByText, container } = render(() => <Settings />);
+    expect(await findByText("S24: último sync há 12 min")).toBeTruthy();
+    expect(container.textContent).toContain("34 plays, 2 curtidas");
+    expect(container.querySelector(".set-sync")!.hasAttribute("data-stale")).toBe(false);
+  });
+
+  it("âmbar passadas 24 h, com o motivo escrito", async () => {
+    vi.mocked(ipc.libSyncStatus).mockResolvedValue([
+      { device_id: "s24", last_batch_at: nowS() - 3 * 86_400, accepted: 1, rejected: 0, plays: 1, likes: 0, total_accepted: 1 },
+    ]);
+    const { findByText, container } = render(() => <Settings />);
+    expect(await findByText("S24: último sync há 3 dias")).toBeTruthy();
+    expect(container.querySelector(".set-sync")!.getAttribute("data-stale")).toBe("true");
+    expect(container.textContent).toContain("mais de 24 h sem notícia do aparelho");
+  });
+
+  it("lote novo atualiza a linha sem reabrir a tela", async () => {
+    let push: ((d: ipc.DeviceSync) => void) | undefined;
+    vi.mocked(ipc.libSyncStatus).mockResolvedValue([]);
+    vi.mocked(ipc.onSyncReceived).mockImplementation(async (cb) => { push = cb; return () => {}; });
+    const { findByText } = render(() => <Settings />);
+    expect(await findByText(/Nenhum sync registrado/)).toBeTruthy();
+    push!({ device_id: "s24", last_batch_at: nowS(), accepted: 3, rejected: 0, plays: 3, likes: 0, total_accepted: 3 });
+    expect(await findByText("S24: último sync agora")).toBeTruthy();
+  });
+});
 
 describe("Settings view", () => {
   it("renderiza heading", () => {

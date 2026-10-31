@@ -4134,6 +4134,15 @@ html { --glow: 0; }
 .set-diag[open] .set-diag__chev { transform: rotate(180deg); }
 .set-diag__stats { padding: 13px 20px; border-top: 1px solid var(--line-3); }
 .set-num { font-variant-numeric: tabular-nums; }
+/* Sync do celular (B14): ponto verde com notícia nas últimas 24 h, âmbar
+   depois disso (o texto também diz, a cor não é o único sinal). */
+.set-sync__dot {
+  display: inline-block; vertical-align: middle;
+  width: 6px; height: 6px; margin: -2px 8px 0 0; border-radius: 50%;
+  background: var(--green-ring);
+}
+.set-sync[data-stale] .set-sync__dot { background: var(--amber-ring); }
+.set-sync[data-stale] .set-row__hint { color: var(--amber-fg); }
 .set-kbd { font-family: var(--font-mono); font-size: var(--fs-label); padding: 2px 7px; }
 
 /* Badge de status (calculadora WCAG do Settings). Portado do
