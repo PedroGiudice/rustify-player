@@ -7,7 +7,7 @@
    ============================================================ */
 
 import { describe, it, expect } from "vitest";
-import { ensureInkContrast, relLuminance, contrastRatio, cssColorToRgb } from "./color";
+import { ensureInkContrast, relLuminance, contrastRatio, cssColorToRgb, hexToOklch, oklchToHex, isAchromatic } from "./color";
 
 function ratio(a: string, b: string): number {
   return contrastRatio(relLuminance(a)!, relLuminance(b)!);
@@ -57,5 +57,39 @@ describe("cssColorToRgb", () => {
     expect(cssColorToRgb("rgba(105, 0, 0, 0.5)")).toEqual({ r: 105, g: 0, b: 0 });
     expect(cssColorToRgb("")).toBeNull();
     expect(cssColorToRgb("var(--x)")).toBeNull();
+  });
+});
+
+describe("OKLCH", () => {
+  it("valores de referência do OKLab (vermelho, branco)", () => {
+    const red = hexToOklch("#ff0000")!;
+    expect(red.l).toBeCloseTo(0.628, 3);
+    expect(red.c).toBeCloseTo(0.2577, 3);
+    expect(red.h).toBeCloseTo(29.23, 1);
+    const white = hexToOklch("#ffffff")!;
+    expect(white.l).toBeCloseTo(1, 3);
+    expect(white.c).toBeLessThan(1e-3);
+  });
+
+  it("ida e volta preserva o hex", () => {
+    for (const hex of ["#c0392b", "#2c6fd1", "#a4de02", "#10131a", "#808080"]) {
+      const o = hexToOklch(hex)!;
+      expect(oklchToHex(o.l, o.c, o.h)).toBe(hex);
+    }
+  });
+
+  it("fora do sRGB reduz o croma e mantém L e matiz", () => {
+    const hex = oklchToHex(0.7, 0.4, 260); // azul impossível
+    const o = hexToOklch(hex)!;
+    expect(o.l).toBeCloseTo(0.7, 2);
+    expect(Math.abs(o.h - 260)).toBeLessThan(2);
+    expect(o.c).toBeLessThan(0.4);
+  });
+
+  it("acromático = croma abaixo de 0,02 (cinza com leve matiz incluído)", () => {
+    expect(isAchromatic("#10131a")).toBe(true);
+    expect(isAchromatic("#e9e9ee")).toBe(true);
+    expect(isAchromatic("#1e0f08")).toBe(false);
+    expect(isAchromatic("#c0392b")).toBe(false);
   });
 });

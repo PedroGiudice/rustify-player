@@ -4,8 +4,8 @@
    "small shit makes THE difference").
 
    A derivação é a MESMA do desktop (lib/inkDerive.ts, v3
-   contrast-driven): hue da capa, saturação reforçada, luminância
-   levada a >= 4:1 contra o canvas. A dominante vem pronta no
+   contrast-driven): hue da capa, ink a >= 4:1 e accent a >= 5,2:1
+   contra o canvas (o accent é texto: aba ativa, título tocando). A dominante vem pronta no
    manifest (`dominant_color`, enrichment cover.rs exportado) —
    o aparelho não analisa imagem.
 
@@ -59,7 +59,7 @@ export function applyAdaptiveColor(dominant: string | null | undefined) {
     root.setProperty("--accent", acc.accent);
     root.setProperty("--accent-c", acc.container);
     root.setProperty("--on-accent", acc.on);
-    root.setProperty("--on-accent-c", acc.on);
+    root.setProperty("--on-accent-c", acc.onContainer);
   } else {
     for (const v of ACCENT_VARS) root.removeProperty(v);
   }
