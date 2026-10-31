@@ -155,3 +155,35 @@ describe("movimento do S24 (A60)", () => {
     expect(css).not.toMatch(/\.fab:active|\.ctrls \.iconbtn:active/);
   });
 });
+
+describe("escala de texto e raio do S24 (A63)", () => {
+  it("escala --fs-* declarada", () => {
+    expect(tokens["--fs-label"]).toBe("11px");
+    expect(tokens["--fs-meta"]).toBe("11.5px");
+    expect(tokens["--fs-body"]).toBe("13.5px");
+    expect(tokens["--fs-lead"]).toBe("17px");
+    expect(tokens["--fs-stat"]).toBe("19px");
+    expect(tokens["--fs-title"]).toBe("23px");
+    expect(tokens["--fs-display"]).toBe("28px");
+  });
+
+  it("nenhum texto abaixo do piso de 11 px", () => {
+    const sizes = [...css.matchAll(/font-size:\s*([^;]+);/g)].map((m) => m[1].trim());
+    const shorthand = [...css.matchAll(/\bfont:\s*[^;]*?(\d+(?:\.\d+)?px)/g)].map((m) => m[1]);
+    for (const v of [...sizes, ...shorthand]) {
+      const n = v.startsWith("var(") ? px(v) : parseFloat(v);
+      if (Number.isFinite(n)) expect(n, v).toBeGreaterThanOrEqual(11);
+    }
+  });
+
+  it("raio só por token (pílula para barras finas, --r-2xl na folha)", () => {
+    const lits = [...css.matchAll(/border-radius:\s*([^;]+);/g)].map((m) => m[1].trim());
+    for (const v of lits) expect(v, v).toMatch(/^(var\(--r-[\w-]+\)\s*)+(0\s*)*$|^var\(--r-[\w-]+\) var\(--r-[\w-]+\) 0 0$/);
+  });
+
+  it("regras mortas saíram", () => {
+    for (const sel of [".sec-title", ".scroll", ".ico18 .icon", ".rowitem .rv"]) {
+      expect(rules(css, sel), sel).toHaveLength(0);
+    }
+  });
+});
