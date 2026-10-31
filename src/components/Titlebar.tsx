@@ -20,7 +20,7 @@
 
 import { Show, onMount } from "solid-js";
 import { route } from "../router";
-import { mountResources, toggleResources } from "../js/components/resources.js";
+import { mountResources, toggleResources } from "./resources.js";
 import { Icon, ICONS } from "./Icon";
 
 function getWin() {

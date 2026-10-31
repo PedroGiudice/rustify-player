@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup } from "@solidjs/testing-library";
 
-vi.mock("../js/components/resources.js", () => ({
+vi.mock("./resources.js", () => ({
   mountResources: vi.fn(),
   toggleResources: vi.fn(),
 }));
