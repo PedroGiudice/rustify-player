@@ -4128,22 +4128,37 @@ html { --glow: 0; }
 
 
 /* ============================================================
-   PLAYLIST DETAIL — hero mosaico 2x2 + action buttons
+   CABEÇALHO DA BIBLIOTECA — LibHero (B2, 31/10): Álbum, Artista e
+   Playlist com a mesma gramática. Capa de 176 px (redonda no Artista),
+   rótulo do tipo, título no degrau Feature, números numa linha e as
+   ações à direita. O mosaico da Playlist mora dentro da moldura.
    ============================================================ */
 
-.pl-hero-cover {
-  width: 180px;
-  height: 180px;
+.view__head.lib-hero { align-items: flex-end; flex-wrap: wrap; row-gap: 18px; }
+.lib-hero__main { display: flex; gap: 24px; align-items: flex-end; min-width: 0; flex: 1 1 420px; }
+.lib-hero__cover {
+  width: 176px;
+  height: 176px;
+  flex-shrink: 0;
   border-radius: var(--radius-2xl);
   overflow: hidden;
   border: 1px solid var(--line-2);
+  background: var(--bg-soft);
+  box-shadow: var(--shadow-card);
+}
+.lib-hero__cover[data-round] { border-radius: 50%; }
+/* O CoverArt traz moldura própria (borda e raio de card): aqui a moldura
+   é a do cabeçalho. */
+.lib-hero__art { width: 100%; height: 100%; border: 0; border-radius: inherit; }
+
+.pl-hero-cover {
+  width: 100%;
+  height: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 1px;
   background: var(--line-2);
-  flex-shrink: 0;
-  box-shadow: var(--shadow-card);
 }
 .pl-hero-cover__quad {
   background: var(--bg-soft);
@@ -4155,51 +4170,51 @@ html { --glow: 0; }
   object-fit: cover;
   display: block;
 }
-.pl-hero-cover__quad--empty {
-  background: var(--bg-soft);
-}
 .pl-hero-cover__empty {
-  grid-column: 1 / -1; grid-row: 1 / -1;
+  width: 100%; height: 100%;
   display: grid; place-items: center;
-  background: var(--bg-soft);
   color: var(--fg-7);
-  font-size: 48px;
 }
 
-.pl-hero-meta { min-width: 0; padding-bottom: 6px; }
-.pl-hero-meta__kicker {
-  font-family: var(--font-mono);
+.lib-hero__meta { min-width: 0; padding-bottom: 6px; }
+.lib-hero__kicker {
   font-size: var(--fs-label);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-5);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
-/* .view__head .pl-hero-meta__title: o hero mora dentro de .view__head, e o
-   `.view__head h1` (0,1,1) vencia o seletor de classe só: o título saía 22px. */
-.view__head .pl-hero-meta__title {
+/* .view__head h1 (0,1,1) venceria a classe só: o título sairia 22 px. */
+.view__head .lib-hero__title {
   font-size: var(--fs-feature);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   color: var(--fg-1);
   margin: 0 0 10px;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
-.pl-hero-meta__stats {
+.lib-hero__stats {
+  display: flex; flex-wrap: wrap; align-items: baseline;
   color: var(--fg-5);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   margin: 0;
 }
-.pl-hero-meta__stats b {
+.lib-hero__stats b { color: var(--fg-2); font-weight: 600; }
+.lib-hero__sep { margin: 0 8px; color: var(--fg-7); }
+.lib-hero__link {
   color: var(--fg-2);
   font-weight: 600;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-base) var(--ease-out);
 }
-.pl-hero-meta__sep {
-  margin: 0 8px;
-  opacity: 0.5;
-}
+.lib-hero__link:hover { color: var(--fg-1); text-decoration: underline; text-underline-offset: 3px; }
+.lib-hero__link:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.lib-hero__actions { display: flex; gap: 8px; align-items: center; padding-bottom: 6px; }
+html[data-density="compact"] .lib-hero__cover { width: 140px; height: 140px; }
 
 .pl-hero-actions {
   display: flex; gap: 8px;

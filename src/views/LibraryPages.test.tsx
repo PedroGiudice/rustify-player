@@ -144,3 +144,44 @@ describe("Playlist — sem a coluna de playlist (A21) e capa única no hero (A42
     expect(container.querySelector(".pl-hero-cover__quad")!.classList.contains("pl-hero-cover__quad--full")).toBe(true);
   });
 });
+
+describe("Cabeçalho único de Álbum, Artista e Playlist (B2)", () => {
+  it("Álbum: rótulo com o ano, título h1 e o artista nos números abre a página dele", async () => {
+    routeState.path = "/album";
+    routeState.param = "Greatest%20Hits?artista=Queen";
+    const { container, findByText, getByRole } = render(() => <AlbumView />);
+    await findByText("Bohemian Rhapsody");
+    const head = container.querySelector(".lib-hero")!;
+    await vi.waitFor(() => expect(head.querySelector(".lib-hero__kicker")!.textContent).toBe("Álbum · 1981"));
+    expect(getByRole("heading", { level: 1 }).textContent).toBe("Greatest Hits");
+    expect(head.querySelector(".lib-hero__stats")!.textContent).toContain("1 faixa");
+    fireEvent.click(getByRole("button", { name: "Queen" }));
+    expect(h.navigate).toHaveBeenCalledWith("/artist/Queen");
+  });
+
+  it("Artista: capa redonda com a capa do álbum dele com mais faixas", async () => {
+    vi.mocked(tauri.libGetAlbumsByArtist).mockResolvedValueOnce([
+      { title: "Jazz", artist_name: "Queen", cover_path: "/c/jazz.webp", year: 1978, track_count: 3 },
+      { title: "A Night at the Opera", artist_name: "Queen", cover_path: "/c/opera.webp", year: 1975, track_count: 12 },
+      { title: "Sem capa", artist_name: "Queen", cover_path: null, year: 1980, track_count: 20 },
+    ]);
+    routeState.path = "/artist";
+    routeState.param = "Queen";
+    const { container } = render(() => <ArtistView />);
+    await vi.waitFor(() => expect(container.querySelector(".lib-hero__cover img.cover__img")?.getAttribute("src")).toBe("/c/opera.webp"));
+    expect(container.querySelector(".lib-hero__cover")!.getAttribute("data-round")).toBe("true");
+    expect(container.querySelector(".lib-hero__kicker")!.textContent).toBe("Artista");
+    expect(container.querySelector(".lib-hero__stats")!.textContent).toContain("3 álbuns");
+  });
+
+  it("Playlist: mesmo cabeçalho, Fixar em português e Tocar por último", async () => {
+    routeState.path = "/playlist";
+    routeState.param = "Rock";
+    const { container, findByText } = render(() => <PlaylistView />);
+    await findByText("Faixa");
+    const head = container.querySelector(".lib-hero")!;
+    expect(head.querySelector(".lib-hero__kicker")!.textContent).toBe("Playlist");
+    const buttons = Array.from(head.querySelectorAll(".lib-hero__actions button")).map((b) => b.textContent?.trim());
+    expect(buttons).toEqual(["Fixar", "Tocar"]);
+  });
+});

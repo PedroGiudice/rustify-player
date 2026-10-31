@@ -3,6 +3,8 @@
    Rota /album/<título>?artista=<artista> (lib/albumRoute.ts): o álbum é
    título + artista, como em list_albums. Rota antiga, só com o título,
    abre o primeiro álbum com esse nome.
+   Cabeçalho: o LibHero comum a Álbum, Artista e Playlist (B2); o nome do
+   artista nos números abre a página dele.
    ============================================================ */
 
 import { createResource, For, Show, Switch, Match } from "solid-js";
@@ -17,6 +19,8 @@ import { EmptyState } from "../components/EmptyState";
 import { libraryRevision, openMoveDialog } from "../store/moveDialog";
 import { dataOf, listState, peek, settle } from "../lib/loaded";
 import { ALBUM_TRACK_LIMIT, parseAlbumParam } from "../lib/albumRoute";
+import { plural, totalDur } from "../lib/count";
+import { LibHero } from "../components/LibHero";
 
 export default function AlbumView() {
   const parsed = () => parseAlbumParam(route().param);
@@ -53,6 +57,7 @@ export default function AlbumView() {
   const state = () => listState(peek(tracksRes));
   const truncated = () => tracks().length >= ALBUM_TRACK_LIMIT;
   const artistName = () => parsed().artist ?? album()?.artist_name ?? null;
+  const totalMs = () => tracks().reduce((sum, t) => sum + (t.duration_ms || 0), 0);
 
   // scope "curated": shuffle dentro do album embaralha SO este tracklist.
   function play(t: Track) {
@@ -69,53 +74,57 @@ export default function AlbumView() {
 
   return (
     <article class="view">
-      <header class="view__head">
-        <div style={{ display: "flex", gap: "20px", "align-items": "flex-end" }}>
-          <Show when={album()}>
-            {(a) => (
-              <CoverArt
-                seed={a().title}
-                src={coverUrl(a().cover_path)}
-                size="lg"
-                style={{ width: "120px", height: "120px" }}
-              />
-            )}
-          </Show>
-          <div>
-            <h1>{title() ?? "Album"}</h1>
-            <p class="view__head-hint">
-              {artistName() ?? "—"} · {tracks().length} tracks
-              {album()?.year && <> · {album()!.year}</>}
-              <Show when={truncated()}>
-                <> · mostrando só as primeiras {ALBUM_TRACK_LIMIT}</>
-              </Show>
-            </p>
-          </div>
-        </div>
-        <div class="pl-hero-actions">
-          <button
-            class="pl-action-btn"
-            type="button"
-            disabled={!tracks().length}
-            onClick={() => openMoveDialog(tracks(), title())}
-            title={truncated()
-              ? `Move só as ${ALBUM_TRACK_LIMIT} faixas listadas; o álbum tem mais`
-              : "Mover o álbum para outra playlist"}
-          >
-            <Icon name={ICONS.moveTo} size={13} />
-            <span>Mover para playlist…</span>
-          </button>
-          <button
-            class="pl-action-btn pl-action-btn--primary"
-            type="button"
-            disabled={!tracks().length}
-            onClick={playAll}
-          >
-            <Icon name={ICONS.play} size={13} />
-            <span>Tocar</span>
-          </button>
-        </div>
-      </header>
+      <LibHero
+        kicker={album()?.year ? `Álbum · ${album()!.year}` : "Álbum"}
+        title={title() ?? "Álbum"}
+        cover={<CoverArt seed={title()} src={coverUrl(album()?.cover_path ?? null)} size="lg" class="lib-hero__art" />}
+        stats={
+          <>
+            <Show when={artistName()} fallback={<span>—</span>}>
+              {(n) => (
+                <button type="button" class="lib-hero__link" onClick={() => navigate(`/artist/${encodeURIComponent(n())}`)}>
+                  {n()}
+                </button>
+              )}
+            </Show>
+            <span class="lib-hero__sep">·</span>
+            <b>{plural(tracks().length, "faixa", "faixas")}</b>
+            <Show when={tracks().length > 0}>
+              <span class="lib-hero__sep">·</span>
+              {totalDur(totalMs())}
+            </Show>
+            <Show when={truncated()}>
+              <span class="lib-hero__sep">·</span>
+              mostrando só as primeiras {ALBUM_TRACK_LIMIT}
+            </Show>
+          </>
+        }
+        actions={
+          <>
+            <button
+              class="pl-action-btn"
+              type="button"
+              disabled={!tracks().length}
+              onClick={() => openMoveDialog(tracks(), title())}
+              title={truncated()
+                ? `Move só as ${ALBUM_TRACK_LIMIT} faixas listadas; o álbum tem mais`
+                : "Mover o álbum para outra playlist"}
+            >
+              <Icon name={ICONS.moveTo} size={13} />
+              <span>Mover para playlist…</span>
+            </button>
+            <button
+              class="pl-action-btn pl-action-btn--primary"
+              type="button"
+              disabled={!tracks().length}
+              onClick={playAll}
+            >
+              <Icon name={ICONS.play} size={13} />
+              <span>Tocar</span>
+            </button>
+          </>
+        }
+      />
 
       <div class="view__body">
         <Switch>
