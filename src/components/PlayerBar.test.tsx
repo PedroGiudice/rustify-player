@@ -62,22 +62,21 @@ describe("chip de origem da fila (pb-src)", () => {
     expect(chip.getAttribute("data-kind")).toBe("station");
   });
 
-  it("fila avulsa mostra 'solta'", () => {
+  // A2/B16 (31/10): fila solta e álbum não ganham selo; o artista fica com o espaço.
+  it("fila avulsa não tem selo", () => {
     setQueue([FAKE_TRACK], 0);
     const { container } = render(() => <PlayerBar />);
-    const chip = container.querySelector(".pb-src")!;
-    expect(chip.textContent).toBe("solta");
-    expect(chip.getAttribute("data-kind")).toBe("solta");
+    expect(container.querySelector(".pb-src")).toBeNull();
   });
 
-  it("playlist e álbum têm labels próprios", () => {
+  it("playlist tem selo próprio; álbum, nenhum", () => {
     setQueue([FAKE_TRACK], 0, "curated", { kind: "playlist", name: "Rap" });
     const { container } = render(() => <PlayerBar />);
     expect(container.querySelector(".pb-src")!.textContent).toBe("playlist");
     cleanup();
     setQueue([FAKE_TRACK], 0, "curated", { kind: "album", name: "Disco" });
     const { container: c2 } = render(() => <PlayerBar />);
-    expect(c2.querySelector(".pb-src")!.textContent).toBe("álbum");
+    expect(c2.querySelector(".pb-src")).toBeNull();
   });
 
   it("no rádio, a descoberta se anuncia e o title diz o motivo (B7)", () => {
@@ -85,7 +84,8 @@ describe("chip de origem da fila (pb-src)", () => {
     setQueue([disc], 0, "curated", { kind: "radio" });
     const { container } = render(() => <PlayerBar />);
     const chip = container.querySelector(".pb-src")!;
-    expect(chip.textContent).toBe("rádio · descoberta");
+    // Nunca ouvida até o fim: o grau entra no mesmo selo (A2).
+    expect(chip.textContent).toBe("rádio · 1ª escuta");
     expect(chip.getAttribute("data-pick")).toBe("discovery");
     expect(chip.getAttribute("title")).toBe(
       "Tocando por rádio: o motor escolheu esta faixa. Descoberta: você ainda não a ouviu até o fim.",

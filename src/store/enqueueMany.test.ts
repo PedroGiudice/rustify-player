@@ -104,12 +104,18 @@ describe("confirmação de enfileirar (queueAck)", () => {
     expect(queueAck()?.where).toBe("end");
     expect(queueAck()!.seq).not.toBe(first!.seq);
   });
-  it("a faixa que está tocando não conta; nada entrou = sem confirmação nova", () => {
-    enqueueEndMany([mk("a"), mk("x")]);
+  it("a faixa que está tocando não conta; nada entrou = confirmação com 0 (A15)", () => {
+    expect(enqueueEndMany([mk("a"), mk("x")])).toBe(1);
     expect(queueAck()?.n).toBe(1);
     const before = queueAck()!.seq;
-    enqueueNextMany([mk("a")]);
-    enqueueNext(mk("a"));
-    expect(queueAck()!.seq).toBe(before);
+    expect(enqueueNextMany([mk("a")])).toBe(0);
+    expect(queueAck()?.n).toBe(0);
+    expect(queueAck()!.seq).not.toBe(before);
+    expect(enqueueNext(mk("a"))).toBe(0);
+    expect(queueAck()?.where).toBe("next");
+    // Lista vazia não é gesto: nada a confirmar.
+    const last = queueAck()!.seq;
+    expect(enqueueEndMany([])).toBe(0);
+    expect(queueAck()!.seq).toBe(last);
   });
 });
