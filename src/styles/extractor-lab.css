@@ -185,6 +185,24 @@
   --playerbar-h: 72px;
   --titlebar-h:  32px;
 
+  /* Espaço por papel (A48). A densidade compacta redefine SÓ estes
+     tokens (bloco data-density), em vez de reescrever cada seletor.
+     Valores estáticos: nunca transition de custom property aqui.
+     gutter     = margem lateral de toda vista (cabeçalho, abas, corpo, Crate);
+     top        = respiro acima do conteúdo, sob o cabeçalho e no cabeçalho;
+     head-end   = base do cabeçalho da vista, antes da borda;
+     end        = fim do corpo, acima da barra do player;
+     block      = entre blocos do corpo (seções da Home, Playlists);
+     block-tight= entre painéis densos (Signal, Settings);
+     tab-x      = recuo lateral do texto da aba (o sublinhado segue). */
+  --space-gutter: 40px;
+  --space-top: 28px;
+  --space-head-end: 18px;
+  --space-end: 56px;
+  --space-block: 36px;
+  --space-block-tight: 18px;
+  --space-tab-x: 14px;
+
   /* Repouso é claro; applyTheme (src/tauri.ts) troca para dark pela
      luminância do --bg-paper do tema (lista do <select>, scrollbars, caret). */
   color-scheme: light;
@@ -572,7 +590,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 
 .view__head {
   display: flex; align-items: baseline; justify-content: space-between;
-  padding: 28px 40px 18px;
+  padding: var(--space-top) var(--space-gutter) var(--space-head-end);
   border-bottom: 1px solid var(--line-2);
   gap: 32px;
   background: var(--bg-paper);
@@ -595,7 +613,7 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
 }
 .view__stats b { font-weight: 600; color: var(--fg-2); }
 
-.view__body { padding: 28px 40px 56px; display: flex; flex-direction: column; gap: 36px; }
+.view__body { padding: var(--space-top) var(--space-gutter) var(--space-end); display: flex; flex-direction: column; gap: var(--space-block); }
 
 .section__head {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -1327,17 +1345,17 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    desconta o padding da própria aba. Antes "Tracks" ficava 14 px à direita
    do título (e, no compacto do Crate, 4 px à esquerda). Conta: gutter da
    vista menos o padding lateral da aba (40 - 14 = 26; compacto 24 - 12 =
-   12; Crate compacto 40 - 12 = 28). Peso fixo em 600:
+   12), pelos tokens (A48), então o Crate compacto segue a mesma conta. Peso fixo em 600:
    a ativa se distingue pela cor e pelo sublinhado, e trocar de aba não
    engorda o rótulo nem empurra as vizinhas. */
 .tabs {
   display: flex; gap: 2px;
-  padding: 0 26px;
+  padding: 0 calc(var(--space-gutter) - var(--space-tab-x));
   border-bottom: 1px solid var(--line-2);
   background: var(--bg-paper);
 }
 .tab {
-  padding: 11px 14px;
+  padding: 11px var(--space-tab-x);
   font-size: 13px; font-weight: 600;
   color: var(--fg-5);
   position: relative; cursor: pointer;
@@ -1350,7 +1368,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
    centro (transform), a que deixa de ser o recolhe. */
 .tab::after {
   content: ''; position: absolute;
-  left: 14px; right: 14px; bottom: -1px;
+  left: var(--space-tab-x); right: var(--space-tab-x); bottom: -1px;
   height: 2px; background: var(--fg-1);
   transform: scaleX(0);
   transition: transform var(--dur-med) var(--ease-out);
@@ -2499,23 +2517,28 @@ section > .queue-view__why { border-bottom: 0; }
    deste bloco no arquivo nao importa. A altura da playerbar vem so do
    token (o grid do .app le --playerbar-h). Travado em
    src/styles/layout-modes.test.ts, contra este arquivo. */
-html[data-density="compact"] { --playerbar-h: 60px; }
+html[data-density="compact"] {
+  --playerbar-h: 60px;
+  /* Espaço por papel (A48): o compacto troca os tokens e as regras que os
+     usam encolhem juntas, inclusive o Crate (antes a única área em que o
+     compacto não reduzia o gutter). */
+  --space-gutter: 24px;
+  --space-top: 16px;
+  --space-head-end: 12px;
+  --space-end: 32px;
+  --space-block: 20px;
+  --space-block-tight: 12px;
+  --space-tab-x: 12px;
+}
 /* Centro da barra nos 60 px (A41): play 36 + gap 6 + seek ~16,5 + padding 16
    passava da barra. Com 32 + 4 + 16,5 + 4 sobram ~3,5 px. */
 html[data-density="compact"] .pb-center { padding: 2px 0; gap: 4px; }
 html[data-density="compact"] .pb-btn--primary { width: 32px; height: 32px; }
 html[data-density="compact"] .nav-item { padding: 5px 10px; }
-/* Cabecalho, abas e corpo das views */
-html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
-html[data-density="compact"] .tabs { padding: 0 12px; }
-html[data-density="compact"] .tab { padding: 8px 12px; }
-html[data-density="compact"] .tab::after { left: 12px; right: 12px; }
-/* O Crate mantém o gutter de 40 px no compacto (cabeçalho e corpo). */
-html[data-density="compact"] .view:has(> .crate-body) > .tabs { padding: 0 28px; }
-/* .crate-body desenha o proprio espacamento (padding/gap 0) com gutters
-   de 40px: o cabecalho do Crate mantem o gutter lateral pra alinhar. */
-html[data-density="compact"] .view__body:not(.crate-body) { padding: 16px 24px 32px; gap: 20px; }
-html[data-density="compact"] .view:has(> .crate-body) > .view__head { padding-left: 40px; padding-right: 40px; }
+/* Cabecalho, abas e corpo das views: padding, gutter e gap vêm dos
+   tokens acima; aqui só o que não é papel de espaço. */
+html[data-density="compact"] .view__head { gap: 20px; }
+html[data-density="compact"] .tab { padding-block: 8px; }
 html[data-density="compact"] .section__head { margin-bottom: 8px; }
 html[data-density="compact"] .toolbar { margin-bottom: 12px; }
 /* Tabela de faixas (Tracks, Album, Playlist): cabecalhos e celulas das
@@ -2529,10 +2552,8 @@ html[data-density="compact"] .card-grid,
 html[data-density="compact"] .pl-grid { gap: 14px 12px; }
 html[data-density="compact"] .card__cover,
 html[data-density="compact"] .pl-card__cover { margin-bottom: 8px; }
-/* Containers proprios: Playlists/Stations, Signal, Settings */
-html[data-density="compact"] .coll { padding: 16px 24px 32px; gap: 20px; }
-html[data-density="compact"] .sig { padding: 14px 24px 40px; gap: 12px; }
-html[data-density="compact"] .set { padding: 16px 24px 32px; gap: 14px; }
+/* Containers proprios (Playlists/Stations, Signal, Settings): padding e
+   gap pelos tokens de espaço. */
 html[data-density="compact"] .set-panel__head { padding: 10px 16px; }
 html[data-density="compact"] .set-row { padding: 8px 16px; }
 html[data-density="compact"] .st-card { padding: 10px 12px; gap: 6px; }
@@ -2707,10 +2728,10 @@ html { --glow: 0; }
    Portado do HTML referencia (handoff signal-screens, T6).
    ════════════════════════════════════════════════════════════ */
 .sig {
-  padding: 22px 40px 64px;
+  padding: var(--space-top) var(--space-gutter) var(--space-end);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-block-tight);
   /* B21: na tela larga a curva virava faixa de 8:1. */
   max-width: 1180px;
 }
@@ -3405,10 +3426,10 @@ html { --glow: 0; }
    PLAYLISTS — collection cards (pastas do acervo)
    ════════════════════════════════════════════════════════════ */
 .coll {
-  padding: 28px 40px 56px;
+  padding: var(--space-top) var(--space-gutter) var(--space-end);
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: var(--space-block);
 }
 
 .coll-toolbar {
@@ -3974,11 +3995,11 @@ html { --glow: 0; }
    SETTINGS — paper rows in panels, organized sections
    ════════════════════════════════════════════════════════════ */
 .set {
-  padding: 28px 40px 56px;
+  padding: var(--space-top) var(--space-gutter) var(--space-end);
   max-width: 820px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: var(--space-block-tight);
 }
 .set-panel {
   background: var(--bg-paper);
@@ -4727,7 +4748,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-toolbar {
   display: flex; align-items: center; gap: 10px;
   justify-content: flex-start; /* o space-between do .coll-toolbar espalhava os status (A12) */
-  padding: 18px 40px 0;
+  padding: 18px var(--space-gutter) 0;
   flex-wrap: wrap;
 }
 .crate-toolbar .crate-dest { margin-left: auto; }
@@ -4942,7 +4963,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
 }
 
 /* ── banners ─────────────────────────────────────────────────── */
-.crate-banners { display: flex; flex-direction: column; gap: 8px; padding: 16px 40px 0; }
+.crate-banners { display: flex; flex-direction: column; gap: 8px; padding: 16px var(--space-gutter) 0; }
 .crate-banner {
   display: flex; align-items: center; gap: 12px;
   padding: 11px 14px;
@@ -4992,7 +5013,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-section__head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px;
-  padding: 22px 40px 9px;
+  padding: 22px var(--space-gutter) 9px;
 }
 .crate-list-head h2,
 .crate-section__head h2 {
@@ -5010,7 +5031,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
   font-size: var(--fs-label); color: var(--fg-5); white-space: nowrap;
 }
 
-.crate-list { padding: 0 40px 56px; }
+.crate-list { padding: 0 var(--space-gutter) var(--space-end); }
 /* Vidro barato (A27, o mesmo da .row-list da Home): tom + alpha, sem
    backdrop-filter nem overflow hidden, para artista, duração e estado não
    sumirem quando o fundo animado passa claro atrás da lista. */
@@ -5449,11 +5470,11 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-src-path bdi { direction: ltr; unicode-bidi: embed; }
 
 /* ── empty state (pré-busca e sem resultado) ─────────────────── */
-.crate-empty-wrap { padding: 28px 0 56px; }
+.crate-empty-wrap { padding: 28px 0 var(--space-end); }
 .crate-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px;
-  margin: 0 40px;
+  margin: 0 var(--space-gutter);
   padding: 96px 40px;
   border: 1px dashed var(--line-2);
   border-radius: var(--radius-xl);
@@ -5471,7 +5492,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-empty__acts:empty { display: none; }
 
 /* ── fila ────────────────────────────────────────────────────── */
-.crate-q-sec { padding: 0 40px; }
+.crate-q-sec { padding: 0 var(--space-gutter); }
 .crate-q-sec h2 {
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
@@ -5499,7 +5520,7 @@ html[data-sidebar="icons"] .bridge-chip__text {
 }
 
 /* ── Tidal (fase 1): link + pasta + fila remota na VM ──────────── */
-.crate-tidal { padding: 16px 40px 56px; display: flex; flex-direction: column; gap: 14px; }
+.crate-tidal { padding: 16px var(--space-gutter) var(--space-end); display: flex; flex-direction: column; gap: 14px; }
 .crate-tidal-form { display: flex; flex-direction: column; gap: 6px; }
 .crate-tidal-form__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .crate-tidal-input {
