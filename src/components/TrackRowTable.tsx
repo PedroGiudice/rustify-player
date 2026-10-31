@@ -1,7 +1,7 @@
 // src/components/TrackRowTable.tsx — linha de track para listas .tracks (Família A).
 // Uso: dentro de <div class="tracks"> ou <div class="tracks tracks--with-cover">.
 // O container pai define as colunas; a linha é um grid com subgrid (ver .tracks__row).
-import { Show, createEffect, onCleanup } from "solid-js";
+import { For, Show, createEffect, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { player } from "../store/player";
 import { NowPlayingIndicator } from "./NowPlayingIndicator";
@@ -12,6 +12,9 @@ import {
   claimList, focusList, isSelected, menuSelection, rangeToTrack, rowClick, rowMouseDown, selectionActive, toggleTrack,
 } from "../store/selection";
 import { Icon, ICONS } from "./Icon";
+import { truncTipEvent } from "../lib/truncTip";
+
+const DEFAULT_COLUMNS = ["album", "playlist"] as const;
 
 interface TrackRowTableProps {
   track: Track;
@@ -25,10 +28,11 @@ interface TrackRowTableProps {
    */
   coverSlot?: JSX.Element;
   /**
-   * Colunas após .tracks__title. Default quando ausente: album + genre.
-   * Passado explicitamente para customizar (ex: remover genre em alguma view futura).
+   * Colunas entre o título e a duração. Padrão: álbum e playlist. A página
+   * da playlist tira a playlist (é a mesma em toda linha) e a do álbum tira
+   * as duas (A20, A21). O `.tracks` do pai declara as trilhas que casam.
    */
-  extraCols?: JSX.Element;
+  columns?: ReadonlyArray<"album" | "playlist">;
   /** Lista circundante — habilita o item Shuffle no menu de contexto. */
   contextList?: Track[];
 }
@@ -54,7 +58,8 @@ export function TrackRowTable(props: TrackRowTableProps) {
       aria-selected={selectable() ? selected() : undefined}
       onClick={(e) => rowClick(e, props.contextList, props.track.id, props.onClick)}
       onMouseDown={(e) => rowMouseDown(e, props.contextList)}
-      onFocus={() => { if (props.contextList) focusList(props.contextList); }}
+      onFocus={(e) => { truncTipEvent(e); if (props.contextList) focusList(props.contextList); }}
+      onPointerEnter={truncTipEvent}
       onContextMenu={(e) =>
         openTrackMenu(e, props.track, {
           list: props.contextList,
@@ -82,7 +87,7 @@ export function TrackRowTable(props: TrackRowTableProps) {
       }}
     >
       {/* Célula índice: NPI quando current, número formatado quando não */}
-      <div class="tracks__idx" classList={{ "tracks__idx--sel": selectable() }}>
+      <div class="tracks__idx" classList={{ "tracks__idx--sel": selectable() }} role="gridcell">
         <Show
           when={selectable()}
           fallback={
@@ -118,26 +123,23 @@ export function TrackRowTable(props: TrackRowTableProps) {
       </Show>
 
       {/* Título + artista */}
-      <div class="tracks__title">
-        <b>{props.track.title || "—"}</b>
-        <small>{props.track.artist_name || "—"}</small>
+      <div class="tracks__title" role="gridcell">
+        <b data-trunc>{props.track.title || "—"}</b>
+        <small data-trunc>{props.track.artist_name || "—"}</small>
       </div>
 
-      {/* Colunas extras — default: album + genre */}
-      <Show
-        when={props.extraCols !== undefined}
-        fallback={
-          <>
-            <div class="tracks__cell">{props.track.album_title ?? "—"}</div>
-            <div class="tracks__cell">{props.track.genre_name ?? "—"}</div>
-          </>
-        }
-      >
-        {props.extraCols}
-      </Show>
+      {/* Colunas do meio: álbum e playlist (o campo genre é a pasta de
+          primeiro nível, ou seja a playlist). */}
+      <For each={props.columns ?? DEFAULT_COLUMNS}>
+        {(c) => (
+          <div class="tracks__cell" role="gridcell" data-trunc>
+            {(c === "album" ? props.track.album_title : props.track.genre_name) ?? "—"}
+          </div>
+        )}
+      </For>
 
       {/* Duração — sempre última coluna */}
-      <div class="tracks__mono">{fmtDur(props.track.duration_ms)}</div>
+      <div class="tracks__mono" role="gridcell">{fmtDur(props.track.duration_ms)}</div>
     </div>
   );
 }

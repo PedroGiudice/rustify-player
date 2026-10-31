@@ -114,3 +114,36 @@ describe("TrackRowTable — linha focável", () => {
     expect(noPad(pad), pad).toBe(true);
   });
 });
+
+describe("TrackRowTable — colunas por tela (A20, A21)", () => {
+  const T2: Track = { ...TRACK, genre_name: "Rap & Hip-Hop" };
+  const cells = (c: HTMLElement) =>
+    Array.from(c.querySelectorAll(".tracks__row > [role=gridcell]")).map((e) => e.textContent);
+
+  it("padrão: título, álbum, playlist e duração; cada célula é gridcell", () => {
+    const { container } = render(() => <div class="tracks"><TrackRowTable track={T2} index={1} onClick={() => {}} /></div>);
+    expect(cells(container)).toEqual(["01", "SongArtist", "Album", "Rap & Hip-Hop", "3:00"]);
+  });
+
+  it("página da playlist: sem a coluna de playlist", () => {
+    const { container } = render(() => <div class="tracks"><TrackRowTable track={T2} index={1} onClick={() => {}} columns={["album"]} /></div>);
+    expect(cells(container)).toEqual(["01", "SongArtist", "Album", "3:00"]);
+  });
+
+  it("página do álbum: sem álbum nem playlist", () => {
+    const { container } = render(() => <div class="tracks"><TrackRowTable track={T2} index={1} onClick={() => {}} columns={[]} /></div>);
+    expect(cells(container)).toEqual(["01", "SongArtist", "3:00"]);
+  });
+});
+
+describe("TrackRowTable — texto cortado mostra o inteiro no hover (A37)", () => {
+  it("ao entrar na linha, o título cortado ganha title", () => {
+    const long: Track = { ...TRACK, title: "Let It Be (Remastered 2011) [Deluxe Edition]" };
+    const { container } = render(() => <div class="tracks"><TrackRowTable track={long} index={1} onClick={() => {}} /></div>);
+    const b = container.querySelector(".tracks__title b") as HTMLElement;
+    Object.defineProperty(b, "scrollWidth", { value: 500, configurable: true });
+    Object.defineProperty(b, "clientWidth", { value: 200, configurable: true });
+    fireEvent.pointerEnter(container.querySelector(".tracks__row")!);
+    expect(b.title).toBe("Let It Be (Remastered 2011) [Deluxe Edition]");
+  });
+});
