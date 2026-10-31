@@ -2037,6 +2037,30 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   box-shadow: var(--shadow-hover);
 }
 .qedit--lifted .qedit__grip { opacity: 1; cursor: grabbing; color: var(--fg-1); }
+/* Por que o rádio escolheu a faixa (B10): uma linha sob o artista, alinhada
+   ao texto (padding 10 + capa 36 + gap 12). Alça e tirar ficam no meio da
+   linha da faixa (52 px), não do bloco inteiro. */
+.qedit__why {
+  margin: -6px 0 0; padding: 0 10px 8px 58px;
+  font-size: var(--fs-label); line-height: 1.35;
+  color: var(--fg-5);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qedit:has(.qedit__why) .qedit__grip,
+.qedit:has(.qedit__why) .qedit__remove { top: 26px; }
+/* A mesma linha na rota /queue: a borda da linha passa para baixo dela
+   (padding 10 + borda 2 + capa 40 + gap 14). */
+.row-list .row:has(+ .queue-view__why), section > .row:has(+ .queue-view__why) { border-bottom: 0; padding-bottom: 4px; }
+.queue-view__why {
+  margin: 0; padding: 0 12px 10px 66px;
+  border-bottom: 1px solid var(--line-3);
+  font-size: var(--fs-label); line-height: 1.35;
+  color: var(--fg-5);
+  font-variant-numeric: tabular-nums;
+}
+.row-list .queue-view__why:last-child { border-bottom: 0; }
+section > .queue-view__why { border-bottom: 0; }
 
 .qrow {
   display: grid;

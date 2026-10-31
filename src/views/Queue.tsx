@@ -10,7 +10,7 @@ import { For, Show } from "solid-js";
 import { player } from "../store/player";
 import { TrackRowList } from "../components/TrackRowList";
 import { playTrack, playQueueUpcoming } from "../components/PlayerBar";
-import { queueEndNote, queueMeta } from "../components/QueueDrawer";
+import { queueEndNote, queueMeta, radioReason } from "../components/QueueDrawer";
 import { navigate } from "../router";
 
 export default function Queue() {
@@ -32,6 +32,9 @@ export default function Queue() {
             <section>
               <div class="section__head"><h2 class="section__title">Tocando agora</h2></div>
               <TrackRowList track={t()} onClick={() => navigate("/now-playing")} noWhen />
+              <Show when={radioReason(t(), player.queue)}>
+                {(why) => <p class="queue-view__why">{why()}</p>}
+              </Show>
             </section>
           )}
         </Show>
@@ -41,7 +44,14 @@ export default function Queue() {
             <div class="section__head"><h2 class="section__title">A seguir · {upcoming().length}</h2></div>
             <div class="row-list">
               <For each={upcoming()}>
-                {(t) => <TrackRowList track={t} onClick={() => playQueueUpcoming(t)} noWhen />}
+                {(t) => (
+                  <>
+                    <TrackRowList track={t} onClick={() => playQueueUpcoming(t)} noWhen />
+                    <Show when={radioReason(t, player.queue)}>
+                      {(why) => <p class="queue-view__why">{why()}</p>}
+                    </Show>
+                  </>
+                )}
               </For>
             </div>
           </section>

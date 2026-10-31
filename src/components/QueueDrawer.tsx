@@ -32,6 +32,7 @@ import { isTypingContext } from "../lib/keyboard";
 import { pushEscLayer } from "../lib/escLayers";
 import { rememberFocus, trapTab, type FocusReturn } from "../lib/focusReturn";
 import { showToast } from "../store/toast";
+import { autoplayReasonText } from "../lib/radioWhy";
 
 export const QUEUE_EVENT = "rustify:open-queue";
 
@@ -55,6 +56,16 @@ export function queueEndNote(hasUpcoming: boolean, repeat: "off" | "all" | "one"
   if (repeat === "one") return "A faixa atual se repete.";
   if (hasUpcoming) return repeat === "all" ? "Fim da lista. A fila recomeça do início." : "Fim da lista. O rádio continua depois dela.";
   return repeat === "all" ? "Depois desta, a fila recomeça." : "Depois desta, o rádio escolhe.";
+}
+
+/** B10: por que o rádio escolheu a faixa, numa linha curta; null para faixa
+    que o rádio não escolheu. A semente costuma estar na própria fila (é a
+    faixa que tocava quando o rádio pediu o lote): o título sai de lá. */
+export function radioReason(track: Track, queue: readonly Track[]): string | null {
+  const r = track.autoplay_reason;
+  if (!r) return null;
+  const seed = queue.find((t) => t.id === r.seed_id)?.title ?? null;
+  return autoplayReasonText(r, seed);
 }
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -337,6 +348,9 @@ export function QueueDrawer() {
                   <div class="qedit qedit--now">
                     <div class="qedit__track">
                       <TrackRowList track={t()} onClick={openNowPlaying} size="compact" />
+                      <Show when={radioReason(t(), player.queue)}>
+                        {(why) => <p class="qedit__why">{why()}</p>}
+                      </Show>
                     </div>
                   </div>
                 </>
@@ -370,6 +384,9 @@ export function QueueDrawer() {
                       </button>
                       <div class="qedit__track">
                         <TrackRowList track={track} onClick={() => playQueueUpcoming(track)} size="compact" />
+                        <Show when={radioReason(track, player.queue)}>
+                          {(why) => <p class="qedit__why">{why()}</p>}
+                        </Show>
                       </div>
                       <button
                         class="qedit__remove"
