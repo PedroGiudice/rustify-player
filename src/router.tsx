@@ -74,12 +74,38 @@ export function currentPath(): string {
 // Usado no App.tsx como <RouterView />
 
 import { Suspense, Dynamic } from "solid-js/web";
+import { ErrorBoundary, createEffect, on } from "solid-js";
+import { EmptyState } from "./components/EmptyState";
+
+/** Tela que lançou uma exceção no render: o bloco de erro no lugar dela,
+    com a barra do player, a lateral e o resto do shell de pé (A7). Trocar
+    de rota sai do erro sozinho. */
+function ViewCrash(props: { error: unknown; reset: () => void }) {
+  const at = route().path;
+  createEffect(on(() => route().path, (p) => { if (p !== at) props.reset(); }, { defer: true }));
+  console.error("[router] a tela falhou:", props.error);
+  return (
+    <div class="view-crash">
+      <EmptyState
+        tone="erro"
+        title="Esta tela falhou."
+        text="O resto do app segue funcionando e a música não parou."
+        actions={[
+          { label: "Tentar de novo", onClick: props.reset, primary: true },
+          { label: "Ir para a Home", onClick: () => navigate("/home") },
+        ]}
+      />
+    </div>
+  );
+}
 
 export function RouterView() {
   const view = () => VIEWS[route().path] ?? VIEWS[DEFAULT_ROUTE];
   return (
-    <Suspense fallback={<div class="empty-state"><p class="empty-state__hint">Loading…</p></div>}>
-      <Dynamic component={view()} param={route().param} />
-    </Suspense>
+    <ErrorBoundary fallback={(err, reset) => <ViewCrash error={err} reset={reset} />}>
+      <Suspense fallback={<div class="empty-state"><p class="empty-state__hint">Loading…</p></div>}>
+        <Dynamic component={view()} param={route().param} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
