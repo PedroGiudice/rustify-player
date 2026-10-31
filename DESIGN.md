@@ -87,6 +87,12 @@ typography:
     fontWeight: 600
     lineHeight: 1.3
     letterSpacing: "-0.01em"
+  title-lg:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: "-0.005em"
   title:
     fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "13.5px"
@@ -99,11 +105,23 @@ typography:
     fontWeight: 500
     lineHeight: 1.4
     letterSpacing: "normal"
+  title-sm:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "12.5px"
+    fontWeight: 500
+    lineHeight: 1.3
+    letterSpacing: "normal"
   secondary:
     fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.4
+    letterSpacing: "normal"
+  meta:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "11.5px"
+    fontWeight: 400
+    lineHeight: 1.3
     letterSpacing: "normal"
   label:
     fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
@@ -130,6 +148,18 @@ typography:
     fontWeight: 600
     lineHeight: 1.14
     letterSpacing: "-0.02em"
+  s24-stat:
+    fontFamily: "Inter, system-ui, sans-serif"
+    fontSize: "19px"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "-0.01em"
+  s24-lead:
+    fontFamily: "Inter, system-ui, sans-serif"
+    fontSize: "17px"
+    fontWeight: 600
+    lineHeight: 1.25
+    letterSpacing: "-0.01em"
   s24-body:
     fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "13.5px"
@@ -138,13 +168,13 @@ typography:
     letterSpacing: "normal"
   s24-label:
     fontFamily: "Inter, system-ui, sans-serif"
-    fontSize: "10px"
+    fontSize: "11px"
     fontWeight: 700
     lineHeight: 1.2
     letterSpacing: "0.08em"
   s24-data:
     fontFamily: "JetBrains Mono, ui-monospace, Menlo, monospace"
-    fontSize: "10.5px"
+    fontSize: "11px"
     fontWeight: 400
     lineHeight: 1.25
     letterSpacing: "0.02em"
@@ -158,19 +188,16 @@ rounded:
   2xl: "14px"
   pill: "999px"
 spacing:
-  # Não há tokens de espaçamento no CSS; esta é a escala que o código REPETE
-  # (padding de linha, gap de grade, respiro de tela). Usar estes degraus.
-  "1": "4px"
-  "2": "6px"
-  "3": "8px"
-  "4": "10px"
-  "5": "12px"
-  "6": "14px"
-  "7": "16px"
-  "8": "18px"
-  "9": "24px"
-  "10": "28px"
-  "11": "40px"
+  # Tokens de espaço por papel (`--space-*` no `:root`, A48 de 31/10/2026).
+  # O modo compacto (`html[data-density="compact"]`) troca só estes valores:
+  # gutter 24, top 16, head-end 12, end 32, block 20, block-tight 12, tab-x 12.
+  gutter: "40px"
+  top: "28px"
+  head-end: "18px"
+  end: "56px"
+  block: "36px"
+  block-tight: "18px"
+  tab-x: "14px"
 components:
   button-primary:
     backgroundColor: "{colors.carbon-1}"
@@ -180,11 +207,33 @@ components:
   button-primary-hover:
     backgroundColor: "{colors.carbon-2}"
     textColor: "{colors.paper}"
+  button-labeled-primary:
+    backgroundColor: "{colors.carbon-1}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.md}"
+    padding: "0 12px"
+    height: "30px"
   button-secondary:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.carbon-2}"
     rounded: "{rounded.md}"
-    padding: "6px 12px"
+    padding: "0 12px"
+    height: "30px"
+  button-secondary-hover:
+    backgroundColor: "{colors.soft}"
+    textColor: "{colors.carbon-1}"
+  button-small:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.carbon-2}"
+    rounded: "{rounded.md}"
+    padding: "0 10px"
+    height: "26px"
+  button-large:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.carbon-2}"
+    rounded: "{rounded.pill}"
+    padding: "0 14px"
+    height: "36px"
   button-quiet:
     backgroundColor: "transparent"
     textColor: "{colors.carbon-5}"
@@ -244,6 +293,27 @@ components:
     textColor: "{colors.carbon-1}"
     rounded: "{rounded.sm}"
     padding: "4px 10px"
+  empty-state:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.carbon-5}"
+    rounded: "{rounded.xl}"
+    padding: "72px 40px"
+  empty-state-error:
+    backgroundColor: "{colors.err-bg}"
+    textColor: "{colors.carbon-4}"
+    rounded: "{rounded.xl}"
+  toast:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.carbon-2}"
+    rounded: "{rounded.lg}"
+    padding: "6px 6px 6px 14px"
+    typography: "{typography.title-sm}"
+  lib-hero-cover:
+    rounded: "{rounded.2xl}"
+    size: "176px"
+  tidal-poster:
+    rounded: "{rounded.xl}"
+    size: "120px"
   tweaks-panel:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.carbon-1}"
@@ -367,6 +437,14 @@ regido por tema.
   âmbar = qualidade lossy na pílula de formato, bench baixo, ponte MCP
   conectada (alguém de fora pode mexer na tela); rosa = like ligado
   (coração) e erro. Cada um é um trio ring/bg/fg.
+- **Pontos de estado** (31/10/2026): o halo é só do aviso; verde "tudo certo"
+  e ponto neutro (faixa não medida, `--fg-6`) não brilham. No Crate o âmbar
+  tem papel: "na fila" e "baixando" são espera normal, em tinta neutra; âmbar
+  é "travou" ou "pede ação". O painel Recursos é neutro, com âmbar e rosa só
+  como sinal (não segue o acento da capa).
+- **Véu** (`--scrim-rgb` 0,0,0, a 0,32 na paleta ⌘K e na gaveta): escurece em
+  qualquer tema; o literal antigo (o carbono 1) clareava o fundo no Really
+  Dark.
 
 ### Named Rules
 **A Regra da Moldura Quieta.** A interface é acromática. Cor de verdade só
@@ -382,7 +460,12 @@ repouso; alinhar é edição de tema (ver Don'ts).
 
 **A Regra do Piso.** 4,5:1 para texto, 3:1 para texto grande, controles e para
 o ink do fundo, medidos no pior ponto do fundo real (capa e fundo animado).
-O checker do tema (`load_theme`) e o `validate.py` reprovam o que falha.
+O acento da capa mira 5,2:1 contra o canvas e o paper (não contra o ink do
+tema) e 4,5:1 sobre a própria lavagem de 12 %; capa com croma OKLCH < 0,02 é
+acromática e deixa o acento do tema. Os sinais ok/aviso/erro se medem onde
+moram: sobre soft, faint e o próprio `-bg` (rgba composto sobre o paper). O
+checker do tema (`load_theme`, `theme_contrast_checks`) e o `validate.py`
+reprovam o que falha e avisam quando dois sinais colapsam (ΔE OKLab < 5).
 
 ## Typography
 
@@ -405,42 +488,56 @@ isso é ajuste pessoal do dono por instalação (em 26/10/2026 o app roda com
 Baumans e Righteous), não parte do sistema. Tela nova nasce com Instrument Sans.
 
 ### Hierarchy (desktop)
+Escala por papel em tokens no `:root` (A45, B32, 31/10/2026): cada token é um
+degrau e um papel; tamanho fora da escala é dívida, não licença.
+
 - **Display** (600, `clamp(48px, 5.4vw, 76px)`, 0.98, −0.025em): só o título
   da faixa no Now Playing, com `text-wrap: balance`. Única palavra grande do
   app.
-- **Feature** (`--fs-feature`, 600, 28px, 1.1, −0.02em): título do destaque
-  na Stations ("Your Mix") e título da playlist (era 38 px até 30/10/2026).
-- **Headline** (600, 22px, 1.2, −0.015em): h1 de cada vista ("Home",
-  "Stations", "Crate").
-- **Lead** (`--fs-lead`, 18px, 500–700): título do hero-tile, artista no Now
-  Playing, valor de estatística (Signal, Settings), linha da letra.
-- **Subhead** (`--fs-subhead`, 15px, 500–600): nome da marca, título da
-  gaveta da fila, campo da paleta ⌘K.
-- **Title** (600, 13.5–14px, 1.25–1.3, −0.005 a −0.015em): título da faixa na
-  linha (13.5), nome da station (14), item de navegação (13.5/500, 600 quando
-  ativo).
-- **Body** (400–500, 13–14px, 1.4): texto corrente, campo de busca (13.5/500),
-  aba (13/500), dica do cabeçalho (13).
-- **Secondary** (400, 11.5–12px, 1.3–1.4, carbono 5): artista, álbum,
-  subtítulo de card, texto de chip (12/500).
-- **Label** (700, 10–11px, 1.25, +0.06 a +0.08em, caixa-alta, carbono 5):
-  título de seção ("RECENTLY PLAYED"), eyebrow do hero-tile (10.5), rótulo de
-  knob no Tweaks (11/600), rótulo da barra lateral (10).
-- **Data** (mono, 400–650, 10–11.5px, tabular): tempo da barra do player (11),
-  duração da linha (11.5), estatísticas do cabeçalho (11.5), hora relativa
-  (11), selo de formato "FLAC 24/96" (10), chip de proveniência RÁDIO
-  (10/650, +0.07em, caixa-alta), Hz do fader (9.5).
+- **Feature** (`--fs-feature` 28, 600, 1.1, −0.02em): título do destaque na
+  Stations, da playlist e do `LibHero` (Álbum, Artista, Playlist).
+- **Headline** (`--fs-headline` 22, 600, 1.2, −0.015em): h1 de cada vista.
+- **Lead** (`--fs-lead` 18): título de cartão e do hero-tile, artista no Now
+  Playing, valor de estatística, linha da letra, título da prévia da Tidal.
+- **Subhead** (`--fs-subhead` 15): título de painel, nome da marca, campo da
+  paleta ⌘K.
+- **Title-lg** (`--fs-title-lg` 14, 600): título de painel e de estado vazio.
+- **Title** (`--fs-title` 13,5, 600): título de item (linha, card, resultado),
+  título da barra do player, campo de busca.
+- **Body** (`--fs-body` 13): texto corrente, aba (600), dica.
+- **Title-sm** (`--fs-title-sm` 12,5): título compacto (gaveta da fila, mini
+  player, toast).
+- **Secondary** (`--fs-small` 12, carbono 5): artista, álbum, subtítulo, chip,
+  botão.
+- **Meta** (`--fs-meta` 11,5): dado de linha e secundário compacto (duração,
+  estatística, subtítulo da gaveta).
+- **Label** (`--fs-label` 11, `--label-weight` 700, `--label-tracking`
+  +0,06em, caixa-alta, carbono 5, sans): receita ÚNICA de rótulo; toda regra
+  de rótulo aponta para esses tokens. Caixa-alta em mono só no dado (selo de
+  origem, nome do renderer).
+- **Data** (mono 11 = `--fs-label`, tabular): tempo da barra, duração, hora
+  relativa, selo de formato, selo de proveniência (11/600). Todo mono leva
+  `tabular-nums`.
 
 ### Hierarchy (S24)
-- **Display** (Fraunces 600, 28px, 1.1, −0.02em): h1 de cada aba.
-- **Title** (Fraunces 600, 23px, 1.14, −0.02em): título da faixa no Now
-  Playing; card de atalho em Inter 600 16px.
-- **Body** (Inter 500, 13.5px): título da faixa na lista; artista 11.5 em
-  `--t3`; mini player 12.5/500.
-- **Label** (Inter 700, 10px, +0.08em, caixa-alta, `--t3`): eyebrow; aba da
-  tabbar 9.5px +0.02em.
-- **Data** (JetBrains Mono, 10.5–11px, tabular, +0.02em): subtítulo do
-  cabeçalho, duração, tempos do seek; selo de origem 8.5px +0.06em caixa-alta.
+Escala própria em `src/mobile/styles/tokens.css` (A63, 31/10/2026), com piso
+de 11 px em tudo que se lê (tabbar, eyebrow, rótulos, selo de origem, tags,
+mono de meta; eram 8,5-10,5).
+
+- **Display** (`--fs-display` 28, Fraunces 600, 1.1, −0.02em): h1 de cada aba.
+- **Title** (`--fs-title` 23, Fraunces 600, 1.14, −0.02em): título da faixa
+  no Now Playing.
+- **Stat** (`--fs-stat` 19, Inter 600): valor de estatística.
+- **Lead** (`--fs-lead` 17, Inter 600): título de cartão de atalho e de seção
+  de destaque.
+- **Body** (`--fs-body` 13,5, Inter 500): título da faixa na lista.
+- **Meta** (`--fs-meta` 11,5): artista e secundário, em `--t3`.
+- **Label** (`--fs-label` 11, Inter 700, +0.08em, caixa-alta, `--t3`):
+  eyebrow, aba da tabbar e selo de origem.
+- **Data** (JetBrains Mono 11, tabular): subtítulo do cabeçalho, duração,
+  tempos do seek.
+- `--t4` só em glifo e chevron (3:1 basta para não-texto); texto, por menor
+  que seja, vai em `--t3` ou acima.
 
 ### Named Rules
 **A Regra dos Três Tamanhos.** Por tela, no máximo 3 tamanhos e 2 pesos.
@@ -455,8 +552,8 @@ Números não dançam.
 caixa-alta é o único rótulo aceito, e só acima de um bloco.
 
 **A Regra do Piso de 11.** Texto que se lê fica em 11 px ou mais (12,1 px com
-o zoom 1,1 do dono), via `--fs-label` (11 px) nos rótulos pequenos. Abaixo disso só mono decorativo já existente (Hz do
-fader, selo de origem do S24), que é dívida, não licença.
+o zoom 1,1 do dono), via `--fs-label` (11 px) nos rótulos pequenos, no desktop
+e no S24. Abaixo disso só o Hz do fader, que é dívida, não licença.
 
 ## Layout
 
@@ -464,15 +561,23 @@ fader, selo de origem do S24), que é dívida, não licença.
 (`--titlebar-h`) atravessando a largura, barra lateral de 220 px
 (`--sidebar-w`; 56 px no modo só-ícones do Tweaks) à esquerda, barra do player
 de 72 px (`--playerbar-h`) embaixo, e a vista no miolo. O modo cinema zera as
-três e deixa só o Now Playing. Dentro da vista: cabeçalho com `28px 40px 18px`
-de respiro e borda inferior de 1 px, corpo com `28px 40px 56px` e blocos
-separados por 36 px. A Home empilha hero-grid (`1.8fr 1fr 1fr`, gap 10 px),
+três e deixa só o Now Playing. Dentro da vista, o espaço vem dos tokens de
+papel: cabeçalho com `--space-top` 28 / `--space-gutter` 40 /
+`--space-head-end` 18 e borda inferior de 1 px, corpo com `--space-top` /
+`--space-gutter` / `--space-end` 56, blocos separados por `--space-block` 36
+(`--space-block-tight` 18 no apertado), aba com `--space-tab-x` 14 de lado e
+alinhada ao gutter. A Home empilha hero-grid (`1.8fr 1fr 1fr`, gap 10 px),
 seção de linhas e grade de cards (`minmax(176px, 1fr)`, gap `22px 16px`). O
 Now Playing é a exceção: capa de 200 px e título lado a lado em
-`auto minmax(0,1fr)` com gap 28 px, card de letra flutuante arrastável, e dois
-pontos de quebra (1200 px empilha; 760 px reduz a capa para 160 px). A
+`auto minmax(0,1fr)` com gap 28 px, card de letra flutuante arrastável, e um
+ponto de quebra que vale (760 px reduz a capa para 160 px). A
 resolução real do dono é 1920x1080 com zoom 1,15 na UI, o que dá um canvas de
 1857x1048: medir sempre aí.
+
+**Containers, não viewport.** A barra do player (container `pb`, cortes em
+1500/1300/1100 px), o lado esquerdo dela (`pbl`, 340/260) e o Crate
+(`crate`, 1050/760) quebram pela largura DELES, que muda com a barra lateral
+e o zoom do Tweaks, coisas que a viewport não vê.
 
 **Densidade**: a linha de faixa tem 61 px e cinco colunas
 (`40px 1fr 220px 120px 60px`, gap 14 px, padding `10px 12px`); a tabela de
@@ -486,10 +591,18 @@ blocos, grade de álbuns em duas colunas (gap 12), carrossel de atalhos com
 `scroll-snap` (cards de 210x112), tabbar de 56 px (`--tabbar-h`) e mini player
 de 56 px (`--mini-h`). No Now Playing, capa de 214 px centrada, controles com
 alvos de 44 px e botão de play de 60 px, gap `clamp(8px, 5vw, 26px)`; a largura
-útil do S24 é 316 px.
+útil do S24 é 316 px. Todo alvo de toque tem `--tap-min` 44 px (onde a linha
+não cresce, o alvo cresce por margem negativa ou `::after`); a folha de ações
+é quase opaca e sem desfoque (`--s-sheet`, rgba(12,12,12,0.96)); o S24 usa os
+tokens de movimento do desktop (`--ease-out`, `--ease-in`, `--dur-*`,
+`--dur-press` no toque que afunda) e tem o próprio "reduzir movimento"
+(`src/mobile/motion.ts`). No Now Playing, Curtir fica à direita do título e a
+qualidade medida tem linha própria.
 
-**Ritmo**: não há tokens de espaçamento; o código repete 4/6/8/10/12/14/16/18/
-24/28/40. Padding interno de card 14–18 px, gap entre texto e meta 2–6 px, gap
+**Ritmo**: o espaço de tela é dos tokens `--space-*`; o modo compacto troca
+os sete (24/16/12/32/20/12/12) e as regras que os usam encolhem juntas,
+inclusive o Crate. Dentro de componente o código segue os degraus 4/6/8/10/12/
+14/16: padding interno de card 14–18 px, gap entre texto e meta 2–6 px, gap
 entre ícone e texto 10–12 px.
 
 ## Elevation & Depth
@@ -554,25 +667,35 @@ peso. Na interação, o hover sobe um degrau de tom e o botão primário cresce
 aparece no hover ou no foco de teclado.
 
 ### Buttons
-- **Shape:** círculo pleno no primário (36 px); demais com 8 px (`--radius-md`).
-- **Primary (play/pause, CTA):** fundo carbono 1, ícone em paper (inverso da
-  tinta), traço do ícone em 2,5 px para pesar como ícone cheio; hover carbono 2
-  e `scale(1.04)`. No Crate, `.crate-btn--primary` segue a mesma inversão
-  (texto em `--bg-canvas`).
-- **Secondary:** fundo paper, borda `--line-2`, texto carbono 2, padding
-  `6px 12px`; hover borda carbono 8.
+- **Degraus (A47, 31/10/2026):** `--btn-h-sm` 26 (ação dentro de painel denso:
+  Signal, Tweaks), `--btn-h` 30 (linha e painel: Crate, Settings),
+  `--btn-h-lg` 36 em pílula (ação de cabeçalho: Álbum, Artista, Playlist, Now
+  Playing). Ao lado de campo de 40 px o botão acompanha o campo.
+- **Pele única dos rotulados:** fundo paper, borda `--line-2`, texto carbono 2
+  em 600; hover fundo soft, borda carbono 8, texto carbono 1.
+- **Primário rotulado:** fundo carbono 1, texto paper; hover carbono 2. Um
+  primário por linha: na lista do Crate a ação principal (`crate-btn--lead`)
+  fica secundária em repouso e só vira preta na linha em foco (teclado ou
+  foco dentro). Um preto por vez, não trinta.
+- **Play (transporte):** círculo pleno de 36 px, fundo carbono 1, ícone em
+  paper, traço do ícone em 2,5 px para pesar como ícone cheio; hover carbono 2
+  e `scale(1.04)`.
 - **Quiet / icon:** 28 px, transparente, ícone carbono 5; hover texto carbono
   1 sobre soft. Ligado (`aria-pressed`) = `--blue-fg` (acento); like ligado =
   `--rose-fg`. Ligado tem de ser distinto de hover.
-- **Disabled:** opacidade 0,45, sem hover.
+- **Disabled:** `--disabled-opacity` 0,45, sem hover nem cursor de ação.
+- **Destrutivo arma e confirma:** o primeiro clique troca o rótulo ("Redefinir
+  tudo" vira a confirmação) e só o segundo age; o que dá para desfazer usa o
+  toast com Desfazer em vez de confirmação.
 - **Focus:** `--focus-outline` (2 px sólido `--blue-ring`, offset 2 px) para
   teclado; `--ring-focus` (box-shadow 0 0 0 2px) em campos.
 - **Transições:** `background`/`color`/`border-color` em `--dur-base` (150 ms)
   com `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`, desacelera de verdade);
   toda transição do CSS declara a curva (sem curva o navegador usa `ease`).
   Toque afunda chip (0,96), item de navegação (0,98) e hero-tile (0,995) via
-  `:active` em `--dur-press` (80 ms); nunca animar play/pause, anterior,
-  próxima nem seek. Curtir pulsa uma vez (1 → 1,22 → 1 em 240 ms), só ao
+  `:active` em `--dur-press` (80 ms), e todo botão rotulado afunda (Crate,
+  seleção, toast, Tweaks, cabeçalho de biblioteca; na barra só letra, fila e
+  mudo); nunca animar play/pause, anterior, próxima nem seek. Curtir pulsa uma vez (1 → 1,22 → 1 em 240 ms), só ao
   curtir.
 - **Movimento (vocabulário único, 27/10/2026):** só `opacity` e `transform`.
   Vista entra em `--dur-screen` (360 ms, sobe 6 px) em toda rota. Painel
@@ -589,6 +712,10 @@ aparece no hover ou no foco de teclado.
   das grades aparece por opacidade quando carrega. Escalonamento só em
   conjunto pequeno e fixo na entrada da vista (hero-tiles, cards de station,
   `--stagger-step` 30 ms, teto de 7 passos); lista de faixas nunca escalona.
+  Componente que sai com animação passa por `createPresence`
+  (`lib/motion.ts`, atributo `data-leaving`): diálogo Mover e SelectionBar
+  saem em `--dur-med` com `--ease-in`. Exceção de progresso: a barra da busca
+  do Crate anda em 800 ms linear (é tempo, não gesto).
   Tema troca as durações em `motion.fast/base/med/screen/enter/press/stagger`.
 
 ### Chips
@@ -596,8 +723,9 @@ aparece no hover ou no foco de teclado.
   padding `5px 11px`; hover texto carbono 1 e borda carbono 8.
 - **State:** selecionado inverte (fundo carbono 1, texto paper). No Crate, chip
   com ícone de 11 px e altura 24 px; `aria-expanded` = fundo faint.
-- **Selo técnico** (`.badge-fmt`, `.pb-src`): mono 10 px, caixa-alta no de
-  proveniência, borda 1 px, raio 4 px; station/rádio pegam o acento.
+- **Selo técnico** (`.badge-fmt`, `.pb-src`): mono 11 px (`--fs-label`),
+  caixa-alta no de proveniência (11/600, +0,06em), borda 1 px, raio 4 px;
+  station/rádio pegam o acento.
 
 ### Cards / Containers
 - **Corner Style:** 12 px (`--radius-xl`); capa interna 14 px.
@@ -638,29 +766,93 @@ aparece no hover ou no foco de teclado.
 
 ### Navigation
 - **Sidebar (desktop):** paper com borda direita; marca de 22 px e nome 15/600;
-  rótulo de seção 10/700 caixa-alta carbono 5; item `7px 12px`, 13.5/500
+  rótulo de seção na receita de rótulo (11/700, +0,06em, carbono 5); item `7px 12px`, 13.5/500
   carbono 3, ícone Lucide 16 px a 0,85 de opacidade; hover soft + carbono 1;
   ativo faint + 600. Rodapé com borda superior: Signal, Settings, Tweaks e,
   abaixo do Tweaks, a pílula âmbar "Ponte conectada" (`.bridge-chip`, 24 px,
   11/600, ícone `plug` 12 px): só monta com a ponte MCP ligada E cliente
   conectado, e abre o Tweaks ao clicar. O modo só-ícones esconde rótulos e
   mantém os atalhos.
-- **Tabs (Library, Crate):** 13/500 carbono 5, ativo carbono 1/600 com sublinhado
-  de 2 px em carbono 1; contagem em mono 10.5.
+- **Tabs (Library, Crate):** 13/600 SEMPRE (o peso não muda com o
+  estado, a largura não pula); inativa carbono 5, ativa carbono 1 com
+  sublinhado de 2 px que abre do centro; padding lateral `--space-tab-x` e a
+  primeira aba alinhada ao gutter da vista. Setas trocam de aba
+  (`lib/tabKeys.ts`); contagem em mono 11.
 - **Titlebar:** 32 px, paper, 12 px de texto, semáforo de três pontos à
   esquerda.
-- **Tabbar (S24):** 56 px, `--s-low`, borda superior; aba 9.5 px com ícone de
-  21 px, inativa `--t4`, ativa `--accent`.
+- **Tabbar (S24):** 56 px, `--s-low`, borda superior; aba 11 px
+  (`--fs-label`) com ícone de 21 px, inativa `--t3` (o `--t4` fica no ícone),
+  ativa `--accent`.
 
 ### Player bar (componente-assinatura do desktop)
-Grade de três colunas (`minmax(240px,1fr) 1.4fr minmax(240px,1fr)`), 72 px,
-paper com borda superior. Esquerda: capa 44 px (raio 8), título 13/600, chip
-de proveniência + artista 12 carbono 5, coração e menu. Centro: transporte
-(shuffle, anterior, play 36 px, próxima, repeat) sobre o seek de 3 px com
-tempos em mono 11 px tabular de cada lado (colunas de 42 px). Direita: pílula
-técnica "FLAC 24/96 · EQ · LIM" (mono 10.5, borda 1 px, ponto de estado), botões
-de letra, fila e volume (trilho de 3 px). O S24 tem o mini player de 56 px
-(capa 38 px, 12.5/500) e o Now Playing em folha deslizante.
+Container de largura `pb` (o grid mora em `.playerbar__grid`), 72 px, paper com
+borda superior. Colunas `minmax(0,1fr) 1.2fr minmax(430px,1fr)`: a esquerda
+cede primeiro, com reticências. Cortes por prioridade pela largura da barra:
+< 1500 px sai o medidor (piso da direita 384), < 1300 a pílula perde o resumo
+do DSP (328), < 1100 o volume vai a 72 px (272).
+- **Esquerda** (container `pbl`): capa 44 px (raio 8), título 13,5/600, selo
+  único + artista 12 carbono 5, coração e menu. O selo só existe no rádio e
+  diz o grau ("rádio · 1ª escuta", "rádio · descoberta", "rádio"), em mono
+  11/600; álbum e fila solta não têm selo. < 340 px o selo fica com a
+  primeira palavra, < 260 sai (o motivo segue no `title` da linha).
+- **Centro:** transporte (shuffle, anterior, play 36 px, próxima, repeat)
+  sobre o seek numa caixa de 14 px (com ou sem perfil; trocar de faixa não
+  muda a altura), tempos em mono 11 tabular com `min-width: 7ch` (H:MM:SS).
+  Trilho do seek sem perfil e do volume em carbono 7 (`--fg-7`), 3 px.
+- **Direita:** medidor L/R, pílula técnica "FLAC 24/96 · EQ · LIM" (mono 11,
+  borda 1 px, raio 8), fila, mudo e volume. A pílula é LEITURA, não botão:
+  sem hover nem cursor, `role="img"` com o resumo no rótulo; o ponto verde
+  não tem halo, o âmbar (lossy por dentro) tem, e faixa não medida fica com
+  ponto neutro. Letra só pelo Now Playing. O "+N" de enfileirar aparece
+  acima do botão da fila (não tapa o mudo).
+- **Medidor:** oculto sem faixa; trilho `--line-2`, clip marcado em
+  `--rose-ring`.
+
+O S24 tem o mini player de 56 px (capa 38 px, 12.5/500) e o Now Playing em
+folha deslizante.
+
+### Gaveta da fila e menu da faixa
+A linha editável (`.qedit`) tem gutters de 24 px nos dois lados, onde ficam a
+alça de arrastar e o botão de tirar; a linha da que toca usa os mesmos gutters
+para as capas caírem na mesma coluna. O hover realça a linha inteira. O menu
+de contexto da faixa é paper com `--radius-lg` e `--shadow-hover`, navegável
+por setas; o coração ligado em `--rose-fg`.
+
+### Estado de tela (EmptyState)
+`components/EmptyState.tsx` (`.empty-block`, `data-tone`): três caras para
+três situações. **Vazio** = moldura tracejada `--line-2`, raio 12, paper,
+ícone carbono 7, título `--fs-title-lg` 600, texto 13 carbono 5 (máx. 52ch) e
+ações. **Erro** = banner rosa (borda sólida, rosa a 10 % sobre o paper), ícone
+`--rose-fg` e saída ([Tentar de novo]); erro de leitura nunca se disfarça de
+lista vazia. **Carregando** = só o texto, sem moldura. Aparece por opacidade
+em `--dur-med`.
+
+### Toast
+Canto direito, acima da barra do player (`bottom: playerbar + 14px`), z 120,
+paper com borda `--line-2`, `--radius-lg`, `--shadow-hover`; entra em
+`--dur-enter`, fica 6 s; texto `--fs-title-sm` carbono 2 e uma ação
+(Desfazer, Tentar de novo) em 600, também pelo Ctrl+Z. Falha de ação usa a
+fórmula "Não consegui…" (`lib/failNotice.ts`).
+
+### Cabeçalho de biblioteca (LibHero)
+Álbum, Artista e Playlist: capa de 176 px (140 no compacto, raio 14; redonda
+para artista), kicker em rótulo, título em Feature 28, slot `facts` com a
+escuta viva e a qualidade medida (`.lib-hero__q`) e as ações em `--btn-h-lg`.
+
+### Campos e controles novos
+- **FilterField:** filtro de grade (Álbuns, Artistas) com a pele do filtro da
+  Playlists (`.coll-search`); Esc limpa; mostra "12 de 340" com filtro ativo.
+- **FolderPicker** (`views/crate/FolderPicker.tsx`): seletor único de pasta do
+  Crate inteiro.
+- **Switch** (`role="switch"` + `aria-checked`, nome por `aria-labelledby`):
+  interruptor do Settings e do Signal; desligado continua visível.
+- **Card com `.card__open`:** o card inteiro é um botão que ABRE (o anel de
+  foco cobre o card); o play do hover é outro botão e toca.
+
+### Tidal (Crate)
+Prévia de álbum, playlist e rádio com cartaz de 120 px (`--radius-xl`) e
+título em `--fs-lead`; artista com foto; seleção em massa por arrastar nas
+caixas ou Shift+clique.
 
 ### Tweaks (painel de customização)
 Flutuante, 280 px, fixo a 16 px da borda direita e acima da barra do player,
@@ -668,8 +860,9 @@ paper com borda `--line-2`, raio 12 px e `--shadow-hover`. Cabeçalho `12px 14px
 com título 13/600 e fechar de 22 px; corpo com linhas de knob separadas por
 12 px: rótulo 11/600 caixa-alta +0.06em carbono 3 com valor atual à direita
 (11/400 carbono 5), controle abaixo (segmented, select, range ou color), dica de
-uma linha 11 px carbono 5. Divisores com texto 10/700 entre as seções. É a
-referência canônica para todo knob de preferência: antes de criar UI nova ou
+uma linha 11 px carbono 5. Seções Fundo, Áudio, Aparência e Controle remoto
+com âncoras, títulos na receita de rótulo; knob que depende de outro diz
+"Depende de …"; o avançado (Relevo) fica recolhido. É a referência canônica para todo knob de preferência: antes de criar UI nova ou
 YAML para um ajuste, ele entra aqui. Última seção, "Controle remoto": o
 interruptor da ponte MCP (padrão Off) com a linha viva de estado (ponto âmbar
 quando alguém de fora pode agir).
@@ -701,9 +894,11 @@ medidos no app a 1857x1048, média ≥ 58 e no máximo 2 % dos quadros acima de
   "ligado", "atual", "foco" e "station": é o acento que segue tema e capa.
 - **Do** `font-variant-numeric: tabular-nums` e `--font-mono` em todo número
   que muda.
-- **Do** desenhar componente novo com os estados vazio, carregando e erro, e
-  com atalho de teclado no desktop (o Crate vazio é o modelo: ícone de 24 px,
-  título 14/600, dica 13 e a sequência de teclas em `kbd`).
+- **Do** desenhar componente novo com os estados vazio, carregando e erro
+  (`EmptyState` com `tone`; leitura por `settle`/`peek` de `lib/loaded.ts`,
+  nunca `catch` que devolve lista vazia) e com atalho de teclado no desktop.
+- **Do** devolver o foco ao fechar overlay (`lib/focusReturn.ts`) e avisar
+  falha de ação com `failNotice` ("Não consegui…" + [Tentar de novo]).
 - **Do** diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).
 - **Do** `prefers-reduced-motion`: versão calma, não tela morta. O bloco único
   no fim do CSS desliga rota, pulsos, VU e escalonamento; gaveta, paleta,

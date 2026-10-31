@@ -137,7 +137,8 @@ RESERVADOS (sem serviço exposto a proteger); gatilho de reabertura na spec.
 
 Trabalho de UI passa pelo Impeccable; contexto em `PRODUCT.md` e `.impeccable/config.json`.
 Sistema visual documentado em `DESIGN.md` (tokens, papéis, regras nomeadas, componentes; sidecar
-`.impeccable/design.json`; gerado em 26/10/2026 do app real): tela nova e crítica partem dele.
+`.impeccable/design.json`; gerado em 26/10/2026 do app real, atualizado em 31/10 pelo código da
+varredura 2, sem captura nova): tela nova e crítica partem dele.
 A tela renderizada é avaliada no app REAL da cmr-auto pela ponte
 (`scripts/impeccable/app_eval.sh capture|detect`), não num navegador: procedimento, motivo e
 pontos cegos em `.claude/rules/impeccable.md`.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-30T13:23:33.548418+00:00",
+  "generatedAt": "2026-10-31T08:07:16.572058+00:00",
   "title": "Design System: Rustify Player",
   "extensions": {
     "colorMeta": {
@@ -904,11 +904,11 @@
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Eyebrow e título de seção em caixa-alta; único rótulo aceito."
+        "purpose": "Receita única de rótulo em caixa-alta: --fs-label 11, --label-weight 700, --label-tracking 0,06em, carbono 5, sans."
       },
       "data": {
-        "displayName": "Data (mono)",
-        "purpose": "Todo número que muda: tempo, duração, kHz, contagem, tabular."
+        "displayName": "Data",
+        "purpose": "Mono 11 tabular: tempo, duração, hora, selo de formato e de proveniência; todo mono leva tabular-nums."
       },
       "s24-display": {
         "displayName": "S24 Display (Fraunces)",
@@ -923,8 +923,8 @@
         "purpose": "Tudo que se lê e toca no S24."
       },
       "s24-label": {
-        "displayName": "S24 Label (Inter)",
-        "purpose": "Eyebrow e aba da tabbar."
+        "displayName": "S24 Label",
+        "purpose": "Eyebrow, aba da tabbar e selo de origem a 11 px (piso do S24, A63)."
       },
       "s24-data": {
         "displayName": "S24 Data (JetBrains Mono)",
@@ -941,6 +941,26 @@
       "subhead": {
         "displayName": "Subhead",
         "purpose": "Nome da marca, título da gaveta da fila, campo da paleta ⌘K. --fs-subhead."
+      },
+      "title-lg": {
+        "displayName": "Title lg",
+        "purpose": "Título de painel e de estado vazio (--fs-title-lg 14)."
+      },
+      "title-sm": {
+        "displayName": "Title sm",
+        "purpose": "Título compacto: gaveta da fila, mini player, toast (--fs-title-sm 12,5)."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Dado de linha e secundário compacto: duração, estatística, subtítulo da gaveta (--fs-meta 11,5)."
+      },
+      "s24-stat": {
+        "displayName": "S24 Stat",
+        "purpose": "Valor de estatística no S24 (--fs-stat 19)."
+      },
+      "s24-lead": {
+        "displayName": "S24 Lead",
+        "purpose": "Título de cartão de atalho e de destaque no S24 (--fs-lead 17)."
       }
     },
     "shadows": [
@@ -1055,18 +1075,63 @@
         "name": "ink-lerp-tau",
         "value": "350ms",
         "purpose": "Lerp exponencial local da cor do fundo (rgbLerp); nunca transition de custom property no :root."
+      },
+      {
+        "name": "presence-exit",
+        "value": "var(--dur-med) var(--ease-in)",
+        "purpose": "Saída do diálogo Mover e da SelectionBar via createPresence (data-leaving)."
+      },
+      {
+        "name": "crate-search-progress",
+        "value": "800ms linear",
+        "purpose": "Barra de progresso da busca do Crate: exceção de progresso (tempo, não gesto)."
+      },
+      {
+        "name": "toast-life",
+        "value": "6s",
+        "purpose": "Tempo do toast na tela (Desfazer, Tentar de novo; Ctrl+Z)."
       }
     ],
     "breakpoints": [
       {
-        "name": "np-stack",
-        "value": "1200px",
-        "purpose": "Now Playing empilha as colunas."
+        "name": "pb-meter",
+        "value": "1500px",
+        "purpose": "Container pb (barra do player): abaixo, sai o medidor L/R."
+      },
+      {
+        "name": "pb-tech-short",
+        "value": "1300px",
+        "purpose": "Container pb: a pílula técnica perde o resumo do DSP."
+      },
+      {
+        "name": "pb-vol",
+        "value": "1100px",
+        "purpose": "Container pb: volume encolhe a 72 px."
+      },
+      {
+        "name": "pbl-src-short",
+        "value": "340px",
+        "purpose": "Container pbl (lado esquerdo da barra): selo só com a primeira palavra."
+      },
+      {
+        "name": "pbl-src-off",
+        "value": "260px",
+        "purpose": "Container pbl: selo sai."
+      },
+      {
+        "name": "crate-mid",
+        "value": "1050px",
+        "purpose": "Container crate: linhas de resultado e da fila refluem."
+      },
+      {
+        "name": "crate-narrow",
+        "value": "760px",
+        "purpose": "Container crate: corte estreito."
       },
       {
         "name": "np-compact",
         "value": "760px",
-        "purpose": "Capa do Now Playing cai para 160 px."
+        "purpose": "Now Playing (viewport): capa cai para 160 px."
       },
       {
         "name": "s24-width",
@@ -1085,13 +1150,17 @@
         "sidebar-w": "220px",
         "sidebar-w-icons": "56px",
         "playerbar-h": "72px",
-        "view-head-padding": "28px 40px 18px",
-        "view-body-padding": "28px 40px 56px",
-        "section-gap": "36px",
+        "view-head-padding": "var(--space-top) var(--space-gutter) var(--space-head-end) (28 40 18; compacto 16 24 12)",
+        "view-body-padding": "var(--space-top) var(--space-gutter) var(--space-end) (28 40 56; compacto 16 24 32)",
+        "section-gap": "var(--space-block) 36 (apertado --space-block-tight 18; compacto 20/12)",
         "row-height": "61px",
         "row-columns": "40px 1fr 220px 120px 60px",
         "card-grid": "repeat(auto-fill, minmax(176px, 1fr))",
-        "hero-grid": "1.8fr 1fr 1fr"
+        "hero-grid": "1.8fr 1fr 1fr",
+        "tab-padding-x": "var(--space-tab-x) 14 (compacto 12)",
+        "playerbar-grid": "minmax(0,1fr) 1.2fr minmax(430px,1fr); piso da direita 384/328/272 nos cortes do container pb",
+        "button-heights": "--btn-h-sm 26 / --btn-h 30 / --btn-h-lg 36",
+        "toast": "fixed, right 16px, bottom playerbar-h + 14px, z 120, max 420px"
       },
       "s24": {
         "tabbar-h": "56px",
@@ -1099,9 +1168,10 @@
         "side-gutter": "20px",
         "section-gap": "22px",
         "album-grid": "1fr 1fr",
-        "touch-target": "44px",
+        "touch-target": "var(--tap-min) 44px",
         "np-cover": "214px",
-        "play-fab": "60px"
+        "play-fab": "60px",
+        "sheet": "--s-sheet rgba(12,12,12,0.96), sem desfoque"
       }
     },
     "themes": {
@@ -1188,7 +1258,7 @@
       "name": "Botão secundário e quieto",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "Secundário: paper com borda de 1 px. Quieto: transparente até o hover; ligado (aria-pressed) em acento, distinto do hover.",
+      "description": "Pele única dos rotulados: paper, borda --line-2, texto carbono 2 em 600, altura --btn-h 30 (sm 26, lg 36 em pílula); hover soft + borda carbono 8. Quieto: transparente até o hover; ligado (aria-pressed) em acento, distinto do hover.",
       "html": "<div style=\"display:flex;gap:10px;align-items:center\"><button class=\"ds-btn-secondary\">Play station</button><button class=\"ds-btn-quiet\" aria-pressed=\"false\" aria-label=\"Shuffle\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-btn-quiet\" aria-pressed=\"true\" aria-label=\"Shuffle ligado\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-btn-quiet ds-like\" aria-pressed=\"true\" aria-label=\"Curtida\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/></svg></button></div>",
       "css": ".ds-btn-secondary { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); font-size: 12.5px; font-weight: 500; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line-2, #e5e5e5); background: var(--bg-paper, #ffffff); color: var(--fg-2, #262626); cursor: pointer; transition: border-color var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), background var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-btn-secondary:hover { border-color: var(--fg-8, #d4d4d4); background: var(--bg-soft, #f7f6f3); } .ds-btn-quiet { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg-5, #737373); display: inline-grid; place-items: center; cursor: pointer; transition: color var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)), background var(--dur-base, 0.15s) var(--ease-out, cubic-bezier(0.4,0,0.2,1)); } .ds-btn-quiet:hover { color: var(--fg-1, #171717); background: var(--bg-soft, #f7f6f3); } .ds-btn-quiet[aria-pressed=\"true\"] { color: var(--blue-fg, #2563eb); } .ds-like[aria-pressed=\"true\"] { color: var(--rose-fg, #be123c); } .ds-btn-secondary:focus-visible, .ds-btn-quiet:focus-visible { outline: 2px solid var(--blue-ring, #3b82f6); outline-offset: 2px; }"
     },
@@ -1228,9 +1298,9 @@
       "name": "Seek e slider",
       "kind": "custom",
       "refersTo": "track-row",
-      "description": "Trilho de 3 px em line-2, preenchimento carbono 3 (carbono 1 no hover), thumb de 10 px só no hover/foco; área de clique de 16 px. Tempos em mono tabular de cada lado.",
+      "description": "Seek numa caixa de 14 px (com ou sem perfil); trilho de 3 px em carbono 7 (--fg-7), preenchimento carbono 3 (carbono 1 no hover), thumb de 10 px só no hover/foco; área de clique de 16 px. Tempos mono 11 tabular com min-width 7ch.",
       "html": "<div class=\"ds-seek\"><span class=\"ds-seek__time\">1:12</span><div class=\"ds-progress\" tabindex=\"0\" role=\"slider\" aria-valuenow=\"28\"><div class=\"ds-progress__fill\" style=\"width:28%\"></div><div class=\"ds-progress__thumb\" style=\"left:28%\"></div></div><span class=\"ds-seek__time\">4:15</span></div>",
-      "css": ".ds-seek { display: grid; grid-template-columns: 42px 1fr 42px; gap: 10px; align-items: center; max-width: 560px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-seek__time { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-5, #737373); font-variant-numeric: tabular-nums; text-align: center; } .ds-progress { position: relative; height: 3px; background: var(--line-2, #e5e5e5); border-radius: 999px; cursor: pointer; outline: 0; } .ds-progress::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 16px; transform: translateY(-50%); } .ds-progress__fill { height: 100%; background: var(--fg-3, #404040); border-radius: inherit; transition: background var(--dur-base, 0.15s); } .ds-progress:hover .ds-progress__fill, .ds-progress:focus-visible .ds-progress__fill { background: var(--fg-1, #171717); } .ds-progress__thumb { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: var(--fg-1, #171717); transform: translate(-50%, -50%); opacity: 0; transition: opacity var(--dur-base, 0.15s); box-shadow: 0 1px 2px rgba(0,0,0,0.18); } .ds-progress:hover .ds-progress__thumb, .ds-progress:focus-visible .ds-progress__thumb { opacity: 1; }"
+      "css": ".ds-seek { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; max-width: 560px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-seek__time { min-width: 7ch; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-5, #737373); font-variant-numeric: tabular-nums; text-align: center; } .ds-progress { position: relative; height: 3px; background: var(--fg-7, #b0b0b0); border-radius: 999px; cursor: pointer; outline: 0; } .ds-progress::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 16px; transform: translateY(-50%); } .ds-progress__fill { height: 100%; background: var(--fg-3, #404040); border-radius: inherit; transition: background var(--dur-base, 0.15s); } .ds-progress:hover .ds-progress__fill, .ds-progress:focus-visible .ds-progress__fill { background: var(--fg-1, #171717); } .ds-progress__thumb { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: var(--fg-1, #171717); transform: translate(-50%, -50%); opacity: 0; transition: opacity var(--dur-base, 0.15s); box-shadow: 0 1px 2px rgba(0,0,0,0.18); } .ds-progress:hover .ds-progress__thumb, .ds-progress:focus-visible .ds-progress__thumb { opacity: 1; }"
     },
     {
       "name": "Segmented",
@@ -1252,9 +1322,9 @@
       "name": "Barra do player",
       "kind": "custom",
       "refersTo": "button-primary",
-      "description": "Componente-assinatura do desktop: 72 px, três colunas; capa 44, título 13/600 e chip de proveniência; transporte sobre seek de 3 px; pílula técnica em mono à direita.",
-      "html": "<div class=\"ds-pb\"><div class=\"ds-pb__left\"><div class=\"ds-pb__cover\"></div><div class=\"ds-pb__meta\"><div class=\"ds-pb__title\">Machine Gun Funk</div><div class=\"ds-pb__artist\"><span class=\"ds-pb__src\">Rádio</span>The Notorious B.I.G. · Ready To Die</div></div><button class=\"ds-pb__icon\" aria-label=\"Curtir\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/></svg></button></div><div class=\"ds-pb__center\"><div class=\"ds-pb__transport\"><button class=\"ds-pb__icon\" aria-label=\"Shuffle\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-pb__icon\" aria-label=\"Anterior\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"19 20 9 12 19 4 19 20\"/><line x1=\"5\" y1=\"19\" x2=\"5\" y2=\"5\"/></svg></button><button class=\"ds-pb__play\" aria-label=\"Pausar\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"10\" y1=\"4\" x2=\"10\" y2=\"20\"/><line x1=\"14\" y1=\"4\" x2=\"14\" y2=\"20\"/></svg></button><button class=\"ds-pb__icon\" aria-label=\"Próxima\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 4 15 12 5 20 5 4\"/><line x1=\"19\" y1=\"5\" x2=\"19\" y2=\"19\"/></svg></button></div><div class=\"ds-pb__seek\"><span>0:00</span><div class=\"ds-pb__track\"><i style=\"width:0%\"></i></div><span>4:15</span></div></div><div class=\"ds-pb__right\"><span class=\"ds-pb__tech\"><i class=\"ds-pb__led\"></i>FLAC 24/96 · EQ · LIM</span></div></div>",
-      "css": ".ds-pb { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); height: 72px; background: var(--bg-paper, #ffffff); border-top: 1px solid var(--line-2, #e5e5e5); display: grid; grid-template-columns: minmax(200px,1fr) 1.4fr minmax(160px,1fr); align-items: center; padding: 0 16px; gap: 24px; box-sizing: border-box; } .ds-pb__left { display: flex; align-items: center; gap: 12px; min-width: 0; } .ds-pb__cover { width: 44px; height: 44px; flex: none; border-radius: 8px; border: 1px solid var(--line-2, #e5e5e5); background: linear-gradient(135deg, var(--bg-tint, #f5f5f5), var(--bg-faint, #f4f4f4)); } .ds-pb__meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; } .ds-pb__title { font-size: 13px; font-weight: 600; color: var(--fg-1, #171717); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-pb__artist { font-size: 12px; color: var(--fg-5, #737373); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-pb__src { display: inline-block; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--blue-fg, #2563eb); border: 1px solid color-mix(in srgb, var(--blue-fg, #2563eb) 35%, transparent); border-radius: 4px; padding: 0.5px 4px; margin-right: 7px; vertical-align: 1.5px; line-height: 1.25; } .ds-pb__icon { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg-5, #737373); display: inline-grid; place-items: center; cursor: pointer; transition: color var(--dur-base, 0.15s), background var(--dur-base, 0.15s); } .ds-pb__icon:hover { color: var(--fg-1, #171717); background: var(--bg-soft, #f7f6f3); } .ds-pb__center { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; } .ds-pb__transport { display: flex; align-items: center; justify-content: center; gap: 4px; } .ds-pb__play { width: 36px; height: 36px; border-radius: 50%; border: 0; margin: 0 6px; background: var(--fg-1, #171717); color: var(--bg-paper, #ffffff); display: inline-grid; place-items: center; cursor: pointer; transition: transform var(--dur-base, 0.15s), background var(--dur-base, 0.15s); } .ds-pb__play:hover { background: var(--fg-2, #262626); transform: scale(1.04); } .ds-pb__seek { display: grid; grid-template-columns: 42px 1fr 42px; gap: 10px; align-items: center; } .ds-pb__seek span { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-5, #737373); font-variant-numeric: tabular-nums; text-align: center; } .ds-pb__track { height: 3px; background: var(--line-2, #e5e5e5); border-radius: 999px; position: relative; } .ds-pb__track i { display: block; height: 100%; background: var(--fg-3, #404040); border-radius: inherit; } .ds-pb__right { display: flex; justify-content: flex-end; } .ds-pb__tech { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1px solid var(--line-2, #e5e5e5); border-radius: 8px; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 10.5px; color: var(--fg-4, #525252); font-variant-numeric: tabular-nums; } .ds-pb__led { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-fg, #2563eb); }"
+      "description": "Componente-assinatura do desktop: container pb de 72 px, colunas minmax(0,1fr) 1.2fr minmax(430px,1fr) com cortes em 1500/1300/1100 px da barra; capa 44, título 13,5/600, selo único só no rádio com o grau (\"rádio · 1ª escuta\"); transporte sobre o seek numa caixa de 14 px, tempos mono 11 em 7ch, trilho em carbono 7; a pílula técnica é leitura (sem hover, role=\"img\") e o ponto verde não tem halo.",
+      "html": "<div class=\"ds-pb\"><div class=\"ds-pb__left\"><div class=\"ds-pb__cover\"></div><div class=\"ds-pb__meta\"><div class=\"ds-pb__title\">Machine Gun Funk</div><div class=\"ds-pb__artist\"><span class=\"ds-pb__src\">rádio · 1ª escuta</span>The Notorious B.I.G. · Ready To Die</div></div><button class=\"ds-pb__icon\" aria-label=\"Curtir\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/></svg></button></div><div class=\"ds-pb__center\"><div class=\"ds-pb__transport\"><button class=\"ds-pb__icon\" aria-label=\"Shuffle\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"/><path d=\"m18 2 4 4-4 4\"/><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"/><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"/><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"/></svg></button><button class=\"ds-pb__icon\" aria-label=\"Anterior\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"19 20 9 12 19 4 19 20\"/><line x1=\"5\" y1=\"19\" x2=\"5\" y2=\"5\"/></svg></button><button class=\"ds-pb__play\" aria-label=\"Pausar\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"10\" y1=\"4\" x2=\"10\" y2=\"20\"/><line x1=\"14\" y1=\"4\" x2=\"14\" y2=\"20\"/></svg></button><button class=\"ds-pb__icon\" aria-label=\"Próxima\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 4 15 12 5 20 5 4\"/><line x1=\"19\" y1=\"5\" x2=\"19\" y2=\"19\"/></svg></button></div><div class=\"ds-pb__seek\"><span>0:00</span><div class=\"ds-pb__track\"><i style=\"width:0%\"></i></div><span>4:15</span></div></div><div class=\"ds-pb__right\"><span class=\"ds-pb__tech\" role=\"img\" aria-label=\"FLAC 24/96, EQ e limitador ligados\"><i class=\"ds-pb__led\"></i>FLAC 24/96 · EQ · LIM</span></div></div>",
+      "css": ".ds-pb { font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); height: 72px; background: var(--bg-paper, #ffffff); border-top: 1px solid var(--line-2, #e5e5e5); display: grid; grid-template-columns: minmax(200px,1fr) 1.4fr minmax(160px,1fr); align-items: center; padding: 0 16px; gap: 24px; box-sizing: border-box; } .ds-pb__left { display: flex; align-items: center; gap: 12px; min-width: 0; } .ds-pb__cover { width: 44px; height: 44px; flex: none; border-radius: 8px; border: 1px solid var(--line-2, #e5e5e5); background: linear-gradient(135deg, var(--bg-tint, #f5f5f5), var(--bg-faint, #f4f4f4)); } .ds-pb__meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; } .ds-pb__title { font-size: 13.5px; font-weight: 600; color: var(--fg-1, #171717); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-pb__artist { font-size: 12px; color: var(--fg-5, #737373); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-pb__src { display: inline-block; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; text-transform: uppercase; color: var(--blue-fg, #2563eb); border: 1px solid color-mix(in srgb, var(--blue-fg, #2563eb) 35%, transparent); border-radius: 4px; padding: 0.5px 4px; margin-right: 7px; vertical-align: 1.5px; line-height: 1.25; } .ds-pb__icon { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg-5, #737373); display: inline-grid; place-items: center; cursor: pointer; transition: color var(--dur-base, 0.15s), background var(--dur-base, 0.15s); } .ds-pb__icon:hover { color: var(--fg-1, #171717); background: var(--bg-soft, #f7f6f3); } .ds-pb__center { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; } .ds-pb__transport { display: flex; align-items: center; justify-content: center; gap: 4px; } .ds-pb__play { width: 36px; height: 36px; border-radius: 50%; border: 0; margin: 0 6px; background: var(--fg-1, #171717); color: var(--bg-paper, #ffffff); display: inline-grid; place-items: center; cursor: pointer; transition: transform var(--dur-base, 0.15s), background var(--dur-base, 0.15s); } .ds-pb__play:hover { background: var(--fg-2, #262626); transform: scale(1.04); } .ds-pb__seek { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; } .ds-pb__seek span { font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; min-width: 7ch; color: var(--fg-5, #737373); font-variant-numeric: tabular-nums; text-align: center; } .ds-pb__track { height: 3px; background: var(--fg-7, #b0b0b0); border-radius: 999px; position: relative; } .ds-pb__track i { display: block; height: 100%; background: var(--fg-3, #404040); border-radius: inherit; } .ds-pb__right { display: flex; justify-content: flex-end; } .ds-pb__tech { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1px solid var(--line-2, #e5e5e5); border-radius: 8px; font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace); font-size: 11px; color: var(--fg-4, #525252); font-variant-numeric: tabular-nums; cursor: default; } .ds-pb__led { width: 6px; height: 6px; border-radius: 50%; background: var(--blue-fg, #2563eb); }"
     },
     {
       "name": "Painel Tweaks",
@@ -1263,6 +1333,30 @@
       "description": "Painel flutuante de 280 px: cabeçalho 13/600, rótulo de knob 11/600 caixa-alta com valor à direita, controle, dica de uma linha. Referência canônica de todo knob.",
       "html": "<div class=\"ds-tweaks\"><div class=\"ds-tweaks__header\"><span class=\"ds-tweaks__title\">Tweaks</span><button class=\"ds-tweaks__close\" aria-label=\"Fechar\">×</button></div><div class=\"ds-tweaks__body\"><div class=\"ds-tweaks__row\"><div class=\"ds-tweaks__label\">Escala <span class=\"ds-tweaks__val\">1,10</span></div><input class=\"ds-tweaks__range\" type=\"range\" min=\"0.8\" max=\"1.4\" step=\"0.05\" value=\"1.1\"></div><div class=\"ds-tweaks__divider\"><span>Fundo</span></div><div class=\"ds-tweaks__row\"><div class=\"ds-tweaks__label\">Motor</div><div class=\"ds-tweaks__seg\"><button>2D</button><button class=\"ds-active\">WebGL</button></div><div class=\"ds-tweaks__hint\">Um motor por vez; se o WebGL falhar, o app volta ao 2D sozinho.</div></div></div></div>",
       "css": ".ds-tweaks { width: 280px; font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); background: var(--bg-paper, #ffffff); border: 1px solid var(--line-2, #e5e5e5); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.06); overflow: hidden; } .ds-tweaks__header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line-2, #e5e5e5); } .ds-tweaks__title { font-weight: 600; font-size: 13px; color: var(--fg-1, #171717); } .ds-tweaks__close { width: 22px; height: 22px; border-radius: 5px; border: 0; background: transparent; color: var(--fg-5, #737373); cursor: pointer; font-size: 16px; line-height: 1; } .ds-tweaks__close:hover { background: var(--bg-tint, #f5f5f5); color: var(--fg-1, #171717); } .ds-tweaks__body { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; } .ds-tweaks__row { display: flex; flex-direction: column; gap: 6px; } .ds-tweaks__label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--fg-3, #404040); text-transform: uppercase; letter-spacing: 0.06em; } .ds-tweaks__val { font-weight: 400; color: var(--fg-5, #737373); text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; } .ds-tweaks__range { width: 100%; height: 22px; accent-color: var(--fg-1, #171717); } .ds-tweaks__divider { display: flex; align-items: center; gap: 8px; margin: 4px 0 2px; } .ds-tweaks__divider::before, .ds-tweaks__divider::after { content: ''; flex: 1; height: 1px; background: var(--line-2, #e5e5e5); } .ds-tweaks__divider span { font-size: 10px; font-weight: 700; color: var(--fg-6, #767676); text-transform: uppercase; letter-spacing: 0.06em; } .ds-tweaks__seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--bg-tint, #f5f5f5); border: 1px solid var(--line-2, #e5e5e5); border-radius: 8px; align-self: flex-start; } .ds-tweaks__seg button { padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 500; border-radius: 5px; border: 0; background: transparent; color: var(--fg-5, #737373); cursor: pointer; } .ds-tweaks__seg .ds-active { background: var(--bg-paper, #ffffff); color: var(--fg-1, #171717); box-shadow: 0 1px 2px rgba(0,0,0,0.04); } .ds-tweaks__hint { font-size: 11px; color: var(--fg-5, #737373); line-height: 1.4; }"
+    },
+    {
+      "name": "Estado de tela (EmptyState)",
+      "kind": "custom",
+      "refersTo": "empty-state",
+      "description": "Três caras: vazio (moldura tracejada), erro (banner rosa com saída, nunca lista vazia) e carregando (só texto). components/EmptyState.tsx, data-tone.",
+      "html": "<div style=\"display:grid;gap:12px;max-width:520px\"><div class=\"ds-empty\"><div class=\"ds-empty__title\">Nenhuma faixa nesta playlist</div><p class=\"ds-empty__text\">Mova faixas para cá pelo menu da faixa.</p></div><div class=\"ds-empty\" data-tone=\"erro\"><div class=\"ds-empty__title\">Não consegui ler o acervo agora.</div><p class=\"ds-empty__text\">O banco de vetores não respondeu.</p><button class=\"ds-empty__btn\">Tentar de novo</button></div><div class=\"ds-empty\" data-tone=\"carregando\"><div class=\"ds-empty__title\">Carregando…</div></div></div>",
+      "css": ".ds-empty { display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; padding:28px 24px; border:1px dashed var(--line-2,#e5e5e5); border-radius:var(--radius-xl,12px); background:var(--bg-paper,#fff); font-family:var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-empty__title { font-size:var(--fs-title-lg,14px); font-weight:600; color:var(--fg-1,#171717); } .ds-empty__text { margin:0; font-size:var(--fs-body,13px); color:var(--fg-5,#737373); max-width:52ch; } .ds-empty[data-tone=erro] { border-style:solid; background:color-mix(in srgb, var(--rose-ring,#ef4444) 10%, var(--bg-paper,#fff)); border-color:color-mix(in srgb, var(--rose-ring,#ef4444) 28%, var(--bg-paper,#fff)); } .ds-empty[data-tone=erro] .ds-empty__text { color:var(--fg-4,#525252); } .ds-empty[data-tone=carregando] { border-color:transparent; background:transparent; } .ds-empty[data-tone=carregando] .ds-empty__title { color:var(--fg-5,#737373); font-weight:500; } .ds-empty__btn { height:var(--btn-h,30px); padding:0 12px; border:1px solid var(--line-2,#e5e5e5); border-radius:var(--radius-md,8px); background:var(--bg-paper,#fff); color:var(--fg-2,#262626); font:inherit; font-size:var(--fs-small,12px); font-weight:600; cursor:pointer; transition:background var(--dur-base,.15s) var(--ease-out,ease), border-color var(--dur-base,.15s) var(--ease-out,ease); } .ds-empty__btn:hover { background:var(--bg-soft,#f7f6f3); border-color:var(--fg-8,#d4d4d4); color:var(--fg-1,#171717); } .ds-empty__btn:active { transform:scale(.97); } .ds-empty__btn:focus-visible { outline:2px solid var(--blue-ring,#3b82f6); outline-offset:2px; }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Aviso no canto direito acima da barra do player: z 120, --radius-lg, --shadow-hover, entra em --dur-enter, fica 6 s; uma ação (Desfazer, Tentar de novo; Ctrl+Z). Falha diz \"Não consegui…\".",
+      "html": "<div class=\"ds-toast\" role=\"status\"><span class=\"ds-toast__msg\">Fila limpa (12 faixas)</span><button class=\"ds-toast__action\" title=\"Desfazer (Ctrl+Z)\">Desfazer</button></div>",
+      "css": ".ds-toast { display:inline-flex; align-items:center; gap:4px; padding:6px 6px 6px 14px; background:var(--bg-paper,#fff); border:1px solid var(--line-2,#e5e5e5); border-radius:var(--radius-lg,10px); box-shadow:var(--shadow-hover,0 8px 24px rgba(0,0,0,.06)); font-family:var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); max-width:420px; } .ds-toast__msg { margin-right:6px; font-size:var(--fs-title-sm,12.5px); color:var(--fg-2,#262626); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ds-toast__action { padding:6px 10px; border:0; border-radius:var(--radius-md,8px); background:transparent; color:var(--fg-1,#171717); font:inherit; font-size:var(--fs-title-sm,12.5px); font-weight:600; cursor:pointer; transition:background var(--dur-base,.15s) var(--ease-out,ease); } .ds-toast__action:hover { background:var(--bg-soft,#f7f6f3); } .ds-toast__action:active { transform:scale(.97); } .ds-toast__action:focus-visible { outline:2px solid var(--blue-ring,#3b82f6); outline-offset:2px; }"
+    },
+    {
+      "name": "Cabeçalho de biblioteca (LibHero)",
+      "kind": "custom",
+      "refersTo": "lib-hero-cover",
+      "description": "Álbum, Artista e Playlist: capa 176 px (140 no compacto, raio 14), kicker na receita de rótulo, título Feature 28, slot facts com escuta viva e qualidade medida, ações em --btn-h-lg.",
+      "html": "<div class=\"ds-hero\"><div class=\"ds-hero__cover\"></div><div class=\"ds-hero__body\"><div class=\"ds-hero__kicker\">Álbum</div><div class=\"ds-hero__title\">Ready To Die</div><div class=\"ds-hero__facts\">17 faixas · 1:09:20 · CD 16/44</div><div class=\"ds-hero__actions\"><button class=\"ds-hero__btn ds-hero__btn--primary\">Tocar</button><button class=\"ds-hero__btn\">Aleatório</button></div></div></div>",
+      "css": ".ds-hero { display:flex; gap:28px; align-items:flex-end; font-family:var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif); } .ds-hero__cover { width:176px; height:176px; flex:none; border-radius:var(--radius-2xl,14px); background:var(--bg-soft,#f7f6f3); border:1px solid var(--line-2,#e5e5e5); } .ds-hero__body { display:flex; flex-direction:column; gap:6px; min-width:0; } .ds-hero__kicker { font-size:var(--fs-label,11px); font-weight:var(--label-weight,700); letter-spacing:var(--label-tracking,.06em); text-transform:uppercase; color:var(--fg-5,#737373); } .ds-hero__title { font-size:var(--fs-feature,28px); font-weight:600; line-height:1.1; letter-spacing:-.02em; color:var(--fg-1,#171717); } .ds-hero__facts { font-size:var(--fs-meta,11.5px); color:var(--fg-5,#737373); font-variant-numeric:tabular-nums; } .ds-hero__actions { display:flex; gap:8px; margin-top:8px; } .ds-hero__btn { height:var(--btn-h-lg,36px); padding:0 14px; border:1px solid var(--line-2,#e5e5e5); border-radius:var(--radius-pill,999px); background:var(--bg-paper,#fff); color:var(--fg-2,#262626); font:inherit; font-size:var(--fs-body,13px); font-weight:600; cursor:pointer; transition:background var(--dur-base,.15s) var(--ease-out,ease), border-color var(--dur-base,.15s) var(--ease-out,ease); } .ds-hero__btn:hover { background:var(--bg-soft,#f7f6f3); border-color:var(--fg-8,#d4d4d4); color:var(--fg-1,#171717); } .ds-hero__btn--primary { background:var(--fg-1,#171717); border-color:var(--fg-1,#171717); color:var(--bg-paper,#fff); } .ds-hero__btn--primary:hover { background:var(--fg-2,#262626); border-color:var(--fg-2,#262626); color:var(--bg-paper,#fff); } .ds-hero__btn:active { transform:scale(.97); } .ds-hero__btn:focus-visible { outline:2px solid var(--blue-ring,#3b82f6); outline-offset:2px; }"
     }
   ],
   "narrative": {
@@ -1289,7 +1383,7 @@
       },
       {
         "name": "A Regra do Piso",
-        "body": "4,5:1 para texto, 3:1 para texto grande, controles e para o ink do fundo, medidos no pior ponto do fundo real (capa e fundo animado). O checker do tema (`load_theme`) e o `validate.py` reprovam o que falha.",
+        "body": "4,5:1 para texto, 3:1 para texto grande, controles e para o ink do fundo, medidos no pior ponto do fundo real (capa e fundo animado). O acento da capa mira 5,2:1 contra o canvas e o paper (não contra o ink do tema) e 4,5:1 sobre a própria lavagem de 12 %; capa com croma OKLCH < 0,02 é acromática e deixa o acento do tema. Os sinais ok/aviso/erro se medem onde moram: sobre soft, faint e o próprio `-bg` (rgba composto sobre o paper). O checker do tema (`load_theme`, `theme_contrast_checks`) e o `validate.py` reprovam o que falha e avisam quando dois sinais colapsam (ΔE OKLab < 5).",
         "section": "colors"
       },
       {
@@ -1309,7 +1403,7 @@
       },
       {
         "name": "A Regra do Piso de 11",
-        "body": "Texto que se lê fica em 11 px ou mais (12,1 px com o zoom 1,1 do dono), via `--fs-label` (11 px) nos rótulos pequenos. Abaixo disso só mono decorativo já existente (Hz do fader, selo de origem do S24), que é dívida, não licença.",
+        "body": "Texto que se lê fica em 11 px ou mais (12,1 px com o zoom 1,1 do dono), via `--fs-label` (11 px) nos rótulos pequenos, no desktop e no S24. Abaixo disso só o Hz do fader, que é dívida, não licença.",
         "section": "typography"
       },
       {
@@ -1327,7 +1421,8 @@
       "consumir token (`--fg-*`, `--bg-*`, `--line-*`, `--radius-*`, `--dur-*`, `--ease-out`) em todo componente; se o token falta, crie no `:root` e exponha ao tema (`yaml_key_to_css_prop`), nunca fixe no componente.",
       "usar `--blue-fg`/`--blue-ring`/`--blue-bg` (ou `--primary`) para \"ligado\", \"atual\", \"foco\" e \"station\": é o acento que segue tema e capa.",
       "`font-variant-numeric: tabular-nums` e `--font-mono` em todo número que muda.",
-      "desenhar componente novo com os estados vazio, carregando e erro, e com atalho de teclado no desktop (o Crate vazio é o modelo: ícone de 24 px, título 14/600, dica 13 e a sequência de teclas em `kbd`).",
+      "desenhar componente novo com os estados vazio, carregando e erro (`EmptyState` com `tone`; leitura por `settle`/`peek` de `lib/loaded.ts`, nunca `catch` que devolve lista vazia) e com atalho de teclado no desktop.",
+      "devolver o foco ao fechar overlay (`lib/focusReturn.ts`) e avisar falha de ação com `failNotice` (\"Não consegui…\" + [Tentar de novo]).",
       "diferenciar hover de ligado (`aria-pressed` em `--blue-fg`).",
       "`prefers-reduced-motion`: versão calma, não tela morta. O bloco único no fim do CSS desliga rota, pulsos, VU e escalonamento; gaveta, paleta, Tweaks, card de letra e troca de faixa ficam só com opacidade (nada desliza); crossfade da capa, estados e linha atual seguem, porque são só opacidade e cor. O fundo anda a 1/4 da velocidade sem kick (`bgCalm` em `store/tweaks.ts`).",
       "medir contraste no pior ponto da captura real (capa e fundo animado), porque o detector só mede sobre fundo sólido.",
@@ -1337,7 +1432,7 @@
       "declarar `transition` de custom property no `:root` nem animar `--bg-ink`/`--primary` por CSS: restyle da árvore inteira por quadro no WebKitGTK (medido: 60 → 29 fps). As vars saltam; a suavidade é local (`rgbLerp` nos canvases, transition nas propriedades concretas).",
       "introduzir terceira família tipográfica, fonte por CDN, ícone fora do Lucide (única exceção: coração cheio do Phosphor) nem ícone pequeno ampliado.",
       "usar cor crua (`#3b82f6`, `rgba(59,130,246,…)`, `#fff` sobre acento): use `--blue-ring` com `--halo-alpha` e `--on-primary`.",
-      "usar sombra para elevar superfície em repouso, nem `backdrop-filter` em tela cheia sobre o canvas animado.",
+      "usar sombra para elevar superfície em repouso, nem `backdrop-filter` ou `filter` em tela cheia sobre o canvas animado (o filter do ambient custava 13 fps na Home; no WebGL ele é passe do motor).",
       "\"corrigir\" o canvas do WebGL para quase-preto: é #000 por decisão.",
       "empilhar mais de 3 tamanhos e 2 pesos numa tela, nem usar sobretítulo espaçado além do eyebrow, mono decorativo em dado que não muda, seta \"→\" em botão, palavra destacada no título ou gradiente roxo.",
       "texto abaixo de 11 px em tela nova: use `--fs-label`. (Os achados de 25/10 na Home, \"RES\" e eyebrows, foram corrigidos na leva de 26/10.)",
