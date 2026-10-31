@@ -2255,8 +2255,8 @@ html { --glow: 0; }
   .pb-icon-btn[aria-pressed="true"],
   .pb-btn[aria-pressed="true"],
   .pb-like[aria-pressed="true"],
-  .tog[aria-pressed="true"],
-  .tog--blue[aria-pressed="true"],
+  .tog[aria-checked="true"],
+  .tog--blue[aria-checked="true"],
   .nav-item.active,
   .segmented button.is-active,
   .seg button[aria-pressed="true"],
@@ -2987,15 +2987,25 @@ html { --glow: 0; }
   color: var(--fg-3);
 }
 
-/* Mini toggle pill (reused inside panels) */
+/* Mini toggle pill (components/Switch.tsx: role="switch" + aria-checked).
+   A31: desligado era --fg-8 cheio sobre o painel (1,89:1, some). Agora o
+   trilho é --bg-tint com borda --fg-6 (4,95:1) e a bolinha --fg-5; ligado,
+   trilho --fg-1 e bolinha clara. A área de toque cresce para 24 px de
+   altura pelo ::before, sem mudar o desenho. */
 .tog {
   width: 30px; height: 16px;
   border-radius: 999px;
-  background: var(--fg-8);
+  background: var(--bg-tint);
   position: relative;
   cursor: pointer;
-  transition: background var(--dur-base) var(--ease-out);
-  border: 1px solid var(--line-2);
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+  border: 1px solid var(--fg-6);
+  flex: none;
+}
+.tog::before {
+  content: '';
+  position: absolute;
+  inset: -5px -4px;
 }
 .tog::after {
   content: '';
@@ -3003,13 +3013,15 @@ html { --glow: 0; }
   top: 1px; left: 1px;
   width: 12px; height: 12px;
   border-radius: 50%;
-  background: var(--bg-paper);
+  background: var(--fg-5);
   box-shadow: var(--shadow-knob);
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
 }
-.tog[aria-pressed="true"] { background: var(--fg-1); }
-.tog[aria-pressed="true"]::after { transform: translateX(12px); }
-.tog--blue[aria-pressed="true"] { background: var(--blue-fg); }
+.tog:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.tog:disabled { cursor: not-allowed; opacity: 0.5; }
+.tog[aria-checked="true"] { background: var(--fg-1); border-color: var(--fg-1); }
+.tog[aria-checked="true"]::after { transform: translateX(12px); background: var(--bg-paper); }
+.tog--blue[aria-checked="true"] { background: var(--blue-fg); border-color: var(--blue-fg); }
 
 /* ════════════════════════════════════════════════════════════
    PLAYLISTS — collection cards (pastas do acervo)
@@ -3726,6 +3738,18 @@ html { --glow: 0; }
   font-variant-numeric: tabular-nums;
 }
 .set-about-item__value.is-mono-strong { font-weight: 600; }
+/* Diagnóstico (B20): o texto técnico fica num painel fechado, aberto pelo
+   cabeçalho inteiro; o chevron gira quando abre. */
+.set-diag__summary { cursor: pointer; list-style: none; align-items: center; }
+.set-diag__summary::-webkit-details-marker { display: none; }
+.set-diag:not([open]) .set-diag__summary { border-bottom: 0; }
+.set-diag__summary:hover .set-panel__title { color: var(--fg-1); }
+.set-diag__summary:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.set-diag__chev { color: var(--fg-5); transition: transform var(--dur-base) var(--ease-out); }
+.set-diag[open] .set-diag__chev { transform: rotate(180deg); }
+.set-diag__stats { padding: 13px 20px; border-top: 1px solid var(--line-3); }
+.set-num { font-variant-numeric: tabular-nums; }
+.set-kbd { font-family: var(--font-mono); font-size: var(--fs-label); padding: 2px 7px; }
 
 /* Badge de status (calculadora WCAG do Settings). Portado do
    components.css órfão, que nunca entrou no bundle, para os tokens
