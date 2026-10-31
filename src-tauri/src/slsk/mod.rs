@@ -495,12 +495,26 @@ pub(crate) fn slsk_cancel_search(sl: State<Slsk>, search_id: String) -> Result<(
 /// `IndexerHandle::search`, Qdrant LOCAL — não é a rede Soulseek, então
 /// não passa pelo canal do coordinator, mesmo padrão de `lib_search` em
 /// `lib.rs`) com a string que o usuário digitou.
+///
+/// A40: `async` + `off_main`. No Tauri 2 o comando síncrono roda na thread da
+/// janela, e o probe dispara a cada busca do Crate: com o Qdrant lento, a UI
+/// inteira parava. Teto de 5 s (`IPC_QUICK`); estourado ou com erro, devolve
+/// lista vazia (o card só perde o aviso "já no acervo", como antes em erro).
+/// O contrato com o frontend não muda (`Track[]`; o `Ok` é sempre).
 #[tauri::command]
-pub(crate) fn slsk_dedup_probe(lib: State<crate::Library>, query: String) -> Vec<Track> {
-    lib.handle
-        .search(&query, 10)
-        .map(|r| r.tracks)
-        .unwrap_or_default()
+pub(crate) async fn slsk_dedup_probe(
+    lib: State<'_, crate::Library>,
+    query: String,
+) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    let found = crate::imp::off_main("slsk_dedup_probe", crate::imp::IPC_QUICK, move || {
+        lib.handle.search(&query, 10).map(|r| r.tracks).map_err(|e| e.to_string())
+    })
+    .await;
+    Ok(found.unwrap_or_else(|e| {
+        tracing::warn!(%e, "slsk_dedup_probe: sem resposta do acervo, segue sem dedup");
+        Vec::new()
+    }))
 }
 
 #[tauri::command]
