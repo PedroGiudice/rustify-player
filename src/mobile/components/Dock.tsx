@@ -22,10 +22,10 @@ import { createSwapKey } from "../../lib/motion";
 import { lastPlayed, resumeLast } from "../quickPlay";
 
 const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
-  { path: "/home", label: "Home", icon: Icon.home },
-  { path: "/search", label: "Search", icon: Icon.search },
-  { path: "/library", label: "Library", icon: Icon.library },
-  { path: "/queue", label: "Queue", icon: Icon.queue },
+  { path: "/home", label: "Início", icon: Icon.home },
+  { path: "/search", label: "Buscar", icon: Icon.search },
+  { path: "/library", label: "Biblioteca", icon: Icon.library },
+  { path: "/queue", label: "Fila", icon: Icon.queue },
 ];
 
 /** Sobe a tela corrente ao topo (a .view é o scroller do shell). */
@@ -173,7 +173,7 @@ export function Dock() {
               role="button"
               tabindex="0"
               attr:data-swap={swap()}
-              aria-label={`Abrir Now Playing: ${t().title}`}
+              aria-label={`Abrir a tela da faixa tocando: ${t().title}`}
               onClick={onInfoClick}
               onKeyDown={onInfoKey}
             >

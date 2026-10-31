@@ -11,6 +11,15 @@ import { createSignal } from "solid-js";
 export const BEAT_MODES = ["Off", "Subtle", "Default", "Pulse"] as const;
 export type BeatMode = (typeof BEAT_MODES)[number];
 
+/** Rótulo de tela de cada modo (A50). O valor gravado em localStorage
+    continua em inglês: trocar a chave apagaria a escolha de quem já tem. */
+export const BEAT_LABELS: Record<BeatMode, string> = {
+  Off: "Desligada",
+  Subtle: "Sutil",
+  Default: "Padrão",
+  Pulse: "Pulso",
+};
+
 const DEPTH: Record<BeatMode, number> = { Off: 0, Subtle: 0.3, Default: 0.55, Pulse: 0.85 };
 const KEY = "rustify-beat-mobile";
 

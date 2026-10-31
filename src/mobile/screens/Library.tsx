@@ -44,7 +44,7 @@ export function Library() {
 
   return (
     <div class="screen">
-      <ViewHead title="Library" sub={libSub(sub)} />
+      <ViewHead title="Biblioteca" sub={libSub(sub)} />
 
       <div class="chiprow">
         <For each={FACETS}>

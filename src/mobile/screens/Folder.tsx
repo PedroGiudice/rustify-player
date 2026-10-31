@@ -54,7 +54,7 @@ export function Folder(props: { param: string | null }) {
 
       <Show when={data.error && !data.loading}>
         <LoadError
-          title="Não deu para carregar a pasta"
+          title="Não consegui carregar a pasta"
           detail={String(data.error)}
           onRetry={() => void refetch()}
         />
@@ -64,11 +64,11 @@ export function Folder(props: { param: string | null }) {
         <div class="actions">
           <button class="btn btn--pri" onClick={() => void playFolder(list(), name())}>
             <Icon.play />
-            Play
+            Tocar
           </button>
           <button class="btn" onClick={() => void shuffleFolder(list(), name())}>
             <Icon.shuffle />
-            Shuffle
+            Aleatório
           </button>
         </div>
         <div class="rowlist list-lite" style={{ padding: "0 20px" }}>

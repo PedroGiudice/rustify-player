@@ -83,7 +83,7 @@ export function Search() {
 
   return (
     <div class="screen">
-      <ViewHead title="Search" />
+      <ViewHead title="Buscar" />
 
       {/* Com o campo em foco o rodapé (progresso, mini, abas) se esconde e a
           lista ganha o espaço até o teclado (A62, regra no app.css). */}

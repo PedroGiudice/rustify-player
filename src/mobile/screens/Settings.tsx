@@ -17,7 +17,7 @@
 
 import { For, Show } from "solid-js";
 import { ViewHead } from "../components/ui";
-import { BEAT_MODES, beatMode, setBeatMode } from "../bg/beatSetting";
+import { BEAT_LABELS, BEAT_MODES, beatMode, setBeatMode } from "../bg/beatSetting";
 import { useRenderer, useShape } from "../bg/spectrum";
 import { bgEngine, bgScene, is2dActive, setBgEngine, setBgScene } from "../bg/engine";
 import { glStatus, resetGlStatus, SCENE_HINTS, SCENE_KEYS, SCENE_LABELS } from "../../gl/meta";
@@ -59,7 +59,7 @@ export function Settings() {
     const s = upd();
     switch (s.phase) {
       case "checking":
-        return "Consultando o release…";
+        return "Consultando a versão nova…";
       case "available":
       case "needs_permission":
         return `Versão ${s.check?.latest} disponível`;
@@ -70,13 +70,13 @@ export function Settings() {
       case "installing":
         return "Preparando a instalação…";
       case "confirm_pending":
-        return "Instalação pronta — aguardando o app voltar";
+        return "Instalação pronta, esperando o app voltar";
       case "confirming":
         return "Confirme a instalação na tela do sistema";
       case "done":
-        return "Instalada — o app vai reabrir";
+        return "Instalada; o app vai reabrir";
       case "failed":
-        return "A atualização falhou";
+        return "Não consegui atualizar";
       case "uptodate":
         return "Você está na versão mais recente";
       default:
@@ -87,12 +87,12 @@ export function Settings() {
     const s = upd();
     if (s.phase === "failed") return s.error ?? "erro desconhecido";
     if (s.phase === "confirming" || s.phase === "confirm_pending")
-      return "Se o diálogo do sistema sumiu (ligação, Home), toque em Tentar de novo — o download é refeito.";
+      return "Se o diálogo do sistema sumiu (ligação, tela inicial), toque em Tentar de novo: o download é refeito.";
     if (s.phase === "needs_permission")
       return "O Android exige liberar 'instalar apps desconhecidos' para o Rustify uma vez. Volte e toque de novo.";
     if (s.phase === "available" && s.check)
-      return `${fmtBytes(s.check.size)} · do release dev no GitHub · a instalação pede confirmação do sistema.`;
-    return "Consulta o release dev no GitHub. O check automático roda no máximo a cada 6h.";
+      return `${fmtBytes(s.check.size)} · do GitHub · a instalação pede confirmação do sistema.`;
+    return "Consulta a versão nova no GitHub. A checagem automática roda no máximo a cada 6 h.";
   };
   const updButton = () => {
     const p = upd().phase;
@@ -111,11 +111,11 @@ export function Settings() {
 
   return (
     <div class="screen">
-      <ViewHead title="Settings" sub="fundo, biblioteca e o resto do que existe" />
+      <ViewHead title="Ajustes" sub="fundo, biblioteca e o resto do que existe" />
 
       <div class="setpanel">
         <div class="setpanel__head">
-          <div class="setpanel__title">Appearance</div>
+          <div class="setpanel__title">Aparência</div>
           <span class="setpanel__sub">o fundo persistente do app</span>
         </div>
         <div class="setrow">
@@ -197,9 +197,9 @@ export function Settings() {
         <Show when={is2dActive()}>
           <div class="setrow setrow--inline">
             <div>
-              <div class="setrow__label">Background render + shape</div>
+              <div class="setrow__label">Estilo e forma do fundo</div>
               <div class="setrow__hint">
-                {useRenderer.count} renderers × {useShape.count} shapes sobre o mesmo campo escalar.
+                {useRenderer.count} estilos × {useShape.count} formas sobre o mesmo desenho.
               </div>
             </div>
             <div style={{ display: "flex", gap: "8px" }}>
@@ -214,14 +214,14 @@ export function Settings() {
         </Show>
         <div class="setrow">
           <div>
-            <div class="setrow__label">Beat sync</div>
+            <div class="setrow__label">Sincronia com a batida</div>
             <div class="setrow__hint">Quanto o fundo reage ao bumbo.</div>
           </div>
           <div class="seg">
             <For each={BEAT_MODES}>
               {(m) => (
                 <button aria-pressed={beatMode() === m ? "true" : "false"} onClick={() => setBeatMode(m)}>
-                  {m}
+                  {BEAT_LABELS[m]}
                 </button>
               )}
             </For>
@@ -248,13 +248,13 @@ export function Settings() {
               aria-pressed={continuityOn() ? "true" : "false"}
               onClick={() => void setContinuity(true)}
             >
-              on
+              ligado
             </button>
             <button
               aria-pressed={!continuityOn() ? "true" : "false"}
               onClick={() => void setContinuity(false)}
             >
-              off
+              desligado
             </button>
           </div>
         </div>
@@ -262,7 +262,7 @@ export function Settings() {
 
       <div class="setpanel">
         <div class="setpanel__head">
-          <div class="setpanel__title">Library</div>
+          <div class="setpanel__title">Biblioteca</div>
           <span class="setpanel__sub">
             {fmtCount(tracks().length)} faixas · {folders().length} pastas
           </span>
@@ -275,7 +275,7 @@ export function Settings() {
         </div>
         <div class="setrow setrow--inline">
           <div>
-            <div class="setrow__label">Re-scan library</div>
+            <div class="setrow__label">Reescanear a biblioteca</div>
             <div class="setrow__hint">Relê o manifest e varre o acervo de novo.</div>
           </div>
           <button
@@ -284,7 +284,7 @@ export function Settings() {
             disabled={rescanning()}
             onClick={() => void rescan()}
           >
-            <Show when={rescanning()} fallback="Re-scan">
+            <Show when={rescanning()} fallback="Reescanear">
               …
             </Show>
           </button>
@@ -336,15 +336,15 @@ export function Settings() {
 
       <div class="setpanel">
         <div class="setpanel__head">
-          <div class="setpanel__title">About</div>
+          <div class="setpanel__title">Sobre</div>
           <span class="setpanel__sub">rustify-player · Android v0</span>
         </div>
         <div class="aboutgrid">
           <For
             each={[
-              ["Identifier", "dev.cmr.rustifyplayer"],
-              ["Shell", "Tauri 2 · Rust"],
-              ["Playback", "ExoPlayer · Media3"],
+              ["Identificador", "dev.cmr.rustifyplayer"],
+              ["Base", "Tauri 2 · Rust"],
+              ["Reprodução", "ExoPlayer · Media3"],
               ["Interface", "SolidJS"],
             ]}
           >

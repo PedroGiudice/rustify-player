@@ -73,7 +73,7 @@ describe("tabbar", () => {
   it("tocar a aba ativa na raiz sobe a lista ao topo, sem empilhar histórico", () => {
     const view = mountView(900);
     const r = render(() => <Dock />);
-    fireEvent.click(r.getByRole("button", { name: "Library" }));
+    fireEvent.click(r.getByRole("button", { name: "Biblioteca" }));
     expect(view.scrollTop).toBe(0);
     expect(nav.navigate).not.toHaveBeenCalled();
   });
@@ -81,13 +81,13 @@ describe("tabbar", () => {
   it("numa sub-rota, a aba leva de volta à raiz dela", () => {
     nav.base = { path: "/folder", param: "Rap" };
     const r = render(() => <Dock />);
-    fireEvent.click(r.getByRole("button", { name: "Library" }));
+    fireEvent.click(r.getByRole("button", { name: "Biblioteca" }));
     expect(nav.navigate).toHaveBeenCalledWith("/library");
   });
 
   it("outra aba navega normalmente", () => {
     const r = render(() => <Dock />);
-    fireEvent.click(r.getByRole("button", { name: "Home" }));
+    fireEvent.click(r.getByRole("button", { name: "Início" }));
     expect(nav.navigate).toHaveBeenCalledWith("/home");
   });
 });
@@ -96,8 +96,8 @@ describe("acessibilidade (mobile-20)", () => {
   it("a navegação tem nome e só a aba ativa é aria-current=page", () => {
     const r = render(() => <Dock />);
     expect(r.getByRole("navigation", { name: "Navegação principal" })).toBeTruthy();
-    expect(r.getByRole("button", { name: "Library" }).getAttribute("aria-current")).toBe("page");
-    expect(r.getByRole("button", { name: "Home" }).hasAttribute("aria-current")).toBe(false);
+    expect(r.getByRole("button", { name: "Biblioteca" }).getAttribute("aria-current")).toBe("page");
+    expect(r.getByRole("button", { name: "Início" }).hasAttribute("aria-current")).toBe(false);
   });
 
   it("o mini player abre o Now Playing pelo teclado e pelo leitor de tela", () => {
@@ -108,7 +108,7 @@ describe("acessibilidade (mobile-20)", () => {
       album_cover_path: null,
     };
     const r = render(() => <Dock />);
-    const open = r.getByRole("button", { name: "Abrir Now Playing: Faixa" });
+    const open = r.getByRole("button", { name: "Abrir a tela da faixa tocando: Faixa" });
     fireEvent.keyDown(open, { key: "Enter" });
     expect(nav.openNowPlaying).toHaveBeenCalledTimes(1);
     // Ativação do TalkBack chega como click sem gesto de ponteiro antes.
@@ -119,7 +119,7 @@ describe("acessibilidade (mobile-20)", () => {
   it("o click que segue um gesto de toque não abre o NP de novo", () => {
     nav.playing = { id: "1", title: "Faixa", artist_name: "Fulano", album_cover_path: null };
     const r = render(() => <Dock />);
-    const open = r.getByRole("button", { name: "Abrir Now Playing: Faixa" });
+    const open = r.getByRole("button", { name: "Abrir a tela da faixa tocando: Faixa" });
     fireEvent.pointerDown(open, { clientX: 10, clientY: 10 });
     fireEvent.pointerUp(open, { clientX: 10, clientY: 10 });
     fireEvent.click(open);

@@ -37,7 +37,7 @@ export function Home() {
   return (
     <div class="screen">
       <ViewHead
-        title="Home"
+        title="Início"
         sub={libSub(sub)}
         right={
           <button class="iconbtn" aria-label="Ajustes" onClick={() => navigate("/settings")}>
@@ -68,10 +68,10 @@ export function Home() {
           <div class="qs-row">
             <button class="qs" onClick={() => void shuffleAll()}>
               <div class="eyebrow" style={{ color: "var(--accent)" }}>
-                Quick start
+                Início rápido
               </div>
-              <h3>Shuffle all</h3>
-              <div class="meta">{fmtCount(tracks().length)} tracks</div>
+              <h3>Tudo em aleatório</h3>
+              <div class="meta">{fmtCount(tracks().length)} {tracks().length === 1 ? "faixa" : "faixas"}</div>
             </button>
             <Show when={stations().length}>
               <button class="qs" onClick={() => navigate("/stations")}>
@@ -84,7 +84,7 @@ export function Home() {
 
           <Show when={recents().length}>
             <div class="sec">
-              <SecHead label="Recently played" />
+              <SecHead label="Tocadas recentemente" />
               <div class="card" style={{ padding: "2px 12px" }}>
                 <For each={recents()}>
                   {(t, i) => (
@@ -101,7 +101,7 @@ export function Home() {
 
           <Show when={favorites().length}>
             <div class="sec">
-              <SecHead label="Based on your favorites" />
+              <SecHead label="Com base nos seus favoritos" />
               <div class="grid">
                 <For each={favorites().slice(0, 4)}>
                   {(t, i) => (

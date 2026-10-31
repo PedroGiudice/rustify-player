@@ -38,7 +38,7 @@ export function Stations() {
             <Empty title="Carregando stations…" />
           </Match>
           <Match when={stationsState() === "error"}>
-            <LoadError title="Não deu para carregar as stations" onRetry={() => void reloadStations()} />
+            <LoadError title="Não consegui carregar as stations" onRetry={() => void reloadStations()} />
           </Match>
           <Match when={!stations().length}>
             <Empty

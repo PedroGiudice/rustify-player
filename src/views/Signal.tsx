@@ -201,7 +201,7 @@ export default function Signal() {
         applyPresetToStore(preset);
       } catch (e) {
         console.error("[signal] import falhou:", e);
-        window.alert("A importação falhou: JSON inválido ou formato não reconhecido.");
+        window.alert("Não consegui importar: o arquivo não é um preset do EasyEffects (.json).");
       }
     };
     input.click();

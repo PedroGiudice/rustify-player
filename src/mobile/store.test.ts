@@ -334,7 +334,7 @@ describe('shuffleUpcoming ("Embaralhar o restante" — CMR-218)', () => {
     await inflight;
     // Sem toast o botão parecia um no-op mudo; e o syncQueue do catch é a
     // única fonte da nova ordem/índice.
-    expect(toast()).toBe("Falha ao embaralhar");
+    expect(toast()).toBe("Não consegui embaralhar");
     expect(ipc.playerGetQueue).toHaveBeenCalledTimes(2);
     expect(queueEntries().map((e) => e.trackId)).toEqual(["1", "2", "3", "4"]);
     expect(pb.index).toBe(1);
@@ -370,7 +370,7 @@ describe("toggleLike (coração do Now Playing — CMR-220)", () => {
     (ipc.playerSetLike as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("sem plugin"));
     await toggleLike(t);
     expect(isLiked(t)).toBe(false);
-    expect(toast()).toBe("Falha ao registrar a curtida");
+    expect(toast()).toBe("Não consegui registrar a curtida");
   });
 
   it("o override sobrevive em localStorage (kv-mobile-likes)", async () => {

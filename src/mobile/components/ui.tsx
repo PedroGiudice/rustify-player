@@ -91,12 +91,12 @@ export function Empty(props: { title: string; hint?: string; actions?: EmptyActi
 
 /** Falha de carga: diz o que houve e oferece tentar de novo. Uma falha NUNCA
  *  pode aparecer como "vazio" ou "não encontrado" (mobile-12/13/14). */
-export function LoadError(props: { title: string; detail?: string | null; onRetry: () => void }) {
+export function LoadError(props: { title: string; detail?: string | null; tech?: string | null; onRetry: () => void }) {
   return (
     <div class="empty" role="alert">
       <div class="e1">{props.title}</div>
       <Show when={props.detail}>
-        <div class="e2">{props.detail}</div>
+        <div class="e2" title={props.tech ?? undefined}>{props.detail}</div>
       </Show>
       <button class="btn empty__retry" onClick={() => props.onRetry()}>
         Tentar de novo
@@ -115,8 +115,9 @@ export function LibGate(props: { children: JSX.Element }) {
         when={!libError()}
         fallback={
           <LoadError
-            title="Não deu para carregar a biblioteca"
-            detail={libError()}
+            title="Não consegui carregar a biblioteca"
+            detail="Toque em Tentar de novo."
+            tech={libError()}
             onRetry={() => void reloadLibrary()}
           />
         }

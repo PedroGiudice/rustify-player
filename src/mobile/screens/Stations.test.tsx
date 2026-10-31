@@ -46,7 +46,7 @@ describe("Stations (A64)", () => {
   it("falha mostra o erro com tentar de novo", () => {
     st.state = "error";
     const r = render(() => <Stations />);
-    expect(r.getByText("Não deu para carregar as stations")).toBeTruthy();
+    expect(r.getByText("Não consegui carregar as stations")).toBeTruthy();
     fireEvent.click(r.getByRole("button", { name: "Tentar de novo" }));
     expect(st.reload).toHaveBeenCalledTimes(1);
   });

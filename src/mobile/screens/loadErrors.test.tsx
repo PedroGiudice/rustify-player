@@ -69,7 +69,9 @@ describe("Home (mobile-12)", () => {
     st.error = "loadLibrary: timeout 6000ms";
     const r = render(() => <Home />);
     expect(r.queryByText("Acervo vazio")).toBeNull();
-    expect(r.getByText(/timeout 6000ms/)).toBeTruthy();
+    // O motivo técnico sai do texto (o dono não interpreta) e fica no title.
+    expect(r.queryByText(/timeout 6000ms/)).toBeNull();
+    expect(r.getByText("Toque em Tentar de novo.").getAttribute("title")).toContain("timeout 6000ms");
     fireEvent.click(r.getByRole("button", { name: "Tentar de novo" }));
     expect(st.reloadLibrary).toHaveBeenCalledTimes(1);
   });
