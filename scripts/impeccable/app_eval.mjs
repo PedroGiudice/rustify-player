@@ -40,7 +40,10 @@ const data = async (script, timeoutMs) => {
 
 // Dispara `expr` (uma Promise) em segundo plano e espera o resultado.
 async function background(expr, waitMs = 60000) {
-  await data(`window.__appEval = null; Promise.resolve().then(() => ${expr}).then(v => { window.__appEval = { ok: true, v }; }, e => { window.__appEval = { ok: false, e: String(e && e.stack || e) }; }); return true;`);
+  // setTimeout, não microtarefa: o detector faz minutos de trabalho síncrono
+  // antes do primeiro await, e uma microtarefa roda antes de a ponte receber a
+  // resposta deste eval (estourava o corte de 5 s no Now Playing, 31/10/2026).
+  await data(`window.__appEval = null; new Promise((r) => setTimeout(r, 50)).then(() => ${expr}).then(v => { window.__appEval = { ok: true, v }; }, e => { window.__appEval = { ok: false, e: String(e && e.stack || e) }; }); return true;`);
   const until = Date.now() + waitMs;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, 400));

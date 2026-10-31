@@ -537,7 +537,7 @@ export default function NowPlaying() {
             <div class="np__meta" ref={metaEl!} data-swap={swapKey()}>
               <Show when={player.currentTrack} fallback={<EmptyMeta />}>
                 <div class="np__tags">
-                  <span class="np__tag-playing"><span class="dot" />Now Playing</span>
+                  <span class="np__tag-playing" data-paused={player.isPlaying ? "false" : "true"}><span class="dot" />Now Playing</span>
                 </div>
                 <h1
                   class="np__title"

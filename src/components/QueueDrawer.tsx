@@ -173,7 +173,7 @@ export function QueueDrawer() {
       <aside class="queue-drawer" data-open={open() ? "true" : "false"} data-screen-label="Queue">
         <div class="queue-drawer__head">
           <div>
-            <h3 class="queue-drawer__title">Queue</h3>
+            <h2 class="queue-drawer__title">Queue</h2>
             <div class="queue-drawer__meta">
               {upcoming().length} tracks · {totalRemaining()} remaining
             </div>
