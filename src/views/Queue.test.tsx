@@ -16,7 +16,7 @@ import Queue from "./Queue";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { navigate } from "../router";
-import type { Track } from "../tauri";
+import type { AutoplayReason, Track } from "../tauri";
 
 const T = (id: string, ms = 60_000): Track => ({
   id, title: `Faixa ${id}`, artist_name: "Artista", album_title: "Disco",
@@ -49,5 +49,14 @@ describe("Queue (rota /queue)", () => {
     fireEvent.click(getAllByText("Faixa a")[0]);
     expect(vi.mocked(navigate)).toHaveBeenCalledWith("/now-playing");
     expect(vi.mocked(playTrack)).not.toHaveBeenCalled();
+  });
+
+  it("cada faixa do rádio diz por que entrou, inclusive a que toca (B10)", () => {
+    const disc: AutoplayReason = { kind: "discovery", ended: 0, liked: false, pool: "taste", seed_id: "x" };
+    const shuf: AutoplayReason = { kind: "shuffle", ended: null, liked: null, pool: null, seed_id: "x" };
+    setQueue([{ ...T("a"), autoplay_reason: disc }, { ...T("b"), autoplay_reason: shuf }, T("c")], 0);
+    const { container } = render(() => <Queue />);
+    const whys = [...container.querySelectorAll(".queue-view__why")].map((e) => e.textContent);
+    expect(whys).toEqual(["Descoberta: nunca ouvida até o fim", "Sorteio do acervo"]);
   });
 });

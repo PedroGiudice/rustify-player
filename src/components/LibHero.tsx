@@ -11,6 +11,9 @@
 
    O chamador manda o conteúdo da capa (imagem, CoverArt ou mosaico): a
    moldura, o tamanho e o raio são daqui.
+
+   `facts` (B11): segunda linha, mais quieta, com a escuta viva e a
+   qualidade medida (components/ListenFacts). Opcional: a Playlist não usa.
    ============================================================ */
 
 import type { JSX } from "solid-js";
@@ -24,6 +27,8 @@ export interface LibHeroProps {
   round?: boolean;
   /** Linha de números: faixas, duração, artista do álbum. */
   stats: JSX.Element;
+  /** Linha de fatos sob os números: escuta e qualidade (B11). */
+  facts?: JSX.Element;
   /** Botões; o primário ("Tocar") por último. */
   actions: JSX.Element;
 }
@@ -39,6 +44,7 @@ export function LibHero(props: LibHeroProps) {
           <div class="lib-hero__kicker">{props.kicker}</div>
           <h1 class="lib-hero__title">{props.title}</h1>
           <p class="lib-hero__stats">{props.stats}</p>
+          {props.facts}
         </div>
       </div>
       <div class="lib-hero__actions">{props.actions}</div>

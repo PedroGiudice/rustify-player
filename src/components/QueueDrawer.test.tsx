@@ -15,6 +15,8 @@ import { render, cleanup } from "@solidjs/testing-library";
 vi.mock("./PlayerBar", () => ({ playTrack: vi.fn(), playQueueUpcoming: vi.fn() }));
 
 import { QueueDrawer, QUEUE_EVENT } from "./QueueDrawer";
+import { setQueue } from "../store/player";
+import type { AutoplayReason, Track } from "../tauri";
 
 afterEach(() => {
   cleanup();
@@ -71,5 +73,24 @@ describe("evento de abrir a fila (shell-v4)", () => {
     expect(isOpen(container)).toBe(true);
     window.dispatchEvent(new CustomEvent(QUEUE_EVENT));
     expect(isOpen(container)).toBe(false);
+  });
+});
+
+describe("motivo do rádio sob a faixa (B10)", () => {
+  const T = (id: string, title: string, reason?: AutoplayReason) => ({
+    id, title, artist_name: "A", album_title: null, album_cover_path: null, album_year: null,
+    duration_ms: 1000, path: `/m/${id}`, lrc_path: null, autoplay_reason: reason ?? null,
+  }) as Track;
+
+  it("a gaveta mostra o motivo só nas faixas que o rádio escolheu", () => {
+    const seed = T("s", "Alright");
+    const known = T("k", "Conhecida", { kind: "known", ended: 7, liked: false, pool: "seed", seed_id: "s" });
+    const similar = T("p", "Parecida", { kind: "similar", ended: null, liked: null, pool: null, seed_id: "s" });
+    setQueue([seed, known, similar, T("m", "Manual")], 0);
+    const { container } = render(() => <QueueDrawer />);
+    window.dispatchEvent(new CustomEvent(QUEUE_EVENT, { detail: { open: true } }));
+    const whys = [...container.querySelectorAll(".qedit__why")].map((e) => e.textContent);
+    expect(whys).toEqual(["Conhecida: você ouviu até o fim 7 vezes", "Parecida com “Alright”"]);
+    setQueue([], 0);
   });
 });

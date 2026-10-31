@@ -27,6 +27,7 @@ import { playTrack } from "../components/PlayerBar";
 import { startRadioSession, registerSeen } from "../store/radioSession";
 import { relTime } from "../lib/format";
 import { failNotice } from "../lib/failNotice";
+import { RadioExcluded } from "../components/RadioExcluded";
 
 // Lote inicial reduzido (Fase 2 do session-awareness): a station vira fila
 // incremental — o topup (PlayerBar.tsx topUpStation) busca mais conforme a
@@ -697,6 +698,9 @@ export default function Stations() {
             </Show>
           </div>
         </section>
+
+        {/* ── Fora do rádio (B9): o que o autoplay e as stations não tocam ── */}
+        <RadioExcluded stationName={(id) => stations.latest?.find((s) => s.id === id)?.name} />
       </div>
     </article>
   );

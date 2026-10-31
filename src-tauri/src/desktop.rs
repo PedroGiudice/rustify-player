@@ -284,7 +284,7 @@ fn unix_now() -> i64 {
 
 /// Teto de espera dos comandos de leitura do caminho quente da barra (perfil,
 /// familiaridade, cor da capa, letra): passando disso a UI segue sem o dado.
-const IPC_QUICK: std::time::Duration = std::time::Duration::from_secs(5);
+pub(crate) const IPC_QUICK: std::time::Duration = std::time::Duration::from_secs(5);
 /// Teto das varreduras (listas, busca, rádio) e das escritas. Igual ao
 /// timeout de leitura do `QdrantClient`: escrita que estoura o prazo ainda
 /// pode terminar depois, então o teto não pode mentir antes do próprio client.
@@ -319,7 +319,7 @@ fn run_with_deadline<T: Send + 'static>(
 
 /// [`run_with_deadline`] num thread do pool de bloqueio do runtime: o
 /// comando `async` só aguarda, nunca prende a thread da janela.
-async fn off_main<T: Send + 'static>(
+pub(crate) async fn off_main<T: Send + 'static>(
     label: &'static str,
     limit: std::time::Duration,
     f: impl FnOnce() -> Result<T, String> + Send + 'static,

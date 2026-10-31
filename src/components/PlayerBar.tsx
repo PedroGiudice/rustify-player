@@ -28,7 +28,7 @@ import {
   libAutoplayNext, libStationNext, getState,
   coverUrl, onPlayerState, onMprisCommand,
   persistLoadState, persistSaveState, libGetTracksByIds, libTrackProfile, libTrackFamiliarity,
-  libListHistory, libShuffle,
+  libListHistory, libShuffle, isStalePlayerEvent,
 } from "../tauri";
 import type { TrackFamiliarity } from "../tauri";
 import { lyricsState, reloadLyrics } from "../store/lyrics";
@@ -132,6 +132,10 @@ export function PlayerBar() {
 
   async function setupAsync() {
     unlistenPlayer = await onPlayerState(async (p) => {
+      // A40: fim e posição de outra faixa chegaram atrasados (o player já
+      // pediu a próxima). Aplicar avançaria a fila de novo ou poria o tempo
+      // da anterior na barra.
+      if (("TrackEnded" in p || "Position" in p) && isStalePlayerEvent(p, player.currentTrack?.id)) return;
       if ("TrackStarted" in p) {
         applyTrackStarted(p.TrackStarted);
         // Pre-load next para gapless — repeat-aware: "one" pré-carrega a

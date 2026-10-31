@@ -2037,6 +2037,30 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   box-shadow: var(--shadow-hover);
 }
 .qedit--lifted .qedit__grip { opacity: 1; cursor: grabbing; color: var(--fg-1); }
+/* Por que o rádio escolheu a faixa (B10): uma linha sob o artista, alinhada
+   ao texto (padding 10 + capa 36 + gap 12). Alça e tirar ficam no meio da
+   linha da faixa (52 px), não do bloco inteiro. */
+.qedit__why {
+  margin: -6px 0 0; padding: 0 10px 8px 58px;
+  font-size: var(--fs-label); line-height: 1.35;
+  color: var(--fg-5);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qedit:has(.qedit__why) .qedit__grip,
+.qedit:has(.qedit__why) .qedit__remove { top: 26px; }
+/* A mesma linha na rota /queue: a borda da linha passa para baixo dela
+   (padding 10 + borda 2 + capa 40 + gap 14). */
+.row-list .row:has(+ .queue-view__why), section > .row:has(+ .queue-view__why) { border-bottom: 0; padding-bottom: 4px; }
+.queue-view__why {
+  margin: 0; padding: 0 12px 10px 66px;
+  border-bottom: 1px solid var(--line-3);
+  font-size: var(--fs-label); line-height: 1.35;
+  color: var(--fg-5);
+  font-variant-numeric: tabular-nums;
+}
+.row-list .queue-view__why:last-child { border-bottom: 0; }
+section > .queue-view__why { border-bottom: 0; }
 
 .qrow {
   display: grid;
@@ -3775,6 +3799,28 @@ html { --glow: 0; }
   cursor: not-allowed;
 }
 
+/* Fora do rádio (B9, RadioExcluded): o que o autoplay e as stations não
+   tocam. Linha estática (não toca ao clicar): capa, título, artista, o
+   motivo em números numa terceira linha e a ação à direita. */
+.rx__count { font-variant-numeric: tabular-nums; }
+.rx__note { margin: 0 0 12px; font-size: 12.5px; line-height: 1.45; color: var(--fg-5); }
+.rx-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 14px; align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-3);
+}
+.rx-row:last-child { border-bottom: 0; }
+.rx-row__meta { min-width: 0; line-height: 1.3; }
+.rx-row__why {
+  margin-top: 3px;
+  font-size: var(--fs-label); line-height: 1.35;
+  color: var(--fg-4);
+  font-variant-numeric: tabular-nums;
+}
+.rx-row__return { height: 32px; padding: 0 12px; flex: none; }
+
 /* Station grid */
 .st-grid {
   display: grid;
@@ -4088,6 +4134,15 @@ html { --glow: 0; }
 .set-diag[open] .set-diag__chev { transform: rotate(180deg); }
 .set-diag__stats { padding: 13px 20px; border-top: 1px solid var(--line-3); }
 .set-num { font-variant-numeric: tabular-nums; }
+/* Sync do celular (B14): ponto verde com notícia nas últimas 24 h, âmbar
+   depois disso (o texto também diz, a cor não é o único sinal). */
+.set-sync__dot {
+  display: inline-block; vertical-align: middle;
+  width: 6px; height: 6px; margin: -2px 8px 0 0; border-radius: 50%;
+  background: var(--green-ring);
+}
+.set-sync[data-stale] .set-sync__dot { background: var(--amber-ring); }
+.set-sync[data-stale] .set-row__hint { color: var(--amber-fg); }
 .set-kbd { font-family: var(--font-mono); font-size: var(--fs-label); padding: 2px 7px; }
 
 /* Badge de status (calculadora WCAG do Settings). Portado do
@@ -4366,6 +4421,24 @@ html { --glow: 0; }
 .lib-hero__link:hover { color: var(--fg-1); text-decoration: underline; text-underline-offset: 3px; }
 .lib-hero__link:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 .lib-hero__actions { display: flex; gap: 8px; align-items: center; padding-bottom: 6px; }
+/* Escuta viva e qualidade medida (B11, ListenFacts): uma linha mais quieta
+   sob os números. O ponto repete o do selo da barra (.pb-tech__dot):
+   verde medido, âmbar lossy, neutro sem medição. */
+.lib-hero__facts {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  margin: 6px 0 0;
+  color: var(--fg-5);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.lib-hero__q { display: inline-flex; align-items: baseline; gap: 6px; }
+.lib-hero__q-dot {
+  align-self: center;
+  width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: var(--green-ring);
+}
+.lib-hero__q[data-tone="lossy"] .lib-hero__q-dot { background: var(--amber-ring); }
+.lib-hero__q[data-tone="none"] .lib-hero__q-dot { background: var(--fg-6); }
 html[data-density="compact"] .lib-hero__cover { width: 140px; height: 140px; }
 
 .pl-hero-actions {

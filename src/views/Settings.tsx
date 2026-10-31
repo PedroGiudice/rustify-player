@@ -4,7 +4,8 @@
    Painéis:
    1. Tema — tema YAML (o tema é o modo) + calculadora de contraste.
    2. Reprodução — Retomar ao abrir (preferência lida pelo PlayerBar).
-   3. Biblioteca — uma linha (faixas · álbuns · artistas) + Reescanear.
+   3. Biblioteca — uma linha (faixas · álbuns · artistas) + Reescanear, e
+      quando o celular sincronizou plays e curtidas (B14), âmbar após 24 h.
    4. Atualização — fluxo de update (check / install / restart).
    5. Ponte para o Tweaks — densidade, barra lateral, fundo, ritmo e
       normalização moram no Tweaks; o volume, na barra do player. Antes,
@@ -29,8 +30,10 @@ import {
   listThemes, applyThemeByName, loadTheme, watchTheme, unwatchTheme, onThemeChanged,
   clearThemeVars,
   checkForUpdate, installUpdate, restartApp,
-  type ContrastCheck,
+  libSyncStatus, onSyncReceived,
+  type ContrastCheck, type DeviceSync,
 } from "../tauri";
+import { mergeSync, syncDetail, syncLine, syncStale } from "../lib/syncStatus";
 import { applyTweaks, setTweaksOpen } from "../store/tweaks";
 import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
 
@@ -67,6 +70,22 @@ function relativeTime(isoStr: string | null | undefined): string {
 }
 
 export default function Settings() {
+  // ── Sync do celular (B14): lido ao abrir, atualizado a cada lote ──
+  // null = ainda lendo ou o comando falhou (a linha não aparece).
+  const [syncs, setSyncs] = createSignal<DeviceSync[] | null>(null);
+  const [nowMs, setNowMs] = createSignal(Date.now());
+  onMount(() => {
+    libSyncStatus().then(setSyncs).catch(() => setSyncs(null));
+    let unlisten: (() => void) | undefined;
+    let alive = true;
+    onSyncReceived((d) => { setSyncs((l) => mergeSync(l ?? [], d)); setNowMs(Date.now()); })
+      .then((u) => { if (alive) unlisten = u; else u(); })
+      .catch(() => {});
+    // "há 12 min" anda sozinho com a tela aberta.
+    const tick = setInterval(() => setNowMs(Date.now()), 60_000);
+    onCleanup(() => { alive = false; unlisten?.(); clearInterval(tick); });
+  });
+
   // ── Library data (preservado) ─────────────────────────────────
   const [data] = createResource(async () => {
     const [snapshot, albums, artists, genres] = await Promise.all([
@@ -364,6 +383,40 @@ export default function Settings() {
               </button>
             </div>
           </div>
+          <Show when={syncs()}>
+            {(list) => (
+              <Show
+                when={list().length > 0}
+                fallback={
+                  <div class="set-row">
+                    <div>
+                      <div class="set-row__label">Celular</div>
+                      <div class="set-row__hint">
+                        Nenhum sync registrado. O S24 manda as escutas pela tailnet com este app aberto.
+                      </div>
+                    </div>
+                  </div>
+                }
+              >
+                <For each={list()}>
+                  {(d) => (
+                    <div class="set-row set-sync" data-stale={syncStale(d, nowMs()) ? "true" : undefined}>
+                      <div>
+                        <div class="set-row__label set-num">
+                          <span class="set-sync__dot" aria-hidden="true" />
+                          {syncLine(d, nowMs())}
+                        </div>
+                        <div class="set-row__hint set-num">
+                          {syncDetail(d)}
+                          <Show when={syncStale(d, nowMs())}> · mais de 24 h sem notícia do aparelho</Show>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </Show>
+            )}
+          </Show>
         </div>
 
         {/* ── 4. Atualização ──────────────────────────────────── */}
