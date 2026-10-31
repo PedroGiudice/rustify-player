@@ -321,6 +321,100 @@ export function removeUpcoming(i: number) {
     setPlayer("queue", (q) => q.filter((_, k) => k !== base + i)));
 }
 
+// ── Editar a fila pela FAIXA (A28, B4 da varredura de 31/10) ──────────
+// O gesto da gaveta (arrastar, tirar com animação) dura centenas de ms e a
+// música pode trocar no meio: o índice relativo capturado no início passa a
+// apontar para a vizinha. Estas versões acham a faixa na hora de aplicar.
+// Igualdade por referência do store (a linha do <For> recebe o mesmo proxy
+// que player.queue devolve); id só como reserva, para quem passa um objeto
+// de fora do store (a mesma faixa pode estar duas vezes na fila).
+
+/** Índice ABSOLUTO de `track` no "a seguir", ou -1 (já tocou, é a atual, saiu). */
+function upcomingIndexOf(track: Track): number {
+  const base = player.queueIndex + 1;
+  for (let k = base; k < player.queue.length; k++) if (player.queue[k] === track) return k;
+  for (let k = base; k < player.queue.length; k++) if (player.queue[k].id === track.id) return k;
+  return -1;
+}
+
+/** Leva `track` para onde `anchor` está agora no "a seguir" (mesma regra do
+    splice: antes da âncora se vinha de baixo, depois se vinha de cima).
+    false = alguma das duas não está mais no "a seguir"; nada muda. */
+export function moveUpcomingTrack(track: Track, anchor: Track): boolean {
+  const from = upcomingIndexOf(track);
+  const to = upcomingIndexOf(anchor);
+  if (from < 0 || to < 0) return false;
+  if (from === to) return true;
+  const base = player.queueIndex + 1;
+  moveUpcoming(from - base, to - base);
+  return true;
+}
+
+/** O que `restoreUpcoming` precisa para devolver uma faixa tirada. */
+export interface RemovedUpcoming {
+  track: Track;
+  /** Quem vinha logo antes dela (a atual, se era a próxima). */
+  after: Track | null;
+  /** Posição relativa no "a seguir" quando saiu (reserva se `after` sumiu). */
+  rel: number;
+}
+
+/** Tira `track` do "a seguir". null = ela não está mais lá (virou a atual). */
+export function removeUpcomingTrack(track: Track): RemovedUpcoming | null {
+  const k = upcomingIndexOf(track);
+  if (k < 0) return null;
+  const removed: RemovedUpcoming = {
+    track: player.queue[k],
+    after: player.queue[k - 1] ?? null,
+    rel: k - (player.queueIndex + 1),
+  };
+  mutateQueueRealign(() => setPlayer("queue", (q) => q.filter((_, i) => i !== k)));
+  return removed;
+}
+
+function insertUpcomingAt(k: number, tracks: Track[]) {
+  if (tracks.length === 0) return;
+  mutateQueueRealign(() =>
+    setPlayer("queue", (q) => [...q.slice(0, k), ...tracks, ...q.slice(k)]));
+}
+
+/** Desfaz `removeUpcomingTrack`: logo depois de quem vinha antes dela, se
+    essa ainda é a atual ou está no "a seguir"; senão na mesma posição
+    relativa (limitada ao tamanho do "a seguir"). */
+export function restoreUpcoming(r: RemovedUpcoming) {
+  const base = player.queueIndex + 1;
+  let k = -1;
+  if (r.after) {
+    if (player.queue[player.queueIndex] === r.after || player.currentTrack?.id === r.after.id) k = base;
+    else {
+      const a = upcomingIndexOf(r.after);
+      if (a >= 0) k = a + 1;
+    }
+  }
+  if (k < 0) k = base + Math.min(r.rel, player.queue.length - base);
+  insertUpcomingAt(k, [r.track]);
+}
+
+/** "Limpar a fila": tira só o "a seguir". O que já tocou (o anterior segue
+    funcionando), a atual e a proveniência ficam; o preload gapless
+    realinha. Devolve o que saiu, para o Desfazer. Antes era
+    setQueue([atual], 0): apagava o histórico, encerrava a rodada de rádio
+    e passava por fora do mutateQueueRealign. */
+export function clearUpcoming(): Track[] {
+  const base = player.queueIndex + 1;
+  if (base >= player.queue.length) return [];
+  const removed = player.queue.slice(base);
+  mutateQueueRealign(() => setPlayer("queue", (q) => q.slice(0, base)));
+  return removed;
+}
+
+/** Desfaz `clearUpcoming`: as faixas voltam logo depois da atual, antes do
+    que entrou na fila nesse meio tempo; a que passou a tocar não repete. */
+export function restoreCleared(tracks: Track[]) {
+  const curId = player.currentTrack?.id;
+  insertUpcomingAt(player.queueIndex + 1, tracks.filter((t) => t.id !== curId));
+}
+
 export function advanceQueue(): Track | null {
   const next = player.queueIndex + 1;
   if (next >= player.queue.length) return null;

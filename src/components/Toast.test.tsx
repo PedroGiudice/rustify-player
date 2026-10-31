@@ -49,6 +49,16 @@ describe("Toast", () => {
     expect(toast()?.message).toBe("dois");
   });
 
+  it("Ctrl+Z aciona o Desfazer (a gaveta modal prende o Tab longe do botão)", () => {
+    const run = vi.fn();
+    render(() => <Toast />);
+    showToast({ message: "Fila limpa", action: { label: "Desfazer", run } });
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true }));
+    expect(run).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true }));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("a região viva existe antes do primeiro aviso (o leitor de tela anuncia)", () => {
     const { container } = render(() => <Toast />);
     expect(container.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull();
