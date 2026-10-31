@@ -1333,6 +1333,13 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 .lib-filter .coll-search input { font-size: 13px; }
 .lib-filter__status { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-5); font-variant-numeric: tabular-nums; }
 
+/* Histórico por dia (B13): cabeçalho do dia na receita de rótulo, com a
+   contagem apagada ao lado; a lista do dia logo abaixo. */
+.hist { display: flex; flex-direction: column; gap: 28px; }
+.hist-day { display: flex; flex-direction: column; gap: 10px; }
+.hist-day__title { margin: 0; }
+.hist-day__count { color: var(--fg-6); font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* Aba Curtidas (B8): contagem e "Tocar curtidas" acima da lista. */
 .lib-liked { display: flex; flex-direction: column; gap: 14px; }
 .lib-liked__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

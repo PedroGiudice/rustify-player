@@ -1,13 +1,17 @@
 /* ============================================================
-   views/History.tsx — Listening history (full, scrollable).
+   views/History.tsx — histórico de escuta, agrupado por dia (B13).
+   Uma linha por faixa, pela última vez que tocou; o cabeçalho do dia
+   conta as faixas e a coluna da linha diz a hora e quantas vezes ela
+   já tocou (lib/historyDays.ts).
    ============================================================ */
 
-import { createResource, For, Match, Switch } from "solid-js";
+import { createMemo, createResource, For, Match, Switch } from "solid-js";
 import { libListHistory, type Track } from "../tauri";
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { TrackRowList } from "../components/TrackRowList";
-import { relTime } from "../lib/format";
+import { groupByDay, playedWhen } from "../lib/historyDays";
+import { plural } from "../lib/count";
 import { navigate } from "../router";
 import { EmptyState } from "../components/EmptyState";
 import { ICONS } from "../components/Icon";
@@ -17,6 +21,7 @@ export default function History() {
   const [res, { refetch }] = createResource(() => settle(libListHistory(200)));
   const tracks = () => dataOf<Track>(peek(res));
   const state = () => listState(peek(res));
+  const days = createMemo(() => groupByDay(tracks()));
 
   function play(t: Track) {
     const all = tracks();
@@ -58,15 +63,27 @@ export default function History() {
             />
           </Match>
           <Match when={state() === "pronto"}>
-            <div class="row-list">
-              <For each={tracks()}>
-                {(t) => (
-                  <TrackRowList
-                    track={t}
-                    onClick={() => play(t)}
-                    whenText={relTime(t.last_played)}
-                    contextList={tracks()}
-                  />
+            <div class="hist">
+              <For each={days()}>
+                {(day) => (
+                  <section class="hist-day" aria-label={`${day.label}, ${plural(day.items.length, "faixa", "faixas")}`}>
+                    <h2 class="section__title hist-day__title">
+                      {day.label}
+                      <span class="hist-day__count"> · {plural(day.items.length, "faixa", "faixas")}</span>
+                    </h2>
+                    <div class="row-list">
+                      <For each={day.items}>
+                        {(t) => (
+                          <TrackRowList
+                            track={t}
+                            onClick={() => play(t)}
+                            whenText={playedWhen(t)}
+                            contextList={tracks()}
+                          />
+                        )}
+                      </For>
+                    </div>
+                  </section>
                 )}
               </For>
             </div>
