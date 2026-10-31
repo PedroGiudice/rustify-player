@@ -27,6 +27,7 @@ import { QueueDrawer } from "./components/QueueDrawer";
 import { TrackContextMenu } from "./components/TrackContextMenu";
 import { MoveToPlaylistDialog } from "./components/MoveToPlaylistDialog";
 import { SelectionBar } from "./components/SelectionBar";
+import { Toast } from "./components/Toast";
 import { applyMovedReport } from "./store/moveDialog";
 import { onTracksMoved } from "./tauri";
 import { SpectrumCanvas } from "./components/SpectrumCanvas";
@@ -143,6 +144,7 @@ export default function App() {
       <Tweaks />
       <TrackContextMenu />
       <MoveToPlaylistDialog />
+      <Toast />
     </div>
   );
 }

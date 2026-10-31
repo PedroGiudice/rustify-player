@@ -4956,8 +4956,56 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .sel-bar__btn:hover { background: var(--bg-soft); color: var(--fg-1); }
 .sel-bar__btn--primary { background: var(--fg-1); color: var(--bg-paper); }
 .sel-bar__btn--primary:hover { background: var(--fg-2); color: var(--bg-paper); }
+/* Aviso transitório (Toast.tsx, store/toast): canto direito acima da
+   PlayerBar, por cima da gaveta da fila (95) e abaixo do menu (300).
+   Desfazer é texto em carbono 1, não primário invertido: o aviso informa,
+   a ação é opcional. */
+.toast-region {
+  position: fixed; right: 16px;
+  bottom: calc(var(--playerbar-h) + 14px);
+  z-index: 120; pointer-events: none;
+  display: flex; justify-content: flex-end;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0;
+  padding: 6px 6px 6px 14px;
+  background: var(--bg-paper); border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-hover);
+  animation: toast-in var(--dur-enter) var(--ease-out);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.toast__msg {
+  min-width: 0; margin-right: 6px;
+  font-size: 12.5px; color: var(--fg-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.toast__action {
+  flex: none;
+  padding: 6px 10px; border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--fg-1);
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.toast__action:hover { background: var(--bg-soft); }
+.toast__close {
+  flex: none; display: grid; place-items: center;
+  width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--fg-5);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.toast__close:hover { background: var(--bg-soft); color: var(--fg-1); }
+.toast__action:focus-visible, .toast__close:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
-  .sel-bar { animation: none; }
+  .sel-bar, .toast { animation: none; }
 }
 /* === Crate > Tidal: busca === */
 /* Spec 2026-10-14. Papéis (ver o topo de views/crate/TidalTab.tsx):
