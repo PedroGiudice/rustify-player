@@ -2446,6 +2446,20 @@ async fn lib_listen_stats(
 }
 
 // ---------------------------------------------------------------------------
+// B14: quando o S24 (ou outro dispositivo) sincronizou
+// ---------------------------------------------------------------------------
+
+struct SyncStatusState(Arc<sync_receiver::SyncStatus>);
+
+/// Último lote aceito pelo receptor do sync, por dispositivo, o mais recente
+/// primeiro. Vazio se nenhum aparelho sincronizou desde que o arquivo existe
+/// (ou o receptor não subiu: sem IP da tailnet). Só memória: não espera nada.
+#[tauri::command]
+fn lib_sync_status(status: State<SyncStatusState>) -> Vec<sync_receiver::DeviceSync> {
+    status.0.snapshot()
+}
+
+// ---------------------------------------------------------------------------
 // B9: "Fora do rádio" e recusa com escopo
 // ---------------------------------------------------------------------------
 
@@ -4127,7 +4141,17 @@ pub fn run() {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
-            sync_receiver::start(library.handle.client().clone(), sync_token);
+            // B14: instante do último lote aceito por dispositivo, persistido
+            // e anunciado à tela como `sync-received`.
+            let sync_status = sync_receiver::SyncStatus::load(Some(data_dir.join("sync-status.json")));
+            {
+                let app = _app.handle().clone();
+                sync_status.set_on_update(move |d| {
+                    let _ = app.emit("sync-received", d);
+                });
+            }
+            sync_receiver::start(library.handle.client().clone(), sync_token, Arc::clone(&sync_status));
+            _app.manage(SyncStatusState(sync_status));
             _app.manage(library);
 
             // Crate — busca e download Soulseek in-app (spec docs/superpowers/
@@ -4690,6 +4714,7 @@ pub fn run() {
             lib_track_familiarity,
             lib_radio_excluded,
             lib_listen_stats,
+            lib_sync_status,
             lib_radio_refuse,
             lib_radio_return,
             lib_radio_restore,

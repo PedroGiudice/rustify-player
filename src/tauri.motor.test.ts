@@ -52,6 +52,14 @@ describe("B11: escuta viva e qualidade", () => {
   });
 });
 
+describe("B14: sync do S24", () => {
+  it("status sem argumentos", async () => {
+    invoke.mockClear();
+    await tauri.libSyncStatus();
+    expect(invoke).toHaveBeenCalledWith("lib_sync_status");
+  });
+});
+
 describe("A40: evento do player de outra faixa", () => {
   const big = "18446744073709551614";
 

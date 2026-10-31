@@ -403,6 +403,33 @@ export interface TrackFamiliarity { full_listens: number; liked: boolean }
 export const libTrackFamiliarity = (trackId: string) =>
   invoke<TrackFamiliarity | null>("lib_track_familiarity", { trackId });
 
+// ── B14: quando o S24 sincronizou ────────────────────────────────
+
+/** `sync_receiver::DeviceSync`: último lote ACEITO (200, o aparelho ackou)
+    de um dispositivo. Persistido no data dir; sobrevive ao reinício. */
+export interface DeviceSync {
+  /** "s24"; "desconhecido" para evento sem device_id. */
+  device_id: string;
+  /** Unix (s) do último lote aceito. Âmbar na tela passadas 24 h. */
+  last_batch_at: number;
+  /** Do último lote. Rejeitado também é ackado pelo aparelho. */
+  accepted: number;
+  rejected: number;
+  /** Do último lote, entre os aceitos: escutas e curtidas/descurtidas. */
+  plays: number;
+  likes: number;
+  /** Aceitos desde que o arquivo existe. */
+  total_accepted: number;
+}
+
+/** Dispositivos, o mais recente primeiro. Vazio = nenhum sync registrado
+    (ou o receptor não subiu: sem IP da tailnet). */
+export const libSyncStatus = () => invoke<DeviceSync[]>("lib_sync_status");
+
+/** Cada lote aceito emite um evento por dispositivo do lote. */
+export const onSyncReceived = (cb: (d: DeviceSync) => void) =>
+  listen<DeviceSync>("sync-received", (e) => cb(e.payload));
+
 // ── B11: escuta viva e qualidade onde se navega ──────────────────
 
 /** Escuta viva por faixa (play_events via cache do motor; NUNCA o
