@@ -35,6 +35,17 @@ export function toFrac(lin: number): number {
   return f > 1 ? 1 : f;
 }
 
+/** Passos visíveis do medidor: 80 em 40 px (meio pixel). Quem desenha só
+    escreve no DOM quando o passo muda. */
+export const METER_STEPS = 80;
+
+/** Fração 0..1 arredondada ao passo do medidor (fora do intervalo prende). */
+export function quantFrac(f: number): number {
+  if (!(f > 0)) return 0;
+  if (f >= 1) return 1;
+  return Math.round(f * METER_STEPS) / METER_STEPS;
+}
+
 export function stepMeter(st: MeterState, rms: [number, number], peak: [number, number], dt: number): MeterState {
   if (!(dt > 0)) return st;
   const k = 1 - Math.exp(-dt / VU_TAU);

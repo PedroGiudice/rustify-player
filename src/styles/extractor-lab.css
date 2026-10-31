@@ -1408,12 +1408,14 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 .pb-icon-btn iconify-icon, .pb-btn iconify-icon { width: 14px; height: 14px; }
 
 /* Medidor de saída (LevelMeter): dois canais de 40x3 px, VU em carbono 3
-   e pico retido em carbono 1 (sinal de erro perto de clipar). Instrumento
-   da mesa de estúdio: discreto, ao lado da pílula técnica. */
+   e pico retido em carbono 1. Instrumento da mesa de estúdio: discreto, ao
+   lado da pílula técnica. Trilho em line-2 (o tint sumia pausado, 1,15:1);
+   sem faixa, oculto guardando o lugar (A24). */
 .pb-meter { display: grid; gap: 2px; width: 40px; flex: none; }
+.pb-meter[data-empty] { visibility: hidden; }
 .pb-meter__ch {
   position: relative; height: 3px; overflow: hidden;
-  background: var(--bg-tint); border-radius: var(--radius-pill);
+  background: var(--line-2); border-radius: var(--radius-pill);
 }
 .pb-meter__fill, .pb-meter__peak { position: absolute; inset: 0; }
 .pb-meter__fill { background: var(--fg-3); transform-origin: left center; transform: scaleX(0); }
@@ -1422,7 +1424,11 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 1px;
   background: var(--fg-1);
 }
-.pb-meter__peak[data-clip="true"]::after { background: var(--rose-fg); }
+/* Clip: a marca engrossa no sinal de erro e o trilho tinge enquanto o pico
+   retido dura. Só trocar a cor deixava a marca de 1 px MAIS apagada que o
+   pico normal no Really Dark. */
+.pb-meter__ch[data-clip="true"] { background: color-mix(in srgb, var(--rose-ring) 28%, var(--line-2)); }
+.pb-meter__ch[data-clip="true"] .pb-meter__peak::after { width: 3px; background: var(--rose-ring); }
 
 /* Confirmação de enfileirar: "+N" ao lado do ícone da fila, em mono
    tabular, entra subindo 3 px e some sozinho (PlayerBar, ACK_MS 1600 ms).
