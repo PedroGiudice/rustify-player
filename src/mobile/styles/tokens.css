@@ -78,6 +78,9 @@
   --tone-bone-b: #2e2c29;
   --tone-paper: #1a1a1a;
   --tone-paper-b: #2b2b2b;
+  /* Alvo de toque mínimo (A59): 44 px de lado. Onde a linha não pode
+     crescer, o alvo cresce com margem negativa ou ::after. */
+  --tap-min: 44px;
   --tabbar-h: 56px;
   --mini-h: 56px;
   /* [v0] recortes do aparelho (notch / barra de gestos) */
@@ -167,13 +170,18 @@ body {
   justify-content: space-between;
   margin-bottom: 10px;
 }
-.sec-head a {
+/* "Ver todas": 14 px de padding vertical e 16 px à esquerda, devolvidos
+   pela margem negativa, para o texto de 11 px virar alvo de 44 (A59). */
+.sec-head .sec-head-link {
   font-size: 11px;
   color: var(--t3);
-  text-decoration: none;
   background: none;
   border: 0;
   font-family: inherit;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 16px;
+  margin: -14px 0;
 }
 .card {
   background: var(--s-c);
@@ -353,9 +361,13 @@ body {
   color: var(--t3);
   margin-top: 1px;
 }
+/* 44 px de alvo com margem negativa de 4 px: o ícone e a densidade ficam
+   como no handoff de 36 px (A59). */
 .iconbtn {
-  width: 36px;
-  height: 36px;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin: -4px;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   border: 0;

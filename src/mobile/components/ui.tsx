@@ -44,7 +44,7 @@ export function SecHead(props: { label: string; link?: { label: string; onClick:
       <div class="eyebrow">{props.label}</div>
       <Show when={props.link}>
         {(l) => (
-          <button class="sec-head-link" style={{ background: "none", border: 0, color: "var(--t3)", "font-size": "11px", "font-family": "inherit" }} onClick={l().onClick}>
+          <button class="sec-head-link" onClick={l().onClick}>
             {l().label} →
           </button>
         )}

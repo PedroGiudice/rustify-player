@@ -24,7 +24,7 @@ beforeAll(async () => {
 });
 
 /** Corpo de TODAS as regras cujo seletor (lista inteira) é `sel`. */
-export function rules(src: string, sel: string): string[] {
+function rules(src: string, sel: string): string[] {
   const out: string[] = [];
   const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`, "g");
@@ -82,5 +82,48 @@ describe("contraste do texto no S24 (A54)", () => {
     const a = parseFloat(prop(".np .lrail p", "opacity") ?? "1");
     const fg = over(hex(prop(".np .lrail p", "color")), veil, a);
     expect(ratio(fg, veil)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/** Valor em px, resolvendo `var(--x)` para o token. */
+function px(v: string | null): number {
+  const m = /var\((--[\w-]+)\)/.exec(v ?? "");
+  const raw = m ? tokens[m[1]] : v;
+  const n = parseFloat(raw ?? "");
+  if (!Number.isFinite(n)) throw new Error(`px não resolvido: ${v}`);
+  return n;
+}
+
+/** padding-top explícito ou o 1º valor do atalho `padding`. */
+const padTop = (sel: string) => px(prop(sel, "padding-top") ?? (prop(sel, "padding") ?? "").split(/\s+/)[0]);
+
+describe("alvos de toque no S24 (A59)", () => {
+  it("o token do alvo mínimo é 44 px", () => {
+    expect(px("var(--tap-min)")).toBe(44);
+  });
+
+  for (const sel of [".iconbtn", ".iconbtn.sm"]) {
+    it(`${sel} tem 44x44`, () => {
+      expect(px(prop(sel, "width"))).toBeGreaterThanOrEqual(44);
+      expect(px(prop(sel, "height"))).toBeGreaterThanOrEqual(44);
+    });
+  }
+
+  it("segmentado com 40 px de botão (o contêiner fecha 44)", () => {
+    expect(px(prop(".seg button", "min-height"))).toBeGreaterThanOrEqual(40);
+  });
+
+  it("botão de seleção com 44 px", () => {
+    expect(px(prop(".selbtn", "min-height"))).toBeGreaterThanOrEqual(44);
+  });
+
+  it("chip estende o alvo por ::after sem crescer a pílula", () => {
+    expect(rules(css, ".chip::after").length).toBe(1);
+    expect(prop(".chip", "position")).toBe("relative");
+  });
+
+  it("link do cabeçalho de seção e artista/álbum do Now Playing têm alvo vertical", () => {
+    expect(padTop(".sec-head .sec-head-link")).toBeGreaterThanOrEqual(14);
+    expect(padTop(".np .npmeta__link")).toBeGreaterThanOrEqual(12);
   });
 });
