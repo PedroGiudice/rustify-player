@@ -91,11 +91,26 @@ export interface PositionPayload {
   sample_rate: number;
 }
 
-export type PlayerStatePayload =
+/** A40: id (texto, u64) da faixa da biblioteca a que o evento se refere,
+    resolvido pelo handle do engine. Ausente quando o engine tocou um arquivo
+    fora do acervo. Fim/posição com `track_id` diferente da faixa atual são
+    atrasados (o player já pediu a próxima) e devem ser descartados. */
+export interface PlayerEventTrack {
+  track_id?: string;
+}
+
+export type PlayerStatePayload = (
   | { TrackStarted: TrackInfo }
   | { TrackEnded: null }
   | { Position: PositionPayload }
-  | { StateChanged: "Playing" | "Paused" | "Idle" | "Stopped" };
+  | { StateChanged: "Playing" | "Paused" | "Idle" | "Stopped" }
+) & PlayerEventTrack;
+
+/** Evento atrasado de outra faixa? Sem `track_id` (arquivo fora do acervo)
+    ou sem faixa atual, nada a comparar: vale. */
+export function isStalePlayerEvent(p: PlayerEventTrack, currentTrackId: string | null | undefined): boolean {
+  return !!p.track_id && !!currentTrackId && p.track_id !== currentTrackId;
+}
 
 // ── Player commands ────────────────────────────────────────────
 
