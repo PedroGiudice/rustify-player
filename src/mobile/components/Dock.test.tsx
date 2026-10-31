@@ -15,6 +15,9 @@ const nav = vi.hoisted(() => ({
   openNowPlaying: vi.fn(),
   playing: null as null | Record<string, unknown>,
   isPlaying: false,
+  shuffleAll: vi.fn(),
+  playTrackFrom: vi.fn(),
+  recents: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../nav", () => ({
@@ -40,6 +43,10 @@ vi.mock("../store", () => ({
   queueContextId: () => null,
   queueOrigin: () => "manual",
   toggle: vi.fn(),
+  recents: () => nav.recents,
+  tracks: () => [{ id: "9" }],
+  shuffleAll: nav.shuffleAll,
+  playTrackFrom: nav.playTrackFrom,
 }));
 
 import { Dock } from "./Dock";
@@ -169,5 +176,17 @@ describe("gestos do mini (A58)", () => {
     fireEvent.pointerCancel(mini, { clientX: 100, clientY: 60 });
     fireEvent.pointerUp(mini, { clientX: 100, clientY: 30 });
     expect(nav.openNowPlaying).not.toHaveBeenCalled();
+  });
+});
+
+describe("mini vazio (A64)", () => {
+  it("sem faixa, oferece continuar a última e o aleatório", () => {
+    nav.recents = [{ id: "3", title: "Última", artist_name: "X", album_cover_path: null }];
+    const r = render(() => <Dock />);
+    fireEvent.click(r.getByRole("button", { name: "Continuar Última" }));
+    expect(nav.playTrackFrom).toHaveBeenCalledWith(nav.recents, 0);
+    fireEvent.click(r.getByRole("button", { name: "Tudo em aleatório" }));
+    expect(nav.shuffleAll).toHaveBeenCalledTimes(1);
+    nav.recents = [];
   });
 });

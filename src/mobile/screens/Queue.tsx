@@ -14,6 +14,7 @@
 
 import { Show } from "solid-js";
 import { TrackRow } from "../components/TrackRow";
+import { Icon } from "../icons";
 import { Empty, LazyList, LibGate, SecHead, ViewHead } from "../components/ui";
 import {
   current,
@@ -30,11 +31,16 @@ import { fmtRemaining, splitQueue } from "../queueModel";
 /** Faixa que está na fila do serviço mas não existe no acervo local
  *  (sync parcial). Ocupa a posição para os índices continuarem certos. */
 function MissingRow(props: { index: number }) {
+  // Mesma linha das outras (.trk), com o título apagado em --t3 (A64): as
+  // classes .row* eram do desktop e o chunk do S24 não as carrega.
   return (
-    <div class="row" style={{ opacity: 0.5 }}>
-      <div class="row__main">
-        <div class="row__title">Faixa fora do acervo</div>
-        <div class="row__sub">posição {props.index + 1} · não está neste aparelho</div>
+    <div class="trk trk--missing">
+      <div class="cov" aria-hidden="true">
+        <Icon.note />
+      </div>
+      <div class="info">
+        <div class="tt">Faixa fora do acervo</div>
+        <div class="ts">posição {props.index + 1} · não está neste aparelho</div>
       </div>
     </div>
   );

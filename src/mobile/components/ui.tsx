@@ -53,12 +53,37 @@ export function SecHead(props: { label: string; link?: { label: string; onClick:
   );
 }
 
-export function Empty(props: { title: string; hint?: string }) {
+export interface EmptyAction {
+  label: string;
+  aria?: string;
+  primary?: boolean;
+  disabled?: boolean;
+  run: () => void;
+}
+
+/** Vazio diz o que houve E oferece a saída (A64): botões de 44 px. */
+export function Empty(props: { title: string; hint?: string; actions?: EmptyAction[] }) {
   return (
     <div class="empty">
       <div class="e1">{props.title}</div>
       <Show when={props.hint}>
         <div class="e2">{props.hint}</div>
+      </Show>
+      <Show when={props.actions?.length}>
+        <div class="empty__acts">
+          <For each={props.actions}>
+            {(a) => (
+              <button
+                class={a.primary ? "btn btn--pri" : "btn"}
+                aria-label={a.aria}
+                disabled={a.disabled}
+                onClick={() => a.run()}
+              >
+                <span class="btn__label">{a.label}</span>
+              </button>
+            )}
+          </For>
+        </div>
       </Show>
     </div>
   );

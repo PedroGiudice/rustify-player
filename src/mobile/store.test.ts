@@ -45,8 +45,11 @@ import {
   queueOrigin,
   recents,
   reloadLibrary,
+  reloadStations,
   rescan,
   shuffleFolder,
+  stations,
+  stationsState,
   shuffleList,
   showToast,
   shuffleUpcoming,
@@ -534,5 +537,26 @@ describe("reloadLibrary (falha de carga vira erro, não acervo vazio — mobile-
     listTracks().mockResolvedValueOnce([track(2)]);
     await rescan();
     expect(libError()).toBeNull();
+  });
+});
+
+// A64: a falha da carga das stations aparecia como "rode o export".
+describe("stations — estado da carga (A64)", () => {
+  const listStations = () => ipc.libListStations as ReturnType<typeof vi.fn>;
+
+  it("falha: estado de erro, favoritos seguem carregando", async () => {
+    listStations().mockRejectedValueOnce(new Error("sem stations.json legível"));
+    await reloadStations();
+    expect(stationsState()).toBe("error");
+    expect(ipc.libTastePositives).toHaveBeenCalled();
+  });
+
+  it("tentar de novo com sucesso: pronto, com a lista", async () => {
+    listStations().mockResolvedValueOnce([{ id: "s1", name: "S", kind: "seed", pool_size: 3 }]);
+    const p = reloadStations();
+    expect(stationsState()).toBe("loading");
+    await p;
+    expect(stationsState()).toBe("ready");
+    expect(stations().map((x) => x.id)).toEqual(["s1"]);
   });
 });

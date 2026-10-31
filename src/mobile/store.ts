@@ -65,7 +65,13 @@ const [favorites, setFavorites] = createSignal<Track[]>([]);
  *  voltar à tela. */
 const [recents, setRecents] = createSignal<Track[]>([]);
 
-export { stations, favorites, recents };
+/** Carga das stations (A64): "loading" até a 1ª resposta, "error" se ela
+ *  falhou. A tela distingue "ainda não chegou" e "falhou" de "não há", que
+ *  antes saíam todos como "rode o export". */
+export type IntelState = "loading" | "ready" | "error";
+const [stationsState, setStationsState] = createSignal<IntelState>("loading");
+
+export { stations, favorites, recents, stationsState };
 
 let recentsInflight: Promise<void> | null = null;
 /** Alguém chamou durante o voo: a ida em curso pode ter drenado o journal
@@ -101,14 +107,24 @@ export function loadRecents(): Promise<void> {
 }
 
 async function loadIntel() {
-  try {
-    const [st, fav] = await Promise.all([ipc.libListStations(), ipc.libTastePositives()]);
-    setStations(st ?? []);
-    setFavorites(fav ?? []);
-  } catch (e) {
-    console.warn("[mobile] carga de stations/favorites falhou:", e);
+  // Cada artefato por si: a falha de um não esconde o outro.
+  const [st, fav] = await Promise.allSettled([ipc.libListStations(), ipc.libTastePositives()]);
+  if (st.status === "fulfilled") {
+    setStations(st.value ?? []);
+    setStationsState("ready");
+  } else {
+    console.warn("[mobile] carga de stations falhou:", st.reason);
+    setStationsState("error");
   }
+  if (fav.status === "fulfilled") setFavorites(fav.value ?? []);
+  else console.warn("[mobile] carga de favorites falhou:", fav.reason);
   await loadRecents();
+}
+
+/** "Tentar de novo" da tela de Stations. */
+export async function reloadStations() {
+  setStationsState("loading");
+  await loadIntel();
 }
 
 // ── Playback (espelho do serviço) ─────────────────────────────

@@ -24,6 +24,8 @@ import {
   folders,
   playTrackFrom,
   recents,
+  rescan,
+  rescanning,
   shuffleAll,
   stations,
   tracks,
@@ -50,7 +52,16 @@ export function Home() {
           fallback={
             <Empty
               title="Acervo vazio"
-              hint="Nenhuma faixa em /storage/emulated/0/Music. Sincronize o acervo e use Re-scan em Settings."
+              hint="Nenhuma faixa em /storage/emulated/0/Music. Sincronize o acervo e reescaneie."
+              actions={[
+                {
+                  label: rescanning() ? "Reescaneando…" : "Reescanear",
+                  aria: "Reescanear",
+                  primary: true,
+                  disabled: rescanning(),
+                  run: () => void rescan(),
+                },
+              ]}
             />
           }
         >

@@ -14,11 +14,12 @@ import { For, Index, Show, createEffect, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
 import { activeTab, baseRoute, navigate, openNowPlaying } from "../nav";
-import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from "../store";
+import { current, next, pb, previous, queueContextId, queueOrigin, shuffleAll, toggle, tracks } from "../store";
 import { originLabel, originSrc } from "../derive";
 import { scrollBehavior } from "../motion";
 import { subscribeFft } from "../bg/spectrum";
 import { createSwapKey } from "../../lib/motion";
+import { lastPlayed, resumeLast } from "../quickPlay";
 
 const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/home", label: "Home", icon: Icon.home },
@@ -136,14 +137,30 @@ export function Dock() {
       <Show
         when={current()}
         fallback={
-          <div class="mini" aria-hidden="true">
+          /* Vazio com saída (A64): continuar a última e tudo em aleatório,
+             no lugar dos botões de tocar e próxima. */
+          <div class="mini">
             <div class="cov" style={{ background: "var(--tone-paper)", "border-color": "var(--tone-paper-b)" }}>
               <Icon.note />
             </div>
             <div class="info" style={{ flex: 1, "min-width": 0 }}>
               <div class="tt" style={{ color: "var(--t3)" }}>Nada tocando</div>
-              <div class="ts">escolha uma faixa</div>
+              <div class="ts">
+                <span>{lastPlayed() ? `continuar: ${lastPlayed()!.title}` : "escolha uma faixa"}</span>
+              </div>
             </div>
+            <Show when={lastPlayed()}>
+              {(t) => (
+                <button class="iconbtn" aria-label={`Continuar ${t().title}`} onClick={resumeLast}>
+                  <Icon.play />
+                </button>
+              )}
+            </Show>
+            <Show when={tracks().length > 0}>
+              <button class="iconbtn" aria-label="Tudo em aleatório" onClick={() => void shuffleAll()}>
+                <Icon.shuffle />
+              </button>
+            </Show>
           </div>
         }
       >

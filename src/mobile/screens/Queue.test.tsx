@@ -160,3 +160,23 @@ describe("Queue — fila grande (A57)", () => {
     }
   });
 });
+
+// A64: a linha da faixa fora do aparelho usava classes do desktop que o
+// chunk do S24 não carrega e saía como texto solto.
+describe("Queue — faixa fora do acervo (A64)", () => {
+  it("vira linha de faixa (.trk) com título e posição", () => {
+    const saved = q.list;
+    q.list = [q.list[0], q.list[1], q.list[2], q.list[3], null as unknown as Track, q.list[5]];
+    try {
+      const r = render(() => <Queue />);
+      const row = [...r.container.querySelectorAll(".trk")].find((el) =>
+        el.textContent?.includes("Faixa fora do acervo"),
+      );
+      expect(row).toBeTruthy();
+      expect(row!.querySelector(".tt")).not.toBeNull();
+      expect(row!.querySelector(".ts")!.textContent).toContain("posição 5");
+    } finally {
+      q.list = saved;
+    }
+  });
+});

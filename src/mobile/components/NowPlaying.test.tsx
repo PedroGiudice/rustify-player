@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
   playSimilar: vi.fn(),
   toggleLike: vi.fn(),
   showToast: vi.fn(),
+  empty: false,
+  shuffleAll: vi.fn(),
+  playTrackFrom: vi.fn(),
 }));
 
 vi.mock("../nav", () => ({
@@ -53,7 +56,11 @@ vi.mock("../store", () => {
     like_updated_at: null,
   } as Track;
   return {
-    current: () => track,
+    current: () => (h.empty ? null : track),
+    recents: () => [track],
+    tracks: () => [track],
+    shuffleAll: h.shuffleAll,
+    playTrackFrom: h.playTrackFrom,
     cycleRepeat: vi.fn(),
     isLiked: () => false,
     next: vi.fn(),
@@ -97,6 +104,7 @@ afterEach(async () => {
   resetGlStatus();
   vi.clearAllMocks();
   h.npOpen = true;
+  h.empty = false;
 });
 
 /** NP + a sheet (irmãos, como no MobileApp) com o overflow aberto. */
@@ -240,5 +248,18 @@ describe("NowPlaying — troca de faixa (A61)", () => {
   it("o título e o artista carregam a chave de troca (data-swap)", () => {
     const r = render(() => <NowPlaying />);
     expect(r.container.querySelector(".title")!.getAttribute("data-swap")).toBe("off");
+  });
+});
+
+// A64: o desktop ganhou "Continuar" e "Aleatório" no vazio; o S24 parava em
+// "Nada tocando".
+describe("NowPlaying — nada tocando (A64)", () => {
+  it("oferece continuar a última e tocar tudo em aleatório", () => {
+    h.empty = true;
+    const r = render(() => <NowPlaying />);
+    fireEvent.click(r.getByRole("button", { name: /^Continuar/ }));
+    expect(h.playTrackFrom).toHaveBeenCalledWith([expect.objectContaining({ id: "7" })], 0);
+    fireEvent.click(r.getByRole("button", { name: "Tudo em aleatório" }));
+    expect(h.shuffleAll).toHaveBeenCalledTimes(1);
   });
 });

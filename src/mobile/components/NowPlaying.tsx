@@ -54,6 +54,8 @@ import { openSheet } from "../sheet";
 import { libGetLyrics } from "../ipc";
 import type { LyricLine } from "../types";
 import { createSwapKey } from "../../lib/motion";
+import { Empty } from "./ui";
+import { quickActions } from "../quickPlay";
 
 const LYR_KEY = "kv-mobile-lyrics";
 
@@ -250,9 +252,12 @@ export function NowPlaying() {
         <Show
           when={current()}
           fallback={
-            <div class="empty" style={{ margin: "auto" }}>
-              <div class="e1">Nada tocando</div>
-              <div class="e2">Escolha uma faixa na biblioteca para começar.</div>
+            <div class="np__empty">
+              <Empty
+                title="Nada tocando"
+                hint="Continue de onde parou, toque tudo em aleatório ou escolha uma faixa."
+                actions={quickActions()}
+              />
             </div>
           }
         >

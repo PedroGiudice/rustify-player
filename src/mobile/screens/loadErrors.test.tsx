@@ -19,6 +19,7 @@ const st = vi.hoisted(() => ({
   error: null as string | null,
   reloadLibrary: vi.fn(),
   listFolderTracks: vi.fn(),
+  rescan: vi.fn(),
 }));
 
 vi.mock("../nav", () => ({ navigate: vi.fn(), back: vi.fn() }));
@@ -47,6 +48,8 @@ vi.mock("../store", () => ({
   shuffleAll: vi.fn(),
   shuffleFolder: vi.fn(),
   shuffleList: vi.fn(),
+  rescan: st.rescan,
+  rescanning: () => false,
 }));
 
 import { Home } from "./Home";
@@ -74,6 +77,13 @@ describe("Home (mobile-12)", () => {
   it("carga ok e acervo de fato vazio continua 'Acervo vazio'", () => {
     const r = render(() => <Home />);
     expect(r.getByText("Acervo vazio")).toBeTruthy();
+  });
+
+  // A64: o vazio mandava "use Re-scan em Settings" sem o botão.
+  it("acervo vazio oferece Reescanear ali mesmo", () => {
+    const r = render(() => <Home />);
+    fireEvent.click(r.getByRole("button", { name: "Reescanear" }));
+    expect(st.rescan).toHaveBeenCalledTimes(1);
   });
 });
 

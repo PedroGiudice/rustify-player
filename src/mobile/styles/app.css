@@ -263,6 +263,36 @@
   margin-top: 6px;
   text-wrap: pretty;
 }
+/* Ações do vazio (A64): botões de 44 px, empilhados e centrados; o texto
+   longo ("Continuar <título>") corta em reticências. */
+.empty__acts {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 18px auto 0;
+  max-width: 260px;
+}
+.empty__acts .btn {
+  flex: none;
+  min-width: 0;
+  padding: 0 18px;
+}
+.btn__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.45;
+}
+.np__empty {
+  margin: auto 0;
+}
+.trk--missing .tt {
+  color: var(--t3);
+}
 /* "Tentar de novo" dos estados de erro de carga (mobile-12/13): o .btn é
    flex:1 numa fileira; aqui é um botão só, centrado pelo text-align do
    .empty. */
@@ -525,9 +555,10 @@
   line-height: 1.3;
   flex: 0 0 auto;
 }
+/* Origem não é estado: "playlist" saía no verde de ok (A64). */
 .srcbadge[data-src="playlist"] {
-  color: var(--ok);
-  border-color: rgba(128, 144, 120, 0.4);
+  color: var(--t3);
+  border-color: var(--div-prom);
 }
 .srcbadge[data-src="album"] {
   color: var(--accent);
