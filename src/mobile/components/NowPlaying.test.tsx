@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
   playSimilar: vi.fn(),
   toggleLike: vi.fn(),
   showToast: vi.fn(),
+  empty: false,
+  shuffleAll: vi.fn(),
+  playTrackFrom: vi.fn(),
 }));
 
 vi.mock("../nav", () => ({
@@ -51,9 +54,15 @@ vi.mock("../store", () => {
     dominant_color: null,
     liked_at: null,
     like_updated_at: null,
+    quality_class: "sem_corte",
+    quality_cutoff_hz: null,
   } as Track;
   return {
-    current: () => track,
+    current: () => (h.empty ? null : track),
+    recents: () => [track],
+    tracks: () => [track],
+    shuffleAll: h.shuffleAll,
+    playTrackFrom: h.playTrackFrom,
     cycleRepeat: vi.fn(),
     isLiked: () => false,
     next: vi.fn(),
@@ -97,6 +106,7 @@ afterEach(async () => {
   resetGlStatus();
   vi.clearAllMocks();
   h.npOpen = true;
+  h.empty = false;
 });
 
 /** NP + a sheet (irmãos, como no MobileApp) com o overflow aberto. */
@@ -112,12 +122,12 @@ function openOverflow() {
 }
 
 describe("NowPlaying — cabeçalho cabe no S24 (mobile-1)", () => {
-  it("só ações de ícone no cabeçalho: Curtir, Mais opções, Fechar", () => {
+  it("só ações de ícone no cabeçalho: Mais opções e Fechar (Curtir desceu, B34)", () => {
     const r = render(() => <NowPlaying />);
     const head = r.container.querySelector(".nphead")!;
     const labels = [...head.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-    // Letra só entra quando a faixa tem letra (o mock não tem): 4 alvos no máximo.
-    expect(labels).toEqual(["Curtir", "Mais opções", "Fechar"]);
+    // Letra só entra quando a faixa tem letra (o mock não tem): 3 alvos no máximo.
+    expect(labels).toEqual(["Mais opções", "Fechar"]);
     expect(head.querySelector(".shapebtn")).toBeNull();
   });
 
@@ -204,5 +214,77 @@ describe("NowPlaying — acessibilidade (mobile-20)", () => {
     expect(s.getAttribute("aria-valuetext")).toBe("0:00 de 3:00");
     fireEvent.keyDown(s, { key: "ArrowRight" });
     expect(h.seek).toHaveBeenCalledWith(5000);
+  });
+});
+
+// A58: o arrastar-para-fechar era do .np inteiro e só decidia no pointerup;
+// rolar a letra sem sincronia para baixo fechava a tela, e o pointercancel
+// (o navegador assumindo o pan) deixava o gesto pela metade.
+describe("NowPlaying — arrastar para fechar (A58)", () => {
+  const drag = (el: Element, dy: number, cancel = false) => {
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100 });
+    if (cancel) fireEvent.pointerCancel(el, { clientX: 100, clientY: 100 + dy });
+    fireEvent.pointerUp(el, { clientX: 100, clientY: 100 + dy });
+  };
+
+  it("pela faixa de cima (cabeçalho), fecha", () => {
+    const r = render(() => <NowPlaying />);
+    drag(r.container.querySelector(".nphead")!, 120);
+    expect(h.back).toHaveBeenCalledTimes(1);
+  });
+
+  it("de fora da faixa de cima (título, letra), não fecha", () => {
+    const r = render(() => <NowPlaying />);
+    drag(r.container.querySelector(".title")!, 120);
+    expect(h.back).not.toHaveBeenCalled();
+  });
+
+  it("pointercancel zera o gesto", () => {
+    const r = render(() => <NowPlaying />);
+    drag(r.container.querySelector(".nphead")!, 120, true);
+    expect(h.back).not.toHaveBeenCalled();
+  });
+});
+
+describe("NowPlaying — troca de faixa (A61)", () => {
+  it("o título e o artista carregam a chave de troca (data-swap)", () => {
+    const r = render(() => <NowPlaying />);
+    expect(r.container.querySelector(".title")!.getAttribute("data-swap")).toBe("off");
+  });
+});
+
+// A64: o desktop ganhou "Continuar" e "Aleatório" no vazio; o S24 parava em
+// "Nada tocando".
+describe("NowPlaying — nada tocando (A64)", () => {
+  it("oferece continuar a última e tocar tudo em aleatório", () => {
+    h.empty = true;
+    const r = render(() => <NowPlaying />);
+    fireEvent.click(r.getByRole("button", { name: /^Continuar/ }));
+    expect(h.playTrackFrom).toHaveBeenCalledWith([expect.objectContaining({ id: "7" })], 0);
+    fireEvent.click(r.getByRole("button", { name: "Tudo em aleatório" }));
+    expect(h.shuffleAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+// B34: Curtir, a ação mais frequente do Now Playing, estava no canto de cima
+// (o mais longe do polegar); desceu para a direita do título.
+describe("NowPlaying — Curtir ao alcance do polegar (B34)", () => {
+  it("Curtir mora na linha do título, não no cabeçalho, e curte a faixa", () => {
+    const r = render(() => <NowPlaying />);
+    const like = r.getByRole("button", { name: "Curtir" });
+    expect(like.closest(".np__titlerow")).not.toBeNull();
+    expect(like.closest(".nphead")).toBeNull();
+    fireEvent.click(like);
+    expect(h.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: "7" }));
+  });
+});
+
+// B15: o celular toca Opus e agora diz se o original passou na auditoria.
+describe("NowPlaying — qualidade do original (B15)", () => {
+  it("mostra o que toca e se o original é limpo", () => {
+    const r = render(() => <NowPlaying />);
+    const q = r.container.querySelector(".npq")!;
+    expect(q.textContent).toBe("Opus 192 · original FLAC conferido");
+    expect(q.getAttribute("data-tone")).toBe("ok");
   });
 });

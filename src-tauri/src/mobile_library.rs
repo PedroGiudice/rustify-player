@@ -63,6 +63,14 @@ struct ManifestTrack {
     /// `.rustify/`. Ausente em manifest antigo; só o basename é usado.
     #[serde(default)]
     cover: Option<String>,
+    /// Qualidade do ORIGINAL no desktop (B15): classe do corte espectral
+    /// (`sem_corte`, `provavel_lossy`, `lossy`, `hires_de_cd`,
+    /// `indeterminado`) e o corte em Hz. O aparelho toca Opus; isto diz se o
+    /// FLAC de origem é limpo. Ausentes em manifest antigo.
+    #[serde(default)]
+    quality_class: Option<String>,
+    #[serde(default)]
+    quality_cutoff_hz: Option<i64>,
 }
 
 /// Espelha a interface `Track` de src/tauri.ts (subset que o mobile provê).
@@ -85,6 +93,9 @@ pub struct Track {
     /// local por `like_updated_at`.
     pub liked_at: Option<i64>,
     pub like_updated_at: Option<i64>,
+    /// Qualidade medida do original (B15), vinda do manifest.
+    pub quality_class: Option<String>,
+    pub quality_cutoff_hz: Option<i64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -352,6 +363,8 @@ impl MobileLibrary {
                 dominant_color: mt.dominant_color,
                 liked_at: mt.liked_at,
                 like_updated_at: mt.like_updated_at,
+                quality_class: mt.quality_class,
+                quality_cutoff_hz: mt.quality_cutoff_hz,
             });
         }
         if unresolved > 0 {
@@ -622,6 +635,8 @@ mod tests {
             dominant_color: None,
             liked_at: None,
             like_updated_at: None,
+            quality_class: None,
+            quality_cutoff_hz: None,
         }
     }
 
@@ -725,6 +740,32 @@ mod tests {
         .unwrap();
         assert_eq!(descurtida.liked_at, None);
         assert_eq!(descurtida.like_updated_at, Some(1_700_000_200));
+    }
+
+    /// Qualidade do ORIGINAL (B15): manifest novo traz a classe espectral e o
+    /// corte; manifest antigo (sem os campos) segue carregando, e o wire pro
+    /// JS leva os dois com os nomes do `Track` do types.ts.
+    #[test]
+    fn manifest_track_carrega_qualidade_do_original() {
+        let base = r#""rel_path":"a/b.opus","title":"t","artist":"","album":"",
+            "duration_ms":1,"track_number":0,"disc_number":1,"genre":"""#;
+        let lossy: ManifestTrack = serde_json::from_str(&format!(
+            r#"{{"track_id":"1",{base},"quality_class":"lossy","quality_cutoff_hz":16075}}"#
+        ))
+        .unwrap();
+        assert_eq!(lossy.quality_class.as_deref(), Some("lossy"));
+        assert_eq!(lossy.quality_cutoff_hz, Some(16_075));
+
+        let antigo: ManifestTrack =
+            serde_json::from_str(&format!(r#"{{"track_id":"2",{base}}}"#)).unwrap();
+        assert_eq!(antigo.quality_class, None);
+        assert_eq!(antigo.quality_cutoff_hz, None);
+
+        let mut tr = t("1", "A");
+        tr.quality_class = Some("sem_corte".into());
+        let v = serde_json::to_value(&tr).unwrap();
+        assert_eq!(v["quality_class"], "sem_corte");
+        assert!(v["quality_cutoff_hz"].is_null());
     }
 
     /// O wire pro JS carrega os dois campos com os nomes do `Track` do

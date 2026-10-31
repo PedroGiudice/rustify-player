@@ -10,12 +10,16 @@
    no header da Home) e a Queue entrou no lugar (CMR-213).
    ============================================================ */
 
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Index, Show, createEffect, onCleanup } from "solid-js";
 import { Cover } from "./Cover";
 import { Icon } from "../icons";
 import { activeTab, baseRoute, navigate, openNowPlaying } from "../nav";
-import { current, next, pb, previous, queueContextId, queueOrigin, toggle } from "../store";
+import { current, next, pb, previous, queueContextId, queueOrigin, shuffleAll, toggle, tracks } from "../store";
 import { originLabel, originSrc } from "../derive";
+import { scrollBehavior } from "../motion";
+import { subscribeFft } from "../bg/spectrum";
+import { createSwapKey } from "../../lib/motion";
+import { lastPlayed, resumeLast } from "../quickPlay";
 
 const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
   { path: "/home", label: "Home", icon: Icon.home },
@@ -28,7 +32,7 @@ const TAB_DEFS: Array<{ path: string; label: string; icon: () => any }> = [
 function scrollViewToTop() {
   const view = document.querySelector<HTMLElement>(".view");
   if (!view) return;
-  if (typeof view.scrollTo === "function") view.scrollTo({ top: 0, behavior: "smooth" });
+  if (typeof view.scrollTo === "function") view.scrollTo({ top: 0, behavior: scrollBehavior() });
   else view.scrollTop = 0;
 }
 
@@ -40,20 +44,46 @@ function onTab(path: string) {
   else navigate(path);
 }
 
+/** Altura (fração de 14 px) de cada barra em repouso e o teto. */
+const VU_REST = 0.22;
+const VU_GAIN = 1.25;
+
+/** As quatro barras a partir das três bandas: grave, médio-grave, médio,
+    agudo. Puro e determinístico (A56): o mesmo quadro dá a mesma altura. */
+export function vuLevels(low: number, mid: number, high: number): number[] {
+  const v = [low, (low + mid) / 2, mid, high];
+  return v.map((x) => Math.max(VU_REST, Math.min(1, VU_REST + Math.max(0, x) * VU_GAIN)));
+}
+
+/** VU do mini: lê o MESMO feed de FFT do fundo (sem timer próprio) e pinta
+    por transform, sem re-render do Solid. Pausado, repousa e não ouve. */
 function Vu() {
-  const [bars, setBars] = createSignal([4, 4, 4, 4]);
-  const id = setInterval(() => {
-    setBars(pb.isPlaying ? Array.from({ length: 4 }, () => 4 + Math.random() * 10) : [3, 3, 3, 3]);
-  }, 400);
-  onCleanup(() => clearInterval(id));
+  const bars: HTMLElement[] = [];
+  const paint = (lv: number[] | null) => {
+    for (let i = 0; i < bars.length; i++) {
+      const el = bars[i];
+      if (el) el.style.transform = `scaleY(${(lv ? lv[i] : VU_REST).toFixed(3)})`;
+    }
+  };
+  const un = subscribeFft((low, mid, high) => {
+    if (pb.isPlaying) paint(vuLevels(low, mid, high));
+  });
+  createEffect(() => {
+    if (!pb.isPlaying) paint(null);
+  });
+  onCleanup(un);
   return (
-    <div class="vu">
-      <For each={bars()}>{(h) => <i style={{ height: `${h}px` }} />}</For>
+    <div class="vu" aria-hidden="true">
+      <Index each={[0, 1, 2, 3]}>
+        {(_, i) => <i ref={(el) => (bars[i] = el)} style={{ transform: `scaleY(${VU_REST})` }} />}
+      </Index>
     </div>
   );
 }
 
 export function Dock() {
+  // Título e artista do mini trocam por subida de 3 px fora de rajada (A61).
+  const swap = createSwapKey(() => current()?.id ?? null);
   const progress = () => (pb.durationMs > 0 ? Math.min(1, pb.positionMs / pb.durationMs) : 0);
 
   // Gestos do mini (porte do protótipo)
@@ -64,10 +94,17 @@ export function Dock() {
   const onDown = (e: PointerEvent) => {
     sx = e.clientX; sy = e.clientY; st = Date.now();
   };
+  /* O navegador pode assumir o toque (pointercancel) e nunca mandar o
+     pointerup; o mini tem touch-action: none para os dois eixos serem do
+     JS, e o cancel zera o gesto (A58). */
+  const onCancel = () => {
+    st = 0;
+  };
   const onUp = (e: PointerEvent) => {
     lastUp = Date.now();
     const dx = e.clientX - sx, dy = e.clientY - sy;
-    if (Date.now() - st > 600) return;
+    if (!st || Date.now() - st > 600) return;
+    st = 0;
     if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
       void (dx < 0 ? next() : previous());
       return;
@@ -100,25 +137,42 @@ export function Dock() {
       <Show
         when={current()}
         fallback={
-          <div class="mini" aria-hidden="true">
+          /* Vazio com saída (A64): continuar a última e tudo em aleatório,
+             no lugar dos botões de tocar e próxima. */
+          <div class="mini">
             <div class="cov" style={{ background: "var(--tone-paper)", "border-color": "var(--tone-paper-b)" }}>
               <Icon.note />
             </div>
             <div class="info" style={{ flex: 1, "min-width": 0 }}>
               <div class="tt" style={{ color: "var(--t3)" }}>Nada tocando</div>
-              <div class="ts">escolha uma faixa</div>
+              <div class="ts">
+                <span>{lastPlayed() ? `continuar: ${lastPlayed()!.title}` : "escolha uma faixa"}</span>
+              </div>
             </div>
+            <Show when={lastPlayed()}>
+              {(t) => (
+                <button class="iconbtn" aria-label={`Continuar ${t().title}`} onClick={resumeLast}>
+                  <Icon.play />
+                </button>
+              )}
+            </Show>
+            <Show when={tracks().length > 0}>
+              <button class="iconbtn" aria-label="Tudo em aleatório" onClick={() => void shuffleAll()}>
+                <Icon.shuffle />
+              </button>
+            </Show>
           </div>
         }
       >
         {(t) => (
-          <div class="mini" onPointerDown={onDown} onPointerUp={onUp}>
+          <div class="mini" onPointerDown={onDown} onPointerUp={onUp} onPointerCancel={onCancel}>
             <Cover path={t().album_cover_path} seed={t().id} />
             <div
               class="info"
               style={{ flex: 1, "min-width": 0 }}
               role="button"
               tabindex="0"
+              attr:data-swap={swap()}
               aria-label={`Abrir Now Playing: ${t().title}`}
               onClick={onInfoClick}
               onKeyDown={onInfoKey}

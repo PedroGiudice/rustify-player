@@ -44,7 +44,7 @@ export function SecHead(props: { label: string; link?: { label: string; onClick:
       <div class="eyebrow">{props.label}</div>
       <Show when={props.link}>
         {(l) => (
-          <button class="sec-head-link" style={{ background: "none", border: 0, color: "var(--t3)", "font-size": "11px", "font-family": "inherit" }} onClick={l().onClick}>
+          <button class="sec-head-link" onClick={l().onClick}>
             {l().label} →
           </button>
         )}
@@ -53,12 +53,37 @@ export function SecHead(props: { label: string; link?: { label: string; onClick:
   );
 }
 
-export function Empty(props: { title: string; hint?: string }) {
+export interface EmptyAction {
+  label: string;
+  aria?: string;
+  primary?: boolean;
+  disabled?: boolean;
+  run: () => void;
+}
+
+/** Vazio diz o que houve E oferece a saída (A64): botões de 44 px. */
+export function Empty(props: { title: string; hint?: string; actions?: EmptyAction[] }) {
   return (
     <div class="empty">
       <div class="e1">{props.title}</div>
       <Show when={props.hint}>
         <div class="e2">{props.hint}</div>
+      </Show>
+      <Show when={props.actions?.length}>
+        <div class="empty__acts">
+          <For each={props.actions}>
+            {(a) => (
+              <button
+                class={a.primary ? "btn btn--pri" : "btn"}
+                aria-label={a.aria}
+                disabled={a.disabled}
+                onClick={() => a.run()}
+              >
+                <span class="btn__label">{a.label}</span>
+              </button>
+            )}
+          </For>
+        </div>
       </Show>
     </div>
   );
@@ -107,11 +132,31 @@ export function LibGate(props: { children: JSX.Element }) {
  *  forma confiável pelo TalkBack (mobile-20). O wrapper é estático e sem
  *  tamanho — o .toast continua posicionado contra o .device. */
 export function Toast() {
+  // Entrada por keyframe e saída esperando a animação (A61): antes o .toast
+  // nascia já com data-on e a transição do CSS nunca corria.
+  const [shown, setShown] = createSignal<string | null>(null);
+  const [leaving, setLeaving] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const msg = toast();
+    clearTimeout(timer);
+    if (msg) {
+      setShown(msg);
+      setLeaving(false);
+    } else if (shown()) {
+      setLeaving(true);
+      timer = setTimeout(() => {
+        setShown(null);
+        setLeaving(false);
+      }, TOAST_EXIT_MS);
+    }
+  });
+  onCleanup(() => clearTimeout(timer));
   return (
     <div role="status" aria-live="polite">
-      <Show when={toast()}>
+      <Show when={shown()}>
         {(msg) => (
-          <div class="toast" attr:data-on="">
+          <div class="toast" attr:data-leaving={leaving() ? "" : undefined}>
             {msg()}
           </div>
         )}
@@ -120,6 +165,9 @@ export function Toast() {
   );
 }
 
+/** --dur-med do tokens.css: a saída do toast. */
+const TOAST_EXIT_MS = 180;
+
 /** Subtítulo das telas de acervo: contagens só quando elas são verdade. */
 export function libSub(ok: () => string): string {
   if (!libReady()) return "carregando acervo…";
@@ -127,9 +175,14 @@ export function libSub(ok: () => string): string {
   return ok();
 }
 
+/** Lista que cresce por sentinela. `tail`: mostra as ÚLTIMAS N e cresce
+ *  para cima (sentinela no topo) — o histórico da fila, onde as vizinhas da
+ *  faixa atual são as do fim (A57). O índice entregue é o da lista inteira.
+ *  Crescer para cima não pula a tela: o WebView ancora a rolagem. */
 export function LazyList<T>(props: {
   items: T[];
   chunk?: number;
+  tail?: boolean;
   children: (item: T, index: () => number) => JSX.Element;
 }) {
   const chunk = () => props.chunk ?? 60;
@@ -150,10 +203,15 @@ export function LazyList<T>(props: {
     onCleanup(() => io.disconnect());
   });
 
+  const offset = () => (props.tail ? Math.max(0, props.items.length - limit()) : 0);
+  const shown = () => (props.tail ? props.items.slice(offset()) : props.items.slice(0, limit()));
+  const mark = <div ref={sentinel} style={{ height: "1px" }} aria-hidden="true" />;
+
   return (
     <>
-      <For each={props.items.slice(0, limit())}>{(item, i) => props.children(item, i)}</For>
-      <div ref={sentinel} style={{ height: "1px" }} aria-hidden="true" />
+      {props.tail ? mark : null}
+      <For each={shown()}>{(item, i) => props.children(item, () => offset() + i())}</For>
+      {props.tail ? null : mark}
     </>
   );
 }

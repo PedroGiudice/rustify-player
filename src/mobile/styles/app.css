@@ -34,7 +34,7 @@
   display: none;
 }
 .screen {
-  animation: fade 0.25s var(--ease);
+  animation: fade var(--dur-screen) var(--ease-out);
 }
 @keyframes fade {
   from {
@@ -59,8 +59,11 @@
 .topbar .sp {
   flex: 1;
 }
+/* Pílula de ~28 px, alvo de 44 pelo ::after (A59), no padrão do
+   .sheet .grab::after. */
 .chip {
-  font-size: 11.5px;
+  position: relative;
+  font-size: var(--fs-meta);
   color: var(--t2);
   background: var(--s-high);
   border: 1px solid var(--div-subtle);
@@ -68,6 +71,23 @@
   padding: 6px 12px;
   white-space: nowrap;
   font-family: inherit;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.chip::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+.chip:active {
+  transform: scale(0.96);
+}
+.alb:active .art,
+.stcard__body:active {
+  transform: scale(0.985);
+}
+.alb .art,
+.stcard__body {
+  transition: transform var(--dur-press) var(--ease-out);
 }
 .chip[data-on] {
   background: var(--accent-c);
@@ -105,12 +125,6 @@
 .list-lite .trk {
   border-bottom: 1px solid var(--div-subtle);
 }
-.sec-title {
-  font-family: var(--display);
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
 .hero {
   padding: 0 20px 20px;
   display: flex;
@@ -141,7 +155,7 @@
 }
 .hero h1 {
   font-family: var(--display);
-  font-size: 24px;
+  font-size: var(--fs-title);
   font-weight: 600;
   line-height: 1.12;
   letter-spacing: -0.02em;
@@ -154,7 +168,7 @@
 }
 .hero .meta {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--t3);
   margin-top: 6px;
 }
@@ -214,17 +228,12 @@
 }
 .rowitem .rt {
   flex: 1;
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 500;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.rowitem .rv {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--t3);
 }
 .rowitem svg.chev {
   width: 16px;
@@ -233,7 +242,7 @@
   flex: 0 0 16px;
 }
 .rowsub {
-  font-size: 11.5px;
+  font-size: var(--fs-meta);
   color: var(--t3);
   margin-top: 2px;
   overflow: hidden;
@@ -253,6 +262,36 @@
   font-size: 12px;
   margin-top: 6px;
   text-wrap: pretty;
+}
+/* Ações do vazio (A64): botões de 44 px, empilhados e centrados; o texto
+   longo ("Continuar <título>") corta em reticências. */
+.empty__acts {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 18px auto 0;
+  max-width: 260px;
+}
+.empty__acts .btn {
+  flex: none;
+  min-width: 0;
+  padding: 0 18px;
+}
+.btn__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.45;
+}
+.np__empty {
+  margin: auto 0;
+}
+.trk--missing .tt {
+  color: var(--t3);
 }
 /* "Tentar de novo" dos estados de erro de carga (mobile-12/13): o .btn é
    flex:1 numa fileira; aqui é um botão só, centrado pelo text-align do
@@ -285,11 +324,37 @@
   background: none;
   border: 0;
   color: var(--t1);
-  font: 500 13.5px var(--font);
+  font: 500 var(--fs-body) var(--font);
   outline: none;
 }
+/* O "x" do <input type="search"> nativo sai: o nosso tem 44 px de alvo. */
+.searchfield input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.searchfield__clear {
+  flex: 0 0 auto;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin: -13px -13px -13px 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--t3);
+  border-radius: var(--r-pill);
+}
+.searchfield__clear svg {
+  width: 17px;
+  height: 17px;
+}
+/* Teclado aberto na Busca: o rodapé de ~115 px sai e a lista vai até o
+   teclado (A62). */
+.device:has(.searchfield input:focus) .dock {
+  display: none;
+}
 .searchfield input::placeholder {
-  color: var(--t4);
+  color: var(--t3);
 }
 /* dock */
 .dock {
@@ -315,7 +380,9 @@
   border-top: 0;
   border-bottom: 1px solid var(--div-subtle);
   height: 60px;
-  touch-action: pan-y;
+  /* Os dois eixos são do JS (prev/next na horizontal, abrir na vertical):
+     com pan-y o navegador assumia o arraste vertical e cancelava (A58). */
+  touch-action: none;
 }
 .dock .tabbar {
   background: none;
@@ -329,12 +396,15 @@
   height: 14px;
   margin-left: 2px;
 }
+/* Barras de altura fixa, encolhidas por transform (A56): o Dock escreve
+   scaleY a cada quadro de FFT; height animado refazia layout. */
 .vu i {
   width: 2px;
+  height: 100%;
   background: var(--accent);
-  border-radius: 1px;
-  height: 4px;
-  transition: height 0.15s var(--ease);
+  border-radius: var(--r-pill);
+  transform-origin: 50% 100%;
+  transition: transform 0.12s linear;
 }
 /* now playing */
 .np {
@@ -343,13 +413,17 @@
   z-index: 30;
   background: transparent;
   transform: translateY(100%);
-  transition: transform 0.28s var(--ease);
+  /* Sai mais rápido do que entra (A60): desce em --dur-med com --ease-in,
+     sobe em --dur-screen com --ease-out (regra do [data-open]). */
+  transition: transform var(--dur-med) var(--ease-in);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .np[data-open] {
   transform: none;
+  transition-duration: var(--dur-screen);
+  transition-timing-function: var(--ease-out);
 }
 .np .veil {
   position: absolute;
@@ -367,9 +441,22 @@
 .np .grab {
   width: 38px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   background: var(--div-prom);
   margin: 2px auto 10px;
+  position: relative;
+}
+/* Faixa de arrastar para fechar (A58): alça com alvo real, cabeçalho e capa.
+   Fora dela (letra, seek, controles) o toque não fecha a tela. */
+.np .grab::after {
+  content: "";
+  position: absolute;
+  inset: -12px -40px;
+}
+.np .grab,
+.np .nphead,
+.np .cover {
+  touch-action: none;
 }
 .np .nphead {
   display: flex;
@@ -429,14 +516,60 @@
   object-fit: cover;
   display: block;
 }
+/* Título com o Curtir à direita (B34): o botão alinha à 1ª linha do título
+   e a margem negativa devolve o que o alvo de 44 px cresceu. */
+.np .np__titlerow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 18px;
+}
 .np .title {
+  flex: 1;
+  min-width: 0;
   font-family: var(--display);
-  font-size: 23px;
+  font-size: var(--fs-title);
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin-top: 18px;
   line-height: 1.14;
   text-wrap: pretty;
+}
+.np .np__like {
+  margin: -9px -10px 0 0;
+}
+.np .np__like[data-on] {
+  color: var(--accent);
+}
+/* O que toca e o original (B15): mono pequeno em --t3, com um ponto de
+   estado (--ok limpo, --warn lossy, --t4 não medido). */
+.np .npq {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--t3);
+  min-width: 0;
+  white-space: nowrap;
+}
+.np .npq span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.np .npq::before {
+  content: "";
+  flex: 0 0 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--t4);
+}
+.np .npq[data-tone="ok"]::before {
+  background: var(--ok);
+}
+.np .npq[data-tone="warn"]::before {
+  background: var(--warn);
 }
 .np .artist {
   font-size: 13px;
@@ -455,19 +588,23 @@
 }
 .srcbadge {
   font-family: var(--mono);
-  font-size: 8.5px;
+  /* 11 px desde o A63 (era 8,5): tracking e padding menores seguram a
+     largura e a altura da linha do mini. */
+  font-size: var(--fs-label);
   font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--t3);
   border: 1px solid var(--div-subtle);
   border-radius: var(--r-xs);
-  padding: 2px 5px;
+  padding: 1px 5px;
+  line-height: 1.3;
   flex: 0 0 auto;
 }
+/* Origem não é estado: "playlist" saía no verde de ok (A64). */
 .srcbadge[data-src="playlist"] {
-  color: var(--ok);
-  border-color: rgba(128, 144, 120, 0.4);
+  color: var(--t3);
+  border-color: var(--div-prom);
 }
 .srcbadge[data-src="album"] {
   color: var(--accent);
@@ -491,7 +628,7 @@
 }
 .np .track {
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   background: var(--div-subtle);
   position: relative;
 }
@@ -499,7 +636,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   background: var(--t1);
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   width: 0;
 }
 /* [v0] alvo de toque do seek: 3px de barra é impossível de acertar no dedo */
@@ -512,7 +649,7 @@
   display: flex;
   justify-content: space-between;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--t3);
   margin-top: 7px;
   font-variant-numeric: tabular-nums;
@@ -533,6 +670,7 @@
 .np .ctrls .iconbtn {
   width: 44px;
   height: 44px;
+  margin: 0;
   flex-shrink: 0;
   color: var(--t2);
 }
@@ -567,18 +705,62 @@
   padding: 8px 15px;
   font-size: 12px;
   color: var(--t1);
-  opacity: 0;
-  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  transform: translate(-50%, 0);
   pointer-events: none;
   box-shadow: var(--sh-hover);
   max-width: 80%;
   text-align: center;
+  /* Entra subindo 8 px, sai descendo mais rápido (A61). O componente espera
+     a saída (--dur-med) antes de desmontar. */
+  animation: toast-in var(--dur-enter) var(--ease-out) both;
 }
-.toast[data-on] {
-  opacity: 1;
-  transform: translate(-50%, 0);
+.toast[data-leaving] {
+  animation: toast-out var(--dur-med) var(--ease-in) both;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 8px); }
+}
+@keyframes toast-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes toast-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
+/* Vocabulário de entrada (o do desktop, extractor-lab.css): estado que
+   aparece só por opacidade; troca de conteúdo sobe 3 px. data-swap alterna
+   "a"/"b" para a animação recomeçar; "off" = corte seco (rajada de pulos,
+   lib/motion.ts). */
+@keyframes state-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes swap-rise-a { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes swap-rise-b { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes swap-fade-a { from { opacity: 0; } to { opacity: 1; } }
+@keyframes swap-fade-b { from { opacity: 0; } to { opacity: 1; } }
+[data-swap="a"] { animation: swap-rise-a var(--dur-enter) var(--ease-out); }
+[data-swap="b"] { animation: swap-rise-b var(--dur-enter) var(--ease-out); }
+/* Capa entra por opacidade quando carrega; na troca de faixa a anterior some
+   e a nova aparece sobre o tom do álbum (Cover.tsx, data-loaded). */
+.cov img,
+.art img,
+.cover img {
+  opacity: 0;
+  transition: opacity var(--dur-enter) var(--ease-out);
+}
+.cov img[data-loaded],
+.art img[data-loaded],
+.cover img[data-loaded] {
+  opacity: 1;
+}
 .icon {
   width: 16px;
   height: 16px;
@@ -588,11 +770,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   display: block;
-}
-.ico18 .icon {
-  width: 18px;
-  height: 18px;
-  color: var(--t3);
 }
 
 .setpanel {
@@ -615,7 +792,7 @@
 .setpanel__sub {
   display: block;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--t3);
   margin-top: 4px;
 }
@@ -634,7 +811,7 @@
   font-weight: 500;
 }
 .setrow__hint {
-  font-size: 11.5px;
+  font-size: var(--fs-meta);
   line-height: 1.4;
   color: var(--t3);
   margin-top: 3px;
@@ -642,7 +819,7 @@
 }
 .setrow__hint.mono {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-label);
   word-break: break-all;
 }
 .setrow--inline {
@@ -667,8 +844,10 @@
   flex: 1;
   background: none;
   border: 0;
-  color: var(--t3);
-  font: 500 11.5px var(--font);
+  /* Inativo em --t2 (8,6:1 sobre --s-high); --t3 dava 4,32:1 (A54). */
+  color: var(--t2);
+  font: 500 var(--fs-meta) var(--font);
+  min-height: 40px;
   padding: 7px 4px;
   border-radius: var(--r-xs);
 }
@@ -685,6 +864,7 @@
   border: 1px solid var(--div-subtle);
   color: var(--t1);
   font: 500 12px var(--font);
+  min-height: var(--tap-min);
   padding: 9px 12px;
   border-radius: var(--r-md);
   width: 100%;
@@ -701,7 +881,7 @@
 /* Barra de progresso do updater (Settings > Atualização). */
 .updbar {
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   background: var(--div-subtle);
   position: relative;
   overflow: hidden;
@@ -724,21 +904,21 @@
   padding: 13px 16px;
 }
 .stile__l {
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--t4);
+  color: var(--t3);
 }
 .stile__v {
   display: block;
   font-family: var(--mono);
-  font-size: 19px;
+  font-size: var(--fs-stat);
   color: var(--t1);
   margin-top: 5px;
   font-variant-numeric: tabular-nums;
 }
 .stile__s {
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--t3);
 }
 .aboutgrid {
@@ -753,16 +933,16 @@
   min-width: 0;
 }
 .aitem__l {
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--t4);
+  color: var(--t3);
   text-transform: uppercase;
 }
 .aitem__v {
   display: block;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--t2);
   margin-top: 4px;
   overflow: hidden;
@@ -799,9 +979,17 @@
 .app-bg[data-mode="focused"] .app-bg__curtain {
   opacity: 1;
 }
-.app-bg[data-mode="ambient"] {
+/* O filter/opacity do ambient vale SÓ para o 2D (A55, B6 do desktop). Com
+   o WebGL montado (GlBg marca data-engine="webgl") o motor desfoca o
+   ambient na GPU, num buffer a 1/4: o filter de tela cheia sobre o canvas
+   animado era refeito a cada quadro (no desktop derrubava a Home a
+   46,9 fps). Sem a marca (2D, ou WebGL que caiu) a regra volta a valer. */
+.app-bg[data-mode="ambient"]:not([data-engine="webgl"]) {
   opacity: 0.8;
   filter: blur(6px) saturate(0.9);
+}
+.app-bg[data-engine="webgl"] {
+  transition: none;
 }
 .shell {
   position: relative;
@@ -856,7 +1044,7 @@
   gap: 8px;
 }
 .stcard__n {
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: -0.01em;
   min-width: 0;
@@ -866,8 +1054,8 @@
 }
 .stcard__tags {
   font-family: var(--mono);
-  font-size: 10px;
-  color: var(--t4);
+  font-size: var(--fs-label);
+  color: var(--t3);
   margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -875,7 +1063,7 @@
 }
 .stcard__meta {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-label);
   color: var(--t3);
   margin-top: 6px;
   font-variant-numeric: tabular-nums;
@@ -885,9 +1073,12 @@
   flex-direction: column;
   gap: 2px;
 }
+/* Ícone menor, mesmo alvo de 44 (A59); a margem de 7 px devolve o espaço
+   que o botão de 30 px ocupava no card. */
 .iconbtn.sm {
-  width: 30px;
-  height: 30px;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin: -7px;
 }
 .iconbtn.sm svg {
   width: 16px;
@@ -898,7 +1089,7 @@
 .np[data-lyr] .cover {
   width: 172px;
   height: 172px;
-  transition: width var(--dur-med, 180ms) var(--ease), height var(--dur-med, 180ms) var(--ease);
+  transition: width var(--dur-med) var(--ease-out), height var(--dur-med) var(--ease-out);
 }
 .np[data-lyr] .bar {
   margin-top: 12px;
@@ -911,32 +1102,37 @@
   position: relative;
   mask-image: linear-gradient(180deg, transparent, #000 22%, #000 72%, transparent);
 }
+/* A letra entra por opacidade depois de a capa começar a encolher (A61):
+   o atraso de --dur-base evita os dois movimentos no mesmo quadro. */
+.np .lyrics {
+  animation: state-in var(--dur-enter) var(--ease-out) var(--dur-base) both;
+}
 .np .lyrics[data-static] {
   overflow-y: auto;
   scrollbar-width: none;
 }
 .np .lrail {
-  transition: transform 0.6s var(--ease);
+  transition: transform var(--dur-screen) var(--ease-out);
   display: flex;
   flex-direction: column;
   gap: 9px;
 }
+/* Inativas em --t3 cheio (5,2:1 sobre o véu); a hierarquia fica na cor e
+   no peso da ativa, como no desktop. Antes, --t4 a 0,6 dava 2,09:1 (A54). */
 .np .lrail p {
   font-size: 15px;
   line-height: 1.35;
-  color: var(--t4);
-  transition: color 0.3s var(--ease), opacity 0.3s var(--ease);
-  opacity: 0.6;
+  color: var(--t3);
+  transition: color var(--dur-enter) var(--ease-out);
   margin: 0;
 }
 .np .lrail p[data-on] {
   color: var(--t1);
-  opacity: 1;
   font-weight: 500;
 }
 .np .lrail p[data-header] {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--t3);
@@ -946,35 +1142,58 @@
    O primitivo das ações secundárias: long-press de faixa, info,
    e o que vier depois (fila, like). Fecha por scrim, arraste do
    grab e botão voltar do Android (sentinela em sheet.ts). */
+/* Montada sempre, como a paleta do desktop (A61): entra em --dur-enter com
+   --ease-out, sai em --dur-med com --ease-in, e só fica invisível
+   (visibility) depois da saída. Antes era display: none -> block, num corte. */
 .sheet {
   position: absolute;
   inset: 0;
   z-index: 40;
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
+  transition: visibility 0s linear var(--dur-med);
 }
 .sheet[data-open] {
-  display: block;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
 }
 .sheet .scrim {
   position: absolute;
   inset: 0;
   background: rgba(5, 5, 5, 0.6);
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-in);
+}
+.sheet[data-open] .scrim {
+  opacity: 1;
+  transition: opacity var(--dur-enter) var(--ease-out);
 }
 .sheet .panel {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(12, 12, 12, 0.92);
-  backdrop-filter: blur(8px);
+  /* Sem backdrop-filter (A55): a 92 % de opacidade o desfoque quase não se
+     via e custava um filtro de até 76 % da tela por quadro do fundo. */
+  background: var(--s-sheet);
   border-top: 1px solid var(--div-subtle);
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--r-2xl) var(--r-2xl) 0 0;
   /* a safe-area evita que o último item fique sob a barra de gestos */
   padding: 16px 20px calc(22px + env(safe-area-inset-bottom, 0px));
   max-height: 76%;
   overflow-y: auto;
   scrollbar-width: none;
-  transition: transform 0.16s var(--ease);
+  transform: translateY(100%);
+  transition: transform var(--dur-med) var(--ease-in);
+}
+.sheet[data-open] .panel {
+  transform: none;
+  transition: transform var(--dur-enter) var(--ease-out);
+}
+/* Arrastando pela alça: o painel segue o dedo sem atraso. */
+.sheet .panel[data-drag] {
+  transition: none;
 }
 .sheet .panel::-webkit-scrollbar {
   display: none;
@@ -987,7 +1206,7 @@
 .sheet .grab {
   width: 38px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   background: var(--div-prom);
   margin: 0 auto 14px;
   /* alvo de toque real por cima do traço de 4px */
@@ -1007,7 +1226,7 @@
 }
 .sheet__title {
   font-family: var(--display);
-  font-size: 17px;
+  font-size: var(--fs-lead);
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.2;
@@ -1055,11 +1274,11 @@
   min-width: 0;
 }
 .sheet__actlabel span:first-child {
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 500;
 }
 .sheet__acthint {
-  font-size: 11.5px;
+  font-size: var(--fs-meta);
   color: var(--t3);
 }
 .kv {
@@ -1086,16 +1305,21 @@
 
 /* Artista/álbum navegáveis no Now Playing. O link herda o texto da
    linha — só o sublinhado sutil denuncia que é tocável. */
+/* O padding vertical de .npmeta e dos links cresce o alvo para ~40 px sem
+   mexer na linha (margem negativa); sem ele o overflow do .npmeta cortava o
+   alvo na altura do texto (A59). */
 .np .npmeta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 12px 0;
+  margin: -12px 0;
 }
 .np .npmeta__link {
   background: none;
   border: 0;
-  padding: 0;
+  padding: 12px 0;
   font: inherit;
   color: inherit;
   text-decoration: underline;
@@ -1109,13 +1333,26 @@
 
 /* Reduzir movimento (A16, paridade com o desktop): nada desliza nem
    quica; folhas e toasts aparecem sem deslocamento. O fundo animado
-   acalma pelo sinal, não por CSS. */
+   acalma pelo sinal (motion.ts: calmGlCfg no WebGL, calmBgKnobs no 2D),
+   não por CSS; o VU para de interpolar e a rolagem da aba sai seca. */
 @media (prefers-reduced-motion: reduce) {
   .screen { animation: none; }
   .np,
   .np .lrail,
   .np[data-lyr] .cover,
-  .sheet .panel { transition: none; }
-  .toast { transition: opacity 0.18s linear; }
+  .vu i { transition: none; }
+  /* Calma = só opacidade: a folha aparece sem subir, o toast e a troca de
+     faixa sem deslocamento. */
+  .sheet .panel,
+  .sheet[data-open] .panel {
+    transform: none;
+    opacity: 0;
+    transition: opacity var(--dur-med) linear;
+  }
+  .sheet[data-open] .panel { opacity: 1; }
+  .toast { animation-name: toast-fade-in; }
+  .toast[data-leaving] { animation-name: toast-fade-out; }
+  [data-swap="a"] { animation-name: swap-fade-a; }
+  [data-swap="b"] { animation-name: swap-fade-b; }
   .app-bg { transition: opacity 0.18s linear; }
 }

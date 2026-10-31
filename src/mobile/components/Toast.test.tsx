@@ -31,3 +31,24 @@ describe("Toast", () => {
     expect(live.querySelector(".toast")).not.toBeNull();
   });
 });
+
+// A61: o toast nascia com data-on e o CSS de transição nunca corria; a
+// entrada agora é keyframe e a saída espera a animação antes de desmontar.
+describe("Toast — saída (A61)", () => {
+  it("ao sumir, fica marcado como saindo e só depois desmonta", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = render(() => <Toast />);
+      t.set!("Curtida");
+      const live = r.getByRole("status");
+      t.set!(null);
+      const leaving = live.querySelector(".toast");
+      expect(leaving).not.toBeNull();
+      expect(leaving!.hasAttribute("data-leaving")).toBe(true);
+      vi.advanceTimersByTime(400);
+      expect(live.querySelector(".toast")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

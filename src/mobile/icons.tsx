@@ -169,6 +169,12 @@ export const Icon = {
       <circle cx="12" cy="18.5" r="1.1" />
     </svg>
   ),
+  /** Lucide `x` (limpar a busca, A62). */
+  x: (p: IcoProps = {}) => (
+    <svg {...S} class={cx(p)}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  ),
   heart: (p: IcoProps = {}) => (
     <svg {...S} class={cx(p)}>
       <path d="M12 20S4 15.4 4 10.4A4.4 4.4 0 0 1 12 8a4.4 4.4 0 0 1 8 2.4C20 15.4 12 20 12 20z" />

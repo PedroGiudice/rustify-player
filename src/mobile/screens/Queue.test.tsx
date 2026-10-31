@@ -28,7 +28,7 @@ const q = vi.hoisted(() => {
       liked_at: null,
       like_updated_at: null,
     }) as Track;
-  return { list: [1, 2, 3, 4, 5, 6].map(mk), index: 3 };
+  return { list: [1, 2, 3, 4, 5, 6].map(mk), index: 3, mk };
 });
 
 vi.mock("../ipc", () => ({ assetSrc: () => null }));
@@ -133,6 +133,50 @@ describe("Queue — contraste do histórico (mobile-5)", () => {
     for (const role of ["--t3", "--t4"]) {
       const ratio = contrastRatio(relLuminance(over(tokens[role], bg, alpha))!, relLuminance(bg)!);
       expect(ratio, role).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
+// A57: "Shuffle all" enfileira o acervo inteiro (~1,7 mil faixas); montar
+// tudo de uma vez trava o WebView. As duas listas crescem por sentinela.
+describe("Queue — fila grande (A57)", () => {
+  it("monta só um lote de 'A seguir' e, de 'Já tocadas', as mais recentes", () => {
+    const saved = { list: q.list, index: q.index };
+    q.list = Array.from({ length: 1500 }, (_, i) => q.mk(i + 1));
+    q.index = 300; // 300 já tocadas, a atual e 1199 a seguir
+    try {
+      const r = render(() => <Queue />);
+      const rows = r.container.querySelectorAll(".trk").length;
+      expect(rows).toBeLessThan(200);
+      const text = r.container.textContent ?? "";
+      // vizinhas da atual aparecem; as pontas distantes, não
+      expect(text).toContain("faixa 300"); // última já tocada
+      expect(text).toContain("faixa 302"); // primeira a seguir
+      expect(text).not.toMatch(/faixa 1(?!\d)/); // a mais antiga fica para depois
+      expect(text).not.toContain("faixa 1500");
+    } finally {
+      q.list = saved.list;
+      q.index = saved.index;
+    }
+  });
+});
+
+// A64: a linha da faixa fora do aparelho usava classes do desktop que o
+// chunk do S24 não carrega e saía como texto solto.
+describe("Queue — faixa fora do acervo (A64)", () => {
+  it("vira linha de faixa (.trk) com título e posição", () => {
+    const saved = q.list;
+    q.list = [q.list[0], q.list[1], q.list[2], q.list[3], null as unknown as Track, q.list[5]];
+    try {
+      const r = render(() => <Queue />);
+      const row = [...r.container.querySelectorAll(".trk")].find((el) =>
+        el.textContent?.includes("Faixa fora do acervo"),
+      );
+      expect(row).toBeTruthy();
+      expect(row!.querySelector(".tt")).not.toBeNull();
+      expect(row!.querySelector(".ts")!.textContent).toContain("posição 5");
+    } finally {
+      q.list = saved;
     }
   });
 });

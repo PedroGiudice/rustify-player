@@ -71,3 +71,21 @@ describe("MobileApp: shell atrás do Now Playing", () => {
     expect(shell.getAttribute("aria-hidden")).toBeNull();
   });
 });
+
+// A50 (só o S24): o documento declarava lang="en" e o TalkBack lia o
+// português com voz inglesa.
+describe("mountMobile: idioma do documento", () => {
+  it("declara pt-BR", async () => {
+    const { mountMobile } = await import("./MobileApp");
+    const root = document.createElement("div");
+    root.id = "app";
+    document.body.appendChild(root);
+    document.documentElement.lang = "en";
+    try {
+      mountMobile();
+      expect(document.documentElement.lang).toBe("pt-BR");
+    } finally {
+      root.remove();
+    }
+  });
+});

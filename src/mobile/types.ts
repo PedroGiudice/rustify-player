@@ -30,6 +30,12 @@ export interface Track {
    *  vence) — nunca ler `liked_at` direto na UI. */
   liked_at: number | null;
   like_updated_at: number | null;
+  /** Qualidade do ORIGINAL medida no desktop pelo corte espectral (B15):
+   *  `sem_corte`, `provavel_lossy`, `lossy`, `hires_de_cd`, `indeterminado`.
+   *  Ausente/null = não medida ou manifest antigo. O aparelho toca Opus; isto
+   *  diz se o FLAC de origem é limpo. Leitura na UI: `originalQuality`. */
+  quality_class?: string | null;
+  quality_cutoff_hz?: number | null;
 }
 
 export interface Folder {

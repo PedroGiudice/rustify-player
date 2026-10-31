@@ -111,3 +111,25 @@ describe("Home", () => {
     expect(libraryFacet()).toBe("folders");
   });
 });
+
+// A62: com o teclado aberto o campo era cru: "Enter" no lugar da lupa, sem
+// limpar e sem nome para o leitor de tela.
+describe("Search — campo com o teclado (A62)", () => {
+  it("campo de busca nomeado, com a lupa no teclado", () => {
+    const r = render(() => <Search />);
+    const input = r.getByRole("searchbox", { name: "Buscar no acervo" }) as HTMLInputElement;
+    expect(input.getAttribute("type")).toBe("search");
+    expect(input.getAttribute("enterkeyhint")).toBe("search");
+  });
+
+  it("limpar aparece com termo, apaga e devolve o foco ao campo", () => {
+    const r = render(() => <Search />);
+    const input = r.getByRole("searchbox", { name: "Buscar no acervo" }) as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "algo" } });
+    const clear = r.getByRole("button", { name: "Limpar a busca" });
+    fireEvent.click(clear);
+    expect(input.value).toBe("");
+    expect(document.activeElement).toBe(input);
+    expect(r.queryByRole("button", { name: "Limpar a busca" })).toBeNull();
+  });
+});

@@ -12,9 +12,10 @@
    Sem reordenar: não há command para isso (epic A, fase 3).
    ============================================================ */
 
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LibGate, SecHead, ViewHead } from "../components/ui";
+import { Icon } from "../icons";
+import { Empty, LazyList, LibGate, SecHead, ViewHead } from "../components/ui";
 import {
   current,
   pb,
@@ -30,11 +31,16 @@ import { fmtRemaining, splitQueue } from "../queueModel";
 /** Faixa que está na fila do serviço mas não existe no acervo local
  *  (sync parcial). Ocupa a posição para os índices continuarem certos. */
 function MissingRow(props: { index: number }) {
+  // Mesma linha das outras (.trk), com o título apagado em --t3 (A64): as
+  // classes .row* eram do desktop e o chunk do S24 não as carrega.
   return (
-    <div class="row" style={{ opacity: 0.5 }}>
-      <div class="row__main">
-        <div class="row__title">Faixa fora do acervo</div>
-        <div class="row__sub">posição {props.index + 1} · não está neste aparelho</div>
+    <div class="trk trk--missing">
+      <div class="cov" aria-hidden="true">
+        <Icon.note />
+      </div>
+      <div class="info">
+        <div class="tt">Faixa fora do acervo</div>
+        <div class="ts">posição {props.index + 1} · não está neste aparelho</div>
       </div>
     </div>
   );
@@ -84,16 +90,17 @@ export function Queue() {
               </div>
               {/* Esmaecido, mas no piso de 3:1 contra o --s-base (mobile-5,
                   mesmo critério das linhas inativas da letra no desktop):
-                  com .62 a duração (--t4) caía para 2,17:1. .85 é o mínimo,
-                  com folga de arredondamento, que leva a --t4 a 3,06:1. */}
+                  com .62 a duração caía para 2,17:1. .85 leva até o --t4 a
+                  3,06:1; desde o A54 a duração é --t3, com mais folga. */}
               <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.85 }}>
-                <For each={split().past}>
+                {/* Lote das MAIS RECENTES, crescendo para cima (A57). */}
+                <LazyList items={split().past} chunk={60} tail>
                   {(t, i) => (
                     <Show when={t} fallback={<MissingRow index={i()} />}>
                       {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(i())} />}
                     </Show>
                   )}
-                </For>
+                </LazyList>
               </div>
             </div>
           </Show>
@@ -117,7 +124,8 @@ export function Queue() {
                 <SecHead label="A seguir" />
               </div>
               <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
-                <For each={split().upcoming}>
+                {/* "Shuffle all" põe o acervo inteiro aqui: lotes de 60 (A57). */}
+                <LazyList items={split().upcoming} chunk={60}>
                   {(t, i) => {
                     const at = () => Math.max(0, pb.index) + 1 + i();
                     return (
@@ -126,7 +134,7 @@ export function Queue() {
                       </Show>
                     );
                   }}
-                </For>
+                </LazyList>
               </div>
             </div>
           </Show>

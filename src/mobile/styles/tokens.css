@@ -19,6 +19,8 @@
   --s-c: #161616;
   --s-high: #1c1c1c;
   --s-highest: #242424;
+  /* Folha de ações: quase opaca e sem desfoque (A55). */
+  --s-sheet: rgba(12, 12, 12, 0.96);
   --div-subtle: rgba(255, 255, 255, 0.08);
   --div-prom: rgba(255, 255, 255, 0.16);
   --accent: #997081;
@@ -29,6 +31,8 @@
   --t1: #f0f0f0;
   --t2: #b8b8b8;
   --t3: #808080;
+  /* --t4 só em glifo e chevron (3:1 basta para não-texto). Texto, por menor
+     que seja, vai em --t3 ou acima (A54): o --t4 dava 3,55-3,84:1. */
   --t4: #6e6e6e;
   --outline: rgba(240, 240, 240, 0.16);
   --ok: #809078;
@@ -47,7 +51,27 @@
   --r-pill: 999px;
   --sh-card: 0 1px 4px rgba(0, 0, 0, 0.5);
   --sh-hover: 0 8px 24px rgba(0, 0, 0, 0.6);
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Escala de texto do S24 (A63). Piso de 11 px em tudo que se lê: tabbar,
+     eyebrow, rótulos, selo de origem, tags e mono de meta (eram 8,5-10,5).
+     A pinça segue desligada (layout de tela única); o piso é a compensação. */
+  --fs-label: 11px;
+  --fs-meta: 11.5px;
+  --fs-body: 13.5px;
+  --fs-lead: 17px;
+  --fs-stat: 19px;
+  --fs-title: 23px;
+  --fs-display: 28px;
+  /* Movimento: os tokens do desktop (A60). A curva Material antiga
+     (0.4, 0, 0.2, 1) arrancava devagar e a folha parecia arrastada.
+     --ease-in só para saídas. --ease fica como apelido do --ease-out. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease: var(--ease-out);
+  --dur-base: 0.15s;
+  --dur-med: 0.18s;
+  --dur-enter: 0.24s;
+  --dur-screen: 0.36s;
+  --dur-press: 0.08s;
   --bg-ink-rgb: 240, 240, 240;
   --bg-bass-gain: 1;
   --bg-mid-gain: 1;
@@ -74,6 +98,9 @@
   --tone-bone-b: #2e2c29;
   --tone-paper: #1a1a1a;
   --tone-paper-b: #2b2b2b;
+  /* Alvo de toque mínimo (A59): 44 px de lado. Onde a linha não pode
+     crescer, o alvo cresce com margem negativa ou ::after. */
+  --tap-min: 44px;
   --tabbar-h: 56px;
   --mini-h: 56px;
   /* [v0] recortes do aparelho (notch / barra de gestos) */
@@ -116,15 +143,6 @@ body {
   padding-top: var(--safe-t);
 }
 
-.scroll {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
-}
-.scroll::-webkit-scrollbar {
-  display: none;
-}
 .viewhead {
   padding: 8px 20px 14px;
   display: flex;
@@ -135,19 +153,19 @@ body {
 .viewhead h1 {
   font-family: var(--display);
   font-weight: 600;
-  font-size: 28px;
+  font-size: var(--fs-display);
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
 .viewhead .sub {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--t3);
   margin-top: 5px;
   letter-spacing: 0.02em;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: var(--fs-label);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -163,13 +181,18 @@ body {
   justify-content: space-between;
   margin-bottom: 10px;
 }
-.sec-head a {
-  font-size: 11px;
+/* "Ver todas": 14 px de padding vertical e 16 px à esquerda, devolvidos
+   pela margem negativa, para o texto de 11 px virar alvo de 44 (A59). */
+.sec-head .sec-head-link {
+  font-size: var(--fs-label);
   color: var(--t3);
-  text-decoration: none;
   background: none;
   border: 0;
   font-family: inherit;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 16px;
+  margin: -14px 0;
 }
 .card {
   background: var(--s-c);
@@ -186,7 +209,9 @@ body {
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 20px;
-  touch-action: pan-x;
+  /* Sem touch-action aqui (A52): com `pan-x` o toque que começava num card
+     só rolava na horizontal e a Home não subia. O `auto` padrão deixa o
+     carrossel (scroll-snap) e a página vertical funcionarem juntos. */
 }
 .qs-row::-webkit-scrollbar {
   display: none;
@@ -207,13 +232,13 @@ body {
   text-align: left;
 }
 .qs h3 {
-  font-size: 16px;
+  font-size: var(--fs-lead);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 .qs .meta {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--t3);
 }
 .trk {
@@ -252,14 +277,14 @@ body {
   flex: 1;
 }
 .trk .tt {
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .trk .ts {
-  font-size: 11.5px;
+  font-size: var(--fs-meta);
   color: var(--t3);
   margin-top: 2px;
   white-space: nowrap;
@@ -268,8 +293,8 @@ body {
 }
 .trk .dur {
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--t4);
+  font-size: var(--fs-label);
+  color: var(--t3);
   font-variant-numeric: tabular-nums;
 }
 .grid {
@@ -315,7 +340,7 @@ body {
   text-overflow: ellipsis;
 }
 .alb .s {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--t3);
   white-space: nowrap;
   overflow: hidden;
@@ -343,13 +368,17 @@ body {
   text-overflow: ellipsis;
 }
 .mini .ts {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--t3);
   margin-top: 1px;
 }
+/* 44 px de alvo com margem negativa de 4 px: o ícone e a densidade ficam
+   como no handoff de 36 px (A59). */
 .iconbtn {
-  width: 36px;
-  height: 36px;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin: -4px;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   border: 0;
@@ -381,9 +410,21 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: var(--t4);
-  font-size: 9.5px;
+  color: var(--t3);
+  font-size: var(--fs-label);
   letter-spacing: 0.02em;
+}
+/* Toque afunda (A60): aba e chip a 0,96, cards a 0,985, em --dur-press.
+   Transporte (tocar, anterior, próxima, seek) nunca anima. */
+.tab,
+.qs {
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.tab:active {
+  transform: scale(0.96);
+}
+.qs:active {
+  transform: scale(0.985);
 }
 .tab svg {
   width: 21px;

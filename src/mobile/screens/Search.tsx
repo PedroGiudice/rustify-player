@@ -47,6 +47,7 @@ const [scope, setScope] = createSignal<Scope>("all");
 
 export function Search() {
   const [recent, setRecent] = createSignal(loadRecent());
+  let inputEl: HTMLInputElement | undefined;
 
   const remember = (term: string) => {
     const t = term.trim();
@@ -84,9 +85,15 @@ export function Search() {
     <div class="screen">
       <ViewHead title="Search" />
 
+      {/* Com o campo em foco o rodapé (progresso, mini, abas) se esconde e a
+          lista ganha o espaço até o teclado (A62, regra no app.css). */}
       <div class="searchfield">
         <Icon.search />
         <input
+          ref={inputEl}
+          type="search"
+          enterkeyhint="search"
+          aria-label="Buscar no acervo"
           value={q()}
           placeholder="Faixas, álbuns, artistas, pastas"
           autocomplete="off"
@@ -100,6 +107,21 @@ export function Search() {
             }
           }}
         />
+        <Show when={q()}>
+          <button
+            class="searchfield__clear"
+            aria-label="Limpar a busca"
+            // O campo não perde o foco no toque: sem isso o rodapé reaparecia
+            // e sumia de novo entre o blur e o focus().
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setQ("");
+              inputEl?.focus();
+            }}
+          >
+            <Icon.x />
+          </button>
+        </Show>
       </div>
 
       <div class="chiprow">

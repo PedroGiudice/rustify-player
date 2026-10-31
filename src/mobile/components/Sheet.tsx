@@ -16,7 +16,7 @@ import type { SheetSpec } from "../sheet";
 import { navigate, navigateFromNp } from "../nav";
 import { is2dActive } from "../bg/engine";
 import { useRenderer, useShape } from "../bg/spectrum";
-import { albumKey, fmtDuration } from "../derive";
+import { albumKey, fmtDuration, originalQuality } from "../derive";
 import {
   enqueueEnd,
   enqueueNext,
@@ -231,8 +231,10 @@ function InfoSheet(props: { track: Track }) {
     const pl = playlistOf(t);
     if (pl) list.push(["Playlist", pl]);
     list.push(["Arquivo", baseName(t.path)]);
+    const q = originalQuality(t);
+    if (q) list.push(["Qualidade", q.text]);
     list.push(["Letra", t.lrc_path ? "sincronizada" : "não disponível"]);
-    list.push(["track_id", t.id]);
+    list.push(["ID", t.id]);
     return list;
   };
   return (
@@ -255,6 +257,14 @@ function InfoSheet(props: { track: Track }) {
 
 export function Sheet() {
   const [dragY, setDragY] = createSignal(0);
+  /* A folha fica montada e sai animando (A61): o conteúdo da última abertura
+     segue desenhado enquanto ela desce. Fechada, o CSS a esconde
+     (visibility depois da saída) e o aria-hidden a tira do leitor de tela. */
+  const [shown, setShown] = createSignal<SheetSpec | null>(null);
+  createEffect(() => {
+    const s = sheet();
+    if (s) setShown(s);
+  });
   let startY: number | null = null;
   let panelEl: HTMLDivElement | undefined;
 
@@ -296,6 +306,7 @@ export function Sheet() {
     <div
       class="sheet"
       attr:data-open={sheet() ? "" : undefined}
+      aria-hidden={sheet() ? undefined : "true"}
       role="dialog"
       aria-modal="true"
       aria-labelledby={sheet() ? TITLE_ID : undefined}
@@ -305,6 +316,7 @@ export function Sheet() {
         class="panel"
         ref={panelEl}
         tabindex="-1"
+        attr:data-drag={dragY() ? "" : undefined}
         style={dragY() ? { transform: `translateY(${dragY()}px)` } : undefined}
       >
         <div
@@ -314,7 +326,7 @@ export function Sheet() {
           onPointerUp={onUp}
           onPointerCancel={onUp}
         />
-        <Show when={sheet()}>
+        <Show when={shown()}>
           {(spec) => (
             <Switch fallback={<InfoSheet track={spec().track} />}>
               <Match when={spec().kind === "track" ? (spec() as Extract<SheetSpec, { kind: "track" }>) : null}>
