@@ -252,6 +252,13 @@ def coverage() -> dict:
             "track_enrichments",
             {"filter": {"must_not": [{"is_empty": {"key": "energy"}}]}},
         ),
+        # Perfil de volume do seek (0.2.102): ingest e backfill do boot gravam
+        # wave_profile_v = 1 (ok) ou 0 (falha). Não é motor de recomendação,
+        # mas é backfill de horas na cmr-auto: aqui se vê se andou.
+        "wave": count(
+            "rustify_tracks",
+            {"filter": {"must": [{"key": "wave_profile_v", "match": {"value": 1}}]}},
+        ),
     }
 
 
@@ -275,6 +282,13 @@ def cobertura_md(cov: dict) -> str:
         f"- Vibe: {cov['vibe']}/{cov['tracks']} ({cov['vibe'] / total:.0%})"
         + (f" — faltam {faltam_vibe} (anotação ainda é batch manual, CMR-178)" if faltam_vibe > 0 else ""),
     ]
+    # Histórico antigo (.jsonl) não tem o campo.
+    if "wave" in cov:
+        faltam_wave = cov["tracks"] - cov["wave"]
+        linhas.append(
+            f"- Perfil do seek: {cov['wave']}/{cov['tracks']} ({cov['wave'] / total:.0%})"
+            + (f" — faltam {faltam_wave} (backfill do boot)" if faltam_wave > 0 else "")
+        )
     return "\n".join(linhas) + "\n"
 
 

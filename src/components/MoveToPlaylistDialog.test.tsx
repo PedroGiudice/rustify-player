@@ -177,6 +177,9 @@ describe("teclado e erros do Mover (A34)", () => {
       vi.advanceTimersByTime(30_000);
       await waitFor(() => expect(btn("Fechar")).toBeTruthy());
       fireEvent.click(btn("Fechar")!);
+      // Sai em --dur-med (A46) antes de desmontar: nunca num corte.
+      expect(document.querySelector(".palette-scrim")!.getAttribute("data-leaving")).toBe("true");
+      vi.advanceTimersByTime(180);
       expect(document.querySelector(".move-dlg")).toBeNull();
     } finally {
       vi.useRealTimers();

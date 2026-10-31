@@ -174,7 +174,8 @@ describe("escopo da seleção", () => {
     window.location.hash = "#/albums";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
     expect(selectionCount()).toBe(0);
-    expect(container.querySelector(".sel-bar")).toBeNull();
+    // A barra pode estar saindo (A46); ativa, nunca.
+    expect(container.querySelector(".sel-bar-wrap:not([data-leaving])")).toBeNull();
     expect(hasFocusList()).toBe(false);
     fireEvent.keyDown(window, { key: "a", ctrlKey: true });
     expect(selectionCount()).toBe(0);
@@ -197,7 +198,7 @@ describe("escopo da seleção", () => {
     setTab("albums");
     await tick();
     expect(selectionCount()).toBe(0);
-    expect(container.querySelector(".sel-bar")).toBeNull();
+    expect(container.querySelector(".sel-bar-wrap:not([data-leaving])")).toBeNull();
     // "Mover" não tem mais o que mover, e Ctrl+A não revive a lista de trás.
     fireEvent.keyDown(window, { key: "a", ctrlKey: true });
     expect(selectionCount()).toBe(0);

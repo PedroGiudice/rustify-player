@@ -69,5 +69,7 @@ describe("Tracks", () => {
     expect(await findByText(/Mostrando as primeiras 5\.000 de 6\.200 faixas/)).toBeTruthy();
     expect(container.querySelectorAll(".tracks__row").length).toBe(TRACKS_LIMIT);
     expect(tauri.libGetTracks).toHaveBeenLastCalledWith({ genre: "Rap", limit: TRACKS_LIMIT + 1 });
-  }, 20_000);
+    // Monta 5.000 linhas de verdade (é o que se testa): ~11 s ocioso, mais
+    // sob carga paralela. Teto próprio para não estourar o padrão.
+  }, 30_000);
 });

@@ -18,10 +18,7 @@
 const COLOR_PROPS: ReadonlyArray<[name: string, fallback: string]> = [
   ["--bg-ink", "#171717"],
   ["--primary", "#2563eb"],
-  ["--primary-container", "#3b82f6"],
-  ["--primary-fixed-dim", "#3b82f6"],
   ["--on-primary", "#ffffff"],
-  ["--on-primary-container", "#ffffff"],
   ["--blue-fg", "#2563eb"],
   ["--blue-ring", "#3b82f6"],
   ["--blue-bg", "#eff6ff"],

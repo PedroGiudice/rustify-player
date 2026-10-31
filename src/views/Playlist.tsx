@@ -122,7 +122,7 @@ export default function PlaylistView() {
               onClick={() => { const n = name(); if (n) togglePin(n); }}
               title={pinned() ? "Tirar dos fixados" : "Fixar no topo das playlists"}
             >
-              <Icon name={pinned() ? "lucide:pin-off" : "lucide:pin"} size={13} />
+              <Icon name={pinned() ? ICONS.pinOff : ICONS.pin} size={13} />
               <span>{pinned() ? "Fixada" : "Fixar"}</span>
             </button>
             <button class="pl-action-btn pl-action-btn--primary" type="button" onClick={playAll} disabled={!tracks().length}>

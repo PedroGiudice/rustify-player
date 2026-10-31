@@ -134,7 +134,7 @@ export interface TweaksState {
       (`applyBridgeState`). Estado ao vivo (clientes) em store/bridge.ts. */
   remoteBridge: boolean;
 
-  /** Accent adaptativo: --primary e família (container, on-primary,
+  /** Accent adaptativo: --primary e família (on-primary,
       blue-fg/bg/ring — chips, halos, botões) seguem o hue da capa da
       faixa tocando, com contraste garantido na derivação. Desligado ou
       capa acromática → o accent do tema vale. */
@@ -467,9 +467,12 @@ export function setAdaptiveAccent(a: AdaptiveAccent | null) {
 
 /** Vars regidas pelo accent adaptativo. blue-* incluídas porque o design
     system usa blue-fg/bg/ring como papel de destaque (chips, halos). */
+// Só o que o desktop consome. --primary-container, --primary-fixed-dim e
+// --on-primary-container seguem no schema do tema (lib.rs/validate.py), mas
+// nenhuma regra do extractor-lab.css os lê: escrevê-los por troca de capa
+// era trabalho sem efeito (varredura de 31/10).
 const ACCENT_VARS = [
-  "--primary", "--primary-container", "--primary-fixed-dim",
-  "--on-primary", "--on-primary-container",
+  "--primary", "--on-primary",
   "--blue-fg", "--blue-bg", "--blue-ring",
 ] as const;
 
@@ -478,10 +481,7 @@ function applyAccentResolved(s: TweaksState = state()) {
   if (a) {
     const { r, g, b } = hexToRgb(a.accent);
     if (writeVar("--primary", a.accent)) announceInk();
-    writeVar("--primary-container", a.container);
-    writeVar("--primary-fixed-dim", a.container);
     writeVar("--on-primary", a.on);
-    writeVar("--on-primary-container", a.on);
     writeVar("--blue-fg", a.accent);
     writeVar("--blue-ring", a.accent);
     writeVar("--blue-bg", `rgba(${r}, ${g}, ${b}, 0.12)`);

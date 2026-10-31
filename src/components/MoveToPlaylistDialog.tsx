@@ -23,12 +23,16 @@ import {
   newFolderCandidate, plural, summaryText, undoPlan, undoSummaryText,
 } from "../lib/moveToPlaylist";
 import { deselectIds } from "../store/selection";
+import { createPresence } from "../lib/motion";
 import { Icon, ICONS } from "./Icon";
 
 export function MoveToPlaylistDialog() {
+  // Fechar não desmonta na hora (A46): o diálogo sai em --dur-med, como a
+  // paleta, e só então some.
+  const shown = createPresence(moveRequest);
   return (
-    <Show when={moveRequest()}>
-      {(req) => <MoveDialogBody req={req()} />}
+    <Show when={shown.value()}>
+      {(req) => <MoveDialogBody req={req()} leaving={shown.leaving()} />}
     </Show>
   );
 }
@@ -40,7 +44,7 @@ export const STALL_MS = 30_000;
 
 interface Job { ids: string[]; target: string }
 
-function MoveDialogBody(props: { req: MoveRequest }) {
+function MoveDialogBody(props: { req: MoveRequest; leaving?: boolean }) {
   const [names] = createResource(() => libListPlaylists());
   const [query, setQuery] = createSignal("");
   const [phase, setPhase] = createSignal<Phase>("pick");
@@ -74,7 +78,16 @@ function MoveDialogBody(props: { req: MoveRequest }) {
   onMount(() => {
     const focusRet = rememberFocus();
     const pop = pushEscLayer(close);
-    onCleanup(() => { pop(); focusRet.restore({ within: dlgEl }); });
+    // Saindo, o Esc e o foco já são de quem estava embaixo.
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      pop();
+      focusRet.restore({ within: dlgEl });
+    };
+    createEffect(() => { if (props.leaving) release(); });
+    onCleanup(release);
   });
 
   // Foco no primário de cada fase: o campo, "Mover", o próprio corpo enquanto
@@ -193,6 +206,7 @@ function MoveDialogBody(props: { req: MoveRequest }) {
       <div
         class="palette-scrim palette-scrim--mount"
         data-open="true"
+        data-leaving={props.leaving ? "true" : undefined}
         onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
       >
         <div

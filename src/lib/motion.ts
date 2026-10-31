@@ -10,6 +10,9 @@
 //   não se mexe; quem se mexe é o conteúdo, e só quando a troca é calma).
 // - Janela de entrada de vista: conjunto pequeno que pode ser recriado depois
 //   (cards de station após o refetch) só escalona logo depois de montar.
+// - Presença com saída (A46): componente que desmonta (<Show>) sumia num
+//   corte. createPresence segura o nó (e o último valor, para o rótulo não
+//   mudar no meio da saída) por --dur-med enquanto o CSS toca a saída.
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js";
 
 /** Intervalo mínimo desde a troca anterior para a troca animar. */
@@ -66,4 +69,58 @@ export function createEnterWindow(ms: number = ENTER_WINDOW_MS): Accessor<boolea
   const t = setTimeout(() => setOpen(false), ms);
   onCleanup(() => clearTimeout(t));
   return open;
+}
+
+/** Duração de uma custom property de tempo do :root, em ms ("0.18s",
+    "180ms"). Lida na hora: o tema YAML (motion.*) também manda aqui. */
+export function cssDurationMs(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const m = /^(\d*\.?\d+)(ms|s)$/.exec(raw);
+  if (!m) return fallback;
+  return m[2] === "s" ? Math.round(parseFloat(m[1]) * 1000) : Math.round(parseFloat(m[1]));
+}
+
+export interface Presence<T> {
+  /** O valor a renderizar: o da fonte, ou o último enquanto sai. */
+  value: Accessor<T | null>;
+  /** true entre a fonte esvaziar e o fim da saída (atributo data-leaving). */
+  leaving: Accessor<boolean>;
+}
+
+/**
+ * Montado até a saída acabar. `source` vazia (null/undefined/false) põe
+ * `leaving` em true e só solta o valor depois de `exitMs()`; a fonte voltar
+ * no meio cancela a saída. O CSS dá a saída por `[data-leaving]`.
+ */
+export function createPresence<T>(
+  source: Accessor<T | null | undefined | false>,
+  exitMs: () => number = () => cssDurationMs("--dur-med", 180),
+): Presence<T> {
+  const initial = source();
+  const [value, setValue] = createSignal<T | null>(initial ? initial : null);
+  const [leaving, setLeaving] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(
+    on(
+      source,
+      (v) => {
+        clearTimeout(timer);
+        if (v) {
+          setLeaving(false);
+          setValue(() => v);
+          return;
+        }
+        if (value() === null) return;
+        setLeaving(true);
+        timer = setTimeout(() => {
+          setLeaving(false);
+          setValue(null);
+        }, exitMs());
+      },
+      { defer: true },
+    ),
+  );
+  onCleanup(() => clearTimeout(timer));
+  return { value, leaving };
 }

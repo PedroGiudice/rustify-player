@@ -18,6 +18,12 @@
    Puro e testável; paintLayers não aloca (escreve em `out`).
    ============================================================ */
 
+import { linToSrgb, oklchToLinInto, srgbToLin, srgbToOklch } from "../lib/color";
+
+// Conversões OKLCH: fonte única em lib/color.ts (as mesmas matrizes).
+export { srgbToOklch };
+export type { Oklch } from "../lib/color";
+
 export const PAINT_LAYERS = 6;
 
 /** L do OKLab por camada, da mais funda à mais clara. Y (luminância
@@ -35,43 +41,9 @@ const HUE_SHIFT = 20;
 const HUE_BACK = 10;
 const CREAM_HUE = 70;
 
-const toLin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-const toSrgb = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-
 /** Luminância relativa (WCAG) de um sRGB 0..1. */
 export function relLuminance(r: number, g: number, b: number): number {
-  return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
-}
-
-export interface Oklch {
-  l: number;
-  c: number;
-  /** Graus, 0..360. */
-  h: number;
-}
-
-export function srgbToOklch(r: number, g: number, b: number): Oklch {
-  const lr = toLin(r), lg = toLin(g), lb = toLin(b);
-  const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
-  const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
-  const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
-  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
-  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
-  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
-  const h = (Math.atan2(B, A) * 180) / Math.PI;
-  return { l: L, c: Math.hypot(A, B), h: h < 0 ? h + 360 : h };
-}
-
-/** OKLCH -> sRGB linear em (r,g,b) de `out` a partir de `o`. */
-function oklchToLin(L: number, C: number, hDeg: number, out: Float32Array, o: number): void {
-  const hr = (hDeg * Math.PI) / 180;
-  const A = C * Math.cos(hr), B = C * Math.sin(hr);
-  const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
-  const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
-  const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
-  out[o] = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-  out[o + 1] = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-  out[o + 2] = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+  return 0.2126 * srgbToLin(r) + 0.7152 * srgbToLin(g) + 0.0722 * srgbToLin(b);
 }
 
 const inGamut = (out: Float32Array, o: number) =>
@@ -80,20 +52,20 @@ const inGamut = (out: Float32Array, o: number) =>
 /** Escreve em out[o..o+2] o sRGB 0..1 de OKLCH(L, C, h), reduzindo o
     croma (busca binária) até caber no sRGB. L e h se preservam. */
 function writeOklch(L: number, C: number, h: number, out: Float32Array, o: number): void {
-  oklchToLin(L, C, h, out, o);
+  oklchToLinInto(L, C, h, out, o);
   if (!inGamut(out, o)) {
     let lo = 0, hi = C;
     for (let i = 0; i < 14; i++) {
       const mid = (lo + hi) / 2;
-      oklchToLin(L, mid, h, out, o);
+      oklchToLinInto(L, mid, h, out, o);
       if (inGamut(out, o)) lo = mid;
       else hi = mid;
     }
-    oklchToLin(L, lo, h, out, o);
+    oklchToLinInto(L, lo, h, out, o);
   }
   for (let i = 0; i < 3; i++) {
     const v = out[o + i] < 0 ? 0 : out[o + i] > 1 ? 1 : out[o + i];
-    out[o + i] = toSrgb(v);
+    out[o + i] = linToSrgb(v);
   }
 }
 

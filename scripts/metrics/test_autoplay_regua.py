@@ -102,5 +102,21 @@ class Recortes(unittest.TestCase):
         self.assertIn("sem eventos", R.recortes_md(rec))
 
 
+
+class Cobertura(unittest.TestCase):
+    COV = {"tracks": 2200, "mert": 2200, "lyrics": 900, "lyrics_sem_fonte": 700, "vibe": 2200}
+
+    def test_perfil_do_seek_entra_na_cobertura(self):
+        md = R.cobertura_md({**self.COV, "wave": 2100})
+        self.assertIn("- Perfil do seek: 2100/2200 (95%) — faltam 100", md)
+
+    def test_perfil_completo_nao_diz_que_falta(self):
+        md = R.cobertura_md({**self.COV, "wave": 2200})
+        linha = [l for l in md.splitlines() if l.startswith("- Perfil do seek")][0]
+        self.assertNotIn("faltam", linha)
+
+    def test_historico_sem_o_campo_nao_quebra(self):
+        self.assertNotIn("Perfil do seek", R.cobertura_md(dict(self.COV)))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

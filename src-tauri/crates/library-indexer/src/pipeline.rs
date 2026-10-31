@@ -332,7 +332,7 @@ fn run_scan(
     let entries: Vec<FileEntry> = scan::walk_music_root(&config.music_root)?.collect();
     let total = entries.len() as u64;
 
-    let (existing, external_lyrics) = load_existing_from_qdrant(client)?;
+    let (existing, preserved) = load_existing_from_qdrant(client)?;
     info!(
         target: "library_indexer::pipeline",
         files_on_disk = total,
@@ -381,10 +381,11 @@ fn run_scan(
             match build_track_payload(config, &entry) {
                 Ok(mut payload) => {
                     let id = path_to_id(&entry.path);
-                    // A letra externa não vem do arquivo: sem isto, retaggear
-                    // o FLAC apagaria o que veio do lrclib para sempre.
-                    if let Some(kept) = external_lyrics.get(&id) {
-                        merge_external_lyrics(&mut payload, kept);
+                    // Letra externa e primeira chegada não vêm do arquivo: sem
+                    // isto, retaggear o FLAC apagaria o que veio do lrclib e
+                    // faria a faixa voltar como chegada nova.
+                    if let Some(kept) = preserved.get(&id) {
+                        merge_preserved(&mut payload, kept);
                     }
                     batch.push((id, payload, None));
                     if prior.is_none() {
@@ -458,10 +459,10 @@ fn ingest_paths(
             .and_then(|(entry, mut payload)| {
                 let id = path_to_id(&entry.path);
                 // Re-download do MESMO arquivo cai aqui: preserva a letra
-                // externa do ponto anterior, que não vem das tags.
+                // externa e a primeira chegada do ponto anterior.
                 if let Ok(Some(point)) = client.get_point(id) {
-                    if let Some(kept) = external_lyrics_fields(&point["payload"]) {
-                        merge_external_lyrics(&mut payload, &kept);
+                    if let Some(kept) = preserved_fields(&point["payload"]) {
+                        merge_preserved(&mut payload, &kept);
                     }
                 }
                 client
@@ -683,7 +684,11 @@ fn backfill_missing_wave_profile(client: &QdrantClient) -> Result<(), IndexerErr
 /// dispara re-ingest; sem preservar isto, a letra obtida do lrclib e o veredito
 /// de miss se perdiam de vez — não há cópia em disco para o backfill recuperar,
 /// e o app não reconsulta o lrclib para faixa já indexada.
-const EXTERNAL_LYRICS_FIELDS: [&str; 2] = [FIELD_LYRICS_TEXT, "lyrics_status"];
+///
+/// `indexed_at` entra pelo mesmo motivo: é a hora da PRIMEIRA chegada ao
+/// acervo ("Chegou esta semana", ordem "Recém-adicionadas"); recarimbá-lo no
+/// retag fazia faixa velha voltar como chegada.
+const PRESERVED_ON_REINGEST: [&str; 3] = [FIELD_LYRICS_TEXT, "lyrics_status", "indexed_at"];
 
 type ExistingRows = Vec<(u64, PathBuf, u64, u64, bool)>;
 
@@ -691,7 +696,7 @@ fn load_existing_from_qdrant(
     client: &QdrantClient,
 ) -> Result<(ExistingRows, HashMap<u64, serde_json::Value>), IndexerError> {
     let mut fields = vec!["path", "mtime", "size_bytes", "embedding_status"];
-    fields.extend_from_slice(&EXTERNAL_LYRICS_FIELDS);
+    fields.extend_from_slice(&PRESERVED_ON_REINGEST);
     let all = client.scroll_all_payloads(&fields)?;
 
     let mut rows = Vec::with_capacity(all.len());
@@ -701,7 +706,7 @@ fn load_existing_from_qdrant(
         let mtime = payload["mtime"].as_u64().unwrap_or(0);
         let size = payload["size_bytes"].as_u64().unwrap_or(0);
         let embedded = payload["embedding_status"].as_str() == Some("done");
-        if let Some(kept) = external_lyrics_fields(&payload) {
+        if let Some(kept) = preserved_fields(&payload) {
             external.insert(id, kept);
         }
         rows.push((id, path, mtime, size, embedded));
@@ -709,11 +714,11 @@ fn load_existing_from_qdrant(
     Ok((rows, external))
 }
 
-/// Extrai de um payload os campos de letra externa dignos de preservação, ou
-/// `None` se não houver nenhum.
-fn external_lyrics_fields(payload: &serde_json::Value) -> Option<serde_json::Value> {
+/// Extrai de um payload os campos que não vêm do arquivo (letra externa,
+/// primeira chegada), ou `None` se não houver nenhum.
+fn preserved_fields(payload: &serde_json::Value) -> Option<serde_json::Value> {
     let mut kept = serde_json::Map::new();
-    for field in EXTERNAL_LYRICS_FIELDS {
+    for field in PRESERVED_ON_REINGEST {
         if let Some(v) = payload.get(field) {
             if !v.is_null() {
                 kept.insert(field.to_string(), v.clone());
@@ -724,7 +729,7 @@ fn external_lyrics_fields(payload: &serde_json::Value) -> Option<serde_json::Val
 }
 
 /// Reaplica ao payload recém-construído os campos externos preservados.
-fn merge_external_lyrics(payload: &mut serde_json::Value, kept: &serde_json::Value) {
+fn merge_preserved(payload: &mut serde_json::Value, kept: &serde_json::Value) {
     let (Some(dst), Some(src)) = (payload.as_object_mut(), kept.as_object()) else {
         return;
     };
@@ -1465,21 +1470,34 @@ mod tests {
             FIELD_LYRICS_TEXT: LETRA,
             "lyrics_status": "found",
         });
-        let kept = external_lyrics_fields(&antigo).unwrap();
+        let kept = preserved_fields(&antigo).unwrap();
 
         let mut novo = json!({ "path": "/m/a.flac", "title": "A" });
-        merge_external_lyrics(&mut novo, &kept);
+        merge_preserved(&mut novo, &kept);
         assert_eq!(novo[FIELD_LYRICS_TEXT], LETRA);
         assert_eq!(novo["lyrics_status"], "found");
         assert_eq!(novo["title"], "A", "campos do arquivo seguem os novos");
     }
 
     #[test]
+    fn re_ingest_preserva_indexed_at_da_primeira_chegada() {
+        // Retaggear muda mtime e o build_track_payload carimba `indexed_at`
+        // com a hora do re-ingest: a faixa velha voltava como "chegada" na
+        // Home e no "Recém-adicionadas". A primeira chegada manda.
+        let antigo = json!({ "path": "/m/a.flac", "indexed_at": 1_700_000_000_i64 });
+        let kept = preserved_fields(&antigo).unwrap();
+
+        let mut novo = json!({ "path": "/m/a.flac", "indexed_at": 1_761_900_000_i64 });
+        merge_preserved(&mut novo, &kept);
+        assert_eq!(novo["indexed_at"], 1_700_000_000_i64);
+    }
+
+    #[test]
     fn nada_a_preservar_quando_o_ponto_nao_tem_letra_externa() {
-        assert!(external_lyrics_fields(&json!({ "path": "/m/a.flac" })).is_none());
+        assert!(preserved_fields(&json!({ "path": "/m/a.flac" })).is_none());
         // Campo presente porém nulo (Qdrant devolve assim quando foi apagado)
         // não é dado — preservá-lo escreveria null por cima do payload novo.
-        assert!(external_lyrics_fields(&json!({ FIELD_LYRICS_TEXT: null })).is_none());
+        assert!(preserved_fields(&json!({ FIELD_LYRICS_TEXT: null })).is_none());
     }
 
     #[test]

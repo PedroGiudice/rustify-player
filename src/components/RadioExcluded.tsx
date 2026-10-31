@@ -19,14 +19,14 @@
 import { createResource, For, Show } from "solid-js";
 import { coverUrl, libRadioExcluded, type RadioExcludedTrack } from "../tauri";
 import { CoverArt } from "./CoverArt";
-import { Icon } from "./Icon";
+import { Icon, ICONS } from "./Icon";
 import { EmptyState } from "./EmptyState";
 import { openTrackMenu } from "../store/contextMenu";
 import { exclusionText } from "../lib/radioWhy";
 import { radioRevision, returnToRadio } from "../lib/radioRefusal";
 import { settle, peek } from "../lib/loaded";
 
-const ICON_RETURN = "lucide:undo-2";
+const ICON_RETURN = ICONS.undo;
 
 export interface RadioExcludedProps {
   /** Nome da station pelo id; undefined = station apagada. */

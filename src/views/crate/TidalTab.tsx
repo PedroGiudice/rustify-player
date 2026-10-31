@@ -118,15 +118,50 @@ function loadCover(url: string): Promise<string> {
   return p;
 }
 
+// Capa só quando a caixa chega perto da tela (A49): a prévia monta até 200
+// linhas e pedia as 200 capas ao Rust de uma vez. Um observador para todas;
+// a caixa que já foi vista fica vista. Sem IntersectionObserver (testes
+// antigos, ambiente sem a API), carrega na hora, como antes.
+const NEAR_MARGIN = "300px";
+let nearObserver: IntersectionObserver | null = null;
+const nearWaiting = new Map<Element, () => void>();
+
+function whenNear(el: Element, fn: () => void): () => void {
+  if (typeof IntersectionObserver === "undefined") { fn(); return () => {}; }
+  if (!nearObserver) {
+    nearObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const go = nearWaiting.get(e.target);
+        if (!go) continue;
+        nearWaiting.delete(e.target);
+        nearObserver?.unobserve(e.target);
+        go();
+      }
+    }, { rootMargin: NEAR_MARGIN });
+  }
+  nearWaiting.set(el, fn);
+  nearObserver.observe(el);
+  return () => {
+    if (nearWaiting.delete(el)) nearObserver?.unobserve(el);
+  };
+}
+
 function Cover(props: { url: string | null; round?: boolean; size?: "lg" }) {
   const [src, setSrc] = createSignal<string | null>(null);
-  createEffect(on(() => props.url, (u) => {
+  const [near, setNear] = createSignal(props.size === "lg"); // cartaz do cabeçalho: na hora
+  let boxEl: HTMLSpanElement | undefined;
+  onMount(() => {
+    if (near() || !boxEl) return;
+    onCleanup(whenNear(boxEl, () => setNear(true)));
+  });
+  createEffect(on([() => props.url, near], ([u, isNear]) => {
     setSrc(null);
-    if (!u) return;
+    if (!u || !isNear) return;
     loadCover(u).then((s) => { if (props.url === u) setSrc(s); }).catch(() => {});
   }));
   return (
-    <span class="tdl-cover" data-round={props.round ? "true" : undefined} data-size={props.size}>
+    <span class="tdl-cover" ref={boxEl} data-round={props.round ? "true" : undefined} data-size={props.size}>
       <Show when={src()}>{(s) => <img src={s()} alt="" />}</Show>
     </span>
   );

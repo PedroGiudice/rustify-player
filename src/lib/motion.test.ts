@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createRoot, createSignal } from "solid-js";
-import { CALM_GAP_MS, createEnterWindow, createSwapKey, isCalmChange, nextSwapKey } from "./motion";
+import {
+  CALM_GAP_MS, createEnterWindow, createPresence, createSwapKey, cssDurationMs, isCalmChange, nextSwapKey,
+} from "./motion";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -56,5 +58,51 @@ describe("createEnterWindow", () => {
       expect(open()).toBe(false);
       dispose();
     });
+  });
+});
+
+describe("createPresence", () => {
+  it("guarda o último valor durante a saída e só então solta", () => {
+    vi.useFakeTimers();
+    const [src, setSrc] = createSignal<number | null>(null);
+    const { p, dispose } = createRoot((dispose) => ({ p: createPresence(src, () => 180), dispose }));
+    expect(p.value()).toBeNull();
+    setSrc(3);
+    expect(p.value()).toBe(3);
+    expect(p.leaving()).toBe(false);
+    setSrc(null);
+    expect(p.value()).toBe(3); // o rótulo da saída não vira "0 faixas"
+    expect(p.leaving()).toBe(true);
+    vi.advanceTimersByTime(179);
+    expect(p.value()).toBe(3);
+    vi.advanceTimersByTime(1);
+    expect(p.value()).toBeNull();
+    expect(p.leaving()).toBe(false);
+    dispose();
+  });
+
+  it("voltar durante a saída cancela a saída", () => {
+    vi.useFakeTimers();
+    const [src, setSrc] = createSignal<number | null>(1);
+    const { p, dispose } = createRoot((dispose) => ({ p: createPresence(src, () => 180), dispose }));
+    setSrc(null);
+    vi.advanceTimersByTime(100);
+    setSrc(2);
+    expect(p.value()).toBe(2);
+    expect(p.leaving()).toBe(false);
+    vi.advanceTimersByTime(500);
+    expect(p.value()).toBe(2);
+    dispose();
+  });
+});
+
+describe("cssDurationMs", () => {
+  it("lê s e ms, e cai no padrão quando a var não existe", () => {
+    expect(cssDurationMs("--dur-que-nao-existe", 180)).toBe(180);
+    document.documentElement.style.setProperty("--dur-x", "0.24s");
+    expect(cssDurationMs("--dur-x", 0)).toBe(240);
+    document.documentElement.style.setProperty("--dur-x", "150ms");
+    expect(cssDurationMs("--dur-x", 0)).toBe(150);
+    document.documentElement.style.removeProperty("--dur-x");
   });
 });
