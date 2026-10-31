@@ -21,7 +21,7 @@ vi.mock("../tauri", () => ({
 import * as ipc from "../tauri";
 import {
   jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen, __resetForTests,
-  tidal, refreshTidal, setCrateViewOpen, saveSearchCache, loadSearchCache, SEARCH_CACHE_MS,
+  tidal, refreshTidal, setCrateViewOpen, setCrateTidalFocus, saveSearchCache, loadSearchCache, SEARCH_CACHE_MS,
 } from "./crate";
 
 function tjob(id: string, status: TidalJob["status"], extra: Partial<TidalJob> = {}): TidalJob {
@@ -234,6 +234,23 @@ describe("poll da Tidal (A17)", () => {
     expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 2);
     await vi.advanceTimersByTimeAsync(20_000);
     expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 4);
+    setCrateViewOpen(false);
+  });
+
+  it("Crate aberto na aba Buscar sem job da Tidal andando: 60 s; com job andando, 10 s (A49)", async () => {
+    await bootCrateStore();
+    setCrateViewOpen(true);
+    setCrateTidalFocus(false);
+    await vi.advanceTimersByTimeAsync(0);
+    const base = vi.mocked(ipc.crateTidalJobs).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base);
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({ jobs: [tjob("a", "baixando")], pastas: [] });
+    await vi.advanceTimersByTimeAsync(30_000); // consulta lenta vê o job andando
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 3);
+    setCrateTidalFocus(true);
     setCrateViewOpen(false);
   });
 

@@ -246,6 +246,30 @@ describe("TidalTab", () => {
     expect([...document.querySelectorAll(".tdl-row--pick .tdl-pos")].map((e) => e.textContent)).toEqual(["1", "2"]);
   });
 
+  it("prévia de 200: a capa da linha só é pedida quando a linha chega perto da tela (A49)", async () => {
+    const vistos: Element[] = [];
+    let avisa!: (entries: { target: Element; isIntersecting: boolean }[]) => void;
+    const original = (globalThis as any).IntersectionObserver;
+    (globalThis as any).IntersectionObserver = class {
+      constructor(cb: typeof avisa) { avisa = cb; }
+      observe(el: Element) { vistos.push(el); }
+      unobserve() {}
+      disconnect() {}
+    };
+    try {
+      const faixas = Array.from({ length: 200 }, (_, i) => ({ ...faixa(i + 10, `F${i}`), capa: `https://resources.tidal.com/images/c${i}/80x80.jpg` }));
+      await abrePrevia(faixas);
+      const pedidas = () => mocks.crateTidalCover.mock.calls.map((c) => c[0]).filter((u) => u.includes("/images/c"));
+      expect(pedidas()).toEqual([]);
+      const primeira = document.querySelector(".tdl-row--pick .tdl-cover")!;
+      expect(vistos).toContain(primeira);
+      avisa([{ target: primeira, isIntersecting: true }]);
+      await waitFor(() => expect(pedidas()).toEqual(["https://resources.tidal.com/images/c0/80x80.jpg"]));
+    } finally {
+      (globalThis as any).IntersectionObserver = original;
+    }
+  });
+
   it("página do artista abre com a foto em cartaz (B27)", async () => {
     mocks.crateTidalSearch.mockResolvedValue({
       ...busca("orochi", []), artistas: [{ id: 5, nome: "Orochi", foto: "https://resources.tidal.com/images/f/320x320.jpg", url: "u" }],

@@ -43,7 +43,7 @@ import { guessFromSoundCloud, cleanTitle, type MetaGuess } from "../lib/trackMet
 import { dedupMatch } from "../lib/dedup";
 import {
   jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen,
-  tidal, refreshTidal, setCrateViewOpen, saveSearchCache, loadSearchCache,
+  tidal, refreshTidal, setCrateViewOpen, setCrateTidalFocus, saveSearchCache, loadSearchCache,
 } from "../store/crate";
 import { shortTidalLink, tidalStatusLabel, tidalStatusTone, isTidalActive } from "../lib/tidalFila";
 import { plural } from "../lib/tidalSearch";
@@ -54,6 +54,7 @@ import { CopyLinkButton } from "./crate/CopyLinkButton";
 import TidalTab from "./crate/TidalTab";
 import { FolderPicker, mergeFolders } from "./crate/FolderPicker";
 import { tabKeyHandler } from "../lib/tabKeys";
+import { pollWhileVisible } from "../lib/poll";
 
 const CRATE_TABS = ["search", "queue", "tidal"] as const;
 const crateTabId = (t: (typeof CRATE_TABS)[number]) => `crate-tab-${t}`;
@@ -1349,6 +1350,9 @@ export default function Crate(props: { param?: string | null }) {
   const [tab, setTab] = createSignal<"search" | "queue" | "tidal">("search");
   const [tidalVisited, setTidalVisited] = createSignal(false);
   createEffect(() => { if (tab() === "tidal") setTidalVisited(true); });
+  // A fila da Tidal só se vê nas abas Fila e Tidal: na Buscar o poll volta
+  // ao ritmo lento, salvo job andando (store/crate.ts, A49).
+  createEffect(() => setCrateTidalFocus(tab() !== "search"));
   // Busca preservada (B28): sem pedido novo pela rota, a última busca volta
   // por 10 min com a idade à vista ("resultado de há N min").
   const cached = props.param ? null : loadSearchCache();
@@ -1419,11 +1423,9 @@ export default function Crate(props: { param?: string | null }) {
 
   let inputEl!: HTMLInputElement;
   let listEl: HTMLDivElement | undefined;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
-  let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
-  let sourcesTimer: ReturnType<typeof setInterval> | undefined;
-  let ageTimer: ReturnType<typeof setInterval> | undefined;
+  /** Polls da view (A49): dormem com a janela oculta (lib/poll.ts). */
+  const stopPolls: (() => void)[] = [];
   /** Número da chamada de doSearch mais recente (só ela baixa o pending). */
   let searchSeq = 0;
   /** Idem para a busca do SoundCloud e para o card (resposta atrasada de
@@ -1901,20 +1903,20 @@ export default function Crate(props: { param?: string | null }) {
     libListFolders().then(setFolders).catch(() => {});
     const refreshStatus = () => { slskStatus().then(setStatus).catch(() => {}); };
     refreshStatus();
-    statusTimer = setInterval(refreshStatus, STATUS_POLL_MS);
+    stopPolls.push(pollWhileVisible(refreshStatus, STATUS_POLL_MS));
     const refreshSources = () => { crateSourcesStatus().then(setSourcesStatus).catch(() => {}); };
     refreshSources();
-    sourcesTimer = setInterval(refreshSources, SOURCES_POLL_MS);
+    stopPolls.push(pollWhileVisible(refreshSources, SOURCES_POLL_MS));
 
     // Crate aberto: a fila da Tidal passa a 10 s (store/crate.ts, A17).
     setCrateViewOpen(true);
-    ageTimer = setInterval(() => setNow(Date.now()), 30_000);
+    stopPolls.push(pollWhileVisible(() => setNow(Date.now()), 30_000));
 
     // Só polla enquanto a busca ainda pode mudar: `running`, ou antes do
     // primeiro snapshot chegar. Estado terminal (done/empty/failed/
     // canceled) não muda mais no backend — seguir pollando só recriava
     // trabalho a cada 800 ms com a view aberta (crate-1).
-    pollTimer = setInterval(() => {
+    stopPolls.push(pollWhileVisible(() => {
       const id = searchId();
       const snap = snapshot();
       if (!id || (snap && snap.state !== "running")) return;
@@ -1922,13 +1924,10 @@ export default function Crate(props: { param?: string | null }) {
         if (searchId() !== id) return; // resposta atrasada de uma busca já trocada
         applySnapshot(next);
       }).catch(() => {});
-    }, POLL_MS);
+    }, POLL_MS));
 
     onCleanup(() => {
-      if (pollTimer) clearInterval(pollTimer);
-      if (statusTimer) clearInterval(statusTimer);
-      if (sourcesTimer) clearInterval(sourcesTimer);
-      if (ageTimer) clearInterval(ageTimer);
+      for (const stop of stopPolls) stop();
       if (cooldownTimer) clearInterval(cooldownTimer);
       setCrateViewOpen(false);
       // A busca não é mais cancelada ao sair (B28): ela termina na janela de

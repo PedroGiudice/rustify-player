@@ -116,7 +116,11 @@ export const tidal = tidalState;
 let tidalKnownDone = new Set<string>();
 let tidalHydrated = false;
 let crateOpen = false;
+/** Aba do Crate que mostra a fila da Tidal (Fila ou Tidal) está à vista. */
+let tidalFocus = true;
 let tidalTimer: ReturnType<typeof setTimeout> | undefined;
+/** Ritmo do timer armado agora (true = 10 s). */
+let scheduledFast = false;
 let tidalSeq = 0;
 
 function errorText(e: unknown): string {
@@ -143,6 +147,8 @@ export async function refreshTidal(): Promise<void> {
     trackTidalArrivals(snap.jobs);
     setTidal("jobs", reconcile(snap.jobs, { key: "id" }));
     setTidal({ pastas: snap.pastas, load: "loaded", loadError: null });
+    // Job que começou (ou terminou) muda o ritmo: não espera a volta lenta.
+    if (booted && tidalTimer !== undefined && tidalFast() !== scheduledFast) scheduleTidal();
   } catch (e) {
     if (seq !== tidalSeq) return;
     setTidal({ load: "error", loadError: errorText(e) || null });
@@ -151,12 +157,30 @@ export async function refreshTidal(): Promise<void> {
 
 function scheduleTidal(): void {
   clearTimeout(tidalTimer);
+  scheduledFast = tidalFast();
   tidalTimer = setTimeout(() => {
     const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     const parked = !crateOpen && tidalState.load === "error";
     if (!hidden && !parked) void refreshTidal();
     scheduleTidal();
-  }, crateOpen ? TIDAL_POLL_OPEN_MS : TIDAL_POLL_CLOSED_MS);
+  }, scheduledFast ? TIDAL_POLL_OPEN_MS : TIDAL_POLL_CLOSED_MS);
+}
+
+/** 10 s só com o Crate aberto E (fila da Tidal à vista OU job andando): na
+    aba Buscar, sem nada baixando, a consulta à VM pela tailnet não muda nada
+    na tela; as chegadas da barra lateral seguem no ritmo de 60 s (A49). */
+function tidalFast(): boolean {
+  return crateOpen && (tidalFocus || tidal.jobs.some((j) => isTidalActive(j.status)));
+}
+
+/** A aba à vista do Crate mostra a fila da Tidal (Fila, Tidal) ou não (Buscar). */
+export function setCrateTidalFocus(on: boolean): void {
+  if (on === tidalFocus) return;
+  const wasFast = tidalFast();
+  tidalFocus = on;
+  if (!booted || !crateOpen) return;
+  if (on && !wasFast) void refreshTidal();
+  if (tidalFast() !== wasFast) scheduleTidal();
 }
 
 /** A view do Crate abriu ou fechou: abrir consulta na hora e passa a 10 s. */
@@ -252,6 +276,7 @@ export function __resetForTests(): void {
   clearTimeout(tidalTimer);
   tidalTimer = undefined;
   crateOpen = false;
+  tidalFocus = true;
   tidalSeq++;
   tidalKnownDone = new Set();
   tidalHydrated = false;
