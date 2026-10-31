@@ -816,6 +816,29 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   overflow: hidden;
 }
 .row-list > .section__head { padding: 12px 12px 0; margin-bottom: 4px; }
+/* Home (B12): dica curta ao lado do título da seção ("Para descobrir"). */
+.section__hint { font-size: 12px; color: var(--fg-5); margin-right: auto; }
+/* Aviso de chegadas do Crate na Home (B12): linha quieta, uma ação só. */
+.home-arrivals {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  color: var(--fg-3);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+  animation: state-in var(--dur-med) var(--ease-out);
+}
+.home-arrivals:hover { background: var(--bg-soft); border-color: var(--fg-8); }
+.home-arrivals:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.home-arrivals b { color: var(--fg-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.home-arrivals__icon { color: var(--blue-fg); }
+.home-arrivals__text { flex: 1; min-width: 0; }
+.home-arrivals__go { color: var(--fg-5); font-weight: 500; }
 .row-list__rows { display: flex; flex-direction: column; }
 .row-list .row:last-child { border-bottom: 0; }
 .row {
@@ -1282,21 +1305,29 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* ────────────────────────────────────────────────────────────
    LIBRARY / TRACKS — hairline tabs, chips, table
    ──────────────────────────────────────────────────────────── */
+/* O texto da primeira aba cai no gutter da vista (A36): o padding da faixa
+   desconta o padding da própria aba. Antes "Tracks" ficava 14 px à direita
+   do título (e, no compacto do Crate, 4 px à esquerda). Conta: gutter da
+   vista menos o padding lateral da aba (40 - 14 = 26; compacto 24 - 12 =
+   12; Crate compacto 40 - 12 = 28). Peso fixo em 600:
+   a ativa se distingue pela cor e pelo sublinhado, e trocar de aba não
+   engorda o rótulo nem empurra as vizinhas. */
 .tabs {
   display: flex; gap: 2px;
-  padding: 0 40px;
+  padding: 0 26px;
   border-bottom: 1px solid var(--line-2);
   background: var(--bg-paper);
 }
 .tab {
   padding: 11px 14px;
-  font-size: 13px; font-weight: 500;
+  font-size: 13px; font-weight: 600;
   color: var(--fg-5);
   position: relative; cursor: pointer;
   transition: color var(--dur-base) var(--ease-out);
 }
 .tab:hover { color: var(--fg-2); }
-.tab.active { color: var(--fg-1); font-weight: 600; }
+.tab.active { color: var(--fg-1); }
+.tab:focus-visible { outline: var(--focus-outline); outline-offset: -4px; border-radius: var(--radius-md); }
 /* Sublinhado existe em toda aba, recolhido: a aba que fica ativa o abre do
    centro (transform), a que deixa de ser o recolhe. */
 .tab::after {
@@ -1321,9 +1352,44 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 .lib-tracks > .toolbar { margin-bottom: 0; align-items: center; }
 .lib-busy { font-size: 12px; color: var(--fg-5); margin-left: 6px; animation: state-in var(--dur-med) var(--ease-out); }
 .lib-note { font-size: 12.5px; color: var(--fg-4); margin: 0; }
-/* Aba de playlists da Library (era "Genres"): linhas informativas na
-   mesma lista de vidro das outras. */
+/* Aba de playlists da Library (era "Genres"): cada linha abre a playlist
+   (B33), na mesma lista de vidro das outras. */
 .lib-folders .row { padding-block: 12px; }
+.row--open {
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+.row--static.row--open:hover { background: var(--bg-soft); }
+.row--open:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.row__go { color: var(--fg-6); transition: color var(--dur-base) var(--ease-out); }
+.row--open:hover .row__go { color: var(--fg-2); }
+
+/* Grades de Álbuns e Artistas com o filtro por texto logo acima (B3):
+   o gap de 36 px do .view__body separaria o filtro da grade que ele filtra. */
+.lib-grid { display: flex; flex-direction: column; gap: 18px; }
+.lib-filter .coll-search input { font-size: 13px; }
+.lib-filter__status { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-5); font-variant-numeric: tabular-nums; }
+
+/* Histórico por dia (B13): cabeçalho do dia na receita de rótulo, com a
+   contagem apagada ao lado; a lista do dia logo abaixo. */
+.hist { display: flex; flex-direction: column; gap: 28px; }
+.hist-day { display: flex; flex-direction: column; gap: 10px; }
+.hist-day__title { margin: 0; }
+.hist-day__count { color: var(--fg-6); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Aba Curtidas (B8): contagem e "Tocar curtidas" acima da lista. */
+.lib-liked { display: flex; flex-direction: column; gap: 14px; }
+.lib-liked__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.lib-liked__count { margin: 0; font-size: 13px; color: var(--fg-5); font-variant-numeric: tabular-nums; }
+.lib-liked__count b { color: var(--fg-2); font-weight: 600; }
+
+/* Crate: as três abas começam no mesmo topo, o da toolbar do Buscar
+   (18 px). Fila começava a 22 (título da seção) e Tidal a 16 (A36). */
+.crate-body > .crate-banners:first-child { padding-top: 18px; }
+.crate-body > .crate-q-sec:first-child h2 { margin-top: 18px; }
+.crate-body .crate-tidal { padding-top: 18px; }
 
 .toolbar { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
 .chip {
@@ -2399,9 +2465,11 @@ html[data-density="compact"] .pb-btn--primary { width: 32px; height: 32px; }
 html[data-density="compact"] .nav-item { padding: 5px 10px; }
 /* Cabecalho, abas e corpo das views */
 html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
-html[data-density="compact"] .tabs { padding: 0 24px; }
+html[data-density="compact"] .tabs { padding: 0 12px; }
 html[data-density="compact"] .tab { padding: 8px 12px; }
 html[data-density="compact"] .tab::after { left: 12px; right: 12px; }
+/* O Crate mantém o gutter de 40 px no compacto (cabeçalho e corpo). */
+html[data-density="compact"] .view:has(> .crate-body) > .tabs { padding: 0 28px; }
 /* .crate-body desenha o proprio espacamento (padding/gap 0) com gutters
    de 40px: o cabecalho do Crate mantem o gutter lateral pra alinhar. */
 html[data-density="compact"] .view__body:not(.crate-body) { padding: 16px 24px 32px; gap: 20px; }
@@ -4212,22 +4280,37 @@ html { --glow: 0; }
 
 
 /* ============================================================
-   PLAYLIST DETAIL — hero mosaico 2x2 + action buttons
+   CABEÇALHO DA BIBLIOTECA — LibHero (B2, 31/10): Álbum, Artista e
+   Playlist com a mesma gramática. Capa de 176 px (redonda no Artista),
+   rótulo do tipo, título no degrau Feature, números numa linha e as
+   ações à direita. O mosaico da Playlist mora dentro da moldura.
    ============================================================ */
 
-.pl-hero-cover {
-  width: 180px;
-  height: 180px;
+.view__head.lib-hero { align-items: flex-end; flex-wrap: wrap; row-gap: 18px; }
+.lib-hero__main { display: flex; gap: 24px; align-items: flex-end; min-width: 0; flex: 1 1 420px; }
+.lib-hero__cover {
+  width: 176px;
+  height: 176px;
+  flex-shrink: 0;
   border-radius: var(--radius-2xl);
   overflow: hidden;
   border: 1px solid var(--line-2);
+  background: var(--bg-soft);
+  box-shadow: var(--shadow-card);
+}
+.lib-hero__cover[data-round] { border-radius: 50%; }
+/* O CoverArt traz moldura própria (borda e raio de card): aqui a moldura
+   é a do cabeçalho. */
+.lib-hero__art { width: 100%; height: 100%; border: 0; border-radius: inherit; }
+
+.pl-hero-cover {
+  width: 100%;
+  height: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 1px;
   background: var(--line-2);
-  flex-shrink: 0;
-  box-shadow: var(--shadow-card);
 }
 .pl-hero-cover__quad {
   background: var(--bg-soft);
@@ -4239,51 +4322,51 @@ html { --glow: 0; }
   object-fit: cover;
   display: block;
 }
-.pl-hero-cover__quad--empty {
-  background: var(--bg-soft);
-}
 .pl-hero-cover__empty {
-  grid-column: 1 / -1; grid-row: 1 / -1;
+  width: 100%; height: 100%;
   display: grid; place-items: center;
-  background: var(--bg-soft);
   color: var(--fg-7);
-  font-size: 48px;
 }
 
-.pl-hero-meta { min-width: 0; padding-bottom: 6px; }
-.pl-hero-meta__kicker {
-  font-family: var(--font-mono);
+.lib-hero__meta { min-width: 0; padding-bottom: 6px; }
+.lib-hero__kicker {
   font-size: var(--fs-label);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-5);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
-/* .view__head .pl-hero-meta__title: o hero mora dentro de .view__head, e o
-   `.view__head h1` (0,1,1) vencia o seletor de classe só: o título saía 22px. */
-.view__head .pl-hero-meta__title {
+/* .view__head h1 (0,1,1) venceria a classe só: o título sairia 22 px. */
+.view__head .lib-hero__title {
   font-size: var(--fs-feature);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   color: var(--fg-1);
   margin: 0 0 10px;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
-.pl-hero-meta__stats {
+.lib-hero__stats {
+  display: flex; flex-wrap: wrap; align-items: baseline;
   color: var(--fg-5);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   margin: 0;
 }
-.pl-hero-meta__stats b {
+.lib-hero__stats b { color: var(--fg-2); font-weight: 600; }
+.lib-hero__sep { margin: 0 8px; color: var(--fg-7); }
+.lib-hero__link {
   color: var(--fg-2);
   font-weight: 600;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-base) var(--ease-out);
 }
-.pl-hero-meta__sep {
-  margin: 0 8px;
-  opacity: 0.5;
-}
+.lib-hero__link:hover { color: var(--fg-1); text-decoration: underline; text-underline-offset: 3px; }
+.lib-hero__link:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.lib-hero__actions { display: flex; gap: 8px; align-items: center; padding-bottom: 6px; }
+html[data-density="compact"] .lib-hero__cover { width: 140px; height: 140px; }
 
 .pl-hero-actions {
   display: flex; gap: 8px;

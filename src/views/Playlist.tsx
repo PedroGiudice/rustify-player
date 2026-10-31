@@ -1,11 +1,10 @@
 /* ============================================================
    views/Playlist.tsx — Pagina de uma playlist (folder) especifica.
-   Param via route('/playlist/:name'). Hero grande (mosaico de capas,
-   lib/mosaic.ts) + tracklist com cover por linha. Botoes Pin / Tocar.
-
-   Estrutura visual alinhada com Album.tsx mas reforcada: hero
-   180px, tracklist com .tracks--with-cover (6 cols). Ellipsis em
-   title/cell pra texto longo nao vazar.
+   Param via route('/playlist/:name'). Cabeçalho = o LibHero comum a
+   Álbum, Artista e Playlist (B2), com o mosaico de capas
+   (lib/mosaic.ts) e os botões Fixar / Tocar; tracklist com cover por
+   linha (.tracks--with-cover). Ellipsis em title/cell pra texto longo
+   nao vazar.
    ============================================================ */
 
 import { createMemo, createResource, For, Show, Switch, Match } from "solid-js";
@@ -26,14 +25,8 @@ import { libraryRevision } from "../store/moveDialog";
 import { EmptyState } from "../components/EmptyState";
 import { dataOf, listState, peek, settle } from "../lib/loaded";
 import { mosaicCells } from "../lib/mosaic";
-
-function fmtTotalDur(ms: number): string {
-  const totalSec = Math.round(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
-  return `${m}min`;
-}
+import { plural, totalDur } from "../lib/count";
+import { LibHero } from "../components/LibHero";
 
 export default function PlaylistView() {
   const name = () => (route().param ? decodeURIComponent(route().param!) : null);
@@ -87,19 +80,19 @@ export default function PlaylistView() {
 
   return (
     <article class="view">
-      <header class="view__head">
-        <div style={{ display: "flex", gap: "24px", "align-items": "flex-end" }}>
-          {/* Hero mosaico 2x2 de capas (igual aos cards na lista) */}
-          <div class="pl-hero-cover" aria-hidden="true">
-            <Show
-              when={heroCovers().length > 0}
-              fallback={
-                <div class="pl-hero-cover__empty">
-                  {/* @ts-ignore */}
-                  <iconify-icon icon="lucide:disc-3" noobserver />
-                </div>
-              }
-            >
+      <LibHero
+        kicker="Playlist"
+        title={name() ?? "Playlist"}
+        cover={
+          <Show
+            when={heroCovers().length > 0}
+            fallback={
+              <div class="pl-hero-cover__empty" aria-hidden="true">
+                <Icon name={ICONS.albums} size={44} />
+              </div>
+            }
+          >
+            <div class="pl-hero-cover" aria-hidden="true">
               <For each={heroCovers()}>
                 {(src) => (
                   <div class="pl-hero-cover__quad" classList={{ "pl-hero-cover__quad--full": heroCovers().length === 1 }}>
@@ -107,40 +100,38 @@ export default function PlaylistView() {
                   </div>
                 )}
               </For>
+            </div>
+          </Show>
+        }
+        stats={
+          <>
+            <b>{plural(tracks().length, "faixa", "faixas")}</b>
+            <Show when={tracks().length > 0}>
+              <span class="lib-hero__sep">·</span>
+              {totalDur(totalDuration())}
             </Show>
-          </div>
-
-          <div class="pl-hero-meta">
-            <div class="pl-hero-meta__kicker">Playlist · Folder</div>
-            <h1 class="pl-hero-meta__title">{name() ?? "Playlist"}</h1>
-            <p class="pl-hero-meta__stats">
-              <b>{tracks().length}</b> tracks
-              <Show when={tracks().length > 0}>
-                <span class="pl-hero-meta__sep">·</span>
-                {fmtTotalDur(totalDuration())}
-              </Show>
-            </p>
-          </div>
-        </div>
-
-        <div class="pl-hero-actions">
-          <button
-            class="pl-action-btn"
-            classList={{ "is-on": pinned() }}
-            type="button"
-            onClick={() => { const n = name(); if (n) togglePin(n); }}
-            title={pinned() ? "Unpin" : "Pin"}
-          >
-            {/* @ts-ignore */}
-            <iconify-icon icon={pinned() ? "lucide:pin-off" : "lucide:pin"} noobserver />
-            <span>{pinned() ? "Pinned" : "Pin"}</span>
-          </button>
-          <button class="pl-action-btn pl-action-btn--primary" type="button" onClick={playAll} disabled={!tracks().length}>
-            <Icon name={ICONS.play} size={13} />
-            <span>Tocar</span>
-          </button>
-        </div>
-      </header>
+          </>
+        }
+        actions={
+          <>
+            <button
+              class="pl-action-btn"
+              classList={{ "is-on": pinned() }}
+              type="button"
+              aria-pressed={pinned()}
+              onClick={() => { const n = name(); if (n) togglePin(n); }}
+              title={pinned() ? "Tirar dos fixados" : "Fixar no topo das playlists"}
+            >
+              <Icon name={pinned() ? "lucide:pin-off" : "lucide:pin"} size={13} />
+              <span>{pinned() ? "Fixada" : "Fixar"}</span>
+            </button>
+            <button class="pl-action-btn pl-action-btn--primary" type="button" onClick={playAll} disabled={!tracks().length}>
+              <Icon name={ICONS.play} size={13} />
+              <span>Tocar</span>
+            </button>
+          </>
+        }
+      />
 
       <div class="view__body">
         <Switch>

@@ -1810,3 +1810,17 @@ describe("Crate — busca (A11, A25, B28)", () => {
     expect(again.container.textContent).toMatch(/resultado de/);
   });
 });
+
+// A36: abas no padrão do WAI-ARIA, com o painel ligado à aba ativa.
+describe("Crate — teclado das abas (A36)", () => {
+  it("setas trocam de aba e levam o foco; o painel diz qual aba o rotula", async () => {
+    render(() => <Crate />);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.tabIndex)).toEqual([0, -1, -1]);
+    tabs[0].focus();
+    fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });
+    expect(tabs[2]).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(tabs[2]);
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", tabs[2].id);
+  });
+});

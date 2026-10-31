@@ -7,6 +7,7 @@
      a seção "Faixas sem álbum", e o "Mover" e o "Tocar" contam com ela.
      Antes um artista só de faixas soltas abria vazio, com o Mover apagado.
    - "Tocar" no cabeçalho (A20): os álbuns em ordem, as soltas no fim.
+   - Cabeçalho: o LibHero comum (B2), capa redonda com o rosto do artista.
    ============================================================ */
 
 import { createMemo, createResource, For, Show, Switch, Match } from "solid-js";
@@ -22,6 +23,8 @@ import { EmptyState } from "../components/EmptyState";
 import { dataOf, peek, settle } from "../lib/loaded";
 import { ALBUM_TRACK_LIMIT, albumHref } from "../lib/albumRoute";
 import { truncTipEvent } from "../lib/truncTip";
+import { plural, totalDur } from "../lib/count";
+import { LibHero } from "../components/LibHero";
 
 /** Teto das faixas do artista (cobre discografia inteira). */
 const ARTIST_TRACK_LIMIT = 5000;
@@ -49,6 +52,15 @@ export default function ArtistView() {
     return withAlbum.length === all.length ? all : [...withAlbum, ...all.filter((t) => !t.album_title)];
   });
   const loose = createMemo(() => tracks().filter((t) => !t.album_title));
+  const totalMs = () => tracks().reduce((sum, t) => sum + (t.duration_ms || 0), 0);
+  // Rosto do artista: a capa do álbum dele com mais faixas (a mesma regra
+  // do list_artists no backend, B3); sem álbum com capa, a de uma solta.
+  const heroCover = createMemo(() => {
+    const best = albums()
+      .filter((a) => a.cover_path)
+      .reduce<Album | null>((b, a) => (!b || a.track_count > b.track_count ? a : b), null);
+    return best?.cover_path ?? loose().find((t) => t.album_cover_path)?.album_cover_path ?? null;
+  });
 
   const state = () => {
     const a = peek(albumsRes), t = peek(tracksRes);
@@ -80,42 +92,46 @@ export default function ArtistView() {
 
   return (
     <article class="view">
-      <header class="view__head">
-        <div style={{ display: "flex", gap: "20px", "align-items": "flex-end" }}>
-          <CoverArt
-            seed={name() ?? "x"}
-            size="lg"
-            style={{ width: "120px", height: "120px", "border-radius": "50%" }}
-          />
-          <div>
-            <h1>{name() ?? "Artist"}</h1>
-            <p class="view__head-hint">
-              {albums().length} albums · {tracks().length} tracks
-            </p>
-          </div>
-        </div>
-        <div class="pl-hero-actions">
-          <button
-            class="pl-action-btn"
-            type="button"
-            disabled={!tracks().length}
-            onClick={() => openMoveDialog(tracks(), name())}
-            title="Mover todas as faixas do artista para outra playlist"
-          >
-            <Icon name={ICONS.moveTo} size={13} />
-            <span>Mover para playlist…</span>
-          </button>
-          <button
-            class="pl-action-btn pl-action-btn--primary"
-            type="button"
-            disabled={!tracks().length}
-            onClick={playAll}
-          >
-            <Icon name={ICONS.play} size={13} />
-            <span>Tocar</span>
-          </button>
-        </div>
-      </header>
+      <LibHero
+        kicker="Artista"
+        title={name() ?? "Artista"}
+        round
+        cover={<CoverArt seed={name() ?? "x"} src={coverUrl(heroCover())} size="lg" class="lib-hero__art" />}
+        stats={
+          <>
+            <b>{plural(albums().length, "álbum", "álbuns")}</b>
+            <span class="lib-hero__sep">·</span>
+            {plural(tracks().length, "faixa", "faixas")}
+            <Show when={tracks().length > 0}>
+              <span class="lib-hero__sep">·</span>
+              {totalDur(totalMs())}
+            </Show>
+          </>
+        }
+        actions={
+          <>
+            <button
+              class="pl-action-btn"
+              type="button"
+              disabled={!tracks().length}
+              onClick={() => openMoveDialog(tracks(), name())}
+              title="Mover todas as faixas do artista para outra playlist"
+            >
+              <Icon name={ICONS.moveTo} size={13} />
+              <span>Mover para playlist…</span>
+            </button>
+            <button
+              class="pl-action-btn pl-action-btn--primary"
+              type="button"
+              disabled={!tracks().length}
+              onClick={playAll}
+            >
+              <Icon name={ICONS.play} size={13} />
+              <span>Tocar</span>
+            </button>
+          </>
+        }
+      />
 
       <div class="view__body">
         <Switch>
@@ -141,7 +157,7 @@ export default function ArtistView() {
           <Match when={state() === "pronto"}>
             <Show when={albums().length > 0}>
               <section>
-                <div class="section__head"><h2 class="section__title">Albums</h2></div>
+                <div class="section__head"><h2 class="section__title">Álbuns</h2></div>
                 <div class="card-grid">
                   <For each={albums()}>
                     {(a) => (
@@ -165,7 +181,7 @@ export default function ArtistView() {
                         >
                           {a.title}
                         </button>
-                        <div class="card__sub">{a.track_count} tracks{a.year ? ` · ${a.year}` : ""}</div>
+                        <div class="card__sub">{plural(a.track_count, "faixa", "faixas")}{a.year ? ` · ${a.year}` : ""}</div>
                       </div>
                     )}
                   </For>

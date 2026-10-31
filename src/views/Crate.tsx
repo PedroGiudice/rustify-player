@@ -53,6 +53,10 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { CopyLinkButton } from "./crate/CopyLinkButton";
 import TidalTab from "./crate/TidalTab";
 import { FolderPicker, mergeFolders } from "./crate/FolderPicker";
+import { tabKeyHandler } from "../lib/tabKeys";
+
+const CRATE_TABS = ["search", "queue", "tidal"] as const;
+const crateTabId = (t: (typeof CRATE_TABS)[number]) => `crate-tab-${t}`;
 
 /** Id do seletor de destino da toolbar no `openDest` da view (as linhas
     usam o group_key, que sempre tem separador \u0001 — não colide). */
@@ -1964,10 +1968,20 @@ export default function Crate(props: { param?: string | null }) {
         </div>
       </header>
 
-      <nav class="tabs" role="tablist">
+      {/* Padrão de abas do WAI-ARIA (A36): uma parada do Tab, setas andam
+          entre as abas (lib/tabKeys.ts). */}
+      <nav
+        class="tabs"
+        role="tablist"
+        aria-label="Seções do Crate"
+        onKeyDown={tabKeyHandler(CRATE_TABS, tab, setTab, crateTabId)}
+      >
         <button
           role="tab"
+          id={crateTabId("search")}
+          aria-controls="crate-panel"
           aria-selected={tab() === "search"}
+          tabIndex={tab() === "search" ? 0 : -1}
           class={`tab${tab() === "search" ? " active" : ""}`}
           onClick={() => setTab("search")}
         >
@@ -1975,7 +1989,10 @@ export default function Crate(props: { param?: string | null }) {
         </button>
         <button
           role="tab"
+          id={crateTabId("queue")}
+          aria-controls="crate-panel"
           aria-selected={tab() === "queue"}
+          tabIndex={tab() === "queue" ? 0 : -1}
           class={`tab${tab() === "queue" ? " active" : ""}`}
           onClick={() => setTab("queue")}
         >
@@ -1984,7 +2001,10 @@ export default function Crate(props: { param?: string | null }) {
         </button>
         <button
           role="tab"
+          id={crateTabId("tidal")}
+          aria-controls="crate-panel"
           aria-selected={tab() === "tidal"}
+          tabIndex={tab() === "tidal" ? 0 : -1}
           class={`tab${tab() === "tidal" ? " active" : ""}`}
           onClick={() => setTab("tidal")}
         >
@@ -1992,7 +2012,7 @@ export default function Crate(props: { param?: string | null }) {
         </button>
       </nav>
 
-      <div class="view__body crate-body">
+      <div id="crate-panel" role="tabpanel" aria-labelledby={crateTabId(tab())} class="view__body crate-body">
         <Show when={tab() === "search"}>
           <div class="coll-toolbar crate-toolbar">
             <div class="coll-search crate-search">

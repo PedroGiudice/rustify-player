@@ -14,6 +14,7 @@ import { For, Show, batch, createEffect, createMemo, createResource, createSigna
 import { Icon, ICONS } from "./Icon";
 import { CoverArt } from "./CoverArt";
 import { navigate } from "../router";
+import { albumHref } from "../lib/albumRoute";
 import { playTrack } from "./PlayerBar";
 import { setQueue, enqueueEnd, enqueueNext } from "../store/player";
 import { openTrackMenu } from "../store/contextMenu";
@@ -208,7 +209,7 @@ export function CommandPalette() {
       return;
     }
     if (it.kind === "album") {
-      navigate(`/album/${encodeURIComponent(it.album.title)}`);
+      navigate(albumHref(it.album.title, it.album.artist_name));
       close();
       return;
     }
