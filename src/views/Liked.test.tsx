@@ -20,7 +20,10 @@ vi.mock("../components/TrackRowList", () => ({
     <div class="row-mock" data-when={p.whenText} onClick={p.onClick}>{p.track.title}</div>
   ),
 }));
-vi.mock("../lib/format", () => ({ relTime: (ts: number) => `ts${ts}` }));
+vi.mock("../lib/format", async (orig) => ({
+  ...(await orig<typeof import("../lib/format")>()),
+  relTime: (ts: number) => `ts${ts}`,
+}));
 
 import Liked from "./Liked";
 

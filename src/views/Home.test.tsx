@@ -82,7 +82,8 @@ vi.mock("../components/TrackRowList", () => ({
   ),
 }));
 
-vi.mock("../lib/format", () => ({
+vi.mock("../lib/format", async (orig) => ({
+  ...(await orig<typeof import("../lib/format")>()),
   fmtDur: (ms: number) => `${Math.round(ms / 60000)}m`,
   relTime: () => "just now",
 }));

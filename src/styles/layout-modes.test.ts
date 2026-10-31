@@ -25,9 +25,35 @@ beforeAll(async () => {
   const { readFileSync } = await import(/* @vite-ignore */ NODE_FS);
   const root: string = (globalThis as any).process.cwd();
   const style = document.createElement("style");
-  style.textContent = readFileSync(`${root}/src/styles/extractor-lab.css`, "utf8");
+  style.textContent = expandVarShorthands(readFileSync(`${root}/src/styles/extractor-lab.css`, "utf8"));
   document.head.appendChild(style);
 });
+
+/* O jsdom não resolve var(): um `padding` em shorthand com var() vira "0"
+   no computado, e o longhand devolve o texto cru ("var(--space-top)").
+   Os espaços vêm de tokens desde o A48, então o teste (1) abre os
+   shorthands de padding com var() em longhands antes de injetar o CSS e
+   (2) resolve var() e calc() simples lendo as custom properties do próprio
+   elemento, que o jsdom herda pela cascata (inclusive sob data-density). */
+function expandVarShorthands(css: string): string {
+  return css.replace(/(^|[;{\s])padding:\s*([^;}]*var\([^;}]*)(?=[;}])/g, (_m, pre: string, val: string) => {
+    const parts = val.trim().match(/(?:calc\((?:[^()]|\([^()]*\))*\)|var\([^()]*\)|[^\s]+)/g) ?? [];
+    const [t, r = t, b = t, l = r] = parts;
+    return `${pre}padding-top: ${t}; padding-right: ${r}; padding-bottom: ${b}; padding-left: ${l}`;
+  });
+}
+let resolveEl: Element = document.documentElement;
+function resolve(v: string): string {
+  let out = v;
+  for (let i = 0; i < 5 && out.includes("var("); i++) {
+    out = out.replace(/var\((--[\w-]+)\)/g, (_m, name: string) =>
+      getComputedStyle(resolveEl).getPropertyValue(name).trim() || "0px");
+  }
+  return out.replace(/calc\(([^()]*)\)/g, (_m, expr: string) => {
+    const terms: string[] = expr.match(/[+-]?\s*[\d.]+px/g) ?? [];
+    return `${terms.reduce((a: number, t: string) => a + parseFloat(t.replace(/\s/g, "")), 0)}px`;
+  });
+}
 
 afterEach(() => {
   delete document.documentElement.dataset.density;
@@ -35,7 +61,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const px = (v: string) => parseFloat(v || "0") || 0;
+const px = (v: string) => parseFloat(resolve(v || "0")) || 0;
 
 function mount(html: string) {
   document.body.innerHTML = html;
@@ -43,6 +69,7 @@ function mount(html: string) {
 function styleOf(sel: string) {
   const el = document.querySelector(sel);
   if (!el) throw new Error(`sem elemento ${sel}`);
+  resolveEl = el;
   return getComputedStyle(el);
 }
 function inBoth(sel: string, read: (s: CSSStyleDeclaration) => number) {
@@ -55,7 +82,7 @@ function inBoth(sel: string, read: (s: CSSStyleDeclaration) => number) {
 const padY = (s: CSSStyleDeclaration) => px(s.paddingTop) + px(s.paddingBottom);
 const padX = (s: CSSStyleDeclaration) => px(s.paddingLeft) + px(s.paddingRight);
 // O jsdom guarda o shorthand `gap` sem expandir para row-gap.
-const rowGap = (s: CSSStyleDeclaration) => px(s.getPropertyValue("gap").split(" ")[0]);
+const rowGap = (s: CSSStyleDeclaration) => px(resolve(s.getPropertyValue("gap")).split(" ")[0]);
 
 const PAGE = `
   <article class="view">
@@ -139,6 +166,48 @@ describe('data-density="compact"', () => {
     const { normal, compact } = inBoth(".crate-body", (s) => padY(s) + padX(s));
     expect(normal).toBe(0);
     expect(compact).toBe(0);
+  });
+});
+
+describe("espaço por papel (A48)", () => {
+  const CRATE = `
+    <article class="view">
+      <header class="view__head"><h1>Crate</h1></header>
+      <nav class="tabs"><button class="tab active">Buscar</button></nav>
+      <div class="view__body crate-body">
+        <div class="crate-toolbar"></div>
+        <div class="crate-list"></div>
+        <div class="crate-tidal"></div>
+      </div>
+    </article>`;
+
+  for (const sel of [".crate-toolbar", ".crate-list", ".crate-tidal"]) {
+    it(`o Crate encolhe o gutter no compacto (${sel})`, () => {
+      mount(CRATE);
+      const { normal, compact } = inBoth(sel, (s) => px(s.paddingLeft));
+      expect(normal).toBe(40);
+      expect(compact).toBe(24);
+    });
+  }
+
+  it("o texto da primeira aba cai no gutter da vista, nas duas densidades", () => {
+    mount(CRATE);
+    for (const dens of [undefined, "compact"]) {
+      if (dens) document.documentElement.dataset.density = dens;
+      else delete document.documentElement.dataset.density;
+      const edge = px(styleOf(".tabs").paddingLeft) + px(styleOf(".tab").paddingLeft);
+      expect(edge).toBe(px(styleOf(".view__head").paddingLeft));
+    }
+  });
+
+  it("o bloco compacto não reescreve o padding dos containers: troca os tokens", () => {
+    const css = document.head.querySelector("style")!.textContent ?? "";
+    const offenders = css
+      .split("}")
+      .filter((r) => /html\[data-density="compact"\][^{]*\.(view__head|view__body|tabs|coll|sig|set)\s*\{/.test(r))
+      .filter((r) => /padding(-top|-right|-bottom|-left)?\s*:|gap\s*:\s*\d/.test(r.split("{")[1] ?? ""))
+      .filter((r) => !/\.view__head\s*\{\s*gap: 20px/.test(r));
+    expect(offenders).toEqual([]);
   });
 });
 

@@ -20,7 +20,7 @@ import { setQueue, enqueueEnd, enqueueNext } from "../store/player";
 import { openTrackMenu } from "../store/contextMenu";
 import { libSearch, libShuffle, coverUrl, type Track, type Album, type Artist } from "../tauri";
 import { modCombo } from "../lib/keyboard";
-import { fmtDur } from "../lib/format";
+import { fmtDur, plural } from "../lib/format";
 
 export const CMD_PALETTE_EVENT = "rustify:open-palette";
 
@@ -428,8 +428,8 @@ export function CommandPalette() {
                           : it.kind === "track"
                             ? `${it.track.artist_name ?? "—"} · ${it.track.album_title ?? "—"} · ${durOrDash(it.track.duration_ms)}`
                             : it.kind === "album"
-                              ? `${it.album.artist_name ?? "—"} · ${it.album.track_count} tracks`
-                              : `${it.artist.track_count} tracks · ${it.artist.album_count} albums`}
+                              ? `${it.album.artist_name ?? "—"} · ${plural(it.album.track_count, "faixa", "faixas")}`
+                              : `${plural(it.artist.track_count, "faixa", "faixas")} · ${plural(it.artist.album_count, "álbum", "álbuns")}`}
                       </div>
                     </div>
                     <div class="palette__item-hint">

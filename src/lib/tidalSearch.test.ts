@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { Track } from "../tauri";
 import {
-  classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime,
+  classifyTidalInput, estimateSelection,
   buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, titleKey, MAX_SELECTION,
   chunkIds, rangeIds, partTitle,
 } from "./tidalSearch";
+import { fmtDur, fmtEta, fmtListDur, fmtSize } from "./format";
 
 function lib(title: string, artist: string): Track {
   return {
@@ -40,21 +41,22 @@ describe("estimativa da seleção", () => {
   });
   it("18 faixas de ~3 min: ~0,3 GB e ~5 min", () => {
     const e = estimateSelection(Array.from({ length: 18 }, () => ({ duracao_s: 200, hires: false })));
-    expect(formatSize(e.bytes)).toBe("~360 MB");
-    expect(formatEta(e.seconds)).toBe("~5 min");
+    expect(fmtSize(e.bytes, true)).toBe("~360 MB");
+    expect(fmtEta(e.seconds)).toBe("~5 min");
   });
   it("formatos", () => {
-    expect(formatSize(0)).toBe("0 MB");
-    expect(formatSize(1_100_000_000)).toBe("~1,1 GB");
-    expect(formatSize(400_000)).toBe("~1 MB");
-    expect(formatEta(0)).toBe("0 min");
-    expect(formatEta(30)).toBe("<1 min");
-    expect(formatEta(100 * 17)).toBe("~28 min");
-    expect(formatEta(4800)).toBe("~1 h 20 min");
-    expect(formatTrackTime(182)).toBe("3:02");
-    expect(formatTrackTime(3723)).toBe("1:02:03");
-    expect(formatListTime(19955)).toBe("5 h 33 min");
-    expect(formatListTime(1500)).toBe("25 min");
+    expect(fmtSize(0, true)).toBe("0 MB");
+    expect(fmtSize(1_100_000_000, true)).toBe("~1,1 GB");
+    expect(fmtSize(400_000, true)).toBe("~1 MB");
+    expect(fmtEta(0)).toBe("0 min");
+    expect(fmtEta(30)).toBe("<1 min");
+    expect(fmtEta(100 * 17)).toBe("~28 min");
+    expect(fmtEta(4800)).toBe("~1 h 20 min");
+    // A aba Tidal recebe segundos; a faixa usa o mesmo fmtDur da biblioteca.
+    expect(fmtDur(182 * 1000)).toBe("3:02");
+    expect(fmtDur(3723 * 1000)).toBe("1:02:03");
+    expect(fmtListDur(19955 * 1000)).toBe("5 h 33 min");
+    expect(fmtListDur(1500 * 1000)).toBe("25 min");
   });
 });
 

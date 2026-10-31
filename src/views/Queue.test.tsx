@@ -39,7 +39,7 @@ describe("Queue (rota /queue)", () => {
     setQueue([T("a"), T("b"), T("c")], 0);
     const { container, getByText } = render(() => <Queue />);
     expect(getByText("A seguir · 2")).toBeTruthy();
-    expect(container.querySelector(".view__head-hint")!.textContent).toBe("2 faixas a seguir · 2:00");
+    expect(container.querySelector(".view__head-hint")!.textContent).toBe("2 faixas a seguir · 2 min");
     expect(container.textContent).toContain("Fim da lista. O rádio continua depois dela.");
   });
 

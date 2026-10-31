@@ -58,6 +58,7 @@ import {
 import { tweaks } from "../store/tweaks";
 import { ParamRow } from "../components/dsp/ParamRow";
 import { Switch } from "../components/Switch";
+import { Icon, ICONS } from "../components/Icon";
 import { Fader } from "../components/dsp/Fader";
 import { EqCanvas } from "../components/dsp/EqCanvas";
 import {
@@ -407,7 +408,7 @@ export default function Signal() {
             <div class="eq-footer">
               <div>
                 <div class="mode-group__label">Engine mode</div>
-                <div class="mode-group">
+                <div class="segmented">
                   <For each={ENGINE_MODES}>{(name, i) => (
                     <button
                       aria-pressed={dsp.eq.mode === i() ? "true" : undefined}
@@ -589,14 +590,17 @@ function Select<T extends readonly string[]>(props: {
   return (
     <label class="select-control">
       <span class="select-control__label">{props.label}</span>
-      <select
-        value={props.value}
-        onChange={(e) => props.onChange(Number((e.currentTarget as HTMLSelectElement).value))}
-      >
-        <For each={props.options}>{(opt, i) => (
-          <option value={i()}>{opt}</option>
-        )}</For>
-      </select>
+      <span class="select-shell select-shell--block">
+        <select
+          value={props.value}
+          onChange={(e) => props.onChange(Number((e.currentTarget as HTMLSelectElement).value))}
+        >
+          <For each={props.options}>{(opt, i) => (
+            <option value={i()}>{opt}</option>
+          )}</For>
+        </select>
+        <Icon class="select-shell__chev" name={ICONS.chevronDown} size={12} />
+      </span>
     </label>
   );
 }

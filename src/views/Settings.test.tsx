@@ -319,7 +319,7 @@ describe("Settings view", () => {
       { pair: "par-large", ratio: 3.5, pass_aa: false, pass_aaa: false },
       { pair: "par-fail",  ratio: 2.1, pass_aa: false, pass_aaa: false },
     ]);
-    expect((await findByText("1 falha(s)")).className).toContain("status-pill--err");
+    expect((await findByText("1 falha")).className).toContain("status-pill--err");
   });
 
   // config-v2: YAML inválido rejeitava sem catch — nada na tela e o

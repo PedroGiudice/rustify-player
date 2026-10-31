@@ -23,6 +23,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Icon, ICONS } from "../components/Icon";
 import { peek, settle, type Loaded } from "../lib/loaded";
 import { plural } from "../lib/count";
+import { fmtInt } from "../lib/format";
 import { tabKeyHandler } from "../lib/tabKeys";
 
 const TABS = ["tracks", "albums", "artists", "liked", "playlists"] as const;
@@ -36,7 +37,7 @@ const LABEL: Record<Tab, string> = {
 };
 const tabId = (t: Tab) => `library-tab-${t}`;
 
-const fmtN = (n: number) => n.toLocaleString();
+const fmtN = fmtInt;
 
 export default function Library() {
   const [tab, setTabRaw] = createSignal<Tab>("tracks");
@@ -91,8 +92,8 @@ export default function Library() {
         <Show when={snap()}>
           {(s) => (
             <div class="view__stats">
-              <span><b>{s().embeddings_done.toLocaleString()}</b> embedded</span>
-              <span><b>{(s().tracks_total - s().embeddings_done).toLocaleString()}</b> pending</span>
+              <span><b>{fmtInt(s().embeddings_done)}</b> embedded</span>
+              <span><b>{fmtInt(s().tracks_total - s().embeddings_done)}</b> pending</span>
             </div>
           )}
         </Show>

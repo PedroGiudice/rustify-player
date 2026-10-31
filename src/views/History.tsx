@@ -36,7 +36,7 @@ export default function History() {
         <div>
           <h1>History</h1>
           <p class="view__head-hint">
-            {state() === "pronto" ? `Últimas ${tracks().length} faixas tocadas` : "Faixas tocadas, da mais recente"}
+            {state() === "pronto" ? `${plural(tracks().length, "faixa", "faixas")}, da mais recente à mais antiga; uma linha por faixa` : "Faixas tocadas, da mais recente"}
           </p>
         </div>
       </header>

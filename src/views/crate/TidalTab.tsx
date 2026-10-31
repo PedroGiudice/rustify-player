@@ -53,11 +53,12 @@ import { libraryRevision } from "../../store/moveDialog";
 import { playTrack } from "../../components/PlayerBar";
 import { FolderPicker, mergeFolders } from "./FolderPicker";
 import {
-  classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime, plural,
+  classifyTidalInput, estimateSelection,
   buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, SEARCH_DEBOUNCE_MS, MAX_SELECTION,
   chunkIds, partTitle, rangeIds,
   type OwnedIndex,
 } from "../../lib/tidalSearch";
+import { fmtDur, fmtEta, fmtListDur, fmtSize, plural } from "../../lib/format";
 import { pushEscLayer } from "../../lib/escLayers";
 import { modCombo } from "../../lib/keyboard";
 import { Icon, ICONS } from "../../components/Icon";
@@ -175,7 +176,7 @@ function Marks(props: { hires: boolean; owned: boolean }) {
         <span class="tdl-owned" title="Já está no acervo"><Icon name={ICONS.check} size={12} /> no acervo</span>
       </Show>
       <Show when={props.hires}>
-        <span class="tdl-hires" title="Disponível em hi-res (24 bits)">Hi-Res</span>
+        <span class="crate-badge" title="Disponível em hi-res (24 bits)">Hi-Res</span>
       </Show>
     </span>
   );
@@ -230,7 +231,7 @@ function TrackRow(props: {
         <span class="tdl-sub">{trackSub(props.t)}</span>
       </div>
       <Marks hires={props.t.hires} owned={!!props.owned} />
-      <span class="tdl-num">{formatTrackTime(props.t.duracao_s)}</span>
+      <span class="tdl-num">{fmtDur(props.t.duracao_s * 1000)}</span>
       <span class="tdl-acts">
         <Show when={props.job}>{(st) => <JobPill state={st()} />}</Show>
         <Show when={!rowBusy(props.job)}>
@@ -272,7 +273,7 @@ function AlbumRow(props: { a: TidalAlbum; job: RowJob; onOpen: (a: TidalAlbum) =
         <span class="tdl-sub">{sub()}</span>
       </div>
       <Marks hires={props.a.hires} owned={false} />
-      <span class="tdl-num">{formatListTime(props.a.duracao_s)}</span>
+      <span class="tdl-num">{fmtListDur(props.a.duracao_s * 1000)}</span>
       <span class="tdl-acts">
         <Show when={props.job}>{(st) => <JobPill state={st()} />}</Show>
         <Show when={!rowBusy(props.job)}>
@@ -313,7 +314,7 @@ function PlaylistRow(props: { p: TidalPlaylist; onOpen: (p: TidalPlaylist) => vo
         <span class="tdl-sub">{sub()}</span>
       </span>
       <span />
-      <span class="tdl-num">{formatListTime(props.p.duracao_s)}</span>
+      <span class="tdl-num">{fmtListDur(props.p.duracao_s * 1000)}</span>
       <span class="tdl-acts"><Icon name={ICONS.chevronRight} size={14} /></span>
     </button>
   );
@@ -640,7 +641,7 @@ function PreviewView(props: {
               {(d) => (
                 <>
                   {TIPO_LABEL[d().tipo] ?? "Lista"} · <span class="tdl-num-inline">{plural(d().faixas.length, "faixa", "faixas")}</span>
-                  {" · "}<span class="tdl-num-inline">{formatListTime(d().duracao_s)}</span>
+                  {" · "}<span class="tdl-num-inline">{fmtListDur(d().duracao_s * 1000)}</span>
                 </>
               )}
             </Show>
@@ -698,7 +699,7 @@ function PreviewView(props: {
                       <span class="tdl-sub">{trackSub(t)}</span>
                     </span>
                     <Marks hires={t.hires} owned={ownedIds().has(t.id)} />
-                    <span class="tdl-num">{formatTrackTime(t.duracao_s)}</span>
+                    <span class="tdl-num">{fmtDur(t.duracao_s * 1000)}</span>
                   </label>
                 )}
               </For>
@@ -711,8 +712,8 @@ function PreviewView(props: {
               </Show>
               <span class="tdl-foot__sum">
                 <span class="tdl-num-inline">{est().count} de {d().faixas.length}</span>
-                {" · "}<span class="tdl-num-inline">{formatSize(est().bytes)}</span>
-                {" · "}<span class="tdl-num-inline">{formatEta(est().seconds)}</span>
+                {" · "}<span class="tdl-num-inline">{fmtSize(est().bytes, true)}</span>
+                {" · "}<span class="tdl-num-inline">{fmtEta(est().seconds)}</span>
                 <Show when={parts() > 1}>
                   {" · "}<span class="tdl-foot__parts">vai em {parts()} pedidos de até {MAX_SELECTION}</span>
                 </Show>

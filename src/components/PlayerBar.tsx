@@ -42,7 +42,7 @@ import { QUEUE_EVENT, queueDrawerOpen } from "./QueueDrawer";
 import { failNotice } from "../lib/failNotice";
 import { navigate, route } from "../router";
 import { describeFile, qualityBadge } from "../lib/quality";
-import { fmtDur } from "../lib/format";
+import { fmtDur, plural } from "../lib/format";
 import { createSwapKey } from "../lib/motion";
 
 // Re-export para que outros call-sites possam importar daqui.
@@ -542,7 +542,7 @@ export function PlayerBar() {
   const ackText = (a: NonNullable<ReturnType<typeof queueAck>>) =>
     a.n === 0
       ? "Essa faixa já está tocando"
-      : `${a.n} ${a.n === 1 ? "faixa" : "faixas"} ${a.where === "next" ? "a seguir" : "no fim da fila"}`;
+      : `${plural(a.n, "faixa", "faixas")} ${a.where === "next" ? "a seguir" : "no fim da fila"}`;
   const ackChip = (a: NonNullable<ReturnType<typeof queueAck>>) => (a.n === 0 ? "já está tocando" : `+${a.n}`);
 
   // ── Play sem faixa (B35) ──────────────────────────────────────

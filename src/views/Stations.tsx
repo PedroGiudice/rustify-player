@@ -25,7 +25,7 @@ import {
 import { player, setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { startRadioSession, registerSeen } from "../store/radioSession";
-import { relTime } from "../lib/format";
+import { plural, relTime } from "../lib/format";
 import { failNotice } from "../lib/failNotice";
 import { RadioExcluded } from "../components/RadioExcluded";
 
@@ -286,7 +286,7 @@ export function StationCard(props: {
   const seedLine = () => {
     if (props.station.kind !== "seed") return null;
     const n = props.station.seed_track_ids.length;
-    return `${n} ${n === 1 ? "faixa-semente" : "faixas-semente"}`;
+    return plural(n, "faixa-semente", "faixas-semente");
   };
   // A descrição só aparece quando diz algo além do nome.
   const desc = () =>

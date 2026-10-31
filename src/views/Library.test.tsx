@@ -100,7 +100,8 @@ describe("Library — contagens do cabeçalho e das abas", () => {
     vi.mocked(tauri.libGetAlbums).mockRejectedValueOnce(new Error("indexer fora"));
     vi.mocked(tauri.libGetArtists).mockRejectedValueOnce(new Error("indexer fora"));
     const { container } = render(() => <Library />);
-    await vi.waitFor(() => expect(tabCount(container, "Faixas")).toBe("1,757"));
+    // Milhar em pt-BR fixo (A44): o toLocaleString() sem idioma dava "1,757".
+    await vi.waitFor(() => expect(tabCount(container, "Faixas")).toBe("1.757"));
     expect(tabCount(container, "Álbuns")).toBe("—");
     expect(tabCount(container, "Artistas")).toBe("—");
   });

@@ -46,7 +46,7 @@ import {
   tidal, refreshTidal, setCrateViewOpen, setCrateTidalFocus, saveSearchCache, loadSearchCache,
 } from "../store/crate";
 import { shortTidalLink, tidalStatusLabel, tidalStatusTone, isTidalActive } from "../lib/tidalFila";
-import { plural } from "../lib/tidalSearch";
+import { fmtEta, fmtInt, fmtSize, plural } from "../lib/format";
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -233,8 +233,9 @@ function rejectReasonText(reason: RejectReason): string {
   return "arquivo inválido";
 }
 
+const SPEED1 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 function formatSpeed(bps: number): string {
-  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} MB/s`;
+  if (bps >= 1_000_000) return `${SPEED1.format(bps / 1_000_000)} MB/s`;
   return `${Math.max(0, Math.round(bps / 1000))} kB/s`;
 }
 
@@ -243,14 +244,6 @@ function formatAgo(secs: number): string {
   return `${Math.round(secs / 60)} min`;
 }
 
-function formatEta(secs: number): string {
-  if (secs < 60) return `~${Math.max(0, Math.round(secs))}s`;
-  return `~${Math.round(secs / 60)}min`;
-}
-
-function formatSize(bytes: number): string {
-  return `${(bytes / 1_000_000).toFixed(1)} MB`;
-}
 
 /** Subtítulo da fila: peer do Soulseek ou link da fonte sem o esquema
     (espelha `Source::label` do board.rs). */
@@ -290,7 +283,7 @@ const FORMAT_IN_LABEL: Record<FormatIn, string> = {
     preenche; antes disso não há o que mostrar (o backend cria esses jobs
     com `quality_label` vazio e não há tamanho). */
 function jobFormatLabel(job: DownloadJob): string | null {
-  if (job.source.kind === "soulseek") return job.quality_label || formatSize(job.source.size);
+  if (job.source.kind === "soulseek") return job.quality_label || fmtSize(job.source.size);
   return job.format_in ? FORMAT_IN_LABEL[job.format_in] : null;
 }
 
@@ -316,10 +309,6 @@ function OriginBadge(props: { name: string }) {
   return <span class="crate-origin">{props.name}</span>;
 }
 
-/** Tamanho no card de confirmação: MB binário com vírgula ("7,1 MB"). */
-function formatMb(bytes: number): string {
-  return `${(bytes / 1_048_576).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
-}
 
 /** Ano de lançamento do SoundCloud (release_date vence created_at). */
 function scYear(r: ScResult): number | null {
@@ -515,7 +504,7 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
                 <ArrivalTrack kind="downloading" pct={st.pct} />
                 <span class="crate-st-mono crate-st-txt--live">
                   {Math.round(st.pct)}% · {formatSpeed(st.bps)}
-                  {st.eta_s != null ? ` · ${formatEta(st.eta_s)}` : ""}
+                  {st.eta_s != null ? ` · ${fmtEta(st.eta_s)}` : ""}
                 </span>
               </>
             );
@@ -664,7 +653,7 @@ function SourcesPanel(props: {
                   </Show>
                 </div>
                 <span class="crate-badge">{candidateQuality(c(), props.group.quality_label)}</span>
-                <div class="crate-src-val">{formatSize(c().size)}</div>
+                <div class="crate-src-val">{fmtSize(c().size)}</div>
                 <Show
                   when={c().free_slot}
                   fallback={<div class="crate-src-queued">fila {c().queue_length}</div>}
@@ -1062,7 +1051,7 @@ function ScRow(props: {
         <span class="crate-avail" data-kind={kind()}>{AVAIL_LABEL[kind()]}</span>
 
         <div class="crate-r-meta">
-          {props.r.playback_count.toLocaleString("pt-BR")} reproduções
+          {fmtInt(props.r.playback_count)} reproduções
         </div>
 
         <div class="crate-r-meta">
@@ -1271,7 +1260,7 @@ function ConfirmCard(props: {
                   </>
                 }
               >
-                {p().format_label}{p().size != null ? ` · ${formatMb(p().size!)}` : ""}
+                {p().format_label}{p().size != null ? ` · ${fmtSize(p().size!)}` : ""}
               </Show>
             )}
           </Show>
@@ -1959,7 +1948,7 @@ export default function Crate(props: { param?: string | null }) {
         </div>
         <div class="view__stats">
           <Show when={libraryCount() > 0}>
-            <span><b>{libraryCount().toLocaleString("pt-BR")}</b> no acervo</span>
+            <span><b>{fmtInt(libraryCount())}</b> no acervo</span>
           </Show>
           <Show when={activeCount() > 0}>
             <span><b>{activeCount()}</b> baixando</span>
