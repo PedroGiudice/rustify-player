@@ -2262,7 +2262,6 @@ html { --glow: 0; }
   .seg button[aria-pressed="true"],
   .mode-group button[aria-pressed="true"],
   .sig-pre[aria-pressed="true"],
-  .sig-chain__node[data-on="true"],
   .sig-stat[data-on="true"],
   .pl-action-btn.is-on,
   .pl-card__pin.is-pinned,
@@ -2309,6 +2308,18 @@ html { --glow: 0; }
   display: flex;
   flex-direction: column;
   gap: 18px;
+  /* B21: na tela larga a curva virava faixa de 8:1. */
+  max-width: 1180px;
+}
+/* Recusa do motor (A32): o ajuste não valeu; [Reaplicar] reenvia tudo. */
+.sig-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--amber-ring);
+  border-radius: var(--radius-lg);
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+  font-size: 13px; font-weight: 600;
 }
 
 /* Master + chain status row */
@@ -2327,9 +2338,7 @@ html { --glow: 0; }
   font-size: 13px; font-weight: 600; color: var(--fg-1); margin: 0;
 }
 .sig-master-bar__sub {
-  font-family: var(--font-mono);
-  font-size: 11.5px; color: var(--fg-5);
-  letter-spacing: -0.01em;
+  font-size: 12px; color: var(--fg-5);
 }
 .sig-master-bar__sub b { color: var(--fg-2); font-weight: 600; }
 
@@ -2347,6 +2356,7 @@ html { --glow: 0; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: border-color var(--dur-base) var(--ease-out);
 }
 .sig-stat__head {
   display: flex; align-items: center; justify-content: space-between;
@@ -2360,6 +2370,7 @@ html { --glow: 0; }
 .sig-stat__dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--fg-7);
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 .sig-stat[data-on="true"] .sig-stat__dot {
   background: var(--blue-ring);
@@ -2370,54 +2381,13 @@ html { --glow: 0; }
   color: var(--fg-1);
   letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
+  transition: color var(--dur-base) var(--ease-out);
 }
 .sig-stat[data-on="false"] .sig-stat__value { color: var(--fg-6); font-weight: 600; }
 .sig-stat__sub {
   font-family: var(--font-mono);
   font-size: 10.5px; color: var(--fg-5);
   letter-spacing: -0.01em;
-}
-
-/* Chain flow diagram */
-.sig-chain {
-  background: var(--bg-soft);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-lg);
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.sig-chain__node {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  font-weight: 600;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
-  color: var(--fg-5);
-  background: var(--bg-paper);
-  border: 1px solid var(--line-2);
-}
-.sig-chain__node[data-on="true"] {
-  color: var(--fg-1);
-  background: var(--bg-paper);
-  border-color: var(--fg-8);
-}
-.sig-chain__node[data-on="true"] .dot {
-  display: inline-block;
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: var(--blue-ring);
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.sig-chain__arrow {
-  color: var(--fg-7);
-  font-family: var(--font-mono);
-  font-size: 11px;
 }
 
 /* Presets bar */
@@ -2471,6 +2441,9 @@ html { --glow: 0; }
 .sig-pbtn:disabled { opacity: 0.40; cursor: not-allowed; }
 .sig-pbtn:disabled:hover { color: var(--fg-5); border-color: var(--line-2); background: transparent; }
 .sig-pbtn iconify-icon { width: 12px; height: 12px; }
+.sig-pbtn:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+/* Apagar armado (B4): o 2º clique apaga; desarma em 4 s. */
+.sig-pbtn.is-armed { color: var(--rose-fg); border-color: var(--rose-fg); }
 
 .sig-preset-chips__empty {
   font-size: 11.5px;
@@ -2499,16 +2472,6 @@ html { --glow: 0; }
   color: var(--fg-1);
   margin: 0;
 }
-.sig-panel__badge {
-  font-family: var(--font-mono);
-  font-size: 10px; font-weight: 600;
-  letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--fg-5);
-  padding: 2px 7px;
-  background: var(--bg-tint);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-xs);
-}
 .sig-panel__meta {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -2517,7 +2480,8 @@ html { --glow: 0; }
   letter-spacing: -0.01em;
 }
 .sig-panel__meta b { color: var(--fg-2); font-weight: 600; }
-.sig-panel__body { padding: 18px; }
+.sig-panel__head .tog { margin-left: 10px; }
+.sig-panel__body { padding: 18px; transition: opacity var(--dur-base) var(--ease-out); }
 /* Estágio que não processa (desligado ou em bypass): o painel diz isso e o
    corpo esmaece. Os controles seguem editáveis. */
 .sig-panel__state {
@@ -2538,7 +2502,8 @@ html { --glow: 0; }
   background: var(--bg-sunken);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-md);
-  height: 180px;
+  /* B21: a curva é o destaque da tela (era 180 px). */
+  height: 260px;
   overflow: hidden;
   margin-bottom: 4px;
 }
@@ -2576,6 +2541,16 @@ html { --glow: 0; }
   white-space: nowrap;
   transform: translateX(-50%);
 }
+/* Legenda do espectro (B22): o que é medido e o que é conta. */
+.eq-legend {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 6px 0 0;
+  font-size: var(--fs-label); color: var(--fg-5);
+}
+.eq-legend__bar,
+.eq-legend__tick { display: inline-block; flex: none; width: 10px; }
+.eq-legend__bar { height: 8px; background: rgba(var(--bg-ink-rgb, 23, 23, 23), 0.35); border-radius: 1px; }
+.eq-legend__tick { height: 1px; background: var(--fg-1); opacity: 0.5; margin-left: 10px; }
 
 /* Faders row — 16 bands */
 .faders {

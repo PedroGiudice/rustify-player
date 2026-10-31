@@ -16,8 +16,24 @@ import {
   decodeDb,
   smoothToward,
   updatePeak,
+  originDb,
   type PeakState,
 } from "./spectrum-bands";
+
+/* B22: o traço "antes do EQ" é o medido (pós-DSP) menos o ganho que a
+   curva do EQ dá no centro da banda; com o EQ fora do sinal, é o próprio
+   medido. Estimativa: limiter, Bass e normalização não entram. */
+describe("originDb (antes do EQ, estimado)", () => {
+  it("tira o reforço da curva: -30 dB medidos com +3 dB de EQ eram -33", () => {
+    expect(originDb(-30, 3, true)).toBe(-33);
+  });
+  it("devolve o corte da curva: -40 dB com -6 dB de EQ eram -34", () => {
+    expect(originDb(-40, -6, true)).toBe(-34);
+  });
+  it("EQ fora do sinal (desligado ou bypass): o traço coincide com o medido", () => {
+    expect(originDb(-25, 4.5, false)).toBe(-25);
+  });
+});
 
 describe("ISO_CENTERS", () => {
   it("tem 31 bandas", () => {

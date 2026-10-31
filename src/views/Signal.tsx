@@ -4,7 +4,7 @@
    Solid + store/dsp.ts. Layout pixel-a-pixel do handoff HTML.
    ============================================================ */
 
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import {
   dsp,
   toggleBypass,
@@ -46,6 +46,8 @@ import {
   setBassListen,
   setBassLevels,
   applyFullDspState,
+  dspError,
+  reapplyDsp,
   FILTER_TYPES,
   FILTER_MODES,
   SLOPES,
@@ -55,6 +57,7 @@ import {
 } from "../store/dsp";
 import { tweaks } from "../store/tweaks";
 import { ParamRow } from "../components/dsp/ParamRow";
+import { Switch } from "../components/Switch";
 import { Fader } from "../components/dsp/Fader";
 import { EqCanvas } from "../components/dsp/EqCanvas";
 import {
@@ -99,6 +102,7 @@ export default function Signal() {
   }
 
   function handlePresetClick(name: string) {
+    setDeleteArmed(false);
     setActivePreset(name);
     setActivePresetName(name);
     if (name === FLAT_PRESET) {
@@ -147,10 +151,26 @@ export default function Signal() {
     refreshPresets();
   }
 
+  // Apagar preset: 1º clique arma, 2º apaga (B4, o mesmo gesto do apagar
+  // station); desarma sozinho em 4 s. Trocar de preset também desarma.
+  const [deleteArmed, setDeleteArmed] = createSignal(false);
+  let disarmTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(disarmTimer));
+  const ownPreset = () => {
+    const cur = activePreset();
+    return !!cur && !BUILTIN_PRESETS.includes(cur) && presets().some((p) => p.name === cur);
+  };
+
   function handleDelete() {
     const cur = activePreset();
     if (!cur || BUILTIN_PRESETS.includes(cur)) return;
-    if (!window.confirm(`Apagar preset "${cur}"?`)) return;
+    clearTimeout(disarmTimer);
+    if (!deleteArmed()) {
+      setDeleteArmed(true);
+      disarmTimer = setTimeout(() => setDeleteArmed(false), 4000);
+      return;
+    }
+    setDeleteArmed(false);
     savePresets(loadPresets().filter((p) => p.name !== cur));
     // Apagar o registro não muda o que toca: só marca Flat/Padrão se a
     // curva atual for uma delas.
@@ -181,7 +201,7 @@ export default function Signal() {
         applyPresetToStore(preset);
       } catch (e) {
         console.error("[signal] import falhou:", e);
-        window.alert("Import falhou — JSON invalido ou formato nao reconhecido.");
+        window.alert("A importação falhou: JSON inválido ou formato não reconhecido.");
       }
     };
     input.click();
@@ -216,43 +236,58 @@ export default function Signal() {
       <header class="view__head">
         <div>
           <h1>Signal</h1>
-          <p class="view__head-hint">DSP chain — Parametric EQ · Limiter · Bass Enhancer</p>
-        </div>
-        <div class="view__stats">
-          <span><b>{dsp.bypass ? "Bypassed" : "Active"}</b></span>
-          <span>chain <b>{[eqLive(), normLive(), limLive(), bassLive()].filter(Boolean).length}</b>/4 stages</span>
-          <span>bit-perfect except DSP</span>
+          <p class="view__head-hint">EQ paramétrico · normalização · Limiter · Bass, na ordem do sinal</p>
         </div>
       </header>
 
       <div class="sig">
 
+        {/* ── Recusa do motor (A32): o ajuste não valeu, e a tela diz. ── */}
+        <Show when={dspError()}>
+          {(err) => (
+            <div class="sig-alert" role="alert">
+              <span class="sig-alert__text" title={err().detail}>{err().message}</span>
+              <button type="button" class="sig-pbtn" onClick={() => void reapplyDsp()}>
+                Reaplicar
+              </button>
+            </div>
+          )}
+        </Show>
+
         {/* ── Master (bypass) bar ──
-            Mesma polaridade dos toggles dos estágios: ligado = processando.
+            Mesma polaridade dos interruptores dos estágios: ligado = processando.
             O bypass não alcança a normalização (norm_gain), que é do Tweaks. */}
         <div class="sig-master-bar">
           <div class="sig-master-bar__meta">
-            <h3 class="sig-master-bar__title">DSP chain</h3>
+            <h3 class="sig-master-bar__title" id="sig-master-label">Cadeia DSP</h3>
             <span class="sig-master-bar__sub">
-              EQ · Limiter · Bass <b>{dsp.bypass ? "bypassed" : "processing"}</b> · normalization is set in Tweaks
+              EQ, Limiter e Bass <b>{dsp.bypass ? "em bypass" : "processando"}</b>. A normalização fica no Tweaks.
             </span>
           </div>
-          <button
-            class="tog"
-            aria-pressed={dsp.bypass ? "false" : "true"}
-            aria-label="DSP chain (EQ, Limiter, Bass)"
-            onClick={toggleBypass}
-            title={dsp.bypass ? "Turn EQ, Limiter and Bass back on" : "Bypass EQ, Limiter and Bass"}
+          <Switch
+            checked={!dsp.bypass}
+            onChange={toggleBypass}
+            labelledBy="sig-master-label"
+            title={dsp.bypass ? "Religar EQ, Limiter e Bass" : "Pôr EQ, Limiter e Bass em bypass"}
           />
         </div>
 
-        {/* ── Stat tiles ── */}
+        {/* ── Linha de estado (B21): os cartões, na ordem real do sinal
+            (EQ → norm_gain → Limiter → Bass, dsp.rs). É o único lugar que
+            diz o estado de cada estágio; o fluxo de nós fixos e os selos
+            saíram. ── */}
         <div class="sig-stat-row">
           <StatTile
             label="EQ"
             on={eqLive()}
             value={eqLive() ? `${dsp.eq.bands.length} bands` : offLabel()}
             sub={`${FILTER_MODES[dsp.eq.bands[dsp.activeBand]?.filterMode ?? 6]} · ${ENGINE_MODES[dsp.eq.mode]} mode`}
+          />
+          <StatTile
+            label="Normalização"
+            on={normLive()}
+            value={normLive() ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
+            sub="por faixa · no Tweaks"
           />
           <StatTile
             label="Limiter"
@@ -266,39 +301,6 @@ export default function Signal() {
             value={bassLive() ? `${dsp.bass.amount.toFixed(1)} dB` : offLabel()}
             sub={`scope ${dsp.bass.freq.toFixed(0)} Hz · floor ${dsp.bass.floor.toFixed(0)} Hz`}
           />
-          <StatTile
-            label="Normalize"
-            on={normLive()}
-            value={normLive() ? `${tweaks().loudnessTarget.toFixed(1)} LUFS` : "off"}
-            sub="LUFS · per-track"
-          />
-        </div>
-
-        {/* ── Chain flow ── */}
-        <div class="sig-chain">
-          <span class="sig-chain__node">Source</span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node">Decode</span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node">audioconvert</span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={eqLive() ? "true" : "false"}>
-            <span class="dot" />LSP Para EQ × 16
-          </span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={normLive() ? "true" : "false"}>
-            <span class="dot" />norm_gain
-          </span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={limLive() ? "true" : "false"}>
-            <span class="dot" />LSP Limiter
-          </span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node" data-on={bassLive() ? "true" : "false"}>
-            <span class="dot" />Calf Bass Enh.
-          </span>
-          <span class="sig-chain__arrow">→</span>
-          <span class="sig-chain__node">PipeWire</span>
         </div>
 
         {/* ── Presets ── */}
@@ -342,24 +344,25 @@ export default function Signal() {
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:save" noobserver />Save
             </button>
-            <button
-              class="sig-pbtn"
-              onClick={handleRename}
-              disabled={!activePreset() || BUILTIN_PRESETS.includes(activePreset())}
-              title="Renomeia preset selecionado"
-            >
-              {/* @ts-ignore */}
-              <iconify-icon icon="lucide:pencil" noobserver />Rename
-            </button>
-            <button
-              class="sig-pbtn"
-              onClick={handleDelete}
-              disabled={!activePreset() || BUILTIN_PRESETS.includes(activePreset())}
-              title="Apaga preset selecionado"
-            >
-              {/* @ts-ignore */}
-              <iconify-icon icon="lucide:trash-2" noobserver />Delete
-            </button>
+            {/* Renomear e apagar só existem para preset próprio (A32): nos de
+                fábrica (Flat, Padrão) ficavam acesos e mortos. */}
+            <Show when={ownPreset()}>
+              <button class="sig-pbtn" onClick={handleRename} title="Renomeia o preset selecionado">
+                {/* @ts-ignore */}
+                <iconify-icon icon="lucide:pencil" noobserver />Rename
+              </button>
+              {/* Arma e confirma (B4): o 1º clique pede o 2º, e desarma sozinho. */}
+              <button
+                class="sig-pbtn"
+                classList={{ "is-armed": deleteArmed() }}
+                onClick={handleDelete}
+                title={deleteArmed() ? "Clique de novo para apagar" : "Apaga o preset selecionado"}
+                aria-label={deleteArmed() ? `Confirmar: apagar o preset ${activePreset()}` : `Apagar o preset ${activePreset()}`}
+              >
+                {/* @ts-ignore */}
+                <iconify-icon icon="lucide:trash-2" noobserver />{deleteArmed() ? "Apagar?" : "Delete"}
+              </button>
+            </Show>
             <button class="sig-pbtn" onClick={handleImport} title="Importa preset EasyEffects (.json)">
               {/* @ts-ignore */}
               <iconify-icon icon="lucide:upload" noobserver />Import .json
@@ -374,23 +377,16 @@ export default function Signal() {
         {/* ── Parametric EQ panel ── */}
         <div class="sig-panel" data-live={eqLive() ? "true" : "false"}>
           <div class="sig-panel__head">
-            <h3 class="sig-panel__title">Parametric Equalizer</h3>
-            <span class="sig-panel__badge">LSP × 16 · Stereo</span>
+            <h3 class="sig-panel__title" id="sig-eq-label">Parametric Equalizer</h3>
             <Show when={!eqLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               mode <b>{ENGINE_MODES[dsp.eq.mode]}</b> · gain <b>{dsp.eq.input_gain.toFixed(1)}</b> / <b>{dsp.eq.output_gain.toFixed(1)}</b> dB
             </span>
-            <button
-              class="tog tog--blue"
-              aria-pressed={dsp.eq.enabled ? "true" : "false"}
-              onClick={toggleEq}
-              title="Toggle EQ"
-              style={{ "margin-left": "10px" }}
-            />
+            <Switch checked={dsp.eq.enabled} onChange={toggleEq} labelledBy="sig-eq-label" variant="blue" />
           </div>
           <div class="sig-panel__body">
 
-            <EqCanvas bands={dsp.eq.bands} activeBand={dsp.activeBand} />
+            <EqCanvas bands={dsp.eq.bands} activeBand={dsp.activeBand} eqLive={eqLive()} />
 
             <div class="faders">
               <For each={dsp.eq.bands}>{(band, i) => (
@@ -448,19 +444,12 @@ export default function Signal() {
         {/* ── Limiter panel ── */}
         <div class="sig-panel" data-live={limLive() ? "true" : "false"}>
           <div class="sig-panel__head">
-            <h3 class="sig-panel__title">Limiter</h3>
-            <span class="sig-panel__badge">LSP · Stereo</span>
+            <h3 class="sig-panel__title" id="sig-lim-label">Limiter</h3>
             <Show when={!limLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               threshold <b>{dsp.limiter.threshold.toFixed(1)}</b> dB · stereo-link <b>{dsp.limiter.stereo_link.toFixed(0)}</b>%
             </span>
-            <button
-              class="tog tog--blue"
-              aria-pressed={dsp.limiter.enabled ? "true" : "false"}
-              onClick={toggleLimiter}
-              title="Toggle Limiter"
-              style={{ "margin-left": "10px" }}
-            />
+            <Switch checked={dsp.limiter.enabled} onChange={toggleLimiter} labelledBy="sig-lim-label" variant="blue" />
           </div>
           <div class="sig-panel__body">
 
@@ -484,12 +473,11 @@ export default function Signal() {
                 onChange={setLimiterDither}
               />
               <div class="lim-boost">
-                <span class="lim-boost__label">Boost</span>
-                <button
-                  class="tog"
-                  aria-pressed={dsp.limiter.boost ? "true" : "false"}
-                  onClick={() => setLimiterBoost(!dsp.limiter.boost)}
-                  title="Toggle boost"
+                <span class="lim-boost__label" id="sig-boost-label">Boost</span>
+                <Switch
+                  checked={dsp.limiter.boost}
+                  onChange={() => setLimiterBoost(!dsp.limiter.boost)}
+                  labelledBy="sig-boost-label"
                 />
               </div>
             </div>
@@ -508,13 +496,12 @@ export default function Signal() {
 
             <div class="alr">
               <div class="alr__head">
-                <span class="alr__title">Auto-leveling release</span>
+                <span class="alr__title" id="sig-alr-label">Auto-leveling release</span>
                 <span class="alr__hint">stabilizes attack-release sensitivity over time</span>
-                <button
-                  class="tog"
-                  aria-pressed={dsp.limiter.alr ? "true" : "false"}
-                  onClick={() => setLimiterAlr(!dsp.limiter.alr)}
-                  title="Toggle ALR"
+                <Switch
+                  checked={dsp.limiter.alr}
+                  onChange={() => setLimiterAlr(!dsp.limiter.alr)}
+                  labelledBy="sig-alr-label"
                   style={{ "margin-left": "auto" }}
                 />
               </div>
@@ -530,38 +517,31 @@ export default function Signal() {
         {/* ── Bass Enhancer panel ── */}
         <div class="sig-panel" data-live={bassLive() ? "true" : "false"}>
           <div class="sig-panel__head">
-            <h3 class="sig-panel__title">Bass Enhancer</h3>
-            <span class="sig-panel__badge">Calf</span>
+            <h3 class="sig-panel__title" id="sig-bass-label">Bass Enhancer</h3>
             <Show when={!bassLive()}><span class="sig-panel__state">{offLabel()}</span></Show>
             <span class="sig-panel__meta">
               amount <b>{dsp.bass.amount.toFixed(1)}</b> dB · scope <b>{dsp.bass.freq.toFixed(0)}</b> Hz
             </span>
-            <button
-              class="tog"
-              aria-pressed={dsp.bass.enabled ? "true" : "false"}
-              onClick={toggleBass}
-              title="Toggle Bass Enhancer"
-              style={{ "margin-left": "10px" }}
-            />
+            <Switch checked={dsp.bass.enabled} onChange={toggleBass} labelledBy="sig-bass-label" />
           </div>
           <div class="sig-panel__body">
 
             <div class="bass-toggles">
               <div class="bass-toggle">
-                <span class="bass-toggle__label">Listen</span>
-                <button
-                  class="tog"
-                  aria-pressed={dsp.bass.listen ? "true" : "false"}
-                  onClick={() => setBassListen(!dsp.bass.listen)}
+                <span class="bass-toggle__label" id="sig-listen-label">Listen</span>
+                <Switch
+                  checked={dsp.bass.listen}
+                  onChange={() => setBassListen(!dsp.bass.listen)}
+                  labelledBy="sig-listen-label"
                   title="Listen to bass-only signal"
                 />
               </div>
               <div class="bass-toggle">
-                <span class="bass-toggle__label">Floor</span>
-                <button
-                  class="tog"
-                  aria-pressed={dsp.bass.floor_active ? "true" : "false"}
-                  onClick={() => setBassFloorActive(!dsp.bass.floor_active)}
+                <span class="bass-toggle__label" id="sig-floor-label">Floor</span>
+                <Switch
+                  checked={dsp.bass.floor_active}
+                  onChange={() => setBassFloorActive(!dsp.bass.floor_active)}
+                  labelledBy="sig-floor-label"
                   title="Enable floor filter"
                 />
               </div>

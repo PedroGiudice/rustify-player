@@ -118,3 +118,12 @@ export function updatePeak(
     }
   }
 }
+
+/** Nível estimado de uma banda ANTES do EQ (B22): o medido no monitor do
+    sink (pós-DSP) menos o ganho que a curva do EQ dá no centro da banda.
+    Com o EQ fora do sinal (desligado ou em bypass), o medido já é a origem.
+    É estimativa e a tela diz isso: Limiter, Bass, normalização e volume
+    também mexem no medido e não são descontados. */
+export function originDb(measuredDb: number, eqGainDb: number, eqLive: boolean): number {
+  return eqLive ? measuredDb - eqGainDb : measuredDb;
+}
