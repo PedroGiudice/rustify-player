@@ -203,6 +203,52 @@ pub fn parse_stations(json: &[u8]) -> Result<Vec<Station>, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Recusas do rádio (B9) — campos `radio_*` do manifest
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// O que o CEO decidiu no desktop sobre o rádio (`radio_refusal.rs`),
+/// exportado por faixa no manifest. Espelha `RadioState::refuses`: "nunca no
+/// rádio" tira do autoplay E de todas as stations; a lista tira só das
+/// stations com aquele id. É filtro DURO: nem o último recurso do rádio
+/// (acervo inteiro sem exclusões) toca uma faixa recusada. O nunca-termina do
+/// motor (pulos cedo) não viaja: o aparelho não tem a familiaridade.
+#[derive(Clone, Default, Debug)]
+pub struct RadioRefusals {
+    never: HashSet<u64>,
+    off_stations: HashMap<u64, HashSet<String>>,
+}
+
+impl RadioRefusals {
+    /// Registra uma faixa do manifest. Id que não é u64 é ignorado.
+    pub fn add(&mut self, track_id: &str, never_at: Option<i64>, off_stations: &[String]) {
+        let Ok(id) = track_id.parse::<u64>() else { return };
+        if never_at.is_some_and(|t| t > 0) {
+            self.never.insert(id);
+        }
+        let off: HashSet<String> = off_stations.iter().filter(|s| !s.is_empty()).cloned().collect();
+        if !off.is_empty() {
+            self.off_stations.insert(id, off);
+        }
+    }
+
+    /// Recusada no contexto: `station` = id da station gerando o lote,
+    /// `None` = autoplay (rádio aberto).
+    pub fn refuses(&self, id: u64, station: Option<&str>) -> bool {
+        self.never.contains(&id)
+            || station.is_some_and(|s| self.off_stations.get(&id).is_some_and(|o| o.contains(s)))
+    }
+
+    /// Mesma pergunta com o id em texto (Track do mobile). Id ilegível = não.
+    pub fn refuses_str(&self, id: &str, station: Option<&str>) -> bool {
+        id.parse::<u64>().is_ok_and(|n| self.refuses(n, station))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.never.is_empty() && self.off_stations.is_empty()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Ranking de pool por gosto
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -533,6 +579,25 @@ mod tests {
         let taste = Taste { positives: vec![1], negatives: vec![] };
         let ranked = rank_pool(&[2, 3, 4], &taste, Some(&vx), &[2]);
         assert!(!ranked.contains(&2));
+    }
+
+    #[test]
+    fn recusas_do_radio_por_contexto() {
+        let grande = 18_400_000_000_000_000_001_u64;
+        let mut r = RadioRefusals::default();
+        assert!(r.is_empty());
+        r.add(&grande.to_string(), Some(1_700_000_000), &[]);
+        r.add("7", None, &["chuva".to_string(), String::new()]);
+        r.add("8", Some(0), &[]); // zero = não recusada
+        r.add("uuid", Some(5), &[]); // id ilegível: ignorado
+        assert!(r.refuses(grande, None), "nunca no rádio sai do autoplay");
+        assert!(r.refuses(grande, Some("noite")), "e de toda station");
+        assert!(!r.refuses(7, None), "fora de station segue no autoplay");
+        assert!(r.refuses(7, Some("chuva")));
+        assert!(!r.refuses(7, Some("noite")));
+        assert!(!r.refuses(8, None));
+        assert!(r.refuses_str("7", Some("chuva")));
+        assert!(!r.refuses_str("uuid", None));
     }
 
     #[test]

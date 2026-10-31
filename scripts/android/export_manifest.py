@@ -163,6 +163,40 @@ def fetch_like_state(base_url: str) -> dict[str, tuple[int | None, int | None]]:
             return state
 
 
+def fetch_radio_state(base_url: str) -> dict[str, tuple[int | None, list[str]]]:
+    """Recusas do rádio por track_id (string), de track_enrichments (B9,
+    `radio_refusal.rs`): `(radio_never_at, radio_off_stations)`. "Nunca no
+    rádio" tira a faixa do autoplay e de todas as stations; a lista tira só
+    das stations com aquele id. Devolvida (campos null) fica de fora. Os
+    pulos perdoados (`radio_release_skips`) não viajam: o aparelho não calcula
+    o nunca-termina, só respeita o que o CEO decidiu."""
+    state: dict[str, tuple[int | None, list[str]]] = {}
+    offset = None
+    while True:
+        body = {
+            "limit": 500,
+            "with_payload": {"include": ["radio_never_at", "radio_off_stations"]},
+            "with_vector": False,
+        }
+        if offset is not None:
+            body["offset"] = offset
+        result = qpost(base_url, f"/collections/{ENRICHMENTS}/points/scroll", body)
+        for p in result["points"]:
+            tid = p.get("id")
+            if not isinstance(tid, int):
+                continue
+            pl = p.get("payload") or {}
+            never_at = to_int(pl.get("radio_never_at")) or None
+            off = pl.get("radio_off_stations")
+            off = sorted({s for s in off if isinstance(s, str) and s}) if isinstance(off, list) else []
+            if never_at is None and not off:
+                continue
+            state[str(tid)] = (never_at, off)
+        offset = result.get("next_page_offset")
+        if offset is None:
+            return state
+
+
 def cover_rel(cover_path: str | None) -> str | None:
     """`covers/<sha1>.webp` (cache do desktop, cover.rs) → `covers/<sha1>.jpg`,
     relativo a `.rustify/` no aparelho — o nome que deploy_covers produz.
@@ -173,9 +207,11 @@ def cover_rel(cover_path: str | None) -> str | None:
     return f"covers/{stem}.jpg"
 
 
-def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
+def build_manifest(points: list[dict], like_state: dict | None = None,
+                   radio_state: dict | None = None) -> dict:
     tracks, skipped = [], 0
     like_state = like_state or {}
+    radio_state = radio_state or {}
     for p in points:
         pl = p["payload"]
         path = pl.get("path") or ""
@@ -183,6 +219,7 @@ def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
             skipped += 1
             continue
         liked_at, like_updated_at = like_state.get(str(p["id"]), (None, None))
+        radio_never_at, radio_off_stations = radio_state.get(str(p["id"]), (None, []))
         tracks.append({
             # point id do Qdrant É o track_id (u64) — string, ver docstring.
             "track_id": str(p["id"]),
@@ -210,6 +247,11 @@ def build_manifest(points: list[dict], like_state: dict | None = None) -> dict:
             # spectral.rs). null = não medida; o Rust tolera ausência.
             "quality_class": pl.get("quality_class") or None,
             "quality_cutoff_hz": to_int(pl.get("quality_cutoff_hz")) or None,
+            # Recusas do rádio (B9): o motor local do aparelho
+            # (mobile_intel.rs) as aplica como filtro duro no autoplay e nas
+            # stations. Ids de station = os mesmos do stations.json.
+            "radio_never_at": radio_never_at,
+            "radio_off_stations": list(radio_off_stations),
         })
     tracks.sort(key=lambda t: t["rel_path"])
     if skipped:
@@ -715,7 +757,10 @@ def main() -> int:
     like_state = fetch_like_state(args.qdrant)
     print(f"likes: {sum(1 for l, _ in like_state.values() if l)} curtidas, "
           f"{len(like_state)} pontos com estado")
-    manifest = build_manifest(points, like_state)
+    radio_state = fetch_radio_state(args.qdrant)
+    print(f"rádio: {sum(1 for n, _ in radio_state.values() if n)} nunca no rádio, "
+          f"{sum(1 for _, o in radio_state.values() if o)} fora de alguma station")
+    manifest = build_manifest(points, like_state, radio_state)
     with open(f"{args.out_dir}/manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
     print(f"manifest.json: {manifest['track_count']} tracks")

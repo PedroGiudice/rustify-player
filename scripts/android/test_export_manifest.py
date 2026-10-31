@@ -124,6 +124,66 @@ def test_fetch_like_state_pagina_e_mapeia():
     check("chaves são string", all(isinstance(k, str) for k in state), True)
 
 
+def test_fetch_radio_state_pagina_e_mapeia():
+    """B9: as recusas do CEO (radio_refusal.rs) moram em track_enrichments e
+    viajam para o S24 respeitar no autoplay e nas stations."""
+    print("fetch_radio_state:")
+    big = 18_400_000_000_000_000_001
+    pages = [
+        {"points": [
+            {"id": 1, "payload": {"radio_never_at": 1_700_000_000}},
+            {"id": 2, "payload": {"radio_off_stations": ["chuva", "noite"]}},
+            {"id": "uuid", "payload": {"radio_never_at": 5}},   # fora do acervo
+        ], "next_page_offset": 3},
+        {"points": [
+            {"id": big, "payload": {"radio_never_at": None,
+                                    "radio_off_stations": None}},  # devolvida: fora
+            {"id": 4, "payload": {"radio_never_at": 0, "radio_off_stations": []}},
+            {"id": 5, "payload": {"radio_never_at": 7, "radio_off_stations": ["chuva", 3]}},
+        ], "next_page_offset": None},
+    ]
+    calls = []
+
+    def fake_qpost(base_url, path, body):
+        calls.append((path, body.get("offset"), body.get("with_payload")))
+        return pages[len(calls) - 1]
+
+    real = E.qpost
+    E.qpost = fake_qpost
+    try:
+        state = E.fetch_radio_state("http://fake")
+    finally:
+        E.qpost = real
+    check("duas páginas", [c[1] for c in calls], [None, 3])
+    check("scroll em track_enrichments",
+          all(c[0] == f"/collections/{E.ENRICHMENTS}/points/scroll" for c in calls), True)
+    check("pede só os campos radio_*",
+          calls[0][2], {"include": ["radio_never_at", "radio_off_stations"]})
+    check("nunca no rádio", state.get("1"), (1_700_000_000, []))
+    check("fora de stations", state.get("2"), (None, ["chuva", "noite"]))
+    check("devolvida (nulls) fica fora", str(big) in state, False)
+    check("zero e lista vazia ficam fora", "4" in state, False)
+    check("id de station não-texto descartado", state.get("5"), (7, ["chuva"]))
+    check("id não-inteiro ignorado", "uuid" in state, False)
+
+
+def test_build_manifest_emite_recusas_do_radio():
+    print("build_manifest (radio_never_at/radio_off_stations):")
+    points = [point(1, "A/a.flac"), point(2, "A/b.flac"), point(3, "A/c.flac")]
+    radio = {"1": (1_700_000_000, []), "3": (None, ["chuva"])}
+    by_id = {t["track_id"]: t for t in E.build_manifest(points, None, radio)["tracks"]}
+    check("nunca no rádio", (by_id["1"]["radio_never_at"], by_id["1"]["radio_off_stations"]),
+          (1_700_000_000, []))
+    check("fora da station", (by_id["3"]["radio_never_at"], by_id["3"]["radio_off_stations"]),
+          (None, ["chuva"]))
+    check("sem recusa: null e lista vazia",
+          (by_id["2"]["radio_never_at"], by_id["2"]["radio_off_stations"]), (None, []))
+    m = E.build_manifest(points)
+    check("chamada antiga: chaves presentes",
+          all(t["radio_never_at"] is None and t["radio_off_stations"] == [] for t in m["tracks"]),
+          True)
+
+
 def test_build_manifest_emite_qualidade_do_original():
     """B15: o celular toca Opus e não sabia da auditoria do original. A classe
     espectral e o corte vão por faixa; ponto não medido sai com null (shape
@@ -358,6 +418,7 @@ def test_report_covers_job_ecoa_roteia_e_aborta():
 
 def main():
     for t in (test_build_manifest_like_state, test_fetch_like_state_pagina_e_mapeia,
+              test_fetch_radio_state_pagina_e_mapeia, test_build_manifest_emite_recusas_do_radio,
               test_build_manifest_emite_qualidade_do_original,
               test_cover_rel_troca_webp_por_jpg, test_build_manifest_emite_cover_por_track,
               test_cover_jobs_deduplica_capas_e_mantem_primeira_por_pasta,

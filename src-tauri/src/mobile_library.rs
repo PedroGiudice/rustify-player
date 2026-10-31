@@ -16,7 +16,7 @@
 // `cover`; o cover.jpg/folder.jpg da pasta é fallback (tracks sem cover_path no
 // desktop, manifest/export antigos). Ver `resolve_cover`.
 
-use crate::mobile_intel::{self, Station, StationMeta, Taste, VectorIndex};
+use crate::mobile_intel::{self, RadioRefusals, Station, StationMeta, Taste, VectorIndex};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -71,6 +71,17 @@ struct ManifestTrack {
     quality_class: Option<String>,
     #[serde(default)]
     quality_cutoff_hz: Option<i64>,
+    /// Recusas do rádio feitas no desktop (B9): "nunca no rádio" e "fora
+    /// desta station" (ids do stations.json). Ausentes em manifest antigo.
+    #[serde(default)]
+    radio_never_at: Option<i64>,
+    #[serde(default, deserialize_with = "null_as_empty")]
+    radio_off_stations: Vec<String>,
+}
+
+/// `null` explícito vira lista vazia (o `#[serde(default)]` só cobre ausência).
+fn null_as_empty<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    Ok(Option::<Vec<String>>::deserialize(d)?.unwrap_or_default())
 }
 
 /// Espelha a interface `Track` de src/tauri.ts (subset que o mobile provê).
@@ -134,6 +145,8 @@ pub struct MobileLibrary {
     vectors: Option<VectorIndex>,
     taste: Taste,
     stations: Vec<Station>,
+    /// Recusas do rádio (B9), filtro duro em todo lote de autoplay e station.
+    radio_refusals: RadioRefusals,
 }
 
 /// Stem canônico p/ casar manifest (nomes originais do desktop) com arquivos
@@ -307,6 +320,7 @@ impl MobileLibrary {
                     vectors: None,
                     taste: Taste::default(),
                     stations: vec![],
+                    radio_refusals: RadioRefusals::default(),
                 };
             }
         };
@@ -325,8 +339,10 @@ impl MobileLibrary {
         let mut by_id = HashMap::new();
         let mut folder_map: HashMap<String, Vec<usize>> = HashMap::new();
         let mut unresolved = 0usize;
+        let mut radio_refusals = RadioRefusals::default();
 
         for mt in manifest.tracks {
+            radio_refusals.add(&mt.track_id, mt.radio_never_at, &mt.radio_off_stations);
             let stem = canon_stem(&mt.rel_path);
             let Some(file) = audio.get(&stem) else {
                 unresolved += 1;
@@ -375,7 +391,7 @@ impl MobileLibrary {
         folders.sort_by(|a, b| a.0.cmp(&b.0));
 
         let (vectors, taste, stations) = load_intel(root);
-        Self { tracks, by_id, folders, vectors, taste, stations }
+        Self { tracks, by_id, folders, vectors, taste, stations, radio_refusals }
     }
 
     pub fn folders(&self) -> Vec<Folder> {
@@ -474,8 +490,10 @@ impl MobileLibrary {
         let mut do_artista: Vec<usize> = Vec::new();
         if let Some(a) = artista.filter(|a| !a.trim().is_empty()) {
             do_artista.extend(self.tracks.iter().enumerate().filter_map(|(i, t)| {
-                (t.artist_name.as_deref() == Some(a) && !blocked.contains(t.id.as_str()))
-                    .then_some(i)
+                (t.artist_name.as_deref() == Some(a)
+                    && !blocked.contains(t.id.as_str())
+                    && !self.radio_refusals.refuses_str(&t.id, None))
+                .then_some(i)
             }));
         }
         let mut da_pasta: Vec<usize> = Vec::new();
@@ -483,7 +501,8 @@ impl MobileLibrary {
             let ja: HashSet<usize> = do_artista.iter().copied().collect();
             if let Some((_, idx)) = self.folders.iter().find(|(name, _)| name == p) {
                 da_pasta.extend(idx.iter().copied().filter(|i| {
-                    !ja.contains(i) && !blocked.contains(self.tracks[*i].id.as_str())
+                    let id = self.tracks[*i].id.as_str();
+                    !ja.contains(i) && !blocked.contains(id) && !self.radio_refusals.refuses_str(id, None)
                 }));
             }
         }
@@ -515,7 +534,10 @@ impl MobileLibrary {
             .tracks
             .iter()
             .enumerate()
-            .filter_map(|(i, t)| (!blocked.contains(t.id.as_str())).then_some(i))
+            .filter_map(|(i, t)| {
+                (!blocked.contains(t.id.as_str()) && !self.radio_refusals.refuses_str(&t.id, None))
+                    .then_some(i)
+            })
             .collect();
         mobile_intel::shuffle(&mut pool, seed);
         pool.into_iter().take(limit).map(|i| self.tracks[i].clone()).collect()
@@ -546,7 +568,7 @@ impl MobileLibrary {
             session_negatives,
         )
         .into_iter()
-        .filter(|t| self.by_id.contains_key(&t.to_string()))
+        .filter(|t| self.by_id.contains_key(&t.to_string()) && !self.radio_refusals.refuses(*t, None))
         .collect();
         let mut capped = mobile_intel::cap_per_artist(
             ranked,
@@ -594,7 +616,11 @@ impl MobileLibrary {
             session_negatives,
         )
         .into_iter()
-        .filter(|t| !exclude_set.contains(t) && self.by_id.contains_key(&t.to_string()))
+        .filter(|t| {
+            !exclude_set.contains(t)
+                && self.by_id.contains_key(&t.to_string())
+                && !self.radio_refusals.refuses(*t, Some(station_id))
+        })
         .collect();
         mobile_intel::weighted_pick_prefix(&mut ranked, limit * 3, seed);
         ranked
@@ -662,6 +688,7 @@ mod tests {
             vectors: None,
             taste: Taste::default(),
             stations: Vec::new(),
+            radio_refusals: RadioRefusals::default(),
         }
     }
 
@@ -703,6 +730,81 @@ mod tests {
         let (tracks, layer) = lib.radio_candidates("999", &[], &[], 3, 11);
         assert_eq!(layer, RadioLayer::Library);
         assert_eq!(tracks.len(), 3);
+    }
+
+    fn station(id: &str, pool: &[u64]) -> Station {
+        Station {
+            meta: StationMeta {
+                id: id.into(),
+                name: id.into(),
+                icon: String::new(),
+                tone: String::new(),
+                desc: String::new(),
+                kind: "seed".into(),
+                query: None,
+                pool_size: pool.len(),
+            },
+            pool: pool.to_vec(),
+        }
+    }
+
+    /// B9: "nunca no rádio" (2) e "fora da station chuva" (3).
+    fn lib_com_recusas() -> MobileLibrary {
+        let mut lib = lib_sem_vetores();
+        lib.radio_refusals.add("2", Some(1_700_000_000), &[]);
+        lib.radio_refusals.add("3", None, &["chuva".to_string()]);
+        lib.stations = vec![station("chuva", &[1, 2, 3, 4]), station("noite", &[1, 2, 3, 4])];
+        lib
+    }
+
+    #[test]
+    fn autoplay_nao_toca_faixa_recusada_em_camada_nenhuma() {
+        let lib = lib_com_recusas();
+        // camada 2 (artista A = 1, 2, 3): o 2 nunca; o 3 só saiu de uma station
+        let (tracks, _) = lib.radio_candidates("1", &[], &[], 10, 7);
+        let ids: Vec<&str> = tracks.iter().map(|x| x.id.as_str()).collect();
+        assert!(!ids.contains(&"2"), "nunca no rádio: {ids:?}");
+        assert!(ids.contains(&"3"), "fora de station não sai do autoplay: {ids:?}");
+        // camada 3 e o último recurso (exclude engoliu o resto): ainda sem o 2
+        let tudo: Vec<String> = ["1", "3", "4"].iter().map(|s| s.to_string()).collect();
+        let (tracks, layer) = lib.radio_candidates("5", &tudo, &[], 10, 7);
+        assert_eq!(layer, RadioLayer::Library);
+        assert!(!tracks.iter().any(|x| x.id == "2"), "último recurso respeita a recusa");
+    }
+
+    #[test]
+    fn station_respeita_nunca_e_fora_desta_station() {
+        let lib = lib_com_recusas();
+        let ids = |sid: &str| -> Vec<String> {
+            lib.station_batch(sid, &[], &[], 10, 3).into_iter().map(|t| t.id).collect()
+        };
+        let chuva = ids("chuva");
+        assert!(!chuva.contains(&"2".to_string()) && !chuva.contains(&"3".to_string()), "{chuva:?}");
+        let noite = ids("noite");
+        assert!(!noite.contains(&"2".to_string()), "{noite:?}");
+        assert!(noite.contains(&"3".to_string()), "fora da chuva segue na noite: {noite:?}");
+    }
+
+    #[test]
+    fn manifest_carrega_recusas_e_tolera_manifest_antigo() {
+        let base = r#""rel_path":"A/a.flac","title":"a","artist":"A","album":"",
+            "duration_ms":1,"track_number":1,"disc_number":1,"genre":"A""#;
+        let novo: ManifestTrack = serde_json::from_str(&format!(
+            r#"{{"track_id":"18400000000000000001",{base},"radio_never_at":1700000000,
+                "radio_off_stations":["chuva"]}}"#
+        ))
+        .unwrap();
+        assert_eq!(novo.radio_never_at, Some(1_700_000_000));
+        assert_eq!(novo.radio_off_stations, vec!["chuva".to_string()]);
+        let antigo: ManifestTrack =
+            serde_json::from_str(&format!(r#"{{"track_id":"1",{base}}}"#)).unwrap();
+        assert_eq!(antigo.radio_never_at, None);
+        assert!(antigo.radio_off_stations.is_empty());
+        let nulos: ManifestTrack = serde_json::from_str(&format!(
+            r#"{{"track_id":"1",{base},"radio_never_at":null,"radio_off_stations":null}}"#
+        ))
+        .unwrap();
+        assert!(nulos.radio_off_stations.is_empty());
     }
 
     #[test]
