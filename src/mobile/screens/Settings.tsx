@@ -34,6 +34,18 @@ import {
 import { commonRoot, fmtCount } from "../derive";
 import { appVersion, checkForUpdate, fmtBytes, installUpdate, upd, updBusy } from "../updater";
 
+/** Número de cenas por extenso ("oito"), contado no registro: a dica dizia
+ *  "quatro cenas" quando já eram oito (A33). */
+const POR_EXTENSO = ["nenhuma", "uma", "duas", "três", "quatro", "cinco", "seis", "sete", "oito",
+  "nove", "dez", "onze", "doze"];
+export const cenasPorExtenso = (n: number) => POR_EXTENSO[n] ?? String(n);
+
+/** Linha do fundo WebGL: fps medidos, nunca o nome da GPU (o WebView
+ *  mascara o renderer, e o dono já reprovou esse rótulo no desktop). */
+function glLine(fps: number): string {
+  return fps > 0 ? `${fps} fps medidos` : "medindo…";
+}
+
 export function Settings() {
   const root = () => commonRoot(tracks().map((t) => t.path)) ?? "—";
   const stats = () => [
@@ -110,8 +122,8 @@ export function Settings() {
           <div>
             <div class="setrow__label">Motor do fundo</div>
             <div class="setrow__hint">
-              2D é o campo escalar de sempre (CPU). WebGL são quatro cenas na GPU, as mesmas do
-              desktop, reagindo às mesmas bandas.
+              2D é o desenho de sempre; WebGL são as mesmas {cenasPorExtenso(SCENE_KEYS.length)} cenas
+              do desktop.
             </div>
           </div>
           <div class="seg">
@@ -153,19 +165,30 @@ export function Settings() {
             </div>
           </div>
           <Show when={glStatus().ok !== null}>
-            <div class="setrow">
-              <div>
-                <div class="setrow__label">GPU</div>
-                <div class="setrow__hint">
-                  <Show
-                    when={glStatus().ok === true}
-                    fallback={`Fundo WebGL fora do ar (${glStatus().error}) — o 2D assumiu.`}
-                  >
-                    {glStatus().renderer} · {glStatus().fps} fps
-                  </Show>
+            <Show
+              when={glStatus().ok === true}
+              fallback={
+                <div class="setrow setrow--inline">
+                  <div>
+                    <div class="setrow__label">Fundo WebGL</div>
+                    <div class="setrow__hint">O fundo WebGL não iniciou; o 2D está no ar.</div>
+                    <Show when={glStatus().error}>
+                      <div class="setrow__hint mono">{glStatus().error}</div>
+                    </Show>
+                  </div>
+                  <button class="selbtn" style={{ width: "auto" }} onClick={() => resetGlStatus()}>
+                    Tentar de novo
+                  </button>
+                </div>
+              }
+            >
+              <div class="setrow">
+                <div>
+                  <div class="setrow__label">Fundo WebGL</div>
+                  <div class="setrow__hint">{glLine(glStatus().fps)}</div>
                 </div>
               </div>
-            </div>
+            </Show>
           </Show>
         </Show>
 
@@ -192,11 +215,7 @@ export function Settings() {
         <div class="setrow">
           <div>
             <div class="setrow__label">Beat sync</div>
-            <div class="setrow__hint">
-              Speed empurra a derivada do relógio com a energia do kick; Pulse trava fase por PLL e
-              pulsa a amplitude. O pulso vem da FFT do próprio player (SpectrumTap), com as mesmas
-              bandas do desktop — o gerador sintético só cobre o intervalo até o primeiro quadro real.
-            </div>
+            <div class="setrow__hint">Quanto o fundo reage ao bumbo.</div>
           </div>
           <div class="seg">
             <For each={BEAT_MODES}>

@@ -232,7 +232,7 @@ function InfoSheet(props: { track: Track }) {
     if (pl) list.push(["Playlist", pl]);
     list.push(["Arquivo", baseName(t.path)]);
     list.push(["Letra", t.lrc_path ? "sincronizada" : "não disponível"]);
-    list.push(["track_id", t.id]);
+    list.push(["ID", t.id]);
     return list;
   };
   return (

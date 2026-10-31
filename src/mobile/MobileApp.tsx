@@ -198,6 +198,9 @@ export function mountMobile() {
     );
   }
   document.documentElement.setAttribute("data-platform", "android");
+  // A interface é PT-BR: com lang="en" do index.html o TalkBack lia o
+  // português com voz inglesa (A50).
+  document.documentElement.lang = "pt-BR";
 
   applyBeatMode();
   bootRoute();
