@@ -4769,6 +4769,9 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-dest { position: relative; }
 .crate-dest__btn {
   display: inline-flex; align-items: center; gap: 6px;
+  /* Encolhe com o contêiner (B23): sem min-width 0 o nome da pasta
+     empurrava a linha e a reticência abaixo nunca aparecia. */
+  min-width: 0; max-width: 100%;
   height: 40px; padding: 0 12px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-lg);
@@ -4780,6 +4783,9 @@ html[data-sidebar="icons"] .bridge-chip__text {
               color var(--dur-base) var(--ease-out);
 }
 .crate-dest__btn:hover { border-color: var(--fg-8); color: var(--fg-1); }
+/* O nome da pasta (último span: rótulo e seta vêm antes) corta com reticência. */
+.crate-dest__btn > span:last-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.crate-dest__btn > iconify-icon { flex: none; }
 .crate-dest__btn iconify-icon { width: 12px; height: 12px; color: var(--fg-6); }
 .crate-dest__lbl {
   font-size: var(--fs-label); font-weight: 700;
@@ -5462,6 +5468,26 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .crate-tidal-row__time {
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+.crate-tidal-row > .crate-tag--dest { min-width: 0; }
+/* Mesmos cortes da linha do Soulseek (B23, container `crate` do corpo):
+   abaixo de 1.050 px a pasta e a hora encolhem; abaixo de 760 o pedido
+   ganha a linha de baixo inteira e estado, pasta, Reenviar e hora ficam
+   em cima, sem rolagem lateral. */
+@container crate (max-width: 1049.98px) {
+  .crate-tidal-row { grid-template-columns: 96px minmax(72px, 130px) minmax(0, 1fr) auto 72px; column-gap: 12px; }
+}
+@container crate (max-width: 759.98px) {
+  .crate-tidal-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "state dest act time" "main main main main";
+    row-gap: 6px;
+  }
+  .crate-tidal-row > .crate-pill { grid-area: state; }
+  .crate-tidal-row > .crate-tag--dest { grid-area: dest; }
+  .crate-tidal-row > .crate-tidal-row__main { grid-area: main; }
+  .crate-tidal-row > .crate-tidal-row__act { grid-area: act; }
+  .crate-tidal-row > .crate-tidal-row__time { grid-area: time; }
 }
 
 /* === Seleção múltipla === */
