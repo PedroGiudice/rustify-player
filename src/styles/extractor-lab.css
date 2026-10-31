@@ -1892,6 +1892,8 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   margin: 0; padding: 10px 34px 4px;
   font-size: 12px; line-height: 1.4; color: var(--fg-5);
 }
+/* A mesma nota na rota /queue: colada na lista de cima (16 px), longe da seção de baixo (36). */
+.queue-view__note { margin: -20px 0 0; font-size: 12px; line-height: 1.4; color: var(--fg-5); }
 
 /* Fila editável: alça e tirar aparecem no hover/foco (secundários
    invisíveis em repouso). As vizinhas deslizam em --dur-med enquanto uma
