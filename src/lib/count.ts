@@ -4,10 +4,10 @@
 // Milhar com ponto (pt-BR): o toLocaleString() sem idioma seguia o do
 // sistema e saía "1,234" (A44, varredura de 31/10).
 
-/** "1 faixa", "12 faixas", "1.234 faixas". */
-export function plural(n: number, um: string, varios: string): string {
-  return `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
-}
+/** "1 faixa", "12 faixas", "1.234 faixas". Mora em tidalSearch (a aba
+    Tidal a criou primeiro); reexportada aqui para a biblioteca não
+    depender do módulo da Tidal pelo nome. */
+export { plural } from "./tidalSearch";
 
 /** Duração somada de uma lista: "48 min", "3 h 05 min". */
 export function totalDur(ms: number): string {

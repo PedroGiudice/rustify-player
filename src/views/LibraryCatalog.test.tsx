@@ -108,7 +108,7 @@ describe("acervo inteiro na navegação por álbuns e artistas", () => {
       const titles = Array.from(container.querySelectorAll(".card__title")).map((e) => e.textContent);
       expect(titles).toEqual(["Zulu"]);
     });
-    expect(container.querySelector(".view__head-hint")?.textContent).toBe("1 albums · 0 tracks");
+    expect(container.querySelector(".lib-hero__stats")?.textContent).toBe("1 álbum·0 faixas");
   });
 
   it("a página de um álbum do fim do alfabeto mostra capa e artista", async () => {
@@ -118,6 +118,6 @@ describe("acervo inteiro na navegação por álbuns e artistas", () => {
     await vi.waitFor(() => {
       expect(container.querySelector(".view__head img")?.getAttribute("src")).toBe("/covers/zulu.webp");
     });
-    expect(container.querySelector(".view__head-hint")?.textContent).toContain("Zeta");
+    expect(container.querySelector(".lib-hero__stats")?.textContent).toContain("Zeta");
   });
 });
