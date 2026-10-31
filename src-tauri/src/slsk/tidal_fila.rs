@@ -258,8 +258,13 @@ fn offline_msg(cfg: &SourcesConfig) -> String {
 /// `TIMEOUT`; erro de rede e erro de token viram mensagem para o usuário.
 pub fn list_jobs(cfg: &SourcesConfig) -> Result<FilaSnapshot, String> {
     let token = cfg.read_tidal_token().map_err(|_| SEM_TOKEN.to_string())?;
-    let resp = agent().get(&endpoint(cfg, &token)).call().map_err(|_| offline_msg(cfg))?;
-    resp.into_json::<FilaSnapshot>().map_err(|e| format!("resposta inválida da fila ({}): {e}", host_port(cfg)))
+    // Status de erro (token recusado, fila com defeito) NÃO é "VM fora":
+    // só falha de transporte vira o aviso de fila sem resposta (A26).
+    match agent().get(&endpoint(cfg, &token)).call() {
+        Ok(resp) => resp.into_json::<FilaSnapshot>().map_err(|e| bad_reply(cfg, e)),
+        Err(ureq::Error::Status(code, resp)) => Err(status_msg(cfg, code, resp)),
+        Err(ureq::Error::Transport(_)) => Err(offline_msg(cfg)),
+    }
 }
 
 /// Enfileira um download. Validação do link acontece ANTES de qualquer
@@ -280,10 +285,37 @@ pub fn enqueue(cfg: &SourcesConfig, url: &str, playlist: &str) -> Result<String,
 
 /// Erro de status da fila -> texto da tela. A fila manda `{"error": "..."}`
 /// em PT-BR (400 texto curto/ref inválida, 404, 502 Tidal sem resposta, 503
-/// sessão expirada); sem corpo legível, cai no código.
+/// sessão expirada); sem corpo legível, cai em [`status_text`]. Host e
+/// código ficam só no log (A26: o dono não interpreta IP nem "respondeu 503").
 fn status_msg(cfg: &SourcesConfig, code: u16, resp: ureq::Response) -> String {
     let body: ErrBody = resp.into_json().unwrap_or_default();
-    body.error.unwrap_or_else(|| format!("fila ({}) respondeu {code}", host_port(cfg)))
+    tracing::warn!(host = %host_port(cfg), code, "tidal-fila: a fila respondeu com erro");
+    status_text(code, body.error)
+}
+
+/// Pura: texto da tela para um status de erro da fila. 401/403 é sempre o
+/// token (o corpo, se houver, é técnico); nos demais o corpo da fila vence.
+fn status_text(code: u16, body_error: Option<String>) -> String {
+    if code == 401 || code == 403 {
+        return "A VM recusou o token da fila.".to_string();
+    }
+    if let Some(e) = body_error.map(|e| e.trim().to_string()).filter(|e| !e.is_empty()) {
+        return e;
+    }
+    match code {
+        400 | 422 => "A fila recusou o pedido.".to_string(),
+        404 => "A fila não encontrou o que foi pedido.".to_string(),
+        502 | 504 => "A Tidal não respondeu à fila. Tente de novo em instantes.".to_string(),
+        503 => "A fila da Tidal está ocupada ou a sessão expirou. Tente de novo em instantes.".to_string(),
+        _ => "A fila da Tidal falhou ao responder. O motivo ficou no log do app.".to_string(),
+    }
+}
+
+/// Resposta que o app não entende (JSON fora do contrato): frase sem host,
+/// detalhe no log.
+fn bad_reply(cfg: &SourcesConfig, e: impl std::fmt::Display) -> String {
+    tracing::warn!(host = %host_port(cfg), err = %e, "tidal-fila: resposta inválida da fila");
+    "A fila da Tidal mandou uma resposta que o app não entende. O motivo ficou no log do app.".to_string()
 }
 
 fn get_json<T: serde::de::DeserializeOwned>(cfg: &SourcesConfig, rota: &str, query: &[(&str, &str)]) -> Result<T, String> {
@@ -293,7 +325,7 @@ fn get_json<T: serde::de::DeserializeOwned>(cfg: &SourcesConfig, rota: &str, que
         req = req.query(k, v);
     }
     match req.call() {
-        Ok(resp) => resp.into_json::<T>().map_err(|e| format!("resposta inválida da fila ({}): {e}", host_port(cfg))),
+        Ok(resp) => resp.into_json::<T>().map_err(|e| bad_reply(cfg, e)),
         Err(ureq::Error::Status(code, resp)) => Err(status_msg(cfg, code, resp)),
         Err(ureq::Error::Transport(_)) => Err(offline_msg(cfg)),
     }
@@ -351,14 +383,12 @@ pub fn enqueue_selection(
 fn post_fila(cfg: &SourcesConfig, token: &str, body: serde_json::Value) -> Result<String, String> {
     match agent().post(&endpoint(cfg, token)).send_json(body) {
         Ok(resp) => {
-            let ok: EnqueueOk = resp.into_json().map_err(|e| format!("resposta inválida da fila ({}): {e}", host_port(cfg)))?;
-            ok.id.ok_or_else(|| format!("fila ({}) não devolveu o id do job", host_port(cfg)))
+            let ok: EnqueueOk = resp.into_json().map_err(|e| bad_reply(cfg, e))?;
+            ok.id.ok_or_else(|| bad_reply(cfg, "sem id do job"))
         }
-        Err(ureq::Error::Status(400, resp)) => {
-            let body: ErrBody = resp.into_json().unwrap_or_default();
-            Err(body.error.unwrap_or_else(|| "pedido recusado pela fila".to_string()))
-        }
-        Err(ureq::Error::Status(code, _)) => Err(format!("fila ({}) respondeu {code}", host_port(cfg))),
+        // Todo status passa pelo mesmo texto: antes só o 400 lia o corpo, e
+        // a sessão vencida (503) saía como "fila (http://IP:porta) respondeu 503".
+        Err(ureq::Error::Status(code, resp)) => Err(status_msg(cfg, code, resp)),
         Err(ureq::Error::Transport(_)) => Err(offline_msg(cfg)),
     }
 }
@@ -374,8 +404,8 @@ pub fn resend(cfg: &SourcesConfig, job_id: &str) -> Result<String, String> {
     let token = cfg.read_tidal_token().map_err(|_| SEM_TOKEN.to_string())?;
     match agent().post(&api_url(cfg, &token, &format!("fila/{job_id}/reenviar"))).send_bytes(b"") {
         Ok(resp) => {
-            let ok: EnqueueOk = resp.into_json().map_err(|e| format!("resposta inválida da fila ({}): {e}", host_port(cfg)))?;
-            ok.id.ok_or_else(|| format!("fila ({}) não devolveu o id do job", host_port(cfg)))
+            let ok: EnqueueOk = resp.into_json().map_err(|e| bad_reply(cfg, e))?;
+            ok.id.ok_or_else(|| bad_reply(cfg, "sem id do job"))
         }
         Err(ureq::Error::Status(code, resp)) => Err(status_msg(cfg, code, resp)),
         Err(ureq::Error::Transport(_)) => Err(offline_msg(cfg)),
@@ -448,6 +478,38 @@ mod tests {
             tidal_fila_url: "http://10.0.0.1:8470".into(),
             tidal_fila_token_file: PathBuf::from("/nao/existe/token.txt"),
         }
+    }
+
+    // ── texto de erro da fila (A26: sem host, sem código cru) ──────────
+    #[test]
+    fn token_recusado_diz_token_e_nao_vm_fora() {
+        assert_eq!(status_text(401, None), "A VM recusou o token da fila.");
+        assert_eq!(status_text(403, Some("forbidden".into())), "A VM recusou o token da fila.");
+    }
+
+    #[test]
+    fn corpo_da_fila_vence_quando_existe() {
+        assert_eq!(status_text(503, Some("sessão da Tidal expirada".into())), "sessão da Tidal expirada");
+        assert_eq!(status_text(400, Some("link já está na fila".into())), "link já está na fila");
+    }
+
+    #[test]
+    fn sem_corpo_cai_em_frase_sem_host_nem_codigo_sozinho() {
+        for code in [400u16, 404, 500, 502, 503, 504] {
+            let m = status_text(code, None);
+            assert!(!m.contains("10.0.0.1") && !m.contains("8470") && !m.contains("http"), "{m}");
+            assert!(!m.is_empty());
+        }
+        assert_eq!(status_text(502, None), "A Tidal não respondeu à fila. Tente de novo em instantes.");
+        assert_eq!(status_text(503, None), "A fila da Tidal está ocupada ou a sessão expirou. Tente de novo em instantes.");
+        assert_eq!(status_text(400, Some("  ".into())), "A fila recusou o pedido.");
+    }
+
+    #[test]
+    fn resposta_ilegivel_sem_host() {
+        let c = cfg();
+        let m = bad_reply(&c, "x");
+        assert!(!m.contains("10.0.0.1") && !m.contains("8470"), "{m}");
     }
 
     // ── validação do link (paridade com URL_RE do tidal_fila.py) ──────

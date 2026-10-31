@@ -33,7 +33,7 @@ import {
   slskDownload, slskTryOtherSource, slskCancel,
   parseSlskSearchError, libListFolders, libGetTracksByIds, formatDuration,
   crateScSearch, crateScResolve, crateScProbe, crateScArtwork, crateDownload, crateSourcesStatus,
-  crateTidalJobs,
+  crateTidalResend, slskClearFinished,
   type SlskStatus, type SearchSnapshot, type ResultGroup, type Candidate,
   type DownloadJob, type FolderPlaylist, type Track, type RejectReason, type Source,
   type ScResult, type ScProbe, type SourcesStatus, type ConfirmedMeta, type FormatIn,
@@ -41,12 +41,18 @@ import {
 } from "../tauri";
 import { guessFromSoundCloud, cleanTitle, type MetaGuess } from "../lib/trackMetaGuess";
 import { dedupMatch } from "../lib/dedup";
-import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen } from "../store/crate";
+import {
+  jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen,
+  tidal, refreshTidal, setCrateViewOpen, saveSearchCache, loadSearchCache,
+} from "../store/crate";
+import { shortTidalLink, tidalStatusLabel, tidalStatusTone, isTidalActive } from "../lib/tidalFila";
+import { plural } from "../lib/tidalSearch";
 import { playTrack } from "../components/PlayerBar";
 import { Icon, ICONS } from "../components/Icon";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { CopyLinkButton } from "./crate/CopyLinkButton";
 import TidalTab from "./crate/TidalTab";
+import { FolderPicker, mergeFolders } from "./crate/FolderPicker";
 
 /** Id do seletor de destino da toolbar no `openDest` da view (as linhas
     usam o group_key, que sempre tem separador \u0001 — não colide). */
@@ -63,10 +69,6 @@ const SEARCH_WINDOW_MS = 25_000;
 
 /** Status das fontes (token do SoundCloud, ffmpeg): spec §5.4. */
 const SOURCES_POLL_MS = 30_000;
-
-/** Poll da fila da Tidal — roda na VM, não reage a input local; 10 s
-    (brief da seção Tidal) é folgado o bastante pra não martelar a rede. */
-const TIDAL_POLL_MS = 10_000;
 
 /** Link colado do SoundCloud vai para o resolve, não para a busca.
     Inclui o curto `on.soundcloud.com/<id>` do app do celular (o backend
@@ -93,9 +95,11 @@ const IN_FLIGHT = new Set<DownloadJob["state"]["kind"]>([
 ]);
 
 /** Estados em que a linha oferece [Cancelar] — o ⌫ do teclado cancela
-    exatamente nos mesmos (crate-2: antes cancelava também stalled/
-    processing, que a UI não deixa cancelar). */
-const CANCELLABLE = new Set<DownloadJob["state"]["kind"]>(["queued", "enqueued", "downloading"]);
+    exatamente nos mesmos (crate-2). `stalled` entrou em 31/10/2026 (A25):
+    travado sem outra fonte ficava sem saída; o backend aceita
+    stalled -> canceled. Processing/indexing seguem fora (o arquivo já
+    saiu do slskd). */
+const CANCELLABLE = new Set<DownloadJob["state"]["kind"]>(["queued", "enqueued", "downloading", "stalled"]);
 
 /** Há fonte ainda não tentada? Mesma regra do backend
     (`try_other_source_sync`: primeira alternativa fora de
@@ -103,6 +107,13 @@ const CANCELLABLE = new Set<DownloadJob["state"]["kind"]>(["queued", "enqueued",
     só devolve "sem outras fontes" (crate-6). */
 function hasUntriedSource(job: DownloadJob): boolean {
   return job.alternates.some((c) => !job.tried_source_ids.includes(c.id));
+}
+
+/** Soulseek que falhou sem fonte nova: [Tentar de novo] refaz a fonte atual
+    (A25). O backend usa o mesmo comando do [Trocar fonte]: sem alternativa e
+    com o job em `failed`, reenfileira a mesma (aresta failed->queued). */
+function canRetrySoulseek(job: DownloadJob): boolean {
+  return job.source.kind === "soulseek" && job.state.kind === "failed" && !hasUntriedSource(job);
 }
 
 /** Respostas de erro do coordinator (strings fixas do backend) → texto
@@ -118,6 +129,27 @@ const BACKEND_ERRORS: Record<string, string> = {
   "sem outras fontes disponíveis": "não há outras fontes para tentar",
   "job em estado que não aceita troca de fonte agora": "o download está num estado que não aceita troca de fonte agora",
 };
+
+/** Motivo de falha gravado pelo coordinator -> texto de tela (A26). O
+    slskd devolve o estado cru da transferência ("Completed, Errored"); o
+    texto cru continua no title da linha, para diagnóstico. */
+const FAIL_REASONS: Record<string, string> = {
+  "Completed, Errored": "o peer interrompeu a transferência",
+  "Completed, TimedOut": "o peer não respondeu",
+  "Completed, Rejected": "o peer recusou o pedido",
+  "Completed, Cancelled": "o peer cancelou a transferência",
+  "Completed, Aborted": "o peer cancelou a transferência",
+  "slskd inalcancavel": "o slskd não respondeu",
+  "transfer sumiu do slskd": "a transferência sumiu do slskd",
+  "transfer com erro apos reinicio": "a transferência falhou enquanto o app estava fechado",
+};
+
+export function failReasonText(raw: string): { text: string; raw: string | null } {
+  const known = FAIL_REASONS[raw.trim()];
+  if (known) return { text: known, raw };
+  if (/^Completed,/.test(raw)) return { text: "a transferência falhou no slskd", raw };
+  return { text: raw, raw: null };
+}
 
 function errorText(e: unknown): string {
   const raw =
@@ -179,7 +211,7 @@ function khz(hz: number): string {
 }
 
 function rejectReasonText(reason: RejectReason): string {
-  if (isAlreadyOwnedReason(reason)) return "já tinhas — o arquivo ficou em downloads";
+  if (isAlreadyOwnedReason(reason)) return "você já tinha esta faixa; o arquivo ficou em downloads";
   if (typeof reason === "object" && reason !== null && "lossy_format" in reason) {
     return `${reason.lossy_format.format} não entra: só lossless`;
   }
@@ -273,7 +305,8 @@ function canRetryExternal(job: DownloadJob): boolean {
   return !isAlreadyOwnedReason(r) && !isLossyReason(r);
 }
 
-/** Badge da origem (à esquerda do formato). */
+/** Badge da origem (à esquerda do formato). Só nas linhas de download: nos
+    resultados a seção já diz a origem (A11). */
 function OriginBadge(props: { name: string }) {
   return <span class="crate-origin">{props.name}</span>;
 }
@@ -381,56 +414,44 @@ async function openManualPath(path: string) {
   }
 }
 
-// ── Destino: chip "DESTINO → <playlist> ▾" com popover de pastas ──
-function DestChip(props: {
-  value: string | null;
-  placeholder: string;
-  folders: FolderPlaylist[];
-  /** `toolbar` = caixa alta de 40px; `row` = pílula de 24px na linha. */
-  variant: "toolbar" | "row";
-  warn?: boolean;
-  override?: boolean;
-  open: boolean;
-  onToggle: () => void;
-  onPick: (folder: string) => void;
-}) {
+/** Etapas da chegada de um download (B29): baixar, organizar (conferir e
+    mover), indexar e pronto. Só o download tem porcentagem; nas etapas sem
+    número o trecho ativo ganha um destaque corredio (transform), parado com
+    movimento reduzido. */
+const ARRIVAL_STEPS = ["baixar", "organizar", "indexar", "pronto"] as const;
+export function arrivalStep(kind: DownloadJob["state"]["kind"]): number {
+  switch (kind) {
+    case "downloading": return 0;
+    case "processing": return 1;
+    case "indexing": return 2;
+    case "ready": return 3;
+    default: return -1;
+  }
+}
+
+function ArrivalTrack(props: { kind: DownloadJob["state"]["kind"]; pct?: number }) {
+  const step = () => arrivalStep(props.kind);
   return (
-    <div class="crate-dest">
-      <button
-        type="button"
-        class={
-          (props.variant === "row" ? "crate-chip crate-dest__btn" : "crate-dest__btn")
-          + (props.warn ? " crate-dest__btn--warn" : "")
-        }
-        data-override={props.override ? "true" : undefined}
-        title={props.variant === "row" ? "Destino desta faixa" : "Destino de tudo que for baixado"}
-        aria-haspopup="true"
-        aria-expanded={props.open ? "true" : "false"}
-        onClick={(e) => { e.stopPropagation(); props.onToggle(); }}
-      >
-        <Show when={props.variant === "toolbar"}>
-          <span class="crate-dest__lbl">Destino</span>
-        </Show>
-        <span class="crate-dest__arrow">→</span>
-        <span>{props.value ?? props.placeholder}</span>
-        <Icon name={ICONS.chevronDown} size={12} />
-      </button>
-      <Show when={props.open}>
-        <div class="crate-dest__menu" onClick={(e) => e.stopPropagation()}>
-          <Show when={props.folders.length === 0}>
-            <div class="crate-dest__opt" style={{ opacity: 0.6, cursor: "default" }}>
-              nenhuma playlist ainda
-            </div>
-          </Show>
-          <For each={props.folders}>
-            {(f) => (
-              <button type="button" class="crate-dest__opt" onClick={() => props.onPick(f.name)}>
-                {f.name}
-              </button>
-            )}
-          </For>
-        </div>
-      </Show>
+    <div
+      class="crate-arrival"
+      role="progressbar"
+      aria-label={`Chegada: ${ARRIVAL_STEPS[Math.max(0, step())]}`}
+      aria-valuemin="0"
+      aria-valuemax="4"
+      aria-valuenow={Math.max(0, step())}
+    >
+      <For each={[0, 1, 2, 3]}>
+        {(i) => (
+          <span class="crate-arrival__seg" data-done={i < step() ? "true" : undefined} data-on={i === step() ? "true" : undefined}>
+            <Show when={i === 0 && step() === 0}>
+              <i style={{ transform: `scaleX(${Math.max(0, Math.min(100, props.pct ?? 0)) / 100})` }} />
+            </Show>
+            <Show when={i === step() && i > 0 && i < 3}>
+              <i class="crate-arrival__run" />
+            </Show>
+          </span>
+        )}
+      </For>
     </div>
   );
 }
@@ -442,21 +463,23 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
   return (
     <Show when={props.state !== "idle"}>
       <div class="crate-r-state">
+        {/* Um "no acervo" só (A10): o mesmo selo do pronto; "já estava" vai no texto. */}
         <Show when={props.state === "owned"}>
-          <span class="crate-pill crate-pill--own">
+          <span class="crate-pill crate-pill--ready">
             <Icon name={ICONS.check} size={10} /> no acervo
           </span>
           <Show when={props.owned}>
-            <span class="crate-st-dim">{props.owned!.artist} — {props.owned!.title}</span>
+            <span class="crate-st-dim">já estava: {props.owned!.artist} — {props.owned!.title}</span>
           </Show>
         </Show>
 
+        {/* Espera normal é neutra (A10): âmbar só em travou, quase e compra/e-mail pendente. */}
         <Show when={props.state === "queued"}>
-          <span class="crate-pill crate-pill--warn">aguardando vaga</span>
+          <span class="crate-pill crate-pill--sub">aguardando vaga</span>
         </Show>
 
         <Show when={props.state === "enqueued"}>
-          <span class="crate-pill crate-pill--warn">na fila</span>
+          <span class="crate-pill crate-pill--sub">na fila</span>
           {(() => {
             const job = j();
             // Origem externa: aceito pela fonte, aguardando início (spec
@@ -468,7 +491,7 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
             return (
               <>
                 <Show when={pos != null}>
-                  <span class="crate-st-mono crate-st-txt--warn">fila do peer: {pos}</span>
+                  <span class="crate-st-mono crate-st-dim">fila do peer: {pos}</span>
                 </Show>
                 <span class="crate-st-dim">sem estimativa — o peer decide a ordem</span>
               </>
@@ -484,7 +507,7 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
             return (
               <>
                 <span class="crate-pill crate-pill--live">baixando</span>
-                <div class="crate-prog"><i style={{ transform: `scaleX(${st.pct / 100})` }} /></div>
+                <ArrivalTrack kind="downloading" pct={st.pct} />
                 <span class="crate-st-mono crate-st-txt--live">
                   {Math.round(st.pct)}% · {formatSpeed(st.bps)}
                   {st.eta_s != null ? ` · ${formatEta(st.eta_s)}` : ""}
@@ -505,13 +528,17 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
 
         <Show when={props.state === "processing"}>
           <span class="crate-pill crate-pill--sub">organizando…</span>
+          <ArrivalTrack kind="processing" />
+          <span class="crate-st-dim">conferindo o áudio e movendo para a pasta</span>
         </Show>
         <Show when={props.state === "indexing"}>
           <span class="crate-pill crate-pill--sub">indexando…</span>
+          <ArrivalTrack kind="indexing" />
+          <span class="crate-st-dim">entrando na biblioteca</span>
         </Show>
 
         <Show when={props.state === "ready"}>
-          <span class="crate-pill crate-pill--ready">
+          <span class="crate-pill crate-pill--ready crate-arrived">
             <Icon name={ICONS.check} size={10} /> no acervo
           </span>
           <Show when={j()?.state.kind === "ready" ? (j()!.state as { track_id: string }).track_id : null}>
@@ -523,16 +550,17 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
         <Show when={props.state === "rejected"}>
           <span class="crate-pill crate-pill--err">recusada</span>
           <Show when={j() && j()!.state.kind === "rejected"}>
-            <span class="crate-st-txt--err">
-              {rejectReasonText((j()!.state as { reason: RejectReason }).reason)}
-            </span>
+            {(() => {
+              const t = rejectReasonText((j()!.state as { reason: RejectReason }).reason);
+              return <span class="crate-st-txt--err" title={t}>{t}</span>;
+            })()}
           </Show>
         </Show>
 
         <Show when={props.state === "manual"}>
           <span class="crate-pill crate-pill--warn">quase</span>
           <Show when={j() && j()!.state.kind === "manual"}>
-            <span class="crate-st-txt--warn">
+            <span class="crate-st-txt--warn" title={(j()!.state as { path: string }).path}>
               baixou, não achei o arquivo — está em {(j()!.state as { path: string }).path}
             </span>
           </Show>
@@ -555,9 +583,10 @@ function StateLine(props: { state: RowState; job: DownloadJob | null; owned: Res
         <Show when={props.state === "failed"}>
           <span class="crate-pill crate-pill--err">falhou</span>
           <Show when={j() && j()!.state.kind === "failed"}>
-            <span class="crate-st-txt--err">
-              {(j()!.state as { reason: string }).reason}
-            </span>
+            {(() => {
+              const r = failReasonText((j()!.state as { reason: string }).reason);
+              return <span class="crate-st-txt--err" title={r.raw ? `${r.text} (slskd: ${r.raw})` : r.text}>{r.text}</span>;
+            })()}
           </Show>
         </Show>
       </div>
@@ -626,7 +655,7 @@ function SourcesPanel(props: {
                     <span class="crate-pill crate-pill--sub">tentada</span>
                   </Show>
                   <Show when={c().warn}>
-                    <span class="crate-pill crate-pill--warn">⚠ {c().warn}</span>
+                    <span class="crate-pill crate-pill--warn"><Icon name={ICONS.alert} size={10} /> {c().warn}</span>
                   </Show>
                 </div>
                 <span class="crate-badge">{candidateQuality(c(), props.group.quality_label)}</span>
@@ -671,7 +700,7 @@ function CrateRow(props: {
   destOverridden: boolean;
   isSelected: boolean;
   isExpanded: boolean;
-  folders: FolderPlaylist[];
+  folders: string[];
   /** Estado do seletor vive na view (um aberto por vez, sobrevive ao
       poll — crate-1/crate-11), não num signal local da linha. */
   destOpen: boolean;
@@ -713,7 +742,6 @@ function CrateRow(props: {
             {props.group.display_artist ?? "—"}
             {props.group.album_hint ? ` · ${props.group.album_hint}` : ""}
           </div>
-          <OriginBadge name="Soulseek" />
         </div>
 
         <span class="crate-badge">{props.group.quality_label}</span>
@@ -731,13 +759,13 @@ function CrateRow(props: {
         <Show
           when={!props.job}
           fallback={
-            <span class="crate-chip crate-dest__btn">
+            <span class="crate-tag crate-tag--dest" title="Pasta de destino em ~/Music">
               <span class="crate-dest__arrow">→</span>
               <span>{props.job?.dest_playlist ?? props.dest ?? "—"}</span>
             </span>
           }
         >
-          <DestChip
+          <FolderPicker
             variant="row"
             value={props.dest}
             placeholder="escolher"
@@ -746,6 +774,7 @@ function CrateRow(props: {
             open={props.destOpen}
             folders={props.folders}
             onToggle={() => setDestOpen(!props.destOpen)}
+            onClose={() => setDestOpen(false)}
             onPick={(f) => { props.onPickDest(f); setDestOpen(false); }}
           />
         </Show>
@@ -757,10 +786,12 @@ function CrateRow(props: {
         </div>
 
         <div class="crate-r-act">
+          {/* Uma linha com peso de botão por vez (A11): o Baixar é secundário e
+              vira o primário só na linha selecionada (crate-btn--lead). */}
           <Show when={state() === "idle"}>
             <button
               type="button"
-              class="crate-btn crate-btn--primary"
+              class="crate-btn crate-btn--lead"
               onClick={(e) => {
                 e.stopPropagation();
                 if (!props.dest) { setDestOpen(true); return; }
@@ -782,7 +813,7 @@ function CrateRow(props: {
           <Show when={state() === "ready"}>
             <button
               type="button"
-              class="crate-btn crate-btn--primary"
+              class="crate-btn crate-btn--lead"
               onClick={(e) => {
                 e.stopPropagation();
                 if (props.job && props.job.state.kind === "ready") playById(props.job.state.track_id);
@@ -814,6 +845,16 @@ function CrateRow(props: {
               <Icon name={ICONS.refresh} size={12} /> Trocar fonte
             </button>
           </Show>
+          <Show when={props.job != null && canRetrySoulseek(props.job)}>
+            <button
+              type="button"
+              class="crate-btn"
+              title="Pede a mesma fonte de novo"
+              onClick={(e) => { e.stopPropagation(); if (props.job) props.onTrySource(props.job.job_id); }}
+            >
+              <Icon name={ICONS.refresh} size={12} /> Tentar de novo
+            </button>
+          </Show>
           <Show when={state() === "rejected" && isAlreadyOwnedRejection()}>
             <button
               type="button"
@@ -825,7 +866,7 @@ function CrateRow(props: {
                 }
               }}
             >
-              Ir pra faixa
+              Ir para a faixa
             </button>
           </Show>
           <Show when={state() === "manual"}>
@@ -889,14 +930,12 @@ function CrateJobRow(props: {
         </Show>
 
         {/* Troca de fonte só existe no Soulseek; nas outras origens a
-            coluna fica vazia. */}
+            coluna fica vazia. Texto, não chip: não se clica (A11). */}
         <Show when={props.job.source.kind === "soulseek"} fallback={<span />}>
-          <span class="crate-chip">
-            <span>{props.job.alternates.length + 1} fontes</span>
-          </span>
+          <span class="crate-tag">{plural(props.job.alternates.length + 1, "fonte", "fontes")}</span>
         </Show>
 
-        <span class="crate-chip crate-dest__btn">
+        <span class="crate-tag crate-tag--dest" title="Pasta de destino em ~/Music">
           <span class="crate-dest__arrow">→</span>
           <span>{props.job.dest_playlist}</span>
         </span>
@@ -904,7 +943,7 @@ function CrateJobRow(props: {
         <div class="crate-r-dur" />
 
         <div class="crate-r-act">
-          <Show when={kind() === "queued" || kind() === "enqueued" || kind() === "downloading"}>
+          <Show when={CANCELLABLE.has(kind())}>
             <button type="button" class="crate-btn crate-btn--quiet" onClick={props.onCancel}>
               <Icon name={ICONS.close} size={12} /> Cancelar
             </button>
@@ -919,10 +958,15 @@ function CrateJobRow(props: {
               <Icon name={ICONS.refresh} size={12} /> Tentar de novo
             </button>
           </Show>
+          <Show when={canRetrySoulseek(props.job)}>
+            <button type="button" class="crate-btn" title="Pede a mesma fonte de novo" onClick={props.onTrySource}>
+              <Icon name={ICONS.refresh} size={12} /> Tentar de novo
+            </button>
+          </Show>
           <Show when={props.job.state.kind === "ready"}>
             <button
               type="button"
-              class="crate-btn crate-btn--primary"
+              class="crate-btn"
               onClick={() => { if (props.job.state.kind === "ready") playById(props.job.state.track_id); }}
             >
               <Icon name={ICONS.play} size={12} /> Tocar
@@ -1008,7 +1052,6 @@ function ScRow(props: {
         <div class="crate-r-main">
           <div class="crate-r-title">{cleanTitle(props.r.title) || props.r.title}</div>
           <div class="crate-r-sub">{props.r.user_name}</div>
-          <OriginBadge name="SoundCloud" />
         </div>
 
         <span class="crate-avail" data-kind={kind()}>{AVAIL_LABEL[kind()]}</span>
@@ -1027,7 +1070,7 @@ function ScRow(props: {
           <Show when={kind() === "native" && state() === "idle" && !props.cardOpen}>
             <button
               type="button"
-              class="crate-btn crate-btn--primary"
+              class="crate-btn crate-btn--lead"
               onClick={(e) => { e.stopPropagation(); props.onDownload(); }}
             >
               <Icon name={ICONS.download} size={12} /> Baixar
@@ -1053,7 +1096,7 @@ function ScRow(props: {
           <Show when={state() === "ready"}>
             <button
               type="button"
-              class="crate-btn crate-btn--primary"
+              class="crate-btn crate-btn--lead"
               onClick={() => { if (props.job && props.job.state.kind === "ready") playById(props.job.state.track_id); }}
             >
               <Icon name={ICONS.play} size={12} /> Tocar
@@ -1091,10 +1134,11 @@ function ScRow(props: {
 
 function ConfirmCard(props: {
   c: CardState;
-  folders: FolderPlaylist[];
+  folders: string[];
   destOpen: boolean;
   submitting: boolean;
   onDestToggle: () => void;
+  onDestClose: () => void;
   onPickDest: (dest: string) => void;
   onField: (field: "artist" | "title", value: string) => void;
   onYear: (year: number | null) => void;
@@ -1184,7 +1228,7 @@ function ConfirmCard(props: {
           </label>
           <div class="crate-card__field">
             <span>Playlist</span>
-            <DestChip
+            <FolderPicker
               variant="row"
               value={props.c.dest}
               placeholder="escolher"
@@ -1192,6 +1236,7 @@ function ConfirmCard(props: {
               open={props.destOpen}
               folders={props.folders}
               onToggle={props.onDestToggle}
+              onClose={props.onDestClose}
               onPick={props.onPickDest}
             />
           </div>
@@ -1252,14 +1297,66 @@ function ConfirmCard(props: {
   );
 }
 
+// ── Job da fila da Tidal (B6: mora na aba Fila desde 31/10/2026) ─
+function TidalJobRow(props: { job: TidalJob; onResend: (j: TidalJob) => void }) {
+  const tone = () => tidalStatusTone(props.job.status);
+  const horario = () => props.job.fim ?? props.job.inicio ?? props.job.added;
+  const isSel = () => (props.job.n_faixas ?? 0) > 0;
+  const canResend = () => isSel() && (props.job.status === "parcial" || props.job.status === "falhou");
+  return (
+    <div class="crate-row-wrap">
+      <div class="crate-tidal-row">
+        <span class={`crate-pill crate-pill--${tone()}`}>{tidalStatusLabel(props.job.status)}</span>
+        <span class="crate-tag crate-tag--dest" title="Pasta de destino em ~/Music">
+          <span class="crate-dest__arrow">→</span>
+          <span>{props.job.playlist}</span>
+        </span>
+        <div class="crate-tidal-row__main">
+          <div class="crate-tidal-row__line">
+            <Show
+              when={isSel()}
+              fallback={<CopyLinkButton url={props.job.url} label={shortTidalLink(props.job.url)} hint="Copia o link da Tidal" quiet />}
+            >
+              <span class="tdl-jobtitle">
+                {props.job.titulo || "Seleção"} <span class="tdl-num">{plural(props.job.n_faixas ?? 0, "faixa", "faixas")}</span>
+              </span>
+            </Show>
+            <OriginBadge name="Tidal" />
+          </div>
+          <Show when={props.job.resumo}>
+            {/* Resumo da fila em até duas linhas; inteiro no title (A26). */}
+            <p class="crate-tidal-row__resumo" title={props.job.resumo}>{props.job.resumo}</p>
+          </Show>
+        </div>
+        <Show when={canResend()} fallback={<span />}>
+          <button type="button" class="crate-btn crate-btn--quiet" title="Volta para a fila com as mesmas faixas"
+            onClick={() => props.onResend(props.job)}>
+            Reenviar
+          </button>
+        </Show>
+        <span class="crate-r-dur crate-tidal-row__time">{horario()}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── View principal ─────────────────────────────────────────────
 export default function Crate(props: { param?: string | null }) {
   const [tab, setTab] = createSignal<"search" | "queue" | "tidal">("search");
   const [tidalVisited, setTidalVisited] = createSignal(false);
   createEffect(() => { if (tab() === "tidal") setTidalVisited(true); });
-  const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : "");
-  const [searchId, setSearchId] = createSignal<string | null>(null);
-  const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(null);
+  // Busca preservada (B28): sem pedido novo pela rota, a última busca volta
+  // por 10 min com a idade à vista ("resultado de há N min").
+  const cached = props.param ? null : loadSearchCache();
+  const [restoredAt, setRestoredAt] = createSignal<number | null>(cached?.savedAt ?? null);
+  /** Quando a busca atual saiu: a idade e os 10 min contam daqui, não da saída da view. */
+  let searchedAt = cached?.savedAt ?? Date.now();
+  const [now, setNow] = createSignal(Date.now());
+  // "Buscar na Tidal" (B28): pedido de busca para a aba Tidal.
+  const [tidalRequest, setTidalRequest] = createSignal<{ q: string; n: number } | null>(null);
+  const [query, setQuery] = createSignal(props.param ? decodeParam(props.param) : cached?.query ?? "");
+  const [searchId, setSearchId] = createSignal<string | null>(cached?.searchId ?? null);
+  const [snapshot, setSnapshot] = createSignal<SearchSnapshot | null>(cached?.snapshot ?? null);
   // "Buscando" = pedido em andamento no IPC OU a busca atual ainda na
   // janela do backend. Derivado do snapshot (fonte da verdade), em vez de
   // um signal próprio que dessincronizava quando uma busca nova era
@@ -1292,31 +1389,29 @@ export default function Crate(props: { param?: string | null }) {
   // Qual seletor de destino está aberto: TOOLBAR_DEST ou o group_key da
   // linha. Um signal só = um aberto por vez (crate-11).
   const [openDest, setOpenDest] = createSignal<string | null>(null);
-  const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>({});
-  const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>({});
+  const [rowOverrides, setRowOverrides] = createSignal<Record<string, string>>(cached?.rowOverrides ?? {});
+  const [groupJobs, setGroupJobs] = createSignal<Record<string, string>>(cached?.groupJobs ?? {});
 
   // SoundCloud (spec §5): busca própria, paralela à do Soulseek, e um card
   // de confirmação aberto por vez.
-  const [scResults, setScResults] = createSignal<ScResult[]>([]);
-  const [scState, setScState] = createSignal<"idle" | "loading" | "done" | "empty" | "error">("idle");
-  const [scError, setScError] = createSignal<string | null>(null);
+  const [scResults, setScResults] = createSignal<ScResult[]>(cached?.scResults ?? []);
+  // Uma busca do SoundCloud que estava em voo ao sair não volta como "Buscando…" eterno.
+  const [scState, setScState] = createSignal<"idle" | "loading" | "done" | "empty" | "error">(
+    cached ? (cached.scState === "loading" ? "idle" : cached.scState) : "idle",
+  );
+  const [scError, setScError] = createSignal<string | null>(cached?.scError ?? null);
   const [card, setCard] = createStore<{ c: CardState | null }>({ c: null });
   const [cardSubmitting, setCardSubmitting] = createSignal(false);
   const [sourcesStatus, setSourcesStatus] = createSignal<SourcesStatus | null>(null);
 
-  // Tidal (seção do Crate, backend = fila remota na VM): estado da fila é
-  // ciclo próprio (poll de 10s), independente da busca Soulseek/SoundCloud.
-  const [tidalJobs, setTidalJobs] = createSignal<TidalJob[]>([]);
-  const [tidalPastas, setTidalPastas] = createSignal<string[]>([]);
-  const [tidalLoad, setTidalLoad] = createSignal<"loading" | "loaded" | "error">("loading");
-  const [tidalLoadError, setTidalLoadError] = createSignal<string | null>(null);
+  // Tidal: a fila da VM mora no store (store/crate.ts, A17); aqui só se lê.
 
   // Grupos num store reconciliado por `group_key`: cada slsk_results chega
   // como objeto novo (o backend clona o snapshot), e o <For> por referência
   // recriava todas as linhas a cada poll — seletor de destino fechando
   // sozinho, foco perdido, hover piscando (crate-1). Com o reconcile, a
   // mesma faixa mantém a mesma linha e só os campos alterados notificam.
-  const [results, setResults] = createStore<{ groups: ResultGroup[] }>({ groups: [] });
+  const [results, setResults] = createStore<{ groups: ResultGroup[] }>({ groups: cached?.snapshot?.groups ?? [] });
 
   let inputEl!: HTMLInputElement;
   let listEl: HTMLDivElement | undefined;
@@ -1324,7 +1419,7 @@ export default function Crate(props: { param?: string | null }) {
   let statusTimer: ReturnType<typeof setInterval> | undefined;
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
   let sourcesTimer: ReturnType<typeof setInterval> | undefined;
-  let tidalTimer: ReturnType<typeof setInterval> | undefined;
+  let ageTimer: ReturnType<typeof setInterval> | undefined;
   /** Número da chamada de doSearch mais recente (só ela baixa o pending). */
   let searchSeq = 0;
   /** Idem para a busca do SoundCloud e para o card (resposta atrasada de
@@ -1333,7 +1428,7 @@ export default function Crate(props: { param?: string | null }) {
   let cardSeq = 0;
   /** Última busca de texto mandada ao SoundCloud: o "Buscar mesmo assim"
       com a busca editada refaz também essa seção. */
-  let lastScQuery: string | null = null;
+  let lastScQuery: string | null = cached && cached.scState !== "idle" ? cached.query : null;
 
   const groups = () => results.groups;
   const responsesSeen = () => snapshot()?.responses_seen ?? 0;
@@ -1353,6 +1448,20 @@ export default function Crate(props: { param?: string | null }) {
   const libraryCount = () => folders().reduce((n, f) => n + f.track_count, 0);
   const inFlightJobs = () => jobs().filter((j) => IN_FLIGHT.has(j.state.kind));
   const finishedJobs = () => jobs().filter((j) => !IN_FLIGHT.has(j.state.kind));
+  // Fila única (B6): os jobs da Tidal entram nas mesmas seções, do mais novo
+  // para o mais antigo (a VM devolve do mais antigo).
+  const tidalActive = () => [...tidal.jobs].reverse().filter((j) => isTidalActive(j.status));
+  const tidalDone = () => [...tidal.jobs].reverse().filter((j) => !isTidalActive(j.status));
+  const queueEmpty = () => jobs().length === 0 && tidal.jobs.length === 0;
+  /** Pastas para o seletor (B7): as do acervo local e as que a fila da VM conhece. */
+  const folderNames = createMemo(() => mergeFolders(folders().map((f) => f.name), tidal.pastas));
+  /** "resultado de há N min" da busca que voltou do cache (B28). */
+  const restoredAge = () => {
+    const at = restoredAt();
+    if (at == null) return null;
+    const min = Math.floor((now() - at) / 60_000);
+    return min < 1 ? "resultado de agora há pouco" : `resultado de há ${min} min`;
+  };
 
   /** Precedência (spec §4.5 + handoff v1.1): a escolha feita NA LINHA vem
       primeiro — o chip da linha "herda o destino global até ser trocado na
@@ -1517,43 +1626,37 @@ export default function Crate(props: { param?: string | null }) {
   const sourcesDetail = () => sourcesDetailOf(status(), sourcesStatus());
 
   // ── Tidal ──────────────────────────────────────────────────────
-  function refreshTidal() {
-    crateTidalJobs().then((snap) => {
-      batch(() => {
-        setTidalJobs(snap.jobs);
-        setTidalPastas(snap.pastas);
-        setTidalLoad("loaded");
-        setTidalLoadError(null);
-      });
-    }).catch((e) => {
-      batch(() => {
-        setTidalLoad("error");
-        setTidalLoadError(errorText(e));
-      });
+  async function resendTidal(j: TidalJob) {
+    setNotice(null);
+    try {
+      await crateTidalResend(j.id);
+    } catch (e) {
+      setNotice(`Não deu pra reenviar "${j.titulo || "Seleção"}": ${errorText(e)}`);
+    }
+    void refreshTidal();
+  }
+
+  async function clearFinished() {
+    setNotice(null);
+    try {
+      await slskClearFinished();
+    } catch (e) {
+      setNotice(`Não deu pra limpar as terminadas: ${errorText(e)}.`);
+    }
+  }
+
+  /** "Buscar “X” na Tidal" (B28): leva a busca do Soulseek para a aba Tidal. */
+  function searchOnTidal(q: string) {
+    const t = q.trim();
+    if (!t) return;
+    batch(() => {
+      setTab("tidal");
+      setTidalRequest((r) => ({ q: t, n: (r?.n ?? 0) + 1 }));
     });
   }
 
-  // Seletor de destino aberto = popover: fecha com clique fora de qualquer
-  // `.crate-dest` e com Esc (crate-11, pendência v1.1 do CLAUDE.md).
-  // Listeners só existem enquanto há um aberto. O Esc vem da pilha única
-  // (lib/escLayers): a ⌘K por cima trata o próprio Esc antes, o Tweaks
-  // aberto por baixo espera o próximo. Devolve o foco ao chip quando ele
-  // estava dentro do menu que vai sumir.
-  createEffect(() => {
-    if (openDest() == null) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Element | null;
-      if (!t?.closest?.(".crate-dest")) setOpenDest(null);
-    };
-    const onEsc = () => {
-      const owner = (document.activeElement as HTMLElement | null)?.closest?.(".crate-dest");
-      setOpenDest(null);
-      owner?.querySelector<HTMLElement>(".crate-dest__btn")?.focus();
-    };
-    document.addEventListener("mousedown", onDown, true);
-    onCleanup(pushEscLayer(onEsc));
-    onCleanup(() => document.removeEventListener("mousedown", onDown, true));
-  });
+  // Seletor de destino aberto = popover: o FolderPicker fecha com clique
+  // fora e com Esc (pilha única de lib/escLayers) e devolve o foco ao chip.
 
   // Card aberto = camada de Esc (cancela). Depende só de QUAL card está
   // aberto (reempilhar a cada tecla passaria o card por cima do seletor
@@ -1595,6 +1698,8 @@ export default function Crate(props: { param?: string | null }) {
       const prev = searchId();
       if (prev) slskCancelSearch(prev).catch(() => {});
       setSearchId(null);
+      setRestoredAt(null);
+      searchedAt = Date.now();
       applySnapshot(null);
       void scSearch(q, true);
       return;
@@ -1626,6 +1731,8 @@ export default function Crate(props: { param?: string | null }) {
       if (prevId && prevId !== id) slskCancelSearch(prevId).catch(() => {});
       if (lastScQuery !== q) void scSearch(q, false);
       setSearchId(id);
+      setRestoredAt(null);
+      searchedAt = Date.now();
       applySnapshot(null);
       setSelectedKey(null);
       setExpandedKey(null);
@@ -1795,8 +1902,9 @@ export default function Crate(props: { param?: string | null }) {
     refreshSources();
     sourcesTimer = setInterval(refreshSources, SOURCES_POLL_MS);
 
-    refreshTidal();
-    tidalTimer = setInterval(refreshTidal, TIDAL_POLL_MS);
+    // Crate aberto: a fila da Tidal passa a 10 s (store/crate.ts, A17).
+    setCrateViewOpen(true);
+    ageTimer = setInterval(() => setNow(Date.now()), 30_000);
 
     // Só polla enquanto a busca ainda pode mudar: `running`, ou antes do
     // primeiro snapshot chegar. Estado terminal (done/empty/failed/
@@ -1816,13 +1924,27 @@ export default function Crate(props: { param?: string | null }) {
       if (pollTimer) clearInterval(pollTimer);
       if (statusTimer) clearInterval(statusTimer);
       if (sourcesTimer) clearInterval(sourcesTimer);
-      if (tidalTimer) clearInterval(tidalTimer);
+      if (ageTimer) clearInterval(ageTimer);
       if (cooldownTimer) clearInterval(cooldownTimer);
-      const id = searchId();
-      if (id) slskCancelSearch(id).catch(() => {});
+      setCrateViewOpen(false);
+      // A busca não é mais cancelada ao sair (B28): ela termina na janela de
+      // 25 s do backend e volta com a view por 10 min. Sem busca, nada a guardar.
+      saveSearchCache(searchId() || scState() !== "idle" ? {
+        query: query(),
+        searchId: searchId(),
+        snapshot: snapshot(),
+        scResults: scResults(),
+        scState: scState(),
+        scError: scError(),
+        groupJobs: groupJobs(),
+        rowOverrides: rowOverrides(),
+        savedAt: searchedAt,
+      } : null);
     });
 
-    if (query().trim()) void doSearch();
+    // Pedido pela rota (⌘K "Procurar na rede") busca; a busca que voltou do
+    // cache não gasta outra das 40 por hora.
+    if (!cached && query().trim()) void doSearch();
   });
 
   return (
@@ -1857,7 +1979,8 @@ export default function Crate(props: { param?: string | null }) {
           class={`tab${tab() === "queue" ? " active" : ""}`}
           onClick={() => setTab("queue")}
         >
-          Fila <Show when={jobs().length > 0}><span class="tab__count">{jobs().length}</span></Show>
+          {/* Contagem = em andamento (B6): Soulseek, SoundCloud e Tidal. */}
+          Fila <Show when={activeCount() > 0}><span class="tab__count">{activeCount()}</span></Show>
         </button>
         <button
           role="tab"
@@ -1865,7 +1988,7 @@ export default function Crate(props: { param?: string | null }) {
           class={`tab${tab() === "tidal" ? " active" : ""}`}
           onClick={() => setTab("tidal")}
         >
-          Tidal <Show when={tidalJobs().length > 0}><span class="tab__count">{tidalJobs().length}</span></Show>
+          Tidal
         </button>
       </nav>
 
@@ -1908,11 +2031,15 @@ export default function Crate(props: { param?: string | null }) {
                   }
                 }}
               />
-              <div class="crate-search__kbd">
-                <kbd class="crate-kbd">Enter</kbd>
-                <kbd class="crate-kbd">↑↓</kbd>
-                <kbd class="crate-kbd">→</kbd>
-              </div>
+              {/* Teclas no campo só antes da primeira busca: depois a dica da
+                  lista diz o mesmo (A11). */}
+              <Show when={!searchId()}>
+                <div class="crate-search__kbd">
+                  <kbd class="crate-kbd">Enter</kbd>
+                  <kbd class="crate-kbd">↑↓</kbd>
+                  <kbd class="crate-kbd">→</kbd>
+                </div>
+              </Show>
             </div>
 
             <button
@@ -1959,13 +2086,14 @@ export default function Crate(props: { param?: string | null }) {
               </Show>
             </span>
 
-            <DestChip
+            <FolderPicker
               variant="toolbar"
               value={destOverride()}
               placeholder="destino padrão"
               open={openDest() === TOOLBAR_DEST}
-              folders={folders()}
+              folders={folderNames()}
               onToggle={() => setOpenDest((k) => (k === TOOLBAR_DEST ? null : TOOLBAR_DEST))}
+              onClose={() => setOpenDest(null)}
               onPick={(f) => { setDestOverride(f); saveLastDest(f); setOpenDest(null); }}
             />
             <Show when={destOverride()}>
@@ -2051,10 +2179,11 @@ export default function Crate(props: { param?: string | null }) {
                             {(c) => (
                               <ConfirmCard
                                 c={c()}
-                                folders={folders()}
+                                folders={folderNames()}
                                 destOpen={openDest() === `sc:${r.id}`}
                                 submitting={cardSubmitting()}
                                 onDestToggle={() => setOpenDest((k) => (k === `sc:${r.id}` ? null : `sc:${r.id}`))}
+                                onDestClose={() => setOpenDest(null)}
                                 onPickDest={(f) => { setCard("c", "dest", f); setOpenDest(null); }}
                                 onField={(field, value) => setCard("c", "meta", field, value)}
                                 onYear={(y) => setCard("c", "meta", "year", y)}
@@ -2080,7 +2209,14 @@ export default function Crate(props: { param?: string | null }) {
                   faixas', que parece resultado final (crate-8). */}
               <Show
                 when={searching()}
-                fallback={<h2>Soulseek · {groups().length}&nbsp;faixas</h2>}
+                fallback={
+                  <div class="crate-list-head__lead">
+                    <h2>Soulseek · {plural(groups().length, "faixa", "faixas")}</h2>
+                    <Show when={restoredAge()}>
+                      {(age) => <span class="crate-section__note">{age()}</span>}
+                    </Show>
+                  </div>
+                }
               >
                 <div class="crate-list-head__lead">
                   <h2>
@@ -2127,7 +2263,7 @@ export default function Crate(props: { param?: string | null }) {
                       destOverridden={rowOverrides()[g.group_key] != null}
                       isSelected={i() === selectedIndex()}
                       isExpanded={expandedKey() === g.group_key}
-                      folders={folders()}
+                      folders={folderNames()}
                       destOpen={openDest() === g.group_key}
                       onDestOpen={(open) => setOpenDest(open ? g.group_key : null)}
                       onSelect={() => { setSelectedKey(g.group_key); listEl?.focus({ preventScroll: true }); }}
@@ -2148,8 +2284,20 @@ export default function Crate(props: { param?: string | null }) {
             <div class="crate-empty-wrap">
               <div class="crate-empty">
                 <Icon name={ICONS.packageOpen} size={26} />
-                <h3>{snapshot()?.state === "failed" ? "Busca falhou" : "Nada encontrado"}</h3>
-                <p>{snapshot()?.note ?? "a rede não devolveu resultados pra essa busca."}</p>
+                <h3>{snapshot()?.state === "failed" ? "A busca no Soulseek falhou" : "Nada encontrado no Soulseek"}</h3>
+                <p>{snapshot()?.note ?? "A rede não devolveu resultados para essa busca."}</p>
+                <div class="crate-empty__acts">
+                  <Show when={snapshot()?.state === "failed"}>
+                    <button type="button" class="crate-btn" disabled={cooldownLeft() > 0} onClick={() => void doSearch(false)}>
+                      <Icon name={ICONS.refresh} size={12} /> Tentar de novo
+                    </button>
+                  </Show>
+                  <Show when={query().trim() && !SC_LINK.test(query().trim())}>
+                    <button type="button" class="crate-btn" onClick={() => searchOnTidal(query())}>
+                      <Icon name={ICONS.search} size={12} /> Buscar “{query().trim()}” na Tidal
+                    </button>
+                  </Show>
+                </div>
               </div>
             </div>
           </Show>
@@ -2177,8 +2325,19 @@ export default function Crate(props: { param?: string | null }) {
             )}
           </Show>
 
-          <Show when={inFlightJobs().length > 0}>
-            <div class="crate-q-sec"><h2>Em voo · {inFlightJobs().length}</h2></div>
+          <Show when={tidal.load === "error" && tidal.jobs.length > 0}>
+            <div class="crate-banners">
+              <div class="crate-banner" data-tone="rose" role="alert" title="Endereço da fila e motivo no log do app">
+                <Icon name={ICONS.alert} size={15} />
+                <p>{tidal.loadError ?? "A fila da Tidal na VM não respondeu."} Os downloads da Tidal abaixo podem estar desatualizados.</p>
+                <span class="crate-banner__sp" />
+                <button type="button" class="crate-banner__act" onClick={() => void refreshTidal()}>Tentar de novo</button>
+              </div>
+            </div>
+          </Show>
+
+          <Show when={inFlightJobs().length + tidalActive().length > 0}>
+            <div class="crate-q-sec"><h2>Em andamento · {inFlightJobs().length + tidalActive().length}</h2></div>
             <div class="crate-list" style={{ "padding-top": "0" }}>
               <div class="crate-list-inner">
                 <For each={inFlightJobs()}>
@@ -2191,12 +2350,19 @@ export default function Crate(props: { param?: string | null }) {
                     />
                   )}
                 </For>
+                <For each={tidalActive()}>{(j) => <TidalJobRow job={j} onResend={(x) => void resendTidal(x)} />}</For>
               </div>
             </div>
           </Show>
 
           <Show when={finishedJobs().length > 0}>
-            <div class="crate-q-sec"><h2>Terminadas · {finishedJobs().length}</h2></div>
+            <div class="crate-q-sec crate-q-sec--acts">
+              <h2>Terminadas · {finishedJobs().length}</h2>
+              <button type="button" class="crate-btn crate-btn--quiet" onClick={() => void clearFinished()}
+                title="Tira da lista os downloads do Soulseek e do SoundCloud que já terminaram">
+                Limpar terminadas
+              </button>
+            </div>
             <div class="crate-list" style={{ "padding-top": "0" }}>
               <div class="crate-list-inner">
                 <For each={finishedJobs()}>
@@ -2218,12 +2384,30 @@ export default function Crate(props: { param?: string | null }) {
             </div>
           </Show>
 
-          <Show when={jobs().length === 0}>
+          <Show when={tidalDone().length > 0}>
+            {/* A VM guarda os últimos 30 pedidos; não há o que limpar daqui. */}
+            <div class="crate-q-sec"><h2>Tidal, terminadas · {tidalDone().length}</h2></div>
+            <div class="crate-list" style={{ "padding-top": "0" }}>
+              <div class="crate-list-inner">
+                <For each={tidalDone()}>{(j) => <TidalJobRow job={j} onResend={(x) => void resendTidal(x)} />}</For>
+              </div>
+            </div>
+          </Show>
+
+          <Show when={queueEmpty()}>
             <div class="crate-empty-wrap">
               <div class="crate-empty">
                 <Icon name={ICONS.packageOpen} size={26} />
                 <h3>Fila vazia</h3>
-                <p>Baixe algo na aba Buscar pra ver o progresso aqui.</p>
+                <p>O que você baixar no Soulseek, no SoundCloud ou na Tidal aparece aqui, com o progresso.</p>
+                <div class="crate-empty__acts">
+                  <button type="button" class="crate-btn" onClick={() => { setTab("search"); queueMicrotask(() => inputEl?.focus()); }}>
+                    <Icon name={ICONS.search} size={12} /> Ir para Buscar
+                  </button>
+                  <button type="button" class="crate-btn" onClick={() => setTab("tidal")}>
+                    Ir para Tidal
+                  </button>
+                </div>
               </div>
             </div>
           </Show>
@@ -2234,13 +2418,16 @@ export default function Crate(props: { param?: string | null }) {
         <Show when={tidalVisited()}>
           <div style={{ display: tab() === "tidal" ? "contents" : "none" }}>
             <TidalTab
-              jobs={tidalJobs()}
-              pastas={tidalPastas()}
-              load={tidalLoad()}
-              loadError={tidalLoadError()}
-              refresh={refreshTidal}
+              jobs={tidal.jobs}
+              pastas={tidal.pastas}
+              folders={folders().map((f) => f.name)}
+              load={tidal.load}
+              loadError={tidal.loadError}
+              refresh={() => void refreshTidal()}
               tokenMissing={sourcesStatus()?.tidal === "no_token"}
               active={tab() === "tidal"}
+              onShowQueue={() => setTab("queue")}
+              request={tidalRequest()}
             />
           </div>
         </Show>

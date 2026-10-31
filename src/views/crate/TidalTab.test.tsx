@@ -85,7 +85,8 @@ function field() {
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem("kv-crate-tidal-dest", "Rap & Hip-Hop");
+  // Memória única do Crate (B7); a chave antiga da Tidal ainda é lida.
+  localStorage.setItem("kv-crate-dest", "Rap & Hip-Hop");
   vi.clearAllMocks();
   mocks.libGetTracks.mockResolvedValue([]);
   mocks.crateTidalCover.mockResolvedValue("data:image/jpeg;base64,AA==");
@@ -198,8 +199,10 @@ describe("TidalTab", () => {
     await waitFor(() => expect(screen.getByText("2 de 2")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Desmarcar todas" }));
     expect(screen.getByText("0 de 2")).toBeTruthy();
-    const selects = document.querySelectorAll<HTMLSelectElement>(".tdl-foot select");
-    expect(fireEvent.keyDown(selects[0], { key: "a", ctrlKey: true })).toBe(true); // não foi interceptado
+    // O seletor de pasta (B7) tem um campo de filtro: lá o Ctrl+A é do campo.
+    fireEvent.click(document.querySelector<HTMLElement>(".tdl-foot .crate-dest__btn")!);
+    const filtro = document.querySelector<HTMLInputElement>(".tdl-foot .crate-dest__filter")!;
+    expect(fireEvent.keyDown(filtro, { key: "a", ctrlKey: true })).toBe(true); // não foi interceptado
     expect(screen.getByText("0 de 2")).toBeTruthy();
     const page = document.querySelector<HTMLElement>(".tdl-page--preview")!;
     expect(fireEvent.keyDown(page, { key: "a", ctrlKey: true })).toBe(false); // preventDefault
@@ -222,20 +225,81 @@ describe("TidalTab", () => {
     expect(screen.getByText(/Cole um link da Tidal ou busque/)).toBeTruthy();
   });
 
-  it("Reenviar só aparece em seleção parcial ou que falhou e chama o comando", async () => {
-    const refresh = vi.fn();
-    renderTab([
-      job({ id: "a", status: "parcial", titulo: "Parcial" }),
-      job({ id: "b", status: "falhou", titulo: "Falhou" }),
-      job({ id: "c", status: "ok", titulo: "Pronta" }),
-      job({ id: "d", status: "parcial", titulo: null, n_faixas: null, url: "https://tidal.com/browse/mix/x" }),
-    ], refresh);
-    const botoes = screen.getAllByRole("button", { name: "Reenviar" });
-    expect(botoes).toHaveLength(2); // o link parcial e a seleção pronta ficam sem o botão
-    fireEvent.click(botoes[0]);
-    await waitFor(() => expect(mocks.crateTidalResend).toHaveBeenCalledTimes(1));
-    expect(mocks.crateTidalResend.mock.calls[0][0]).toMatch(/^[ab]$/);
-    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  it("os jobs não moram mais na aba: só a contagem em andamento e o atalho para a Fila (B6)", async () => {
+    const onShowQueue = vi.fn();
+    render(() => (
+      <TidalTab
+        jobs={[job({ id: "a", status: "baixando" }), job({ id: "b", status: "fila" }), job({ id: "c", status: "ok" })]}
+        pastas={["Rap & Hip-Hop"]} load="loaded" loadError={null} refresh={() => {}} tokenMissing={false}
+        onShowQueue={onShowQueue}
+      />
+    ));
+    expect(screen.queryByText("Fila da VM")).toBeNull();
+    expect(screen.getByText(/2 downloads da Tidal/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Ver na Fila" }));
+    expect(onShowQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("Baixar numa faixa trava a linha: dois cliques não viram dois pedidos, e a pílula do job toma o lugar (A16)", async () => {
+    let solta!: (v: string) => void;
+    mocks.crateTidalEnqueue.mockImplementationOnce(() => new Promise((res) => { solta = res; }));
+    mocks.crateTidalSearch.mockResolvedValue(busca("orochi", [faixa(1, "Mitsubishi")]));
+    const [jobs, setJobs] = createSignal<TidalJob[]>([]);
+    render(() => (
+      <TidalTab jobs={jobs()} pastas={["Rap & Hip-Hop"]} load="loaded" loadError={null} refresh={() => {}} tokenMissing={false} />
+    ));
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    await waitFor(() => expect(screen.getByText("Mitsubishi")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Baixar/ }));
+    const enviando = await screen.findByRole("button", { name: "Enviando…" });
+    expect((enviando as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /^Baixar$/ })).toBeNull();
+    solta("job-1");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Enviando…" })).toBeNull());
+    expect(mocks.crateTidalEnqueue).toHaveBeenCalledTimes(1);
+    setJobs([job({ id: "j1", status: "baixando", url: "https://tidal.com/browse/track/1", titulo: null, n_faixas: null })]);
+    const row = screen.getByText("Mitsubishi").closest(".tdl-row") as HTMLElement;
+    await waitFor(() => expect(row.querySelector(".crate-pill")?.textContent).toBe("baixando"));
+    expect(row.querySelector("button")).toBeNull();
+  });
+
+  it("faixa que já está no acervo oferece Tocar, não Baixar (A16)", async () => {
+    mocks.libGetTracks.mockResolvedValue([libTrack("Mitsubishi", "Orochi")]);
+    mocks.crateTidalSearch.mockResolvedValue(busca("orochi", [faixa(1, "Mitsubishi")]));
+    renderTab();
+    fireEvent.input(field(), { target: { value: "orochi" } });
+    fireEvent.submit(field().form!);
+    const row = await waitFor(() => screen.getByText("Mitsubishi").closest(".tdl-row") as HTMLElement);
+    await waitFor(() => expect(row.textContent).toContain("no acervo"));
+    expect(row.querySelector("button")?.parentElement?.textContent).toContain("Tocar");
+    expect(Array.from(row.querySelectorAll("button")).some((b) => b.textContent?.includes("Baixar"))).toBe(false);
+  });
+
+  it("acervo que não carrega avisa em vez de marcar tudo como novo (A16)", async () => {
+    mocks.libGetTracks.mockRejectedValue("qdrant fora");
+    renderTab();
+    await waitFor(() => expect(screen.getByText(/Não consegui ler o acervo/)).toBeTruthy());
+  });
+
+  it("com a fila fora, o convite de busca some: o banner diz o que falta (A25)", () => {
+    render(() => (
+      <TidalTab jobs={[]} pastas={[]} load="error" loadError="A fila da Tidal na VM não respondeu." refresh={() => {}} tokenMissing={false} />
+    ));
+    expect(screen.queryByText(/Cole um link da Tidal ou busque/)).toBeNull();
+    expect(document.querySelectorAll(".crate-banner")).toHaveLength(1);
+  });
+
+  it("busca pedida de fora (Buscar na Tidal do Soulseek) preenche o campo e busca já (B28)", async () => {
+    mocks.crateTidalSearch.mockResolvedValue(busca("smino anita", [faixa(7, "Anita", "Smino")]));
+    const [req, setReq] = createSignal<{ q: string; n: number } | null>(null);
+    render(() => (
+      <TidalTab jobs={[]} pastas={["Rap & Hip-Hop"]} load="loaded" loadError={null} refresh={() => {}} tokenMissing={false} request={req()} />
+    ));
+    setReq({ q: "smino anita", n: 1 });
+    await waitFor(() => expect(mocks.crateTidalSearch).toHaveBeenCalledWith("smino anita"));
+    expect(field().value).toBe("smino anita");
+    await waitFor(() => expect(screen.getByText("Anita")).toBeTruthy());
   });
 
   it("voltar da prévia mantém a página do artista (sem recarregar nem perder 'Mostrar todos')", async () => {
@@ -285,7 +349,7 @@ describe("TidalTab", () => {
     expect(banners[0].getAttribute("data-tone")).toBe("rose");
     expect(banners[0].textContent).toContain("não respondeu");
     expect(banners[0].textContent).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
-    expect((document.querySelector(".crate-tidal-select") as HTMLSelectElement).disabled).toBe(true);
+    expect((document.querySelector(".crate-dest__btn") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(mocks.crateTidalSearch).toHaveBeenCalledTimes(2); // refaz a última busca junto

@@ -1538,14 +1538,45 @@ impl Coordinator {
     /// em silêncio). Usa `can_transition` direto (não `board.transition`)
     /// porque a aresta `{failed,rejected}->queued` (CR-3) precisa valer
     /// aqui mesmo sem ir por `board.transition` duas vezes.
+    ///
+    /// Sem alternativa não tentada e com o job em `Failed`, refaz a fonte
+    /// ATUAL (A25, 31/10/2026: o [Tentar de novo] do Soulseek usa este
+    /// comando; falha de rede ou do slskd passa, a fonte pode voltar). Os
+    /// demais estados sem alternativa seguem recusando.
     fn try_other_source_sync(&self, job_id: &str) -> Result<Candidate, String> {
         let job = self.board.get(job_id).ok_or_else(|| "job não encontrado".to_string())?;
-        let next = job
-            .alternates
-            .iter()
-            .find(|c| !job.tried_source_ids.contains(&c.id))
-            .cloned()
-            .ok_or_else(|| "sem outras fontes disponíveis".to_string())?;
+        let untried = job.alternates.iter().find(|c| !job.tried_source_ids.contains(&c.id)).cloned();
+        let next = match untried {
+            Some(c) => c,
+            None => {
+                let Some((username, remote_filename, size)) = job.soulseek() else {
+                    return Err("sem outras fontes disponíveis".to_string());
+                };
+                if !matches!(job.state, JobState::Failed { .. }) {
+                    return Err("sem outras fontes disponíveis".to_string());
+                }
+                // Quem chama só usa usuário, arquivo e tamanho (enqueue_job).
+                let same = Candidate {
+                    id: String::new(),
+                    username: username.to_string(),
+                    filename: remote_filename.to_string(),
+                    directory: String::new(),
+                    size,
+                    bit_depth: None,
+                    sample_rate: None,
+                    bit_rate: None,
+                    length_secs: None,
+                    free_slot: false,
+                    upload_speed: 0,
+                    queue_length: 0,
+                    score: 0,
+                    warn: None,
+                };
+                self.board.upsert(DownloadJob { state: JobState::Queued, ..job });
+                self.mark_dirty();
+                return Ok(same);
+            }
+        };
 
         if !can_transition(&job.state, &JobState::Queued) {
             return Err("job em estado que não aceita troca de fonte agora".to_string());
@@ -1671,7 +1702,7 @@ impl Coordinator {
                     let streak = self.downloads_fail_streak.fetch_add(1, Ordering::SeqCst) + 1;
                     tracing::warn!(?e, streak, "slsk-coord: poll de transfers falhou");
                     if streak >= DOWNLOADS_FAIL_THRESHOLD {
-                        self.fail_network_dependent_jobs("slskd inalcancavel");
+                        self.fail_network_dependent_jobs("o slskd não respondeu");
                     }
                     None
                 }
@@ -1801,7 +1832,7 @@ impl Coordinator {
             self.last_seen.lock().unwrap_or_else(|p| p.into_inner()).remove(&job.job_id);
             self.board.transition(
                 &job.job_id,
-                JobState::Failed { reason: "transfer sumiu do slskd".to_string(), retryable: true },
+                JobState::Failed { reason: "a transferência sumiu do slskd".to_string(), retryable: true },
             );
             self.mark_dirty();
         }
@@ -2191,7 +2222,7 @@ fn job_state_from_outcome(
     match outcome {
         TransferOutcome::Succeeded => JobState::Processing,
         TransferOutcome::Errored | TransferOutcome::TimedOut => {
-            JobState::Failed { reason: "transfer com erro apos reinicio".to_string(), retryable: false }
+            JobState::Failed { reason: "a transferência falhou enquanto o app estava fechado".to_string(), retryable: false }
         }
         TransferOutcome::Aborted | TransferOutcome::Canceled => JobState::Canceled,
         TransferOutcome::Queued => JobState::Enqueued { queue_position: None },
@@ -3072,6 +3103,48 @@ mod tests {
     }
 
     #[test]
+    fn failed_sem_outra_fonte_tenta_de_novo_a_mesma() {
+        // A25: Soulseek que falhou sem fonte nova tinha só "falhou", sem
+        // saída. O [Tentar de novo] da tela usa o mesmo comando: sem
+        // alternativa não tentada e com o job em Failed, refaz a fonte atual
+        // pela aresta failed->queued (a mesma do [Trocar fonte]).
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        fake.push_enqueue(Ok(()));
+        let coord = make_coordinator(tmp.path(), fake.clone());
+        let now = Instant::now();
+
+        let cand = candidate("peer1", "Artist\\Title.flac", 1000);
+        let (job_id, _) = coord.create_or_get_soulseek_job(&cand, vec![], "Rap & Hip-Hop");
+        coord.board.upsert(DownloadJob {
+            state: JobState::Failed { reason: "slskd inalcançável".to_string(), retryable: true },
+            ..coord.board.get(&job_id).unwrap()
+        });
+
+        let result = coord.try_other_source(&job_id, now);
+        assert!(result.is_ok(), "deveria refazer a mesma fonte: {result:?}");
+        let job = coord.board.get(&job_id).unwrap();
+        assert_eq!(job.soulseek().unwrap().0, "peer1");
+        assert!(job.tried_source_ids.is_empty());
+        assert!(matches!(job.state, JobState::Enqueued { .. }));
+    }
+
+    #[test]
+    fn stalled_sem_outra_fonte_continua_recusando() {
+        // Só Failed refaz a mesma fonte: travado segue com Cancelar.
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(FakeSlskd::new());
+        let coord = make_coordinator(tmp.path(), fake);
+        let cand = candidate("peer1", "Artist\\Title.flac", 1000);
+        let (job_id, _) = coord.create_or_get_soulseek_job(&cand, vec![], "Rap & Hip-Hop");
+        coord.board.upsert(DownloadJob {
+            state: JobState::Stalled { since_secs: 300 },
+            ..coord.board.get(&job_id).unwrap()
+        });
+        assert_eq!(coord.try_other_source_sync(&job_id).unwrap_err(), "sem outras fontes disponíveis");
+    }
+
+    #[test]
     fn clear_finished_persists_and_returns_count() {
         let tmp = tempfile::tempdir().unwrap();
         let fake = Arc::new(FakeSlskd::new());
@@ -3550,7 +3623,7 @@ mod tests {
         let (r, rx) = crossbeam_channel::bounded(1);
         c.handle_task(SlskTask::DownloadExternal { source: sc_source(3), meta: meta("A", "T"), artwork_url: None, dest: "P".into(), reply: r });
         let id = rx.recv().unwrap().unwrap();
-        c.fail_network_dependent_jobs("slskd inalcancavel");
+        c.fail_network_dependent_jobs("o slskd não respondeu");
         assert_eq!(c.board.get(&id).unwrap().state, JobState::Enqueued { queue_position: None });
     }
 

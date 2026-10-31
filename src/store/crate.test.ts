@@ -8,17 +8,25 @@
    pra isolar casos de teste; produção nunca chama.
    ============================================================ */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { DownloadJob } from "../tauri";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { DownloadJob, TidalJob } from "../tauri";
 
 // Mock do módulo tauri ANTES de importar o store (vi.mock é hoisted).
 vi.mock("../tauri", () => ({
   slskJobs: vi.fn(async () => []),
   onSlskJobs: vi.fn(async (_cb: (jobs: DownloadJob[]) => void) => () => {}),
+  crateTidalJobs: vi.fn(async () => ({ jobs: [], pastas: [] })),
 }));
 
 import * as ipc from "../tauri";
-import { jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen, __resetForTests } from "./crate";
+import {
+  jobs, activeCount, bootCrateStore, loadLastDest, saveLastDest, newArrivalsCount, markArrivalsSeen, __resetForTests,
+  tidal, refreshTidal, setCrateViewOpen, saveSearchCache, loadSearchCache, SEARCH_CACHE_MS,
+} from "./crate";
+
+function tjob(id: string, status: TidalJob["status"], extra: Partial<TidalJob> = {}): TidalJob {
+  return { id, url: `https://tidal.com/album/${id}`, playlist: "Jazz", status, added: "31/10 10:00", resumo: "", inicio: null, fim: null, ...extra };
+}
 
 function job(id: string, kind: DownloadJob["state"]["kind"], extra: Record<string, unknown> = {}): DownloadJob {
   return {
@@ -43,6 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(ipc.slskJobs).mockResolvedValue([]);
   vi.mocked(ipc.onSlskJobs).mockImplementation(async () => () => {});
+  vi.mocked(ipc.crateTidalJobs).mockResolvedValue({ jobs: [], pastas: [] });
   localStorage.clear();
   __resetForTests();
 });
@@ -151,5 +160,106 @@ describe("kv-crate-dest", () => {
     saveLastDest("Rap & Hip-Hop");
     expect(loadLastDest()).toBe("Rap & Hip-Hop");
     expect(localStorage.getItem("kv-crate-dest")).toBe("Rap & Hip-Hop");
+  });
+});
+
+describe("Tidal no store (A17)", () => {
+  it("activeCount soma os jobs da Tidal na fila ou baixando", async () => {
+    vi.mocked(ipc.slskJobs).mockResolvedValue([job("q", "queued")]);
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({
+      jobs: [tjob("1", "fila"), tjob("2", "baixando"), tjob("3", "ok"), tjob("4", "falhou")],
+      pastas: ["Jazz"],
+    });
+    await bootCrateStore();
+    await refreshTidal();
+    expect(activeCount()).toBe(3);
+    expect(tidal.pastas).toEqual(["Jazz"]);
+    expect(tidal.load).toBe("loaded");
+  });
+
+  it("job que vira ok depois do boot entra nas chegadas com as faixas que chegaram", async () => {
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({ jobs: [tjob("velho", "ok"), tjob("a", "baixando")], pastas: [] });
+    await bootCrateStore();
+    await refreshTidal();
+    expect(newArrivalsCount()).toBe(0); // pronto antes do boot não é chegada
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({
+      jobs: [tjob("velho", "ok"), tjob("a", "ok", { resumo: "Mix: 12 novas, 3 já no acervo, 0 falhas de 15; 12 na cmr-auto" })],
+      pastas: [],
+    });
+    await refreshTidal();
+    await refreshTidal();
+    expect(newArrivalsCount()).toBe(12);
+    markArrivalsSeen();
+    expect(newArrivalsCount()).toBe(0);
+  });
+
+  it("job ok sem nenhuma faixa nova não acende o ponto", async () => {
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({ jobs: [tjob("a", "baixando")], pastas: [] });
+    await bootCrateStore();
+    await refreshTidal();
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({
+      jobs: [tjob("a", "ok", { resumo: "X: 0 novas, 9 já no acervo, 0 falhas de 9" })],
+      pastas: [],
+    });
+    await refreshTidal();
+    expect(newArrivalsCount()).toBe(0);
+  });
+
+  it("fila fora marca erro e mantém os jobs que já tinha", async () => {
+    vi.mocked(ipc.crateTidalJobs).mockResolvedValue({ jobs: [tjob("a", "fila")], pastas: [] });
+    await bootCrateStore();
+    await refreshTidal();
+    vi.mocked(ipc.crateTidalJobs).mockRejectedValue("A fila da Tidal na VM não respondeu.");
+    await refreshTidal();
+    expect(tidal.load).toBe("error");
+    expect(tidal.loadError).toBe("A fila da Tidal na VM não respondeu.");
+    expect(tidal.jobs.map((j) => j.id)).toEqual(["a"]);
+  });
+});
+
+describe("poll da Tidal (A17)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("10 s com o Crate aberto, 60 s fechado", async () => {
+    await bootCrateStore();
+    await vi.advanceTimersByTimeAsync(0);
+    const base = vi.mocked(ipc.crateTidalJobs).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base); // fechado: nada em 30 s
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 1);
+    setCrateViewOpen(true); // abrir consulta na hora e passa a 10 s
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 2);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base + 4);
+    setCrateViewOpen(false);
+  });
+
+  it("com a VM fora e o Crate fechado, para de consultar", async () => {
+    vi.mocked(ipc.crateTidalJobs).mockRejectedValue("fora");
+    await bootCrateStore();
+    await vi.advanceTimersByTimeAsync(0);
+    const base = vi.mocked(ipc.crateTidalJobs).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(vi.mocked(ipc.crateTidalJobs).mock.calls.length).toBe(base);
+  });
+});
+
+describe("busca preservada (B28)", () => {
+  it("guarda a busca por 10 min e esquece depois", () => {
+    saveSearchCache({ query: "smino anita", savedAt: 1_000 } as Parameters<typeof saveSearchCache>[0]);
+    expect(loadSearchCache(1_000 + SEARCH_CACHE_MS - 1)?.query).toBe("smino anita");
+    expect(loadSearchCache(1_000 + SEARCH_CACHE_MS + 1)).toBeNull();
+  });
+});
+
+describe("destino único do Crate (B7)", () => {
+  it("cai no destino antigo da aba Tidal quando o do Crate não existe", () => {
+    localStorage.setItem("kv-crate-tidal-dest", "Jazz");
+    expect(loadLastDest()).toBe("Jazz");
+    saveLastDest("Funk Brasileiro");
+    expect(loadLastDest()).toBe("Funk Brasileiro");
   });
 });

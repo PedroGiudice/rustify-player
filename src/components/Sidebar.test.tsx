@@ -1,8 +1,7 @@
 /* ============================================================
-   Sidebar.test.tsx — Regressao do VU meter do mini now-playing.
-   O <Index> deve atualizar height in-place nos MESMOS spans a
-   cada tick de 220ms (o <For> antigo keiava por valor e recriava
-   os 3 nodes por tick).
+   Sidebar.test.tsx — o cartão "tocando agora" usa o indicador real
+   (NowPlayingIndicator, nível medido); até 31/10/2026 era um medidor
+   sorteado por setInterval a cada 220 ms (A5).
 
    Modo sidebar=icons (auditoria de UI 25/09, shell-22): o rótulo
    some da tela, então cada item precisa de tooltip. O nome
@@ -21,6 +20,13 @@ vi.mock("../tauri", async (importOriginal) => {
     onSlskJobs: vi.fn(async (_cb: (jobs: import("../tauri").DownloadJob[]) => void) => () => {}),
   };
 });
+
+// O nível real vem do audio-fft (lib/levels); aqui só importa que o cartão
+// assina o mesmo laço das listas, sem timer próprio.
+const levelSubs = vi.hoisted(() => ({ n: 0 }));
+vi.mock("../lib/levels", () => ({
+  subscribeLevels: vi.fn(() => { levelSubs.n++; return () => { levelSubs.n--; }; }),
+}));
 
 import * as tauriApi from "../tauri";
 import { Sidebar } from "./Sidebar";
@@ -43,39 +49,39 @@ const TRACK: Track = {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
   __resetForTests();
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   setPlayer({ currentTrack: null, isPlaying: false });
 });
 
-describe("Sidebar VU meter", () => {
-  it("mantem os mesmos spans entre ticks (Index atualiza in-place)", () => {
+describe("Sidebar — indicador do cartão tocando agora (A5)", () => {
+  it("é o indicador real das listas, não um medidor sorteado", () => {
     setPlayer({ currentTrack: TRACK, isPlaying: true });
+    const intervalSpy = vi.spyOn(globalThis, "setInterval");
     const { container } = render(() => <Sidebar />);
 
-    const before = Array.from(container.querySelectorAll(".np-mini__vu span"));
-    expect(before.length).toBe(3);
-
-    // Dois ticks do interval de 220ms — heights mudam, nodes nao.
-    vi.advanceTimersByTime(220 * 2);
-
-    const after = Array.from(container.querySelectorAll(".np-mini__vu span"));
-    expect(after.length).toBe(3);
-    after.forEach((el, i) => expect(el).toBe(before[i]));
-    // Height continua sendo aplicada por style inline (px).
-    after.forEach((el) => expect((el as HTMLElement).style.height).toMatch(/px$/));
+    const vu = container.querySelector(".np-mini .npi");
+    expect(vu).toBeTruthy();
+    expect(vu!.querySelectorAll("span").length).toBe(3);
+    vi.advanceTimersByTime(220 * 3);
+    // Nada de altura sorteada por style inline nem timer próprio.
+    vu!.querySelectorAll("span").forEach((el) => expect((el as HTMLElement).style.height).toBe(""));
+    expect(intervalSpy).not.toHaveBeenCalled();
+    expect(levelSubs.n).toBe(1);
   });
 
-  it("para o interval no cleanup", () => {
-    setPlayer({ currentTrack: TRACK, isPlaying: true });
-    const clearSpy = vi.spyOn(globalThis, "clearInterval");
-    const { unmount } = render(() => <Sidebar />);
-    unmount();
-    expect(clearSpy).toHaveBeenCalled();
+  it("pausado, o indicador fica parado e diz que está pausado", () => {
+    setPlayer({ currentTrack: TRACK, isPlaying: false });
+    const { container } = render(() => <Sidebar />);
+    const vu = container.querySelector(".np-mini .npi")!;
+    expect(vu.classList.contains("npi--paused")).toBe(true);
+    expect(vu.getAttribute("aria-label")).toBe("Pausado");
   });
 });
 
