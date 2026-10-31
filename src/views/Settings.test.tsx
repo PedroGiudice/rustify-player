@@ -59,8 +59,8 @@ afterEach(() => {
 
 import Settings from "./Settings";
 import * as ipc from "../tauri";
-import { tweaks, updateTweak } from "../store/tweaks";
-import { resumeOnLaunch, setResumeOnLaunch, setPlayer } from "../store/player";
+import { tweaksOpen, setTweaksOpen } from "../store/tweaks";
+import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
 
 describe("Settings view", () => {
   it("renderiza heading", () => {
@@ -68,16 +68,33 @@ describe("Settings view", () => {
     expect(getByText("Settings")).toBeTruthy();
   });
 
-  it("renderiza 4 paineis principais (Appearance, Playback, Library, About)", () => {
+  // B20 (31/10): Settings só com o que é dela; o texto técnico vai para
+  // um Diagnóstico fechado.
+  it("painéis: Tema, Reprodução, Biblioteca, Atualização, a ponte e o Diagnóstico fechado", () => {
     const { container } = render(() => <Settings />);
-    const panels = container.querySelectorAll(".set-panel");
-    expect(panels.length).toBe(4);
-    const titles = Array.from(container.querySelectorAll(".set-panel__title"))
-      .map((t) => (t.textContent ?? "").toLowerCase());
-    expect(titles).toContain("appearance");
-    expect(titles).toContain("playback");
-    expect(titles).toContain("library");
-    expect(titles).toContain("about");
+    const titles = Array.from(container.querySelectorAll(".set-panel__title")).map((t) => t.textContent);
+    expect(titles).toEqual(["Tema", "Reprodução", "Biblioteca", "Atualização", "Diagnóstico"]);
+    const diag = container.querySelector<HTMLDetailsElement>("details.set-diag")!;
+    expect(diag.open).toBe(false);
+    // O texto de desenvolvedor mora dentro dele.
+    expect(diag.querySelector(".set-about-grid")).toBeTruthy();
+    expect(diag.textContent).toContain("qdrant");
+  });
+
+  // B20: os quatro controles que repetiam o Tweaks e a barra saíram; uma
+  // fonte por controle. A ponte abre o Tweaks.
+  it("não repete Compact sidebar, Beat sync, Volume nem Normalizar; a ponte abre o Tweaks", () => {
+    setTweaksOpen(false);
+    const { container, getByRole } = render(() => <Settings />);
+    const text = (container.textContent ?? "").toLowerCase();
+    expect(text).not.toContain("compact sidebar");
+    expect(text).not.toContain("beat sync");
+    expect(text).not.toContain("lufs");
+    expect(container.querySelector("input[type='range']")).toBeNull();
+    expect(container.querySelector(".seg")).toBeNull();
+    fireEvent.click(getByRole("button", { name: "Abrir o Tweaks" }));
+    expect(tweaksOpen()).toBe(true);
+    setTweaksOpen(false);
   });
 
   // cfg-1/ds-4: o seletor Light/Dark/Auto gravava body[data-theme], que
@@ -94,58 +111,17 @@ describe("Settings view", () => {
     expect(document.body.hasAttribute("data-theme")).toBe(false);
   });
 
-  // cfg-1: o seg antigo (Off/Subtle/Default/Pulse) gravava rustify-mock-sync,
-  // que ninguém lia. Agora é o MESMO estado do Tweaks (bgBeatMode).
-  it("Beat sync do Settings é o bgBeatMode do Tweaks", () => {
-    updateTweak("bgBeatMode", "speed");
-    const { container } = render(() => <Settings />);
-    const segs = Array.from(container.querySelectorAll(".seg"));
-    const beatSyncSeg = segs.find((s) => {
-      const txt = (s.textContent ?? "").toLowerCase();
-      return txt.includes("off") && txt.includes("speed") && txt.includes("pulse");
-    });
-    expect(beatSyncSeg).toBeTruthy();
-    const buttons = Array.from(beatSyncSeg!.querySelectorAll("button"));
-    expect(buttons.length).toBe(3);
-    const speedBtn = buttons.find((b) => (b.textContent ?? "").toLowerCase() === "speed")!;
-    expect(speedBtn.getAttribute("aria-pressed")).toBe("true");
-
-    const pulseBtn = buttons.find((b) => (b.textContent ?? "").toLowerCase() === "pulse")!;
-    fireEvent.click(pulseBtn);
-    expect(tweaks().bgBeatMode).toBe("pulse");
-    expect(pulseBtn.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  // cfg-1: Compact sidebar gravava uma chave sem consumidor. Agora é o
-  // knob Sidebar do Tweaks (icons = compacta).
-  it("Compact sidebar do Settings é o knob Sidebar do Tweaks", () => {
-    updateTweak("sidebar", "labels");
-    const { container } = render(() => <Settings />);
-    const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
-      (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("compact sidebar"),
-    )!;
-    const tog = row.querySelector("button.tog")!;
-    expect(tog.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(tog);
-    expect(tweaks().sidebar).toBe("icons");
-    expect(tog.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(tog);
-    expect(tweaks().sidebar).toBe("labels");
-  });
-
   // cfg-1: Resume on launch gravava uma chave que o PlayerBar ignorava.
   // O toggle agora escreve a preferência que o restoreSession consulta.
-  it("Resume on launch desligado grava a preferência lida no boot", () => {
-    const { container } = render(() => <Settings />);
-    const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
-      (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("resume"),
-    )!;
-    const tog = row.querySelector("button.tog")!;
+  // A31: o interruptor é um switch com nome (o rótulo visível da linha).
+  it("Retomar ao abrir é um switch com nome e grava a preferência lida no boot", () => {
+    const { getByRole } = render(() => <Settings />);
+    const sw = getByRole("switch", { name: "Retomar ao abrir" });
     expect(resumeOnLaunch()).toBe(true);
-    expect(tog.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(tog);
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(sw);
     expect(resumeOnLaunch()).toBe(false);
-    expect(tog.getAttribute("aria-pressed")).toBe("false");
+    expect(sw.getAttribute("aria-checked")).toBe("false");
   });
 
   it("Library panel renderiza stats (tracks/albums/artists/genres) preservados", async () => {
@@ -158,37 +134,15 @@ describe("Settings view", () => {
     const { container } = render(() => <Settings />);
     // Botao tem classe set-folder-btn--accent e texto Re-scan
     const accentBtns = container.querySelectorAll("button.set-folder-btn--accent");
-    const rescanBtn = Array.from(accentBtns).find((b) => (b.textContent ?? "").includes("Re-scan"));
+    const rescanBtn = Array.from(accentBtns).find((b) => (b.textContent ?? "").includes("Reescanear"));
     expect(rescanBtn).toBeTruthy();
     fireEvent.click(rescanBtn as HTMLElement);
     expect(ipc.libRescan).toHaveBeenCalled();
   });
 
-  it("slider de volume tem nome acessível (o rótulo 'Volume' é um div solto)", () => {
-    const { getByRole } = render(() => <Settings />);
-    expect(getByRole("slider", { name: "Volume" })).toBeTruthy();
-  });
-
-  it("Playback tem volume slider, normalize toggle, resume on launch toggle", () => {
-    const { container } = render(() => <Settings />);
-    // Volume range
-    expect(container.querySelector("input[type='range']")).toBeTruthy();
-    // Normalizar row
-    const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
-    const normLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("normalizar"));
-    expect(normLabel).toBeTruthy();
-    // Resume on launch row
-    const resumeLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("resume"));
-    expect(resumeLabel).toBeTruthy();
-    // Crossfade NAO existe
-    const crossfadeLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("crossfade"));
-    expect(crossfadeLabel).toBeUndefined();
-    // Gapless NAO existe
-    const gaplessLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("gapless"));
-    expect(gaplessLabel).toBeUndefined();
-    // Output device NAO existe
-    const outputLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("output device"));
-    expect(outputLabel).toBeUndefined();
+  it("Biblioteca numa linha: faixas, álbuns e artistas", async () => {
+    const { findByText } = render(() => <Settings />);
+    expect(await findByText("100 faixas · 0 álbuns · 0 artistas")).toBeTruthy();
   });
 
   // cfg-2: a branch era fixa ("feature/signal-screens-handoff") e não
@@ -208,15 +162,15 @@ describe("Settings view", () => {
   describe("Settings não exibe dado falso (cfg-2)", () => {
     it("data dir real (~/.local/share/rustify-player), não ~/.config", () => {
       const { container } = render(() => <Settings />);
-      const stats = container.querySelector(".view__stats")!.textContent ?? "";
-      expect(stats).toContain("~/.local/share/rustify-player");
-      expect(stats).not.toContain("~/.config");
+      const diag = container.querySelector(".set-diag")!.textContent ?? "";
+      expect(diag).toContain("~/.local/share/rustify-player");
+      expect(diag).not.toContain("~/.config");
     });
 
     it("pasta de música é a raiz real ~/Music", () => {
       const { container } = render(() => <Settings />);
       const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
-        (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("music folder"),
+        (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase().includes("pasta de música"),
       )!;
       expect(row.querySelector(".set-row__hint")!.textContent!.trim()).toBe("~/Music");
     });
@@ -241,20 +195,6 @@ describe("Settings view", () => {
       expect(value("backend")).not.toMatch(/cpal/i);
       expect(value("license")).toBe("MIT");
     });
-  });
-
-  // cfg-24: com o som mudo o PlayerBar mostra 0% e o Settings mostrava o
-  // volume guardado (72%).
-  it("volume do Settings respeita o mute (mostra 0 como o PlayerBar)", () => {
-    setPlayer({ volume: 0.72, isMuted: true });
-    const { container } = render(() => <Settings />);
-    const row = Array.from(container.querySelectorAll(".set-row")).find((r) =>
-      (r.querySelector(".set-row__label")?.textContent ?? "").toLowerCase() === "volume",
-    )!;
-    const range = row.querySelector("input[type='range']") as HTMLInputElement;
-    expect(range.value).toBe("0");
-    expect(row.textContent).toContain("0%");
-    setPlayer({ volume: 1, isMuted: false });
   });
 
   it("Update flow: botao Check for updates dispara checkForUpdate", async () => {
@@ -492,28 +432,12 @@ describe("Settings view", () => {
     });
 
     // Controles VIVOS devem continuar presentes
-    it("controles vivos: Beat sync, Volume, Normalize, Re-scan, Check for updates", () => {
+    it("controles vivos: Reescanear e Check for updates", () => {
       const { container } = render(() => <Settings />);
-      const segs = Array.from(container.querySelectorAll(".seg"));
-      // Beat sync seg (Off/Speed/Pulse)
-      const beatSeg = segs.find((s) => {
-        const txt = (s.textContent ?? "").toLowerCase();
-        return txt.includes("off") && txt.includes("pulse");
-      });
-      expect(beatSeg).toBeTruthy();
-      // Volume slider
-      const volumeInput = container.querySelector("input[type='range']");
-      expect(volumeInput).toBeTruthy();
-      // Normalizar row deve existir
-      const allLabels = Array.from(container.querySelectorAll(".set-row__label"));
-      const normLabel = allLabels.find((l) => (l.textContent ?? "").toLowerCase().includes("normalizar"));
-      expect(normLabel).toBeTruthy();
-      // Re-scan botao
       const rescanBtn = Array.from(container.querySelectorAll("button.set-folder-btn--accent")).find(
-        (b) => (b.textContent ?? "").includes("Re-scan")
+        (b) => (b.textContent ?? "").includes("Reescanear")
       );
       expect(rescanBtn).toBeTruthy();
-      // Check for updates
       const allBtns = Array.from(container.querySelectorAll("button"));
       const checkBtn = allBtns.find((b) => (b.textContent ?? "").trim() === "Check for updates");
       expect(checkBtn).toBeTruthy();

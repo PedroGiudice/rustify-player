@@ -20,7 +20,7 @@ const { mockTrack, mockOpenTrackMenu, state } = vi.hoisted(() => ({
   },
   mockOpenTrackMenu: vi.fn(),
   // Holder mutavel pra alternar currentTrack entre os testes.
-  state: { currentTrack: null as any },
+  state: { currentTrack: null as any, isPlaying: false },
 }));
 
 vi.mock("../store/contextMenu", () => ({
@@ -35,7 +35,7 @@ vi.mock("../store/player", () => ({
       if (key === "currentTrack") return state.currentTrack;
       if (key === "positionSecs") return 0;
       if (key === "durationSecs") return 300;
-      if (key === "isPlaying") return false;
+      if (key === "isPlaying") return state.isPlaying;
       if (key === "techInfo") return { format: "—", bitDepth: null, sampleRate: null, channels: null };
       return undefined;
     },
@@ -88,6 +88,7 @@ vi.mock("../components/SpectrumCanvas", () => ({
 beforeEach(() => {
   mockOpenTrackMenu.mockClear();
   state.currentTrack = null;
+  state.isPlaying = false;
   // jsdom não tem ResizeObserver; o NowPlaying observa o .np para
   // reposicionar o card de letras (o WebKitGTK do app tem).
   (globalThis as any).ResizeObserver = class {
@@ -124,5 +125,19 @@ describe("NowPlaying — botao More", () => {
     expect(mockOpenTrackMenu).toHaveBeenCalledTimes(1);
     // Primeiro argumento e o MouseEvent, segundo e a track
     expect(mockOpenTrackMenu.mock.calls[0][1]).toEqual(mockTrack);
+  });
+});
+
+/* A12: o ponto do selo respira só tocando; pausado fica neutro. */
+describe("NowPlaying — ponto do selo", () => {
+  it("marca o selo como tocando só quando a música toca", () => {
+    state.currentTrack = mockTrack;
+    state.isPlaying = false;
+    const paused = render(() => <NowPlaying />);
+    expect(paused.container.querySelector(".np__tag-playing")!.getAttribute("data-playing")).toBe("false");
+    cleanup();
+    state.isPlaying = true;
+    const playing = render(() => <NowPlaying />);
+    expect(playing.container.querySelector(".np__tag-playing")!.getAttribute("data-playing")).toBe("true");
   });
 });

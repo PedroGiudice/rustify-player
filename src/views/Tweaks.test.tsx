@@ -30,8 +30,8 @@ vi.mock("../tauri", async (importOriginal) => {
   };
 });
 
-import { Tweaks } from "./Tweaks";
-import { tweaksOpen, setTweaksOpen } from "../store/tweaks";
+import { Tweaks, glFpsView } from "./Tweaks";
+import { tweaksOpen, setTweaksOpen, tweaks, updateTweak, resetTweaks } from "../store/tweaks";
 import { QueueDrawer, QUEUE_EVENT } from "../components/QueueDrawer";
 import { CommandPalette, CMD_PALETTE_EVENT } from "../components/CommandPalette";
 import { TrackContextMenu } from "../components/TrackContextMenu";
@@ -39,7 +39,7 @@ import { openTrackMenu, trackMenu, closeTrackMenu } from "../store/contextMenu";
 import { Fader } from "../components/dsp/Fader";
 import type { Track } from "../tauri";
 import { GL_BENCH_EVENT, cancelGlBench, glBenchProgress } from "../gl/bench";
-import { glSceneOverride } from "../gl/meta";
+import { glSceneOverride, glStatus, setGlStatus, resetGlStatus } from "../gl/meta";
 
 afterEach(() => {
   cleanup();
@@ -162,5 +162,96 @@ describe("Tweaks: Medir cenas", () => {
     await vi.waitFor(() => expect(glBenchProgress()?.key).toBe("dust"));
     cancelGlBench();
     await vi.waitFor(() => expect(glBenchProgress()).toBeNull());
+  });
+});
+
+/* Varredura de 31/10: B17 (Fundo primeiro + âncoras), B18 (Cor do fundo),
+   A30 (dependências, radiogroups, Scale ao soltar), A33 (WebGL que não
+   iniciou), B4 (Redefinir tudo arma e confirma). */
+describe("Tweaks: organização e controles (31/10)", () => {
+  afterEach(() => {
+    resetTweaks();
+    resetGlStatus();
+  });
+
+  it("seções na ordem Fundo, Áudio, Aparência, Controle remoto, com âncoras no topo", () => {
+    render(() => <Tweaks />);
+    const heads = Array.from(document.querySelectorAll(".tweaks__body .tweaks__divider")).map((h) => h.textContent);
+    expect(heads).toEqual(["Fundo", "Áudio", "Aparência", "Controle remoto"]);
+    const nav = screen.getByRole("navigation", { name: "Seções do Tweaks" });
+    expect(Array.from(nav.querySelectorAll("button")).map((b) => b.textContent)).toEqual([
+      "Fundo", "Áudio", "Aparência", "Remoto",
+    ]);
+  });
+
+  it("segmentados são radiogroups que dizem o ativo (inclusive a Ponte MCP)", () => {
+    render(() => <Tweaks />);
+    const ponte = screen.getByRole("radiogroup", { name: "Ponte MCP" });
+    const off = Array.from(ponte.querySelectorAll('[role="radio"]')).find((b) => b.textContent === "Off")!;
+    expect(off.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("Cor do fundo: um seletor de quatro modos; Manual mostra o seletor de cor", () => {
+    render(() => <Tweaks />);
+    const group = screen.getByRole("radiogroup", { name: "Cor do fundo" });
+    const radios = Array.from(group.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    expect(radios.map((r) => r.textContent)).toEqual(["Da capa, alterna", "Da capa, fixa", "Do tema", "Manual"]);
+    expect(radios[0].getAttribute("aria-checked")).toBe("true");
+    expect(document.querySelector(".tweaks__color")).toBeNull();
+    fireEvent.click(radios[3]);
+    expect(radios[3].getAttribute("aria-checked")).toBe("true");
+    expect(document.querySelector(".tweaks__color")).toBeTruthy();
+    fireEvent.click(radios[2]);
+    expect(tweaks().adaptiveInk).toBe(false);
+    expect(document.querySelector(".tweaks__color")).toBeNull();
+  });
+
+  it("filho de pai desligado diz de quem depende e não muda", () => {
+    updateTweak("bgBeatMode", "off");
+    render(() => <Tweaks />);
+    expect(screen.getByText("Depende de Beat sync ligado")).toBeTruthy();
+    const depth = screen.getByRole("slider", { name: "Beat depth" }) as HTMLInputElement;
+    expect(depth.disabled).toBe(true);
+    updateTweak("bgBeatMode", "speed");
+    expect(screen.queryByText("Depende de Beat sync ligado")).toBeNull();
+    expect(depth.disabled).toBe(false);
+  });
+
+  it("Scale só aplica ao soltar; o valor exibido acompanha o arrasto", () => {
+    render(() => <Tweaks />);
+    const scale = screen.getByRole("slider", { name: "Scale" }) as HTMLInputElement;
+    scale.value = "1.1";
+    fireEvent.input(scale);
+    expect(tweaks().scale).toBe(1);
+    expect(scale.getAttribute("aria-valuetext")).toBe("110%");
+    fireEvent.change(scale);
+    expect(tweaks().scale).toBe(1.1);
+  });
+
+  it("WebGL que não iniciou: frase de leigo, o motivo no title e Tentar de novo", () => {
+    updateTweak("bgEngine", "webgl");
+    render(() => <Tweaks />);
+    setGlStatus({ ok: false, renderer: "", error: "shader x falhou", fps: 0 });
+    const fail = document.querySelector<HTMLElement>(".tweaks__gl-fail")!;
+    expect(fail.textContent).toContain("O fundo WebGL não iniciou; o 2D está no ar.");
+    expect(fail.textContent).not.toContain("shader x falhou");
+    expect(fail.title).toBe("shader x falhou");
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(glStatus().ok).toBeNull();
+  });
+
+  it("fps 0 é 'medindo…' sem âmbar; abaixo de 58 é aviso", () => {
+    expect(glFpsView(0)).toEqual({ text: "medindo…", low: false });
+    expect(glFpsView(42)).toEqual({ text: "42 fps", low: true });
+    expect(glFpsView(60)).toEqual({ text: "60 fps", low: false });
+  });
+
+  it("Redefinir tudo pede o segundo clique", () => {
+    updateTweak("density", "compact");
+    render(() => <Tweaks />);
+    fireEvent.click(screen.getByRole("button", { name: "Redefinir tudo" }));
+    expect(tweaks().density).toBe("compact");
+    fireEvent.click(screen.getByRole("button", { name: "Clique de novo para redefinir tudo" }));
+    expect(tweaks().density).toBe("normal");
   });
 });

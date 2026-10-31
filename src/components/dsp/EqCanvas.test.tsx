@@ -138,6 +138,21 @@ describe("EqCanvas", () => {
     expect(k20.style.left).toMatch(/27px \+ 0 \*|\* 0\)/);
   });
 
+  // B22: com o espectro ligado, a tela diz o que cada marca é, e que o
+  // traço de antes do EQ é estimado.
+  it("legenda honesta do espectro só com o overlay ligado", () => {
+    updateTweak("eqSpectrumOverlay", false);
+    const off = render(() => <EqCanvas bands={DEFAULT} activeBand={0} />);
+    expect(off.container.querySelector(".eq-legend")).toBeNull();
+    cleanup();
+    updateTweak("eqSpectrumOverlay", true);
+    const on = render(() => <EqCanvas bands={DEFAULT} activeBand={0} />);
+    const legend = on.container.querySelector(".eq-legend")!;
+    expect(legend.textContent).toContain("saída medida");
+    expect(legend.textContent).toContain("antes do EQ (estimado)");
+    updateTweak("eqSpectrumOverlay", false);
+  });
+
   it("renderiza sem crashar quando overlay esta on (mesmo sem fft event)", () => {
     updateTweak("eqSpectrumOverlay", true);
     expect(() => {

@@ -58,6 +58,10 @@ import {
   setEqBandSlope,
   setLimiterThreshold,
   setBassAmount,
+  dspError,
+  clearDspError,
+  applyFullDspState,
+  reapplyDsp,
 } from "./dsp";
 
 beforeEach(() => {
@@ -94,5 +98,39 @@ describe("dsp setters — smoke", () => {
     expect(ipc.dspSetBassAmount).not.toHaveBeenCalled();
     vi.advanceTimersByTime(50);
     expect(ipc.dspSetBassAmount).toHaveBeenCalledWith(0.42);
+  });
+});
+
+/* A32: ajuste recusado parecia aplicado (o erro ia só para o console) e,
+   na restauração, a primeira falha abortava os ~40 comandos seguintes. */
+describe("dsp: recusa do motor", () => {
+  afterEach(() => clearDspError());
+
+  it("setter recusado acende dspError", async () => {
+    vi.mocked(ipc.dspSetLimiterThreshold).mockRejectedValueOnce(new Error("engine down"));
+    setLimiterThreshold(-9);
+    vi.advanceTimersByTime(50);
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(dspError()).not.toBeNull());
+  });
+
+  it("restauração segue depois de uma falha e conta as recusas", async () => {
+    vi.useRealTimers();
+    vi.mocked(ipc.dspSetBypass).mockRejectedValueOnce(new Error("x"));
+    vi.mocked(ipc.dspSetLimiterMode).mockRejectedValueOnce(new Error("y"));
+    const failed = await applyFullDspState();
+    expect(failed).toBe(2);
+    expect(ipc.dspSetEqEnabled).toHaveBeenCalled();
+    expect(ipc.dspSetBassLevels).toHaveBeenCalled();
+    expect(dspError()).not.toBeNull();
+  });
+
+  it("Reaplicar limpa o aviso quando o motor aceita", async () => {
+    vi.useRealTimers();
+    vi.mocked(ipc.dspSetBypass).mockRejectedValueOnce(new Error("x"));
+    await applyFullDspState();
+    expect(dspError()).not.toBeNull();
+    await reapplyDsp();
+    expect(dspError()).toBeNull();
   });
 });

@@ -84,7 +84,6 @@ describe("Signal view", () => {
     expect(getByText("Signal")).toBeTruthy();
     expect(container.querySelector(".sig-master-bar")).toBeTruthy();
     expect(container.querySelector(".sig-stat-row")).toBeTruthy();
-    expect(container.querySelector(".sig-chain")).toBeTruthy();
     expect(container.querySelector(".sig-presets")).toBeTruthy();
     const panels = container.querySelectorAll(".sig-panel");
     expect(panels.length).toBe(3);
@@ -105,7 +104,7 @@ describe("Signal view", () => {
 
   it("toggle bypass dispara IPC dspSetBypass", async () => {
     const { container } = render(() => <Signal />);
-    const bypassBtn = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const bypassBtn = container.querySelector<HTMLButtonElement>('.sig-master-bar [role="switch"]')!;
     const before = dsp.bypass;
     bypassBtn.click();
     expect(dsp.bypass).toBe(!before);
@@ -115,18 +114,18 @@ describe("Signal view", () => {
 
   it("toggle master tem a mesma polaridade dos estágios: ligado = processando (estsig-6)", () => {
     const { container } = render(() => <Signal />);
-    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const master = container.querySelector<HTMLButtonElement>('.sig-master-bar [role="switch"]')!;
     expect(dsp.bypass).toBe(false);
-    expect(master.getAttribute("aria-pressed")).toBe("true");
+    expect(master.getAttribute("aria-checked")).toBe("true");
     master.click();
     expect(dsp.bypass).toBe(true);
-    expect(master.getAttribute("aria-pressed")).toBe("false");
+    expect(master.getAttribute("aria-checked")).toBe("false");
     master.click();
   });
 
   it("bypass e estágio desligado aparecem nos painéis e nos tiles (estsig-6)", () => {
     const { container } = render(() => <Signal />);
-    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const master = container.querySelector<HTMLButtonElement>('.sig-master-bar [role="switch"]')!;
     const panels = () => Array.from(container.querySelectorAll<HTMLElement>(".sig-panel"));
     // Limiter e Bass começam desligados no default; EQ ligado.
     const [eq, lim, bass] = panels();
@@ -147,18 +146,14 @@ describe("Signal view", () => {
 
   it("bypass não desliga a normalização na tela, porque não desliga no backend (motor-v2)", () => {
     const { container } = render(() => <Signal />);
-    const master = container.querySelector<HTMLButtonElement>(".sig-master-bar .tog")!;
+    const master = container.querySelector<HTMLButtonElement>('.sig-master-bar [role="switch"]')!;
     const normTile = () =>
       Array.from(container.querySelectorAll<HTMLElement>(".sig-stat")).find((t) =>
-        t.textContent?.includes("Normalize"),
+        t.textContent?.includes("Normalização"),
       )!;
     const normOn = normTile().dataset.on;
     master.click(); // bypass
     expect(normTile().dataset.on).toBe(normOn);
-    const normNode = Array.from(container.querySelectorAll<HTMLElement>(".sig-chain__node")).find((n) =>
-      n.textContent?.includes("norm_gain"),
-    )!;
-    expect(normNode.dataset.on).toBe(normOn);
     expect(container.querySelector(".sig-master-bar")!.textContent).not.toMatch(/entire chain/i);
     master.click();
   });
@@ -219,4 +214,69 @@ describe("Signal view", () => {
     localStorage.removeItem("rustify-dsp-presets");
   });
 
+  // B21/A32: os cartões são a linha de estado, na ordem real do sinal
+  // (EQ → normalização → Limiter → Bass); o fluxo de nós e os selos saíram.
+  it("cartões na ordem do sinal, sem fluxo de nós nem selos", () => {
+    const { container } = render(() => <Signal />);
+    const labels = Array.from(container.querySelectorAll(".sig-stat__label")).map((l) => l.textContent);
+    expect(labels).toEqual(["EQ", "Normalização", "Limiter", "Bass"]);
+    expect(container.querySelector(".sig-chain")).toBeNull();
+    expect(container.querySelector(".sig-panel__badge")).toBeNull();
+    expect(container.textContent).not.toContain("bit-perfect");
+  });
+
+  it("interruptores dos estágios têm nome", () => {
+    const { getByRole } = render(() => <Signal />);
+    expect(getByRole("switch", { name: "Cadeia DSP" })).toBeTruthy();
+    expect(getByRole("switch", { name: "Parametric Equalizer" })).toBeTruthy();
+    expect(getByRole("switch", { name: "Limiter" })).toBeTruthy();
+    expect(getByRole("switch", { name: "Bass Enhancer" })).toBeTruthy();
+  });
+
+  // A32: Rename e Delete ficavam acesos e mortos nos presets de fábrica.
+  it("Rename e Delete só aparecem com preset próprio", () => {
+    localStorage.removeItem("rustify-dsp-presets");
+    const { getByText, queryByText } = render(() => <Signal />);
+    getByText("Flat").click();
+    expect(queryByText("Rename")).toBeNull();
+    expect(queryByText("Delete")).toBeNull();
+    vi.spyOn(window, "prompt").mockReturnValueOnce("Meu");
+    getByText("Save").click();
+    expect(getByText("Rename")).toBeTruthy();
+    expect(getByText("Delete")).toBeTruthy();
+    localStorage.removeItem("rustify-dsp-presets");
+  });
+
+  // B4: apagar preset arma no 1º clique e apaga no 2º (sem confirm nativo).
+  it("apagar preset arma e confirma, sem window.confirm", () => {
+    localStorage.removeItem("rustify-dsp-presets");
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const { getByText, queryByText, container } = render(() => <Signal />);
+    vi.spyOn(window, "prompt").mockReturnValueOnce("Meu");
+    getByText("Save").click();
+    getByText("Delete").click();
+    expect(getByText("Apagar?")).toBeTruthy();
+    const names = () => Array.from(container.querySelectorAll(".sig-pre")).map((b) => b.textContent);
+    expect(names()).toContain("Meu");
+    getByText("Apagar?").click();
+    expect(names()).not.toContain("Meu");
+    expect(queryByText("Apagar?")).toBeNull();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    localStorage.removeItem("rustify-dsp-presets");
+  });
+
+  // A32: recusa do motor vira banner com Reaplicar.
+  it("recusa do motor mostra o banner e Reaplicar reenvia o estado", async () => {
+    vi.mocked(ipc.dspSetEqEnabled).mockRejectedValueOnce(new Error("engine"));
+    const { getByText, findByRole } = render(() => <Signal />);
+    getByText("Parametric Equalizer").closest(".sig-panel")!.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
+    const alert = await findByRole("alert");
+    expect(alert.textContent).toContain("O motor de áudio recusou um ajuste.");
+    vi.mocked(ipc.dspSetBypass).mockClear();
+    getByText("Reaplicar").click();
+    await vi.waitFor(() => expect(ipc.dspSetBypass).toHaveBeenCalled());
+    await vi.waitFor(() => expect(document.querySelector(".sig-alert")).toBeNull());
+    // devolve o EQ ao estado inicial
+    getByText("Parametric Equalizer").closest(".sig-panel")!.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
+  });
 });

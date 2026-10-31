@@ -36,6 +36,8 @@ import {
   resetTweaks,
   setAdaptiveColor,
   tweaks,
+  bgInkMode,
+  setBgInkMode,
 } from "./tweaks";
 
 const html = () => document.documentElement;
@@ -486,5 +488,57 @@ describe("remoteBridge (cadeado da ponte MCP)", () => {
     localStorage.setItem("kv-tweaks", JSON.stringify({ remoteBridge: true }));
     loadTweaks();
     expect(tweaks().remoteBridge).toBe(true);
+  });
+});
+
+/* B18: Bg ink, Adaptive ink, Ink cycle e a dica decidiam UMA coisa com
+   precedência escondida. O seletor "Cor do fundo" mostra a precedência sem
+   mudar o schema: os quatro modos são combinações dos três campos. */
+describe("Cor do fundo (B18)", () => {
+  beforeEach(() => {
+    resetTweaks();
+    loadTweaks();
+  });
+
+  it("o padrão é da capa, alternando", () => {
+    expect(bgInkMode()).toBe("cover-cycle");
+  });
+
+  it("cada modo grava a combinação dos campos de sempre", () => {
+    setBgInkMode("cover-fixed");
+    expect(tweaks().adaptiveInk).toBe(true);
+    expect(tweaks().bgInkCycle).toBe(false);
+    expect(isDirty("bgInk")).toBe(false);
+    expect(bgInkMode()).toBe("cover-fixed");
+
+    setBgInkMode("theme");
+    expect(tweaks().adaptiveInk).toBe(false);
+    expect(isDirty("bgInk")).toBe(false);
+    expect(bgInkMode()).toBe("theme");
+
+    setBgInkMode("cover-cycle");
+    expect(tweaks().adaptiveInk).toBe(true);
+    expect(tweaks().bgInkCycle).toBe(true);
+    expect(bgInkMode()).toBe("cover-cycle");
+  });
+
+  it("manual vence a capa e o tema; sair dele limpa o override", () => {
+    setAdaptiveColor("#3355aa");
+    setBgInkMode("manual");
+    expect(isDirty("bgInk")).toBe(true);
+    expect(bgInkMode()).toBe("manual");
+    updateTweak("bgInk", "#bb2222");
+    flushTweaks();
+    expect(currentInk()).toBe("#bb2222");
+
+    setBgInkMode("cover-fixed");
+    expect(isDirty("bgInk")).toBe(false);
+    flushTweaks();
+    expect(currentInk()).toBe("#3355aa");
+  });
+
+  it("tocar no seletor de cor já é escolher o manual", () => {
+    updateTweak("bgInk", "#224422");
+    expect(bgInkMode()).toBe("manual");
   });
 });

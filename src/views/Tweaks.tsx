@@ -6,13 +6,27 @@
    conhecido em docs/bugs/17052026-tweaks-font-slider-freeze.md.
 
    Aqui:
-   - Sliders sao source-of-truth controlado por signals
-   - O label "valor %" e um `<span>` derivado, atualiza sem refazer DOM
+   - Sliders são source-of-truth controlado por signals
+   - O label "valor %" é um `<span>` derivado, atualiza sem refazer DOM
    - Apply + persist roda via createEffect no store/tweaks.ts
    - Painel monta uma vez via <Portal>; visibilidade via classList
+
+   Varredura Impeccable de 31/10:
+   - B17: o Fundo vem primeiro (Fundo, Áudio, Aparência, Remoto) e o
+     cabeçalho tem âncoras para as seções; nenhum controle se esconde.
+   - B18: Bg ink, Adaptive ink e Ink cycle viraram UM seletor "Cor do
+     fundo" com a precedência à vista (store: bgInkMode/setBgInkMode).
+   - A30: controle que depende de outro fica marcado e diz de quem
+     depende; "↺ tema" compacto; o range herda o .slider; o Scale aplica
+     ao soltar (arrastar reescalava o painel sob o cursor); segmentados
+     são radiogroups com o ativo dito; fechar é ícone Lucide.
+   - A33/A4: fundo WebGL que não iniciou diz que o 2D está no ar e
+     oferece tentar de novo; fps 0 é "medindo…"; o ponto só tem halo
+     em aviso.
+   - B4: "Redefinir tudo" pede o segundo clique.
    ============================================================ */
 
-import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createResource, createSignal, createUniqueId, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import { pushEscLayer } from "../lib/escLayers";
 import { Icon, ICONS } from "../components/Icon";
@@ -25,6 +39,9 @@ import {
   listSystemFonts,
   isDirty,
   clearDirty,
+  bgInkMode,
+  setBgInkMode,
+  type BgInkMode,
   type TweaksState,
 } from "../store/tweaks";
 import {
@@ -43,28 +60,82 @@ import type { BenchResult } from "../gl/benchStats";
 
 // ── Subcomponentes locais ────────────────────────────────────
 
-function Segmented<K extends keyof TweaksState>(props: {
-  label: string;
-  key: K;
-  options: Array<[TweaksState[K], string]>;
-}) {
+/** Dependência de um controle: desligado o pai, o filho não tem efeito e
+    a linha diz isso (A30), em vez de ficar aceso e ser ignorado. */
+interface Dep {
+  /** O controle vale (pai ligado). */
+  on: boolean;
+  /** "Depende de <isto>". */
+  parent: string;
+}
+
+function DepHint(props: { dep?: Dep }) {
   return (
-    <div class="tweaks__row">
-      <span class="tweaks__label">{props.label}</span>
-      <div class="segmented">
+    <Show when={props.dep && !props.dep.on}>
+      <div class="tweaks__hint tweaks__dep">Depende de {props.dep!.parent}</div>
+    </Show>
+  );
+}
+
+/** Grupo de opções exclusivas: radiogroup com o ativo em aria-checked. */
+function Choice<T>(props: {
+  label: string;
+  value: T;
+  options: Array<[T, string]>;
+  onPick: (v: T) => void;
+  dep?: Dep;
+  wrap?: boolean;
+  /** title por opção (dica longa). */
+  titles?: (v: T) => string | undefined;
+}) {
+  const id = createUniqueId();
+  const off = () => !!props.dep && !props.dep.on;
+  return (
+    <div class="tweaks__row" classList={{ "is-dependent": off() }}>
+      <span class="tweaks__label" id={id}>{props.label}</span>
+      <div
+        class="segmented"
+        classList={{ "segmented--wrap": !!props.wrap }}
+        role="radiogroup"
+        aria-labelledby={id}
+        aria-disabled={off() ? "true" : undefined}
+      >
         <For each={props.options}>
           {([val, text]) => (
             <button
+              type="button"
+              role="radio"
               class="segmented__btn"
-              classList={{ "is-active": tweaks()[props.key] === val }}
-              onClick={() => updateTweak(props.key, val)}
+              classList={{ "is-active": props.value === val }}
+              aria-checked={props.value === val ? "true" : "false"}
+              aria-disabled={off() ? "true" : undefined}
+              title={props.titles?.(val)}
+              onClick={() => { if (!off()) props.onPick(val); }}
             >
               {text}
             </button>
           )}
         </For>
       </div>
+      <DepHint dep={props.dep} />
     </div>
+  );
+}
+
+function Segmented<K extends keyof TweaksState>(props: {
+  label: string;
+  key: K;
+  options: Array<[TweaksState[K], string]>;
+  dep?: Dep;
+}) {
+  return (
+    <Choice
+      label={props.label}
+      value={tweaks()[props.key]}
+      options={props.options}
+      onPick={(v) => updateTweak(props.key, v)}
+      dep={props.dep}
+    />
   );
 }
 
@@ -72,24 +143,41 @@ function FontSelect(props: {
   label: string;
   key: "fontUI" | "fontMono";
   fonts: string[];
+  dep?: Dep;
 }) {
+  const id = createUniqueId();
+  const off = () => !!props.dep && !props.dep.on;
   return (
-    <div class="tweaks__row">
-      <span class="tweaks__label">{props.label}</span>
+    <div class="tweaks__row" classList={{ "is-dependent": off() }}>
+      <span class="tweaks__label" id={id}>{props.label}</span>
       <span class="select-shell select-shell--block">
-      <select
-        class="tweaks__select"
-        value={tweaks()[props.key]}
-        onChange={(e) => updateTweak(props.key, e.currentTarget.value)}
-      >
-        <option value="">Default</option>
-        <For each={props.fonts}>
-          {(f) => <option value={f}>{f}</option>}
-        </For>
-      </select>
-      <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
+        <select
+          class="tweaks__select"
+          aria-labelledby={id}
+          disabled={off()}
+          value={tweaks()[props.key]}
+          onChange={(e) => updateTweak(props.key, e.currentTarget.value)}
+        >
+          <option value="">Default</option>
+          <For each={props.fonts}>
+            {(f) => <option value={f}>{f}</option>}
+          </For>
+        </select>
+        <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
       </span>
+      <DepHint dep={props.dep} />
     </div>
+  );
+}
+
+/** "↺ tema" compacto ao lado do rótulo (A30): era uma barra de largura
+    total porque herdava o .tweaks__reset. */
+function ThemeReset(props: { onClick: () => void; title: string }) {
+  return (
+    <button type="button" class="tweaks__retheme" title={props.title} onClick={props.onClick}>
+      <Icon name="lucide:rotate-ccw" size={11} />
+      tema
+    </button>
   );
 }
 
@@ -112,94 +200,99 @@ function NumberSlider(props: {
   format: (v: number) => string;
   /** Knob regido pelo tema: mostra "↺ tema" quando o usuário sobrescreveu. */
   themeGoverned?: boolean;
+  /** Aplica só ao soltar (o Scale reescala o painel: aplicar no arrasto
+      movia o trilho sob o cursor). */
+  commitOnRelease?: boolean;
+  dep?: Dep;
 }) {
+  const id = createUniqueId();
+  const off = () => !!props.dep && !props.dep.on;
+  // Valor exibido durante o arrasto quando só aplica ao soltar.
+  const [draft, setDraft] = createSignal<number | null>(null);
+  const shown = () => draft() ?? tweaks()[props.key];
   return (
-    <div class="tweaks__row">
+    <div class="tweaks__row" classList={{ "is-dependent": off() }}>
       <span class="tweaks__label">
-        {props.label} <span class="tweaks__val">{props.format(tweaks()[props.key])}</span>
+        <span id={id}>{props.label}</span> <span class="tweaks__val">{props.format(shown())}</span>
         <Show when={props.themeGoverned && isDirty(props.key)}>
-          <button
-            class="tweaks__reset"
-            title="Voltar a seguir o tema"
-            onClick={() => clearDirty(props.key)}
-          >
-            ↺ tema
-          </button>
+          <ThemeReset title="Voltar a seguir o tema" onClick={() => clearDirty(props.key)} />
         </Show>
       </span>
       <input
         type="range"
-        class="settings-range"
+        class="slider tweaks__range"
+        aria-labelledby={id}
+        aria-valuetext={props.format(shown())}
+        disabled={off()}
         min={props.min}
         max={props.max}
         step={props.step}
-        value={tweaks()[props.key]}
+        value={shown()}
         // input = arrasto em tempo real; o store reage e aplica.
         // Sem re-render do painel, sem perder pointer capture.
-        onInput={(e) => updateTweak(props.key, parseFloat(e.currentTarget.value))}
+        onInput={(e) => {
+          const v = parseFloat(e.currentTarget.value);
+          if (props.commitOnRelease) setDraft(v);
+          else updateTweak(props.key, v);
+        }}
+        onChange={(e) => {
+          if (!props.commitOnRelease) return;
+          // Lê antes de limpar o rascunho: limpar re-renderiza o value.
+          const v = parseFloat(e.currentTarget.value);
+          updateTweak(props.key, v);
+          setDraft(null);
+        }}
       />
+      <DepHint dep={props.dep} />
     </div>
   );
 }
 
-/** Motor do background. Separado do <Segmented> genérico porque ligar
-    o WebGL precisa limpar uma falha anterior — senão o App, que cai pro
-    2D quando glStatus.ok === false, nunca deixaria tentar de novo. */
+/** Motor do background. Ligar o WebGL precisa limpar uma falha anterior —
+    senão o App, que cai pro 2D quando glStatus.ok === false, nunca
+    deixaria tentar de novo. */
 function EngineRow() {
-  const options: Array<[TweaksState["bgEngine"], string]> = [["2d", "2D"], ["webgl", "WebGL"]];
   return (
-    <div class="tweaks__row">
-      <span class="tweaks__label">Motor</span>
-      <div class="segmented">
-        <For each={options}>
-          {([val, text]) => (
-            <button
-              class="segmented__btn"
-              classList={{ "is-active": tweaks().bgEngine === val }}
-              onClick={() => {
-                if (val === "webgl") resetGlStatus();
-                updateTweak("bgEngine", val);
-              }}
-            >
-              {text}
-            </button>
-          )}
-        </For>
-      </div>
-    </div>
+    <Choice
+      label="Motor"
+      value={tweaks().bgEngine}
+      options={[["2d", "2D"], ["webgl", "WebGL"]] as Array<[TweaksState["bgEngine"], string]>}
+      onPick={(val) => {
+        if (val === "webgl") resetGlStatus();
+        updateTweak("bgEngine", val);
+      }}
+    />
   );
 }
 
-/** Seleção da cena + o que o motor está entregando de fato (driver e
-    fps medidos no app). O fps é o gate da feature: o critério é 60 na
-    cmr-auto, e "Medir cenas" mede todas de uma vez. */
 /** Critério do CEO (26/09): média >= 58 fps medidos no app. */
 const GL_FPS_OK = 58;
 
+/** O que a linha de estado do WebGL diz do fps. 0 = ainda não mediu
+    (o primeiro segundo): "medindo…", sem o âmbar de abaixo do critério. */
+export function glFpsView(fps: number): { text: string; low: boolean } {
+  if (!(fps > 0)) return { text: "medindo…", low: false };
+  return { text: `${fps} fps`, low: fps < GL_FPS_OK };
+}
+
+/** Seleção da cena + o que o motor está entregando de fato (cena e fps
+    medidos no app). O fps é o gate da feature: o critério é 60 na
+    cmr-auto, e "Medir cenas" mede todas de uma vez. */
 function GlSection() {
   return (
     <>
-      <div class="tweaks__row">
-        <span class="tweaks__label">Cena</span>
-        <div class="segmented segmented--wrap">
-          <For each={SCENE_KEYS}>
-            {(k) => (
-              <button
-                class="segmented__btn"
-                classList={{ "is-active": tweaks().bgScene === k }}
-                onClick={() => {
-                  // Cena que não compilou derrubou o motor pro 2D; escolher
-                  // outra é tentar de novo, como religar o WebGL.
-                  if (glStatus().ok === false) resetGlStatus();
-                  updateTweak("bgScene", k);
-                }}
-              >
-                {SCENE_LABELS[k]}
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
+      <Choice
+        label="Cena"
+        value={tweaks().bgScene}
+        options={SCENE_KEYS.map((k) => [k, SCENE_LABELS[k]] as [typeof k, string])}
+        wrap
+        onPick={(k) => {
+          // Cena que não compilou derrubou o motor pro 2D; escolher
+          // outra é tentar de novo, como religar o WebGL.
+          if (glStatus().ok === false) resetGlStatus();
+          updateTweak("bgScene", k);
+        }}
+      />
       <div class="tweaks__hint">{SCENE_HINTS[tweaks().bgScene]}</div>
       <Show when={tweaks().bgScene === "relief"}>
         <ReliefControls />
@@ -207,21 +300,26 @@ function GlSection() {
       <Show when={glStatus().ok === true}>
         {/* O nome do renderer vem mascarado pelo WebKitGTK ("Apple GPU"
             até na Intel) e não diz nada: fica só no title, para
-            diagnóstico. Na tela, o que se interpreta: a cena que o motor
-            está desenhando e o fps medido, com o ponto no critério de 58. */}
+            diagnóstico. Na tela, a cena que o motor está desenhando e o
+            fps medido, com o ponto no critério de 58. */}
         <div class="tweaks__hint tweaks__gl-status" title={glStatus().renderer || undefined}>
           <span
             class="tweaks__gl-dot"
-            classList={{ "tweaks__gl-dot--low": glStatus().fps < GL_FPS_OK }}
+            classList={{ "tweaks__gl-dot--low": glFpsView(glStatus().fps).low }}
             aria-hidden="true"
           />
           <span>WebGL · {SCENE_LABELS[glActiveScene() ?? tweaks().bgScene]}</span>
-          <span class="tweaks__gl-fps">{glStatus().fps} fps</span>
+          <span class="tweaks__gl-fps">{glFpsView(glStatus().fps).text}</span>
         </div>
       </Show>
       <Show when={glStatus().ok === false}>
-        <div class="tweaks__hint">
-          Fundo WebGL fora do ar ({glStatus().error}) — o 2D assumiu.
+        {/* A33: a mensagem interna fica no title; a tela diz o que aconteceu
+            e dá a saída. */}
+        <div class="tweaks__gl-fail" role="status" title={glStatus().error || undefined}>
+          <span>O fundo WebGL não iniciou; o 2D está no ar.</span>
+          <button type="button" class="tweaks__retheme" onClick={() => resetGlStatus()}>
+            Tentar de novo
+          </button>
         </div>
       </Show>
     </>
@@ -230,7 +328,7 @@ function GlSection() {
 
 /** Variantes do Relevo em avaliação (gl/meta.ts). "Relevo" some na
     Original (referência intacta); "Superfície" só existe nas variantes
-    desenhadas por pixel. */
+    desenhadas por pixel. B19 (qual Relevo fica) espera o CEO. */
 function ReliefControls() {
   const lines = () => tweaks().reliefLines;
   // Variante que não compilou derrubou o motor pro 2D; escolher outra é
@@ -241,58 +339,75 @@ function ReliefControls() {
   };
   return (
     <>
-      <div class="tweaks__row">
-        <span class="tweaks__label">Linhas</span>
-        <div class="segmented segmented--wrap">
-          <For each={RELIEF_LINES}>
-            {(m) => (
-              <button
-                class="segmented__btn"
-                classList={{ "is-active": lines() === m.key }}
-                title={m.hint}
-                onClick={() => pick("reliefLines", m.key)}
-              >
-                {m.label}
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
+      <Choice
+        label="Linhas"
+        value={lines()}
+        options={RELIEF_LINES.map((m) => [m.key, m.label] as [typeof m.key, string])}
+        wrap
+        titles={(k) => RELIEF_LINES.find((m) => m.key === k)?.hint}
+        onPick={(k) => pick("reliefLines", k)}
+      />
       <div class="tweaks__hint">{RELIEF_LINES.find((m) => m.key === lines())?.hint}</div>
       <Show when={lines() !== "original"}>
-        <div class="tweaks__row">
-          <span class="tweaks__label">Relevo</span>
-          <div class="segmented">
-            <For each={[["detailed", "Detalhado"], ["smooth", "Suave"]] as const}>
-              {([k, label]) => (
-                <button
-                  class="segmented__btn"
-                  classList={{ "is-active": tweaks().reliefShape === k }}
-                  onClick={() => pick("reliefShape", k)}
-                >
-                  {label}
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
+        <Choice
+          label="Relevo"
+          value={tweaks().reliefShape}
+          options={[["detailed", "Detalhado"], ["smooth", "Suave"]] as Array<[TweaksState["reliefShape"], string]>}
+          onPick={(k) => pick("reliefShape", k)}
+        />
       </Show>
       <Show when={reliefHasSurface(lines())}>
-        <div class="tweaks__row">
-          <span class="tweaks__label">Superfície</span>
-          <div class="segmented">
-            <For each={[["open", "Vazada"], ["solid", "Sólida"]] as const}>
-              {([k, label]) => (
-                <button
-                  class="segmented__btn"
-                  classList={{ "is-active": tweaks().reliefSurface === k }}
-                  onClick={() => pick("reliefSurface", k)}
-                >
-                  {label}
-                </button>
-              )}
-            </For>
-          </div>
+        <Choice
+          label="Superfície"
+          value={tweaks().reliefSurface}
+          options={[["open", "Vazada"], ["solid", "Sólida"]] as Array<[TweaksState["reliefSurface"], string]>}
+          onPick={(k) => pick("reliefSurface", k)}
+        />
+      </Show>
+    </>
+  );
+}
+
+/* ── Cor do fundo (B18) ────────────────────────────────────── */
+
+const INK_MODES: Array<[BgInkMode, string]> = [
+  ["cover-cycle", "Da capa, alterna"],
+  ["cover-fixed", "Da capa, fixa"],
+  ["theme", "Do tema"],
+  ["manual", "Manual"],
+];
+
+const INK_HINTS: Record<BgInkMode, string> = {
+  "cover-cycle": "Alterna entre as cores dominantes da capa, a cada ~40 s.",
+  "cover-fixed": "Segue a cor dominante da capa da faixa tocando.",
+  theme: "Usa a cor que o tema declara.",
+  manual: "A cor escolhida aqui vence a capa e o tema.",
+};
+
+function BgInkSection() {
+  const colorId = createUniqueId();
+  return (
+    <>
+      <Choice
+        label="Cor do fundo"
+        value={bgInkMode()}
+        options={INK_MODES}
+        wrap
+        onPick={setBgInkMode}
+      />
+      <div class="tweaks__hint">{INK_HINTS[bgInkMode()]}</div>
+      <Show when={bgInkMode() === "manual"}>
+        <div class="tweaks__row tweaks__row--inline">
+          <span class="tweaks__label" id={colorId}>
+            Cor <span class="tweaks__val">{tweaks().bgInk}</span>
+          </span>
+          <input
+            type="color"
+            class="tweaks__color"
+            aria-labelledby={colorId}
+            value={tweaks().bgInk}
+            onInput={(e) => updateTweak("bgInk", e.currentTarget.value)}
+          />
         </div>
       </Show>
     </>
@@ -301,17 +416,19 @@ function ReliefControls() {
 
 /* ── Medição de cenas ──────────────────────────────────────── */
 
-/** Abre o painel já rolado até a seção "Fundo" (mesmo gesto do botão
-    de ajustes do Now Playing: o painel fechado é display:none, então a
-    posição só existe no quadro seguinte). */
+/** Rola o corpo do painel até a seção (mesmo gesto do botão de ajustes do
+    Now Playing: o painel fechado é display:none, então a posição só existe
+    no quadro seguinte). */
+function scrollToSection(key: string) {
+  const sec = document.querySelector<HTMLElement>(`[data-tweaks-section="${key}"]`);
+  const body = sec?.closest<HTMLElement>(".tweaks__body");
+  if (!sec || !body) return;
+  body.scrollTop += sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
+}
+
 function openTweaksAtFundo() {
   setTweaksOpen(true);
-  requestAnimationFrame(() => {
-    const sec = document.querySelector<HTMLElement>('[data-tweaks-section="fundo"]');
-    const body = sec?.closest<HTMLElement>(".tweaks__body");
-    if (!sec || !body) return;
-    body.scrollTop += sec.getBoundingClientRect().top - body.getBoundingClientRect().top;
-  });
+  requestAnimationFrame(() => scrollToSection("fundo"));
 }
 
 function startGlBench() {
@@ -323,6 +440,7 @@ function startGlBench() {
 
 const fmtInt = (v: number) => String(Math.round(v));
 const fmtPct = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
+const fmt2 = (v: number) => v.toFixed(2).replace(".", ",");
 
 function benchWhen(r: BenchResult): string {
   const d = new Date(r.at);
@@ -393,18 +511,62 @@ function BenchSection() {
   return (
     <div class="tweaks__row">
       <span class="tweaks__label">Desempenho</span>
-      <button class="tweaks__reset" disabled={glBenchProgress() !== null} onClick={startGlBench}>
+      <button class="tweaks__btn" disabled={glBenchProgress() !== null} onClick={startGlBench}>
         Medir cenas
       </button>
       <div class="tweaks__hint">
-        10 s por medição (2 de aquecimento, 8 medindo) no motor WebGL, com esta tela aberta: as 4 cenas e depois o Relevo em cada estilo de linhas. Esc cancela.
+        10 s por medição (2 de aquecimento, 8 medindo) no motor WebGL, com esta tela aberta: as cenas e depois o Relevo em cada estilo de linhas. Esc cancela.
       </div>
       <Show when={glBenchResult()}>{(r) => <BenchTable r={r()} />}</Show>
     </div>
   );
 }
 
+/* ── Redefinir tudo: arma e confirma (B4) ──────────────────── */
+
+function ResetAll() {
+  const [armed, setArmed] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  // Fechar o painel desarma: reabrir não pode achar a bomba engatilhada.
+  createEffect(() => { if (!tweaksOpen()) { clearTimeout(timer); setArmed(false); } });
+  return (
+    <button
+      type="button"
+      class="tweaks__btn"
+      classList={{ "is-armed": armed() }}
+      onClick={() => {
+        clearTimeout(timer);
+        if (!armed()) {
+          setArmed(true);
+          timer = setTimeout(() => setArmed(false), 4000);
+          return;
+        }
+        setArmed(false);
+        resetTweaks();
+      }}
+    >
+      {armed() ? "Clique de novo para redefinir tudo" : "Redefinir tudo"}
+    </button>
+  );
+}
+
 // ── Painel ────────────────────────────────────────────────────
+
+const SECTIONS: Array<[string, string]> = [
+  ["fundo", "Fundo"],
+  ["audio", "Áudio"],
+  ["aparencia", "Aparência"],
+  ["remoto", "Remoto"],
+];
+
+function SectionHead(props: { key: string; label: string }) {
+  return (
+    <h3 class="tweaks__divider" id={`tweaks-sec-${props.key}`} data-tweaks-section={props.key}>
+      <span>{props.label}</span>
+    </h3>
+  );
+}
 
 export function Tweaks() {
   const [fonts] = createResource(async () => await listSystemFonts());
@@ -428,6 +590,8 @@ export function Tweaks() {
     onCleanup(pushEscLayer(() => setTweaksOpen(false)));
   });
 
+  const t = tweaks;
+
   return (
     <Portal mount={document.body}>
       <aside
@@ -439,146 +603,42 @@ export function Tweaks() {
         <div class="tweaks__header">
           <span class="tweaks__title">Tweaks</span>
           <button
+            type="button"
             class="tweaks__close"
             aria-label="Fechar"
             onClick={() => setTweaksOpen(false)}
           >
-            &times;
+            <Icon name={ICONS.close} size={16} />
           </button>
         </div>
+        {/* Âncoras (B17): levam à seção sem esconder nada. */}
+        <nav class="tweaks__nav" aria-label="Seções do Tweaks">
+          <For each={SECTIONS}>
+            {([key, label]) => (
+              <button type="button" class="tweaks__nav-btn" onClick={() => scrollToSection(key)}>
+                {label}
+              </button>
+            )}
+          </For>
+        </nav>
         <div class="tweaks__body">
-          <div class="tweaks__divider"><span>Layout</span></div>
-          <Segmented
-            label="Density"
-            key="density"
-            options={[["normal", "Normal"], ["compact", "Compact"]]}
-          />
-          <Segmented
-            label="Sidebar"
-            key="sidebar"
-            options={[["icons", "Icons"], ["labels", "Labels"]]}
-          />
-
-          <div class="tweaks__divider"><span>Tipografia</span></div>
-          <Segmented
-            label="Type"
-            key="type"
-            options={[["body", "Sans"], ["mono", "Mono"]]}
-          />
-          <Show when={!fonts.loading}>
-            <FontSelect label="UI Font" key="fontUI" fonts={fonts() ?? []} />
-            <FontSelect label="Mono Font" key="fontMono" fonts={fonts() ?? []} />
-          </Show>
-
-          <div class="tweaks__divider"><span>Escala e Efeitos</span></div>
-          <NumberSlider
-            label="Scale"
-            key="scale"
-            min={0.85}
-            max={1.25}
-            step={0.05}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-          <NumberSlider
-            label="Glow"
-            key="glow"
-            min={0}
-            max={1}
-            step={0.05}
-            format={(v) => v.toFixed(2)}
-            themeGoverned
-          />
-          <NumberSlider
-            label="Lyrics glass"
-            key="lyricsGlass"
-            min={0}
-            max={1}
-            step={0.05}
-            format={(v) => `${Math.round(v * 100)}%`}
-            themeGoverned
-          />
-
-          <div class="tweaks__row">
-            <span class="tweaks__label">
-              Bg ink <span class="tweaks__val">{tweaks().bgInk}</span>
-              <Show when={isDirty("bgInk")}>
-                <button
-                  class="tweaks__reset"
-                  title="Voltar a seguir o tema / capa"
-                  onClick={() => clearDirty("bgInk")}
-                >
-                  ↺ tema
-                </button>
-              </Show>
-            </span>
-            <input
-              type="color"
-              class="tweaks__color"
-              value={tweaks().bgInk}
-              onInput={(e) => updateTweak("bgInk", e.currentTarget.value)}
-            />
-          </div>
-          <Segmented
-            label="Adaptive ink"
-            key="adaptiveInk"
-            options={[[true, "Album"], [false, "Off"]]}
-          />
-          <Segmented
-            label="Ink cycle"
-            key="bgInkCycle"
-            options={[[true, "Alterna"], [false, "Fixa"]]}
-          />
-          <div class="tweaks__hint">Bg alterna entre as cores dominantes da capa (~40s)</div>
-          <Segmented
-            label="Adaptive accent"
-            key="adaptiveAccent"
-            options={[[true, "Album"], [false, "Off"]]}
-          />
-          <Segmented
-            label="EQ spectrum"
-            key="eqSpectrumOverlay"
-            options={[[true, "On"], [false, "Off"]]}
-          />
-
-          {/* data-tweaks-section: o botão de ajustes do Now Playing abre o
+          {/* ── Fundo (primeiro: é o que mais se ajusta) ─────────
+              data-tweaks-section: o botão de ajustes do Now Playing abre o
               painel rolado até aqui. */}
-          <div class="tweaks__divider" data-tweaks-section="fundo"><span>Fundo</span></div>
+          <SectionHead key="fundo" label="Fundo" />
           <EngineRow />
-          <BenchSection />
-          <Show when={tweaks().bgEngine === "webgl"}>
+          <Show when={t().bgEngine === "webgl"}>
             <GlSection />
           </Show>
-          <Show when={tweaks().bgEngine === "2d"}>
+          <Show when={t().bgEngine === "2d"}>
             <div class="tweaks__hint">
               Shape e renderer do fundo 2D seguem no Now Playing ([ ] e , .)
             </div>
           </Show>
-
-          <div class="tweaks__divider"><span>Bg reactivity</span></div>
-          <NumberSlider
-            label="Bass"
-            key="bgBassGain"
-            min={0}
-            max={2}
-            step={0.05}
-            format={(v) => v.toFixed(2)}
-          />
-          <NumberSlider
-            label="Mid"
-            key="bgMidGain"
-            min={0}
-            max={2}
-            step={0.05}
-            format={(v) => v.toFixed(2)}
-          />
-          <NumberSlider
-            label="Treble"
-            key="bgTrebleGain"
-            min={0}
-            max={2}
-            step={0.05}
-            format={(v) => v.toFixed(2)}
-          />
+          <BgInkSection />
+          <NumberSlider label="Bass" key="bgBassGain" min={0} max={2} step={0.05} format={fmt2} />
+          <NumberSlider label="Mid" key="bgMidGain" min={0} max={2} step={0.05} format={fmt2} />
+          <NumberSlider label="Treble" key="bgTrebleGain" min={0} max={2} step={0.05} format={fmt2} />
           <NumberSlider
             label="Smoothing"
             key="bgSmoothing"
@@ -593,7 +653,7 @@ export function Tweaks() {
             min={0}
             max={2}
             step={0.05}
-            format={(v) => `${v.toFixed(2)}x`}
+            format={(v) => `${fmt2(v)}x`}
           />
           <Segmented
             label="Beat sync"
@@ -602,18 +662,21 @@ export function Tweaks() {
           />
           <div class="tweaks__hint">Speed: kick acelera o movimento · Pulse: pulso de amplitude no tempo</div>
           {/* Slider contínuo (2026-07-19): o pipeline sempre foi contínuo
-              (bgBeatDepth); os 3 presets eram só amarra da UI. Ajuste
-              fino sem esperar release. 0.55 segue o default calibrado. */}
+              (bgBeatDepth); os 3 presets eram só amarra da UI. 0.55 segue o
+              default calibrado. Sem Beat sync, não tem efeito (A30). */}
           <NumberSlider
             label="Beat depth"
             key="bgBeatDepth"
             min={0}
             max={1}
             step={0.05}
-            format={(v) => v.toFixed(2)}
+            format={fmt2}
+            dep={{ on: t().bgBeatMode !== "off", parent: "Beat sync ligado" }}
           />
+          <BenchSection />
 
-          <div class="tweaks__divider"><span>Loudness</span></div>
+          {/* ── Áudio ──────────────────────────────────────────── */}
+          <SectionHead key="audio" label="Áudio" />
           <Segmented
             label="Normalização"
             key="loudnessNorm"
@@ -625,33 +688,98 @@ export function Tweaks() {
             min={-20}
             max={-6}
             step={0.5}
-            format={(v) => `${v.toFixed(1)} LUFS`}
+            format={(v) => `${v.toFixed(1).replace(".", ",")} LUFS`}
+            dep={{ on: t().loudnessNorm, parent: "Normalização ligada" }}
+          />
+          <Segmented
+            label="EQ spectrum"
+            key="eqSpectrumOverlay"
+            options={[[true, "On"], [false, "Off"]]}
           />
 
-          {/* Cadeado da ponte MCP (29/10/2026): o app só obedece à ponte
+          {/* ── Aparência ──────────────────────────────────────── */}
+          <SectionHead key="aparencia" label="Aparência" />
+          <Segmented
+            label="Density"
+            key="density"
+            options={[["normal", "Normal"], ["compact", "Compact"]]}
+          />
+          <Segmented
+            label="Sidebar"
+            key="sidebar"
+            options={[["icons", "Icons"], ["labels", "Labels"]]}
+          />
+          <Segmented
+            label="Type"
+            key="type"
+            options={[["body", "Sans"], ["mono", "Mono"]]}
+          />
+          <Show when={!fonts.loading}>
+            <FontSelect
+              label="UI Font"
+              key="fontUI"
+              fonts={fonts() ?? []}
+              dep={{ on: t().type !== "mono", parent: "Type: Sans" }}
+            />
+            <FontSelect label="Mono Font" key="fontMono" fonts={fonts() ?? []} />
+          </Show>
+          <NumberSlider
+            label="Scale"
+            key="scale"
+            min={0.85}
+            max={1.25}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
+            commitOnRelease
+          />
+          <NumberSlider
+            label="Glow"
+            key="glow"
+            min={0}
+            max={1}
+            step={0.05}
+            format={fmt2}
+            themeGoverned
+          />
+          <NumberSlider
+            label="Lyrics glass"
+            key="lyricsGlass"
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
+            themeGoverned
+          />
+          <Segmented
+            label="Adaptive accent"
+            key="adaptiveAccent"
+            options={[[true, "Album"], [false, "Off"]]}
+          />
+
+          {/* ── Controle remoto ─────────────────────────────────
+              Cadeado da ponte MCP (29/10/2026): o app só obedece à ponte
               (127.0.0.1:9223, alcançada por túnel SSH) com isto ligado.
               Padrão Off; vai ao backend por IPC (store/tweaks.ts). A linha
-              viva vem do espelho store/bridge.ts, o mesmo do chip da sidebar. */}
-          <div class="tweaks__divider"><span>Controle remoto</span></div>
+              viva vem do espelho store/bridge.ts, o mesmo do chip da
+              sidebar, e é a única dica da seção (A30). */}
+          <SectionHead key="remoto" label="Controle remoto" />
           <Segmented
             label="Ponte MCP"
             key="remoteBridge"
             options={[[true, "On"], [false, "Off"]]}
           />
-          <div class="tweaks__hint">
-            Ligado, uma sessão de fora (ponte MCP por túnel SSH) pode ler e mexer na tela.
-            Desligado, nada de fora controla o app.
-          </div>
-          <div class="tweaks__hint tweaks__gl-status" role="status">
+          <div
+            class="tweaks__hint tweaks__gl-status"
+            role="status"
+            title="A ponte MCP é alcançada por túnel SSH; ligada, a sessão de fora pode ler e mexer na tela."
+          >
             <Show when={chipVisible(bridgeStatus())}>
               <span class="tweaks__gl-dot tweaks__gl-dot--attn" aria-hidden="true" />
             </Show>
             <span>{bridgeLine(bridgeStatus())}</span>
           </div>
 
-          <button class="tweaks__reset" onClick={() => resetTweaks()}>
-            Redefinir tudo
-          </button>
+          <ResetAll />
         </div>
       </aside>
       <Show when={glBenchProgress()}>

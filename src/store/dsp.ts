@@ -4,6 +4,7 @@
    Mantém compatibilidade total com o backend Rust.
    ============================================================ */
 
+import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import * as ipc from "../tauri";
 
@@ -158,6 +159,27 @@ export function persistDsp() {
   } catch {}
 }
 
+// ── Recusa do motor (A32) ──────────────────────────────────────
+// Antes, toda falha de IPC ia para o console: o slider mostrava o valor
+// novo e o som seguia no antigo, sem aviso. Agora a recusa acende
+// dspError, que a Signal mostra como banner com [Reaplicar]. O store
+// guarda o valor PEDIDO; Reaplicar reenvia o estado inteiro.
+const DSP_REFUSED = "O motor de áudio recusou um ajuste.";
+const [dspErrorSig, setDspErrorSig] = createSignal<{ message: string; detail: string } | null>(null);
+export const dspError = dspErrorSig;
+export function clearDspError() { setDspErrorSig(null); }
+
+export function reportDspError(e: unknown) {
+  console.error("[dsp] o motor recusou:", e);
+  setDspErrorSig({ message: DSP_REFUSED, detail: String(e) });
+}
+
+/** Limpa o aviso e reenvia o estado inteiro ao motor. */
+export async function reapplyDsp(): Promise<number> {
+  clearDspError();
+  return applyFullDspState();
+}
+
 // ── Debounced IPC ──────────────────────────────────────────────
 
 const _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -166,7 +188,7 @@ export function ipcDebounced(cmd: () => Promise<void>, delay = 50, key = "defaul
   if (prev) clearTimeout(prev);
   _debounceTimers.set(key, setTimeout(() => {
     _debounceTimers.delete(key);
-    cmd().catch(console.error);
+    cmd().catch(reportDspError);
     persistDsp();
   }, delay));
 }
@@ -177,56 +199,66 @@ export function ipcDebounced(cmd: () => Promise<void>, delay = 50, key = "defaul
 let _applyRunning = false;
 let _applyQueued = false;
 
-export async function applyFullDspState() {
-  if (_applyRunning) { _applyQueued = true; return; }
+export async function applyFullDspState(): Promise<number> {
+  if (_applyRunning) { _applyQueued = true; return 0; }
   _applyRunning = true;
   persistDsp();
   const { eq, limiter, bass, bypass } = dsp;
+  // Cada comando é um passo independente: uma recusa conta e a restauração
+  // segue (antes um try único com ~40 awaits parava no primeiro erro e o
+  // resto da cadeia ficava no estado anterior do motor). Os quatro de banda
+  // marcados como opcionais seguem engolidos de propósito, como antes.
+  let failed = 0;
+  let firstErr: unknown = null;
+  const step = async (fn: () => Promise<unknown>) => {
+    try { await fn(); } catch (e) { failed++; if (firstErr === null) firstErr = e; }
+  };
+  const optional = (fn: () => Promise<unknown>) => fn().catch(() => {});
   try {
-    await ipc.dspSetBypass(bypass);
-    await ipc.dspSetEqEnabled(eq.enabled);
-    await ipc.dspSetEqMode(eq.mode);
-    await ipc.dspSetEqGain(eq.input_gain, eq.output_gain);
+    await step(() => ipc.dspSetBypass(bypass));
+    await step(() => ipc.dspSetEqEnabled(eq.enabled));
+    await step(() => ipc.dspSetEqMode(eq.mode));
+    await step(() => ipc.dspSetEqGain(eq.input_gain, eq.output_gain));
     for (let i = 0; i < eq.bands.length; i++) {
       const b = eq.bands[i];
-      await ipc.dspSetEqBand(i, b.freq, b.gain_db, b.q);
-      await ipc.dspSetEqFilterType(i, b.type);
-      await ipc.dspSetEqFilterMode(i, b.filterMode).catch(() => {});
-      await ipc.dspSetEqSlope(i, b.slope).catch(() => {});
-      await ipc.dspSetEqSolo(i, b.solo).catch(() => {});
-      await ipc.dspSetEqMute(i, b.mute).catch(() => {});
+      await step(() => ipc.dspSetEqBand(i, b.freq, b.gain_db, b.q));
+      await step(() => ipc.dspSetEqFilterType(i, b.type));
+      await optional(() => ipc.dspSetEqFilterMode(i, b.filterMode));
+      await optional(() => ipc.dspSetEqSlope(i, b.slope));
+      await optional(() => ipc.dspSetEqSolo(i, b.solo));
+      await optional(() => ipc.dspSetEqMute(i, b.mute));
     }
-    await ipc.dspSetLimiterEnabled(limiter.enabled);
-    await ipc.dspSetLimiterThreshold(limiter.threshold);
-    await ipc.dspSetLimiterMode(limiter.mode);
-    await ipc.dspSetLimiterOversampling(limiter.ovs);
-    await ipc.dspSetLimiterDither(limiter.dither);
-    await ipc.dspSetLimiterKnee(limiter.knee);
-    await ipc.dspSetLimiterLookahead(limiter.lookahead);
-    await ipc.dspSetLimiterAttack(limiter.attack);
-    await ipc.dspSetLimiterRelease(limiter.release);
-    await ipc.dspSetLimiterScPreamp(limiter.sc_preamp);
-    await ipc.dspSetLimiterStereoLink(limiter.stereo_link);
-    await ipc.dspSetLimiterBoost(limiter.boost);
-    await ipc.dspSetLimiterGain(limiter.input_gain, limiter.output_gain);
-    await ipc.dspSetLimiterAlr(limiter.alr);
-    await ipc.dspSetLimiterAlrAttack(limiter.alr_attack);
-    await ipc.dspSetLimiterAlrRelease(limiter.alr_release);
-    await ipc.dspSetBassBypass(!bass.enabled);
-    await ipc.dspSetBassAmount(bass.amount);
-    await ipc.dspSetBassDrive(bass.drive);
-    await ipc.dspSetBassBlend(bass.blend);
-    await ipc.dspSetBassFreq(bass.freq);
-    await ipc.dspSetBassFloor(bass.floor);
-    await ipc.dspSetBassFloorActive(bass.floor_active);
-    await ipc.dspSetBassListen(bass.listen);
-    await ipc.dspSetBassLevels(bass.input_gain, bass.output_gain);
-  } catch (e) {
-    console.error("[dsp] apply state failed:", e);
+    await step(() => ipc.dspSetLimiterEnabled(limiter.enabled));
+    await step(() => ipc.dspSetLimiterThreshold(limiter.threshold));
+    await step(() => ipc.dspSetLimiterMode(limiter.mode));
+    await step(() => ipc.dspSetLimiterOversampling(limiter.ovs));
+    await step(() => ipc.dspSetLimiterDither(limiter.dither));
+    await step(() => ipc.dspSetLimiterKnee(limiter.knee));
+    await step(() => ipc.dspSetLimiterLookahead(limiter.lookahead));
+    await step(() => ipc.dspSetLimiterAttack(limiter.attack));
+    await step(() => ipc.dspSetLimiterRelease(limiter.release));
+    await step(() => ipc.dspSetLimiterScPreamp(limiter.sc_preamp));
+    await step(() => ipc.dspSetLimiterStereoLink(limiter.stereo_link));
+    await step(() => ipc.dspSetLimiterBoost(limiter.boost));
+    await step(() => ipc.dspSetLimiterGain(limiter.input_gain, limiter.output_gain));
+    await step(() => ipc.dspSetLimiterAlr(limiter.alr));
+    await step(() => ipc.dspSetLimiterAlrAttack(limiter.alr_attack));
+    await step(() => ipc.dspSetLimiterAlrRelease(limiter.alr_release));
+    await step(() => ipc.dspSetBassBypass(!bass.enabled));
+    await step(() => ipc.dspSetBassAmount(bass.amount));
+    await step(() => ipc.dspSetBassDrive(bass.drive));
+    await step(() => ipc.dspSetBassBlend(bass.blend));
+    await step(() => ipc.dspSetBassFreq(bass.freq));
+    await step(() => ipc.dspSetBassFloor(bass.floor));
+    await step(() => ipc.dspSetBassFloorActive(bass.floor_active));
+    await step(() => ipc.dspSetBassListen(bass.listen));
+    await step(() => ipc.dspSetBassLevels(bass.input_gain, bass.output_gain));
+    if (failed > 0) reportDspError(firstErr);
   } finally {
     _applyRunning = false;
-    if (_applyQueued) { _applyQueued = false; applyFullDspState(); }
+    if (_applyQueued) { _applyQueued = false; void applyFullDspState(); }
   }
+  return failed;
 }
 
 // ── Mutações de EQ ────────────────────────────────────────────
@@ -267,25 +299,25 @@ export function setActiveBand(idx: number) {
 
 export function toggleEq() {
   setDsp("eq", "enabled", (v) => !v);
-  ipc.dspSetEqEnabled(dsp.eq.enabled).catch(console.error);
+  ipc.dspSetEqEnabled(dsp.eq.enabled).catch(reportDspError);
   persistDsp();
 }
 
 export function toggleBypass() {
   setDsp("bypass", (v) => !v);
-  ipc.dspSetBypass(dsp.bypass).catch(console.error);
+  ipc.dspSetBypass(dsp.bypass).catch(reportDspError);
   persistDsp();
 }
 
 export function toggleLimiter() {
   setDsp("limiter", "enabled", (v) => !v);
-  ipc.dspSetLimiterEnabled(dsp.limiter.enabled).catch(console.error);
+  ipc.dspSetLimiterEnabled(dsp.limiter.enabled).catch(reportDspError);
   persistDsp();
 }
 
 export function toggleBass() {
   setDsp("bass", "enabled", (v) => !v);
-  ipc.dspSetBassBypass(!dsp.bass.enabled).catch(console.error);
+  ipc.dspSetBassBypass(!dsp.bass.enabled).catch(reportDspError);
   persistDsp();
 }
 
@@ -296,13 +328,13 @@ export function setEqBandSlope(bandIdx: number, slope: number) {
 
 export function setEqBandSolo(bandIdx: number, solo: boolean) {
   setDsp("eq", "bands", bandIdx, "solo", solo);
-  ipc.dspSetEqSolo(bandIdx, solo).catch(console.error);
+  ipc.dspSetEqSolo(bandIdx, solo).catch(reportDspError);
   persistDsp();
 }
 
 export function setEqBandMute(bandIdx: number, mute: boolean) {
   setDsp("eq", "bands", bandIdx, "mute", mute);
-  ipc.dspSetEqMute(bandIdx, mute).catch(console.error);
+  ipc.dspSetEqMute(bandIdx, mute).catch(reportDspError);
   persistDsp();
 }
 
@@ -371,7 +403,7 @@ export function setLimiterStereoLink(link: number) {
 
 export function setLimiterBoost(boost: boolean) {
   setDsp("limiter", "boost", boost);
-  ipc.dspSetLimiterBoost(boost).catch(console.error);
+  ipc.dspSetLimiterBoost(boost).catch(reportDspError);
   persistDsp();
 }
 
@@ -383,7 +415,7 @@ export function setLimiterGain(input: number, output: number) {
 
 export function setLimiterAlr(alr: boolean) {
   setDsp("limiter", "alr", alr);
-  ipc.dspSetLimiterAlr(alr).catch(console.error);
+  ipc.dspSetLimiterAlr(alr).catch(reportDspError);
   persistDsp();
 }
 
@@ -426,13 +458,13 @@ export function setBassFloor(floor: number) {
 
 export function setBassFloorActive(active: boolean) {
   setDsp("bass", "floor_active", active);
-  ipc.dspSetBassFloorActive(active).catch(console.error);
+  ipc.dspSetBassFloorActive(active).catch(reportDspError);
   persistDsp();
 }
 
 export function setBassListen(listen: boolean) {
   setDsp("bass", "listen", listen);
-  ipc.dspSetBassListen(listen).catch(console.error);
+  ipc.dspSetBassListen(listen).catch(reportDspError);
   persistDsp();
 }
 

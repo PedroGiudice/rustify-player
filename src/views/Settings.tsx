@@ -1,31 +1,28 @@
 /* ============================================================
-   views/Settings.tsx — Settings hi-fi com 4 paineis.
+   views/Settings.tsx — Settings só com o que é dela (B20, 31/10).
 
-   Recriacao da view Settings seguindo o mockup do handoff
-   (data-screen="settings"). 4 paineis verticais:
+   Painéis:
+   1. Tema — tema YAML (o tema é o modo) + calculadora de contraste.
+   2. Reprodução — Retomar ao abrir (preferência lida pelo PlayerBar).
+   3. Biblioteca — uma linha (faixas · álbuns · artistas) + Reescanear.
+   4. Atualização — fluxo de update (check / install / restart).
+   5. Ponte para o Tweaks — densidade, barra lateral, fundo, ritmo e
+      normalização moram no Tweaks; o volume, na barra do player. Antes,
+      quatro deles (Compact sidebar, Beat sync, Volume, Normalizar) se
+      repetiam aqui, e o texto da normalização dizia −14 LUFS fixo.
+   6. Diagnóstico (fechado) — pastas, embeddings, qdrant, contagens,
+      atalho e o "About" (versão, Tauri, backend, identificador, licença).
+      Os valores fixos daqui precisam bater com o Cargo.toml.
 
-   1. Appearance — tema YAML (o tema é o modo: não há mais seletor
-      Light/Dark/Auto, que gravava um body[data-theme] sem CSS),
-      Compact sidebar tog e Beat sync (o MESMO estado do Tweaks:
-      sidebar e bgBeatMode), Cinema mode kbd.
-   2. Playback — Resume on launch tog (preferência lida pelo
-      PlayerBar no boot), Volume slider, Normalize tog.
-      (Tier 0 removeu crossfade, gapless, output device, scrobble.)
-   3. Library — Music folder (read-only), Re-scan (accent), Embeddings
-      (read-only stat), qdrant (endpoint e vetores; o status NAO e
-      consultado, entao nao e exibido), library stats tile grid.
-   4. About — grid mono (Version, Tauri, Backend, Identifier, License).
-      Os valores fixos aqui precisam bater com o Cargo.toml.
-
-   PRESERVADO do Settings antigo (NAO QUEBRAR):
+   PRESERVADO (NÃO QUEBRAR):
    - Update flow (checkForUpdate / installUpdate / restartApp)
    - Library stats (libSnapshot + albums/artists/genres counts)
-   - Volume + normalize (norm_get_state)
-   - Theme picker dinamico via listThemes / applyThemeByName
+   - Theme picker dinâmico via listThemes / applyThemeByName
    ============================================================ */
 
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Icon, ICONS } from "../components/Icon";
+import { Switch } from "../components/Switch";
 import {
   libSnapshot, libGetAlbums, libGetArtists, libListGenres,
   libRescan,
@@ -34,8 +31,8 @@ import {
   checkForUpdate, installUpdate, restartApp,
   type ContrastCheck,
 } from "../tauri";
-import { applyTweaks, tweaks, updateTweak, type TweaksState } from "../store/tweaks";
-import { player, changeVolume, resumeOnLaunch, setResumeOnLaunch } from "../store/player";
+import { applyTweaks, setTweaksOpen } from "../store/tweaks";
+import { resumeOnLaunch, setResumeOnLaunch } from "../store/player";
 
 // ── Helpers locais ──────────────────────────────────────────────
 
@@ -135,16 +132,6 @@ export default function Settings() {
   const failingContrast = () => contrast().filter((c) => wcagLabel(c) === "fail");
   const largeOnlyContrast = () => contrast().filter((c) => wcagLabel(c) === "AA-large");
 
-  // ── Compact sidebar e Beat sync: o MESMO estado do Tweaks ────
-  // (antes gravavam chaves que nenhum outro arquivo lia — cfg-1).
-  const compactSidebar = () => tweaks().sidebar === "icons";
-  function toggleCompact() {
-    updateTweak("sidebar", compactSidebar() ? "labels" : "icons");
-  }
-  const BEAT_MODES: Array<[TweaksState["bgBeatMode"], string]> = [
-    ["off", "Off"], ["speed", "Speed"], ["pulse", "Pulse"],
-  ];
-
   function toggleResume() {
     setResumeOnLaunch(!resumeOnLaunch());
   }
@@ -174,38 +161,19 @@ export default function Settings() {
     onCleanup(() => { unlisten.then((fn) => fn()).catch(() => {}); });
   });
 
-  // ── Volume + normalize (painel Playback) ─────────────────────
-  // Normalize: fonte ÚNICA é tweaks().loudnessNorm — o effect de loudness
-  // do store empurra pro backend. O estado local + localStorage paralelo
-  // que vivia aqui revertia silenciosamente (auditoria: o store re-aplicava
-  // o valor antigo a cada mudança de qualquer tweak).
-  function toggleNorm() {
-    updateTweak("loudnessNorm", !tweaks().loudnessNorm);
-  }
-
-  // Mudo = 0%, igual ao PlayerBar (cfg-24). Mexer no slider desmuta via
-  // changeVolume, como no slider da barra.
-  const volumePct = () => (player.isMuted ? 0 : Math.round(player.volume * 100));
-  function onVolumeChange(e: Event) {
-    const val = parseInt((e.target as HTMLInputElement).value, 10);
-    const vol = val / 100;
-    // changeVolume persiste (kv-volume) além de store + engine.
-    changeVolume(vol).catch((err) => console.error("[player] set_volume failed:", err));
-  }
-
   // ── Re-scan (preservado) ─────────────────────────────────────
   const [scanning, setScanning] = createSignal(false);
-  const [scanLabel, setScanLabel] = createSignal("Re-scan");
+  const [scanLabel, setScanLabel] = createSignal("Reescanear");
 
   function handleRescan() {
     setScanning(true);
-    setScanLabel("Scanning…");
+    setScanLabel("Reescaneando…");
     libRescan()
       .then(() => {
-        setScanLabel("Started");
-        setTimeout(() => { setScanning(false); setScanLabel("Re-scan"); }, 5000);
+        setScanLabel("Iniciado");
+        setTimeout(() => { setScanning(false); setScanLabel("Reescanear"); }, 5000);
       })
-      .catch(() => { setScanLabel("Failed"); setScanning(false); });
+      .catch(() => { setScanLabel("Falhou, tentar de novo"); setScanning(false); });
   }
 
   // ── Update flow (preservado) ─────────────────────────────────
@@ -253,28 +221,22 @@ export default function Settings() {
       <header class="view__head">
         <div>
           <h1>Settings</h1>
-          <p class="view__head-hint">Library, audio, appearance — v{version() ?? "—"}.</p>
-        </div>
-        <div class="view__stats">
-          <span>data <b>~/.local/share/rustify-player</b></span>
+          <p class="view__head-hint">Tema, retomada, biblioteca e atualização · v{version() ?? "—"}</p>
         </div>
       </header>
 
       <div class="set">
-        {/* ════════════════════════════════════════════════════════
-            1. APPEARANCE
-            ════════════════════════════════════════════════════════ */}
+        {/* ── 1. Tema ─────────────────────────────────────────── */}
         <div class="set-panel">
           <div class="set-panel__head">
-            <h3 class="set-panel__title">Appearance</h3>
-            <span class="set-panel__sub">light is the default Extractor Lab palette</span>
+            <h3 class="set-panel__title">Tema</h3>
           </div>
 
           {/* Theme YAML picker — mantido pra estilos custom ── */}
           <div class="set-row">
             <div>
-              <div class="set-row__label">Custom theme YAML</div>
-              <div class="set-row__hint">YAMLs em ~/.local/share/rustify-player/themes/.</div>
+              <div class="set-row__label" id="set-theme-label">Tema</div>
+              <div class="set-row__hint">Arquivos YAML em ~/.local/share/rustify-player/themes/.</div>
             </div>
             <div class="set-row__control">
               <Show
@@ -285,6 +247,7 @@ export default function Settings() {
                   <span class="select-shell">
                   <select
                     class="set-folder-btn"
+                    aria-labelledby="set-theme-label"
                     value={activeTheme()}
                     onChange={(e) => selectThemeFile(e.currentTarget.value, e.currentTarget)}
                   >
@@ -357,133 +320,37 @@ export default function Settings() {
             </div>
           </Show>
 
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Compact sidebar</div>
-              <div class="set-row__hint">Shows icons only. Same knob as Tweaks › Sidebar.</div>
-            </div>
-            <div class="set-row__control">
-              <button
-                class="tog"
-                aria-pressed={compactSidebar() ? "true" : "false"}
-                onClick={toggleCompact}
-                type="button"
-                title="Toggle compact sidebar"
-              />
-            </div>
-          </div>
+        </div>
 
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Cinema mode shortcut</div>
-              <div class="set-row__hint">Hotkey to collapse all chrome on Now Playing.</div>
-            </div>
-            <div class="set-row__control">
-              <span class="kbd" style={{ "font-family": "var(--font-mono)", "font-size": "10.5px", padding: "2px 7px" }}>F</span>
-            </div>
+        {/* ── 2. Reprodução ───────────────────────────────────── */}
+        <div class="set-panel">
+          <div class="set-panel__head">
+            <h3 class="set-panel__title">Reprodução</h3>
           </div>
-
           <div class="set-row">
             <div>
-              <div class="set-row__label">Beat sync</div>
-              <div class="set-row__hint">
-                Mesmo controle do Tweaks: Speed acelera o movimento do fundo no kick;
-                Pulse pulsa a amplitude no tempo; Off desliga a reatividade ao beat.
-              </div>
+              <div class="set-row__label" id="set-resume-label">Retomar ao abrir</div>
+              <div class="set-row__hint">Reabre a última faixa na última posição.</div>
             </div>
             <div class="set-row__control">
-              <div class="seg">
-                <For each={BEAT_MODES}>
-                  {([mode, label]) => (
-                    <button
-                      type="button"
-                      aria-pressed={tweaks().bgBeatMode === mode ? "true" : "false"}
-                      onClick={() => updateTweak("bgBeatMode", mode)}
-                    >
-                      {label}
-                    </button>
-                  )}
-                </For>
-              </div>
+              <Switch checked={resumeOnLaunch()} onChange={toggleResume} labelledBy="set-resume-label" />
             </div>
           </div>
         </div>
 
-        {/* ════════════════════════════════════════════════════════
-            2. PLAYBACK
-            ════════════════════════════════════════════════════════ */}
+        {/* ── 3. Biblioteca: uma linha + Reescanear ───────────── */}
         <div class="set-panel">
           <div class="set-panel__head">
-            <h3 class="set-panel__title">Playback</h3>
-            <span class="set-panel__sub">PipeWire · default sink</span>
+            <h3 class="set-panel__title">Biblioteca</h3>
           </div>
-
           <div class="set-row">
             <div>
-              <div class="set-row__label">Resume on launch</div>
-              <div class="set-row__hint">Re-abre a ultima faixa na ultima posicao.</div>
-            </div>
-            <div class="set-row__control">
-              <button class="tog" aria-pressed={resumeOnLaunch() ? "true" : "false"} onClick={toggleResume} type="button" title="Toggle resume" />
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Volume</div>
-              <div class="set-row__hint">Sincroniza com o slider do PlayerBar (engine-level).</div>
-            </div>
-            <div class="set-row__control">
-              <input
-                type="range"
-                class="slider"
-                aria-label="Volume"
-                min="0"
-                max="100"
-                value={volumePct()}
-                onInput={onVolumeChange}
-                style={{ width: "180px" }}
-              />
-              <span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)", "min-width": "32px" }}>
-                {volumePct()}%
-              </span>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Normalizar volume entre faixas</div>
-              <div class="set-row__hint">EBU R128 alvo −14 LUFS, entre EQ e Limiter.</div>
-            </div>
-            <div class="set-row__control">
-              <button class="tog" aria-pressed={tweaks().loudnessNorm ? "true" : "false"} onClick={toggleNorm} type="button" />
-            </div>
-          </div>
-
-        </div>
-
-        {/* ════════════════════════════════════════════════════════
-            3. LIBRARY (preservado: stats + rescan + embeddings)
-            ════════════════════════════════════════════════════════ */}
-        <div class="set-panel">
-          <div class="set-panel__head">
-            <h3 class="set-panel__title">Library</h3>
-            <span class="set-panel__sub">
-              {tracksTotal()} tracks · {albumsCount()} albums
-            </span>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Music folder</div>
-              <div class="set-row__hint mono">~/Music</div>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Re-scan library</div>
-              <div class="set-row__hint">Re-indexa metadados e gera embeddings faltantes.</div>
+              <div class="set-row__label set-num">
+                <Show when={data()} fallback="Contando…">
+                  {tracksTotal()} faixas · {albumsCount()} álbuns · {artistsCount()} artistas
+                </Show>
+              </div>
+              <div class="set-row__hint">Relê a pasta ~/Music e indexa o que mudou.</div>
             </div>
             <div class="set-row__control">
               <button
@@ -492,65 +359,17 @@ export default function Settings() {
                 onClick={handleRescan}
                 type="button"
               >
-                {/* @ts-ignore */}
-                <iconify-icon icon="lucide:zap" noobserver />
+                <Icon name={ICONS.refresh} size={12} />
                 {scanLabel()}
               </button>
             </div>
           </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">Embeddings</div>
-              <div class="set-row__hint">
-                {embedDone()} of {tracksTotal()} tracks tem AI embeddings.
-                Drives the station recommender.
-              </div>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <div>
-              <div class="set-row__label">qdrant process</div>
-              <div class="set-row__hint mono">localhost:6333 · vectors mert 768 · lyrics 1024</div>
-            </div>
-          </div>
-
-          {/* Stats grid preservada ─────────────────────────────── */}
-          <Show when={data()}>
-            <div class="stat-grid" style={{ padding: "13px 20px", "border-top": "1px solid var(--line-3)" }}>
-              <div class="stat-tile">
-                <span class="stat-tile__label">TRACKS</span>
-                <span class="stat-tile__value">{tracksTotal()}</span>
-                <span class="stat-tile__sub">indexed</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-tile__label">ALBUMS</span>
-                <span class="stat-tile__value">{albumsCount()}</span>
-                <span class="stat-tile__sub">distinct</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-tile__label">ARTISTS</span>
-                <span class="stat-tile__value">{artistsCount()}</span>
-                <span class="stat-tile__sub">distinct</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-tile__label">GENRES</span>
-                <span class="stat-tile__value">{genresPopulated()}</span>
-                <span class="stat-tile__sub">populated</span>
-              </div>
-            </div>
-          </Show>
         </div>
 
-        {/* ════════════════════════════════════════════════════════
-            4. ABOUT (grid mono + update flow preservado
-               integrado como primeira row, antes do grid)
-            ════════════════════════════════════════════════════════ */}
+        {/* ── 4. Atualização ──────────────────────────────────── */}
         <div class="set-panel">
           <div class="set-panel__head">
-            <h3 class="set-panel__title">About</h3>
-            <span class="set-panel__sub">rustify-player · Pedro Giudice</span>
+            <h3 class="set-panel__title">Atualização</h3>
           </div>
 
           {/* Update flow (preservado) ────────────────────────── */}
@@ -563,7 +382,7 @@ export default function Settings() {
                   {updateResult()?.published_at ? ` (publicado ${relativeTime(updateResult().published_at)})` : ""}
                 </Show>
                 <Show when={updateStatus() === "up_to_date"}>
-                  Voce esta na ultima — v{updateResult()?.current_version ?? version()}
+                  Você está na última — v{updateResult()?.current_version ?? version()}
                 </Show>
                 <Show when={updateStatus() === "installed"}>
                   Update instalado — reinicie pra aplicar.
@@ -609,6 +428,94 @@ export default function Settings() {
             </div>
           </div>
 
+        </div>
+
+        {/* ── 5. Ponte para o Tweaks: uma fonte por controle ──── */}
+        <div class="set-panel">
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Aparência, fundo e som</div>
+              <div class="set-row__hint">
+                Densidade, barra lateral, fontes, fundo animado, ritmo e normalização ficam no
+                Tweaks; o volume, na barra do player.
+              </div>
+            </div>
+            <div class="set-row__control">
+              <button class="set-folder-btn" type="button" onClick={() => setTweaksOpen(true)}>
+                Abrir o Tweaks
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── 6. Diagnóstico (fechado): o texto técnico ───────── */}
+        <details class="set-panel set-diag">
+          <summary class="set-panel__head set-diag__summary">
+            <h3 class="set-panel__title">Diagnóstico</h3>
+            <Icon class="set-diag__chev" name={ICONS.chevronDown} size={14} />
+          </summary>
+
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Pasta de música</div>
+              <div class="set-row__hint mono">~/Music</div>
+            </div>
+          </div>
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Dados do app</div>
+              <div class="set-row__hint mono">~/.local/share/rustify-player</div>
+            </div>
+          </div>
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Embeddings</div>
+              <div class="set-row__hint set-num">
+                {embedDone()} de {tracksTotal()} faixas com embedding; alimentam as stations e o rádio.
+              </div>
+            </div>
+          </div>
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">qdrant</div>
+              <div class="set-row__hint mono">localhost:6333 · vectors mert 768 · lyrics 1024</div>
+            </div>
+          </div>
+          <div class="set-row">
+            <div>
+              <div class="set-row__label">Atalho do modo cinema</div>
+              <div class="set-row__hint">No Now Playing, esconde toda a moldura.</div>
+            </div>
+            <div class="set-row__control">
+              <span class="kbd set-kbd">F</span>
+            </div>
+          </div>
+
+          <Show when={data()}>
+            <div class="stat-grid set-diag__stats">
+              <div class="stat-tile">
+                <span class="stat-tile__label">TRACKS</span>
+                <span class="stat-tile__value">{tracksTotal()}</span>
+                <span class="stat-tile__sub">indexed</span>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-tile__label">ALBUMS</span>
+                <span class="stat-tile__value">{albumsCount()}</span>
+                <span class="stat-tile__sub">distinct</span>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-tile__label">ARTISTS</span>
+                <span class="stat-tile__value">{artistsCount()}</span>
+                <span class="stat-tile__sub">distinct</span>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-tile__label">GENRES</span>
+                <span class="stat-tile__value">{genresPopulated()}</span>
+                <span class="stat-tile__sub">populated</span>
+              </div>
+            </div>
+          </Show>
+
           <div class="set-about-grid">
             <div class="set-about-item">
               <span class="set-about-item__label">Version</span>
@@ -631,7 +538,7 @@ export default function Settings() {
               <span class="set-about-item__value">MIT</span>
             </div>
           </div>
-        </div>
+        </details>
       </div>
     </article>
   );

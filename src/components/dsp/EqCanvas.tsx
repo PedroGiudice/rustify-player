@@ -8,6 +8,8 @@
      3. Ticks verticais por decada (--line-3)
      4. Spectrum bars (bg-ink 22% alpha) — quando overlay+playing
      5. Spectrum peaks (bg-ink 55% alpha, hairline horizontal)
+     5b. Traço "antes do EQ (estimado)" por barra (--fg-1 a 50%): o
+        medido menos a curva do EQ no centro da banda (B22, originDb)
      6. Fill --fg-1 a 5% abaixo da curva
      7. Stroke --fg-1 a 72% da curva
      8. Dots por banda (--fg-2 usada, --fg-5 parada, acento na ativa
@@ -21,7 +23,7 @@
    + objs) fora do Solid pra evitar overhead reativo no caminho hot.
    ============================================================ */
 
-import { Component, createEffect, createSignal, For, onCleanup, onMount } from "solid-js";
+import { Component, createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { EqBand } from "../../store/dsp";
 import { sampleCurve, pickDbRange, DB_RANGES } from "./eq-response";
 import { tweaks } from "../../store/tweaks";
@@ -36,6 +38,7 @@ import {
   decodeDb,
   smoothToward,
   updatePeak,
+  originDb,
   DISPLAY_DB_MIN,
   DISPLAY_DB_MAX,
   type PeakState,
@@ -44,7 +47,14 @@ import {
 export interface EqCanvasProps {
   bands: EqBand[];
   activeBand: number;
+  /** EQ no sinal (ligado e sem bypass). Fora dele, o traço de antes do EQ
+      coincide com o medido. Padrão: true. */
+  eqLive?: boolean;
 }
+
+// Centros das 31 bandas do RTA, onde a curva do EQ é lida para o traço de
+// antes do EQ (B22). Constante: calculado uma vez.
+const ISO_F32 = Float32Array.from(ISO_CENTERS);
 
 const F_MIN = 20;
 const F_MAX = 20000;
@@ -177,6 +187,8 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   // ── Curva em dB, cacheada: só recalcula quando bandas ou sample rate
   // mudam (o loop de 60Hz do RTA redesenha sem refazer 16 biquads x 257).
   const sampleDb = new Float32Array(CURVE_STEPS + 1);
+  // Ganho da curva do EQ no centro de cada banda do RTA (B22).
+  const eqAtCenters = new Float32Array(NUM_BANDS);
   let dotFreqs = new Float32Array(16);
   let dotDb = new Float32Array(16);
   let curveDirty = true;
@@ -192,6 +204,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
     }
     for (let i = 0; i < bands.length; i++) dotFreqs[i] = bands[i].freq;
     sampleCurve(bands, dotFreqs.subarray(0, bands.length), cachedSampleRate, dotDb);
+    sampleCurve(bands, ISO_F32, cachedSampleRate, eqAtCenters);
     const range = pickDbRange(peak);
     if (range !== visRange()) setVisRange(range);
     curveDirty = false;
@@ -418,6 +431,24 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
           ctx.fillRect(x, yPeak - 0.5, barW, 1.5);
         }
       }
+
+      // Antes do EQ (estimado): onde a barra estaria sem a curva do EQ.
+      // Só onde há sinal; a curva vem do cache (recalcula com as bandas).
+      const bandsNow = props.bands;
+      if (bandsNow?.length) {
+        if (curveDirty) recomputeCurve(bandsNow);
+        const live = props.eqLive ?? true;
+        ctx.fillStyle = ink.curve;
+        ctx.globalAlpha = 0.5;
+        for (let i = 0; i < NUM_BANDS; i++) {
+          if (bandMags[i] <= DISPLAY_DB_MIN + 0.5) continue;
+          const barW = Math.max(2, slotW[i] * 0.7);
+          const x = xCenters[i] - barW / 2;
+          const yo = barDbToY(originDb(bandMags[i], eqAtCenters[i], live));
+          ctx.fillRect(x + barW * 0.15, yo - 0.5, barW * 0.7, 1);
+        }
+        ctx.globalAlpha = 1;
+      }
     }
 
     // ── Curva REAL: soma das bandas pelo tipo de filtro de cada uma ──
@@ -532,6 +563,7 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
   // modo e solo inclusos) ou quando a banda ativa muda.
   createEffect(() => {
     void props.activeBand;
+    void props.eqLive;
     for (const b of props.bands) {
       void b.freq; void b.gain_db; void b.q; void b.mute;
       void b.type; void b.slope; void b.filterMode; void b.solo;
@@ -556,6 +588,17 @@ export const EqCanvas: Component<EqCanvasProps> = (props) => {
       <div class="eq-xaxis" aria-hidden="true">
         <For each={X_TICKS}>{(t) => <span style={{ left: xTickLeft(t.hz) }}>{t.label}</span>}</For>
       </div>
+      {/* Rótulo honesto (B22): as barras são o que sai, medido depois de todo
+          o DSP; o traço é uma conta, não medição. */}
+      <Show when={tweaks().eqSpectrumOverlay}>
+        <p
+          class="eq-legend"
+          title="O traço desconta só a curva do EQ: Limiter, Bass, normalização e volume também mexem no que se mede."
+        >
+          <span class="eq-legend__bar" aria-hidden="true" />Barras: saída medida
+          <span class="eq-legend__tick" aria-hidden="true" />Traço: antes do EQ (estimado)
+        </p>
+      </Show>
     </>
   );
 };

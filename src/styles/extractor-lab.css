@@ -360,8 +360,17 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   outline: none;
   display: inline-block;
   box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18);
-  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out);
+  /* Neutro em repouso (B26): a moldura fica quieta; a cor de cada
+     papel só acende com o ponteiro ou o foco no grupo. */
+  background: var(--fg-7);
+  transition: transform var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
 }
+.tl-dot--close { --tl-color: #ff5f57; }
+.tl-dot--min   { --tl-color: #febc2e; }
+.tl-dot--max   { --tl-color: #28c840; }
+.titlebar__lights:hover .tl-dot,
+.titlebar__lights:focus-within .tl-dot { background: var(--tl-color); }
 .tl-dot:hover { filter: brightness(1.05); }
 /* O outline:none acima tirava o foco de teclado dos botões da janela. */
 .tl-dot:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
@@ -964,9 +973,15 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   background: var(--blue-ring);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 140%), transparent);
   animation: pulse 1.4s ease-in-out infinite;
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
-/* Pausado, o ponto para: pulsar "ao vivo" com o som parado mente. */
-.np__tag-playing[data-paused="true"] .dot { animation: none; opacity: 0.45; }
+/* Pausado: ponto neutro, sem halo nem pulso (A12). O pulso que resta é
+   estado ao vivo (tocando), não decoração. */
+.np__tag-playing[data-playing="false"] .dot {
+  animation: none;
+  background: var(--fg-7);
+  box-shadow: none;
+}
 @keyframes pulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
 
 .np__title {
@@ -2108,12 +2123,31 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 }
 .tweaks__title { font-weight: 600; font-size: 13px; color: var(--fg-1); }
 .tweaks__close {
-  width: 22px; height: 22px;
+  width: 24px; height: 24px;
   border-radius: var(--radius-sm);
   display: grid; place-items: center;
   color: var(--fg-5); cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .tweaks__close:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__close:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+/* Âncoras das seções (B17): uma linha logo abaixo do cabeçalho. */
+.tweaks__nav {
+  display: flex; gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-2);
+}
+.tweaks__nav-btn {
+  flex: 1 1 0;
+  padding: 5px 4px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-label); font-weight: 600;
+  color: var(--fg-4);
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+.tweaks__nav-btn:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__nav-btn:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
 .tweaks__body {
   padding: 12px 14px 16px;
   overflow-y: auto;
@@ -2126,8 +2160,7 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   font-size: 11px; font-weight: 600; color: var(--fg-3);
   text-transform: uppercase; letter-spacing: 0.06em;
 }
-.tweaks__select,
-.tweaks .settings-range {
+.tweaks__select {
   width: 100%;
   font: inherit;
   padding: 6px 8px;
@@ -2136,7 +2169,19 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   background: var(--bg-paper);
   color: var(--fg-2);
 }
-.tweaks .settings-range { padding: 0; height: 22px; }
+/* O range herda o .slider (A30): era o range nativo do GTK numa caixa.
+   Margem vertical dá ao polegar de 12 px uma faixa de toque. */
+.tweaks__range { margin: 6px 0; }
+.tweaks__range:disabled { opacity: 0.45; }
+.tweaks__range:disabled::-webkit-slider-thumb { cursor: not-allowed; background: var(--fg-6); }
+.tweaks__select:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Filho de um pai desligado (A30): o controle esmaece e a linha diz de
+   quem depende. Os segmentados seguem focáveis (aria-disabled). */
+.tweaks__row.is-dependent .tweaks__label { color: var(--fg-5); }
+.tweaks__row.is-dependent .segmented { opacity: 0.55; }
+.tweaks__row.is-dependent .segmented__btn { cursor: not-allowed; }
+.tweaks__dep { margin: 0; color: var(--fg-5); }
+.tweaks__row--inline { flex-direction: row; align-items: center; justify-content: space-between; }
 .segmented button.active,
 .segmented button.is-active { background: var(--bg-paper); color: var(--fg-1); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
@@ -2147,21 +2192,48 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 }
 .tweaks__divider {
   display: flex; align-items: center; gap: 8px; margin: 4px 0 2px;
+  scroll-margin-top: 8px;
 }
+.tweaks__divider:first-child { margin-top: 0; }
 .tweaks__divider::before,
 .tweaks__divider::after { content: ''; flex: 1; height: 1px; background: var(--line-2); }
 .tweaks__divider span {
-  font-size: 10px; font-weight: 700; color: var(--fg-6);
+  font-size: var(--fs-label); font-weight: 700; color: var(--fg-5);
   text-transform: uppercase; letter-spacing: 0.06em;
 }
-.tweaks__reset {
+/* Botão de largura total do painel (Medir cenas, Redefinir tudo). */
+.tweaks__btn {
   margin-top: 4px; padding: 6px 10px;
   background: var(--bg-tint); border: 1px solid var(--line-2);
   border-radius: var(--radius-sm); font-size: 11.5px; font-weight: 500;
   color: var(--fg-4); cursor: pointer; width: 100%;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+.tweaks__btn:hover { background: var(--line-2); color: var(--fg-2); }
+.tweaks__btn:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+/* Redefinir tudo armado (B4): o segundo clique apaga os ajustes. */
+.tweaks__btn.is-armed { color: var(--rose-fg); border-color: var(--rose-fg); background: var(--rose-bg); }
+/* "↺ tema" e "Tentar de novo": compactos, ao lado do texto (A30). */
+.tweaks__retheme {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 6px; padding: 1px 6px;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  background: var(--bg-paper);
+  font-size: var(--fs-label); font-weight: 500;
+  letter-spacing: 0; text-transform: none;
+  color: var(--fg-4); cursor: pointer;
+  vertical-align: middle;
   transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
-.tweaks__reset:hover { background: var(--line-2); color: var(--fg-2); }
+.tweaks__retheme:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__retheme:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
+/* Fundo WebGL que não iniciou (A33): o que aconteceu + a saída. */
+.tweaks__gl-fail {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11px; line-height: 1.4; color: var(--amber-fg);
+}
+.tweaks__gl-fail .tweaks__retheme { flex: none; margin-left: 0; }
 /* Hint de uma linha sob um knob (mesma família do .set-row__hint). */
 .tweaks__hint {
   font-size: 11px; color: var(--fg-5); line-height: 1.4;
@@ -2170,10 +2242,10 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 /* Estado do motor WebGL: cena desenhada + fps medido (A13). O ponto
    segue o critério de 58 fps; o número é mono tabular porque muda 1x/s. */
 .tweaks__gl-status { display: flex; align-items: center; gap: 6px; }
+/* A4: no estado normal o ponto é só cor; o halo fica para o aviso. */
 .tweaks__gl-dot {
   width: 5px; height: 5px; border-radius: 50%; flex: none;
   background: var(--green-ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent);
 }
 /* --low: fps abaixo do critério; --attn: ponte ligada com cliente conectado
    (o mesmo âmbar do chip da sidebar). */
@@ -2189,7 +2261,7 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 /* Seletor de cena do fundo WebGL: com muitas cenas o segmented quebra
    linha em vez de estourar a largura do painel. */
 .segmented--wrap { display: flex; flex-wrap: wrap; }
-.tweaks__reset:disabled { opacity: 0.5; cursor: progress; }
+.tweaks__btn:disabled { opacity: 0.5; cursor: progress; }
 
 /* Medição de cenas (gl/bench.ts): tabela da última medição. */
 .tweaks__bench { display: flex; flex-direction: column; gap: 6px; }
@@ -2393,14 +2465,13 @@ html { --glow: 0; }
   .pb-icon-btn[aria-pressed="true"],
   .pb-btn[aria-pressed="true"],
   .pb-like[aria-pressed="true"],
-  .tog[aria-pressed="true"],
-  .tog--blue[aria-pressed="true"],
+  .tog[aria-checked="true"],
+  .tog--blue[aria-checked="true"],
   .nav-item.active,
   .segmented button.is-active,
   .seg button[aria-pressed="true"],
   .mode-group button[aria-pressed="true"],
   .sig-pre[aria-pressed="true"],
-  .sig-chain__node[data-on="true"],
   .sig-stat[data-on="true"],
   .pl-action-btn.is-on,
   .pl-card__pin.is-pinned,
@@ -2447,6 +2518,18 @@ html { --glow: 0; }
   display: flex;
   flex-direction: column;
   gap: 18px;
+  /* B21: na tela larga a curva virava faixa de 8:1. */
+  max-width: 1180px;
+}
+/* Recusa do motor (A32): o ajuste não valeu; [Reaplicar] reenvia tudo. */
+.sig-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--amber-ring);
+  border-radius: var(--radius-lg);
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+  font-size: 13px; font-weight: 600;
 }
 
 /* Master + chain status row */
@@ -2465,9 +2548,7 @@ html { --glow: 0; }
   font-size: 13px; font-weight: 600; color: var(--fg-1); margin: 0;
 }
 .sig-master-bar__sub {
-  font-family: var(--font-mono);
-  font-size: 11.5px; color: var(--fg-5);
-  letter-spacing: -0.01em;
+  font-size: 12px; color: var(--fg-5);
 }
 .sig-master-bar__sub b { color: var(--fg-2); font-weight: 600; }
 
@@ -2485,6 +2566,7 @@ html { --glow: 0; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: border-color var(--dur-base) var(--ease-out);
 }
 .sig-stat__head {
   display: flex; align-items: center; justify-content: space-between;
@@ -2498,6 +2580,7 @@ html { --glow: 0; }
 .sig-stat__dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--fg-7);
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 .sig-stat[data-on="true"] .sig-stat__dot {
   background: var(--blue-ring);
@@ -2508,54 +2591,13 @@ html { --glow: 0; }
   color: var(--fg-1);
   letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
+  transition: color var(--dur-base) var(--ease-out);
 }
 .sig-stat[data-on="false"] .sig-stat__value { color: var(--fg-6); font-weight: 600; }
 .sig-stat__sub {
   font-family: var(--font-mono);
   font-size: 10.5px; color: var(--fg-5);
   letter-spacing: -0.01em;
-}
-
-/* Chain flow diagram */
-.sig-chain {
-  background: var(--bg-soft);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-lg);
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.sig-chain__node {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  font-weight: 600;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
-  color: var(--fg-5);
-  background: var(--bg-paper);
-  border: 1px solid var(--line-2);
-}
-.sig-chain__node[data-on="true"] {
-  color: var(--fg-1);
-  background: var(--bg-paper);
-  border-color: var(--fg-8);
-}
-.sig-chain__node[data-on="true"] .dot {
-  display: inline-block;
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: var(--blue-ring);
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.sig-chain__arrow {
-  color: var(--fg-7);
-  font-family: var(--font-mono);
-  font-size: 11px;
 }
 
 /* Presets bar */
@@ -2609,6 +2651,9 @@ html { --glow: 0; }
 .sig-pbtn:disabled { opacity: 0.40; cursor: not-allowed; }
 .sig-pbtn:disabled:hover { color: var(--fg-5); border-color: var(--line-2); background: transparent; }
 .sig-pbtn iconify-icon { width: 12px; height: 12px; }
+.sig-pbtn:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+/* Apagar armado (B4): o 2º clique apaga; desarma em 4 s. */
+.sig-pbtn.is-armed { color: var(--rose-fg); border-color: var(--rose-fg); }
 
 .sig-preset-chips__empty {
   font-size: 11.5px;
@@ -2637,16 +2682,6 @@ html { --glow: 0; }
   color: var(--fg-1);
   margin: 0;
 }
-.sig-panel__badge {
-  font-family: var(--font-mono);
-  font-size: 10px; font-weight: 600;
-  letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--fg-5);
-  padding: 2px 7px;
-  background: var(--bg-tint);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-xs);
-}
 .sig-panel__meta {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -2655,7 +2690,8 @@ html { --glow: 0; }
   letter-spacing: -0.01em;
 }
 .sig-panel__meta b { color: var(--fg-2); font-weight: 600; }
-.sig-panel__body { padding: 18px; }
+.sig-panel__head .tog { margin-left: 10px; }
+.sig-panel__body { padding: 18px; transition: opacity var(--dur-base) var(--ease-out); }
 /* Estágio que não processa (desligado ou em bypass): o painel diz isso e o
    corpo esmaece. Os controles seguem editáveis. */
 .sig-panel__state {
@@ -2676,7 +2712,8 @@ html { --glow: 0; }
   background: var(--bg-sunken);
   border: 1px solid var(--line-2);
   border-radius: var(--radius-md);
-  height: 180px;
+  /* B21: a curva é o destaque da tela (era 180 px). */
+  height: 260px;
   overflow: hidden;
   margin-bottom: 4px;
 }
@@ -2714,6 +2751,16 @@ html { --glow: 0; }
   white-space: nowrap;
   transform: translateX(-50%);
 }
+/* Legenda do espectro (B22): o que é medido e o que é conta. */
+.eq-legend {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 6px 0 0;
+  font-size: var(--fs-label); color: var(--fg-5);
+}
+.eq-legend__bar,
+.eq-legend__tick { display: inline-block; flex: none; width: 10px; }
+.eq-legend__bar { height: 8px; background: rgba(var(--bg-ink-rgb, 23, 23, 23), 0.35); border-radius: 1px; }
+.eq-legend__tick { height: 1px; background: var(--fg-1); opacity: 0.5; margin-left: 10px; }
 
 /* Faders row — 16 bands */
 .faders {
@@ -3125,15 +3172,25 @@ html { --glow: 0; }
   color: var(--fg-3);
 }
 
-/* Mini toggle pill (reused inside panels) */
+/* Mini toggle pill (components/Switch.tsx: role="switch" + aria-checked).
+   A31: desligado era --fg-8 cheio sobre o painel (1,89:1, some). Agora o
+   trilho é --bg-tint com borda --fg-6 (4,95:1) e a bolinha --fg-5; ligado,
+   trilho --fg-1 e bolinha clara. A área de toque cresce para 24 px de
+   altura pelo ::before, sem mudar o desenho. */
 .tog {
   width: 30px; height: 16px;
   border-radius: 999px;
-  background: var(--fg-8);
+  background: var(--bg-tint);
   position: relative;
   cursor: pointer;
-  transition: background var(--dur-base) var(--ease-out);
-  border: 1px solid var(--line-2);
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+  border: 1px solid var(--fg-6);
+  flex: none;
+}
+.tog::before {
+  content: '';
+  position: absolute;
+  inset: -5px -4px;
 }
 .tog::after {
   content: '';
@@ -3141,13 +3198,15 @@ html { --glow: 0; }
   top: 1px; left: 1px;
   width: 12px; height: 12px;
   border-radius: 50%;
-  background: var(--bg-paper);
+  background: var(--fg-5);
   box-shadow: var(--shadow-knob);
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
 }
-.tog[aria-pressed="true"] { background: var(--fg-1); }
-.tog[aria-pressed="true"]::after { transform: translateX(12px); }
-.tog--blue[aria-pressed="true"] { background: var(--blue-fg); }
+.tog:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.tog:disabled { cursor: not-allowed; opacity: 0.5; }
+.tog[aria-checked="true"] { background: var(--fg-1); border-color: var(--fg-1); }
+.tog[aria-checked="true"]::after { transform: translateX(12px); background: var(--bg-paper); }
+.tog--blue[aria-checked="true"] { background: var(--blue-fg); border-color: var(--blue-fg); }
 
 /* ════════════════════════════════════════════════════════════
    PLAYLISTS — collection cards (pastas do acervo)
@@ -3315,18 +3374,69 @@ html { --glow: 0; }
   display: flex; align-items: center; gap: 7px;
   margin-bottom: 8px;
 }
-.st-feature__eyebrow .dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--blue-ring);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-ring) calc(var(--halo-alpha) * 100%), transparent);
-  animation: stPulse 1.4s ease-in-out infinite;
+/* Stations vazia (A12): sem ponto pulsante, chips falsos nem cartões-
+   fantasma. Título, uma frase do que é uma station e as duas formas de
+   criar. */
+.st-empty {
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  padding: 28px 24px;
 }
-@keyframes stPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+.st-empty__title {
+  font-size: var(--fs-feature);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--fg-1);
+  margin: 0 0 8px;
+  text-wrap: balance;
 }
-@media (prefers-reduced-motion: reduce) {
-  .st-feature__eyebrow .dot { animation: none; }
+.st-empty__hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-4);
+  max-width: 56ch;
+  margin: 0 0 18px;
+}
+.st-empty__actions,
+.st-noplay__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-empty__btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-1);
+  background: var(--bg-paper);
+  color: var(--fg-1);
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+.st-empty__btn:hover:not(:disabled) { background: var(--bg-tint); }
+.st-empty__btn--primary { background: var(--fg-1); color: var(--bg-paper); border-color: var(--fg-1); }
+.st-empty__btn--primary:hover:not(:disabled) { background: var(--fg-2); }
+.st-empty__btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.st-empty__btn:focus-visible,
+.st-noplay__dismiss:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.st-loading { font-size: 13px; color: var(--fg-5); margin: 4px 0; }
+/* Station que não achou faixas: aviso com a saída (apagar). */
+.st-noplay {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+}
+.st-noplay__title { margin: 0; font-size: 13px; font-weight: 600; }
+.st-noplay__legend { margin: 2px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.st-noplay__dismiss {
+  border: 0; background: none; padding: 8px 6px;
+  font: inherit; font-size: 12.5px; color: inherit; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
 }
 .st-feature__title {
   font-size: var(--fs-feature);
@@ -3816,6 +3926,18 @@ html { --glow: 0; }
   font-variant-numeric: tabular-nums;
 }
 .set-about-item__value.is-mono-strong { font-weight: 600; }
+/* Diagnóstico (B20): o texto técnico fica num painel fechado, aberto pelo
+   cabeçalho inteiro; o chevron gira quando abre. */
+.set-diag__summary { cursor: pointer; list-style: none; align-items: center; }
+.set-diag__summary::-webkit-details-marker { display: none; }
+.set-diag:not([open]) .set-diag__summary { border-bottom: 0; }
+.set-diag__summary:hover .set-panel__title { color: var(--fg-1); }
+.set-diag__summary:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
+.set-diag__chev { color: var(--fg-5); transition: transform var(--dur-base) var(--ease-out); }
+.set-diag[open] .set-diag__chev { transform: rotate(180deg); }
+.set-diag__stats { padding: 13px 20px; border-top: 1px solid var(--line-3); }
+.set-num { font-variant-numeric: tabular-nums; }
+.set-kbd { font-family: var(--font-mono); font-size: var(--fs-label); padding: 2px 7px; }
 
 /* Badge de status (calculadora WCAG do Settings). Portado do
    components.css órfão, que nunca entrou no bundle, para os tokens
@@ -5389,7 +5511,6 @@ html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
   .view,
   .track-ctx-menu,
   .np__tag-playing .dot,
-  .st-feature__eyebrow .dot,
   .sel-bar { animation: none; }
 
 

@@ -579,6 +579,35 @@ export function updateTweak<K extends keyof TweaksState>(key: K, val: TweaksStat
   setState((s) => ({ ...s, [key]: val }));
 }
 
+// ── Cor do fundo (B18) ────────────────────────────────────────
+// Bg ink, Adaptive ink e Ink cycle decidem UMA coisa: de onde vem a cor do
+// fundo. O seletor mostra a precedência (usuário > capa > tema) como quatro
+// modos, sem mudar o schema: cada modo é uma combinação dos campos de
+// sempre, e o modo lido deriva deles (manual = bgInk dirty).
+export type BgInkMode = "cover-cycle" | "cover-fixed" | "theme" | "manual";
+
+export function bgInkMode(s: TweaksState = state()): BgInkMode {
+  if (isDirty("bgInk")) return "manual";
+  if (!s.adaptiveInk) return "theme";
+  return s.bgInkCycle ? "cover-cycle" : "cover-fixed";
+}
+
+export function setBgInkMode(mode: BgInkMode) {
+  if (mode === "manual") {
+    // Parte da cor que está na tela: escolher "Manual" não pode saltar
+    // para o default carbono antes de o usuário mexer no seletor.
+    const shown = document.documentElement.style.getPropertyValue("--bg-ink").trim();
+    updateTweak("bgInk", /^#[0-9a-f]{6}$/i.test(shown) ? shown : state().bgInk);
+    return;
+  }
+  if (isDirty("bgInk")) clearDirty("bgInk");
+  if (mode === "theme") {
+    updateTweak("adaptiveInk", false);
+    return;
+  }
+  setState((s) => ({ ...s, adaptiveInk: true, bgInkCycle: mode === "cover-cycle" }));
+}
+
 export function resetTweaks() {
   setDirtyKeys(new Set<keyof TweaksState>());
   setState({ ...DEFAULTS });

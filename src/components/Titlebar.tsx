@@ -9,6 +9,9 @@
      - vermelho fecha
      - amarelo minimiza
      - verde alterna maximize/restore
+   Em repouso os três ficam neutros (--fg-7); a cor só aparece com o
+   ponteiro ou o foco no grupo (B26, 31/10). A cor mora no CSS
+   (.tl-dot--close/min/max), nunca inline.
 
    Chamadas via @tauri-apps/api/window, exposto globalmente
    por `withGlobalTauri: true` em tauri.conf.json -> nao precisa
@@ -19,12 +22,6 @@ import { Show, onMount } from "solid-js";
 import { route } from "../router";
 import { mountResources, toggleResources } from "../js/components/resources.js";
 import { Icon } from "./Icon";
-
-const TRAFFIC = {
-  red:    "#ff5f57",
-  yellow: "#febc2e",
-  green:  "#28c840",
-} as const;
 
 function getWin() {
   return window.__TAURI__?.window?.getCurrentWindow?.();
@@ -62,24 +59,21 @@ export function Titlebar() {
       <div class="titlebar__lights no-drag">
         <button
           type="button"
-          class="tl-dot"
-          style={{ background: TRAFFIC.red }}
+          class="tl-dot tl-dot--close"
           aria-label="Fechar"
           title="Fechar"
           onClick={handleClose}
         />
         <button
           type="button"
-          class="tl-dot"
-          style={{ background: TRAFFIC.yellow }}
+          class="tl-dot tl-dot--min"
           aria-label="Minimizar"
           title="Minimizar"
           onClick={handleMinimize}
         />
         <button
           type="button"
-          class="tl-dot"
-          style={{ background: TRAFFIC.green }}
+          class="tl-dot tl-dot--max"
           aria-label="Maximizar"
           title="Maximizar"
           onClick={handleMaximize}
