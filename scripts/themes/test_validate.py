@@ -135,6 +135,84 @@ def test_prefixo_lyrics():
     check("lyrics nada descartado", dropped, [])
 
 
+# Really Dark (sidecar .impeccable/design.json, 26/10): superfícies e sinais.
+RD_BASE = """
+name: Really Dark
+surfaces:
+  lowest: "#050505"
+  base: "#0c0c0c"
+  container-low: "#111111"
+  container: "#161616"
+  container-high: "#1c1c1c"
+  container-highest: "#242424"
+text:
+  primary: "#F0F0F0"
+  secondary: "#b8b8b8"
+  muted: "#808080"
+green-bg: "rgba(128,144,120,0.12)"
+amber-bg: "rgba(144,136,112,0.12)"
+rose-bg: "rgba(139,117,117,0.12)"
+"""
+RD_SINAIS_HOJE = RD_BASE + """
+signal:
+  ok: "#809078"
+  warn: "#908870"
+  error: "#8b7575"
+"""
+# Mesmo matiz e croma, L OKLCH subindo até 4,5:1 sobre o faint (A22).
+RD_SINAIS_NOVOS = RD_BASE + """
+signal:
+  ok: "#819279"
+  warn: "#958d74"
+  error: "#9d8787"
+"""
+MONOCROMATICO = RD_BASE + """
+signal:
+  ok: "#a0a0a0"
+  warn: "#a0a0a0"
+  error: "#a0a0a0"
+"""
+
+
+def validate_text(text):
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(text)
+        path = f.name
+    try:
+        return V.validate_file(path)
+    finally:
+        os.unlink(path)
+
+
+def test_sinais_medidos_sobre_soft_e_faint():
+    problems, _ = validate_text(RD_SINAIS_HOJE)
+    # Medido em 31/10: erro 4,22 (soft) e 3,62 (faint); aviso 4,39 (faint).
+    for par in ("erro/soft", "erro/faint", "warn/faint"):
+        check(f"RD hoje reprova {par}", any(f" {par}:" in p for p in problems), True)
+    # ok passa raspando (4,57 sobre o faint) e todos passam no canvas.
+    for par in ("ok/faint", "ok/canvas", "erro/canvas"):
+        check(f"RD hoje passa {par}", any(f" {par}:" in p for p in problems), False)
+
+
+def test_sinais_novos_passam():
+    problems, _ = validate_text(RD_SINAIS_NOVOS)
+    check("RD novos sem reprovação", problems, [])
+
+
+def test_fundo_proprio_composto_sobre_o_paper():
+    # rose-bg é rgba: antes o par era pulado; agora compõe sobre o paper.
+    problems, _ = validate_text(RD_BASE + 'signal:\n  error: "#5a4a4a"\n')
+    check("erro sobre o próprio fundo medido", any(" erro/fundo:" in p for p in problems), True)
+
+
+def test_colapso_por_delta_e():
+    _, warns = validate_text(RD_SINAIS_HOJE)
+    check("RD ok e warn colapsam (ΔE 2,9)", any("sig-ok e sig-warn" in w for w in warns), True)
+    check("RD warn e err distintos", any("sig-warn e sig-err" in w for w in warns), False)
+    _, warns = validate_text(MONOCROMATICO)
+    check("monocromático de propósito não avisa", any("colapso" in w for w in warns), False)
+
+
 def main():
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

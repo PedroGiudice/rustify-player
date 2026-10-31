@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acento da capa: antes e depois</title>
+<style>
+@font-face { font-family: "Instrument Sans"; src: url("../../../src/assets/fonts/instrument-sans-latin.woff2") format("woff2"); font-weight: 400 700; }
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #050505; color: #f0f0f0; font: 14px/1.45 "Instrument Sans", ui-sans-serif, system-ui, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 8px; }
+.lead { color: #b8b8b8; max-width: 72ch; margin: 0 0 8px; }
+.lead b { color: #f0f0f0; font-weight: 600; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; background: #1c1c1c; border-radius: 8px; margin: 16px 0 20px; }
+.seg button { font: inherit; font-size: 13px; color: #b8b8b8; background: transparent; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: #0c0c0c; color: #f0f0f0; }
+.seg button:focus-visible { outline: 2px solid #b8b8b8; outline-offset: 1px; }
+.tema { background: var(--page); color: var(--pfg); border-radius: 12px; padding: 16px; }
+.tema[hidden] { display: none; }
+.cols, .capa-row { display: grid; grid-template-columns: 170px repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cols { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pfg5); padding: 0 0 8px; }
+.capa-row { padding: 12px 0; border-top: 1px solid var(--pline); }
+.capa { display: flex; gap: 12px; align-items: flex-start; }
+.swatch { width: 56px; height: 56px; border-radius: 6px; flex: none; }
+.capa h3 { font-size: 13.5px; font-weight: 600; margin: 0; }
+.capa p { margin: 2px 0 0; font-size: 12px; color: var(--pfg5); }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; }
+.cell { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+.mock { display: flex; flex-direction: column; gap: 2px; }
+.row { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; border-left: 2px solid transparent; }
+.row--cur { background: var(--wash); border-left-color: var(--acc); }
+.row--hover { background: var(--soft); }
+.row .t { font-weight: 600; font-size: 13.5px; color: var(--acc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .t--n { color: var(--fg1); }
+.row .a { font-size: 12px; color: var(--fg5); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
+.dot--off { background: transparent; }
+.ctl { display: flex; align-items: center; gap: 10px; padding: 8px 8px 2px; }
+.chip { font-size: 10px; font-weight: 650; letter-spacing: 0.08em; color: var(--acc); border: 1px solid color-mix(in srgb, var(--acc) 40%, transparent); border-radius: 999px; padding: 2px 8px; }
+.tog { color: var(--acc); display: inline-flex; }
+.btn { font-size: 12px; font-weight: 600; color: var(--on); background: var(--acc); border-radius: 999px; padding: 4px 12px; margin-left: auto; }
+.nota { font-size: 11px; color: var(--fg5); margin: 8px 8px 0; }
+.num { margin: 10px 0 0; padding: 8px 8px 0; border-top: 1px solid var(--line); display: grid; gap: 2px; font-size: 11.5px; }
+.num div { display: flex; justify-content: space-between; gap: 8px; }
+.num dt { color: var(--fg5); }
+.num dd { margin: 0; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.num .baixo dd { color: #e8a598; font-weight: 600; }
+.foot { color: #808080; font-size: 12px; max-width: 80ch; margin-top: 20px; }
+.foot p { margin: 0 0 6px; }
+@media (max-width: 900px) {
+  .cols { display: none; }
+  .capa-row { grid-template-columns: 1fr; }
+  .cell::before { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg5); margin-bottom: 6px; }
+  .capa-row > .cell:nth-of-type(2)::before { content: "Hoje (0.2.102)"; }
+  .capa-row > .cell:nth-of-type(3)::before { content: "A6: alvo 5,2, HSL"; }
+  .capa-row > .cell:nth-of-type(4)::before { content: "B25: OKLCH"; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Acento da capa: antes e depois</h1>
+  <p class="lead">Seis capas, três versões do acento que a capa pinta na interface: o título da faixa tocando sobre a linha atual, a vizinha em hover, o chip RÁDIO, um botão ligado e um botão cheio. <b>A6</b> só sobe o alvo de contraste (o acento é texto) e deixa capa quase cinza no acento do tema. <b>B25</b> deriva em OKLCH: mesmo matiz, croma entre 0,07 e 0,17, brilho até ler. A pergunta para você é só a última coluna contra a do meio.</p>
+  <div class="seg" role="group" aria-label="Tema">
+    <button type="button" data-alvo="rd" aria-pressed="true">Really Dark</button>
+    <button type="button" data-alvo="claro" aria-pressed="false">Repouso claro</button>
+  </div>
+  <div class="tema" data-tema="rd" style="--page:#050505;--pfg:#f0f0f0;--pfg5:#808080;--pline:rgba(255,255,255,0.08)">
+    <div class="cols"><span></span><span>Hoje (0.2.102)</span><span>A6: alvo 5,2, HSL</span><span>B25: OKLCH</span></div>
+    <section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#2c6fd1"></div>
+        <div><h3>Azul</h3><p><code>#2c6fd1</code></p><p class="meta">L 0,553 · C 0,166</p></div>
+      </div>
+      <div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#0668f7;--on:#f5f4f2;--wash:#0b1728">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#0668f7</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,561 · 0,228</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,71:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,20 · 3,71</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,41:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#2c80fa;--on:#141312;--wash:#101a29">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#2c80fa</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,617 · 0,199</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,64:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,41 · 4,64</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,93:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#3b80e7;--on:#141312;--wash:#121a26">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#3b80e7</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,609 · 0,171</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,52:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,27 · 4,52</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,80:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#8e44ad"></div>
+        <div><h3>Roxo</h3><p><code>#8e44ad</code></p><p class="meta">L 0,526 · C 0,170</p></div>
+      </div>
+      <div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#ae2ae5;--on:#f5f4f2;--wash:#1f1026">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#ae2ae5</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,581 · 0,262</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,67:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,14 · 3,67</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,48:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#bc4fea;--on:#141312;--wash:#211427">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#bc4fea</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,635 · 0,233</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,56:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,28 · 4,56</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,81:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#ae64cf;--on:#141312;--wash:#1f1723">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#ae64cf</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,629 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,58:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,36 · 4,58</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,88:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#c0392b"></div>
+        <div><h3>Vermelho</h3><p><code>#c0392b</code></p><p class="meta">L 0,543 · C 0,174</p></div>
+      </div>
+      <div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#e51b06;--on:#f5f4f2;--wash:#260e0b">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#e51b06</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,586 · 0,230</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,87:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,36 · 3,91</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,25:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#f9301b;--on:#141312;--wash:#28100e">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#f9301b</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,635 · 0,236</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,67:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,31 · 4,67</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,83:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#dd5847;--on:#141312;--wash:#251513">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#dd5847</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,630 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,65:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,40 · 4,65</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,91:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#a4de02"></div>
+        <div><h3>Verde-limão</h3><p><code>#a4de02</code></p><p class="meta">L 0,830 · C 0,212</p></div>
+      </div>
+      <div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#a6e006;--on:#141312;--wash:#1e250b">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#a6e006</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,836 · 0,212</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>10,03:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>12,89 · 10,03</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>11,74:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#a6e006;--on:#141312;--wash:#1e250b">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#a6e006</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,836 · 0,212</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>10,03:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>12,89 · 10,03</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>11,74:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#a2d149;--on:#141312;--wash:#1e2413">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#a2d149</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,801 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>8,92:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>11,41 · 8,92</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>10,39:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#10131a"></div>
+        <div><h3>Quase cinza</h3><p><code>#10131a</code></p><p class="meta">L 0,187 · C 0,015</p></div>
+      </div>
+      <div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#456dc9;--on:#f5f4f2;--wash:#131823">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#456dc9</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,553 · 0,150</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,62:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,16 · 3,62</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,46:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#d6d6d6;--on:#141312;--wash:#242424">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    <p class="nota">capa sem cor de verdade: acento do tema</p>
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#d6d6d6</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,876 · 0,000</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>10,68:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>14,02 · 10,68</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>12,77:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#d6d6d6;--on:#141312;--wash:#242424">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    <p class="nota">capa sem cor de verdade: acento do tema</p>
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#d6d6d6</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,876 · 0,000</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>10,68:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>14,02 · 10,68</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>12,77:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#e67e22"></div>
+        <div><h3>Laranja</h3><p><code>#e67e22</code></p><p class="meta">L 0,696 · C 0,160</p></div>
+      </div>
+      <div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#f97d0f;--on:#141312;--wash:#281a0c">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#f97d0f</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,719 · 0,181</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>6,41:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>7,73 · 6,41</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>7,04:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#f97d0f;--on:#141312;--wash:#281a0c">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#f97d0f</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,719 · 0,181</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>6,41:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>7,73 · 6,41</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>7,04:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#0c0c0c;--soft:#161616;--fg1:#f0f0f0;--fg3:#b8b8b8;--fg5:#808080;--line:rgba(255,255,255,0.08);--acc:#ea7b05;--on:#141312;--wash:#27190b">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#ea7b05</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,695 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>5,96:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>7,12 · 5,96</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>6,48:1</dd></div>
+    </dl>
+  </div>
+    </section>
+  </div>
+  <div class="tema" hidden data-tema="claro" style="--page:#fafafa;--pfg:#171717;--pfg5:#737373;--pline:#e5e5e5">
+    <div class="cols"><span></span><span>Hoje (0.2.102)</span><span>A6: alvo 5,2, HSL</span><span>B25: OKLCH</span></div>
+    <section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#2c6fd1"></div>
+        <div><h3>Azul</h3><p><code>#2c6fd1</code></p><p class="meta">L 0,553 · C 0,166</p></div>
+      </div>
+      <div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#0668f7;--on:#f5f4f2;--wash:#e1edfe">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#0668f7</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,561 · 0,228</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>4,10:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,65 · 4,10</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,41:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#065bd9;--on:#f5f4f2;--wash:#e1ebfa">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#065bd9</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,510 · 0,206</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,98:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,74 · 4,98</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,45:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#1e64c8;--on:#f5f4f2;--wash:#e4ecf8">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#1e64c8</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,519 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,76:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,42 · 4,76</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,15:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#8e44ad"></div>
+        <div><h3>Roxo</h3><p><code>#8e44ad</code></p><p class="meta">L 0,526 · C 0,170</p></div>
+      </div>
+      <div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#9f1ad7;--on:#f5f4f2;--wash:#f3e4fa">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#9f1ad7</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,541 · 0,257</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,80:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,58 · 4,80</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,30:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#9f1ad7;--on:#f5f4f2;--wash:#f3e4fa">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#9f1ad7</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,541 · 0,257</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,80:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,58 · 4,80</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,30:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#8e44ad;--on:#f5f4f2;--wash:#f1e9f5">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#8e44ad</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,526 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,95:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,62 · 4,95</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,34:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#c0392b"></div>
+        <div><h3>Vermelho</h3><p><code>#c0392b</code></p><p class="meta">L 0,543 · C 0,174</p></div>
+      </div>
+      <div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#e51b06;--on:#f5f4f2;--wash:#fce4e1">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#e51b06</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,586 · 0,230</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,86:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,48 · 3,86</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,25:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#c71705;--on:#f5f4f2;--wash:#f8e3e1">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#c71705</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,528 · 0,207</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,80:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,66 · 4,80</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,38:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#be3b2d;--on:#f5f4f2;--wash:#f7e7e6">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#be3b2d</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,542 · 0,170</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,55:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,22 · 4,55</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,96:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#a4de02"></div>
+        <div><h3>Verde-limão</h3><p><code>#a4de02</code></p><p class="meta">L 0,830 · C 0,212</p></div>
+      </div>
+      <div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#608103;--on:#f5f4f2;--wash:#ecf0e1">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#608103</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,557 · 0,140</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,91:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,34 · 3,91</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,12:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#516d03;--on:#f5f4f2;--wash:#eaede1">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#516d03</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,494 · 0,124</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>5,00:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,69 · 5,00</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,40:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#537200;--on:#f5f4f2;--wash:#eaeee0">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#537200</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,509 · 0,130</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,72:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,33 · 4,72</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,06:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#10131a"></div>
+        <div><h3>Quase cinza</h3><p><code>#10131a</code></p><p class="meta">L 0,187 · C 0,015</p></div>
+      </div>
+      <div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#223c77;--on:#f5f4f2;--wash:#e4e8ef">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#223c77</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,370 · 0,106</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>8,63:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>10,16 · 8,63</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>9,65:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#2563eb;--on:#f5f4f2;--wash:#e5ecfd">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    <p class="nota">capa sem cor de verdade: acento do tema</p>
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#2563eb</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,546 · 0,215</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>4,37:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,95 · 4,37</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,70:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#2563eb;--on:#f5f4f2;--wash:#e5ecfd">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    <p class="nota">capa sem cor de verdade: acento do tema</p>
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#2563eb</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,546 · 0,215</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>4,37:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,95 · 4,37</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>4,70:1</dd></div>
+    </dl>
+  </div>
+    </section>
+<section class="capa-row">
+      <div class="capa">
+        <div class="swatch" style="background:#e67e22"></div>
+        <div><h3>Laranja</h3><p><code>#e67e22</code></p><p class="meta">L 0,696 · C 0,160</p></div>
+      </div>
+      <div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#bd5b05;--on:#141312;--wash:#f7ebe1">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#bd5b05</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,581 · 0,149</dd></div>
+      <div class="baixo"><dt>Pior contraste</dt><dd>3,84:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>4,32 · 3,84</dd></div>
+      <div class="baixo"><dt>Texto no botão</dt><dd>4,12:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#9f4d04;--on:#f5f4f2;--wash:#f3eae1">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#9f4d04</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,514 · 0,130</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,99:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,69 · 4,99</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,40:1</dd></div>
+    </dl>
+  </div><div class="cell" style="--paper:#ffffff;--soft:#f7f6f3;--fg1:#171717;--fg3:#404040;--fg5:#737373;--line:#e5e5e5;--acc:#a35300;--on:#f5f4f2;--wash:#f4eae0">
+    <div class="mock">
+      <div class="row row--cur"><span class="dot"></span><span class="t">Faixa tocando</span><span class="a">Artista</span></div>
+      <div class="row row--hover"><span class="dot dot--off"></span><span class="t t--n">Faixa vizinha</span><span class="a">Artista</span></div>
+      <div class="ctl">
+        <span class="chip">RÁDIO</span>
+        <span class="tog" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="m18 14 4 4-4 4M18 2l4 4-4 4M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="btn">Tocar</span>
+      </div>
+    </div>
+    
+    <dl class="num">
+      <div><dt>Acento</dt><dd><code>#a35300</code></dd></div>
+      <div><dt>L · C OKLCH</dt><dd>0,530 · 0,131</dd></div>
+      <div class=""><dt>Pior contraste</dt><dd>4,66:1</dd></div>
+      <div><dt>Canvas · linha atual</dt><dd>5,30 · 4,66</dd></div>
+      <div class=""><dt>Texto no botão</dt><dd>5,03:1</dd></div>
+    </dl>
+  </div>
+    </section>
+  </div>
+  <div class="foot">
+    <p>Valores calculados pelo código de cada versão (deriveAccent de src/lib/inkDerive.ts), não desenhados à mão. Canvas, paper, soft e a escala de texto do Really Dark vêm do DESIGN.md; a linha atual é o acento a 12 % sobre o paper. "Hoje" é medido contra o canvas, como a varredura de 31/10 mediu: no app a 0.2.102 media contra o ink do tema.</p>
+    <p>Em vermelho: abaixo de 4,5:1, o piso de texto. O ícone é o shuffle ligado (Lucide).</p>
+  </div>
+</main>
+<script>
+  for (const b of document.querySelectorAll(".seg button")) {
+    b.addEventListener("click", () => {
+      for (const o of document.querySelectorAll(".seg button")) o.setAttribute("aria-pressed", String(o === b));
+      for (const t of document.querySelectorAll(".tema")) t.hidden = t.dataset.tema !== b.dataset.alvo;
+    });
+  }
+</script>
+</body>
+</html>

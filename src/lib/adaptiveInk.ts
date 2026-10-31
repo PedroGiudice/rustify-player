@@ -59,6 +59,15 @@ const INK_CYCLE_MS = 40_000;
     ambiental em vez de evento. Anunciado ao canvas via --bg-ink-morph. */
 const INK_CYCLE_MORPH_TAU = 3.5;
 
+/** Canvas e paper do tema ativo (inline do applyTheme ou o :root). O accent é texto:
+    o alvo de contraste dele se mede contra o canvas, não contra o ink do
+    tema, que o load_theme levanta a 3:1 quando o YAML declara ink = canvas
+    (medir contra o ink levantado subia o alvo sem querer). */
+function themeSurface(name: "--bg-canvas" | "--bg-paper", fallback: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return /^#[0-9a-f]{6}$/i.test(v) ? v : fallback;
+}
+
 let _reqSeq = 0;
 // Paleta BRUTA da capa da faixa corrente (até 3 cores, ordenadas por
 // densidade — [0] é a dominante). Guardada pra re-derivar quando o TEMA
@@ -95,7 +104,11 @@ function applyDerived(palette: string[] | null) {
   // botões trocando de cor a cada ciclo seria ruído — o bg é ambiental,
   // a UI não).
   setAdaptiveColor(inks[0] ?? null);
-  setAdaptiveAccent(deriveAccent(_lastPalette[0], base));
+  setAdaptiveAccent(deriveAccent(
+    _lastPalette[0],
+    themeSurface("--bg-canvas", "#fafafa"),
+    themeSurface("--bg-paper", "#ffffff"),
+  ));
 }
 
 // O retry PRESERVA o seq da requisição original (achado da auditoria: a
