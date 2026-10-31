@@ -677,6 +677,8 @@ export function PlayerBar() {
 
   return (
     <footer class="playerbar" id="player-bar" data-screen-label="Player Bar">
+      {/* O footer é o container de largura (B23); o grid mora aqui dentro. */}
+      <div class="playerbar__grid">
 
       {/* ── Esquerdo: cover + meta + like + more ── */}
       <div class="pb-left">
@@ -728,12 +730,12 @@ export function PlayerBar() {
                 data-pick={srcPick()?.kind}
                 title={srcTitle()}
               >
-                {srcLabel()}
+                <ChipText text={srcLabel()} />
               </span>
             </Show>
             <Show when={!isRadio() && firstListen()}>
               <span class="pb-src pb-src--first" title="Você nunca ouviu esta faixa até o fim">
-                1ª escuta
+                1ª<span class="pb-src__rest"> escuta</span>
               </span>
             </Show>
             <span class="pb-artist__text">
@@ -930,7 +932,7 @@ export function PlayerBar() {
             <span class="pb-tech__dot" />
             <span>{badge().label}</span>
             <span class="pb-tech__sep">·</span>
-            <span>{dspSummary()}</span>
+            <span class="pb-tech__dsp">{dspSummary()}</span>
           </div>
         </Show>
 
@@ -1000,6 +1002,7 @@ export function PlayerBar() {
           </div>
         </div>
       </div>
+      </div>{/* .playerbar__grid */}
     </footer>
   );
 }
@@ -1046,6 +1049,19 @@ export function radioPickTitle(pick: import("../tauri").AutoplayPick | null | un
 /** Selo do rádio com o grau de familiaridade (A2): nunca ouvida até o fim,
     descoberta (1-2 fins) ou conhecida. `fullListens` vem do pick do motor ou,
     sem pick, da familiaridade (null = ainda não se sabe). */
+/** Texto do selo em duas partes (B23): a primeira palavra fica ("rádio"),
+    o resto (" · descoberta") é o que some primeiro em barra estreita. O
+    textContent continua sendo o rótulo inteiro. */
+function ChipText(props: { text: string }) {
+  const cut = () => props.text.indexOf(" · ");
+  return (
+    <Show when={cut() > 0} fallback={props.text}>
+      {props.text.slice(0, cut())}
+      <span class="pb-src__rest">{props.text.slice(cut())}</span>
+    </Show>
+  );
+}
+
 export function radioChipLabel(
   pick: import("../tauri").AutoplayPick | null | undefined,
   fullListens: number | null,

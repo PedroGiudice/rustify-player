@@ -1457,18 +1457,50 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 /* ────────────────────────────────────────────────────────────
    PLAYER BAR
    ──────────────────────────────────────────────────────────── */
+/* A barra é container de largura (B23): o que cabe depende da largura dela,
+   que muda com a barra lateral e o zoom do Tweaks, coisas que a viewport não
+   vê. Container não estiliza a si mesmo, por isso o grid mora no filho. */
 .playerbar {
   background: var(--bg-paper);
   border-top: 1px solid var(--line-2);
+  container: pb / inline-size;
+}
+.playerbar__grid {
+  height: 100%;
   display: grid;
-  /* A direita pede ~430 px (medidor, pílula, letra, fila, mudo, volume): com
+  /* A direita pede ~418 px (medidor, pílula, letra, fila, mudo, volume): com
      240 px de piso ela encolhia os botões e quebrava a pílula (A3). A esquerda
-     cede primeiro, com reticências no título e no artista. */
+     cede primeiro, com reticências no título e no artista. O piso desce com o
+     que as regras de container abaixo tiram da direita. */
   grid-template-columns: minmax(0, 1fr) 1.2fr minmax(430px, 1fr);
   align-items: center;
   padding: 0 16px; gap: 24px;
 }
-.pb-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* Cortes por prioridade, pela largura da barra (px de CSS, depois do zoom).
+   Medidor é decorativo (aria-hidden); o resumo do DSP continua no rótulo
+   da pílula (techTitle); o volume encolhe por último. */
+@container pb (max-width: 1499.98px) {
+  .playerbar__grid { grid-template-columns: minmax(0, 1fr) 1.2fr minmax(384px, 1fr); }
+  .pb-meter { display: none; }
+}
+@container pb (max-width: 1299.98px) {
+  .playerbar__grid { grid-template-columns: minmax(0, 1fr) 1.2fr minmax(328px, 1fr); }
+  .pb-tech__sep, .pb-tech__dsp { display: none; }
+}
+@container pb (max-width: 1099.98px) {
+  .playerbar__grid { grid-template-columns: minmax(0, 1fr) 1.2fr minmax(272px, 1fr); }
+  .pb-vol { min-width: 72px; }
+}
+/* O lado esquerdo também é container: o artista tem prioridade sobre o selo.
+   Abaixo de 340 px o selo fica só com a primeira palavra ("rádio", "1ª");
+   abaixo de 260 px sai inteiro (o motivo segue no title da linha). */
+.pb-left { display: flex; align-items: center; gap: 12px; min-width: 0; container: pbl / inline-size; }
+@container pbl (max-width: 339.98px) {
+  .pb-src__rest { display: none; }
+}
+@container pbl (max-width: 259.98px) {
+  .pb-src { display: none; }
+}
 .pb-cover { width: 44px; height: 44px; flex: none; cursor: pointer; border-radius: var(--radius-md); overflow: hidden; }
 .pb-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
 .pb-title { font-size: 13px; font-weight: 600; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
@@ -2360,6 +2392,10 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
    token (o grid do .app le --playerbar-h). Travado em
    src/styles/layout-modes.test.ts, contra este arquivo. */
 html[data-density="compact"] { --playerbar-h: 60px; }
+/* Centro da barra nos 60 px (A41): play 36 + gap 6 + seek ~16,5 + padding 16
+   passava da barra. Com 32 + 4 + 16,5 + 4 sobram ~3,5 px. */
+html[data-density="compact"] .pb-center { padding: 2px 0; gap: 4px; }
+html[data-density="compact"] .pb-btn--primary { width: 32px; height: 32px; }
 html[data-density="compact"] .nav-item { padding: 5px 10px; }
 /* Cabecalho, abas e corpo das views */
 html[data-density="compact"] .view__head { padding: 16px 24px 12px; gap: 20px; }
@@ -4510,7 +4546,8 @@ html[data-sidebar="icons"] .bridge-chip__text {
 /* A view Crate desenha suas próprias faixas horizontais (toolbar,
    banners, list-head) — o padding vertical/gap do .view__body padrão
    duplicaria os espaçamentos do handoff. */
-.crate-body { padding: 0; gap: 0; }
+/* Container de largura para as colunas da linha de resultado (B23). */
+.crate-body { padding: 0; gap: 0; container: crate / inline-size; }
 
 /* ── toolbar ─────────────────────────────────────────────────── */
 .crate-toolbar {
@@ -4818,7 +4855,9 @@ html[data-sidebar="icons"] .bridge-chip__text {
 /* ── linha (grid de 6 colunas do handoff) ────────────────────── */
 .crate-row {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 112px 104px 186px 48px 118px;
+  /* Título e destino cedem (B23): com 240 e 186 fixos a linha pedia 992 px
+     e a vista ganhava rolagem lateral com o Baixar fora da tela. */
+  grid-template-columns: minmax(160px, 1fr) 112px 104px minmax(120px, 186px) 48px 118px;
   align-items: center;
   column-gap: 16px;
   position: relative;
@@ -4829,6 +4868,21 @@ html[data-sidebar="icons"] .bridge-chip__text {
 }
 .crate-row .crate-r-act,
 .crate-row .crate-badge { cursor: auto; }
+/* O destino encolhe dentro da coluna, com reticências no chip. */
+.crate-row > .crate-dest { min-width: 0; max-width: 100%; }
+.crate-row > .crate-badge { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Corpo do Crate como container (B23): abaixo de 1.050 px de vista a duração
+   sai e o formato encolhe; abaixo de 760 o título ganha a linha de cima e o
+   resto vai embaixo, sem rolagem lateral até a janela mínima do Tauri. */
+@container crate (max-width: 1049.98px) {
+  .crate-row { grid-template-columns: minmax(160px, 1fr) minmax(84px, 112px) 104px minmax(120px, 186px) 118px; }
+  .crate-row > .crate-r-dur { display: none; }
+}
+@container crate (max-width: 759.98px) {
+  .crate-row { grid-template-columns: minmax(84px, 112px) 104px minmax(0, 1fr) 118px; row-gap: 6px; }
+  .crate-row > .crate-r-main { grid-column: 1 / -1; }
+  .crate-list { padding-left: 24px; padding-right: 24px; }
+}
 .crate-row .crate-r-act button,
 .crate-row .crate-chip { cursor: pointer; }
 
