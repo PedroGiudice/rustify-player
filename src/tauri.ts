@@ -382,6 +382,75 @@ export interface TrackFamiliarity { full_listens: number; liked: boolean }
 export const libTrackFamiliarity = (trackId: string) =>
   invoke<TrackFamiliarity | null>("lib_track_familiarity", { trackId });
 
+// ── B9: "Fora do rádio" e recusa com escopo ──────────────────────
+
+/** `radio_refusal::RadioState` (Rust): o que o CEO decidiu sobre o rádio
+    para a faixa. Mora em `track_enrichments`. */
+export interface RadioState {
+  /** Unix (s) do "nunca no rádio"; null = não recusada. */
+  never_at: number | null;
+  /** Ids das stations de onde a faixa saiu ("fora desta station"). */
+  off_stations: string[];
+  /** Pulos cedo perdoados na última devolução. */
+  release_skips: number;
+  /** Unix (s) da última devolução ao rádio. */
+  released_at: number | null;
+}
+
+/** Por que a faixa está fora do rádio, em números (`RadioExclusion`). */
+export interface RadioExclusion {
+  /** O motor tirou: 3+ pulos cedo quando ele a serviu, nunca até o fim, sem like. */
+  never_ends: boolean;
+  /** Vezes que autoplay/station a serviram (todo o histórico). */
+  motor_attempts: number;
+  /** Pulos cedo (< 50% da faixa) que contam hoje, depois da última devolução. */
+  early_skips: number;
+  early_skips_total: number;
+  /** Vezes ouvida até o fim. */
+  ended: number;
+  never_at: number | null;
+  off_stations: string[];
+  released_at: number | null;
+}
+
+export type RadioExcludedTrack = Track & { radio: RadioExclusion };
+
+export interface RadioExcludedList {
+  /** false = índice do motor ainda montando: só as recusas do CEO aparecem. */
+  familiarity_ready: boolean;
+  /** Recusa mais recente primeiro, depois o que o motor tirou (mais pulos cedo primeiro). */
+  tracks: RadioExcludedTrack[];
+}
+
+/** Antes e depois de uma mudança: `before` vai no `libRadioRestore` (desfazer). */
+export interface RadioChange {
+  track_id: string;
+  before: RadioState;
+  after: RadioState;
+}
+
+/** Lista "Fora do rádio" (só leitura). */
+export const libRadioExcluded = () => invoke<RadioExcludedList>("lib_radio_excluded");
+
+/** Recusa com escopo: "never" = nunca no rádio (autoplay e todas as
+    stations); "station" = só a station `stationId`. */
+export const libRadioRefuse = (trackId: string, scope: "never" | "station", stationId?: string) =>
+  invoke<RadioChange>("lib_radio_refuse", { trackId, scope, stationId: stationId ?? null });
+
+/** Devolve ao rádio. Sem scope (ou "all") = tudo: tira as recusas e perdoa os
+    pulos cedo (sai de novo se for pulada cedo mais 3 vezes). "never" /
+    "station" / "motor" = só aquela parte. Falha com "familiaridade ainda
+    montando" logo após o boot (tentar de novo). */
+export const libRadioReturn = (
+  trackId: string,
+  scope?: "all" | "never" | "station" | "motor",
+  stationId?: string,
+) => invoke<RadioChange>("lib_radio_return", { trackId, scope: scope ?? null, stationId: stationId ?? null });
+
+/** Desfazer: grava de volta o `before` de um `RadioChange`. */
+export const libRadioRestore = (trackId: string, state: RadioState) =>
+  invoke<RadioChange>("lib_radio_restore", { trackId, state });
+
 export const spectrumSubscribe = () => invoke("spectrum_subscribe");
 export const spectrumUnsubscribe = () => invoke("spectrum_unsubscribe");
 

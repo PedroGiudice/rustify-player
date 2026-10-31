@@ -1863,6 +1863,66 @@ impl QdrantClient {
         Ok(liked_ids(&parse_id_payload_map(&resp)))
     }
 
+    /// Estado do rádio de TODAS as faixas com alguma decisão do CEO (B9,
+    /// [`crate::radio_refusal`]). Uma varredura de `track_enrichments` com
+    /// filtro nos quatro campos e payload restrito a eles; são dezenas de
+    /// pontos, não o acervo. Faixa sem decisão não aparece.
+    pub fn radio_states(&self) -> Result<HashMap<u64, crate::radio_refusal::RadioState>, IndexerError> {
+        use crate::radio_refusal::{FIELD_NEVER_AT, FIELD_OFF_STATIONS, FIELD_RELEASED_AT, FIELD_RELEASE_SKIPS};
+        let url = format!("{}/collections/{ENRICHMENTS_COLLECTION}/points/scroll", self.base_url);
+        let mut out = HashMap::new();
+        let mut offset: Option<Value> = None;
+        loop {
+            let mut body = json!({
+                "filter": { "should": [
+                    { "key": FIELD_NEVER_AT, "range": { "gt": 0 } },
+                    { "key": FIELD_RELEASE_SKIPS, "range": { "gt": 0 } },
+                    { "key": FIELD_OFF_STATIONS, "values_count": { "gt": 0 } }
+                ] },
+                "limit": 1000,
+                "with_payload": { "include": [FIELD_NEVER_AT, FIELD_OFF_STATIONS, FIELD_RELEASE_SKIPS, FIELD_RELEASED_AT] },
+                "with_vector": false
+            });
+            if let Some(ref off) = offset {
+                body["offset"] = off.clone();
+            }
+            let resp: Value = self
+                .agent
+                .post(&url)
+                .send_json(&body)
+                .map_err(|e| IndexerError::Embedding(format!("qdrant scroll radio states: {e}")))?
+                .into_json()
+                .map_err(|e| IndexerError::Embedding(format!("qdrant json: {e}")))?;
+            if let Some(points) = resp["result"]["points"].as_array() {
+                for p in points {
+                    if let Some(id) = p["id"].as_u64() {
+                        out.insert(id, crate::radio_refusal::RadioState::from_enrichment(&p["payload"]));
+                    }
+                }
+            }
+            match resp["result"].get("next_page_offset") {
+                Some(Value::Null) | None => break,
+                Some(v) => offset = Some(v.clone()),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Estado do rádio de uma faixa (neutro se não há enrichment).
+    pub fn radio_state(&self, track_id: u64) -> Result<crate::radio_refusal::RadioState, IndexerError> {
+        Ok(crate::radio_refusal::RadioState::from_enrichment(&self.get_enrichment(track_id)?))
+    }
+
+    /// Grava o estado do rádio da faixa (mescla no enrichment; os outros
+    /// campos, like e vibe, ficam como estão).
+    pub fn set_radio_state(
+        &self,
+        track_id: u64,
+        state: &crate::radio_refusal::RadioState,
+    ) -> Result<(), IndexerError> {
+        self.set_enrichment(track_id, state.to_patch())
+    }
+
     /// Track ids com like explícito, mais recentes primeiro (por `liked_at`).
     /// Ordenação client-side — `order_by` no Qdrant exigiria índice range em
     /// `liked_at`. Página única de 1000 com payload restrito a `liked_at`

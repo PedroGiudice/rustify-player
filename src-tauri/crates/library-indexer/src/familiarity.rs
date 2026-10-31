@@ -204,6 +204,11 @@ impl FamiliarityIndex {
         self.by_track.get(&track_id).copied().unwrap_or_default()
     }
 
+    /// Todas as faixas com alguma contagem (ordem arbitrária).
+    pub fn iter(&self) -> impl Iterator<Item = (u64, TrackFamiliarity)> + '_ {
+        self.by_track.iter().map(|(id, f)| (*id, *f))
+    }
+
     pub fn len(&self) -> usize {
         self.by_track.len()
     }

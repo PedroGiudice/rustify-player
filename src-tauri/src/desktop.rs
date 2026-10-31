@@ -9,6 +9,7 @@ const LYRICS_EMBED_DEFAULT: &str = "http://100.64.242.118:3939";
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
+use library_indexer::radio_refusal::{self, RadioGate, RadioState};
 use library_indexer::{
     familiarity, rerank, Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
     IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults,
@@ -710,13 +711,29 @@ fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> V
         .collect()
 }
 
+/// Decisoes do CEO sobre o radio (B9) para o contexto: autoplay (`None`) ou
+/// a station dada. Falha do Qdrant degrada para "sem recusas" (o radio
+/// segue como antes), nunca para "tudo recusado".
+fn radio_gate(lib: &Library, station: Option<&str>) -> RadioGate {
+    match lib.handle.client().radio_states() {
+        Ok(states) => RadioGate::new(states, station),
+        Err(e) => {
+            tracing::warn!(error = %e, "radio: estados de recusa indisponiveis — seguindo sem eles");
+            RadioGate::default()
+        }
+    }
+}
+
 /// Ids, entre `ids`, que o filtro de nunca-termina tira das candidatas
 /// (`familiarity::never_ends`: pulada cedo 3+ vezes quando o motor a serviu,
 /// nunca ouvida ate o fim, sem like). Busca likes SO dos suspeitos (batch
 /// pequeno, e so quando ha suspeito). Indice ainda nao montado ou falha nos
 /// likes devolve vazio: o filtro degrada pra "nao filtra", nunca pra "tira
 /// faixa curtida".
-fn never_ending_ids(lib: &Library, ids: &[u64]) -> std::collections::HashSet<u64> {
+///
+/// `gate` (B9) desconta os pulos perdoados quando o CEO devolveu a faixa ao
+/// radio.
+fn never_ending_ids(lib: &Library, ids: &[u64], gate: &RadioGate) -> std::collections::HashSet<u64> {
     let client = lib.handle.client();
     let Some(fam) = client.familiarity() else {
         tracing::debug!("familiarity ainda nao montada — sem filtro de nunca-termina");
@@ -725,7 +742,7 @@ fn never_ending_ids(lib: &Library, ids: &[u64]) -> std::collections::HashSet<u64
     let suspects: Vec<u64> = ids
         .iter()
         .copied()
-        .filter(|id| familiarity::never_ends(fam.get(*id), false))
+        .filter(|id| gate.never_ends(*id, fam.get(*id), false))
         .collect();
     if suspects.is_empty() {
         return Default::default();
@@ -755,16 +772,19 @@ fn autoplay_mix(
     scored: Vec<(f64, Track)>,
     liked: Option<&std::collections::HashSet<u64>>,
     fam: Option<&familiarity::FamiliarityIndex>,
+    gate: &RadioGate,
     mix_slot: usize,
     lim: usize,
     seed: u64,
 ) -> Vec<Track> {
+    // Recusa do CEO (B9) sai antes de tudo, como o lixo: o filtro duro do
+    // recommend ja a tira, isto cobre o que chegar por outro caminho.
     let mut scored: Vec<(f64, Track)> = scored
         .into_iter()
-        .filter(|(_, t)| !rerank::is_junk_artist(t.artist_name.as_deref()))
+        .filter(|(_, t)| !rerank::is_junk_artist(t.artist_name.as_deref()) && !gate.is_refused(t.id))
         .collect();
     if let (Some(fam), Some(liked)) = (fam, liked) {
-        scored.retain(|(_, t)| !familiarity::never_ends(fam.get(t.id), liked.contains(&t.id)));
+        scored.retain(|(_, t)| !gate.never_ends(t.id, fam.get(t.id), liked.contains(&t.id)));
     }
     // cap_per_artist trabalha sobre Track; o score volta pelo id.
     let scores: HashMap<u64, f64> = scored.iter().map(|(s, t)| (t.id, *s)).collect();
@@ -881,7 +901,11 @@ fn lib_autoplay_next_blocking(
     // Posicao da proxima faixa no ciclo K, K, D da rodada de radio
     // (radioSession.mixSlot no frontend). Ausente = inicio do ciclo.
     let mix_slot = mix_slot.unwrap_or(0);
-    let exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
+    let mut exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
+    // "Nunca no rádio" (B9) entra como filtro duro nas tres camadas, junto do
+    // exclude da rodada; "fora desta station" nao vale no autoplay.
+    let gate = radio_gate(lib, None);
+    exclude_ids.extend(gate.refused_ids());
     // Skips cedos da rodada de rádio (radioSession do frontend) — paridade
     // com lib_station_next: penalizam a vizinhança do rejeitado no
     // recommend, fundidos com os negativos globais de behavioral_signals.
@@ -993,6 +1017,7 @@ fn lib_autoplay_next_blocking(
                         out.scored,
                         out.liked.as_ref(),
                         fam.as_deref(),
+                        &gate,
                         mix_slot,
                         lim,
                         seed,
@@ -1042,7 +1067,7 @@ fn lib_autoplay_next_blocking(
                 tracks.push(t);
             }
         }
-        let never = never_ending_ids(&lib, &tracks.iter().map(|t| t.id).collect::<Vec<_>>());
+        let never = never_ending_ids(&lib, &tracks.iter().map(|t| t.id).collect::<Vec<_>>(), &gate);
         let mut tracks = filter_fallback_candidates(tracks, &never, lim);
         for t in &mut tracks {
             if let Some(rel) = &t.album_cover_path {
@@ -2206,6 +2231,226 @@ fn lib_track_familiarity_blocking(
     };
     let liked = client.liked_among(&[tid]).map_err(err)?.contains(&tid);
     Ok(Some(familiarity_dto(fam.get(tid), liked)))
+}
+
+// ---------------------------------------------------------------------------
+// B9: "Fora do rádio" e recusa com escopo
+// ---------------------------------------------------------------------------
+
+/// Por que a faixa está fora do rádio, em números. Uma faixa pode estar fora
+/// por mais de um motivo (o motor tirou E o CEO recusou).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct RadioExclusion {
+    /// O motor tirou (nunca-termina, já descontado o perdão da devolução).
+    never_ends: bool,
+    /// Vezes que autoplay/station a serviram (todo o histórico).
+    motor_attempts: u32,
+    /// Pulos cedo que contam hoje (depois da última devolução).
+    early_skips: u32,
+    /// Pulos cedo em todo o histórico.
+    early_skips_total: u32,
+    /// Vezes ouvida até o fim.
+    ended: u32,
+    /// "Nunca no rádio" desde (unix s).
+    never_at: Option<i64>,
+    /// Ids das stations de onde o CEO a tirou.
+    off_stations: Vec<String>,
+    /// Última devolução ao rádio (unix s).
+    released_at: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct RadioExcludedTrack {
+    #[serde(flatten)]
+    track: Track,
+    radio: RadioExclusion,
+}
+
+#[derive(Serialize)]
+struct RadioExcludedList {
+    /// `false` = índice de familiaridade ainda montando: a lista traz só as
+    /// recusas do CEO, não o que o motor tirou.
+    familiarity_ready: bool,
+    tracks: Vec<RadioExcludedTrack>,
+}
+
+/// Seleção pura da lista: o que o motor tirou (`never_ends` com perdão, sem
+/// like) mais o que o CEO recusou. Ordem: recusa mais recente primeiro, depois
+/// o que o motor tirou com mais pulos cedo.
+fn radio_excluded_rows(
+    fam: Option<&familiarity::FamiliarityIndex>,
+    gate: &RadioGate,
+    liked: &std::collections::HashSet<u64>,
+) -> Vec<(u64, RadioExclusion)> {
+    let mut ids: std::collections::BTreeSet<u64> = gate
+        .states()
+        .iter()
+        .filter(|(_, s)| s.never_at.is_some() || !s.off_stations.is_empty())
+        .map(|(id, _)| *id)
+        .collect();
+    if let Some(fam) = fam {
+        ids.extend(
+            fam.iter()
+                .filter(|(id, f)| gate.never_ends(*id, *f, liked.contains(id)))
+                .map(|(id, _)| id),
+        );
+    }
+    let mut rows: Vec<(u64, RadioExclusion)> = ids
+        .into_iter()
+        .map(|id| {
+            let f = fam.map(|fam| fam.get(id)).unwrap_or_default();
+            let st = gate.state(id).cloned().unwrap_or_default();
+            let ex = RadioExclusion {
+                never_ends: fam.is_some() && gate.never_ends(id, f, liked.contains(&id)),
+                motor_attempts: f.motor_attempts,
+                early_skips: f.early_skips.saturating_sub(st.release_skips),
+                early_skips_total: f.early_skips,
+                ended: f.ended,
+                never_at: st.never_at,
+                off_stations: st.off_stations,
+                released_at: st.released_at,
+            };
+            (id, ex)
+        })
+        .collect();
+    rows.sort_by(|(a_id, a), (b_id, b)| {
+        b.never_at
+            .cmp(&a.never_at)
+            .then(b.early_skips.cmp(&a.early_skips))
+            .then(a_id.cmp(b_id))
+    });
+    rows
+}
+
+/// Lista "Fora do rádio" (B9): faixas que o motor tirou do autoplay e das
+/// stations (nunca-termina) e as que o CEO recusou, com o motivo em números.
+#[tauri::command]
+async fn lib_radio_excluded(lib: State<'_, Library>) -> Result<RadioExcludedList, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_radio_excluded", IPC_SCAN, move || {
+        let client = lib.handle.client();
+        let gate = RadioGate::new(client.radio_states().map_err(err)?, None);
+        let fam = client.familiarity();
+        // Likes só dos suspeitos do motor (mesmo desenho do never_ending_ids).
+        let suspects: Vec<u64> = fam
+            .as_deref()
+            .map(|f| f.iter().filter(|(id, f)| gate.never_ends(*id, *f, false)).map(|(id, _)| id).collect())
+            .unwrap_or_default();
+        let liked = client.liked_among(&suspects).map_err(err)?;
+        let rows = radio_excluded_rows(fam.as_deref(), &gate, &liked);
+        let mut tracks = Vec::with_capacity(rows.len());
+        for (id, radio) in rows {
+            // Faixa que saiu do acervo não aparece (o estado fica, inofensivo).
+            if let Ok(Some(mut t)) = lib.handle.track(id) {
+                if let Some(rel) = &t.album_cover_path {
+                    t.album_cover_path = Some(lib.cache_dir.join(rel));
+                }
+                tracks.push(RadioExcludedTrack { track: t, radio });
+            }
+        }
+        Ok(RadioExcludedList { familiarity_ready: fam.is_some(), tracks })
+    })
+    .await
+}
+
+/// Resultado de uma mudança no estado do rádio: o antes serve ao "desfazer"
+/// (`lib_radio_restore` com `before`).
+#[derive(Debug, Serialize)]
+struct RadioChange {
+    track_id: String,
+    before: RadioState,
+    after: RadioState,
+}
+
+fn parse_refusal(scope: &str, station_id: Option<String>) -> Result<radio_refusal::Refusal, String> {
+    match (scope, station_id) {
+        ("never", _) => Ok(radio_refusal::Refusal::Never),
+        ("station", Some(id)) if !id.is_empty() => Ok(radio_refusal::Refusal::Station(id)),
+        ("station", _) => Err("recusa de station sem station_id".into()),
+        (other, _) => Err(format!("escopo de recusa desconhecido: {other}")),
+    }
+}
+
+fn parse_return(scope: Option<&str>, station_id: Option<String>) -> Result<radio_refusal::Return, String> {
+    match (scope, station_id) {
+        (None | Some("all"), _) => Ok(radio_refusal::Return::All),
+        (Some("never"), _) => Ok(radio_refusal::Return::Never),
+        (Some("motor"), _) => Ok(radio_refusal::Return::Motor),
+        (Some("station"), Some(id)) if !id.is_empty() => Ok(radio_refusal::Return::Station(id)),
+        (Some("station"), _) => Err("devolução de station sem station_id".into()),
+        (Some(other), _) => Err(format!("escopo de devolução desconhecido: {other}")),
+    }
+}
+
+/// Lê o estado, aplica `change` e grava; devolve antes e depois.
+fn change_radio_state(
+    lib: &Library,
+    track_id: &str,
+    change: impl FnOnce(&RadioState, familiarity::TrackFamiliarity) -> RadioState,
+) -> Result<RadioChange, String> {
+    let tid = parse_id(track_id)?;
+    let client = lib.handle.client();
+    let before = client.radio_state(tid).map_err(err)?;
+    let f = client.familiarity().map(|fam| fam.get(tid)).unwrap_or_default();
+    let after = change(&before, f);
+    if after != before {
+        client.set_radio_state(tid, &after).map_err(err)?;
+    }
+    Ok(RadioChange { track_id: tid.to_string(), before, after })
+}
+
+/// Recusa com escopo (B9): `scope` = "never" (nunca no rádio: autoplay e
+/// todas as stations) ou "station" (só a station `station_id`).
+#[tauri::command]
+async fn lib_radio_refuse(
+    lib: State<'_, Library>,
+    track_id: String,
+    scope: String,
+    station_id: Option<String>,
+) -> Result<RadioChange, String> {
+    let refusal = parse_refusal(&scope, station_id)?;
+    let lib = lib.inner().clone();
+    off_main("lib_radio_refuse", IPC_SCAN, move || {
+        change_radio_state(&lib, &track_id, |s, _| radio_refusal::refuse(s, &refusal, unix_now()))
+    })
+    .await
+}
+
+/// Devolve ao rádio (B9). `scope` ausente ou "all" = devolve tudo (tira as
+/// recusas e perdoa os pulos cedo do nunca-termina; volta a sair se for
+/// pulada cedo mais 3 vezes); "never", "station" (com `station_id`) ou
+/// "motor" = só aquela parte (desfazer de uma recusa).
+#[tauri::command]
+async fn lib_radio_return(
+    lib: State<'_, Library>,
+    track_id: String,
+    scope: Option<String>,
+    station_id: Option<String>,
+) -> Result<RadioChange, String> {
+    let ret = parse_return(scope.as_deref(), station_id)?;
+    let lib = lib.inner().clone();
+    off_main("lib_radio_return", IPC_SCAN, move || {
+        // A familiaridade ainda montando daria early_skips 0 e o perdão não
+        // perdoaria nada: recusa em vez de gravar um perdão vazio.
+        if matches!(ret, radio_refusal::Return::All | radio_refusal::Return::Motor)
+            && lib.handle.client().familiarity().is_none()
+        {
+            return Err("familiaridade ainda montando; tente de novo em instantes".into());
+        }
+        change_radio_state(&lib, &track_id, |s, f| radio_refusal::give_back(s, &ret, f.early_skips, unix_now()))
+    })
+    .await
+}
+
+/// Grava o estado dado (o `before` de uma mudança): é o "desfazer".
+#[tauri::command]
+async fn lib_radio_restore(
+    lib: State<'_, Library>,
+    track_id: String,
+    state: RadioState,
+) -> Result<RadioChange, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_radio_restore", IPC_SCAN, move || change_radio_state(&lib, &track_id, |_, _| state)).await
 }
 
 #[tauri::command]
@@ -4231,6 +4476,10 @@ pub fn run() {
             get_track_color,
             lib_track_profile,
             lib_track_familiarity,
+            lib_radio_excluded,
+            lib_radio_refuse,
+            lib_radio_return,
+            lib_radio_restore,
             get_track_palette,
             log_event,
             fs_read_text,
@@ -4550,6 +4799,13 @@ fn generate_station_batch(
     seed_counts: &HashMap<String, usize>,
     limit: usize,
 ) -> Vec<Track> {
+    // Recusas do CEO (B9): "nunca no rádio" e "fora desta station" entram
+    // como filtro duro, junto do exclude da rodada. Devolução perdoa pulos
+    // cedo no nunca-termina (`gate` nos never_ending_ids abaixo).
+    let gate = radio_gate(lib, Some(&station.id));
+    let mut exclude_all: Vec<u64> = exclude_ids.to_vec();
+    exclude_all.extend(gate.refused_ids());
+    let exclude_ids: &[u64] = &exclude_all;
     tracing::debug!(
         station_id = %station.id,
         exclude_count = exclude_ids.len(),
@@ -4622,7 +4878,7 @@ fn generate_station_batch(
                             }
                         }
                         let never =
-                            never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>());
+                            never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>(), &gate);
                         cands.retain(|t| !never.contains(&t.id));
                         cands
                     },
@@ -4679,7 +4935,7 @@ fn generate_station_batch(
                     Err(_) => return Vec::new(),
                 };
                 let exhausted = ids.len() < fetch;
-                let never = never_ending_ids(lib, &ids);
+                let never = never_ending_ids(lib, &ids, &gate);
                 tracks = mood_tracks(lib, &ids, &exclude_set, &never, filters.genre.as_deref(), limit);
                 if tracks.len() >= limit || exhausted {
                     break;
@@ -5880,12 +6136,12 @@ fg-8: '#404040'
         let liked: std::collections::HashSet<u64> = [6].into_iter().collect();
         // lim pequeno (prefix minimo 8 cobre tudo, sorteio embaralha cada
         // grupo): o que se trava e o PADRAO de grupos por slot.
-        let out = autoplay_mix(scored.clone(), Some(&liked), Some(&fam), 0, 6, 7);
+        let out = autoplay_mix(scored.clone(), Some(&liked), Some(&fam), &RadioGate::default(), 0, 6, 7);
         let grupo = |id: u64| if [1, 3, 5, 6].contains(&id) { 'K' } else { 'D' };
         let padrao: String = ids(&out).into_iter().map(grupo).collect();
         assert_eq!(padrao, "KKDKKD");
         // Slot 2 (re-fetch pós-pulo no terceiro da rodada) serve descoberta.
-        let um = autoplay_mix(scored, Some(&liked), Some(&fam), 2, 1, 7);
+        let um = autoplay_mix(scored, Some(&liked), Some(&fam), &RadioGate::default(), 2, 1, 7);
         assert_eq!(grupo(um[0].id), 'D');
     }
 
@@ -5900,14 +6156,85 @@ fg-8: '#404040'
             .collect();
         scored.push((0.4, mix_track(7, "www.ftpdjemilio.com")));
         let liked: std::collections::HashSet<u64> = [4].into_iter().collect();
-        let mut out = ids(&autoplay_mix(scored.clone(), Some(&liked), Some(&fam), 0, 10, 1));
+        let mut out = ids(&autoplay_mix(scored.clone(), Some(&liked), Some(&fam), &RadioGate::default(), 0, 10, 1));
         out.sort_unstable();
         assert_eq!(out, vec![3, 4]);
         // Sem likes conhecidos (batch de enrichments falhou): nao filtra
         // nunca-termina — nunca arriscar tirar faixa curtida.
-        let mut sem_like = ids(&autoplay_mix(scored, None, Some(&fam), 0, 10, 1));
+        let mut sem_like = ids(&autoplay_mix(scored, None, Some(&fam), &RadioGate::default(), 0, 10, 1));
         sem_like.sort_unstable();
         assert_eq!(sem_like, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn autoplay_mix_respeita_recusa_e_devolucao_do_ceo() {
+        // 2: nunca-termina (3 pulos cedo) mas DEVOLVIDA com 3 perdoados -> fica.
+        // 3: recusada "nunca no rádio" -> sai. 5: fora só da station "chuva"
+        // -> fica no autoplay.
+        let fam = mix_fam(&[(2, 0, 3)]);
+        let scored: Vec<(f64, Track)> = [2u64, 3, 5]
+            .into_iter()
+            .map(|i| (0.5, mix_track(i, &format!("a{i}"))))
+            .collect();
+        let mut states = HashMap::new();
+        states.insert(2, radio_refusal::give_back(&RadioState::default(), &radio_refusal::Return::All, 3, 10));
+        states.insert(3, radio_refusal::refuse(&RadioState::default(), &radio_refusal::Refusal::Never, 10));
+        states.insert(
+            5,
+            radio_refusal::refuse(&RadioState::default(), &radio_refusal::Refusal::Station("chuva".into()), 10),
+        );
+        let gate = RadioGate::new(states.clone(), None);
+        let mut out = ids(&autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), &gate, 0, 10, 1));
+        out.sort_unstable();
+        assert_eq!(out, vec![2, 5]);
+        // Sem a devolução, a 2 sai como antes.
+        let mut sem = ids(&autoplay_mix(scored, Some(&Default::default()), Some(&fam), &RadioGate::default(), 0, 10, 1));
+        sem.sort_unstable();
+        assert_eq!(sem, vec![3, 5]);
+    }
+
+    #[test]
+    fn fora_do_radio_lista_o_motor_e_as_recusas_com_os_numeros() {
+        let big = u64::MAX - 9;
+        // big: 4 pulos cedo, 0 fins -> o motor tirou. 2: idem mas curtida ->
+        // fica fora da lista. 3: 3 pulos, devolvida com 3 perdoados -> não
+        // está fora. 4: recusada "nunca no rádio" sem pulo nenhum.
+        let fam = mix_fam(&[(big, 0, 4), (2, 0, 5), (3, 0, 3)]);
+        let mut states = HashMap::new();
+        states.insert(3, radio_refusal::give_back(&RadioState::default(), &radio_refusal::Return::All, 3, 50));
+        states.insert(4, radio_refusal::refuse(&RadioState::default(), &radio_refusal::Refusal::Never, 70));
+        let gate = RadioGate::new(states, None);
+        let liked: std::collections::HashSet<u64> = [2].into_iter().collect();
+        let rows = radio_excluded_rows(Some(&fam), &gate, &liked);
+        let got: Vec<u64> = rows.iter().map(|(id, _)| *id).collect();
+        assert_eq!(got, vec![4, big], "recusa do CEO primeiro, depois o motor");
+        let (_, motor) = &rows[1];
+        assert!(motor.never_ends);
+        assert_eq!((motor.motor_attempts, motor.early_skips, motor.early_skips_total, motor.ended), (4, 4, 4, 0));
+        let (_, recusa) = &rows[0];
+        assert!(!recusa.never_ends);
+        assert_eq!(recusa.never_at, Some(70));
+        // Sem índice: só as recusas, nunca "o motor tirou".
+        let sem = radio_excluded_rows(None, &gate, &liked);
+        assert_eq!(sem.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![4]);
+    }
+
+    #[test]
+    fn escopos_de_recusa_e_devolucao_do_ipc() {
+        assert_eq!(parse_refusal("never", None), Ok(radio_refusal::Refusal::Never));
+        assert_eq!(
+            parse_refusal("station", Some("chuva".into())),
+            Ok(radio_refusal::Refusal::Station("chuva".into()))
+        );
+        assert!(parse_refusal("station", None).is_err());
+        assert!(parse_refusal("sempre", None).is_err());
+        assert_eq!(parse_return(None, None), Ok(radio_refusal::Return::All));
+        assert_eq!(parse_return(Some("motor"), None), Ok(radio_refusal::Return::Motor));
+        assert_eq!(
+            parse_return(Some("station"), Some("x".into())),
+            Ok(radio_refusal::Return::Station("x".into()))
+        );
+        assert!(parse_return(Some("station"), Some(String::new())).is_err());
     }
 
     #[test]
@@ -5916,9 +6243,9 @@ fg-8: '#404040'
             .map(|i| (1.0 - i as f64 / 10.0, mix_track(i, "Mesmo")))
             .collect();
         let fam = mix_fam(&[]);
-        assert_eq!(autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), 0, 10, 3).len(), 2);
+        assert_eq!(autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), &RadioGate::default(), 0, 10, 3).len(), 2);
         // Sem indice: comportamento anterior (cap + sorteio, sem mistura).
-        assert_eq!(autoplay_mix(scored, None, None, 0, 10, 3).len(), 2);
+        assert_eq!(autoplay_mix(scored, None, None, &RadioGate::default(), 0, 10, 3).len(), 2);
     }
 
     #[test]
@@ -5932,7 +6259,7 @@ fg-8: '#404040'
             .collect();
         let fam = familiarity::FamiliarityIndex::from_payloads(evs.iter());
         let scored = vec![(0.9, mix_track(8, "a8"))];
-        let out = autoplay_mix(scored, Some(&Default::default()), Some(&fam), 0, 5, 1);
+        let out = autoplay_mix(scored, Some(&Default::default()), Some(&fam), &RadioGate::default(), 0, 5, 1);
         assert_eq!(ids(&out), vec![8]);
     }
 

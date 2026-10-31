@@ -15,6 +15,33 @@ beforeAll(async () => {
   tauri = await import("./tauri");
 });
 
+describe("B9: fora do rádio e recusa com escopo", () => {
+  const id = "18446744073709551614";
+
+  it("lista sem argumentos", async () => {
+    invoke.mockClear();
+    await tauri.libRadioExcluded();
+    expect(invoke).toHaveBeenCalledWith("lib_radio_excluded");
+  });
+
+  it("recusa nunca no rádio e fora desta station", async () => {
+    invoke.mockClear();
+    await tauri.libRadioRefuse(id, "never");
+    expect(invoke).toHaveBeenLastCalledWith("lib_radio_refuse", { trackId: id, scope: "never", stationId: null });
+    await tauri.libRadioRefuse(id, "station", "your-mix");
+    expect(invoke).toHaveBeenLastCalledWith("lib_radio_refuse", { trackId: id, scope: "station", stationId: "your-mix" });
+  });
+
+  it("devolve tudo por padrão e desfaz com o estado anterior", async () => {
+    invoke.mockClear();
+    await tauri.libRadioReturn(id);
+    expect(invoke).toHaveBeenLastCalledWith("lib_radio_return", { trackId: id, scope: null, stationId: null });
+    const before = { never_at: 1, off_stations: [], release_skips: 0, released_at: null };
+    await tauri.libRadioRestore(id, before);
+    expect(invoke).toHaveBeenLastCalledWith("lib_radio_restore", { trackId: id, state: before });
+  });
+});
+
 describe("A40: evento do player de outra faixa", () => {
   const big = "18446744073709551614";
 
