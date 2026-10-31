@@ -33,9 +33,9 @@ import { failNotice } from "../lib/failNotice";
 import { refuseFromRadio } from "../lib/radioRefusal";
 import { currentSession } from "../store/radioSession";
 
-// Recusa com escopo (B9). Literais para o gen-icons achar.
-const ICON_NEVER_RADIO = "lucide:radio-off";
-const ICON_OFF_STATION = "lucide:circle-slash";
+// Recusa com escopo (B9).
+const ICON_NEVER_RADIO = ICONS.radioOff;
+const ICON_OFF_STATION = ICONS.offStation;
 
 /** A faixa veio da station que está tocando? (está na fila de uma station
     com rodada ativa). Só então "Não tocar nesta station" faz sentido. */

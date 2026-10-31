@@ -183,7 +183,7 @@ function FontSelect(props: {
 function ThemeReset(props: { onClick: () => void; title: string }) {
   return (
     <button type="button" class="tweaks__retheme" title={props.title} onClick={props.onClick}>
-      <Icon name="lucide:rotate-ccw" size={11} />
+      <Icon name={ICONS.reset} size={11} />
       tema
     </button>
   );

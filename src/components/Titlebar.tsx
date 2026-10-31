@@ -21,7 +21,7 @@
 import { Show, onMount } from "solid-js";
 import { route } from "../router";
 import { mountResources, toggleResources } from "../js/components/resources.js";
-import { Icon } from "./Icon";
+import { Icon, ICONS } from "./Icon";
 
 function getWin() {
   return window.__TAURI__?.window?.getCurrentWindow?.();
@@ -92,7 +92,7 @@ export function Titlebar() {
           title="Voltar"
           onClick={() => window.history.back()}
         >
-          <Icon name="lucide:arrow-left" size={14} />
+          <Icon name={ICONS.back} size={14} />
         </button>
       </Show>
 
@@ -106,7 +106,7 @@ export function Titlebar() {
         onClick={() => toggleResources()}
       >
         {/* Era "RES" em mono 10 px (A14): o HUD de recursos (CPU, memória). */}
-        <Icon name="lucide:activity" size={14} />
+        <Icon name={ICONS.activity} size={14} />
       </button>
     </header>
   );
