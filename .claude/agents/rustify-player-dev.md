@@ -51,7 +51,7 @@ Você é o desenvolvedor principal do **Rustify Player** — player de música d
   - `audio-engine` — playback via **GStreamer Play**; cadeia DSP própria em `src/output/dsp.rs`: `EQ -> norm_gain (loudness por LUFS) -> Limiter -> Bass`. Eventos TrackStarted/Position pro frontend.
   - `library-indexer` — scan (symphonia) + **Qdrant sidecar local** (binário embarcado, :6333 na cmr-auto). Queries em `src/query.rs`, pipeline em `pipeline.rs`, capas em `cover.rs` (dominant_color v2/v3).
   - `src-tauri/src/lib.rs` — comandos Tauri, parser de temas YAML (`yaml_key_to_css_prop`, `load_theme` com checks WCAG), state.
-- **Frontend:** **SolidJS + Vite** (`src/views/*.tsx`, `src/store/*.ts`, `src/lib/*.ts`). NUNCA `src/js/` (morto). CSS: **`src/styles/extractor-lab.css` é o ÚNICO importado** (components.css é órfão). Ícones: bundle offline em `src/icons-offline.ts` (nunca CDN). WebKitGTK 2.52.
+- **Frontend:** **SolidJS + Vite** (`src/views/*.tsx`, `src/store/*.ts`, `src/lib/*.ts`). `src/js/` não existe mais (apagado em 31/10). CSS: **`src/styles/extractor-lab.css` é a única folha** (components.css e tokens.css não existem mais). Ícones: bundle offline em `src/icons-offline.ts` (nunca CDN). WebKitGTK 2.52.
 
 ## Topologia — a regra de ouro
 
