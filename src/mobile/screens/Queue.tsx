@@ -12,9 +12,9 @@
    Sem reordenar: não há command para isso (epic A, fase 3).
    ============================================================ */
 
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 import { TrackRow } from "../components/TrackRow";
-import { Empty, LibGate, SecHead, ViewHead } from "../components/ui";
+import { Empty, LazyList, LibGate, SecHead, ViewHead } from "../components/ui";
 import {
   current,
   pb,
@@ -87,13 +87,14 @@ export function Queue() {
                   com .62 a duração caía para 2,17:1. .85 leva até o --t4 a
                   3,06:1; desde o A54 a duração é --t3, com mais folga. */}
               <div class="rowlist list-lite" style={{ padding: "0 20px", opacity: 0.85 }}>
-                <For each={split().past}>
+                {/* Lote das MAIS RECENTES, crescendo para cima (A57). */}
+                <LazyList items={split().past} chunk={60} tail>
                   {(t, i) => (
                     <Show when={t} fallback={<MissingRow index={i()} />}>
                       {(track) => <TrackRow track={track()} onPlay={() => void skipToIndex(i())} />}
                     </Show>
                   )}
-                </For>
+                </LazyList>
               </div>
             </div>
           </Show>
@@ -117,7 +118,8 @@ export function Queue() {
                 <SecHead label="A seguir" />
               </div>
               <div class="rowlist list-lite" style={{ padding: "0 20px" }}>
-                <For each={split().upcoming}>
+                {/* "Shuffle all" põe o acervo inteiro aqui: lotes de 60 (A57). */}
+                <LazyList items={split().upcoming} chunk={60}>
                   {(t, i) => {
                     const at = () => Math.max(0, pb.index) + 1 + i();
                     return (
@@ -126,7 +128,7 @@ export function Queue() {
                       </Show>
                     );
                   }}
-                </For>
+                </LazyList>
               </div>
             </div>
           </Show>

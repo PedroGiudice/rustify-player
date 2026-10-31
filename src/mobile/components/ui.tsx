@@ -127,9 +127,14 @@ export function libSub(ok: () => string): string {
   return ok();
 }
 
+/** Lista que cresce por sentinela. `tail`: mostra as ÚLTIMAS N e cresce
+ *  para cima (sentinela no topo) — o histórico da fila, onde as vizinhas da
+ *  faixa atual são as do fim (A57). O índice entregue é o da lista inteira.
+ *  Crescer para cima não pula a tela: o WebView ancora a rolagem. */
 export function LazyList<T>(props: {
   items: T[];
   chunk?: number;
+  tail?: boolean;
   children: (item: T, index: () => number) => JSX.Element;
 }) {
   const chunk = () => props.chunk ?? 60;
@@ -150,10 +155,15 @@ export function LazyList<T>(props: {
     onCleanup(() => io.disconnect());
   });
 
+  const offset = () => (props.tail ? Math.max(0, props.items.length - limit()) : 0);
+  const shown = () => (props.tail ? props.items.slice(offset()) : props.items.slice(0, limit()));
+  const mark = <div ref={sentinel} style={{ height: "1px" }} aria-hidden="true" />;
+
   return (
     <>
-      <For each={props.items.slice(0, limit())}>{(item, i) => props.children(item, i)}</For>
-      <div ref={sentinel} style={{ height: "1px" }} aria-hidden="true" />
+      {props.tail ? mark : null}
+      <For each={shown()}>{(item, i) => props.children(item, () => offset() + i())}</For>
+      {props.tail ? null : mark}
     </>
   );
 }
