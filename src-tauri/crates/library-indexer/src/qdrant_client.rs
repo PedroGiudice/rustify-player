@@ -1801,7 +1801,7 @@ impl QdrantClient {
                 "limit": 2000,
                 "with_payload": { "include": [
                     "event_type", "track_id", "origin", "end_position_ms", "duration_ms",
-                    "listen_pct", "device_id"
+                    "listen_pct", "device_id", "timestamp"
                 ] },
                 "with_vector": false
             });

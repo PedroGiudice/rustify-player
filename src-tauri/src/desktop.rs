@@ -2330,6 +2330,122 @@ fn lib_track_familiarity_blocking(
 }
 
 // ---------------------------------------------------------------------------
+// B11: escuta viva e qualidade medida onde se navega (álbum, artista)
+// ---------------------------------------------------------------------------
+
+/// Escuta viva de uma faixa: `play_events` via cache de familiaridade, nunca
+/// os campos fósseis `play_count`/`last_played` de `rustify_tracks`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct TrackListenStats {
+    track_id: String,
+    /// Vezes ouvida até o fim (qualquer origem).
+    full_listens: u32,
+    /// Escutas registradas (fim + pulo, qualquer origem).
+    plays: u32,
+    last_played_at: Option<i64>,
+    last_ended_at: Option<i64>,
+}
+
+/// Qualidade medida no conteúdo (corte espectral), contada por classe.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+struct QualitySummary {
+    /// Conferidas sem corte.
+    sem_corte: u32,
+    /// Corte entre 19,5 e 20,6 kHz (provável MP3 320/AAC alto).
+    provavel_lossy: u32,
+    /// Corte abaixo de 19,5 kHz.
+    lossy: u32,
+    /// Hi-res com corte de CD (upsample).
+    hires_de_cd: u32,
+    /// Sem medida (ainda não medida ou medição indeterminada).
+    unmeasured: u32,
+    /// Menor corte entre as com corte de lossy (Hz), para "corte em 16,1 kHz".
+    lowest_cutoff_hz: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ListenStats {
+    /// `false` = índice do motor ainda montando: os contadores de escuta vêm
+    /// zerados (a qualidade vale).
+    familiarity_ready: bool,
+    tracks: u32,
+    /// Faixas ouvidas até o fim pelo menos uma vez.
+    listened_tracks: u32,
+    full_listens: u32,
+    plays: u32,
+    last_played_at: Option<i64>,
+    last_ended_at: Option<i64>,
+    quality: QualitySummary,
+    /// Na ordem de `lib_list_tracks` (disco, faixa).
+    per_track: Vec<TrackListenStats>,
+}
+
+fn listen_stats_of(tracks: &[Track], fam: Option<&familiarity::FamiliarityIndex>) -> ListenStats {
+    use library_indexer::spectral::QualityClass;
+    let mut q = QualitySummary::default();
+    let mut per_track = Vec::with_capacity(tracks.len());
+    for t in tracks {
+        match t.quality_class {
+            Some(QualityClass::SemCorte) => q.sem_corte += 1,
+            Some(QualityClass::ProvavelLossy) => q.provavel_lossy += 1,
+            Some(QualityClass::Lossy) => q.lossy += 1,
+            Some(QualityClass::HiresDeCd) => q.hires_de_cd += 1,
+            None => q.unmeasured += 1,
+        }
+        if matches!(t.quality_class, Some(QualityClass::ProvavelLossy | QualityClass::Lossy)) {
+            if let Some(hz) = t.quality_cutoff_hz {
+                q.lowest_cutoff_hz = Some(q.lowest_cutoff_hz.map_or(hz, |cur| cur.min(hz)));
+            }
+        }
+        let (f, l) = fam
+            .map(|fam| (fam.get(t.id), fam.listens(t.id)))
+            .unwrap_or_default();
+        per_track.push(TrackListenStats {
+            track_id: t.id.to_string(),
+            full_listens: f.ended,
+            plays: l.plays,
+            last_played_at: l.last_played_at,
+            last_ended_at: l.last_ended_at,
+        });
+    }
+    ListenStats {
+        familiarity_ready: fam.is_some(),
+        tracks: tracks.len() as u32,
+        listened_tracks: per_track.iter().filter(|p| p.full_listens > 0).count() as u32,
+        full_listens: per_track.iter().map(|p| p.full_listens).sum(),
+        plays: per_track.iter().map(|p| p.plays).sum(),
+        last_played_at: per_track.iter().filter_map(|p| p.last_played_at).max(),
+        last_ended_at: per_track.iter().filter_map(|p| p.last_ended_at).max(),
+        quality: q,
+        per_track,
+    }
+}
+
+/// Escuta viva e qualidade medida de um álbum (`artist` + `album`; só
+/// `album` mistura álbuns homônimos de artistas diferentes) ou de um artista
+/// (só `artist`). Um dos dois é obrigatório.
+#[tauri::command]
+async fn lib_listen_stats(
+    lib: State<'_, Library>,
+    artist: Option<String>,
+    album: Option<String>,
+) -> Result<ListenStats, String> {
+    if artist.is_none() && album.is_none() {
+        return Err("lib_listen_stats: informe artist e/ou album".into());
+    }
+    let lib = lib.inner().clone();
+    off_main("lib_listen_stats", IPC_SCAN, move || {
+        let tracks = lib
+            .handle
+            .list_tracks(TrackFilter { artist, album, ..Default::default() })
+            .map_err(err)?;
+        let fam = lib.handle.client().familiarity();
+        Ok(listen_stats_of(&tracks, fam.as_deref()))
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
 // B9: "Fora do rádio" e recusa com escopo
 // ---------------------------------------------------------------------------
 
@@ -4573,6 +4689,7 @@ pub fn run() {
             lib_track_profile,
             lib_track_familiarity,
             lib_radio_excluded,
+            lib_listen_stats,
             lib_radio_refuse,
             lib_radio_return,
             lib_radio_restore,
@@ -6221,6 +6338,50 @@ fg-8: '#404040'
         assert_eq!(v["autoplay_pick"]["ended"], 2);
         let sem = serde_json::to_value(AutoplayTrack { track: mix_track(1, "a"), autoplay_pick: None, autoplay_reason: None }).unwrap();
         assert!(sem.get("autoplay_pick").is_none());
+    }
+
+    #[test]
+    fn escuta_viva_e_qualidade_do_album_saem_do_indice_e_nao_do_fossil() {
+        use library_indexer::spectral::QualityClass;
+        let big = u64::MAX - 4;
+        let evs = [
+            serde_json::json!({"event_type": "track_ended", "track_id": big, "origin": "album_seq", "timestamp": 100}),
+            serde_json::json!({"event_type": "track_ended", "track_id": big, "origin": "manual", "timestamp": 400}),
+            serde_json::json!({"event_type": "track_skipped", "track_id": 2, "origin": "manual", "timestamp": 500}),
+        ];
+        let fam = familiarity::FamiliarityIndex::from_payloads(evs.iter());
+        let mut a = mix_track(big, "x");
+        a.play_count = 99; // fóssil: não pode aparecer
+        a.quality_class = Some(QualityClass::SemCorte);
+        let mut b = mix_track(2, "x");
+        b.quality_class = Some(QualityClass::Lossy);
+        b.quality_cutoff_hz = Some(16_100);
+        let mut c = mix_track(3, "x");
+        c.quality_class = Some(QualityClass::ProvavelLossy);
+        c.quality_cutoff_hz = Some(19_800);
+        let d = mix_track(4, "x");
+        let st = listen_stats_of(&[a, b, c, d], Some(&fam));
+        assert!(st.familiarity_ready);
+        assert_eq!((st.tracks, st.listened_tracks, st.full_listens, st.plays), (4, 1, 2, 3));
+        assert_eq!((st.last_played_at, st.last_ended_at), (Some(500), Some(400)));
+        assert_eq!(
+            st.quality,
+            QualitySummary {
+                sem_corte: 1,
+                provavel_lossy: 1,
+                lossy: 1,
+                hires_de_cd: 0,
+                unmeasured: 1,
+                lowest_cutoff_hz: Some(16_100),
+            }
+        );
+        assert_eq!(st.per_track[0].track_id, big.to_string());
+        assert_eq!(st.per_track[0].full_listens, 2);
+        assert_eq!(st.per_track[1].plays, 1);
+        // Sem índice: escuta zerada e sinalizada, qualidade vale.
+        let sem = listen_stats_of(&[mix_track(1, "x")], None);
+        assert!(!sem.familiarity_ready);
+        assert_eq!((sem.plays, sem.quality.unmeasured), (0, 1));
     }
 
     #[test]

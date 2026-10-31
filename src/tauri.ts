@@ -403,6 +403,50 @@ export interface TrackFamiliarity { full_listens: number; liked: boolean }
 export const libTrackFamiliarity = (trackId: string) =>
   invoke<TrackFamiliarity | null>("lib_track_familiarity", { trackId });
 
+// ── B11: escuta viva e qualidade onde se navega ──────────────────
+
+/** Escuta viva por faixa (play_events via cache do motor; NUNCA o
+    `play_count`/`last_played` fóssil do Track). Instantes em unix s. */
+export interface TrackListenStats {
+  track_id: string;
+  full_listens: number;
+  plays: number;
+  last_played_at: number | null;
+  last_ended_at: number | null;
+}
+
+/** Qualidade medida no conteúdo (corte espectral), por classe. */
+export interface QualitySummary {
+  sem_corte: number;
+  provavel_lossy: number;
+  lossy: number;
+  hires_de_cd: number;
+  /** Ainda não medida ou medição indeterminada. */
+  unmeasured: number;
+  /** Menor corte (Hz) entre as com corte de lossy: "corte em 16,1 kHz". */
+  lowest_cutoff_hz: number | null;
+}
+
+export interface ListenStats {
+  /** false = índice do motor montando: escuta zerada (a qualidade vale). */
+  familiarity_ready: boolean;
+  tracks: number;
+  /** Faixas ouvidas até o fim ao menos uma vez. */
+  listened_tracks: number;
+  full_listens: number;
+  plays: number;
+  last_played_at: number | null;
+  last_ended_at: number | null;
+  quality: QualitySummary;
+  /** Na ordem de lib_list_tracks (disco, faixa). */
+  per_track: TrackListenStats[];
+}
+
+/** Álbum: passe artista E álbum (só o álbum mistura homônimos). Artista:
+    só o artista. Um dos dois é obrigatório. */
+export const libListenStats = (q: { artist?: string | null; album?: string | null }) =>
+  invoke<ListenStats>("lib_listen_stats", { artist: q.artist ?? null, album: q.album ?? null });
+
 // ── B9: "Fora do rádio" e recusa com escopo ──────────────────────
 
 /** `radio_refusal::RadioState` (Rust): o que o CEO decidiu sobre o rádio

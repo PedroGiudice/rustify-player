@@ -42,6 +42,16 @@ describe("B9: fora do rádio e recusa com escopo", () => {
   });
 });
 
+describe("B11: escuta viva e qualidade", () => {
+  it("álbum leva artista e álbum; artista só o artista", async () => {
+    invoke.mockClear();
+    await tauri.libListenStats({ artist: "Smino", album: "Luv 4 Rent" });
+    expect(invoke).toHaveBeenLastCalledWith("lib_listen_stats", { artist: "Smino", album: "Luv 4 Rent" });
+    await tauri.libListenStats({ artist: "Smino" });
+    expect(invoke).toHaveBeenLastCalledWith("lib_listen_stats", { artist: "Smino", album: null });
+  });
+});
+
 describe("A40: evento do player de outra faixa", () => {
   const big = "18446744073709551614";
 
