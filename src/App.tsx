@@ -29,6 +29,7 @@ import { MoveToPlaylistDialog } from "./components/MoveToPlaylistDialog";
 import { SelectionBar } from "./components/SelectionBar";
 import { applyMovedReport, closeMoveDialog } from "./store/moveDialog";
 import { EmptyState } from "./components/EmptyState";
+import { Toast } from "./components/Toast";
 import { onTracksMoved } from "./tauri";
 import { SpectrumCanvas } from "./components/SpectrumCanvas";
 import { RouterView, navigate, route } from "./router";
@@ -163,6 +164,7 @@ export default function App() {
       >
         <MoveToPlaylistDialog />
       </ErrorBoundary>
+      <Toast />
     </div>
   );
 }

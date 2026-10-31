@@ -1803,11 +1803,18 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   box-shadow: -16px 0 32px rgba(0,0,0,0.06);
   z-index: 95;
   transform: translateX(100%);
+  /* Fechada sai do Tab e do leitor de tela (o componente põe inert); o
+     visibility vira só no fim da saída, para a gaveta não sumir no meio. */
+  visibility: hidden;
   /* Sai acelerando em --dur-med; entra desacelerando em --dur-enter. */
-  transition: transform var(--dur-med) var(--ease-in);
+  transition: transform var(--dur-med) var(--ease-in), visibility 0s linear var(--dur-med);
   display: flex; flex-direction: column;
 }
-.queue-drawer[data-open="true"] { transform: none; transition: transform var(--dur-enter) var(--ease-out); }
+.queue-drawer[data-open="true"] {
+  transform: none; visibility: visible;
+  transition: transform var(--dur-enter) var(--ease-out), visibility 0s;
+}
+.queue-drawer:focus-visible { outline: none; }
 
 .queue-drawer__head {
   padding: 18px; border-bottom: 1px solid var(--line-2);
@@ -1827,40 +1834,63 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 .queue-drawer__meta { font-family: var(--font-mono); font-size: 11px; color: var(--fg-5); }
 
 .queue-drawer__body { overflow-y: auto; padding: 6px 8px 16px; }
+/* Rótulos e nota alinham com a capa das linhas: gutter da alça (24) +
+   padding da .qrow (10). */
 .queue-drawer__section-label {
-  padding: 14px 12px 6px;
-  font-size: 10px; font-weight: 700;
+  padding: 14px 34px 6px;
+  font-size: var(--fs-label); font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--fg-5);
   display: flex; justify-content: space-between; align-items: baseline;
 }
-.queue-drawer__section-label button {
-  font-family: var(--font-mono); font-size: 10.5px;
-  color: var(--fg-5); font-weight: 500; text-transform: none;
+/* "Limpar": área de clique de verdade sem deslocar o texto (margem negativa). */
+.queue-drawer__clear {
+  margin: -4px -8px; padding: 4px 8px;
+  border: 0; border-radius: var(--radius-md);
+  background: transparent; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-label);
+  color: var(--fg-5); font-weight: 500; letter-spacing: 0; text-transform: none;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.queue-drawer__section-label button:hover { color: var(--fg-1); }
+.queue-drawer__clear:hover { background: var(--bg-soft); color: var(--fg-1); }
+.queue-drawer__clear:focus-visible { outline: var(--focus-outline); outline-offset: 0; }
+/* O que acontece quando a fila acaba (rádio, repetir). */
+.queue-drawer__note {
+  margin: 0; padding: 10px 34px 4px;
+  font-size: 12px; line-height: 1.4; color: var(--fg-5);
+}
 
 /* Fila editável: alça e tirar aparecem no hover/foco (secundários
    invisíveis em repouso). As vizinhas deslizam em --dur-med enquanto uma
-   linha é arrastada; a solta assenta por FLIP (QueueDrawer.flip). */
+   linha é arrastada; a solta assenta por FLIP (QueueDrawer.flip).
+   Alça e tirar ficam em absolute nos gutters de 24 px; a linha da que toca
+   (.qedit--now) tem os mesmos gutters, então as capas caem na mesma coluna.
+   O realce do hover é da linha inteira, não só do miolo. */
 .qedit {
   position: relative;
-  display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px; align-items: center;
+  padding: 0 24px;
   border-radius: var(--radius-md);
-  transition: transform var(--dur-med) var(--ease-out);
+  transition: transform var(--dur-med) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
+.qedit:hover { background: var(--bg-soft); }
+.qedit .qrow:hover { background: transparent; }
 .qlist[data-dragging="true"] .qedit { user-select: none; }
 .qedit__track { min-width: 0; }
 .qedit__grip, .qedit__remove {
+  position: absolute; top: 50%; transform: translateY(-50%);
   display: grid; place-items: center;
-  width: 22px; height: 28px; padding: 0;
+  width: 24px; height: 28px; padding: 0;
   border: 0; border-radius: var(--radius-xs);
   background: transparent; color: var(--fg-6);
   opacity: 0;
   transition: opacity var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
-.qedit__grip { cursor: grab; touch-action: none; }
-.qedit__remove { width: 24px; }
+.qedit__grip { left: 0; cursor: grab; touch-action: none; }
+.qedit__remove { right: 0; }
+/* Sem hover (toque): a alça e o tirar ficam sempre à vista. */
+@media (hover: none) {
+  .qedit__grip, .qedit__remove { opacity: 1; }
+}
 .qedit:hover .qedit__grip, .qedit:hover .qedit__remove,
 .qedit__grip:focus-visible, .qedit__remove:focus-visible,
 .qedit:focus-within .qedit__grip, .qedit:focus-within .qedit__remove { opacity: 1; }
@@ -1900,6 +1930,10 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
   width: 2px; height: 22px;
   background: var(--blue-ring); border-radius: var(--radius-pill);
 }
+/* Na gaveta a que toca já tem seção própria ("Tocando agora"): fica só a
+   cor do título, sem fundo tingido nem barra (era marcada três vezes). */
+.queue-drawer .qrow--current { background: transparent; }
+.queue-drawer .qrow--current::before { content: none; }
 
 /* ────────────────────────────────────────────────────────────
    NOW PLAYING INDICATOR — reusa o sprite .np-mini__vu da sidebar
@@ -4105,13 +4139,15 @@ html { --glow: 0; }
   padding: 6px;
   background: var(--bg-paper);
   border: 1px solid var(--line-2);
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hover);
   display: flex;
   flex-direction: column;
   gap: 1px;
   animation: track-ctx-pop var(--dur-fast) var(--ease-out);
 }
+/* Aberto pelo ponteiro, o foco fica no próprio menu (sem anel). */
+.track-ctx-menu:focus { outline: none; }
 @keyframes track-ctx-pop {
   from { opacity: 0; transform: translateY(-3px) scale(0.985); }
   to   { opacity: 1; transform: none; }
@@ -4132,6 +4168,13 @@ html { --glow: 0; }
   cursor: pointer;
 }
 .track-ctx-menu__item:hover { background: var(--bg-soft); color: var(--fg-1); }
+.track-ctx-menu__item:focus-visible {
+  background: var(--bg-soft); color: var(--fg-1);
+  outline: var(--focus-outline); outline-offset: -2px;
+}
+.track-ctx-menu__icon { display: inline-grid; place-items: center; }
+/* Curtida: o coração cheio no tom de "curtido", não em carbono. */
+.track-ctx-menu__icon[data-liked="true"] { color: var(--rose-fg); }
 .track-ctx-menu__sep {
   height: 1px;
   margin: 5px 8px;
@@ -4154,6 +4197,15 @@ html { --glow: 0; }
 .move-dlg__item .palette__item-sub { display: block; }
 .move-dlg__msg { padding: 10px 14px; font-size: 12.5px; color: var(--fg-5); }
 .move-dlg__msg--err { color: var(--rose-fg); }
+/* Nome digitado que colide com uma playlist existente (A34): diz qual e
+   oferece usá-la, em vez de "nome inválido". */
+.move-dlg__collide {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 10px 8px 14px; font-size: 12.5px; color: var(--fg-3);
+}
+/* Contêineres que recebem foco por programa (diálogo, corpo do "movendo")
+   não desenham anel: o anel é dos controles. */
+.move-dlg:focus, .move-dlg__body:focus { outline: none; }
 .move-dlg__body { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; }
 .move-dlg__line {
   display: flex; align-items: center; gap: 8px;
@@ -5051,6 +5103,13 @@ html[data-sidebar="icons"] .bridge-chip__text {
   z-index: 45; pointer-events: none;
 }
 .app[data-cinema="true"] .sel-bar-wrap { display: none; }
+/* Com a barra na tela (SelectionBar põe data-selbar no <html>), a vista
+   ganha 40 px no fim da rolagem e o foco por teclado para 72 px acima da
+   borda: a barra ocupa ~58 px (14 de folga + 44 de altura) e o corpo das
+   vistas tem 56 px embaixo (32 no compacto), então a última linha ficava
+   atrás dela (A41). O espaçador some com a barra. */
+html[data-selbar] .view { scroll-padding-bottom: 72px; }
+html[data-selbar] .view::after { content: ""; display: block; height: 40px; }
 .sel-bar {
   pointer-events: auto;
   display: flex; align-items: center; gap: 6px;
@@ -5079,8 +5138,56 @@ html[data-sidebar="icons"] .bridge-chip__text {
 .sel-bar__btn:hover { background: var(--bg-soft); color: var(--fg-1); }
 .sel-bar__btn--primary { background: var(--fg-1); color: var(--bg-paper); }
 .sel-bar__btn--primary:hover { background: var(--fg-2); color: var(--bg-paper); }
+/* Aviso transitório (Toast.tsx, store/toast): canto direito acima da
+   PlayerBar, por cima da gaveta da fila (95) e abaixo do menu (300).
+   Desfazer é texto em carbono 1, não primário invertido: o aviso informa,
+   a ação é opcional. */
+.toast-region {
+  position: fixed; right: 16px;
+  bottom: calc(var(--playerbar-h) + 14px);
+  z-index: 120; pointer-events: none;
+  display: flex; justify-content: flex-end;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0;
+  padding: 6px 6px 6px 14px;
+  background: var(--bg-paper); border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-hover);
+  animation: toast-in var(--dur-enter) var(--ease-out);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.toast__msg {
+  min-width: 0; margin-right: 6px;
+  font-size: 12.5px; color: var(--fg-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.toast__action {
+  flex: none;
+  padding: 6px 10px; border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--fg-1);
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.toast__action:hover { background: var(--bg-soft); }
+.toast__close {
+  flex: none; display: grid; place-items: center;
+  width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--fg-5);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.toast__close:hover { background: var(--bg-soft); color: var(--fg-1); }
+.toast__action:focus-visible, .toast__close:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
-  .sel-bar { animation: none; }
+  .sel-bar, .toast { animation: none; }
 }
 /* === Crate > Tidal: busca === */
 /* Spec 2026-10-14. Papéis (ver o topo de views/crate/TidalTab.tsx):
@@ -5270,8 +5377,8 @@ html[data-sidebar="icons"] .bridge-chip__text {
 
   /* Gaveta e paleta: só opacidade, sem deslocamento. */
   .queue-drawer { opacity: 0; }
-  .queue-drawer,
-  .queue-drawer[data-open="true"] { transition: opacity var(--dur-base) linear; }
+  .queue-drawer { transition: opacity var(--dur-base) linear, visibility 0s linear var(--dur-base); }
+  .queue-drawer[data-open="true"] { transition: opacity var(--dur-base) linear, visibility 0s; }
   .queue-drawer[data-open="true"] { opacity: 1; }
   .palette,
   .palette-scrim[data-open="true"] .palette {

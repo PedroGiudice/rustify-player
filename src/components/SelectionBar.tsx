@@ -4,6 +4,7 @@
 import { Show, createEffect, createMemo, on, onCleanup, onMount } from "solid-js";
 import { route } from "../router";
 import { escLayerCount, pushEscLayer } from "../lib/escLayers";
+import { rememberFocus, type FocusReturn } from "../lib/focusReturn";
 import { isTypingContext } from "../lib/keyboard";
 import { moveLabel, selLabel } from "../lib/selection";
 import { enqueueEndMany, enqueueNextMany } from "../store/player";
@@ -49,6 +50,28 @@ export function SelectionBar() {
     onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
+  // A barra flutua sobre o fim da lista: enquanto existe, as vistas ganham
+  // respiro embaixo para a última linha não ficar atrás dela (A41).
+  createEffect(() => {
+    document.documentElement.toggleAttribute("data-selbar", active());
+    onCleanup(() => document.documentElement.removeAttribute("data-selbar"));
+  });
+
+  // Foco: quem entra na barra vindo de uma linha volta para ela quando a
+  // barra some (Limpar, Esc, enfileirar). Sem isso o foco caía no <body>.
+  let barEl: HTMLDivElement | undefined;
+  let focusRet: FocusReturn | null = null;
+  const onFocusIn = (e: FocusEvent) => {
+    const from = e.relatedTarget as Element | null;
+    if (from && barEl?.contains(from)) return;
+    focusRet = rememberFocus(undefined, from);
+  };
+  createEffect(on(active, (isActive) => {
+    if (isActive) return;
+    focusRet?.restore({ within: barEl });
+    focusRet = null;
+  }, { defer: true }));
+
   const doMove = () => openMoveDialog(selectedTracks());
   const doNext = () => { enqueueNextMany(selectedTracks()); clearSelection(); };
   const doEnd = () => { enqueueEndMany(selectedTracks()); clearSelection(); };
@@ -56,7 +79,7 @@ export function SelectionBar() {
   return (
     <Show when={active()}>
       <div class="sel-bar-wrap">
-        <div class="sel-bar" role="toolbar" aria-label="Ações da seleção">
+        <div class="sel-bar" role="toolbar" aria-label="Ações da seleção" ref={barEl} onFocusIn={onFocusIn}>
           <span class="sel-bar__count" aria-live="polite">{selLabel(selectionCount())}</span>
           <span class="sel-bar__sep" />
           <button type="button" class="sel-bar__btn sel-bar__btn--primary" onClick={doMove}>

@@ -5,7 +5,8 @@
    ============================================================ */
 import { describe, it, expect } from "vitest";
 import {
-  chunk, confirmText, filterPlaylists, isValidPlaylistName, mergeReports,
+  chunk, confirmText, createConfirmText, existingFolderMatch, filterPlaylists, isValidPlaylistName, mergeReports,
+  undoPlan, undoSummaryText,
   newFolderCandidate, sanitizePlaylistName, summaryText, trackRemapper,
 } from "./moveToPlaylist";
 import type { MoveReport, Track } from "../tauri";
@@ -54,6 +55,17 @@ describe("seletor de destino", () => {
     expect(newFolderCandidate(["Funk: BR"], "FUNK_ br")).toBeNull();
   });
 
+  // A34: colisão não é "nome inválido". O nome digitado bate com uma pasta
+  // que já existe (caixa ou forma limpa diferentes): oferecer usar essa.
+  it("colisão aponta a pasta existente; nome exato ou novo não colide", () => {
+    expect(existingFolderMatch(["Rock_Pop", "Rap"], "Rock:Pop")).toBe("Rock_Pop");
+    expect(existingFolderMatch(["Rock_Pop", "Rap"], "rock_pop")).toBe("Rock_Pop");
+    expect(existingFolderMatch(["Funk: BR"], "FUNK_ br")).toBe("Funk: BR");
+    expect(existingFolderMatch(["Rock_Pop"], "Rock_Pop")).toBeNull();
+    expect(existingFolderMatch(["Rock_Pop"], "Jazz")).toBeNull();
+    expect(existingFolderMatch(["Rock_Pop"], "  ")).toBeNull();
+  });
+
   it("recusa pastas ocultas, de sistema e com barra", () => {
     for (const bad of [".rustify-incoming", "_Compilations", "a/b", "a\\b", ""]) {
       expect(isValidPlaylistName(bad)).toBe(false);
@@ -74,6 +86,44 @@ describe("textos", () => {
     expect(summaryText({ ...r, moved: 1, already_there: 0, failed: 0 })).toBe("1 movida");
     // Timeout não é falha: segue em andamento.
     expect(summaryText({ ...r, moved: 0, already_there: 0, failed: 0, pending: 4 })).toBe("4 ainda em andamento");
+  });
+
+  it("pasta nova sempre confirma, dizendo onde ela nasce (A34)", () => {
+    expect(createConfirmText(1, "Rpa & Hip-Hop")).toBe("Criar a pasta ~/Music/Rpa & Hip-Hop e mover 1 faixa?");
+    expect(createConfirmText(3, "Treino")).toBe("Criar a pasta ~/Music/Treino e mover 3 faixas?");
+  });
+
+  it("resumo do desfazer conta as que voltaram e as que falharam (B4)", () => {
+    const r = { dest_playlist: "Rap", moved: 2, already_there: 0, failed: 1, pending: 0, items: [] };
+    expect(undoSummaryText(r)).toBe("2 faixas voltaram · 1 falhou");
+    expect(undoSummaryText({ ...r, moved: 1, failed: 0 })).toBe("1 faixa voltou");
+  });
+});
+
+describe("desfazer o mover (B4)", () => {
+  const orig = [track("1"), track("2", { genre_name: "Funk BR" }), track("3"), track("4", { genre_name: null })];
+  const report: MoveReport = {
+    dest_playlist: "Favoritas", moved: 3, already_there: 0, failed: 1, pending: 0,
+    items: [
+      { track_id: "1", new_track_id: "10", new_path: "/m/Favoritas/A/B/1.flac", new_lrc_path: null, title: null, status: "moved", detail: null },
+      { track_id: "2", new_track_id: "20", new_path: "/m/Favoritas/A/B/2.flac", new_lrc_path: null, title: null, status: "moved", detail: null },
+      { track_id: "3", new_track_id: null, new_path: null, new_lrc_path: null, title: null, status: "failed", detail: "x" },
+      { track_id: "4", new_track_id: "40", new_path: "/m/Favoritas/A/B/4.flac", new_lrc_path: null, title: null, status: "moved", detail: null },
+    ],
+  };
+
+  it("volta cada movida para a pasta de onde saiu, pelo id NOVO; falhas ficam de fora", () => {
+    const plan = undoPlan(report, orig);
+    expect(plan.groups).toEqual([
+      { dest: "Rap", ids: ["10"] },
+      { dest: "Funk BR", ids: ["20"] },
+    ]);
+    // Sem pasta de origem conhecida não há para onde voltar.
+    expect(plan.orphans).toEqual(["40"]);
+  });
+
+  it("nada movido = nada a desfazer", () => {
+    expect(undoPlan({ ...report, moved: 0, items: [report.items[2]] }, orig).groups).toEqual([]);
   });
 });
 

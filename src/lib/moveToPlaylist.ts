@@ -60,6 +60,18 @@ export function newFolderCandidate(names: string[], query: string): string | nul
     : q;
 }
 
+/** Pasta existente com que o nome digitado colide (mesma regra de
+    newFolderCandidate: caixa ou forma sanitizada iguais), ou null. O nome
+    escrito exatamente igual não é colisão: é a própria pasta. Distingue
+    "já existe, use essa" de "nome inválido" (A34). */
+export function existingFolderMatch(names: string[], query: string): string | null {
+  const typed = query.trim();
+  if (!typed || names.includes(typed)) return null;
+  const lower = sanitizePlaylistName(typed).toLowerCase();
+  if (!lower) return null;
+  return names.find((n) => n.toLowerCase() === lower || sanitizePlaylistName(n).toLowerCase() === lower) ?? null;
+}
+
 export function plural(n: number, um: string, varios: string): string {
   return `${n} ${n === 1 ? um : varios}`;
 }
@@ -68,6 +80,45 @@ export function plural(n: number, um: string, varios: string): string {
 export function confirmText(count: number, label: string | null, dest: string): string {
   const what = plural(count, "faixa", "faixas");
   return label ? `Mover ${what} de ${label} para ${dest}?` : `Mover ${what} para ${dest}?`;
+}
+
+/** Pasta nova sempre pede confirmação, mesmo para uma faixa: um nome
+    digitado errado ("Rpa & Hip-Hop") virava pasta no Enter (A34). */
+export function createConfirmText(count: number, dest: string): string {
+  return `Criar a pasta ~/Music/${dest} e mover ${plural(count, "faixa", "faixas")}?`;
+}
+
+/** Resumo do Desfazer: "2 faixas voltaram · 1 falhou". */
+export function undoSummaryText(r: MoveReport): string {
+  const parts: string[] = [];
+  if (r.moved) parts.push(r.moved === 1 ? "1 faixa voltou" : `${r.moved} faixas voltaram`);
+  if (r.already_there) parts.push(`${r.already_there} já ${r.already_there === 1 ? "estava" : "estavam"} lá`);
+  if (r.failed) parts.push(`${r.failed} ${r.failed === 1 ? "falhou" : "falharam"}`);
+  if (r.pending) parts.push(`${r.pending} ainda em andamento`);
+  return parts.length ? parts.join(" · ") : "Nada a desfazer";
+}
+
+/** Desfazer um Mover = mover de volta pelo MESMO lib_move_tracks (nunca `mv`
+    cru: o id é o hash do caminho e vetores, like e plays precisam seguir).
+    Cada faixa movida volta para a pasta de 1º nível de onde saiu
+    (`genre_name` da faixa original), endereçada pelo id NOVO. `orphans` =
+    movidas sem pasta de origem conhecida (não há para onde voltar). */
+export function undoPlan(report: MoveReport, original: Track[]): {
+  groups: { dest: string; ids: string[] }[];
+  orphans: string[];
+} {
+  const from = new Map(original.map((t) => [t.id, t.genre_name ?? null] as const));
+  const groups: { dest: string; ids: string[] }[] = [];
+  const orphans: string[] = [];
+  for (const it of report.items) {
+    if (it.status !== "moved" || !it.new_track_id) continue;
+    const dest = from.get(it.track_id);
+    if (!dest) { orphans.push(it.new_track_id); continue; }
+    let g = groups.find((x) => x.dest === dest);
+    if (!g) groups.push((g = { dest, ids: [] }));
+    g.ids.push(it.new_track_id);
+  }
+  return { groups, orphans };
 }
 
 export function mergeReports(dest: string, reports: MoveReport[]): MoveReport {
