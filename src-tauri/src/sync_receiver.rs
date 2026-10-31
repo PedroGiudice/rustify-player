@@ -21,11 +21,157 @@
 //! LWW — replay é seguro). GET /sync/health → 200.
 
 use library_indexer::{QdrantClient, SyncedOutcome};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 const SYNC_PORT: u16 = 19878;
 const MAX_BODY: usize = 4 * 1024 * 1024;
+
+// ---------------------------------------------------------------------------
+// B14: quando cada dispositivo sincronizou pela última vez
+// ---------------------------------------------------------------------------
+
+/// Último lote que o receptor ACEITOU (respondeu 200, então o aparelho
+/// ackou) de um dispositivo, com o que veio nele. Persistido em
+/// `<data_dir>/sync-status.json`: sobrevive ao reinício do app.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DeviceSync {
+    /// `device_id` estampado nos eventos ("s24"); "desconhecido" sem ele.
+    pub device_id: String,
+    /// Unix (s) do último lote aceito.
+    pub last_batch_at: i64,
+    /// Do último lote: eventos aceitos e rejeitados (rejeitado também é
+    /// ackado; ver doc do módulo).
+    pub accepted: u32,
+    pub rejected: u32,
+    /// Do último lote, entre os aceitos: escutas e curtidas/descurtidas.
+    pub plays: u32,
+    pub likes: u32,
+    /// Eventos aceitos desde que o arquivo existe.
+    pub total_accepted: u64,
+}
+
+/// Contagem de um lote, por dispositivo.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BatchTally {
+    by_device: HashMap<String, (u32, u32, u32, u32)>, // (accepted, rejected, plays, likes)
+}
+
+impl BatchTally {
+    fn device_of(payload: Option<&serde_json::Value>) -> String {
+        payload
+            .and_then(|p| p["device_id"].as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("desconhecido")
+            .to_string()
+    }
+
+    pub(crate) fn accept(&mut self, payload: &serde_json::Value) {
+        let e = self.by_device.entry(Self::device_of(Some(payload))).or_default();
+        e.0 += 1;
+        match payload["event_type"].as_str() {
+            Some("like") | Some("unlike") => e.3 += 1,
+            Some("track_ended") | Some("track_skipped") => e.2 += 1,
+            _ => {}
+        }
+    }
+
+    pub(crate) fn reject(&mut self, payload: Option<&serde_json::Value>) {
+        self.by_device.entry(Self::device_of(payload)).or_default().1 += 1;
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.by_device.is_empty()
+    }
+}
+
+/// Estado do sync por dispositivo, compartilhado entre o receptor e o
+/// comando `lib_sync_status`. `on_update` (o app emite `sync-received`)
+/// recebe o dispositivo atualizado.
+pub(crate) struct SyncStatus {
+    path: Option<PathBuf>,
+    devices: Mutex<HashMap<String, DeviceSync>>,
+    on_update: Mutex<Option<Box<dyn Fn(&DeviceSync) + Send + Sync>>>,
+}
+
+impl SyncStatus {
+    /// Lê o arquivo, se existir (ausente ou corrompido = vazio).
+    pub(crate) fn load(path: Option<PathBuf>) -> Arc<Self> {
+        let devices = path
+            .as_ref()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|s| serde_json::from_str::<Vec<DeviceSync>>(&s).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| (d.device_id.clone(), d))
+            .collect();
+        Arc::new(Self { path, devices: Mutex::new(devices), on_update: Mutex::new(None) })
+    }
+
+    pub(crate) fn set_on_update(&self, f: impl Fn(&DeviceSync) + Send + Sync + 'static) {
+        *self.on_update.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(f));
+    }
+
+    /// Dispositivos, o mais recente primeiro.
+    pub(crate) fn snapshot(&self) -> Vec<DeviceSync> {
+        let mut v: Vec<DeviceSync> =
+            self.devices.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect();
+        v.sort_by(|a, b| b.last_batch_at.cmp(&a.last_batch_at).then(a.device_id.cmp(&b.device_id)));
+        v
+    }
+
+    /// Registra um lote aceito em `now` e persiste (tmp + rename). Falha ao
+    /// gravar o arquivo só loga: o estado em memória vale.
+    pub(crate) fn record(&self, tally: &BatchTally, now: i64) {
+        if tally.is_empty() {
+            return;
+        }
+        let (updated, all) = {
+            let mut devs = self.devices.lock().unwrap_or_else(|e| e.into_inner());
+            let mut updated = Vec::new();
+            for (dev, &(accepted, rejected, plays, likes)) in &tally.by_device {
+                let d = devs.entry(dev.clone()).or_insert_with(|| DeviceSync {
+                    device_id: dev.clone(),
+                    ..Default::default()
+                });
+                d.last_batch_at = now;
+                d.accepted = accepted;
+                d.rejected = rejected;
+                d.plays = plays;
+                d.likes = likes;
+                d.total_accepted += accepted as u64;
+                updated.push(d.clone());
+            }
+            (updated, devs.values().cloned().collect::<Vec<_>>())
+        };
+        if let Some(path) = &self.path {
+            let tmp = path.with_extension("json.tmp");
+            let res = serde_json::to_vec_pretty(&all)
+                .map_err(std::io::Error::other)
+                .and_then(|bytes| std::fs::write(&tmp, bytes))
+                .and_then(|_| std::fs::rename(&tmp, path));
+            if let Err(e) = res {
+                tracing::warn!(error = %e, "sync receiver: sync-status.json não gravou");
+            }
+        }
+        if let Some(f) = self.on_update.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            for d in &updated {
+                f(d);
+            }
+        }
+    }
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
 
 /// Fase de observação do auth (CMR-194): `false` = verifica e LOGA, mas
 /// aceita tudo. O flip pra `true` (fail-closed, 401) é a fase 3 — só depois
@@ -35,7 +181,7 @@ const REQUIRE_BEARER: bool = false;
 /// `token` é o Bearer esperado (`<data_dir>/sync-token` na cmr-auto, o mesmo
 /// arquivo que o export_manifest.py leva ao aparelho). `None` = sem auth
 /// configurado, comporta como sempre.
-pub(crate) fn start(client: QdrantClient, token: Option<String>) {
+pub(crate) fn start(client: QdrantClient, token: Option<String>, status: Arc<SyncStatus>) {
     let Some(ip) = tailscale_ip() else {
         tracing::info!("sync receiver: sem IP tailscale — não sobe");
         return;
@@ -43,12 +189,22 @@ pub(crate) fn start(client: QdrantClient, token: Option<String>) {
     if token.is_none() {
         tracing::info!("sync auth: sem token configurado — aceitando sem verificação");
     }
-    start_on(&format!("{ip}:{SYNC_PORT}"), client, token);
+    start_on_with(&format!("{ip}:{SYNC_PORT}"), client, token, status);
 }
 
 /// Sobe o listener num addr explícito. Retorna a porta real (testes usam
 /// `:0`); `None` se o bind falhar.
+#[cfg(test)]
 fn start_on(addr: &str, client: QdrantClient, token: Option<String>) -> Option<u16> {
+    start_on_with(addr, client, token, SyncStatus::load(None))
+}
+
+fn start_on_with(
+    addr: &str,
+    client: QdrantClient,
+    token: Option<String>,
+    status: Arc<SyncStatus>,
+) -> Option<u16> {
     let listener = match TcpListener::bind(addr) {
         Ok(l) => l,
         Err(e) => {
@@ -65,10 +221,11 @@ fn start_on(addr: &str, client: QdrantClient, token: Option<String>) -> Option<u
                 let Ok(mut stream) = stream else { continue };
                 let client = client.clone();
                 let token = token.clone();
+                let status = Arc::clone(&status);
                 std::thread::Builder::new()
                     .name("sync-conn".into())
                     .spawn(move || {
-                        if let Err(e) = handle(&mut stream, &client, token.as_deref()) {
+                        if let Err(e) = handle(&mut stream, &client, token.as_deref(), &status) {
                             tracing::debug!(?e, "sync receiver: conn error");
                         }
                     })
@@ -97,6 +254,7 @@ fn handle(
     stream: &mut TcpStream,
     client: &QdrantClient,
     token: Option<&str>,
+    status: &SyncStatus,
 ) -> std::io::Result<()> {
     let mut buf = Vec::with_capacity(8192);
     let mut chunk = [0u8; 8192];
@@ -171,10 +329,12 @@ fn handle(
                 return respond(stream, 400, r#"{"error":"missing events"}"#);
             };
             let (mut accepted, mut rejected) = (0u32, 0u32);
+            let mut tally = BatchTally::default();
             for ev in events {
                 let (Some(uuid), Some(payload)) = (ev["uuid"].as_str(), ev.get("payload"))
                 else {
                     rejected += 1;
+                    tally.reject(ev.get("payload"));
                     continue;
                 };
                 // like/unlike NUNCA entram em play_events: vão pro enrichment
@@ -184,7 +344,10 @@ fn handle(
                     _ => client.insert_synced_event(uuid, payload),
                 };
                 match result {
-                    Ok(SyncedOutcome::Applied) => accepted += 1,
+                    Ok(SyncedOutcome::Applied) => {
+                        accepted += 1;
+                        tally.accept(payload);
+                    }
                     Ok(SyncedOutcome::Skipped { current }) => {
                         tracing::debug!(
                             uuid,
@@ -194,10 +357,12 @@ fn handle(
                             "sync receiver: no-op por LWW (like vigente é mais novo)"
                         );
                         accepted += 1;
+                        tally.accept(payload);
                     }
                     Ok(SyncedOutcome::Rejected(reason)) => {
                         tracing::warn!(%reason, uuid, "sync receiver: evento rejeitado");
                         rejected += 1;
+                        tally.reject(Some(payload));
                     }
                     // 5xx/transporte com o Qdrant: NADA pode ser ackado —
                     // 200 aqui faria o S24 ackar e o like/play sumir pra
@@ -219,6 +384,9 @@ fn handle(
                 }
             }
             tracing::info!(accepted, rejected, "sync receiver: lote processado");
+            // B14: lote que vai sair com 200 (o aparelho acka) marca o
+            // instante do sync. O 503 acima não chega aqui.
+            status.record(&tally, unix_now());
             respond(
                 stream,
                 200,
@@ -406,6 +574,58 @@ mod tests {
             }
         }]})
         .to_string()
+    }
+
+    #[test]
+    fn lote_aceito_marca_o_sync_por_dispositivo_e_persiste() {
+        let (qdrant_port, _requests) = fake_qdrant();
+        let client = QdrantClient::new(format!("http://127.0.0.1:{qdrant_port}"));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sync-status.json");
+        let status = SyncStatus::load(Some(path.clone()));
+        let avisos = Arc::new(Mutex::new(Vec::<DeviceSync>::new()));
+        let log = Arc::clone(&avisos);
+        status.set_on_update(move |d| log.lock().unwrap().push(d.clone()));
+        let port = start_on_with("127.0.0.1:0", client, None, Arc::clone(&status)).expect("receiver sobe");
+
+        let invalido = serde_json::json!({
+            "uuid": "99999999-8888-7777-6666-555555555555",
+            "payload": { "event_type": "track_ended", "track_id": 1, "signal_schema": 3 }
+        });
+        let body = serde_json::json!({ "events": [
+            play_event("11111111-2222-3333-4444-555555555555", 12755931536157556u64),
+            like_event("aaaaaaaa-2222-3333-4444-555555555555", 1_700_000_000),
+            invalido,
+        ]})
+        .to_string();
+        let antes = super::unix_now();
+        post_lote(port, &body);
+
+        let snap = status.snapshot();
+        let s24 = snap.iter().find(|d| d.device_id == "s24").expect("s24 registrado");
+        assert!(s24.last_batch_at >= antes);
+        assert_eq!((s24.accepted, s24.rejected, s24.plays, s24.likes, s24.total_accepted), (2, 0, 1, 1, 2));
+        let sem = snap.iter().find(|d| d.device_id == "desconhecido").expect("evento sem device_id");
+        assert_eq!((sem.accepted, sem.rejected), (0, 1));
+        assert_eq!(avisos.lock().unwrap().len(), 2, "um aviso por dispositivo do lote");
+
+        // Segundo lote: o último lote substitui, o total acumula; e o arquivo
+        // sobrevive ao reinício.
+        post_lote(port, &serde_json::json!({ "events": [play_event("22222222-2222-3333-4444-555555555555", 7)] }).to_string());
+        let s24 = status.snapshot().into_iter().find(|d| d.device_id == "s24").unwrap();
+        assert_eq!((s24.accepted, s24.plays, s24.likes, s24.total_accepted), (1, 1, 0, 3));
+        let recarregado = SyncStatus::load(Some(path));
+        assert_eq!(recarregado.snapshot().into_iter().find(|d| d.device_id == "s24"), Some(s24));
+    }
+
+    #[test]
+    fn lote_abortado_com_503_nao_marca_sync() {
+        let client = QdrantClient::new("http://127.0.0.1:1");
+        let status = SyncStatus::load(None);
+        let port = start_on_with("127.0.0.1:0", client, None, Arc::clone(&status)).expect("receiver sobe");
+        let (code, _) = post_lote_raw(port, &lote_minimo());
+        assert_eq!(code, 503);
+        assert!(status.snapshot().is_empty());
     }
 
     #[test]

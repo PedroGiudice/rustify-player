@@ -139,7 +139,20 @@ pub fn never_ends(f: TrackFamiliarity, liked: bool) -> bool {
 #[derive(Debug, Clone, Default)]
 pub struct FamiliarityIndex {
     by_track: HashMap<u64, TrackFamiliarity>,
+    listens: HashMap<u64, ListenTimes>,
     seen: HashSet<String>,
+}
+
+/// Escuta viva por faixa (B11), de QUALQUER origem: o que a navegação mostra
+/// no lugar dos campos fósseis `play_count`/`last_played` de `rustify_tracks`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ListenTimes {
+    /// Escutas registradas (`track_ended` + `track_skipped`).
+    pub plays: u32,
+    /// Unix (s) da escuta mais recente, terminada ou não.
+    pub last_played_at: Option<i64>,
+    /// Unix (s) da última vez ouvida até o fim.
+    pub last_ended_at: Option<i64>,
 }
 
 /// Forma canônica do id de ponto do Qdrant: UUID em minúsculas com hífens
@@ -171,6 +184,16 @@ impl FamiliarityIndex {
             return;
         };
         let accept = is_accept(p);
+        if accept || is_skip(p) {
+            let l = self.listens.entry(tid).or_default();
+            l.plays += 1;
+            if let Some(ts) = p["timestamp"].as_i64().filter(|t| *t > 0) {
+                l.last_played_at = l.last_played_at.max(Some(ts));
+                if accept {
+                    l.last_ended_at = l.last_ended_at.max(Some(ts));
+                }
+            }
+        }
         let attempt = counts_as_motor_attempt(p);
         if !accept && !attempt {
             return;
@@ -202,6 +225,16 @@ impl FamiliarityIndex {
 
     pub fn get(&self, track_id: u64) -> TrackFamiliarity {
         self.by_track.get(&track_id).copied().unwrap_or_default()
+    }
+
+    /// Escuta viva da faixa (B11).
+    pub fn listens(&self, track_id: u64) -> ListenTimes {
+        self.listens.get(&track_id).copied().unwrap_or_default()
+    }
+
+    /// Todas as faixas com alguma contagem (ordem arbitrária).
+    pub fn iter(&self) -> impl Iterator<Item = (u64, TrackFamiliarity)> + '_ {
+        self.by_track.iter().map(|(id, f)| (*id, *f))
     }
 
     pub fn len(&self) -> usize {
@@ -336,6 +369,22 @@ mod tests {
             incremental.observe(e);
         }
         assert_eq!(inteira.by_track, incremental.by_track);
+    }
+
+    #[test]
+    fn escuta_viva_conta_toda_origem_e_guarda_os_instantes() {
+        let mut idx = FamiliarityIndex::default();
+        idx.observe(&json!({"event_type": "track_ended", "track_id": 5, "origin": "album_seq", "timestamp": 100}));
+        idx.observe(&json!({"event_type": "track_skipped", "track_id": 5, "origin": "manual", "timestamp": 300}));
+        idx.observe(&json!({"event_type": "track_ended", "track_id": 5, "origin": "manual", "timestamp": 200}));
+        idx.observe(&json!({"event_type": "search_click", "track_id": 5, "timestamp": 999}));
+        idx.observe(&json!({"event_type": "track_ended", "track_id": 6, "origin": "manual"}));
+        let l = idx.listens(5);
+        assert_eq!(l, ListenTimes { plays: 3, last_played_at: Some(300), last_ended_at: Some(200) });
+        assert_eq!(idx.listens(6), ListenTimes { plays: 1, last_played_at: None, last_ended_at: None });
+        assert_eq!(idx.listens(7), ListenTimes::default());
+        // Pulo de origem não-motor não cria contagem de familiaridade.
+        assert_eq!(idx.get(5).motor_attempts, 0);
     }
 
     #[test]

@@ -9,6 +9,7 @@ const LYRICS_EMBED_DEFAULT: &str = "http://100.64.242.118:3939";
 use audio_engine::{
     Command as EngineCommand, Engine, EngineHandle, PlaybackState, StateUpdate, TrackInfo,
 };
+use library_indexer::radio_refusal::{self, RadioGate, RadioState};
 use library_indexer::{
     familiarity, rerank, Album, AlbumFilter, Artist, ArtistFilter, EmbedClient, Genre, Indexer, IndexerConfig,
     IndexerHandle, LyricLine, PlaylistSearchResult, SearchResults,
@@ -25,6 +26,7 @@ use tauri::{Emitter, Manager, State};
 // State wrappers
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub(crate) struct Library {
     pub(crate) handle: IndexerHandle,
     pub(crate) cache_dir: PathBuf,
@@ -102,18 +104,33 @@ struct PlayerSnapshot {
     last_position_ms: Option<i64>,
 }
 
-/// If a track is currently being played and we have enough state to log it
-/// (track_id, origin, started_at, duration), emit a `play_event` and clear the
-/// pending fields. Used both for natural completion (`track_ended`) and skips
-/// (`track_skipped`). Caller decides which one fits the lifecycle event.
+/// Escuta pendente da faixa corrente, já tirada do snapshot: o que basta
+/// para gravar o `play_event` sem o lock preso. Usado no fim natural
+/// (`track_ended`), no pulo (`track_skipped`) e no fechamento da janela.
+#[derive(Debug, Clone, PartialEq)]
+struct PendingPlay {
+    track_id: u64,
+    origin: String,
+    started_at: i64,
+    end_position_ms: u64,
+    duration_ms: u64,
+    context_id: Option<String>,
+}
+
+/// Tira a escuta pendente do snapshot e limpa os campos. Estado incompleto
+/// (sem id, origem, início ou duração) devolve `None` e deixa tudo como
+/// está, como o `flush_play_event` antigo fazia ao não gravar.
 ///
-/// Returns true if an event was actually written.
-fn flush_play_event(
-    snap: &mut PlayerSnapshot,
-    indexer: &library_indexer::IndexerHandle,
-    event_type: &str,
-) -> bool {
-    let (track_id, origin, started_at, duration) = match (
+/// `ended_id` (A40): id da faixa que o ENGINE diz ter terminado. Se o
+/// snapshot já é de outra faixa (o `player_play` da próxima chegou antes do
+/// fim tardio da anterior), o fim não é desta escuta: `None`, slot intacto.
+fn take_pending_play(snap: &mut PlayerSnapshot, ended_id: Option<u64>) -> Option<PendingPlay> {
+    if let (Some(ended), Some(cur)) = (ended_id, snap.current_track_id) {
+        if ended != cur {
+            return None;
+        }
+    }
+    let (track_id, origin, started_at, duration_ms) = match (
         snap.current_track_id,
         snap.current_origin.clone(),
         snap.started_at,
@@ -123,32 +140,112 @@ fn flush_play_event(
             .map(|d| d.as_millis() as u64),
     ) {
         (Some(tid), Some(o), Some(s), Some(d)) => (tid, o, s, d),
-        _ => return false,
+        _ => return None,
     };
-
-    let end_pos = snap.last_position_ms.unwrap_or(0).max(0) as u64;
-    let context_id = snap.current_context_id.clone();
-
-    if let Err(e) = indexer.client().insert_play_event(
-        event_type,
+    let pending = PendingPlay {
         track_id,
-        &origin,
+        origin,
         started_at,
-        unix_now(),
-        end_pos,
-        duration,
-        context_id.as_deref(),
-    ) {
-        tracing::warn!(?e, track_id, event_type, "failed to record play event");
-        return false;
-    }
-
+        end_position_ms: snap.last_position_ms.unwrap_or(0).max(0) as u64,
+        duration_ms,
+        context_id: snap.current_context_id.take(),
+    };
     snap.current_origin = None;
     snap.current_track_id = None;
-    snap.current_context_id = None;
     snap.started_at = None;
     snap.last_position_ms = None;
+    Some(pending)
+}
+
+/// Id de biblioteca das últimas faixas que o ENGINE carregou, pelo handle
+/// dele (A40). O fim de uma faixa chega pelo handle; no gapless o
+/// `TrackEnded(A)` sai antes do `TrackStarted(B)`, mas o frontend pode já
+/// ter pedido B: guardar algumas entradas resolve o fim tardio de A.
+#[derive(Debug, Default)]
+struct EngineTrackIds {
+    recent: std::collections::VecDeque<(audio_engine::TrackHandle, u64)>,
+}
+
+impl EngineTrackIds {
+    const KEEP: usize = 4;
+
+    fn note(&mut self, handle: audio_engine::TrackHandle, track_id: u64) {
+        self.recent.retain(|(h, _)| *h != handle);
+        self.recent.push_back((handle, track_id));
+        while self.recent.len() > Self::KEEP {
+            self.recent.pop_front();
+        }
+    }
+
+    fn get(&self, handle: audio_engine::TrackHandle) -> Option<u64> {
+        self.recent.iter().find(|(h, _)| *h == handle).map(|(_, id)| *id)
+    }
+}
+
+/// Handle do engine a que o evento se refere, quando ele diz.
+fn event_track_handle(ev: &StateUpdate) -> Option<audio_engine::TrackHandle> {
+    match ev {
+        StateUpdate::TrackStarted(info) => Some(info.handle),
+        StateUpdate::TrackEnded(h) => Some(*h),
+        StateUpdate::Position(p) => Some(p.track),
+        StateUpdate::StateChanged(ps) => match ps {
+            PlaybackState::Loading { track, .. }
+            | PlaybackState::Playing { track, .. }
+            | PlaybackState::Paused { track, .. } => Some(*track),
+            PlaybackState::Error { track, .. } => *track,
+            PlaybackState::Idle | PlaybackState::Stopped => None,
+        },
+        _ => None,
+    }
+}
+
+/// Corpo do evento `player-state`: o JSON de sempre do `StateUpdate`
+/// (`{"TrackEnded": 3}`, `{"Position": {...}}`) com `track_id` ao lado
+/// quando se sabe de que faixa da biblioteca ele é (A40). Texto, porque o id
+/// é u64 e passa de 2^53. O frontend descarta fim/posição de faixa que não
+/// é a atual; quem não lê o campo (S24, código antigo) não percebe.
+fn player_state_payload(ev: &StateUpdate, track_id: Option<u64>) -> serde_json::Value {
+    let mut v = serde_json::to_value(ev).unwrap_or(serde_json::Value::Null);
+    if let (Some(id), Some(obj)) = (track_id, v.as_object_mut()) {
+        obj.insert("track_id".into(), serde_json::Value::String(id.to_string()));
+    }
+    v
+}
+
+/// Grava a escuta (I/O no Qdrant; nunca com o lock do snapshot preso).
+fn write_play_event(indexer: &library_indexer::IndexerHandle, p: &PendingPlay, event_type: &str) -> bool {
+    if let Err(e) = indexer.client().insert_play_event(
+        event_type,
+        p.track_id,
+        &p.origin,
+        p.started_at,
+        unix_now(),
+        p.end_position_ms,
+        p.duration_ms,
+        p.context_id.as_deref(),
+    ) {
+        tracing::warn!(?e, track_id = p.track_id, event_type, "failed to record play event");
+        return false;
+    }
     true
+}
+
+/// Grava a escuta numa thread própria: quem chama é a thread da janela
+/// (`player_play`, `player_stop`) e não pode esperar o Qdrant (A40).
+fn write_play_event_detached(
+    indexer: &library_indexer::IndexerHandle,
+    p: PendingPlay,
+    event_type: &'static str,
+) {
+    let indexer = indexer.clone();
+    let spawned = std::thread::Builder::new()
+        .name("play-event-write".into())
+        .spawn(move || {
+            write_play_event(&indexer, &p, event_type);
+        });
+    if let Err(e) = spawned {
+        tracing::warn!(error = %e, event_type, "play_event: thread de gravação não subiu");
+    }
 }
 struct Snapshot(Arc<Mutex<PlayerSnapshot>>);
 
@@ -176,11 +273,73 @@ fn unix_now() -> i64 {
 }
 
 // ---------------------------------------------------------------------------
+// A40: comando que fala com o Qdrant/disco nunca roda na thread da janela
+// ---------------------------------------------------------------------------
+//
+// No Tauri 2, comando sem `async` roda na thread PRINCIPAL (a do WebKitGTK):
+// com o Qdrant lento (leitura até 30 s no `QdrantClient`), fundo, barra e
+// janela inteira paravam esperando. Todo comando de biblioteca é `async` e
+// manda o trabalho para fora com [`off_main`]. O contrato de IPC (nome,
+// argumentos, retorno) não muda: o frontend e o S24 não percebem.
+
+/// Teto de espera dos comandos de leitura do caminho quente da barra (perfil,
+/// familiaridade, cor da capa, letra): passando disso a UI segue sem o dado.
+const IPC_QUICK: std::time::Duration = std::time::Duration::from_secs(5);
+/// Teto das varreduras (listas, busca, rádio) e das escritas. Igual ao
+/// timeout de leitura do `QdrantClient`: escrita que estoura o prazo ainda
+/// pode terminar depois, então o teto não pode mentir antes do próprio client.
+const IPC_SCAN: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Roda `f` numa thread própria e espera no máximo `limit`. Estourado o
+/// prazo, devolve erro na hora (o trabalho segue até terminar e o resultado
+/// é descartado). Pânico em `f` vira erro, não derruba quem espera.
+fn run_with_deadline<T: Send + 'static>(
+    label: &'static str,
+    limit: std::time::Duration,
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (tx, rx) = crossbeam_channel::bounded(1);
+    std::thread::Builder::new()
+        .name(format!("ipc-{label}"))
+        .spawn(move || {
+            let _ = tx.send(f());
+        })
+        .map_err(|e| format!("{label}: thread não subiu: {e}"))?;
+    match rx.recv_timeout(limit) {
+        Ok(r) => r,
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+            tracing::warn!(label, secs = limit.as_secs_f32(), "comando estourou o prazo");
+            Err(format!("{label}: o acervo não respondeu em {} s", limit.as_secs()))
+        }
+        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+            Err(format!("{label}: falhou sem resposta"))
+        }
+    }
+}
+
+/// [`run_with_deadline`] num thread do pool de bloqueio do runtime: o
+/// comando `async` só aguarda, nunca prende a thread da janela.
+async fn off_main<T: Send + 'static>(
+    label: &'static str,
+    limit: std::time::Duration,
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(move || run_with_deadline(label, limit, f))
+        .await
+        .map_err(err)?
+}
+
+// ---------------------------------------------------------------------------
 // Library commands
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_list_genres(lib: State<Library>) -> Result<Vec<Genre>, String> {
+async fn lib_list_genres(lib: State<'_, Library>) -> Result<Vec<Genre>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_genres", IPC_SCAN, move || lib_list_genres_blocking(&lib)).await
+}
+
+fn lib_list_genres_blocking(lib: &Library) -> Result<Vec<Genre>, String> {
     lib.handle.list_genres().map_err(err)
 }
 
@@ -196,7 +355,12 @@ pub struct MoodVocabulary {
 }
 
 #[tauri::command]
-fn lib_mood_vocabulary(lib: State<Library>) -> Result<MoodVocabulary, String> {
+async fn lib_mood_vocabulary(lib: State<'_, Library>) -> Result<MoodVocabulary, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_mood_vocabulary", IPC_SCAN, move || lib_mood_vocabulary_blocking(&lib)).await
+}
+
+fn lib_mood_vocabulary_blocking(lib: &Library) -> Result<MoodVocabulary, String> {
     let genres = lib
         .handle
         .list_genres()
@@ -212,8 +376,13 @@ fn lib_mood_vocabulary(lib: State<Library>) -> Result<MoodVocabulary, String> {
 }
 
 #[tauri::command]
-fn lib_list_tracks(
-    lib: State<Library>,
+async fn lib_list_tracks(lib: State<'_, Library>, genre: Option<String>, artist: Option<String>, album: Option<String>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_tracks", IPC_SCAN, move || lib_list_tracks_blocking(&lib, genre, artist, album, limit)).await
+}
+
+fn lib_list_tracks_blocking(
+    lib: &Library,
     genre: Option<String>,
     artist: Option<String>,
     album: Option<String>,
@@ -236,8 +405,13 @@ fn lib_list_tracks(
 }
 
 #[tauri::command]
-fn lib_list_albums(
-    lib: State<Library>,
+async fn lib_list_albums(lib: State<'_, Library>, artist: Option<String>, genre: Option<String>, limit: Option<usize>) -> Result<Vec<Album>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_albums", IPC_SCAN, move || lib_list_albums_blocking(&lib, artist, genre, limit)).await
+}
+
+fn lib_list_albums_blocking(
+    lib: &Library,
     artist: Option<String>,
     genre: Option<String>,
     limit: Option<usize>,
@@ -260,8 +434,13 @@ fn lib_list_albums(
 }
 
 #[tauri::command]
-fn lib_list_artists(
-    lib: State<Library>,
+async fn lib_list_artists(lib: State<'_, Library>, genre: Option<String>, limit: Option<usize>) -> Result<Vec<Artist>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_artists", IPC_SCAN, move || lib_list_artists_blocking(&lib, genre, limit)).await
+}
+
+fn lib_list_artists_blocking(
+    lib: &Library,
     genre: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Artist>, String> {
@@ -273,8 +452,13 @@ fn lib_list_artists(
 }
 
 #[tauri::command]
-fn lib_search(
-    lib: State<Library>,
+async fn lib_search(lib: State<'_, Library>, query: String, limit: Option<usize>) -> Result<SearchResults, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_search", IPC_SCAN, move || lib_search_blocking(&lib, query, limit)).await
+}
+
+fn lib_search_blocking(
+    lib: &Library,
     query: String,
     limit: Option<usize>,
 ) -> Result<SearchResults, String> {
@@ -301,8 +485,13 @@ fn lib_search(
 }
 
 #[tauri::command]
-fn lib_semantic_search(
-    lib: State<Library>,
+async fn lib_semantic_search(lib: State<'_, Library>, query: String, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_semantic_search", IPC_SCAN, move || lib_semantic_search_blocking(&lib, query, limit)).await
+}
+
+fn lib_semantic_search_blocking(
+    lib: &Library,
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
@@ -328,8 +517,13 @@ fn lib_semantic_search(
 }
 
 #[tauri::command]
-fn lib_mood_search(
-    lib: State<Library>,
+async fn lib_mood_search(lib: State<'_, Library>, query: String, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_mood_search", IPC_SCAN, move || lib_mood_search_blocking(&lib, query, limit)).await
+}
+
+fn lib_mood_search_blocking(
+    lib: &Library,
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
@@ -362,7 +556,12 @@ fn lib_mood_search(
 }
 
 #[tauri::command]
-fn lib_get_track(lib: State<Library>, id: u64) -> Result<Option<Track>, String> {
+async fn lib_get_track(lib: State<'_, Library>, id: u64) -> Result<Option<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_get_track", IPC_QUICK, move || lib_get_track_blocking(&lib, id)).await
+}
+
+fn lib_get_track_blocking(lib: &Library, id: u64) -> Result<Option<Track>, String> {
     let track = lib.handle.track(id).map_err(err)?;
     Ok(track.map(|mut t| {
         if let Some(rel) = &t.album_cover_path {
@@ -373,8 +572,13 @@ fn lib_get_track(lib: State<Library>, id: u64) -> Result<Option<Track>, String> 
 }
 
 #[tauri::command]
-fn lib_find_similar(
-    lib: State<Library>,
+async fn lib_find_similar(lib: State<'_, Library>, track_id: String, limit: Option<usize>) -> Result<Vec<SimilarTrack>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_find_similar", IPC_SCAN, move || lib_find_similar_blocking(&lib, track_id, limit)).await
+}
+
+fn lib_find_similar_blocking(
+    lib: &Library,
     track_id: String,
     limit: Option<usize>,
 ) -> Result<Vec<SimilarTrack>, String> {
@@ -396,8 +600,13 @@ struct SimilarTrack {
 }
 
 #[tauri::command]
-fn lib_shuffle(
-    lib: State<Library>,
+async fn lib_shuffle(lib: State<'_, Library>, genre: Option<String>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_shuffle", IPC_SCAN, move || lib_shuffle_blocking(&lib, genre, limit)).await
+}
+
+fn lib_shuffle_blocking(
+    lib: &Library,
     genre: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
@@ -502,13 +711,29 @@ fn rerank_by_seed_vibe(lib: &Library, seed_id: u64, candidates: Vec<Track>) -> V
         .collect()
 }
 
+/// Decisoes do CEO sobre o radio (B9) para o contexto: autoplay (`None`) ou
+/// a station dada. Falha do Qdrant degrada para "sem recusas" (o radio
+/// segue como antes), nunca para "tudo recusado".
+fn radio_gate(lib: &Library, station: Option<&str>) -> RadioGate {
+    match lib.handle.client().radio_states() {
+        Ok(states) => RadioGate::new(states, station),
+        Err(e) => {
+            tracing::warn!(error = %e, "radio: estados de recusa indisponiveis — seguindo sem eles");
+            RadioGate::default()
+        }
+    }
+}
+
 /// Ids, entre `ids`, que o filtro de nunca-termina tira das candidatas
 /// (`familiarity::never_ends`: pulada cedo 3+ vezes quando o motor a serviu,
 /// nunca ouvida ate o fim, sem like). Busca likes SO dos suspeitos (batch
 /// pequeno, e so quando ha suspeito). Indice ainda nao montado ou falha nos
 /// likes devolve vazio: o filtro degrada pra "nao filtra", nunca pra "tira
 /// faixa curtida".
-fn never_ending_ids(lib: &Library, ids: &[u64]) -> std::collections::HashSet<u64> {
+///
+/// `gate` (B9) desconta os pulos perdoados quando o CEO devolveu a faixa ao
+/// radio.
+fn never_ending_ids(lib: &Library, ids: &[u64], gate: &RadioGate) -> std::collections::HashSet<u64> {
     let client = lib.handle.client();
     let Some(fam) = client.familiarity() else {
         tracing::debug!("familiarity ainda nao montada — sem filtro de nunca-termina");
@@ -517,7 +742,7 @@ fn never_ending_ids(lib: &Library, ids: &[u64]) -> std::collections::HashSet<u64
     let suspects: Vec<u64> = ids
         .iter()
         .copied()
-        .filter(|id| familiarity::never_ends(fam.get(*id), false))
+        .filter(|id| gate.never_ends(*id, fam.get(*id), false))
         .collect();
     if suspects.is_empty() {
         return Default::default();
@@ -547,16 +772,19 @@ fn autoplay_mix(
     scored: Vec<(f64, Track)>,
     liked: Option<&std::collections::HashSet<u64>>,
     fam: Option<&familiarity::FamiliarityIndex>,
+    gate: &RadioGate,
     mix_slot: usize,
     lim: usize,
     seed: u64,
 ) -> Vec<Track> {
+    // Recusa do CEO (B9) sai antes de tudo, como o lixo: o filtro duro do
+    // recommend ja a tira, isto cobre o que chegar por outro caminho.
     let mut scored: Vec<(f64, Track)> = scored
         .into_iter()
-        .filter(|(_, t)| !rerank::is_junk_artist(t.artist_name.as_deref()))
+        .filter(|(_, t)| !rerank::is_junk_artist(t.artist_name.as_deref()) && !gate.is_refused(t.id))
         .collect();
     if let (Some(fam), Some(liked)) = (fam, liked) {
-        scored.retain(|(_, t)| !familiarity::never_ends(fam.get(t.id), liked.contains(&t.id)));
+        scored.retain(|(_, t)| !gate.never_ends(t.id, fam.get(t.id), liked.contains(&t.id)));
     }
     // cap_per_artist trabalha sobre Track; o score volta pelo id.
     let scores: HashMap<u64, f64> = scored.iter().map(|(s, t)| (t.id, *s)).collect();
@@ -641,23 +869,114 @@ fn autoplay_pick(f: familiarity::TrackFamiliarity, liked: bool) -> AutoplayPick 
     }
 }
 
+/// Motivo curto e estruturado da escolha do radio (B10), para a fila e o Now
+/// Playing dizerem por que a faixa veio. Vem em TODA faixa de
+/// `lib_autoplay_next`, nas tres camadas; `autoplay_pick` fica como estava
+/// (o chip da barra le ele). O S24 nao manda: no frontend e opcional.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct AutoplayReason {
+    /// "known" (conhecida: 3+ fins ou curtida), "discovery" (descoberta),
+    /// "similar" (parecida com a semente, sem o indice de familiaridade ou
+    /// pela camada 2) ou "shuffle" (camada 3, sorteio do acervo).
+    kind: &'static str,
+    /// Vezes ouvida ate o fim; `None` sem o indice de familiaridade.
+    ended: Option<u32>,
+    /// Curtida; `None` quando o motor nao consultou (camadas 2 e 3, ou o
+    /// batch de enrichments falhou).
+    liked: Option<bool>,
+    /// Camada 1: de onde a candidata veio. "seed" = vizinhanca da semente,
+    /// "taste" = gosto geral, "both" = as duas. `None` nas camadas 2 e 3.
+    pool: Option<&'static str>,
+    /// A faixa que semeou o pedido (texto: u64 passa de 2^53).
+    seed_id: String,
+}
+
+/// Camada do autoplay que produziu a faixa.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AutoplayLayer {
+    Mix,
+    Similar,
+    Shuffle,
+}
+
+fn autoplay_reason(
+    layer: AutoplayLayer,
+    fam: Option<familiarity::TrackFamiliarity>,
+    liked: Option<bool>,
+    pool: Option<&'static str>,
+    seed_id: u64,
+) -> AutoplayReason {
+    let kind = match (layer, fam) {
+        (AutoplayLayer::Shuffle, _) => "shuffle",
+        (AutoplayLayer::Mix, Some(f)) => {
+            if familiarity::is_known(f, liked.unwrap_or(false)) {
+                "known"
+            } else {
+                "discovery"
+            }
+        }
+        _ => "similar",
+    };
+    AutoplayReason {
+        kind,
+        ended: fam.map(|f| f.ended),
+        liked,
+        pool: if layer == AutoplayLayer::Mix { pool } else { None },
+        seed_id: seed_id.to_string(),
+    }
+}
+
+/// De qual pool da camada 1 a faixa veio.
+fn pool_of(
+    id: u64,
+    seed_pool: &std::collections::HashSet<u64>,
+    taste_pool: &std::collections::HashSet<u64>,
+) -> Option<&'static str> {
+    match (seed_pool.contains(&id), taste_pool.contains(&id)) {
+        (true, true) => Some("both"),
+        (true, false) => Some("seed"),
+        (false, true) => Some("taste"),
+        (false, false) => None,
+    }
+}
+
 /// Track + o motivo da escolha. `flatten` mantem o JSON de `Track` intacto:
-/// quem nao le `autoplay_pick` nao percebe a diferenca.
+/// quem nao le `autoplay_pick`/`autoplay_reason` nao percebe a diferenca.
 #[derive(Serialize)]
 struct AutoplayTrack {
     #[serde(flatten)]
     track: Track,
     #[serde(skip_serializing_if = "Option::is_none")]
     autoplay_pick: Option<AutoplayPick>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    autoplay_reason: Option<AutoplayReason>,
 }
 
-fn unpicked(tracks: Vec<Track>) -> Vec<AutoplayTrack> {
-    tracks.into_iter().map(|track| AutoplayTrack { track, autoplay_pick: None }).collect()
+/// Faixas das camadas 2 e 3: sem `autoplay_pick` (o chip segue "radio"
+/// puro), com o motivo da camada.
+fn fallback_picks(
+    tracks: Vec<Track>,
+    layer: AutoplayLayer,
+    fam: Option<&familiarity::FamiliarityIndex>,
+    seed_id: u64,
+) -> Vec<AutoplayTrack> {
+    tracks
+        .into_iter()
+        .map(|track| {
+            let reason = autoplay_reason(layer, fam.map(|f| f.get(track.id)), None, None, seed_id);
+            AutoplayTrack { track, autoplay_pick: None, autoplay_reason: Some(reason) }
+        })
+        .collect()
 }
 
 #[tauri::command]
-fn lib_autoplay_next(
-    lib: State<Library>,
+async fn lib_autoplay_next(lib: State<'_, Library>, track_id: String, exclude_ids: Vec<String>, session_negative_ids: Option<Vec<String>>, limit: Option<usize>, mix_slot: Option<usize>) -> Result<Vec<AutoplayTrack>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_autoplay_next", IPC_SCAN, move || lib_autoplay_next_blocking(&lib, track_id, exclude_ids, session_negative_ids, limit, mix_slot)).await
+}
+
+fn lib_autoplay_next_blocking(
+    lib: &Library,
     track_id: String,
     exclude_ids: Vec<String>,
     session_negative_ids: Option<Vec<String>>,
@@ -668,7 +987,11 @@ fn lib_autoplay_next(
     // Posicao da proxima faixa no ciclo K, K, D da rodada de radio
     // (radioSession.mixSlot no frontend). Ausente = inicio do ciclo.
     let mix_slot = mix_slot.unwrap_or(0);
-    let exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
+    let mut exclude_ids: Vec<u64> = exclude_ids.iter().filter_map(|s| s.parse().ok()).collect();
+    // "Nunca no rádio" (B9) entra como filtro duro nas tres camadas, junto do
+    // exclude da rodada; "fora desta station" nao vale no autoplay.
+    let gate = radio_gate(lib, None);
+    exclude_ids.extend(gate.refused_ids());
     // Skips cedos da rodada de rádio (radioSession do frontend) — paridade
     // com lib_station_next: penalizam a vizinhança do rejeitado no
     // recommend, fundidos com os negativos globais de behavioral_signals.
@@ -758,6 +1081,8 @@ fn lib_autoplay_next(
                         out
                     };
                     let pools = vec![resolve(&seed_pool), resolve(&taste_pool)];
+                    let seed_ids: std::collections::HashSet<u64> = seed_pool.iter().map(|(id, _)| *id).collect();
+                    let taste_ids: std::collections::HashSet<u64> = taste_pool.iter().map(|(id, _)| *id).collect();
 
                     // Re-rank da uniao pela vibe do seed, depois familiaridade
                     // (filtro de nunca-termina + mistura 2:1) e cap de 2 por
@@ -780,6 +1105,7 @@ fn lib_autoplay_next(
                         out.scored,
                         out.liked.as_ref(),
                         fam.as_deref(),
+                        &gate,
                         mix_slot,
                         lim,
                         seed,
@@ -794,11 +1120,17 @@ fn lib_autoplay_next(
                         let picked = ranked
                             .into_iter()
                             .map(|track| {
-                                let autoplay_pick = fam.as_deref().map(|fam| {
-                                    let liked = out.liked.as_ref().is_some_and(|l| l.contains(&track.id));
-                                    autoplay_pick(fam.get(track.id), liked)
-                                });
-                                AutoplayTrack { track, autoplay_pick }
+                                let liked = out.liked.as_ref().map(|l| l.contains(&track.id));
+                                let f = fam.as_deref().map(|fam| fam.get(track.id));
+                                let autoplay_pick = f.map(|f| autoplay_pick(f, liked.unwrap_or(false)));
+                                let reason = autoplay_reason(
+                                    AutoplayLayer::Mix,
+                                    f,
+                                    liked,
+                                    pool_of(track.id, &seed_ids, &taste_ids),
+                                    track_id,
+                                );
+                                AutoplayTrack { track, autoplay_pick, autoplay_reason: Some(reason) }
                             })
                             .collect();
                         return Ok(picked);
@@ -829,7 +1161,7 @@ fn lib_autoplay_next(
                 tracks.push(t);
             }
         }
-        let never = never_ending_ids(&lib, &tracks.iter().map(|t| t.id).collect::<Vec<_>>());
+        let never = never_ending_ids(&lib, &tracks.iter().map(|t| t.id).collect::<Vec<_>>(), &gate);
         let mut tracks = filter_fallback_candidates(tracks, &never, lim);
         for t in &mut tracks {
             if let Some(rel) = &t.album_cover_path {
@@ -837,7 +1169,8 @@ fn lib_autoplay_next(
             }
         }
         if !tracks.is_empty() {
-            return Ok(unpicked(tracks));
+            let fam = client.familiarity();
+            return Ok(fallback_picks(tracks, AutoplayLayer::Similar, fam.as_deref(), track_id));
         }
     }
 
@@ -858,7 +1191,8 @@ fn lib_autoplay_next(
         }
     }
 
-    Ok(unpicked(tracks))
+    let fam = client.familiarity();
+    Ok(fallback_picks(tracks, AutoplayLayer::Shuffle, fam.as_deref(), track_id))
 }
 
 #[tauri::command]
@@ -871,7 +1205,12 @@ fn lib_snapshot(lib: State<Library>) -> library_indexer::IndexerSnapshot {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_list_folders(lib: State<Library>) -> Result<Vec<library_indexer::FolderPlaylist>, String> {
+async fn lib_list_folders(lib: State<'_, Library>) -> Result<Vec<library_indexer::FolderPlaylist>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_folders", IPC_SCAN, move || lib_list_folders_blocking(&lib)).await
+}
+
+fn lib_list_folders_blocking(lib: &Library) -> Result<Vec<library_indexer::FolderPlaylist>, String> {
     let root = lib.music_root.to_string_lossy();
     let mut folders = lib.handle.list_folders(&root).map_err(err)?;
     // cover_path / cover_paths sao relativos ao cache_dir — converter pra absolute
@@ -888,7 +1227,12 @@ fn lib_list_folders(lib: State<Library>) -> Result<Vec<library_indexer::FolderPl
 }
 
 #[tauri::command]
-fn lib_list_folder_tracks(lib: State<Library>, folder: String) -> Result<Vec<Track>, String> {
+async fn lib_list_folder_tracks(lib: State<'_, Library>, folder: String) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_folder_tracks", IPC_SCAN, move || lib_list_folder_tracks_blocking(&lib, folder)).await
+}
+
+fn lib_list_folder_tracks_blocking(lib: &Library, folder: String) -> Result<Vec<Track>, String> {
     let root = lib.music_root.to_string_lossy();
     let mut tracks = lib.handle.list_folder_tracks(&root, &folder).map_err(err)?;
     for track in &mut tracks {
@@ -904,8 +1248,13 @@ fn lib_list_folder_tracks(lib: State<Library>, folder: String) -> Result<Vec<Tra
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_search_playlists(
-    lib: State<Library>,
+async fn lib_search_playlists(lib: State<'_, Library>, query: String, limit: Option<usize>) -> Result<Vec<PlaylistSearchResult>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_search_playlists", IPC_SCAN, move || lib_search_playlists_blocking(&lib, query, limit)).await
+}
+
+fn lib_search_playlists_blocking(
+    lib: &Library,
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<PlaylistSearchResult>, String> {
@@ -1092,7 +1441,12 @@ fn forward_indexer_events(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_get_lyrics(lib: State<Library>, track_id: String) -> Result<Vec<LyricLine>, String> {
+async fn lib_get_lyrics(lib: State<'_, Library>, track_id: String) -> Result<Vec<LyricLine>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_get_lyrics", IPC_QUICK, move || lib_get_lyrics_blocking(&lib, track_id)).await
+}
+
+fn lib_get_lyrics_blocking(lib: &Library, track_id: String) -> Result<Vec<LyricLine>, String> {
     lib.handle.get_lyrics(parse_id(&track_id)?).map_err(err)
 }
 
@@ -1101,12 +1455,22 @@ fn lib_get_lyrics(lib: State<Library>, track_id: String) -> Result<Vec<LyricLine
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_record_play(lib: State<Library>, track_id: String) -> Result<(), String> {
+async fn lib_record_play(lib: State<'_, Library>, track_id: String) -> Result<(), String> {
+    let lib = lib.inner().clone();
+    off_main("lib_record_play", IPC_SCAN, move || lib_record_play_blocking(&lib, track_id)).await
+}
+
+fn lib_record_play_blocking(lib: &Library, track_id: String) -> Result<(), String> {
     lib.handle.record_play(parse_id(&track_id)?).map_err(err)
 }
 
 #[tauri::command]
-fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+async fn lib_list_history(lib: State<'_, Library>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_history", IPC_SCAN, move || lib_list_history_blocking(&lib, limit)).await
+}
+
+fn lib_list_history_blocking(lib: &Library, limit: Option<usize>) -> Result<Vec<Track>, String> {
     let mut tracks = lib.handle.list_history(limit.unwrap_or(50)).map_err(err)?;
     for track in &mut tracks {
         if let Some(rel) = &track.album_cover_path {
@@ -1121,12 +1485,22 @@ fn lib_list_history(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Tra
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_toggle_like(lib: State<Library>, track_id: String) -> Result<bool, String> {
+async fn lib_toggle_like(lib: State<'_, Library>, track_id: String) -> Result<bool, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_toggle_like", IPC_SCAN, move || lib_toggle_like_blocking(&lib, track_id)).await
+}
+
+fn lib_toggle_like_blocking(lib: &Library, track_id: String) -> Result<bool, String> {
     lib.handle.toggle_like(parse_id(&track_id)?).map_err(err)
 }
 
 #[tauri::command]
-fn lib_list_liked(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+async fn lib_list_liked(lib: State<'_, Library>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_list_liked", IPC_SCAN, move || lib_list_liked_blocking(&lib, limit)).await
+}
+
+fn lib_list_liked_blocking(lib: &Library, limit: Option<usize>) -> Result<Vec<Track>, String> {
     let mut tracks = lib.handle.list_liked(limit.unwrap_or(200)).map_err(err)?;
     for t in &mut tracks {
         if let Some(rel) = &t.album_cover_path {
@@ -1137,7 +1511,12 @@ fn lib_list_liked(lib: State<Library>, limit: Option<usize>) -> Result<Vec<Track
 }
 
 #[tauri::command]
-fn lib_is_liked(lib: State<Library>, track_id: String) -> Result<bool, String> {
+async fn lib_is_liked(lib: State<'_, Library>, track_id: String) -> Result<bool, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_is_liked", IPC_QUICK, move || lib_is_liked_blocking(&lib, track_id)).await
+}
+
+fn lib_is_liked_blocking(lib: &Library, track_id: String) -> Result<bool, String> {
     lib.handle.is_liked(parse_id(&track_id)?).map_err(err)
 }
 
@@ -1146,8 +1525,13 @@ fn lib_is_liked(lib: State<Library>, track_id: String) -> Result<bool, String> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn lib_recommendations(
-    lib: State<Library>,
+async fn lib_recommendations(lib: State<'_, Library>) -> Result<library_indexer::Recommendations, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_recommendations", IPC_SCAN, move || lib_recommendations_blocking(&lib)).await
+}
+
+fn lib_recommendations_blocking(
+    lib: &Library,
 ) -> Result<library_indexer::Recommendations, String> {
     let mut recs = lib.handle.recommendations().map_err(err)?;
     // Resolve cover paths to absolute
@@ -1937,7 +2321,12 @@ fn list_shapes() -> Result<Vec<String>, String> {
 /// ou menos, 255 = 0 dBFS, RMS mono por balde de tempo igual). `None` enquanto
 /// o backfill não calculou (ou se o cálculo falhou nesta faixa).
 #[tauri::command]
-fn lib_track_profile(lib: State<Library>, track_id: String) -> Result<Option<Vec<u8>>, String> {
+async fn lib_track_profile(lib: State<'_, Library>, track_id: String) -> Result<Option<Vec<u8>>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_track_profile", IPC_QUICK, move || lib_track_profile_blocking(&lib, track_id)).await
+}
+
+fn lib_track_profile_blocking(lib: &Library, track_id: String) -> Result<Option<Vec<u8>>, String> {
     let tid = parse_id(&track_id)?;
     lib.handle.client().get_wave_profile(tid).map_err(err)
 }
@@ -1958,8 +2347,13 @@ fn familiarity_dto(f: familiarity::TrackFamiliarity, liked: bool) -> TrackFamili
 /// remontagem após invalidação): o cache nunca faz I/O nem espera lock. O like
 /// vem de uma consulta pontual de 1 id em `track_enrichments`.
 #[tauri::command]
-fn lib_track_familiarity(
-    lib: State<Library>,
+async fn lib_track_familiarity(lib: State<'_, Library>, track_id: String) -> Result<Option<TrackFamiliarityDto>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_track_familiarity", IPC_QUICK, move || lib_track_familiarity_blocking(&lib, track_id)).await
+}
+
+fn lib_track_familiarity_blocking(
+    lib: &Library,
     track_id: String,
 ) -> Result<Option<TrackFamiliarityDto>, String> {
     let tid = parse_id(&track_id)?;
@@ -1971,8 +2365,363 @@ fn lib_track_familiarity(
     Ok(Some(familiarity_dto(fam.get(tid), liked)))
 }
 
+// ---------------------------------------------------------------------------
+// B11: escuta viva e qualidade medida onde se navega (álbum, artista)
+// ---------------------------------------------------------------------------
+
+/// Escuta viva de uma faixa: `play_events` via cache de familiaridade, nunca
+/// os campos fósseis `play_count`/`last_played` de `rustify_tracks`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct TrackListenStats {
+    track_id: String,
+    /// Vezes ouvida até o fim (qualquer origem).
+    full_listens: u32,
+    /// Escutas registradas (fim + pulo, qualquer origem).
+    plays: u32,
+    last_played_at: Option<i64>,
+    last_ended_at: Option<i64>,
+}
+
+/// Qualidade medida no conteúdo (corte espectral), contada por classe.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+struct QualitySummary {
+    /// Conferidas sem corte.
+    sem_corte: u32,
+    /// Corte entre 19,5 e 20,6 kHz (provável MP3 320/AAC alto).
+    provavel_lossy: u32,
+    /// Corte abaixo de 19,5 kHz.
+    lossy: u32,
+    /// Hi-res com corte de CD (upsample).
+    hires_de_cd: u32,
+    /// Sem medida (ainda não medida ou medição indeterminada).
+    unmeasured: u32,
+    /// Menor corte entre as com corte de lossy (Hz), para "corte em 16,1 kHz".
+    lowest_cutoff_hz: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ListenStats {
+    /// `false` = índice do motor ainda montando: os contadores de escuta vêm
+    /// zerados (a qualidade vale).
+    familiarity_ready: bool,
+    tracks: u32,
+    /// Faixas ouvidas até o fim pelo menos uma vez.
+    listened_tracks: u32,
+    full_listens: u32,
+    plays: u32,
+    last_played_at: Option<i64>,
+    last_ended_at: Option<i64>,
+    quality: QualitySummary,
+    /// Na ordem de `lib_list_tracks` (disco, faixa).
+    per_track: Vec<TrackListenStats>,
+}
+
+fn listen_stats_of(tracks: &[Track], fam: Option<&familiarity::FamiliarityIndex>) -> ListenStats {
+    use library_indexer::spectral::QualityClass;
+    let mut q = QualitySummary::default();
+    let mut per_track = Vec::with_capacity(tracks.len());
+    for t in tracks {
+        match t.quality_class {
+            Some(QualityClass::SemCorte) => q.sem_corte += 1,
+            Some(QualityClass::ProvavelLossy) => q.provavel_lossy += 1,
+            Some(QualityClass::Lossy) => q.lossy += 1,
+            Some(QualityClass::HiresDeCd) => q.hires_de_cd += 1,
+            None => q.unmeasured += 1,
+        }
+        if matches!(t.quality_class, Some(QualityClass::ProvavelLossy | QualityClass::Lossy)) {
+            if let Some(hz) = t.quality_cutoff_hz {
+                q.lowest_cutoff_hz = Some(q.lowest_cutoff_hz.map_or(hz, |cur| cur.min(hz)));
+            }
+        }
+        let (f, l) = fam
+            .map(|fam| (fam.get(t.id), fam.listens(t.id)))
+            .unwrap_or_default();
+        per_track.push(TrackListenStats {
+            track_id: t.id.to_string(),
+            full_listens: f.ended,
+            plays: l.plays,
+            last_played_at: l.last_played_at,
+            last_ended_at: l.last_ended_at,
+        });
+    }
+    ListenStats {
+        familiarity_ready: fam.is_some(),
+        tracks: tracks.len() as u32,
+        listened_tracks: per_track.iter().filter(|p| p.full_listens > 0).count() as u32,
+        full_listens: per_track.iter().map(|p| p.full_listens).sum(),
+        plays: per_track.iter().map(|p| p.plays).sum(),
+        last_played_at: per_track.iter().filter_map(|p| p.last_played_at).max(),
+        last_ended_at: per_track.iter().filter_map(|p| p.last_ended_at).max(),
+        quality: q,
+        per_track,
+    }
+}
+
+/// Escuta viva e qualidade medida de um álbum (`artist` + `album`; só
+/// `album` mistura álbuns homônimos de artistas diferentes) ou de um artista
+/// (só `artist`). Um dos dois é obrigatório.
 #[tauri::command]
-fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, String> {
+async fn lib_listen_stats(
+    lib: State<'_, Library>,
+    artist: Option<String>,
+    album: Option<String>,
+) -> Result<ListenStats, String> {
+    if artist.is_none() && album.is_none() {
+        return Err("lib_listen_stats: informe artist e/ou album".into());
+    }
+    let lib = lib.inner().clone();
+    off_main("lib_listen_stats", IPC_SCAN, move || {
+        let tracks = lib
+            .handle
+            .list_tracks(TrackFilter { artist, album, ..Default::default() })
+            .map_err(err)?;
+        let fam = lib.handle.client().familiarity();
+        Ok(listen_stats_of(&tracks, fam.as_deref()))
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// B14: quando o S24 (ou outro dispositivo) sincronizou
+// ---------------------------------------------------------------------------
+
+struct SyncStatusState(Arc<sync_receiver::SyncStatus>);
+
+/// Último lote aceito pelo receptor do sync, por dispositivo, o mais recente
+/// primeiro. Vazio se nenhum aparelho sincronizou desde que o arquivo existe
+/// (ou o receptor não subiu: sem IP da tailnet). Só memória: não espera nada.
+#[tauri::command]
+fn lib_sync_status(status: State<SyncStatusState>) -> Vec<sync_receiver::DeviceSync> {
+    status.0.snapshot()
+}
+
+// ---------------------------------------------------------------------------
+// B9: "Fora do rádio" e recusa com escopo
+// ---------------------------------------------------------------------------
+
+/// Por que a faixa está fora do rádio, em números. Uma faixa pode estar fora
+/// por mais de um motivo (o motor tirou E o CEO recusou).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct RadioExclusion {
+    /// O motor tirou (nunca-termina, já descontado o perdão da devolução).
+    never_ends: bool,
+    /// Vezes que autoplay/station a serviram (todo o histórico).
+    motor_attempts: u32,
+    /// Pulos cedo que contam hoje (depois da última devolução).
+    early_skips: u32,
+    /// Pulos cedo em todo o histórico.
+    early_skips_total: u32,
+    /// Vezes ouvida até o fim.
+    ended: u32,
+    /// "Nunca no rádio" desde (unix s).
+    never_at: Option<i64>,
+    /// Ids das stations de onde o CEO a tirou.
+    off_stations: Vec<String>,
+    /// Última devolução ao rádio (unix s).
+    released_at: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct RadioExcludedTrack {
+    #[serde(flatten)]
+    track: Track,
+    radio: RadioExclusion,
+}
+
+#[derive(Serialize)]
+struct RadioExcludedList {
+    /// `false` = índice de familiaridade ainda montando: a lista traz só as
+    /// recusas do CEO, não o que o motor tirou.
+    familiarity_ready: bool,
+    tracks: Vec<RadioExcludedTrack>,
+}
+
+/// Seleção pura da lista: o que o motor tirou (`never_ends` com perdão, sem
+/// like) mais o que o CEO recusou. Ordem: recusa mais recente primeiro, depois
+/// o que o motor tirou com mais pulos cedo.
+fn radio_excluded_rows(
+    fam: Option<&familiarity::FamiliarityIndex>,
+    gate: &RadioGate,
+    liked: &std::collections::HashSet<u64>,
+) -> Vec<(u64, RadioExclusion)> {
+    let mut ids: std::collections::BTreeSet<u64> = gate
+        .states()
+        .iter()
+        .filter(|(_, s)| s.never_at.is_some() || !s.off_stations.is_empty())
+        .map(|(id, _)| *id)
+        .collect();
+    if let Some(fam) = fam {
+        ids.extend(
+            fam.iter()
+                .filter(|(id, f)| gate.never_ends(*id, *f, liked.contains(id)))
+                .map(|(id, _)| id),
+        );
+    }
+    let mut rows: Vec<(u64, RadioExclusion)> = ids
+        .into_iter()
+        .map(|id| {
+            let f = fam.map(|fam| fam.get(id)).unwrap_or_default();
+            let st = gate.state(id).cloned().unwrap_or_default();
+            let ex = RadioExclusion {
+                never_ends: fam.is_some() && gate.never_ends(id, f, liked.contains(&id)),
+                motor_attempts: f.motor_attempts,
+                early_skips: f.early_skips.saturating_sub(st.release_skips),
+                early_skips_total: f.early_skips,
+                ended: f.ended,
+                never_at: st.never_at,
+                off_stations: st.off_stations,
+                released_at: st.released_at,
+            };
+            (id, ex)
+        })
+        .collect();
+    rows.sort_by(|(a_id, a), (b_id, b)| {
+        b.never_at
+            .cmp(&a.never_at)
+            .then(b.early_skips.cmp(&a.early_skips))
+            .then(a_id.cmp(b_id))
+    });
+    rows
+}
+
+/// Lista "Fora do rádio" (B9): faixas que o motor tirou do autoplay e das
+/// stations (nunca-termina) e as que o CEO recusou, com o motivo em números.
+#[tauri::command]
+async fn lib_radio_excluded(lib: State<'_, Library>) -> Result<RadioExcludedList, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_radio_excluded", IPC_SCAN, move || {
+        let client = lib.handle.client();
+        let gate = RadioGate::new(client.radio_states().map_err(err)?, None);
+        let fam = client.familiarity();
+        // Likes só dos suspeitos do motor (mesmo desenho do never_ending_ids).
+        let suspects: Vec<u64> = fam
+            .as_deref()
+            .map(|f| f.iter().filter(|(id, f)| gate.never_ends(*id, *f, false)).map(|(id, _)| id).collect())
+            .unwrap_or_default();
+        let liked = client.liked_among(&suspects).map_err(err)?;
+        let rows = radio_excluded_rows(fam.as_deref(), &gate, &liked);
+        let mut tracks = Vec::with_capacity(rows.len());
+        for (id, radio) in rows {
+            // Faixa que saiu do acervo não aparece (o estado fica, inofensivo).
+            if let Ok(Some(mut t)) = lib.handle.track(id) {
+                if let Some(rel) = &t.album_cover_path {
+                    t.album_cover_path = Some(lib.cache_dir.join(rel));
+                }
+                tracks.push(RadioExcludedTrack { track: t, radio });
+            }
+        }
+        Ok(RadioExcludedList { familiarity_ready: fam.is_some(), tracks })
+    })
+    .await
+}
+
+/// Resultado de uma mudança no estado do rádio: o antes serve ao "desfazer"
+/// (`lib_radio_restore` com `before`).
+#[derive(Debug, Serialize)]
+struct RadioChange {
+    track_id: String,
+    before: RadioState,
+    after: RadioState,
+}
+
+fn parse_refusal(scope: &str, station_id: Option<String>) -> Result<radio_refusal::Refusal, String> {
+    match (scope, station_id) {
+        ("never", _) => Ok(radio_refusal::Refusal::Never),
+        ("station", Some(id)) if !id.is_empty() => Ok(radio_refusal::Refusal::Station(id)),
+        ("station", _) => Err("recusa de station sem station_id".into()),
+        (other, _) => Err(format!("escopo de recusa desconhecido: {other}")),
+    }
+}
+
+fn parse_return(scope: Option<&str>, station_id: Option<String>) -> Result<radio_refusal::Return, String> {
+    match (scope, station_id) {
+        (None | Some("all"), _) => Ok(radio_refusal::Return::All),
+        (Some("never"), _) => Ok(radio_refusal::Return::Never),
+        (Some("motor"), _) => Ok(radio_refusal::Return::Motor),
+        (Some("station"), Some(id)) if !id.is_empty() => Ok(radio_refusal::Return::Station(id)),
+        (Some("station"), _) => Err("devolução de station sem station_id".into()),
+        (Some(other), _) => Err(format!("escopo de devolução desconhecido: {other}")),
+    }
+}
+
+/// Lê o estado, aplica `change` e grava; devolve antes e depois.
+fn change_radio_state(
+    lib: &Library,
+    track_id: &str,
+    change: impl FnOnce(&RadioState, familiarity::TrackFamiliarity) -> RadioState,
+) -> Result<RadioChange, String> {
+    let tid = parse_id(track_id)?;
+    let client = lib.handle.client();
+    let before = client.radio_state(tid).map_err(err)?;
+    let f = client.familiarity().map(|fam| fam.get(tid)).unwrap_or_default();
+    let after = change(&before, f);
+    if after != before {
+        client.set_radio_state(tid, &after).map_err(err)?;
+    }
+    Ok(RadioChange { track_id: tid.to_string(), before, after })
+}
+
+/// Recusa com escopo (B9): `scope` = "never" (nunca no rádio: autoplay e
+/// todas as stations) ou "station" (só a station `station_id`).
+#[tauri::command]
+async fn lib_radio_refuse(
+    lib: State<'_, Library>,
+    track_id: String,
+    scope: String,
+    station_id: Option<String>,
+) -> Result<RadioChange, String> {
+    let refusal = parse_refusal(&scope, station_id)?;
+    let lib = lib.inner().clone();
+    off_main("lib_radio_refuse", IPC_SCAN, move || {
+        change_radio_state(&lib, &track_id, |s, _| radio_refusal::refuse(s, &refusal, unix_now()))
+    })
+    .await
+}
+
+/// Devolve ao rádio (B9). `scope` ausente ou "all" = devolve tudo (tira as
+/// recusas e perdoa os pulos cedo do nunca-termina; volta a sair se for
+/// pulada cedo mais 3 vezes); "never", "station" (com `station_id`) ou
+/// "motor" = só aquela parte (desfazer de uma recusa).
+#[tauri::command]
+async fn lib_radio_return(
+    lib: State<'_, Library>,
+    track_id: String,
+    scope: Option<String>,
+    station_id: Option<String>,
+) -> Result<RadioChange, String> {
+    let ret = parse_return(scope.as_deref(), station_id)?;
+    let lib = lib.inner().clone();
+    off_main("lib_radio_return", IPC_SCAN, move || {
+        // A familiaridade ainda montando daria early_skips 0 e o perdão não
+        // perdoaria nada: recusa em vez de gravar um perdão vazio.
+        if matches!(ret, radio_refusal::Return::All | radio_refusal::Return::Motor)
+            && lib.handle.client().familiarity().is_none()
+        {
+            return Err("familiaridade ainda montando; tente de novo em instantes".into());
+        }
+        change_radio_state(&lib, &track_id, |s, f| radio_refusal::give_back(s, &ret, f.early_skips, unix_now()))
+    })
+    .await
+}
+
+/// Grava o estado dado (o `before` de uma mudança): é o "desfazer".
+#[tauri::command]
+async fn lib_radio_restore(
+    lib: State<'_, Library>,
+    track_id: String,
+    state: RadioState,
+) -> Result<RadioChange, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_radio_restore", IPC_SCAN, move || change_radio_state(&lib, &track_id, |_, _| state)).await
+}
+
+#[tauri::command]
+async fn get_track_color(lib: State<'_, Library>, track_id: String) -> Result<String, String> {
+    let lib = lib.inner().clone();
+    off_main("get_track_color", IPC_QUICK, move || get_track_color_blocking(&lib, track_id)).await
+}
+
+fn get_track_color_blocking(lib: &Library, track_id: String) -> Result<String, String> {
     let tid = parse_id(&track_id)?;
     let client = lib.handle.client();
 
@@ -2008,7 +2757,12 @@ fn get_track_color(lib: State<Library>, track_id: String) -> Result<String, Stri
 /// Escreve o v3 junto (mesma matemática do item 0) pra manter o
 /// `get_track_color` legado consistente.
 #[tauri::command]
-fn get_track_palette(lib: State<Library>, track_id: String) -> Result<Vec<String>, String> {
+async fn get_track_palette(lib: State<'_, Library>, track_id: String) -> Result<Vec<String>, String> {
+    let lib = lib.inner().clone();
+    off_main("get_track_palette", IPC_QUICK, move || get_track_palette_blocking(&lib, track_id)).await
+}
+
+fn get_track_palette_blocking(lib: &Library, track_id: String) -> Result<Vec<String>, String> {
     let tid = parse_id(&track_id)?;
     let client = lib.handle.client();
 
@@ -2052,7 +2806,12 @@ fn get_track_palette(lib: State<Library>, track_id: String) -> Result<Vec<String
 // qdrant_sync removed — pipeline writes directly to Qdrant during scan.
 
 #[tauri::command]
-fn log_event(lib: State<Library>, payload: serde_json::Value) -> Result<(), String> {
+async fn log_event(lib: State<'_, Library>, payload: serde_json::Value) -> Result<(), String> {
+    let lib = lib.inner().clone();
+    off_main("log_event", IPC_SCAN, move || log_event_blocking(&lib, payload)).await
+}
+
+fn log_event_blocking(lib: &Library, payload: serde_json::Value) -> Result<(), String> {
     let event_type = payload
         .get("event_type")
         .and_then(|v| v.as_str())
@@ -2081,16 +2840,21 @@ fn player_play(
     context_id: Option<String>,
 ) -> Result<(), String> {
     let tid = track_id.as_deref().and_then(|s| s.parse::<u64>().ok());
-    if let Ok(mut s) = snapshot.0.lock() {
-        // If a track was already playing, this call is a skip — log it before
-        // overwriting the snapshot. flush_play_event clears the pending fields
-        // on success, so the assignments below always operate on a fresh slot.
-        flush_play_event(&mut s, &library.handle, "track_skipped");
+    let skipped = snapshot.0.lock().ok().and_then(|mut s| {
+        // If a track was already playing, this call is a skip — take it out
+        // of the snapshot before overwriting it. The write itself happens
+        // off this thread (A40: this is the window's thread, and the Qdrant
+        // write can take up to the client's 30 s read timeout).
+        let skipped = take_pending_play(&mut s, None);
         s.current_origin = origin.or_else(|| Some("manual".to_string()));
         s.current_track_id = tid;
         s.current_context_id = context_id;
         s.started_at = None;
         s.last_position_ms = None;
+        skipped
+    });
+    if let Some(p) = skipped {
+        write_play_event_detached(&library.handle, p, "track_skipped");
     }
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
@@ -2139,8 +2903,9 @@ fn player_stop(
     snapshot: State<Snapshot>,
     library: State<Library>,
 ) -> Result<(), String> {
-    if let Ok(mut s) = snapshot.0.lock() {
-        flush_play_event(&mut s, &library.handle, "track_skipped");
+    let skipped = snapshot.0.lock().ok().and_then(|mut s| take_pending_play(&mut s, None));
+    if let Some(p) = skipped {
+        write_play_event_detached(&library.handle, p, "track_skipped");
     }
     let guard = player.0.lock().map_err(err)?;
     let handle = guard.as_ref().ok_or("engine not started")?;
@@ -2696,8 +3461,13 @@ fn persist_save_state(
 }
 
 #[tauri::command]
-fn lib_get_tracks_by_ids(
-    lib: State<Library>,
+async fn lib_get_tracks_by_ids(lib: State<'_, Library>, ids: Vec<String>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_get_tracks_by_ids", IPC_SCAN, move || lib_get_tracks_by_ids_blocking(&lib, ids)).await
+}
+
+fn lib_get_tracks_by_ids_blocking(
+    lib: &Library,
     ids: Vec<String>,
 ) -> Result<Vec<Track>, String> {
     let mut out = Vec::with_capacity(ids.len());
@@ -3282,8 +4052,10 @@ pub fn run() {
                         std::mem::swap(&mut *s, &mut owned);
                         owned
                     });
-                    if let Some(mut owned) = pending {
-                        flush_play_event(&mut owned, &lib.handle, "session_interrupted");
+                    // Síncrono de propósito: a janela está fechando e o
+                    // processo pode sair antes de uma thread solta gravar.
+                    if let Some(p) = pending.and_then(|mut owned| take_pending_play(&mut owned, None)) {
+                        write_play_event(&lib.handle, &p, "session_interrupted");
                     }
                 }
             }
@@ -3405,7 +4177,17 @@ pub fn run() {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
-            sync_receiver::start(library.handle.client().clone(), sync_token);
+            // B14: instante do último lote aceito por dispositivo, persistido
+            // e anunciado à tela como `sync-received`.
+            let sync_status = sync_receiver::SyncStatus::load(Some(data_dir.join("sync-status.json")));
+            {
+                let app = _app.handle().clone();
+                sync_status.set_on_update(move |d| {
+                    let _ = app.emit("sync-received", d);
+                });
+            }
+            sync_receiver::start(library.handle.client().clone(), sync_token, Arc::clone(&sync_status));
+            _app.manage(SyncStatusState(sync_status));
             _app.manage(library);
 
             // Crate — busca e download Soulseek in-app (spec docs/superpowers/
@@ -3736,30 +4518,41 @@ pub fn run() {
                 lufs_backfill_tx: &crossbeam_channel::Sender<u64>,
                 norm_target: &Arc<AtomicU32>,
             ) {
+                let mut engine_ids = EngineTrackIds::default();
                 while let Ok(event) = rx.recv() {
+                    // A faixa da biblioteca é resolvida FORA do lock do
+                    // snapshot (A40): o `player_play` da thread da janela
+                    // trava nesse lock, e a consulta ao Qdrant pode demorar.
+                    let started_track = match &event {
+                        StateUpdate::TrackStarted(info) => {
+                            match indexer.get_track_by_path(&info.path) {
+                                Ok(Some(mut t)) => {
+                                    if let Some(rel) = &t.album_cover_path {
+                                        t.album_cover_path = Some(cache_dir.join(rel));
+                                    }
+                                    engine_ids.note(info.handle, t.id);
+                                    Some(t)
+                                }
+                                Ok(None) => None,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        ?e,
+                                        path = %info.path.display(),
+                                        "failed to resolve library track"
+                                    );
+                                    None
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+                    let event_track_id = event_track_handle(&event).and_then(|h| engine_ids.get(h));
+                    let mut ended_play: Option<PendingPlay> = None;
                     if let Ok(mut s) = snap_writer.lock() {
                         match &event {
                             StateUpdate::TrackStarted(info) => {
                                 s.current_track = Some(info.clone());
-                                let lib_track =
-                                    match indexer.get_track_by_path(&info.path) {
-                                        Ok(Some(mut t)) => {
-                                            if let Some(rel) = &t.album_cover_path {
-                                                t.album_cover_path =
-                                                    Some(cache_dir.join(rel));
-                                            }
-                                            Some(t)
-                                        }
-                                        Ok(None) => None,
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                ?e,
-                                                path = %info.path.display(),
-                                                "failed to resolve library track"
-                                            );
-                                            None
-                                        }
-                                    };
+                                let lib_track = started_track;
 
                                 // Loudness normalization: compute the gain
                                 // offset for this track and push it to the
@@ -3842,17 +4635,35 @@ pub fn run() {
                                 let ms = (pos.samples_played as f64
                                     / pos.sample_rate as f64
                                     * 1000.0) as i64;
-                                s.last_position_ms = Some(ms);
+                                // Posição atrasada da faixa anterior (o
+                                // frontend já pediu a próxima) não entra na
+                                // escuta da nova.
+                                let same = match (event_track_id, s.current_track_id) {
+                                    (Some(ev), Some(cur)) => ev == cur,
+                                    _ => true,
+                                };
+                                if same {
+                                    s.last_position_ms = Some(ms);
+                                }
                             }
                             StateUpdate::TrackEnded(_) => {
-                                flush_play_event(&mut s, &indexer, "track_ended");
+                                ended_play = take_pending_play(&mut s, event_track_id);
                             }
                             StateUpdate::SpectrumData(_) => {}
                             _ => {}
                         }
                     }
                     if !matches!(&event, StateUpdate::SpectrumData(_)) {
-                        let _ = app_handle.emit("player-state", &event);
+                        let _ = app_handle.emit(
+                            "player-state",
+                            player_state_payload(&event, event_track_id),
+                        );
+                    }
+                    // Gravação depois do emit e fora do lock: o fim chega à
+                    // barra sem esperar o Qdrant, e o próximo evento do
+                    // engine (TrackStarted do gapless) também não espera.
+                    if let Some(p) = ended_play {
+                        write_play_event_detached(indexer, p, "track_ended");
                     }
 
                     while let Ok(mev) = media_cmd_rx.try_recv() {
@@ -3937,6 +4748,12 @@ pub fn run() {
             get_track_color,
             lib_track_profile,
             lib_track_familiarity,
+            lib_radio_excluded,
+            lib_listen_stats,
+            lib_sync_status,
+            lib_radio_refuse,
+            lib_radio_return,
+            lib_radio_restore,
             get_track_palette,
             log_event,
             fs_read_text,
@@ -4256,6 +5073,13 @@ fn generate_station_batch(
     seed_counts: &HashMap<String, usize>,
     limit: usize,
 ) -> Vec<Track> {
+    // Recusas do CEO (B9): "nunca no rádio" e "fora desta station" entram
+    // como filtro duro, junto do exclude da rodada. Devolução perdoa pulos
+    // cedo no nunca-termina (`gate` nos never_ending_ids abaixo).
+    let gate = radio_gate(lib, Some(&station.id));
+    let mut exclude_all: Vec<u64> = exclude_ids.to_vec();
+    exclude_all.extend(gate.refused_ids());
+    let exclude_ids: &[u64] = &exclude_all;
     tracing::debug!(
         station_id = %station.id,
         exclude_count = exclude_ids.len(),
@@ -4328,7 +5152,7 @@ fn generate_station_batch(
                             }
                         }
                         let never =
-                            never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>());
+                            never_ending_ids(lib, &cands.iter().map(|t| t.id).collect::<Vec<_>>(), &gate);
                         cands.retain(|t| !never.contains(&t.id));
                         cands
                     },
@@ -4385,7 +5209,7 @@ fn generate_station_batch(
                     Err(_) => return Vec::new(),
                 };
                 let exhausted = ids.len() < fetch;
-                let never = never_ending_ids(lib, &ids);
+                let never = never_ending_ids(lib, &ids, &gate);
                 tracks = mood_tracks(lib, &ids, &exclude_set, &never, filters.genre.as_deref(), limit);
                 if tracks.len() >= limit || exhausted {
                     break;
@@ -4472,8 +5296,13 @@ fn lib_list_stations(lib: State<Library>) -> Vec<Station> {
 }
 
 #[tauri::command]
-fn lib_get_station(
-    lib: State<Library>,
+async fn lib_get_station(lib: State<'_, Library>, id: String, limit: Option<usize>) -> Result<Option<serde_json::Value>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_get_station", IPC_SCAN, move || lib_get_station_blocking(&lib, id, limit)).await
+}
+
+fn lib_get_station_blocking(
+    lib: &Library,
     id: String,
     limit: Option<usize>,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -4541,8 +5370,13 @@ fn lib_delete_station(lib: State<Library>, id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn lib_play_station(
-    lib: State<Library>,
+async fn lib_play_station(lib: State<'_, Library>, id: String, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_play_station", IPC_SCAN, move || lib_play_station_blocking(&lib, id, limit)).await
+}
+
+fn lib_play_station_blocking(
+    lib: &Library,
     id: String,
     limit: Option<usize>,
 ) -> Result<Vec<Track>, String> {
@@ -4569,8 +5403,13 @@ fn lib_play_station(
 /// desta rodada), entao o cap por artista tem continuidade sem o frontend
 /// precisar mandar contagens.
 #[tauri::command]
-fn lib_station_next(
-    lib: State<Library>,
+async fn lib_station_next(lib: State<'_, Library>, station_id: String, exclude_ids: Vec<String>, session_negative_ids: Vec<String>, limit: Option<usize>) -> Result<Vec<Track>, String> {
+    let lib = lib.inner().clone();
+    off_main("lib_station_next", IPC_SCAN, move || lib_station_next_blocking(&lib, station_id, exclude_ids, session_negative_ids, limit)).await
+}
+
+fn lib_station_next_blocking(
+    lib: &Library,
     station_id: String,
     exclude_ids: Vec<String>,
     session_negative_ids: Vec<String>,
@@ -4647,6 +5486,137 @@ fn maybe_seed_default_station(lib: &Library) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── A40: comandos fora da thread da janela, com teto de espera ─────────
+
+    #[test]
+    fn prazo_devolve_o_resultado_quando_o_trabalho_cabe() {
+        let r = run_with_deadline("teste", std::time::Duration::from_secs(2), || Ok(41 + 1));
+        assert_eq!(r, Ok(42));
+        let e: Result<u8, String> =
+            run_with_deadline("teste", std::time::Duration::from_secs(2), || Err("falhou".into()));
+        assert_eq!(e, Err("falhou".into()));
+    }
+
+    #[test]
+    fn prazo_estourado_devolve_erro_sem_esperar_o_trabalho() {
+        let t0 = std::time::Instant::now();
+        let r: Result<u8, String> = run_with_deadline("lib_lento", std::time::Duration::from_millis(50), || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            Ok(1)
+        });
+        assert!(t0.elapsed() < std::time::Duration::from_secs(1), "esperou o trabalho inteiro");
+        let msg = r.unwrap_err();
+        assert!(msg.contains("lib_lento") && msg.contains("não respondeu"), "{msg}");
+    }
+
+    fn snap_tocando(track_id: u64) -> PlayerSnapshot {
+        PlayerSnapshot {
+            current_track: Some(TrackInfo {
+                handle: audio_engine::TrackHandle(1),
+                path: PathBuf::from("/m/a.flac"),
+                sample_rate: 44_100,
+                channels: 2,
+                bit_depth: Some(16),
+                total_frames: None,
+                duration: Some(std::time::Duration::from_secs(200)),
+                track_gain_db: None,
+                album_gain_db: None,
+                track_peak: None,
+                album_peak: None,
+            }),
+            current_origin: Some("autoplay".into()),
+            current_track_id: Some(track_id),
+            current_context_id: Some("radio:1".into()),
+            started_at: Some(100),
+            last_position_ms: Some(50_000),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn escuta_pendente_sai_do_snapshot_inteira_e_o_slot_fica_limpo() {
+        let big = u64::MAX - 3;
+        let mut s = snap_tocando(big);
+        let p = take_pending_play(&mut s, None).expect("escuta completa");
+        assert_eq!(
+            p,
+            PendingPlay {
+                track_id: big,
+                origin: "autoplay".into(),
+                started_at: 100,
+                end_position_ms: 50_000,
+                duration_ms: 200_000,
+                context_id: Some("radio:1".into()),
+            }
+        );
+        assert_eq!(s.current_track_id, None);
+        assert_eq!(s.current_origin, None);
+        assert_eq!(s.current_context_id, None);
+        assert!(take_pending_play(&mut s, None).is_none(), "não grava duas vezes");
+    }
+
+    #[test]
+    fn escuta_incompleta_nao_sai_e_nao_mexe_no_snapshot() {
+        let mut s = snap_tocando(7);
+        s.started_at = None;
+        assert!(take_pending_play(&mut s, None).is_none());
+        assert_eq!(s.current_track_id, Some(7));
+        assert_eq!(s.current_context_id.as_deref(), Some("radio:1"));
+    }
+
+    #[test]
+    fn fim_tardio_de_outra_faixa_nao_fecha_a_escuta_atual() {
+        // player_play(B) já trocou o snapshot; o TrackEnded(A) chega depois.
+        let mut s = snap_tocando(20);
+        assert!(take_pending_play(&mut s, Some(10)).is_none());
+        assert_eq!(s.current_track_id, Some(20), "a escuta de B segue aberta");
+        assert!(take_pending_play(&mut s, Some(20)).is_some());
+    }
+
+    #[test]
+    fn fim_de_a_depois_do_inicio_de_b_ainda_resolve_o_id_de_a() {
+        use audio_engine::TrackHandle;
+        let mut ids = EngineTrackIds::default();
+        ids.note(TrackHandle(1), 111);
+        ids.note(TrackHandle(2), 222);
+        assert_eq!(ids.get(TrackHandle(1)), Some(111));
+        assert_eq!(ids.get(TrackHandle(2)), Some(222));
+        for h in 3..10 {
+            ids.note(TrackHandle(h), h * 100);
+        }
+        assert_eq!(ids.get(TrackHandle(1)), None, "guarda só as últimas");
+        assert_eq!(ids.get(TrackHandle(9)), Some(900));
+    }
+
+    #[test]
+    fn evento_do_player_mantem_a_forma_e_ganha_o_id_em_texto() {
+        use audio_engine::{PositionUpdate, TrackHandle};
+        let big = u64::MAX - 1;
+        let fim = player_state_payload(&StateUpdate::TrackEnded(TrackHandle(3)), Some(big));
+        assert_eq!(fim["TrackEnded"], serde_json::json!(3));
+        assert_eq!(fim["track_id"], serde_json::json!(big.to_string()));
+        let pos = StateUpdate::Position(PositionUpdate {
+            track: TrackHandle(3),
+            samples_played: 44_100,
+            sample_rate: 44_100,
+            channels: 2,
+        });
+        assert_eq!(event_track_handle(&pos), Some(TrackHandle(3)));
+        let pos_json = player_state_payload(&pos, None);
+        assert_eq!(pos_json["Position"]["samples_played"], serde_json::json!(44_100));
+        assert!(pos_json.get("track_id").is_none(), "sem id conhecido, sem o campo");
+        // Variante sem objeto (string) passa intacta.
+        let parado = player_state_payload(&StateUpdate::StateChanged(PlaybackState::Stopped), Some(1));
+        assert_eq!(parado["StateChanged"], serde_json::json!("Stopped"));
+    }
+
+    #[test]
+    fn panico_no_trabalho_vira_erro_e_nao_derruba_quem_espera() {
+        let r: Result<u8, String> =
+            run_with_deadline("lib_panico", std::time::Duration::from_secs(2), || panic!("bum"));
+        assert!(r.unwrap_err().contains("lib_panico"));
+    }
     use std::collections::HashMap;
 
     #[test]
@@ -5478,13 +6448,102 @@ signal:
         let v = serde_json::to_value(AutoplayTrack {
             track: mix_track(42, "a"),
             autoplay_pick: Some(autoplay_pick(f(2), false)),
+            autoplay_reason: None,
         })
         .unwrap();
         assert_eq!(v["id"], "42");
         assert_eq!(v["autoplay_pick"]["kind"], "discovery");
         assert_eq!(v["autoplay_pick"]["ended"], 2);
-        let sem = serde_json::to_value(AutoplayTrack { track: mix_track(1, "a"), autoplay_pick: None }).unwrap();
+        let sem = serde_json::to_value(AutoplayTrack { track: mix_track(1, "a"), autoplay_pick: None, autoplay_reason: None }).unwrap();
         assert!(sem.get("autoplay_pick").is_none());
+    }
+
+    #[test]
+    fn escuta_viva_e_qualidade_do_album_saem_do_indice_e_nao_do_fossil() {
+        use library_indexer::spectral::QualityClass;
+        let big = u64::MAX - 4;
+        let evs = [
+            serde_json::json!({"event_type": "track_ended", "track_id": big, "origin": "album_seq", "timestamp": 100}),
+            serde_json::json!({"event_type": "track_ended", "track_id": big, "origin": "manual", "timestamp": 400}),
+            serde_json::json!({"event_type": "track_skipped", "track_id": 2, "origin": "manual", "timestamp": 500}),
+        ];
+        let fam = familiarity::FamiliarityIndex::from_payloads(evs.iter());
+        let mut a = mix_track(big, "x");
+        a.play_count = 99; // fóssil: não pode aparecer
+        a.quality_class = Some(QualityClass::SemCorte);
+        let mut b = mix_track(2, "x");
+        b.quality_class = Some(QualityClass::Lossy);
+        b.quality_cutoff_hz = Some(16_100);
+        let mut c = mix_track(3, "x");
+        c.quality_class = Some(QualityClass::ProvavelLossy);
+        c.quality_cutoff_hz = Some(19_800);
+        let d = mix_track(4, "x");
+        let st = listen_stats_of(&[a, b, c, d], Some(&fam));
+        assert!(st.familiarity_ready);
+        assert_eq!((st.tracks, st.listened_tracks, st.full_listens, st.plays), (4, 1, 2, 3));
+        assert_eq!((st.last_played_at, st.last_ended_at), (Some(500), Some(400)));
+        assert_eq!(
+            st.quality,
+            QualitySummary {
+                sem_corte: 1,
+                provavel_lossy: 1,
+                lossy: 1,
+                hires_de_cd: 0,
+                unmeasured: 1,
+                lowest_cutoff_hz: Some(16_100),
+            }
+        );
+        assert_eq!(st.per_track[0].track_id, big.to_string());
+        assert_eq!(st.per_track[0].full_listens, 2);
+        assert_eq!(st.per_track[1].plays, 1);
+        // Sem índice: escuta zerada e sinalizada, qualidade vale.
+        let sem = listen_stats_of(&[mix_track(1, "x")], None);
+        assert!(!sem.familiarity_ready);
+        assert_eq!((sem.plays, sem.quality.unmeasured), (0, 1));
+    }
+
+    #[test]
+    fn motivo_do_radio_diz_grupo_fins_pool_e_semente() {
+        let f = |ended| familiarity::TrackFamiliarity { ended, ..Default::default() };
+        let big = u64::MAX - 2;
+        let r = autoplay_reason(AutoplayLayer::Mix, Some(f(9)), Some(false), Some("seed"), big);
+        assert_eq!(
+            r,
+            AutoplayReason {
+                kind: "known",
+                ended: Some(9),
+                liked: Some(false),
+                pool: Some("seed"),
+                seed_id: big.to_string(),
+            }
+        );
+        assert_eq!(autoplay_reason(AutoplayLayer::Mix, Some(f(0)), Some(true), None, 1).kind, "known");
+        assert_eq!(autoplay_reason(AutoplayLayer::Mix, Some(f(1)), None, Some("taste"), 1).kind, "discovery");
+        // Sem índice de familiaridade a camada 1 só sabe que é parecida.
+        let sem = autoplay_reason(AutoplayLayer::Mix, None, Some(false), Some("both"), 1);
+        assert_eq!((sem.kind, sem.ended, sem.pool), ("similar", None, Some("both")));
+        // Camadas 2 e 3 não têm pool e não consultaram like.
+        let c2 = autoplay_reason(AutoplayLayer::Similar, Some(f(4)), None, Some("seed"), 1);
+        assert_eq!((c2.kind, c2.ended, c2.liked, c2.pool), ("similar", Some(4), None, None));
+        assert_eq!(autoplay_reason(AutoplayLayer::Shuffle, Some(f(4)), None, None, 1).kind, "shuffle");
+
+        let seed: std::collections::HashSet<u64> = [1, 2].into_iter().collect();
+        let taste: std::collections::HashSet<u64> = [2, 3].into_iter().collect();
+        assert_eq!(pool_of(1, &seed, &taste), Some("seed"));
+        assert_eq!(pool_of(2, &seed, &taste), Some("both"));
+        assert_eq!(pool_of(3, &seed, &taste), Some("taste"));
+        assert_eq!(pool_of(4, &seed, &taste), None);
+
+        let v = serde_json::to_value(AutoplayTrack {
+            track: mix_track(42, "a"),
+            autoplay_pick: None,
+            autoplay_reason: Some(autoplay_reason(AutoplayLayer::Shuffle, None, None, None, big)),
+        })
+        .unwrap();
+        assert_eq!(v["autoplay_reason"]["kind"], "shuffle");
+        assert_eq!(v["autoplay_reason"]["seed_id"], big.to_string());
+        assert!(v["autoplay_reason"]["ended"].is_null());
+        assert!(v.get("autoplay_pick").is_none(), "o chip segue sem pick nas camadas 2/3");
     }
 
     #[test]
@@ -5497,12 +6556,12 @@ signal:
         let liked: std::collections::HashSet<u64> = [6].into_iter().collect();
         // lim pequeno (prefix minimo 8 cobre tudo, sorteio embaralha cada
         // grupo): o que se trava e o PADRAO de grupos por slot.
-        let out = autoplay_mix(scored.clone(), Some(&liked), Some(&fam), 0, 6, 7);
+        let out = autoplay_mix(scored.clone(), Some(&liked), Some(&fam), &RadioGate::default(), 0, 6, 7);
         let grupo = |id: u64| if [1, 3, 5, 6].contains(&id) { 'K' } else { 'D' };
         let padrao: String = ids(&out).into_iter().map(grupo).collect();
         assert_eq!(padrao, "KKDKKD");
         // Slot 2 (re-fetch pós-pulo no terceiro da rodada) serve descoberta.
-        let um = autoplay_mix(scored, Some(&liked), Some(&fam), 2, 1, 7);
+        let um = autoplay_mix(scored, Some(&liked), Some(&fam), &RadioGate::default(), 2, 1, 7);
         assert_eq!(grupo(um[0].id), 'D');
     }
 
@@ -5517,14 +6576,85 @@ signal:
             .collect();
         scored.push((0.4, mix_track(7, "www.ftpdjemilio.com")));
         let liked: std::collections::HashSet<u64> = [4].into_iter().collect();
-        let mut out = ids(&autoplay_mix(scored.clone(), Some(&liked), Some(&fam), 0, 10, 1));
+        let mut out = ids(&autoplay_mix(scored.clone(), Some(&liked), Some(&fam), &RadioGate::default(), 0, 10, 1));
         out.sort_unstable();
         assert_eq!(out, vec![3, 4]);
         // Sem likes conhecidos (batch de enrichments falhou): nao filtra
         // nunca-termina — nunca arriscar tirar faixa curtida.
-        let mut sem_like = ids(&autoplay_mix(scored, None, Some(&fam), 0, 10, 1));
+        let mut sem_like = ids(&autoplay_mix(scored, None, Some(&fam), &RadioGate::default(), 0, 10, 1));
         sem_like.sort_unstable();
         assert_eq!(sem_like, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn autoplay_mix_respeita_recusa_e_devolucao_do_ceo() {
+        // 2: nunca-termina (3 pulos cedo) mas DEVOLVIDA com 3 perdoados -> fica.
+        // 3: recusada "nunca no rádio" -> sai. 5: fora só da station "chuva"
+        // -> fica no autoplay.
+        let fam = mix_fam(&[(2, 0, 3)]);
+        let scored: Vec<(f64, Track)> = [2u64, 3, 5]
+            .into_iter()
+            .map(|i| (0.5, mix_track(i, &format!("a{i}"))))
+            .collect();
+        let mut states = HashMap::new();
+        states.insert(2, radio_refusal::give_back(&RadioState::default(), &radio_refusal::Return::All, 3, 10));
+        states.insert(3, radio_refusal::refuse(&RadioState::default(), &radio_refusal::Refusal::Never, 10));
+        states.insert(
+            5,
+            radio_refusal::refuse(&RadioState::default(), &radio_refusal::Refusal::Station("chuva".into()), 10),
+        );
+        let gate = RadioGate::new(states.clone(), None);
+        let mut out = ids(&autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), &gate, 0, 10, 1));
+        out.sort_unstable();
+        assert_eq!(out, vec![2, 5]);
+        // Sem a devolução, a 2 sai como antes.
+        let mut sem = ids(&autoplay_mix(scored, Some(&Default::default()), Some(&fam), &RadioGate::default(), 0, 10, 1));
+        sem.sort_unstable();
+        assert_eq!(sem, vec![3, 5]);
+    }
+
+    #[test]
+    fn fora_do_radio_lista_o_motor_e_as_recusas_com_os_numeros() {
+        let big = u64::MAX - 9;
+        // big: 4 pulos cedo, 0 fins -> o motor tirou. 2: idem mas curtida ->
+        // fica fora da lista. 3: 3 pulos, devolvida com 3 perdoados -> não
+        // está fora. 4: recusada "nunca no rádio" sem pulo nenhum.
+        let fam = mix_fam(&[(big, 0, 4), (2, 0, 5), (3, 0, 3)]);
+        let mut states = HashMap::new();
+        states.insert(3, radio_refusal::give_back(&RadioState::default(), &radio_refusal::Return::All, 3, 50));
+        states.insert(4, radio_refusal::refuse(&RadioState::default(), &radio_refusal::Refusal::Never, 70));
+        let gate = RadioGate::new(states, None);
+        let liked: std::collections::HashSet<u64> = [2].into_iter().collect();
+        let rows = radio_excluded_rows(Some(&fam), &gate, &liked);
+        let got: Vec<u64> = rows.iter().map(|(id, _)| *id).collect();
+        assert_eq!(got, vec![4, big], "recusa do CEO primeiro, depois o motor");
+        let (_, motor) = &rows[1];
+        assert!(motor.never_ends);
+        assert_eq!((motor.motor_attempts, motor.early_skips, motor.early_skips_total, motor.ended), (4, 4, 4, 0));
+        let (_, recusa) = &rows[0];
+        assert!(!recusa.never_ends);
+        assert_eq!(recusa.never_at, Some(70));
+        // Sem índice: só as recusas, nunca "o motor tirou".
+        let sem = radio_excluded_rows(None, &gate, &liked);
+        assert_eq!(sem.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![4]);
+    }
+
+    #[test]
+    fn escopos_de_recusa_e_devolucao_do_ipc() {
+        assert_eq!(parse_refusal("never", None), Ok(radio_refusal::Refusal::Never));
+        assert_eq!(
+            parse_refusal("station", Some("chuva".into())),
+            Ok(radio_refusal::Refusal::Station("chuva".into()))
+        );
+        assert!(parse_refusal("station", None).is_err());
+        assert!(parse_refusal("sempre", None).is_err());
+        assert_eq!(parse_return(None, None), Ok(radio_refusal::Return::All));
+        assert_eq!(parse_return(Some("motor"), None), Ok(radio_refusal::Return::Motor));
+        assert_eq!(
+            parse_return(Some("station"), Some("x".into())),
+            Ok(radio_refusal::Return::Station("x".into()))
+        );
+        assert!(parse_return(Some("station"), Some(String::new())).is_err());
     }
 
     #[test]
@@ -5533,9 +6663,9 @@ signal:
             .map(|i| (1.0 - i as f64 / 10.0, mix_track(i, "Mesmo")))
             .collect();
         let fam = mix_fam(&[]);
-        assert_eq!(autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), 0, 10, 3).len(), 2);
+        assert_eq!(autoplay_mix(scored.clone(), Some(&Default::default()), Some(&fam), &RadioGate::default(), 0, 10, 3).len(), 2);
         // Sem indice: comportamento anterior (cap + sorteio, sem mistura).
-        assert_eq!(autoplay_mix(scored, None, None, 0, 10, 3).len(), 2);
+        assert_eq!(autoplay_mix(scored, None, None, &RadioGate::default(), 0, 10, 3).len(), 2);
     }
 
     #[test]
@@ -5549,7 +6679,7 @@ signal:
             .collect();
         let fam = familiarity::FamiliarityIndex::from_payloads(evs.iter());
         let scored = vec![(0.9, mix_track(8, "a8"))];
-        let out = autoplay_mix(scored, Some(&Default::default()), Some(&fam), 0, 5, 1);
+        let out = autoplay_mix(scored, Some(&Default::default()), Some(&fam), &RadioGate::default(), 0, 5, 1);
         assert_eq!(ids(&out), vec![8]);
     }
 

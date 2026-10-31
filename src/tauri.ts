@@ -33,6 +33,9 @@ export interface Track {
   /** Só nas faixas que o rádio escolheu (`lib_autoplay_next`, desktop) com a
       mistura conhecida/descoberta ativa. O S24 não manda. */
   autoplay_pick?: AutoplayPick | null;
+  /** B10: motivo da escolha em TODA faixa de `lib_autoplay_next` (desktop,
+      três camadas). O S24 não manda. */
+  autoplay_reason?: AutoplayReason | null;
 }
 
 /** `AutoplayPick` de `desktop.rs`: por que o rádio escolheu a faixa. */
@@ -41,6 +44,24 @@ export interface AutoplayPick {
   /** Vezes ouvida até o fim. */
   ended: number;
   liked: boolean;
+}
+
+/** `AutoplayReason` de `desktop.rs` (B10): o motivo curto que a fila e o Now
+    Playing mostram. */
+export interface AutoplayReason {
+  /** "known" = conhecida (3+ fins ou curtida); "discovery" = descoberta;
+      "similar" = parecida com a semente (camada 2, ou camada 1 sem o índice
+      de familiaridade); "shuffle" = sorteio do acervo (camada 3). */
+  kind: "known" | "discovery" | "similar" | "shuffle";
+  /** Vezes ouvida até o fim; null sem o índice do motor. */
+  ended: number | null;
+  /** Curtida; null quando o motor não consultou. */
+  liked: boolean | null;
+  /** Só na camada 1: "seed" = vizinhança da semente, "taste" = gosto geral,
+      "both" = as duas. */
+  pool: "seed" | "taste" | "both" | null;
+  /** A faixa que semeou o pedido (o `trackId` passado ao libAutoplayNext). */
+  seed_id: string;
 }
 
 /** `library_indexer::spectral::QualityClass`. */
@@ -91,11 +112,26 @@ export interface PositionPayload {
   sample_rate: number;
 }
 
-export type PlayerStatePayload =
+/** A40: id (texto, u64) da faixa da biblioteca a que o evento se refere,
+    resolvido pelo handle do engine. Ausente quando o engine tocou um arquivo
+    fora do acervo. Fim/posição com `track_id` diferente da faixa atual são
+    atrasados (o player já pediu a próxima) e devem ser descartados. */
+export interface PlayerEventTrack {
+  track_id?: string;
+}
+
+export type PlayerStatePayload = (
   | { TrackStarted: TrackInfo }
   | { TrackEnded: null }
   | { Position: PositionPayload }
-  | { StateChanged: "Playing" | "Paused" | "Idle" | "Stopped" };
+  | { StateChanged: "Playing" | "Paused" | "Idle" | "Stopped" }
+) & PlayerEventTrack;
+
+/** Evento atrasado de outra faixa? Sem `track_id` (arquivo fora do acervo)
+    ou sem faixa atual, nada a comparar: vale. */
+export function isStalePlayerEvent(p: PlayerEventTrack, currentTrackId: string | null | undefined): boolean {
+  return !!p.track_id && !!currentTrackId && p.track_id !== currentTrackId;
+}
 
 // ── Player commands ────────────────────────────────────────────
 
@@ -366,6 +402,146 @@ export const libTrackProfile = (trackId: string) =>
 export interface TrackFamiliarity { full_listens: number; liked: boolean }
 export const libTrackFamiliarity = (trackId: string) =>
   invoke<TrackFamiliarity | null>("lib_track_familiarity", { trackId });
+
+// ── B14: quando o S24 sincronizou ────────────────────────────────
+
+/** `sync_receiver::DeviceSync`: último lote ACEITO (200, o aparelho ackou)
+    de um dispositivo. Persistido no data dir; sobrevive ao reinício. */
+export interface DeviceSync {
+  /** "s24"; "desconhecido" para evento sem device_id. */
+  device_id: string;
+  /** Unix (s) do último lote aceito. Âmbar na tela passadas 24 h. */
+  last_batch_at: number;
+  /** Do último lote. Rejeitado também é ackado pelo aparelho. */
+  accepted: number;
+  rejected: number;
+  /** Do último lote, entre os aceitos: escutas e curtidas/descurtidas. */
+  plays: number;
+  likes: number;
+  /** Aceitos desde que o arquivo existe. */
+  total_accepted: number;
+}
+
+/** Dispositivos, o mais recente primeiro. Vazio = nenhum sync registrado
+    (ou o receptor não subiu: sem IP da tailnet). */
+export const libSyncStatus = () => invoke<DeviceSync[]>("lib_sync_status");
+
+/** Cada lote aceito emite um evento por dispositivo do lote. */
+export const onSyncReceived = (cb: (d: DeviceSync) => void) =>
+  listen<DeviceSync>("sync-received", (e) => cb(e.payload));
+
+// ── B11: escuta viva e qualidade onde se navega ──────────────────
+
+/** Escuta viva por faixa (play_events via cache do motor; NUNCA o
+    `play_count`/`last_played` fóssil do Track). Instantes em unix s. */
+export interface TrackListenStats {
+  track_id: string;
+  full_listens: number;
+  plays: number;
+  last_played_at: number | null;
+  last_ended_at: number | null;
+}
+
+/** Qualidade medida no conteúdo (corte espectral), por classe. */
+export interface QualitySummary {
+  sem_corte: number;
+  provavel_lossy: number;
+  lossy: number;
+  hires_de_cd: number;
+  /** Ainda não medida ou medição indeterminada. */
+  unmeasured: number;
+  /** Menor corte (Hz) entre as com corte de lossy: "corte em 16,1 kHz". */
+  lowest_cutoff_hz: number | null;
+}
+
+export interface ListenStats {
+  /** false = índice do motor montando: escuta zerada (a qualidade vale). */
+  familiarity_ready: boolean;
+  tracks: number;
+  /** Faixas ouvidas até o fim ao menos uma vez. */
+  listened_tracks: number;
+  full_listens: number;
+  plays: number;
+  last_played_at: number | null;
+  last_ended_at: number | null;
+  quality: QualitySummary;
+  /** Na ordem de lib_list_tracks (disco, faixa). */
+  per_track: TrackListenStats[];
+}
+
+/** Álbum: passe artista E álbum (só o álbum mistura homônimos). Artista:
+    só o artista. Um dos dois é obrigatório. */
+export const libListenStats = (q: { artist?: string | null; album?: string | null }) =>
+  invoke<ListenStats>("lib_listen_stats", { artist: q.artist ?? null, album: q.album ?? null });
+
+// ── B9: "Fora do rádio" e recusa com escopo ──────────────────────
+
+/** `radio_refusal::RadioState` (Rust): o que o CEO decidiu sobre o rádio
+    para a faixa. Mora em `track_enrichments`. */
+export interface RadioState {
+  /** Unix (s) do "nunca no rádio"; null = não recusada. */
+  never_at: number | null;
+  /** Ids das stations de onde a faixa saiu ("fora desta station"). */
+  off_stations: string[];
+  /** Pulos cedo perdoados na última devolução. */
+  release_skips: number;
+  /** Unix (s) da última devolução ao rádio. */
+  released_at: number | null;
+}
+
+/** Por que a faixa está fora do rádio, em números (`RadioExclusion`). */
+export interface RadioExclusion {
+  /** O motor tirou: 3+ pulos cedo quando ele a serviu, nunca até o fim, sem like. */
+  never_ends: boolean;
+  /** Vezes que autoplay/station a serviram (todo o histórico). */
+  motor_attempts: number;
+  /** Pulos cedo (< 50% da faixa) que contam hoje, depois da última devolução. */
+  early_skips: number;
+  early_skips_total: number;
+  /** Vezes ouvida até o fim. */
+  ended: number;
+  never_at: number | null;
+  off_stations: string[];
+  released_at: number | null;
+}
+
+export type RadioExcludedTrack = Track & { radio: RadioExclusion };
+
+export interface RadioExcludedList {
+  /** false = índice do motor ainda montando: só as recusas do CEO aparecem. */
+  familiarity_ready: boolean;
+  /** Recusa mais recente primeiro, depois o que o motor tirou (mais pulos cedo primeiro). */
+  tracks: RadioExcludedTrack[];
+}
+
+/** Antes e depois de uma mudança: `before` vai no `libRadioRestore` (desfazer). */
+export interface RadioChange {
+  track_id: string;
+  before: RadioState;
+  after: RadioState;
+}
+
+/** Lista "Fora do rádio" (só leitura). */
+export const libRadioExcluded = () => invoke<RadioExcludedList>("lib_radio_excluded");
+
+/** Recusa com escopo: "never" = nunca no rádio (autoplay e todas as
+    stations); "station" = só a station `stationId`. */
+export const libRadioRefuse = (trackId: string, scope: "never" | "station", stationId?: string) =>
+  invoke<RadioChange>("lib_radio_refuse", { trackId, scope, stationId: stationId ?? null });
+
+/** Devolve ao rádio. Sem scope (ou "all") = tudo: tira as recusas e perdoa os
+    pulos cedo (sai de novo se for pulada cedo mais 3 vezes). "never" /
+    "station" / "motor" = só aquela parte. Falha com "familiaridade ainda
+    montando" logo após o boot (tentar de novo). */
+export const libRadioReturn = (
+  trackId: string,
+  scope?: "all" | "never" | "station" | "motor",
+  stationId?: string,
+) => invoke<RadioChange>("lib_radio_return", { trackId, scope: scope ?? null, stationId: stationId ?? null });
+
+/** Desfazer: grava de volta o `before` de um `RadioChange`. */
+export const libRadioRestore = (trackId: string, state: RadioState) =>
+  invoke<RadioChange>("lib_radio_restore", { trackId, state });
 
 export const spectrumSubscribe = () => invoke("spectrum_subscribe");
 export const spectrumUnsubscribe = () => invoke("spectrum_unsubscribe");
