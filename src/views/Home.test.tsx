@@ -10,7 +10,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 
 // vi.mock factories sao hoisted; variaveis usadas dentro vem de vi.hoisted.
-const { mockTracks, mockSnap, mockAlbums, mockSetQueue, mockPlayTrack, mockPlayer, mockResetRadio } = vi.hoisted(() => ({
+const { mockTracks, mockSnap, mockAlbums, mockSetQueue, mockPlayTrack, mockPlayer, mockResetRadio, mockNavigate, arrivals } = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  arrivals: { n: 0 },
   mockTracks: [
     { id: "10", title: "Song 1", artist_name: "Band", album_title: "Great Album", album_cover_path: null, album_year: 2023, duration_ms: 240000, path: "/s1.flac", lrc_path: null },
   ],
@@ -44,7 +46,7 @@ vi.mock("../tauri", () => ({
   libGetAlbums: vi.fn().mockResolvedValue(mockAlbums),
   libRecommendations: vi.fn().mockResolvedValue({ most_played: [], based_on_top: [], discover: [] }),
   libShuffle: vi.fn().mockResolvedValue([]),
-  libGetTracksByAlbum: vi.fn().mockResolvedValue(mockTracks),
+  libGetTracks: vi.fn().mockResolvedValue(mockTracks),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
@@ -61,8 +63,10 @@ vi.mock("../components/PlayerBar", () => ({
   playTrack: (...args: any[]) => mockPlayTrack(...args),
 }));
 
+vi.mock("../store/crate", () => ({ newArrivals: () => arrivals.n }));
+
 vi.mock("../router", () => ({
-  navigate: vi.fn(),
+  navigate: (...a: any[]) => mockNavigate(...a),
   route: () => ({ path: "/" }),
 }));
 
@@ -72,7 +76,9 @@ vi.mock("../components/Icon", () => ({
 }));
 
 vi.mock("../components/TrackRowList", () => ({
-  TrackRowList: () => <div class="track-row-mock" />,
+  TrackRowList: (p: { track: { title: string }; whenText?: string; onClick: () => void }) => (
+    <div class="track-row-mock" data-when={p.whenText} onClick={p.onClick}>{p.track.title}</div>
+  ),
 }));
 
 vi.mock("../lib/format", () => ({
@@ -81,6 +87,7 @@ vi.mock("../lib/format", () => ({
 }));
 
 beforeEach(() => {
+  arrivals.n = 0;
   mockSetQueue.mockClear();
   mockPlayTrack.mockClear();
   mockResetRadio.mockClear();
@@ -108,7 +115,8 @@ describe("Home — botao card__play no grid de albums", () => {
 
     await vi.waitFor(() => mockSetQueue.mock.calls.length > 0);
 
-    expect(tauri.libGetTracksByAlbum).toHaveBeenCalledWith("Great Album");
+    // Título E artista: dois "Greatest Hits" não viram uma fila só (A19).
+    expect(tauri.libGetTracks).toHaveBeenCalledWith({ album: "Great Album", artist: "Band", limit: 200 });
     expect(mockSetQueue).toHaveBeenCalledWith(mockTracks, 0, "curated", { kind: "album", name: "Great Album" });
     expect(mockPlayTrack).toHaveBeenCalledWith(mockTracks[0]);
   });
@@ -241,5 +249,59 @@ describe("Home — descoberta do dia (B5)", () => {
     await vi.waitFor(() => expect(container.querySelectorAll(".hero-tile").length).toBe(3));
     expect(container.querySelector(".hero-tile--discovery")).toBeNull();
     expect(container.textContent).toContain("From your library");
+  });
+});
+
+// Pendência da onda 1: o card da grade da Home abre o álbum, como em Álbuns.
+describe("Home — card de álbum abre (B1, A19)", () => {
+  it("clicar no nome abre a página do álbum com o artista na rota, sem tocar", async () => {
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelector(".card__open")).toBeTruthy());
+    fireEvent.click(container.querySelector(".card__open")!);
+    expect(mockNavigate).toHaveBeenCalledWith("/album/Great%20Album?artista=Band");
+    expect(mockSetQueue).not.toHaveBeenCalled();
+  });
+});
+
+// B12: a Home reflete a escuta e as chegadas.
+describe("Home — escuta e chegadas (B12)", () => {
+  const tr = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
+    id, title, artist_name: "Band", album_title: "Great Album", album_cover_path: null, album_year: 2023, duration_ms: 1, path: `/${id}`, lrc_path: null, ...extra,
+  });
+
+  it("Mais tocadas mostra quantas vezes; Para descobrir mostra as que o hero não usou", async () => {
+    vi.mocked(tauri.libRecommendations).mockResolvedValueOnce({
+      most_played: [tr("m1", "Hit", { play_count: 42 })],
+      based_on_top: [],
+      discover: [tr("d1", "Primeira"), tr("d2", "Segunda")],
+    });
+    const { container, findByText } = render(() => <Home />);
+    const hit = await findByText("Hit");
+    expect(hit.getAttribute("data-when")).toBe("42 vezes");
+    const disc = container.querySelector('[aria-label="Para descobrir"]')!;
+    expect(Array.from(disc.querySelectorAll(".track-row-mock")).map((r) => r.textContent)).toEqual(["Segunda"]);
+    fireEvent.click(disc.querySelector(".track-row-mock")!);
+    expect(mockSetQueue).toHaveBeenCalledWith([expect.objectContaining({ id: "d2" })], 0, "open", { kind: "radio" });
+  });
+
+  it("a prateleira de álbuns começa pelo que tocou por último", async () => {
+    vi.mocked(tauri.libListHistory).mockResolvedValueOnce([tr("h1", "x", { album_title: "Other 07" })]);
+    const { container } = render(() => <Home />);
+    await vi.waitFor(() => expect(container.querySelectorAll(".card").length).toBe(12));
+    expect(container.querySelector(".card__title")!.textContent).toBe("Other 07");
+  });
+
+  it("chegadas do Crate aparecem com atalho para o Crate", async () => {
+    arrivals.n = 3;
+    const { findByRole } = render(() => <Home />);
+    const btn = await findByRole("button", { name: /3 faixas novas chegaram ao acervo/ });
+    fireEvent.click(btn);
+    expect(mockNavigate).toHaveBeenCalledWith("/crate");
+  });
+
+  it("falha do índice avisa no topo e oferece tentar de novo", async () => {
+    vi.mocked(tauri.libListHistory).mockRejectedValueOnce(new Error("fora"));
+    const { findByRole } = render(() => <Home />);
+    expect((await findByRole("alert")).textContent).toContain("Parte da Home não carregou.");
   });
 });

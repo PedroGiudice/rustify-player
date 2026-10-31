@@ -816,6 +816,29 @@ iconify-icon { display: inline-flex; align-items: center; justify-content: cente
   overflow: hidden;
 }
 .row-list > .section__head { padding: 12px 12px 0; margin-bottom: 4px; }
+/* Home (B12): dica curta ao lado do título da seção ("Para descobrir"). */
+.section__hint { font-size: 12px; color: var(--fg-5); margin-right: auto; }
+/* Aviso de chegadas do Crate na Home (B12): linha quieta, uma ação só. */
+.home-arrivals {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  color: var(--fg-3);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+  animation: state-in var(--dur-med) var(--ease-out);
+}
+.home-arrivals:hover { background: var(--bg-soft); border-color: var(--fg-8); }
+.home-arrivals:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+.home-arrivals b { color: var(--fg-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.home-arrivals__icon { color: var(--blue-fg); }
+.home-arrivals__text { flex: 1; min-width: 0; }
+.home-arrivals__go { color: var(--fg-5); font-weight: 500; }
 .row-list__rows { display: flex; flex-direction: column; }
 .row-list .row:last-child { border-bottom: 0; }
 .row {
