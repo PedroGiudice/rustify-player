@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 import { deriveAccent, deriveInk } from "./inkDerive";
-import { contrastRatio, relLuminance, hexToRgb } from "./color";
+import { contrastRatio, relLuminance, hexToRgb, hexToOklch } from "./color";
 
 const RD = { canvas: "#050505", paper: "#0c0c0c", soft: "#161616" };
 const LIGHT = { canvas: "#fafafa", paper: "#ffffff", soft: "#f7f6f3" };
@@ -44,7 +44,7 @@ const SATURADAS = {
 describe("deriveAccent: o acento lê como texto", () => {
   for (const [nome, capa] of Object.entries(SATURADAS)) {
     it(`${nome} no Really Dark: >= 4,5:1 sobre canvas, paper, soft e linha atual`, () => {
-      const a = deriveAccent(capa, RD.canvas)!;
+      const a = deriveAccent(capa, RD.canvas, RD.paper)!;
       expect(a).not.toBeNull();
       expect(ratio(a.accent, RD.canvas)).toBeGreaterThanOrEqual(5.2);
       expect(ratio(a.accent, RD.soft)).toBeGreaterThanOrEqual(4.5);
@@ -53,7 +53,7 @@ describe("deriveAccent: o acento lê como texto", () => {
     });
 
     it(`${nome} no repouso claro: >= 4,5:1 sobre canvas, soft e linha atual`, () => {
-      const a = deriveAccent(capa, LIGHT.canvas)!;
+      const a = deriveAccent(capa, LIGHT.canvas, LIGHT.paper)!;
       expect(a).not.toBeNull();
       expect(ratio(a.accent, LIGHT.canvas)).toBeGreaterThanOrEqual(5.2);
       expect(ratio(a.accent, LIGHT.soft)).toBeGreaterThanOrEqual(4.5);
@@ -94,4 +94,40 @@ describe("deriveInk: capa quase cinza fica cinza", () => {
       expect(ratio(ink, RD.canvas)).toBeGreaterThanOrEqual(3.5);
     });
   }
+});
+
+/* B25 (31/10/2026): o accent nasce em OKLCH. Matiz da capa, croma
+   clamp(C x 1,25, 0,07, 0,17), brilho caminhando em L OKLCH até ler.
+   Em HSL o mesmo papel saía com L de 0,56 a 0,85 e croma de 0,12 a
+   0,26 conforme a capa: a interface acendia ou apagava com o disco. */
+describe("deriveAccent em OKLCH: papel estável entre capas", () => {
+  const hueGap = (a: number, b: number) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
+
+  it("Really Dark: L numa faixa estreita e croma com teto", () => {
+    const ls: number[] = [];
+    for (const capa of Object.values(SATURADAS)) {
+      const o = hexToOklch(deriveAccent(capa, RD.canvas)!.accent)!;
+      ls.push(o.l);
+      expect(o.c).toBeLessThanOrEqual(0.175);
+    }
+    expect(Math.min(...ls)).toBeGreaterThanOrEqual(0.6);
+    expect(Math.max(...ls)).toBeLessThanOrEqual(0.82);
+  });
+
+  it("matiz da capa se preserva", () => {
+    for (const capa of Object.values(SATURADAS)) {
+      const a = hexToOklch(deriveAccent(capa, RD.canvas)!.accent)!;
+      expect(hueGap(a.h, hexToOklch(capa)!.h)).toBeLessThan(8);
+    }
+  });
+
+  it("capa pastel não vira néon (rosa #e8a0b4, croma 0,089)", () => {
+    const o = hexToOklch(deriveAccent("#e8a0b4", RD.canvas)!.accent)!;
+    expect(o.c).toBeLessThanOrEqual(0.115);
+  });
+
+  it("capa de pouca cor ganha o piso de croma (marrom #3b2a1e)", () => {
+    const o = hexToOklch(deriveAccent("#3b2a1e", RD.canvas)!.accent)!;
+    expect(o.c).toBeGreaterThanOrEqual(0.065);
+  });
 });
