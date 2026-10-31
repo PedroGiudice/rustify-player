@@ -140,7 +140,7 @@ function Marks(props: { hires: boolean; owned: boolean }) {
         <span class="tdl-owned" title="Já está no acervo"><Icon name={ICONS.check} size={12} /> no acervo</span>
       </Show>
       <Show when={props.hires}>
-        <span class="tdl-hires" title="Disponível em hi-res (24 bits)">Hi-Res</span>
+        <span class="crate-badge" title="Disponível em hi-res (24 bits)">Hi-Res</span>
       </Show>
     </span>
   );

@@ -50,8 +50,8 @@ function resolve(v: string): string {
       getComputedStyle(resolveEl).getPropertyValue(name).trim() || "0px");
   }
   return out.replace(/calc\(([^()]*)\)/g, (_m, expr: string) => {
-    const terms = expr.match(/[+-]?\s*[\d.]+px/g) ?? [];
-    return `${terms.reduce((a, t) => a + parseFloat(t.replace(/\s/g, "")), 0)}px`;
+    const terms: string[] = expr.match(/[+-]?\s*[\d.]+px/g) ?? [];
+    return `${terms.reduce((a: number, t: string) => a + parseFloat(t.replace(/\s/g, "")), 0)}px`;
   });
 }
 
