@@ -42,18 +42,19 @@ export function tidalStatusTone(status: TidalJob["status"]): "sub" | "live" | "r
   }
 }
 
-const DEST_KEY = "kv-crate-tidal-dest";
-
-export function loadLastTidalDest(): string | null {
-  try {
-    return localStorage.getItem(DEST_KEY);
-  } catch {
-    return null;
-  }
+/** Job da Tidal ainda em andamento (conta no "baixando" e no selo). */
+export function isTidalActive(status: TidalJob["status"]): boolean {
+  return status === "fila" || status === "baixando";
 }
 
-export function saveLastTidalDest(dest: string): void {
-  try {
-    localStorage.setItem(DEST_KEY, dest);
-  } catch {}
+/** Quantas faixas o job pôs no acervo, lido do resumo da fila
+    (`resumo_do_log` em tidal_fila.py: "...; N na cmr-auto" é o que chegou;
+    sem ele, "N novas"). Sem número no resumo: as faixas do pedido de
+    seleção, ou 1. */
+export function tidalArrivedCount(job: Pick<TidalJob, "resumo" | "n_faixas">): number {
+  const env = /(\d+) na cmr-auto/.exec(job.resumo);
+  if (env) return parseInt(env[1], 10);
+  const novas = /(\d+) novas/.exec(job.resumo);
+  if (novas) return parseInt(novas[1], 10);
+  return job.n_faixas && job.n_faixas > 0 ? job.n_faixas : 1;
 }
