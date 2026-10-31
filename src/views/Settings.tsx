@@ -260,7 +260,7 @@ export default function Settings() {
             <div class="set-row__control">
               <Show
                 when={themes()}
-                fallback={<span class="mono" style={{ "font-size": "11px", color: "var(--fg-5)" }}>loading…</span>}
+                fallback={<span class="mono" style={{ "font-size": "var(--fs-label)", color: "var(--fg-5)" }}>loading…</span>}
               >
                 {(t) => (
                   <span class="select-shell">
@@ -298,7 +298,7 @@ export default function Settings() {
                   <Show when={failingContrast().length > 0}>
                     <span
                       class="status-pill status-pill--err"
-                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                      style={{ "margin-left": "8px", "vertical-align": "middle" }}
                     >
                       {`${failingContrast().length} falha(s)`}
                     </span>
@@ -306,7 +306,7 @@ export default function Settings() {
                   <Show when={largeOnlyContrast().length > 0}>
                     <span
                       class="status-pill status-pill--warn"
-                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                      style={{ "margin-left": "8px", "vertical-align": "middle" }}
                     >
                       {`${largeOnlyContrast().length} só AA-large`}
                     </span>
@@ -314,20 +314,20 @@ export default function Settings() {
                   <Show when={failingContrast().length === 0 && largeOnlyContrast().length === 0}>
                     <span
                       class="status-pill status-pill--ok"
-                      style={{ "margin-left": "8px", "font-size": "10px", "vertical-align": "middle" }}
+                      style={{ "margin-left": "8px", "vertical-align": "middle" }}
                     >
                       AA ok
                     </span>
                   </Show>
                 </div>
                 {/* Tabela compacta com todos os pares */}
-                <div style={{ display: "grid", "grid-template-columns": "1fr auto auto", gap: "2px 12px", "font-size": "11px", "font-family": "var(--font-mono)" }}>
+                <div style={{ display: "grid", "grid-template-columns": "1fr auto auto", gap: "2px 12px", "font-size": "var(--fs-label)", "font-family": "var(--font-mono)", "font-variant-numeric": "tabular-nums" }}>
                   <For each={contrast()}>
                     {(c) => (
                       <>
                         <span style={{ color: "var(--fg-4)", "overflow": "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{c.pair}</span>
                         <span style={{ color: "var(--fg-3)", "text-align": "right" }}>{c.ratio.toFixed(2)}:1</span>
-                        <span class={wcagBadgeClass(c)} style={{ padding: "1px 5px", "font-size": "9px", "line-height": "1.6" }}>{wcagLabel(c)}</span>
+                        <span class={wcagBadgeClass(c)} style={{ padding: "1px 5px", "line-height": "1.6" }}>{wcagLabel(c)}</span>
                       </>
                     )}
                   </For>
