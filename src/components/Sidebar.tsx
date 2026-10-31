@@ -4,14 +4,14 @@
 
    Reads:
      - route()                  → active highlight
-     - player.currentTrack      → mini chip + VU pulse
-     - player.isPlaying         → toggle VU animation
+     - player.currentTrack      → mini chip + indicador tocando agora
+       (NowPlayingIndicator: nível real, o mesmo das listas)
    Dispatches:
      - navigate('/now-playing') → opens NP screen
      - postMessage opening cmd palette via custom event
    ============================================================ */
 
-import { For, Index, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect } from "solid-js";
 import { route, navigate } from "../router";
 import { player } from "../store/player";
 import { activeCount, markArrivalsSeen, newArrivals } from "../store/crate";
@@ -20,6 +20,7 @@ import { bridgeStatus, chipTitle, chipVisible, clientes } from "../store/bridge"
 import { Icon, ICONS } from "./Icon";
 import { modCombo } from "../lib/keyboard";
 import { CoverArt } from "./CoverArt";
+import { NowPlayingIndicator } from "./NowPlayingIndicator";
 import { coverUrl } from "../tauri";
 
 const PRIMARY = [
@@ -76,20 +77,6 @@ export function arrivalsText(n: number): string {
 }
 
 export function Sidebar() {
-  const [vu, setVu] = createSignal([4, 7, 10]);
-  let vuTimer: ReturnType<typeof setInterval> | null = null;
-
-  onMount(() => {
-    vuTimer = setInterval(() => {
-      if (player.isPlaying) {
-        setVu([0, 0, 0].map(() => 2 + Math.random() * 8));
-      } else {
-        setVu([4, 7, 10]);
-      }
-    }, 220);
-    onCleanup(() => { if (vuTimer) clearInterval(vuTimer); });
-  });
-
   const isActive = (r: string) => route().path === r;
   // A classe .active só pinta: aria-current diz ao leitor de tela em que
   // página se está (ds-2).
@@ -217,11 +204,9 @@ export function Sidebar() {
               <div class="np-mini__title">{player.currentTrack.title || "—"}</div>
               <div class="np-mini__artist">{player.currentTrack.artist_name || "—"}</div>
             </div>
-            <div class="np-mini__vu">
-              {/* Index (nao For): For keia por valor e recriaria os 3 spans
-                  a cada tick de 220ms; Index atualiza height in-place. */}
-              <Index each={vu()}>{(h) => <span style={{ height: `${h()}px` }} />}</Index>
-            </div>
+            {/* Nível real da saída, laço único com as listas, parado na
+                pausa e com movimento reduzido (A5: era sorteio a cada 220 ms). */}
+            <NowPlayingIndicator trackId={player.currentTrack.id} />
           </div>
         )}
 
