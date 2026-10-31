@@ -1970,12 +1970,31 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .tweaks__title { font-weight: 600; font-size: 13px; color: var(--fg-1); }
 .tweaks__close {
-  width: 22px; height: 22px;
+  width: 24px; height: 24px;
   border-radius: var(--radius-sm);
   display: grid; place-items: center;
   color: var(--fg-5); cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 .tweaks__close:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__close:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+/* Âncoras das seções (B17): uma linha logo abaixo do cabeçalho. */
+.tweaks__nav {
+  display: flex; gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-2);
+}
+.tweaks__nav-btn {
+  flex: 1 1 0;
+  padding: 5px 4px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-label); font-weight: 600;
+  color: var(--fg-4);
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+.tweaks__nav-btn:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__nav-btn:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
 .tweaks__body {
   padding: 12px 14px 16px;
   overflow-y: auto;
@@ -1988,8 +2007,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   font-size: 11px; font-weight: 600; color: var(--fg-3);
   text-transform: uppercase; letter-spacing: 0.06em;
 }
-.tweaks__select,
-.tweaks .settings-range {
+.tweaks__select {
   width: 100%;
   font: inherit;
   padding: 6px 8px;
@@ -1998,7 +2016,19 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
   background: var(--bg-paper);
   color: var(--fg-2);
 }
-.tweaks .settings-range { padding: 0; height: 22px; }
+/* O range herda o .slider (A30): era o range nativo do GTK numa caixa.
+   Margem vertical dá ao polegar de 12 px uma faixa de toque. */
+.tweaks__range { margin: 6px 0; }
+.tweaks__range:disabled { opacity: 0.45; }
+.tweaks__range:disabled::-webkit-slider-thumb { cursor: not-allowed; background: var(--fg-6); }
+.tweaks__select:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Filho de um pai desligado (A30): o controle esmaece e a linha diz de
+   quem depende. Os segmentados seguem focáveis (aria-disabled). */
+.tweaks__row.is-dependent .tweaks__label { color: var(--fg-5); }
+.tweaks__row.is-dependent .segmented { opacity: 0.55; }
+.tweaks__row.is-dependent .segmented__btn { cursor: not-allowed; }
+.tweaks__dep { margin: 0; color: var(--fg-5); }
+.tweaks__row--inline { flex-direction: row; align-items: center; justify-content: space-between; }
 .segmented button.active,
 .segmented button.is-active { background: var(--bg-paper); color: var(--fg-1); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
@@ -2009,21 +2039,48 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 }
 .tweaks__divider {
   display: flex; align-items: center; gap: 8px; margin: 4px 0 2px;
+  scroll-margin-top: 8px;
 }
+.tweaks__divider:first-child { margin-top: 0; }
 .tweaks__divider::before,
 .tweaks__divider::after { content: ''; flex: 1; height: 1px; background: var(--line-2); }
 .tweaks__divider span {
-  font-size: 10px; font-weight: 700; color: var(--fg-6);
+  font-size: var(--fs-label); font-weight: 700; color: var(--fg-5);
   text-transform: uppercase; letter-spacing: 0.06em;
 }
-.tweaks__reset {
+/* Botão de largura total do painel (Medir cenas, Redefinir tudo). */
+.tweaks__btn {
   margin-top: 4px; padding: 6px 10px;
   background: var(--bg-tint); border: 1px solid var(--line-2);
   border-radius: var(--radius-sm); font-size: 11.5px; font-weight: 500;
   color: var(--fg-4); cursor: pointer; width: 100%;
+  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+.tweaks__btn:hover { background: var(--line-2); color: var(--fg-2); }
+.tweaks__btn:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
+/* Redefinir tudo armado (B4): o segundo clique apaga os ajustes. */
+.tweaks__btn.is-armed { color: var(--rose-fg); border-color: var(--rose-fg); background: var(--rose-bg); }
+/* "↺ tema" e "Tentar de novo": compactos, ao lado do texto (A30). */
+.tweaks__retheme {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 6px; padding: 1px 6px;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  background: var(--bg-paper);
+  font-size: var(--fs-label); font-weight: 500;
+  letter-spacing: 0; text-transform: none;
+  color: var(--fg-4); cursor: pointer;
+  vertical-align: middle;
   transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
-.tweaks__reset:hover { background: var(--line-2); color: var(--fg-2); }
+.tweaks__retheme:hover { background: var(--bg-tint); color: var(--fg-1); }
+.tweaks__retheme:focus-visible { outline: var(--focus-outline); outline-offset: 1px; }
+/* Fundo WebGL que não iniciou (A33): o que aconteceu + a saída. */
+.tweaks__gl-fail {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11px; line-height: 1.4; color: var(--amber-fg);
+}
+.tweaks__gl-fail .tweaks__retheme { flex: none; margin-left: 0; }
 /* Hint de uma linha sob um knob (mesma família do .set-row__hint). */
 .tweaks__hint {
   font-size: 11px; color: var(--fg-5); line-height: 1.4;
@@ -2032,10 +2089,10 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Estado do motor WebGL: cena desenhada + fps medido (A13). O ponto
    segue o critério de 58 fps; o número é mono tabular porque muda 1x/s. */
 .tweaks__gl-status { display: flex; align-items: center; gap: 6px; }
+/* A4: no estado normal o ponto é só cor; o halo fica para o aviso. */
 .tweaks__gl-dot {
   width: 5px; height: 5px; border-radius: 50%; flex: none;
   background: var(--green-ring);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-ring) calc(var(--halo-alpha) * 160%), transparent);
 }
 /* --low: fps abaixo do critério; --attn: ponte ligada com cliente conectado
    (o mesmo âmbar do chip da sidebar). */
@@ -2051,7 +2108,7 @@ html[data-lyrics-solid="on"] .np__lyrics-card--floating {
 /* Seletor de cena do fundo WebGL: com muitas cenas o segmented quebra
    linha em vez de estourar a largura do painel. */
 .segmented--wrap { display: flex; flex-wrap: wrap; }
-.tweaks__reset:disabled { opacity: 0.5; cursor: progress; }
+.tweaks__btn:disabled { opacity: 0.5; cursor: progress; }
 
 /* Medição de cenas (gl/bench.ts): tabela da última medição. */
 .tweaks__bench { display: flex; flex-direction: column; gap: 6px; }
