@@ -18,15 +18,21 @@
    station.
    Pin toggle -> store/pins, sem navegar.
 
-   Fallback do mosaico: se o folder tem < 4 covers distintas, slots
-   vazios viram placeholder colorido (tones do extractor-lab).
+   Mosaico (lib/mosaic.ts, A42): uma capa ocupa o quadro inteiro, duas ou
+   três repetem; o placeholder colorido (tones do extractor-lab) só
+   aparece em pasta sem capa nenhuma.
    ============================================================ */
 
-import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js";
+import { createMemo, createResource, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
 import { libListFolders, coverUrl, type FolderPlaylist } from "../tauri";
 import { togglePin, pins } from "../store/pins";
 import { libraryRevision } from "../store/moveDialog";
 import { navigate } from "../router";
+import { EmptyState } from "../components/EmptyState";
+import { ICONS } from "../components/Icon";
+import { dataOf, listState, peek, settle } from "../lib/loaded";
+import { mosaicCells } from "../lib/mosaic";
+import { truncTipEvent } from "../lib/truncTip";
 
 function openPlaylist(folder: FolderPlaylist) {
   navigate(`/playlist/${encodeURIComponent(folder.name)}`);
@@ -50,16 +56,14 @@ function toneFor(folder: string, offset: number): Tone {
   return TONES[Math.abs(h + offset) % TONES.length];
 }
 
-// ── Mosaico 2x2 de covers reais com fallback colorido ───────────
+// ── Mosaico de covers reais; tom colorido só sem capa nenhuma ────
 function CoverMosaic(props: { folder: FolderPlaylist }) {
-  const cells = createMemo(() => {
-    const out: Array<{ src: string | null; tone: Tone }> = [];
-    const covers = props.folder.cover_paths ?? [];
-    for (let i = 0; i < 4; i++) {
-      const src = covers[i] ? coverUrl(covers[i]) : null;
-      out.push({ src, tone: toneFor(props.folder.name, i) });
+  const cells = createMemo((): Array<{ src: string | null; tone: Tone; full: boolean }> => {
+    const covers = mosaicCells(props.folder.cover_paths ?? []);
+    if (covers.length === 0) {
+      return Array.from({ length: 4 }, (_, i) => ({ src: null, tone: toneFor(props.folder.name, i), full: false }));
     }
-    return out;
+    return covers.map((c, i) => ({ src: coverUrl(c), tone: toneFor(props.folder.name, i), full: covers.length === 1 }));
   });
   return (
     <>
@@ -74,7 +78,7 @@ function CoverMosaic(props: { folder: FolderPlaylist }) {
               </div>
             }
           >
-            <div class="pl-card__quad pl-card__quad--cover">
+            <div class="pl-card__quad pl-card__quad--cover" classList={{ "pl-card__quad--full": c.full }}>
               <img src={c.src!} alt="" loading="lazy" />
             </div>
           </Show>
@@ -91,11 +95,11 @@ function CoverMosaic(props: { folder: FolderPlaylist }) {
 function PlaylistCard(props: { folder: FolderPlaylist; children?: JSX.Element }) {
   const pinned = createMemo(() => pins().includes(props.folder.name));
   return (
-    <div class="pl-card">
+    <div class="pl-card" onPointerEnter={truncTipEvent}>
       <div class="pl-card__cover">
         <CoverMosaic folder={props.folder} />
       </div>
-      <button type="button" class="pl-card__title pl-card__open" onClick={() => openPlaylist(props.folder)}>
+      <button type="button" class="pl-card__title pl-card__open" data-trunc onFocus={truncTipEvent} onClick={() => openPlaylist(props.folder)}>
         {props.folder.name}
       </button>
       {/* Depois do abrir na ordem de Tab (nome primeiro); a posição é absoluta. */}
@@ -122,7 +126,9 @@ function fmtTracks(n: number): string {
 export default function Playlists() {
   const [filter, setFilter] = createSignal("");
   // libraryRevision na chave: contagens/capas mudam depois de "Mover para playlist…".
-  const [folders] = createResource(() => ({ rev: libraryRevision() }), () => libListFolders().catch(() => [] as FolderPlaylist[]));
+  const [foldersRes, { refetch }] = createResource(() => ({ rev: libraryRevision() }), () => settle(libListFolders()));
+  const folders = () => dataOf(peek(foldersRes));
+  const state = () => listState(peek(foldersRes));
 
   // "none" = ordem da API, "asc" = A→Z, "desc" = Z→A. Toggle ciclico.
   const [sortDir, setSortDir] = createSignal<"none" | "asc" | "desc">("none");
@@ -131,7 +137,7 @@ export default function Playlists() {
   }
 
   const visibleFolders = createMemo(() => {
-    const list = folders() ?? [];
+    const list = folders();
     const q = filter().trim().toLowerCase();
     if (!q) return list;
     return list.filter((f) => f.name.toLowerCase().includes(q));
@@ -157,8 +163,8 @@ export default function Playlists() {
     return dir === "asc" ? sorted : sorted.reverse();
   });
 
-  const totalPlaylists = () => (folders() ?? []).length;
-  const totalTracks    = () => (folders() ?? []).reduce((sum, f) => sum + f.track_count, 0);
+  const totalPlaylists = () => folders().length;
+  const totalTracks    = () => folders().reduce((sum, f) => sum + f.track_count, 0);
 
   return (
     <article class="view">
@@ -188,47 +194,73 @@ export default function Playlists() {
           </div>
         </div>
 
-        {/* ── Pinned ───────────────────────────────────── */}
-        <Show when={pinned().length > 0}>
-          <section>
-            <div class="section__head">
-              <h2 class="section__title">Pinned</h2>
-            </div>
-            <div class="pl-grid">
-              <For each={pinned()}>
-                {(p) => (
-                  <PlaylistCard folder={p}>
-                    <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
-                  </PlaylistCard>
-                )}
-              </For>
-            </div>
-          </section>
-        </Show>
+        <Switch>
+          <Match when={state() === "carregando"}>
+            <EmptyState tone="carregando" title="Carregando o acervo…" />
+          </Match>
+          <Match when={state() === "erro"}>
+            <EmptyState
+              tone="erro"
+              title="Não consegui ler o acervo agora."
+              text="O índice não respondeu. As pastas continuam no disco."
+              actions={[{ label: "Tentar de novo", onClick: () => void refetch(), icon: ICONS.refresh }]}
+            />
+          </Match>
+          <Match when={state() === "vazio"}>
+            <EmptyState
+              icon={ICONS.playlists}
+              title="Nenhuma playlist ainda."
+              text="Cada pasta de primeiro nível em ~/Music vira uma playlist."
+            />
+          </Match>
+          <Match when={visibleFolders().length === 0}>
+            <EmptyState
+              compact
+              title={`Nenhuma playlist com "${filter().trim()}".`}
+              actions={[{ label: "Limpar filtro", onClick: () => setFilter("") }]}
+            />
+          </Match>
+          <Match when={state() === "pronto"}>
+            {/* ── Pinned ───────────────────────────────────── */}
+            <Show when={pinned().length > 0}>
+              <section>
+                <div class="section__head">
+                  <h2 class="section__title">Pinned</h2>
+                </div>
+                <div class="pl-grid">
+                  <For each={pinned()}>
+                    {(p) => (
+                      <PlaylistCard folder={p}>
+                        <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
+                      </PlaylistCard>
+                    )}
+                  </For>
+                </div>
+              </section>
+            </Show>
 
-        {/* ── All playlists ────────────────────────────── */}
-        <section>
-          <div class="section__head">
-            <h2 class="section__title">All playlists · {rest().length}</h2>
-            <button type="button" class="section__action" onClick={cycleSortDir}>
-              {sortDir() === "none" ? "Sort by name" : sortDir() === "asc" ? "Sort: A→Z ↑" : "Sort: Z→A ↓"}
-            </button>
-          </div>
-          <Show
-            when={folders.loading || folders()}
-            fallback={<p style={{ color: "var(--fg-5)", "font-size": "13px" }}>Sem playlists.</p>}
-          >
-            <div class="pl-grid">
-              <For each={rest()}>
-                {(p) => (
-                  <PlaylistCard folder={p}>
-                    <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
-                  </PlaylistCard>
-                )}
-              </For>
-            </div>
-          </Show>
-        </section>
+            {/* ── All playlists ────────────────────────────── */}
+            <Show when={rest().length > 0}>
+              <section>
+                <div class="section__head">
+                  <h2 class="section__title">All playlists · {rest().length}</h2>
+                  <button type="button" class="section__action" onClick={cycleSortDir}>
+                    {sortDir() === "none" ? "Sort by name" : sortDir() === "asc" ? "Sort: A→Z ↑" : "Sort: Z→A ↓"}
+                  </button>
+                </div>
+                <div class="pl-grid">
+                  <For each={rest()}>
+                    {(p) => (
+                      <PlaylistCard folder={p}>
+                        <div class="pl-card__sub">Folder · {fmtTracks(p.track_count)}</div>
+                      </PlaylistCard>
+                    )}
+                  </For>
+                </div>
+              </section>
+            </Show>
+          </Match>
+        </Switch>
       </div>
     </article>
   );

@@ -1,14 +1,14 @@
 /* ============================================================
    views/Playlist.tsx — Pagina de uma playlist (folder) especifica.
-   Param via route('/playlist/:name'). Hero grande (cover mosaico
-   2x2) + tracklist com cover por linha. Botoes Pin / Play.
+   Param via route('/playlist/:name'). Hero grande (mosaico de capas,
+   lib/mosaic.ts) + tracklist com cover por linha. Botoes Pin / Tocar.
 
    Estrutura visual alinhada com Album.tsx mas reforcada: hero
    180px, tracklist com .tracks--with-cover (6 cols). Ellipsis em
    title/cell pra texto longo nao vazar.
    ============================================================ */
 
-import { createMemo, createResource, For, Show } from "solid-js";
+import { createMemo, createResource, For, Show, Switch, Match } from "solid-js";
 import {
   libListFolderTracks,
   libListFolders,
@@ -19,10 +19,13 @@ import {
 import { setQueue } from "../store/player";
 import { playTrack } from "../components/PlayerBar";
 import { isPinned, togglePin, pins } from "../store/pins";
-import { route } from "../router";
+import { navigate, route } from "../router";
 import { Icon, ICONS } from "../components/Icon";
 import { TrackRowTable } from "../components/TrackRowTable";
 import { libraryRevision } from "../store/moveDialog";
+import { EmptyState } from "../components/EmptyState";
+import { dataOf, listState, peek, settle } from "../lib/loaded";
+import { mosaicCells } from "../lib/mosaic";
 
 function fmtTotalDur(ms: number): string {
   const totalSec = Math.round(ms / 1000);
@@ -36,34 +39,37 @@ export default function PlaylistView() {
   const name = () => (route().param ? decodeURIComponent(route().param!) : null);
 
   // libraryRevision na chave: recarrega depois de "Mover para playlist…".
-  const [tracks] = createResource(() => ({ n: name(), rev: libraryRevision() }), async ({ n }): Promise<Track[]> => {
-    if (!n) return [];
-    try { return await libListFolderTracks(n); } catch { return []; }
-  });
+  const [tracksRes, { refetch }] = createResource(
+    () => ({ n: name(), rev: libraryRevision() }),
+    ({ n }) => settle(n ? libListFolderTracks(n) : Promise.resolve([] as Track[])),
+  );
+  const tracks = () => dataOf(peek(tracksRes));
+  const state = () => listState(peek(tracksRes));
 
-  const [folder] = createResource(() => ({ n: name(), rev: libraryRevision() }), async ({ n }): Promise<FolderPlaylist | null> => {
+  const [folderRes] = createResource(() => ({ n: name(), rev: libraryRevision() }), async ({ n }): Promise<FolderPlaylist | null> => {
     if (!n) return null;
     try {
       const list = await libListFolders();
       return list.find((f) => f.name === n) ?? null;
     } catch { return null; }
   });
+  const folder = () => peek(folderRes) ?? null;
 
-  // Mosaico 2x2 de capas distintas. Mesma logica do card da listagem
-  // de playlists pra manter coerencia visual.
-  const heroCovers = createMemo(() => (folder()?.cover_paths ?? []).slice(0, 4));
+  // Mosaico de capas distintas, mesma regra do card da listagem (A42):
+  // uma capa ocupa o quadro; duas ou três repetem; sem capa, o disco.
+  const heroCovers = createMemo(() => mosaicCells(folder()?.cover_paths ?? []));
 
   // scope "curated": shuffle dentro da playlist embaralha SO esta lista
   // (em vez de virar radio mode baseado em recommendations da track atual).
   function play(t: Track) {
-    const all = tracks() ?? [];
+    const all = tracks();
     const idx = all.indexOf(t);
     setQueue(all, idx >= 0 ? idx : 0, "curated", { kind: "playlist", name: name() ?? undefined });
     playTrack(t);
   }
 
   function playAll() {
-    const all = tracks() ?? [];
+    const all = tracks();
     if (all.length) {
       setQueue(all, 0, "curated", { kind: "playlist", name: name() ?? undefined });
       playTrack(all[0]);
@@ -76,7 +82,7 @@ export default function PlaylistView() {
   });
 
   const totalDuration = createMemo(() =>
-    (tracks() ?? []).reduce((sum, t) => sum + (t.duration_ms || 0), 0),
+    tracks().reduce((sum, t) => sum + (t.duration_ms || 0), 0),
   );
 
   return (
@@ -94,20 +100,12 @@ export default function PlaylistView() {
                 </div>
               }
             >
-              <For each={Array.from({ length: 4 })}>
-                {(_, i) => {
-                  const src = () => heroCovers()[i()];
-                  return (
-                    <Show
-                      when={src()}
-                      fallback={<div class="pl-hero-cover__quad pl-hero-cover__quad--empty" />}
-                    >
-                      <div class="pl-hero-cover__quad">
-                        <img src={coverUrl(src()!)} alt="" loading="lazy" />
-                      </div>
-                    </Show>
-                  );
-                }}
+              <For each={heroCovers()}>
+                {(src) => (
+                  <div class="pl-hero-cover__quad" classList={{ "pl-hero-cover__quad--full": heroCovers().length === 1 }}>
+                    <img src={coverUrl(src)} alt="" loading="lazy" />
+                  </div>
+                )}
               </For>
             </Show>
           </div>
@@ -116,8 +114,8 @@ export default function PlaylistView() {
             <div class="pl-hero-meta__kicker">Playlist · Folder</div>
             <h1 class="pl-hero-meta__title">{name() ?? "Playlist"}</h1>
             <p class="pl-hero-meta__stats">
-              <b>{tracks()?.length ?? 0}</b> tracks
-              <Show when={(tracks() ?? []).length > 0}>
+              <b>{tracks().length}</b> tracks
+              <Show when={tracks().length > 0}>
                 <span class="pl-hero-meta__sep">·</span>
                 {fmtTotalDur(totalDuration())}
               </Show>
@@ -137,47 +135,74 @@ export default function PlaylistView() {
             <iconify-icon icon={pinned() ? "lucide:pin-off" : "lucide:pin"} noobserver />
             <span>{pinned() ? "Pinned" : "Pin"}</span>
           </button>
-          <button class="pl-action-btn pl-action-btn--primary" type="button" onClick={playAll} title="Play all">
+          <button class="pl-action-btn pl-action-btn--primary" type="button" onClick={playAll} disabled={!tracks().length}>
             <Icon name={ICONS.play} size={13} />
-            <span>Play</span>
+            <span>Tocar</span>
           </button>
         </div>
       </header>
 
       <div class="view__body">
-        <div class="tracks tracks--with-cover">
-          <div class="tracks__head tracks__idx">#</div>
-          <div class="tracks__head" aria-label="Cover" />
-          <div class="tracks__head">Title</div>
-          <div class="tracks__head">Album</div>
-          <div class="tracks__head">Genre</div>
-          <div class="tracks__head tracks__mono">Length</div>
-          <For each={tracks() ?? []}>
-            {(t, i) => (
-              <TrackRowTable
-                track={t}
-                index={i() + 1}
-                onClick={() => play(t)}
-                contextList={tracks() ?? []}
-                coverSlot={
-                  <div class="tracks__cover">
-                    <Show
-                      when={t.album_cover_path}
-                      fallback={
-                        <div class="tracks__cover-fallback">
-                          {/* @ts-ignore */}
-                          <iconify-icon icon="lucide:disc-3" noobserver style={{ "font-size": "14px" }} />
-                        </div>
-                      }
-                    >
-                      <img src={coverUrl(t.album_cover_path!)} alt="" loading="lazy" />
-                    </Show>
-                  </div>
-                }
-              />
-            )}
-          </For>
-        </div>
+        <Switch>
+          <Match when={state() === "carregando"}>
+            <EmptyState tone="carregando" title="Carregando a playlist…" />
+          </Match>
+          <Match when={state() === "erro"}>
+            <EmptyState
+              tone="erro"
+              title="Não consegui ler o acervo agora."
+              text="O índice não respondeu. As faixas continuam no disco."
+              actions={[{ label: "Tentar de novo", onClick: () => void refetch(), icon: ICONS.refresh }]}
+            />
+          </Match>
+          <Match when={state() === "vazio"}>
+            <EmptyState
+              icon={ICONS.playlists}
+              title="Esta playlist está vazia."
+              text="A pasta existe em ~/Music, mas não tem faixa indexada. Mova faixas para cá pelo menu de contexto (Mover para playlist…)."
+              actions={[{ label: "Ver as playlists", onClick: () => navigate("/playlists") }]}
+            />
+          </Match>
+          <Match when={state() === "pronto"}>
+            <Show when={tracksRes.state === "refreshing"}>
+              <p class="lib-busy" role="status">Atualizando…</p>
+            </Show>
+            {/* Sem a coluna Playlist: seria esta mesma em toda linha (A21). */}
+            <div class="tracks tracks--with-cover" role="grid" aria-rowcount={tracks().length + 1}>
+              <div class="tracks__head tracks__idx" role="columnheader">#</div>
+              <div class="tracks__head" role="columnheader" aria-label="Capa" />
+              <div class="tracks__head" role="columnheader">Título</div>
+              <div class="tracks__head" role="columnheader">Álbum</div>
+              <div class="tracks__head tracks__mono" role="columnheader">Duração</div>
+              <For each={tracks()}>
+                {(t, i) => (
+                  <TrackRowTable
+                    track={t}
+                    index={i() + 1}
+                    columns={["album"]}
+                    onClick={() => play(t)}
+                    contextList={tracks()}
+                    coverSlot={
+                      <div class="tracks__cover" role="gridcell">
+                        <Show
+                          when={t.album_cover_path}
+                          fallback={
+                            <div class="tracks__cover-fallback">
+                              {/* @ts-ignore */}
+                              <iconify-icon icon="lucide:disc-3" noobserver style={{ "font-size": "14px" }} />
+                            </div>
+                          }
+                        >
+                          <img src={coverUrl(t.album_cover_path!)} alt="" loading="lazy" />
+                        </Show>
+                      </div>
+                    }
+                  />
+                )}
+              </For>
+            </div>
+          </Match>
+        </Switch>
       </div>
     </article>
   );

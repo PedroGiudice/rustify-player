@@ -13,7 +13,8 @@ import { render, cleanup, fireEvent } from "@solidjs/testing-library";
 // vi.mock factories sao hoisted pro topo do arquivo. Variaveis usadas
 // dentro delas precisam vir de vi.hoisted, senao quebra com
 // "error when mocking a module".
-const { mockTracks, mockAlbums, mockSetQueue, mockPlayTrack } = vi.hoisted(() => ({
+const { mockTracks, mockAlbums, mockSetQueue, mockPlayTrack, mockNavigate } = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
   mockTracks: [
     { id: "1", title: "Track A", artist_name: "Artist", album_title: "Album X", album_cover_path: null, album_year: 2024, duration_ms: 180000, path: "/a.flac", lrc_path: null },
     { id: "2", title: "Track B", artist_name: "Artist", album_title: "Album X", album_cover_path: null, album_year: 2024, duration_ms: 200000, path: "/b.flac", lrc_path: null },
@@ -33,7 +34,7 @@ vi.mock("../tauri", () => ({
   getState: vi.fn().mockResolvedValue({ current_track: null, current_library_track: null, is_playing: false }),
   getTrackColor: vi.fn().mockResolvedValue(""),
   libGetAlbums: vi.fn().mockResolvedValue(mockAlbums),
-  libGetTracksByAlbum: vi.fn().mockResolvedValue(mockTracks),
+  libGetTracks: vi.fn().mockResolvedValue(mockTracks),
   coverUrl: vi.fn((p: string | null) => p ?? ""),
 }));
 
@@ -47,13 +48,13 @@ vi.mock("../components/PlayerBar", () => ({
 }));
 
 vi.mock("../router", () => ({
-  navigate: vi.fn(),
+  navigate: (...args: any[]) => mockNavigate(...args),
   route: () => ({ path: "/albums" }),
 }));
 
 vi.mock("../components/Icon", () => ({
   Icon: () => <span />,
-  ICONS: { play: "play" },
+  ICONS: { play: "play", refresh: "refresh", albums: "albums", alert: "alert" },
 }));
 
 beforeEach(() => {
@@ -86,7 +87,8 @@ describe("Albums — botao card__play", () => {
 
     await vi.waitFor(() => mockSetQueue.mock.calls.length > 0);
 
-    expect(tauri.libGetTracksByAlbum).toHaveBeenCalledWith("Album X");
+    // Título E artista: dois álbuns homônimos não viram uma fila só (A19).
+    expect(tauri.libGetTracks).toHaveBeenCalledWith({ album: "Album X", artist: "Artist", limit: 200 });
     expect(mockSetQueue).toHaveBeenCalledWith(mockTracks, 0, "curated", { kind: "album", name: "Album X" });
     expect(mockPlayTrack).toHaveBeenCalledWith(mockTracks[0]);
   });
@@ -122,5 +124,53 @@ describe("Albums — nome acessível do card__play (ds-2)", () => {
     const { container } = render(() => <Albums />);
     await vi.waitFor(() => expect(container.querySelector(".card__play")).toBeTruthy());
     expect(container.querySelector(".card__play")!.getAttribute("aria-label")).toBe("Tocar Album X");
+  });
+});
+
+// B1: o card abre o álbum; só o play do hover toca.
+describe("Albums — o card abre a página do álbum (B1)", () => {
+  it("clicar no nome navega para o álbum com o artista e não toca nada", async () => {
+    const { container } = render(() => <Albums />);
+    await vi.waitFor(() => expect(container.querySelector(".card__open")).toBeTruthy());
+    const open = container.querySelector(".card__open") as HTMLButtonElement;
+    expect(open.tagName).toBe("BUTTON");
+    expect(open.textContent).toBe("Album X");
+    fireEvent.click(open);
+    expect(mockNavigate).toHaveBeenCalledWith("/album/Album%20X?artista=Artist");
+    expect(mockSetQueue).not.toHaveBeenCalled();
+    expect(mockPlayTrack).not.toHaveBeenCalled();
+  });
+
+  it("o card em si não é mais um alvo de clique que toca", async () => {
+    const { container } = render(() => <Albums />);
+    await vi.waitFor(() => expect(container.querySelector(".card")).toBeTruthy());
+    fireEvent.click(container.querySelector(".card__meta")!);
+    expect(mockSetQueue).not.toHaveBeenCalled();
+  });
+});
+
+// A7: falha de leitura não se passa por acervo vazio.
+describe("Albums — carregando, erro e vazio (A7)", () => {
+  it("falha do índice mostra o erro com Tentar de novo, que refaz a leitura", async () => {
+    vi.mocked(tauri.libGetAlbums).mockRejectedValueOnce(new Error("qdrant fora"));
+    const { findByRole, container } = render(() => <Albums />);
+    const alert = await findByRole("alert");
+    expect(alert.textContent).toContain("Não consegui ler o acervo agora.");
+    expect(container.querySelector(".card")).toBeNull();
+    fireEvent.click(alert.querySelector("button")!);
+    await vi.waitFor(() => expect(container.querySelectorAll(".card").length).toBe(1));
+  });
+
+  it("acervo sem álbuns diz isso, sem fingir erro", async () => {
+    vi.mocked(tauri.libGetAlbums).mockResolvedValueOnce([]);
+    const { findByText, queryByRole } = render(() => <Albums />);
+    expect(await findByText("Nenhum álbum no acervo.")).toBeTruthy();
+    expect(queryByRole("alert")).toBeNull();
+  });
+
+  it("enquanto carrega, diz que está carregando", () => {
+    vi.mocked(tauri.libGetAlbums).mockReturnValueOnce(new Promise(() => {}));
+    const { getByRole } = render(() => <Albums />);
+    expect(getByRole("status").textContent).toContain("Carregando o acervo…");
   });
 });
