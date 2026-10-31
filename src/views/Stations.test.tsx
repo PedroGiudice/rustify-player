@@ -26,6 +26,7 @@ vi.mock("../tauri", async (importOriginal) => {
     libCreateStation: vi.fn(async () => null),
     libDeleteStation: vi.fn(async () => true),
     libGetTracksByIds: vi.fn(async () => []),
+    libRadioExcluded: vi.fn(async () => ({ familiarity_ready: true, tracks: [] })),
     libMoodVocabulary: vi.fn(async () => ({
       moods: ["dark", "uplifting", "chill"],
       activities: ["workout", "study"],
