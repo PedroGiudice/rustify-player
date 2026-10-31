@@ -15,9 +15,9 @@
      de página; 12 px/400 secundário e botões (botão 600, padrão do
      Crate); 11,5 px tabular-nums para duração e contagens.
    - Layout:
-       [ lupa | campo único ............ buscando… ] [pasta v] [Buscar|Baixar]
+       [ lupa | campo único ............ buscando… ] [→ pasta v] [Buscar|Baixar]
        aviso de uma linha (foi para a fila / erro)
-       home: estado vazio + jobs da fila
+       home: estado vazio (os jobs moram na aba Fila desde 31/10, B6)
        busca: seções (o "top" primeiro) Faixas / Álbuns / Artistas /
               Playlists; linha = capa 40 | título + sub | marcas |
               duração | ações
@@ -27,6 +27,9 @@
                 Marcar todas · Desmarcar todas · Só as novas
                 [x] capa | título + sub | marcas | duração
                 rodapé fixo: 18 de 100 · ~1,1 GB · ~6 min [pasta v] [Baixar]
+   - Linha com job (A16): a pílula do job fica no lugar dos botões; em voo,
+     "Enviando…" desligado (dois cliques não viram dois jobs); faixa que já
+     está no acervo só oferece Tocar.
    ============================================================ */
 
 import {
@@ -34,13 +37,15 @@ import {
 } from "solid-js";
 import {
   crateTidalEnqueue, crateTidalEnqueueSelection, crateTidalSearch, crateTidalArtist, crateTidalPreview,
-  crateTidalCover, crateTidalResend, libGetTracks,
+  crateTidalCover, libGetTracks,
   type TidalJob, type TidalSearch, type TidalTrack, type TidalAlbum, type TidalArtist, type TidalPlaylist,
-  type TidalArtistPage, type TidalPreview,
+  type TidalArtistPage, type TidalPreview, type Track,
 } from "../../tauri";
-import {
-  shortTidalLink, tidalStatusLabel, tidalStatusTone, loadLastTidalDest, saveLastTidalDest,
-} from "../../lib/tidalFila";
+import { tidalStatusLabel, tidalStatusTone, isTidalActive } from "../../lib/tidalFila";
+import { loadLastDest, saveLastDest } from "../../store/crate";
+import { libraryRevision } from "../../store/moveDialog";
+import { playTrack } from "../../components/PlayerBar";
+import { FolderPicker, mergeFolders } from "./FolderPicker";
 import {
   classifyTidalInput, estimateSelection, formatSize, formatEta, formatTrackTime, formatListTime, plural,
   buildOwnedIndex, findOwned, defaultSelection, orderedSelection, latestOnly, SEARCH_DEBOUNCE_MS, MAX_SELECTION,
@@ -49,17 +54,23 @@ import {
 import { pushEscLayer } from "../../lib/escLayers";
 import { modCombo } from "../../lib/keyboard";
 import { Icon, ICONS } from "../../components/Icon";
-import { CopyLinkButton } from "./CopyLinkButton";
 
 interface Props {
   jobs: TidalJob[];
+  /** Pastas que a fila da VM conhece; somam-se às do acervo local (B7). */
   pastas: string[];
+  /** Pastas de 1º nível do acervo local (lib_list_folders). */
+  folders?: string[];
   load: "loading" | "loaded" | "error";
   loadError: string | null;
   refresh: () => void;
   tokenMissing: boolean;
   /** A aba fica montada e oculta ao trocar de aba do Crate: só a ativa pega o Esc. */
   active?: boolean;
+  /** Os jobs moram na aba Fila do Crate (B6): o atalho troca de aba sem apagar a busca. */
+  onShowQueue?: () => void;
+  /** Busca pedida de fora (B28, "Buscar na Tidal" do Soulseek): `n` muda a cada pedido. */
+  request?: { q: string; n: number } | null;
 }
 
 type Page =
@@ -134,9 +145,38 @@ function trackSub(t: TidalTrack): string {
   return parts.filter(Boolean).join(" · ");
 }
 
+/** O que a linha mostra no lugar dos botões: job da fila para este link
+    (a pílula dele), envio em voo, ou nada. */
+export type RowJob = { kind: "job"; job: TidalJob } | { kind: "sending" } | { kind: "sent" } | null;
+
+function JobPill(props: { state: Exclude<RowJob, null> }) {
+  return (
+    <Show
+      when={props.state.kind === "job" ? props.state.job : null}
+      fallback={
+        <Show when={props.state.kind === "sending"} fallback={<span class="crate-pill crate-pill--sub">na fila</span>}>
+          <button type="button" class="crate-btn" disabled>Enviando…</button>
+        </Show>
+      }
+    >
+      {(j) => (
+        <span class={`crate-pill crate-pill--${tidalStatusTone(j().status)}`} title={j().resumo || undefined}>
+          {tidalStatusLabel(j().status)}
+        </span>
+      )}
+    </Show>
+  );
+}
+
+/** Em voo ou com job ativo, a linha não oferece Baixar de novo. */
+function rowBusy(r: RowJob): boolean {
+  return r != null && (r.kind !== "job" || isTidalActive(r.job.status));
+}
+
 function TrackRow(props: {
   t: TidalTrack;
-  owned: boolean;
+  owned: Track | null;
+  job: RowJob;
   onDownload: (t: TidalTrack) => void;
   onRadio: (t: TidalTrack) => void;
 }) {
@@ -147,16 +187,31 @@ function TrackRow(props: {
         <span class="tdl-title">{props.t.titulo}</span>
         <span class="tdl-sub">{trackSub(props.t)}</span>
       </div>
-      <Marks hires={props.t.hires} owned={props.owned} />
+      <Marks hires={props.t.hires} owned={!!props.owned} />
       <span class="tdl-num">{formatTrackTime(props.t.duracao_s)}</span>
       <span class="tdl-acts">
-        <button type="button" class="crate-btn crate-btn--quiet" title="Abre a prévia do rádio desta faixa"
-          onClick={() => props.onRadio(props.t)}>
-          <Icon name={ICONS.stations} size={12} /> Rádio
-        </button>
-        <button type="button" class="crate-btn" onClick={() => props.onDownload(props.t)}>
-          <Icon name={ICONS.download} size={12} /> Baixar
-        </button>
+        <Show when={props.job}>{(st) => <JobPill state={st()} />}</Show>
+        <Show when={!rowBusy(props.job)}>
+          {/* O rádio é descoberta, não download: fica também na faixa que já está no acervo. */}
+          <button type="button" class="crate-btn crate-btn--quiet tdl-act--hover" title="Abre a prévia do rádio desta faixa"
+            onClick={() => props.onRadio(props.t)}>
+            <Icon name={ICONS.stations} size={12} /> Rádio
+          </button>
+          <Show
+            when={props.owned}
+            fallback={
+              <button type="button" class="crate-btn crate-btn--lead" onClick={() => props.onDownload(props.t)}>
+                <Icon name={ICONS.download} size={12} /> Baixar
+              </button>
+            }
+          >
+            {(tr) => (
+              <button type="button" class="crate-btn crate-btn--lead" title="Já está no acervo" onClick={() => void playTrack(tr(), "crate")}>
+                <Icon name={ICONS.play} size={12} /> Tocar
+              </button>
+            )}
+          </Show>
+        </Show>
       </span>
     </div>
   );
@@ -164,7 +219,7 @@ function TrackRow(props: {
 
 const ALBUM_TIPO: Record<string, string> = { album: "Álbum", ep: "EP", single: "Single" };
 
-function AlbumRow(props: { a: TidalAlbum; onOpen: (a: TidalAlbum) => void; onDownload: (a: TidalAlbum) => void }) {
+function AlbumRow(props: { a: TidalAlbum; job: RowJob; onOpen: (a: TidalAlbum) => void; onDownload: (a: TidalAlbum) => void }) {
   const sub = () => [props.a.artista, props.a.ano, ALBUM_TIPO[props.a.tipo] ?? "Álbum", plural(props.a.n_faixas, "faixa", "faixas")]
     .filter(Boolean).join(" · ");
   return (
@@ -177,12 +232,15 @@ function AlbumRow(props: { a: TidalAlbum; onOpen: (a: TidalAlbum) => void; onDow
       <Marks hires={props.a.hires} owned={false} />
       <span class="tdl-num">{formatListTime(props.a.duracao_s)}</span>
       <span class="tdl-acts">
-        <button type="button" class="crate-btn crate-btn--quiet" onClick={(e) => { e.stopPropagation(); props.onOpen(props.a); }}>
-          Escolher faixas
-        </button>
-        <button type="button" class="crate-btn" onClick={(e) => { e.stopPropagation(); props.onDownload(props.a); }}>
-          <Icon name={ICONS.download} size={12} /> Baixar
-        </button>
+        <Show when={props.job}>{(st) => <JobPill state={st()} />}</Show>
+        <Show when={!rowBusy(props.job)}>
+          <button type="button" class="crate-btn crate-btn--quiet tdl-act--hover" onClick={(e) => { e.stopPropagation(); props.onOpen(props.a); }}>
+            Escolher faixas
+          </button>
+          <button type="button" class="crate-btn crate-btn--lead" onClick={(e) => { e.stopPropagation(); props.onDownload(props.a); }}>
+            <Icon name={ICONS.download} size={12} /> Baixar
+          </button>
+        </Show>
       </span>
     </div>
   );
@@ -229,97 +287,6 @@ function Section(props: { title: string; count: number; children: any; more?: an
   );
 }
 
-// ── job da fila (link ou seleção) ──────────────────────────────────
-function TidalJobRow(props: { job: TidalJob; onResend: (j: TidalJob) => void }) {
-  const tone = () => tidalStatusTone(props.job.status);
-  const horario = () => props.job.fim ?? props.job.inicio ?? props.job.added;
-  const isSel = () => (props.job.n_faixas ?? 0) > 0;
-  const canResend = () => isSel() && (props.job.status === "parcial" || props.job.status === "falhou");
-  return (
-    <div class="crate-row-wrap">
-      <div class="crate-tidal-row">
-        <span class={`crate-pill crate-pill--${tone()}`}>{tidalStatusLabel(props.job.status)}</span>
-        <span class="crate-chip crate-dest__btn" title="Pasta de destino em ~/Music">
-          <Icon name={ICONS.folder} size={12} />
-          <span>{props.job.playlist}</span>
-        </span>
-        <div class="crate-tidal-row__main">
-          <Show
-            when={isSel()}
-            fallback={<CopyLinkButton url={props.job.url} label={shortTidalLink(props.job.url)} hint="Copia o link da Tidal" quiet />}
-          >
-            <span class="tdl-jobtitle">
-              {props.job.titulo || "Seleção"} <span class="tdl-num">{plural(props.job.n_faixas ?? 0, "faixa", "faixas")}</span>
-            </span>
-          </Show>
-          <Show when={props.job.resumo}>
-            <p class="crate-tidal-row__resumo">{props.job.resumo}</p>
-          </Show>
-        </div>
-        <Show when={canResend()}>
-          <button type="button" class="crate-btn crate-btn--quiet" title="Volta para a fila com as mesmas faixas"
-            onClick={() => props.onResend(props.job)}>
-            Reenviar
-          </button>
-        </Show>
-        <span class="crate-r-dur crate-tidal-row__time">{horario()}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── seletor de pasta (o mesmo no topo e no rodapé da prévia) ───────
-function DestPicker(props: {
-  pastas: string[];
-  dest: string;
-  custom: boolean;
-  customName: string;
-  disabled: boolean;
-  setDest: (v: string) => void;
-  setCustom: (v: boolean) => void;
-  setCustomName: (v: string) => void;
-}) {
-  return (
-    <>
-      <span class="select-shell select-shell--tidal">
-      <select
-        class="crate-tidal-select"
-        aria-label="Pasta de destino em ~/Music"
-        value={props.custom ? "__nova__" : props.dest}
-        disabled={props.disabled}
-        onChange={(e) => {
-          const v = e.currentTarget.value;
-          if (v === "__nova__") { props.setCustom(true); return; }
-          props.setCustom(false);
-          props.setDest(v);
-        }}
-      >
-        {/* O destino lembrado pode não estar entre as pastas que a VM
-            conhece agora: entra como opção própria pra não sumir. */}
-        <Show when={!props.dest}>
-          <option value="" disabled>Escolha a pasta</option>
-        </Show>
-        <Show when={props.dest && !props.pastas.includes(props.dest)}>
-          <option value={props.dest}>{props.dest}</option>
-        </Show>
-        <For each={props.pastas}>{(p) => <option value={p}>{p}</option>}</For>
-        <option value="__nova__">outra pasta...</option>
-      </select>
-      <Icon class="select-shell__chev" name={ICONS.chevronDown} size={14} />
-      </span>
-      <Show when={props.custom}>
-        <input
-          type="text"
-          class="crate-tidal-input crate-tidal-input--dest"
-          placeholder="nome da pasta nova"
-          value={props.customName}
-          onInput={(e) => props.setCustomName(e.currentTarget.value)}
-        />
-      </Show>
-    </>
-  );
-}
-
 // ── página do artista ──────────────────────────────────────────────
 const EPS_VISIBLE = 20;
 
@@ -327,7 +294,8 @@ function ArtistView(props: {
   page: { id: number; nome: string };
   backLabel: string;
   onBack: () => void;
-  isOwned: (t: TidalTrack) => boolean;
+  ownedOf: (t: TidalTrack) => Track | null;
+  jobOf: (url: string) => RowJob;
   onTrackDownload: (t: TidalTrack) => void;
   onTrackRadio: (t: TidalTrack) => void;
   onAlbumOpen: (a: TidalAlbum) => void;
@@ -386,13 +354,13 @@ function ArtistView(props: {
             <Show when={d().populares.length > 0}>
               <Section title="Populares" count={d().populares.length}>
                 <For each={d().populares}>
-                  {(t) => <TrackRow t={t} owned={props.isOwned(t)} onDownload={props.onTrackDownload} onRadio={props.onTrackRadio} />}
+                  {(t) => <TrackRow t={t} owned={props.ownedOf(t)} job={props.jobOf(t.url)} onDownload={props.onTrackDownload} onRadio={props.onTrackRadio} />}
                 </For>
               </Section>
             </Show>
             <Show when={d().albuns.length > 0}>
               <Section title="Álbuns" count={d().albuns.length}>
-                <For each={d().albuns}>{(a) => <AlbumRow a={a} onOpen={props.onAlbumOpen} onDownload={props.onAlbumDownload} />}</For>
+                <For each={d().albuns}>{(a) => <AlbumRow a={a} job={props.jobOf(a.url)} onOpen={props.onAlbumOpen} onDownload={props.onAlbumDownload} />}</For>
               </Section>
             </Show>
             <Show when={d().eps_singles.length > 0}>
@@ -407,8 +375,15 @@ function ArtistView(props: {
                   </Show>
                 }
               >
-                <For each={eps()}>{(a) => <AlbumRow a={a} onOpen={props.onAlbumOpen} onDownload={props.onAlbumDownload} />}</For>
+                <For each={eps()}>{(a) => <AlbumRow a={a} job={props.jobOf(a.url)} onOpen={props.onAlbumOpen} onDownload={props.onAlbumDownload} />}</For>
               </Section>
+            </Show>
+            <Show when={!d().populares.length && !d().albuns.length && !d().eps_singles.length}>
+              <div class="crate-empty">
+                <Icon name={ICONS.search} size={26} />
+                <h3>A Tidal não tem faixas deste artista</h3>
+                <p>Nem populares, nem álbuns, nem EPs. Volte à busca e tente outro nome.</p>
+              </div>
             </Show>
           </>
         )}
@@ -568,6 +543,13 @@ function PreviewView(props: {
                 <span class="tdl-sub"><span class="tdl-num-inline">{ownedIds().size}</span> já no acervo</span>
               </Show>
             </div>
+            <Show when={d().faixas.length === 0}>
+              <div class="crate-empty">
+                <Icon name={ICONS.search} size={26} />
+                <h3>Nenhuma faixa disponível nesta lista</h3>
+                <p>A Tidal devolveu a lista vazia: as faixas podem ter saído do catálogo.</p>
+              </div>
+            </Show>
             <div class="tdl-list" ref={listEl} onKeyDown={onListKey}>
               <For each={d().faixas}>
                 {(t) => (
@@ -629,10 +611,11 @@ const TOP_SECTION: Record<string, SectionKey> = { faixa: "faixas", album: "albun
 export default function TidalTab(props: Props) {
   const [text, setText] = createSignal("");
   const kind = createMemo(() => classifyTidalInput(text()));
-  const [dest, setDest] = createSignal(loadLastTidalDest() ?? "");
-  const [customDest, setCustomDest] = createSignal(false);
-  const [customName, setCustomName] = createSignal("");
-  const resolvedDest = () => (customDest() ? customName().trim() : dest());
+  // Memória única do Crate (B7): a mesma pasta da aba Buscar.
+  const [dest, setDest] = createSignal(loadLastDest() ?? "");
+  const [destOpen, setDestOpen] = createSignal<"top" | "foot" | null>(null);
+  const resolvedDest = () => dest();
+  const allFolders = createMemo(() => mergeFolders(props.pastas, props.folders ?? []));
   const [submitting, setSubmitting] = createSignal(false);
   const [flash, setFlash] = createSignal<Flash | null>(null);
 
@@ -668,11 +651,40 @@ export default function TidalTab(props: Props) {
     return below.kind === "artist" ? below.nome : below.titulo;
   };
 
+  // "No acervo" (A16): recarrega quando a biblioteca muda (Mover) e quando
+  // um job da Tidal termina (o que chegou deixa de ser "novo"). Falha não
+  // some em silêncio: sem o índice, tudo pareceria novo.
   const [owned, setOwned] = createSignal<OwnedIndex>(new Map());
-  onMount(() => {
-    libGetTracks({ limit: 100_000 }).then((ts) => setOwned(buildOwnedIndex(ts))).catch(() => {});
+  const [ownedFailed, setOwnedFailed] = createSignal(false);
+  const doneJobs = createMemo(() => props.jobs.filter((j) => j.status === "ok" || j.status === "parcial").length);
+  let ownedSeq = 0;
+  createEffect(on([libraryRevision, doneJobs], () => {
+    const seq = ++ownedSeq;
+    libGetTracks({ limit: 100_000 })
+      .then((ts) => { if (seq === ownedSeq) batch(() => { setOwned(buildOwnedIndex(ts)); setOwnedFailed(false); }); })
+      .catch(() => { if (seq === ownedSeq) setOwnedFailed(true); });
+  }));
+  const ownedOf = (t: TidalTrack) => findOwned(t, owned());
+
+  // Linha com job (A16): envio em voo por link, até o job aparecer na fila.
+  const [sendingUrls, setSendingUrls] = createSignal<ReadonlyMap<string, "sending" | "sent">>(new Map());
+  const markUrl = (url: string, st: "sending" | "sent" | null) =>
+    setSendingUrls((m) => { const n = new Map(m); if (st) n.set(url, st); else n.delete(url); return n; });
+  const jobByUrl = createMemo(() => {
+    const m = new Map<string, TidalJob>();
+    for (const j of props.jobs) if (j.url) m.set(j.url, j); // a mais nova vence (lista vem da mais antiga)
+    return m;
   });
-  const isOwned = (t: TidalTrack) => findOwned(t, owned()) !== null;
+  createEffect(() => {
+    const m = jobByUrl();
+    for (const [url, st] of sendingUrls()) if (st === "sent" && m.has(url)) markUrl(url, null);
+  });
+  const jobOf = (url: string): RowJob => {
+    const st = sendingUrls().get(url);
+    if (st) return { kind: st };
+    const j = jobByUrl().get(url);
+    return j ? { kind: "job", job: j } : null;
+  };
 
   onCleanup(() => { clearTimeout(debounce); clearTimeout(flashTimer); });
 
@@ -702,10 +714,7 @@ export default function TidalTab(props: Props) {
   }
 
   function rememberDest(d: string) {
-    saveLastTidalDest(d);
-    if (customDest()) {
-      batch(() => { setDest(d); setCustomDest(false); setCustomName(""); });
-    }
+    saveLastDest(d);
   }
 
   function onInput(v: string) {
@@ -747,14 +756,18 @@ export default function TidalTab(props: Props) {
 
   async function enqueueLink(url: string, label: string) {
     const d = resolvedDest();
-    if (!d) { say("Escolha a pasta de destino antes de baixar.", "err"); return false; }
+    if (!d) { say("Escolha a pasta de destino antes de baixar.", "err"); setDestOpen("top"); return false; }
+    if (sendingUrls().get(url) === "sending") return false;
+    markUrl(url, "sending");
     try {
       await crateTidalEnqueue(url, d);
       rememberDest(d);
+      markUrl(url, "sent");
       say(`${label} foi para a fila (${d}).`);
       props.refresh();
       return true;
     } catch (e) {
+      markUrl(url, null);
       say(errText(e), "err");
       return false;
     }
@@ -774,16 +787,6 @@ export default function TidalTab(props: Props) {
     } catch (e) {
       return errText(e);
     }
-  }
-
-  async function resend(j: TidalJob) {
-    try {
-      await crateTidalResend(j.id);
-      say(`"${j.titulo || "Seleção"}" voltou para a fila.`);
-    } catch (e) {
-      say(errText(e), "err");
-    }
-    props.refresh();
   }
 
   async function onSubmit(e: Event) {
@@ -823,7 +826,23 @@ export default function TidalTab(props: Props) {
     const r = result();
     return !!r && !r.faixas.length && !r.albuns.length && !r.artistas.length && !r.playlists.length;
   };
-  const activeJobs = () => props.jobs.filter((j) => j.status === "fila" || j.status === "baixando").length;
+  const activeJobs = () => props.jobs.filter((j) => isTidalActive(j.status)).length;
+  /** Os jobs moram na aba Fila (B6): aqui só a contagem e o atalho, que não apaga a busca. */
+  const queueNote = () => (
+    <Show when={activeJobs() > 0 || ownedFailed()}>
+      <p class="tdl-sub tdl-queue-note">
+        <Show when={activeJobs() > 0}>
+          <span class="tdl-num-inline">{plural(activeJobs(), "download da Tidal", "downloads da Tidal")}</span> em andamento.{" "}
+          <Show when={props.onShowQueue}>
+            <button type="button" class="tdl-linkbtn" onClick={() => props.onShowQueue?.()}>Ver na Fila</button>
+          </Show>
+        </Show>
+        <Show when={ownedFailed()}>
+          {" "}Não consegui ler o acervo: o “no acervo” pode faltar nas linhas.
+        </Show>
+      </p>
+    </Show>
+  );
   /** A fila da VM não respondeu: um banner só (a busca passa pela mesma fila), campo apagado. */
   const offline = () => props.load === "error";
   const locked = () => props.tokenMissing || offline();
@@ -833,18 +852,29 @@ export default function TidalTab(props: Props) {
     if (kind() === "text") void runSearch(text().trim());
   }
 
-  const destPicker = () => (
-    <DestPicker
-      pastas={props.pastas}
-      dest={dest()}
-      custom={customDest()}
-      customName={customName()}
+  const destPicker = (where: "top" | "foot") => (
+    <FolderPicker
+      variant="toolbar"
+      value={dest() || null}
+      placeholder="escolher pasta"
+      warn={!dest()}
+      title="Pasta de destino em ~/Music"
+      folders={allFolders()}
       disabled={locked()}
-      setDest={setDest}
-      setCustom={setCustomDest}
-      setCustomName={setCustomName}
+      open={destOpen() === where}
+      onToggle={() => setDestOpen((o) => (o === where ? null : where))}
+      onClose={() => setDestOpen(null)}
+      onPick={(f) => { batch(() => { setDest(f); setDestOpen(null); }); saveLastDest(f); }}
     />
   );
+
+  // Pedido de busca de fora (B28): o texto entra no campo e a busca sai já.
+  createEffect(on(() => props.request, (r) => {
+    if (!r || !r.q.trim()) return;
+    setStack([]);
+    setText(r.q);
+    if (classifyTidalInput(r.q) === "text") void runSearch(r.q.trim());
+  }));
 
   return (
     <div class="crate-tidal tdl" ref={rootEl}>
@@ -868,7 +898,7 @@ export default function TidalTab(props: Props) {
               {searchState() === "loading" ? "buscando…" : ""}
             </span>
           </div>
-          {destPicker()}
+          {destPicker("top")}
           <button
             type="submit"
             class="crate-btn crate-btn--primary"
@@ -918,7 +948,8 @@ export default function TidalTab(props: Props) {
               page={p}
               backLabel="Busca"
               onBack={goBack}
-              isOwned={isOwned}
+              ownedOf={ownedOf}
+              jobOf={jobOf}
               onTrackDownload={trackDownload}
               onTrackRadio={trackRadio}
               onAlbumOpen={albumOpen}
@@ -938,7 +969,7 @@ export default function TidalTab(props: Props) {
               onBack={goBack}
               owned={owned()}
               dest={resolvedDest}
-              destPicker={destPicker()}
+              destPicker={destPicker("foot")}
               tokenMissing={props.tokenMissing}
               onEnqueue={enqueueSelection}
             />
@@ -946,12 +977,7 @@ export default function TidalTab(props: Props) {
         </Match>
         <Match when={stack().length > 0}>{null}</Match>
         <Match when={kind() === "text" || kind() === "short" ? result() || searchState() !== "idle" : false}>
-          <Show when={activeJobs() > 0}>
-            <p class="tdl-sub tdl-queue-note">
-              Fila: <span class="tdl-num-inline">{activeJobs()}</span> em andamento.{" "}
-              <button type="button" class="tdl-linkbtn" onClick={clearAll}>Ver a fila</button>
-            </p>
-          </Show>
+          {queueNote()}
           <Show when={searchState() === "error" && !offline()}>
             <div class="crate-banner" data-tone="rose" role="alert">
               <Icon name={ICONS.alert} size={15} />
@@ -982,13 +1008,13 @@ export default function TidalTab(props: Props) {
                     <Match when={key === "faixas" && result()!.faixas.length > 0}>
                       <Section title="Faixas" count={result()!.faixas.length}>
                         <For each={result()!.faixas}>
-                          {(t) => <TrackRow t={t} owned={isOwned(t)} onDownload={trackDownload} onRadio={trackRadio} />}
+                          {(t) => <TrackRow t={t} owned={ownedOf(t)} job={jobOf(t.url)} onDownload={trackDownload} onRadio={trackRadio} />}
                         </For>
                       </Section>
                     </Match>
                     <Match when={key === "albuns" && result()!.albuns.length > 0}>
                       <Section title="Álbuns" count={result()!.albuns.length}>
-                        <For each={result()!.albuns}>{(a) => <AlbumRow a={a} onOpen={albumOpen} onDownload={albumDownload} />}</For>
+                        <For each={result()!.albuns}>{(a) => <AlbumRow a={a} job={jobOf(a.url)} onOpen={albumOpen} onDownload={albumDownload} />}</For>
                       </Section>
                     </Match>
                     <Match when={key === "artistas" && result()!.artistas.length > 0}>
@@ -1008,8 +1034,10 @@ export default function TidalTab(props: Props) {
           </Show>
         </Match>
         <Match when={true}>
-          <Show when={props.load !== "loading" || props.jobs.length > 0}>
-            <Show when={props.jobs.length === 0}>
+          {/* Convite só com o campo usável (A25): com a VM fora ou sem token,
+              o banner acima já diz o que falta. */}
+          <Show when={!locked()}>
+            <Show when={props.load !== "loading" || props.jobs.length > 0} fallback={<div class="tdl-placeholder" aria-busy="true" />}>
               <div class="crate-empty-wrap">
                 <div class="crate-empty">
                   <Icon name={ICONS.search} size={26} />
@@ -1019,19 +1047,7 @@ export default function TidalTab(props: Props) {
               </div>
             </Show>
           </Show>
-          <Show when={props.load === "loading" && props.jobs.length === 0}>
-            <div class="tdl-placeholder" aria-busy="true" />
-          </Show>
-          <Show when={props.jobs.length > 0}>
-            <section class="tdl-sec">
-              <h3 class="tdl-sec__h">Fila da VM <span class="tdl-num">{props.jobs.length}</span></h3>
-              <div class="crate-list crate-tidal-list">
-                <div class="crate-list-inner">
-                  <For each={[...props.jobs].reverse()}>{(j) => <TidalJobRow job={j} onResend={resend} />}</For>
-                </div>
-              </div>
-            </section>
-          </Show>
+          {queueNote()}
         </Match>
       </Switch>
     </div>

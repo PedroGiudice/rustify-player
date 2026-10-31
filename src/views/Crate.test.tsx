@@ -47,6 +47,9 @@ vi.mock("../tauri", async (importOriginal) => {
     crateSourcesStatus: vi.fn(async () => ({ soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false, tidal: "token_ok" })),
     crateTidalJobs: vi.fn(async () => ({ jobs: [], pastas: [] })),
     crateTidalEnqueue: vi.fn(async () => "tidal-job-1"),
+    crateTidalResend: vi.fn(async () => "tidal-job-1"),
+    crateTidalSearch: vi.fn(async (q: string) => ({ q, top: null, faixas: [], albuns: [], artistas: [], playlists: [] })),
+    libGetTracks: vi.fn(async () => [] as Track[]),
   };
 });
 
@@ -124,6 +127,7 @@ beforeEach(() => {
   vi.mocked(tauriApi.crateScProbe).mockReset();
   vi.mocked(tauriApi.crateScArtwork).mockResolvedValue("data:image/jpeg;base64,AA==");
   vi.mocked(tauriApi.crateDownload).mockResolvedValue("job-sc");
+  vi.mocked(tauriApi.crateTidalJobs).mockResolvedValue({ jobs: [], pastas: [] });
   vi.mocked(tauriApi.crateSourcesStatus).mockResolvedValue({
     soundcloud: "token_ok", ffmpeg: true, uv: true, bandcamp_identity: false, tidal: "token_ok",
   });
@@ -580,7 +584,7 @@ describe("Crate — evento slsk-jobs", () => {
     expect(buttons.some((t) => t.includes("Tocar"))).toBe(true);
   });
 
-  it("linha pronta (B8): diz que está no acervo, o veredito do portão espectral e a pasta; Tocar é o primário", async () => {
+  it("linha pronta (B8): diz que está no acervo, o veredito do portão espectral e a pasta; Tocar é a ação da linha", async () => {
     vi.mocked(tauriApi.libGetTracksByIds).mockResolvedValue([
       { id: "777", title: "Sicko Mode", artist_name: "Travis Scott", album_title: null, album_cover_path: null, album_year: null, duration_ms: 0, path: "", lrc_path: null, quality_class: "sem_corte" } as Track,
     ]);
@@ -611,8 +615,11 @@ describe("Crate — evento slsk-jobs", () => {
     await waitFor(() => expect(row.textContent).toContain("conferida, sem corte"));
     expect(row.textContent).toContain("no acervo");
     expect(row.textContent).toContain("em Rap & Hip-Hop");
+    // A11: a ação da linha é secundária e vira primária só na linha
+    // selecionada (crate-btn--lead + data-focus, regra do CSS).
     const tocar = within(row).getByRole("button", { name: /Tocar/ });
-    expect(tocar.classList.contains("crate-btn--primary")).toBe(true);
+    expect(tocar.classList.contains("crate-btn--lead")).toBe(true);
+    expect(tocar.classList.contains("crate-btn--primary")).toBe(false);
   });
 });
 
@@ -1069,8 +1076,15 @@ describe("Crate — teclado escopado à lista (crate-2, crate-4)", () => {
     expect(active()!.closest(".crate-row-wrap")!.getAttribute("data-focus")).toBe("true");
   });
 
-  it("Backspace não cancela job travado (stalled), que não oferece Cancelar", async () => {
+  it("job travado (stalled) oferece Cancelar, e o Backspace cancela o mesmo (A25)", async () => {
     const { container } = await searchWithJob({ kind: "stalled", since_secs: 130 });
+    expect(within(container.querySelector(".crate-row") as HTMLElement).getByRole("button", { name: /Cancelar/ })).toBeTruthy();
+    fireEvent.keyDown(list(container), { key: "Backspace" });
+    await waitFor(() => expect(tauriApi.slskCancel).toHaveBeenCalledWith("job1"));
+  });
+
+  it("job em processing não oferece Cancelar e o Backspace não cancela", async () => {
+    const { container } = await searchWithJob({ kind: "processing" });
     fireEvent.keyDown(list(container), { key: "Backspace" });
     expect(tauriApi.slskCancel).not.toHaveBeenCalled();
   });
@@ -1359,11 +1373,29 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     expect(screen.getAllByRole("button", { name: /Tentar de novo/ })).toHaveLength(1);
   });
 
-  it("job Soulseek em falha não ganha 'Tentar de novo' (a troca é pelo [Trocar fonte])", async () => {
-    mocks.slskJobs.mockResolvedValue([job({ job_id: "s", state: { kind: "failed", reason: "x", retryable: true } })]);
+  it("job Soulseek em falha sem outra fonte ganha 'Tentar de novo', que refaz a mesma fonte (A25)", async () => {
+    mocks.slskJobs.mockResolvedValue([job({ job_id: "s", state: { kind: "failed", reason: "Completed, Errored", retryable: false } })]);
     render(() => <Crate />);
     await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
     await screen.findByText("falhou");
+    // A26: o estado cru do slskd vira frase; o cru fica no title.
+    const motivo = screen.getByText("o peer interrompeu a transferência");
+    expect(motivo.getAttribute("title")).toContain("Completed, Errored");
+    await userEvent.click(screen.getByRole("button", { name: /Tentar de novo/ }));
+    expect(mocks.slskTryOtherSource).toHaveBeenCalledWith("s");
+    expect(mocks.crateDownload).not.toHaveBeenCalled();
+  });
+
+  it("job Soulseek em falha COM outra fonte oferece só [Trocar fonte]", async () => {
+    mocks.slskJobs.mockResolvedValue([job({
+      job_id: "s",
+      alternates: [candidate({ id: "alt1", username: "peer_b" })],
+      state: { kind: "failed", reason: "x", retryable: true },
+    })]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await screen.findByText("falhou");
+    expect(screen.getByRole("button", { name: /Trocar fonte/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Tentar de novo/ })).toBeNull();
   });
 
@@ -1475,10 +1507,10 @@ describe("Crate: SoundCloud, correções da revisão", () => {
     expect(mocks.slskSearch).not.toHaveBeenCalled();
   });
 
-  it("linha do Soulseek na busca ganha o badge de origem; só a fonte com problema vira chip (B13)", async () => {
+  it("linha do Soulseek na busca não repete a origem (A11); só a fonte com problema vira chip (B13)", async () => {
     mocks.crateSourcesStatus.mockResolvedValue({ soundcloud: "token_ok", ffmpeg: false, uv: true, bandcamp_identity: false, tidal: "token_ok" });
     const { container } = await searchAndRender([group()]);
-    expect(within(container.querySelector(".crate-row") as HTMLElement).getByText("Soulseek", { selector: ".crate-origin" })).toBeInTheDocument();
+    expect(container.querySelector(".crate-row .crate-origin")).toBeNull();
     await waitFor(() => expect(container.querySelectorAll(".crate-src-status")).toHaveLength(1));
     const ff = container.querySelector(".crate-src-status")!;
     expect(ff.getAttribute("data-tone")).toBe("amber");
@@ -1657,5 +1689,124 @@ describe("Crate: SoundCloud, segunda revisão", () => {
     expect(campo().closest("div[style]")?.getAttribute("style")).toContain("none"); // oculta, não desmontada
     await userEvent.click(screen.getByRole("tab", { name: /Tidal/ }));
     expect(campo().value).toBe("o");
+  });
+});
+
+// ── Varredura Impeccable de 31/10/2026 (A10, A11, A17, A25, A26, B6, B28, B29) ──
+
+function tidalJob(over: Partial<import("../tauri").TidalJob>): import("../tauri").TidalJob {
+  return {
+    id: "t1", url: "https://tidal.com/browse/album/1", playlist: "Jazz", status: "fila", added: "31/10 10:00",
+    resumo: "", inicio: null, fim: null, ...over,
+  };
+}
+
+describe("Crate — fila única com a Tidal (B6, A17)", () => {
+  it("jobs da Tidal entram na aba Fila; a contagem da aba é o que está em andamento", async () => {
+    mocks.slskJobs.mockResolvedValue([job({ job_id: "r", state: { kind: "ready", track_id: "1" } })]);
+    mocks.crateTidalJobs.mockResolvedValue({
+      jobs: [
+        tidalJob({ id: "velho", status: "parcial", titulo: "Rádio Orochi", n_faixas: 18, url: "" }),
+        tidalJob({ id: "novo", status: "baixando" }),
+      ],
+      pastas: ["Jazz"],
+    });
+    render(() => <Crate />);
+    const fila = screen.getByRole("tab", { name: /Fila/ });
+    await waitFor(() => expect(fila.querySelector(".tab__count")?.textContent).toBe("1"));
+    expect(screen.getByRole("tab", { name: /Tidal/ }).querySelector(".tab__count")).toBeNull();
+    await userEvent.click(fila);
+    expect(await screen.findByText("Em andamento · 1")).toBeInTheDocument();
+    expect(screen.getByText("Tidal, terminadas · 1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reenviar" }));
+    expect(mocks.crateTidalResend).toHaveBeenCalledWith("velho");
+  });
+
+  it("Fila vazia leva às abas Buscar e Tidal (A25)", async () => {
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect(await screen.findByText("Fila vazia")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Ir para Tidal/ }));
+    expect(screen.getByRole("tab", { name: /Tidal/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("Limpar terminadas chama o backend (A25)", async () => {
+    mocks.slskJobs.mockResolvedValue([job({ job_id: "r", state: { kind: "ready", track_id: "1" } })]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Limpar terminadas" }));
+    expect(mocks.slskClearFinished).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Crate — estados da linha (A10, A26, B29)", () => {
+  it("espera normal é neutra; âmbar fica para travou", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      job({ job_id: "q", state: { kind: "queued" } }),
+      job({ job_id: "e", state: { kind: "enqueued", queue_position: 4 } }),
+      job({ job_id: "s", state: { kind: "stalled", since_secs: 200 } }),
+    ]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect((await screen.findByText("aguardando vaga")).className).toContain("crate-pill--sub");
+    expect(screen.getByText("na fila").className).toContain("crate-pill--sub");
+    expect(screen.getByText("travou").className).toContain("crate-pill--warn");
+  });
+
+  it("recusa por já ter a faixa fala em PT-BR do Brasil (A26)", async () => {
+    mocks.slskJobs.mockResolvedValue([job({ job_id: "o", state: { kind: "rejected", reason: { already_owned: { track_id: "9" } } } })]);
+    render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    expect(await screen.findByText(/você já tinha esta faixa/)).toBeInTheDocument();
+  });
+
+  it("a chegada tem quatro trechos e marca a etapa atual (B29)", async () => {
+    mocks.slskJobs.mockResolvedValue([
+      job({ job_id: "d", state: { kind: "downloading", pct: 40, bps: 1000, eta_s: 3 } }),
+      job({ job_id: "p", state: { kind: "processing" } }),
+    ]);
+    const { container } = render(() => <Crate />);
+    await userEvent.click(screen.getByRole("tab", { name: /Fila/ }));
+    await waitFor(() => expect(container.querySelectorAll(".crate-arrival")).toHaveLength(2));
+    const [down, proc] = Array.from(container.querySelectorAll(".crate-arrival"));
+    expect(down.querySelectorAll(".crate-arrival__seg")).toHaveLength(4);
+    expect(down.querySelector('.crate-arrival__seg[data-on="true"] i')?.getAttribute("style")).toContain("scaleX(0.4)");
+    const on = proc.querySelectorAll(".crate-arrival__seg");
+    expect(on[0].getAttribute("data-done")).toBe("true");
+    expect(on[1].getAttribute("data-on")).toBe("true");
+    expect(on[1].querySelector(".crate-arrival__run")).toBeTruthy();
+  });
+});
+
+describe("Crate — busca (A11, A25, B28)", () => {
+  it("as teclas do campo só aparecem antes da primeira busca (A11)", async () => {
+    const { container } = render(() => <Crate />);
+    expect(container.querySelector(".crate-search__kbd")).toBeTruthy();
+    await typeAndEnter("sicko mode");
+    await waitFor(() => expect(container.querySelector(".crate-search__kbd")).toBeNull());
+  });
+
+  it("busca que falhou oferece Tentar de novo; nada encontrado oferece buscar na Tidal", async () => {
+    mocks.slskResults.mockResolvedValue({ ...EMPTY_SNAPSHOT, state: "failed", note: "o slskd não respondeu" });
+    render(() => <Crate />);
+    await typeAndEnter("smino anita");
+    expect(await screen.findByText("A busca no Soulseek falhou")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Tentar de novo/ }));
+    await waitFor(() => expect(mocks.slskSearch).toHaveBeenCalledTimes(2));
+    await userEvent.click(await screen.findByRole("button", { name: /Buscar “smino anita” na Tidal/ }));
+    expect(screen.getByRole("tab", { name: /Tidal/ }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(mocks.crateTidalSearch).toHaveBeenCalledWith("smino anita"));
+  });
+
+  it("sair e voltar ao Crate em menos de 10 min traz a busca de volta sem gastar outra (B28)", async () => {
+    const first = await searchAndRender([group()]);
+    expect(mocks.slskSearch).toHaveBeenCalledTimes(1);
+    first.unmount();
+    expect(mocks.slskCancelSearch).not.toHaveBeenCalled();
+    const again = render(() => <Crate />);
+    await waitFor(() => expect(again.container.querySelectorAll(".crate-row")).toHaveLength(1));
+    expect(mocks.slskSearch).toHaveBeenCalledTimes(1);
+    expect((again.container.querySelector(".coll-search input") as HTMLInputElement).value).toBe("sicko mode");
+    expect(again.container.textContent).toMatch(/resultado de/);
   });
 });
