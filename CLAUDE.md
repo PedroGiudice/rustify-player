@@ -193,6 +193,12 @@ Relatório, lista A/B e o que ficou de fora: `docs/contexto/31102026-impeccable-
 (seção "Estado em 31/10"). As regras transversais estão em "Regras duras de IPC e de tela";
 motor e Crate nas rules por área. Tokens e componentes novos: `DESIGN.md`.
 
+- **Interface toda em PT-BR** (glossário no `PRODUCT.md`). Fichas de clima/atividade da Stations:
+  a chave de busca do Qdrant segue em inglês e só o RÓTULO é PT (`src/lib/moodLabels.ts`; o teste
+  acusa termo novo do Rust sem rótulo). Listas de modo do limitador/filtro no Signal ficam com o
+  nome original do plugin (o export de preset para o EasyEffects usa esses nomes); só "Off"/"None"
+  ganham rótulo. Abas do S24: Início / Buscar / Biblioteca / Fila (`BEAT_LABELS`: o valor gravado
+  não mudou).
 - **Barra do player** = container `pb`, grid em `.playerbar__grid` (`minmax(0,1fr) 1.2fr
   minmax(430px,1fr)`), cortes pela largura da BARRA: < 1500 sai o medidor, < 1300 pílula sem
   o DSP, < 1100 volume 72 px; `.pb-left` é o container `pbl` (< 340 selo curto, < 260 sem

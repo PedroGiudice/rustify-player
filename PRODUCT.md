@@ -50,7 +50,10 @@ letra) é o assunto; a interface é a moldura escura e quieta em volta. O fundo 
 - Personalização visual passa pelo painel Tweaks e pelos temas YAML; a cor da capa
   (adaptiveInk/adaptiveAccent) governa ink e acento.
 - Idioma da interface: PT-BR em todo texto; os nomes das áreas do app (Crate, Tweaks, Signal,
-  Stations) ficam como nomes próprios. Os textos ainda em inglês são dívida, migrada à parte.
+  Stations, inclusive "station" no singular) ficam como nomes próprios. Glossário (aprovado em
+  31/10/2026): Biblioteca = a área do app; acervo = os arquivos; Fila; faixa (nunca "track");
+  Início = a tela Home; Continuar; erro começa com "Não consegui…"; "estilo" e "forma" (não
+  renderer/shape); "origem" (não peer); "chave de acesso" (não token). Sem seta "→" em botão.
 
 ## Brand Commitments
 

@@ -140,7 +140,9 @@ QA manual roteirizado: `docs/soulseek/manual-qa.md`.
   Tidal).
 - Busca guardada por 10 min (`SEARCH_CACHE_MS`) e não cancelada ao sair da tela.
 - `TryOtherSource`: Soulseek falhado sem alternativa refaz a fonte atual.
-- Erros da fila da VM sem host nem IP no texto; 401/403 = "A VM recusou o token da fila."
+- Erros da fila da VM sem host nem IP no texto; 401/403 = "A fila da Tidal recusou a chave de acesso."
+  A frase de fila fora do ar existe em DOIS lugares que precisam ficar iguais: `OFFLINE_MSG`
+  (`src-tauri/src/slsk/tidal_fila.rs`) e `FILA_OFFLINE` (`src/views/crate/TidalTab.tsx`).
 - Tidal: seleção em massa (arrastar nas caixas, Shift+clique), cartaz de 120 px, artista com foto.
 - O Crate é container `crate` com cortes em 1050 e 760 px (largura do container, não da viewport).
 - Polls da view (status, fontes, relógio) passam por `pollWhileVisible` (`src/lib/poll.ts`).
