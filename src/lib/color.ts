@@ -107,7 +107,7 @@ export function walkLForContrast(
 // Brilho e croma PERCEBIDOS (Björn Ottosson, 2020). Em HSL a saturação
 // dispara nas pontas de luminância com croma imperceptível (#10131a tem
 // s = 0,24 e croma 0,015), e o mesmo L HSL é muito mais claro no amarelo
-// que no azul. Mesmas matrizes de gl/paintPalette.ts (Tinta).
+// que no azul. A Tinta (gl/paintPalette.ts) importa estas mesmas funções.
 
 export interface Oklch {
   l: number;
@@ -116,13 +116,15 @@ export interface Oklch {
   h: number;
 }
 
-const srgbToLin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-const linToSrgb = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+/** sRGB 0..1 -> linear (WCAG/IEC 61966-2-1). */
+export const srgbToLin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+/** Linear -> sRGB 0..1. */
+export const linToSrgb = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
 
-export function hexToOklch(hex: string): Oklch | null {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return null;
-  const r = srgbToLin(rgb.r / 255), g = srgbToLin(rgb.g / 255), b = srgbToLin(rgb.b / 255);
+/** sRGB 0..1 por canal -> OKLCH. Forma sem alocação de string que a Tinta
+    (gl/paintPalette.ts) usa por quadro. */
+export function srgbToOklch(r0: number, g0: number, b0: number): Oklch {
+  const r = srgbToLin(r0), g = srgbToLin(g0), b = srgbToLin(b0);
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
@@ -133,17 +135,28 @@ export function hexToOklch(hex: string): Oklch | null {
   return { l: L, c: Math.hypot(A, B), h: h < 0 ? h + 360 : h };
 }
 
-function oklchToLinRgb(L: number, C: number, hDeg: number): [number, number, number] {
+export function hexToOklch(hex: string): Oklch | null {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  return srgbToOklch(rgb.r / 255, rgb.g / 255, rgb.b / 255);
+}
+
+/** OKLCH -> sRGB LINEAR em out[o..o+2] (sem gamut map, sem alocar). */
+export function oklchToLinInto(L: number, C: number, hDeg: number, out: { [i: number]: number }, o = 0): void {
   const hr = (hDeg * Math.PI) / 180;
   const A = C * Math.cos(hr), B = C * Math.sin(hr);
   const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
   const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
   const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ];
+  out[o] = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  out[o + 1] = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  out[o + 2] = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+}
+
+function oklchToLinRgb(L: number, C: number, hDeg: number): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0];
+  oklchToLinInto(L, C, hDeg, out);
+  return out;
 }
 
 const inGamut = (c: [number, number, number]) => c.every((v) => v >= -1e-5 && v <= 1 + 1e-5);
