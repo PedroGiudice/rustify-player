@@ -84,11 +84,22 @@ export const useRenderer = {
 let lastLow = 0, lastMid = 0, lastHigh = 0, lastFftAt = 0;
 let fftTick: (() => void) | null = null;
 
+type FftListener = (low: number, mid: number, high: number) => void;
+const fftListeners = new Set<FftListener>();
+
 export function pushFft(low: number, mid: number, high: number) {
   lastLow = low;
   lastMid = mid;
   lastHigh = high;
   lastFftAt = performance.now();
+  for (const fn of fftListeners) fn(low, mid, high);
+}
+
+/** Ouve cada quadro de FFT que chega (o VU do mini, A56): sem timer
+    próprio, o ritmo é o do feed. Devolve o desinscrever. */
+export function subscribeFft(fn: FftListener): () => void {
+  fftListeners.add(fn);
+  return () => fftListeners.delete(fn);
 }
 
 /** Último quadro de FFT + quando chegou. É o feed COMPARTILHADO pelos

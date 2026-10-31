@@ -14,6 +14,7 @@ const nav = vi.hoisted(() => ({
   navigate: vi.fn(),
   openNowPlaying: vi.fn(),
   playing: null as null | Record<string, unknown>,
+  isPlaying: false,
 }));
 
 vi.mock("../nav", () => ({
@@ -28,7 +29,13 @@ vi.mock("../ipc", () => ({ assetSrc: () => null }));
 vi.mock("../store", () => ({
   current: () => nav.playing,
   next: vi.fn(),
-  pb: { positionMs: 0, durationMs: 0, isPlaying: false },
+  pb: {
+    positionMs: 0,
+    durationMs: 0,
+    get isPlaying() {
+      return nav.isPlaying;
+    },
+  },
   previous: vi.fn(),
   queueContextId: () => null,
   queueOrigin: () => "manual",
@@ -36,6 +43,7 @@ vi.mock("../store", () => ({
 }));
 
 import { Dock } from "./Dock";
+import { pushFft } from "../bg/spectrum";
 
 function mountView(scrollTop: number) {
   const view = document.createElement("div");
@@ -50,6 +58,7 @@ afterEach(() => {
   document.querySelectorAll(".view").forEach((v) => v.remove());
   nav.base = { path: "/library", param: null };
   nav.playing = null;
+  nav.isPlaying = false;
   vi.clearAllMocks();
 });
 
@@ -108,5 +117,34 @@ describe("acessibilidade (mobile-20)", () => {
     fireEvent.pointerUp(open, { clientX: 10, clientY: 10 });
     fireEvent.click(open);
     expect(nav.openNowPlaying).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("VU do mini (A56)", () => {
+  const playing = { id: "1", title: "Faixa", artist_name: "Fulano", album_cover_path: null };
+  const bars = (r: ReturnType<typeof render>) =>
+    [...r.container.querySelectorAll<HTMLElement>(".vu i")].map((i) => i.style.transform);
+
+  it("tocando, as barras seguem o FFT (grave alto, agudo baixo)", () => {
+    nav.playing = playing;
+    nav.isPlaying = true;
+    const r = render(() => <Dock />);
+    pushFft(0.9, 0.3, 0.05);
+    const t = bars(r);
+    expect(t).toHaveLength(4);
+    const sy = t.map((v) => parseFloat(/scaleY\(([\d.]+)\)/.exec(v)![1]));
+    expect(sy[0]).toBeGreaterThan(sy[3]);
+    // o mesmo quadro duas vezes dá a mesma altura: medição, não sorteio
+    pushFft(0.9, 0.3, 0.05);
+    expect(bars(r)).toEqual(t);
+  });
+
+  it("pausado, o FFT não mexe nas barras", () => {
+    nav.playing = playing;
+    nav.isPlaying = false;
+    const r = render(() => <Dock />);
+    const rest = bars(r);
+    pushFft(0.9, 0.9, 0.9);
+    expect(bars(r)).toEqual(rest);
   });
 });
