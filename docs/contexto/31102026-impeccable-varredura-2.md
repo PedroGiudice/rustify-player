@@ -9,6 +9,31 @@
 - **Detector estático** em `src/` (31/10): 2 `pulsing-dot` no desktop (`.np__tag-playing .dot`, `extractor-lab.css:906`; `.st-feature__eyebrow .dot`, `:3164`) e 13 advisories de escala de fonte e raio no S24. Nos recortes de cada avaliador, zero achados: os problemas desta rodada são de comportamento, contraste sobre o fundo e texto, que o detector não vê.
 - **Contraste:** quando não diz o contrário, no Really Dark (tema em uso; valores do `DESIGN.md` e do sidecar; acento de repouso #d6d6d6). O `:root` do `extractor-lab.css` é a paleta clara de repouso e aparece entre parênteses.
 
+## Estado em 31/10 (depois da implementação)
+
+As listas A e B foram implementadas no código em `main` no mesmo dia (ondas 1 a 4),
+mas **ainda não publicadas**: nenhum .deb nem APK saiu com elas, então nada
+disto foi visto no app da cmr-auto. O que mudou de persistente está no `CLAUDE.md` (regras
+duras e "Leva Impeccable de 31/10"), em `.claude/rules/motor-radio.md` e `crate-tidal.md`, e no
+`DESIGN.md` com o sidecar.
+
+Ficou de fora, e por quê:
+
+- **B21** ("Avançado" do Signal), **B24** (fundo 2D sem filtro de tela cheia) e **B30** (a capa
+  voa para o Now Playing): dependem de medir fps e engasgo no app real, depois do .deb.
+- **A39** (virtualização das listas) e a **entrada de tela do A49**: esperam medição no app.
+- **Miniaturas de capa do A49** (parte G): não feitas; exigem um cache novo na cmr-auto.
+- **Teto de chips do B33**: espera medição.
+- **B22** (medidor L/R no nó final do Signal): ficou para depois.
+- **Risco conhecido**: o motor não descarta a faixa pré-carregada do gapless; depois de
+  "Limpar" a fila, ela pode começar e ser trocada logo em seguida (já acontecia antes; pede
+  comando novo no Rust).
+- **Tema Really Dark (A22)**: o checker e o `validate.py` passaram a medir os sinais sobre
+  soft, faint e o próprio fundo, e o Really Dark de 26/10 reprova (erro/soft 4,22, erro/faint
+  3,62, aviso/faint 4,39, erro/fundo 4,09). Os valores novos do tema saíram no relatório do
+  implementador (commit `d903c9b`), não no repo: o tema vive só na cmr-auto e a troca ainda
+  precisa ser aplicada lá, com o `validate.py` rodado nos temas de lá antes.
+
 ## Resumo para o CEO
 
 1. **Barra do player apertada desde os medidores de 30/10.** Numa faixa nova trazida pelo rádio, o nome do artista some atrás de dois selos que dizem a mesma coisa ("RÁDIO · DESCOBERTA" e "1ª ESCUTA"). A pílula "FLAC 24/96 · EQ · LIM" pode quebrar em duas linhas, acende como botão e não faz nada. O trilho do seek e o do volume quase não se veem: a correção de 26/10 (A15) nunca entrou.
