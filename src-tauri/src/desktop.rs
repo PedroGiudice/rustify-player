@@ -269,7 +269,14 @@ fn lib_list_artists(
         genre,
         limit,
     };
-    lib.handle.list_artists(filter).map_err(err)
+    let mut artists = lib.handle.list_artists(filter).map_err(err)?;
+    // Capa do artista (B3): caminho relativo ao cache, como a do álbum.
+    for artist in &mut artists {
+        if let Some(rel) = &artist.cover_path {
+            artist.cover_path = Some(lib.cache_dir.join(rel));
+        }
+    }
+    Ok(artists)
 }
 
 #[tauri::command]

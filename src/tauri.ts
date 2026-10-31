@@ -58,6 +58,9 @@ export interface Artist {
   name: string;
   track_count: number;
   album_count: number;
+  /** Capa do álbum do artista com mais faixas (query.rs `aggregate_artists`);
+      null sem capa nenhuma. Ausente nas respostas da busca. */
+  cover_path?: string | null;
 }
 
 export interface Playlist {

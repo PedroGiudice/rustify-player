@@ -24,6 +24,10 @@ pub struct Artist {
     pub sort_name: Option<String>,
     pub track_count: u32,
     pub album_count: u32,
+    /// Capa do álbum do artista com mais faixas (`query::aggregate_artists`).
+    /// `default`: payload antigo sem o campo continua desserializando.
+    #[serde(default)]
+    pub cover_path: Option<PathBuf>,
 }
 
 /// Album, aggregated from track payloads.

@@ -1327,6 +1327,12 @@ html[data-density="compact"] .lib-panel { --lib-sticky-top: 36px; }
 .row__go { color: var(--fg-6); transition: color var(--dur-base) var(--ease-out); }
 .row--open:hover .row__go { color: var(--fg-2); }
 
+/* Grades de Álbuns e Artistas com o filtro por texto logo acima (B3):
+   o gap de 36 px do .view__body separaria o filtro da grade que ele filtra. */
+.lib-grid { display: flex; flex-direction: column; gap: 18px; }
+.lib-filter .coll-search input { font-size: 13px; }
+.lib-filter__status { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--fg-5); font-variant-numeric: tabular-nums; }
+
 /* Aba Curtidas (B8): contagem e "Tocar curtidas" acima da lista. */
 .lib-liked { display: flex; flex-direction: column; gap: 14px; }
 .lib-liked__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

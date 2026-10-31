@@ -249,12 +249,28 @@ pub fn list_artists(
     client: &QdrantClient,
     filter: &ArtistFilter,
 ) -> Result<Vec<Artist>, IndexerError> {
-    let fields = &["artist", "album_title", "genre"];
+    let fields = &["artist", "album_title", "genre", "cover_path"];
     let all = client.scroll_all_payloads(fields)?;
+    Ok(aggregate_artists(&all, filter))
+}
 
-    let mut artist_tracks: HashMap<String, u32> = HashMap::new();
-    let mut artist_albums: HashMap<String, HashSet<String>> = HashMap::new();
-    for (_, payload) in &all {
+/// Agrega os artistas a partir dos payloads das faixas (pura, testável).
+///
+/// `cover_path` = capa do álbum do artista com MAIS faixas no acervo que
+/// tenha capa (B3, varredura de 31/10: a grade era o mesmo cassete em
+/// todos os cartões). Empate decide pelo título (minúsculo), para o
+/// resultado não depender da ordem do scroll. Sem álbum com capa, vale a
+/// capa de uma faixa solta; sem nenhuma, `None` (a tela desenha o cassete).
+pub(crate) fn aggregate_artists(all: &[(u64, Value)], filter: &ArtistFilter) -> Vec<Artist> {
+    #[derive(Default)]
+    struct Acc {
+        tracks: u32,
+        // álbum (minúsculo) -> (faixas, capa)
+        albums: HashMap<String, (u32, Option<String>)>,
+        loose_cover: Option<String>,
+    }
+    let mut by_artist: HashMap<String, Acc> = HashMap::new();
+    for (_, payload) in all {
         let name = match payload["artist"].as_str() {
             Some(n) if !n.is_empty() => n,
             _ => continue,
@@ -264,29 +280,40 @@ pub fn list_artists(
                 continue;
             }
         }
-        *artist_tracks.entry(name.to_string()).or_default() += 1;
-        if let Some(album) = payload["album_title"].as_str() {
-            if !album.is_empty() {
-                artist_albums
-                    .entry(name.to_string())
-                    .or_default()
-                    .insert(album.to_string());
+        let cover = payload["cover_path"].as_str().filter(|s| !s.is_empty()).map(String::from);
+        let acc = by_artist.entry(name.to_string()).or_default();
+        acc.tracks += 1;
+        match payload["album_title"].as_str() {
+            Some(album) if !album.is_empty() => {
+                let e = acc.albums.entry(album.to_lowercase()).or_insert((0, None));
+                e.0 += 1;
+                if e.1.is_none() {
+                    e.1 = cover;
+                }
+            }
+            _ => {
+                if acc.loose_cover.is_none() {
+                    acc.loose_cover = cover;
+                }
             }
         }
     }
 
-    let mut artists: Vec<Artist> = artist_tracks
+    let mut artists: Vec<Artist> = by_artist
         .into_iter()
-        .map(|(name, track_count)| {
-            let album_count = artist_albums
-                .get(&name)
-                .map(|s| s.len() as u32)
-                .unwrap_or(0);
+        .map(|(name, acc)| {
+            let best = acc
+                .albums
+                .iter()
+                .filter_map(|(title, (n, c))| c.as_ref().map(|c| (title, *n, c)))
+                .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0)))
+                .map(|(_, _, c)| c.clone());
             Artist {
                 name,
                 sort_name: None,
-                track_count,
-                album_count,
+                track_count: acc.tracks,
+                album_count: acc.albums.len() as u32,
+                cover_path: best.or(acc.loose_cover).map(PathBuf::from),
             }
         })
         .collect();
@@ -294,7 +321,7 @@ pub fn list_artists(
     if let Some(limit) = filter.limit {
         artists.truncate(limit);
     }
-    Ok(artists)
+    artists
 }
 
 // ---------------------------------------------------------------------------
@@ -476,6 +503,7 @@ pub fn search(
                     sort_name: None,
                     track_count: 0,
                     album_count: 0,
+                    cover_path: None,
                 });
             }
         }
@@ -915,8 +943,76 @@ fn unix_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{match_score, norm, payload_to_track};
+    use super::{aggregate_artists, match_score, norm, payload_to_track};
     use crate::spectral::QualityClass;
+    use crate::types::ArtistFilter;
+    use std::path::PathBuf;
+
+    fn row(artist: &str, album: &str, cover: Option<&str>) -> (u64, serde_json::Value) {
+        (0, serde_json::json!({ "artist": artist, "album_title": album, "cover_path": cover, "genre": "Rap" }))
+    }
+
+    // B3 (31/10): o cartão do artista mostra a capa do álbum dele com mais
+    // faixas no acervo, não a primeira que o scroll trouxe.
+    #[test]
+    fn artista_ganha_a_capa_do_album_com_mais_faixas() {
+        let rows = vec![
+            row("Smino", "NOIR", Some("/c/noir.webp")),
+            row("Smino", "blkswn", Some("/c/blkswn.webp")),
+            row("Smino", "blkswn", Some("/c/blkswn.webp")),
+            row("Smino", "blkswn", Some("/c/blkswn.webp")),
+            row("Smino", "NOIR", Some("/c/noir.webp")),
+        ];
+        let a = aggregate_artists(&rows, &ArtistFilter::default());
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].cover_path, Some(PathBuf::from("/c/blkswn.webp")));
+        assert_eq!((a[0].track_count, a[0].album_count), (5, 2));
+    }
+
+    #[test]
+    fn album_sem_capa_cede_para_o_que_tem_e_faixa_solta_e_o_ultimo_recurso() {
+        // O maior álbum não tem capa: vale o próximo que tem.
+        let rows = vec![
+            row("Ana", "Grande", None),
+            row("Ana", "Grande", None),
+            row("Ana", "Pequeno", Some("/c/pequeno.webp")),
+        ];
+        let a = aggregate_artists(&rows, &ArtistFilter::default());
+        assert_eq!(a[0].cover_path, Some(PathBuf::from("/c/pequeno.webp")));
+
+        // Só faixas soltas (sem tag de álbum): a capa de uma delas.
+        let rows = vec![row("Bia", "", Some("/c/solta.webp"))];
+        let a = aggregate_artists(&rows, &ArtistFilter::default());
+        assert_eq!(a[0].cover_path, Some(PathBuf::from("/c/solta.webp")));
+        assert_eq!(a[0].album_count, 0);
+
+        // Nada com capa: sem capa (a tela mostra o cassete).
+        let rows = vec![row("Cid", "X", None)];
+        assert_eq!(aggregate_artists(&rows, &ArtistFilter::default())[0].cover_path, None);
+    }
+
+    #[test]
+    fn empate_de_faixas_escolhe_pelo_titulo_e_o_resultado_nao_depende_da_ordem() {
+        let a1 = aggregate_artists(
+            &[row("D", "Beta", Some("/b")), row("D", "Alfa", Some("/a"))],
+            &ArtistFilter::default(),
+        );
+        let a2 = aggregate_artists(
+            &[row("D", "Alfa", Some("/a")), row("D", "Beta", Some("/b"))],
+            &ArtistFilter::default(),
+        );
+        assert_eq!(a1[0].cover_path, Some(PathBuf::from("/a")));
+        assert_eq!(a1[0].cover_path, a2[0].cover_path);
+    }
+
+    #[test]
+    fn filtro_de_playlist_e_ordem_alfabetica_continuam() {
+        let mut rows = vec![row("zeca", "A", None), row("Ana", "B", None)];
+        rows.push((0, serde_json::json!({ "artist": "Fora", "album_title": "C", "genre": "Funk" })));
+        let f = ArtistFilter { genre: Some("Rap".into()), limit: None };
+        let names: Vec<String> = aggregate_artists(&rows, &f).into_iter().map(|a| a.name).collect();
+        assert_eq!(names, vec!["Ana".to_string(), "zeca".to_string()]);
+    }
 
     #[test]
     fn qualidade_medida_vem_do_payload() {
