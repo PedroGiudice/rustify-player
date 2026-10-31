@@ -4412,6 +4412,24 @@ html { --glow: 0; }
 .lib-hero__link:hover { color: var(--fg-1); text-decoration: underline; text-underline-offset: 3px; }
 .lib-hero__link:focus-visible { outline: var(--focus-outline); outline-offset: 2px; }
 .lib-hero__actions { display: flex; gap: 8px; align-items: center; padding-bottom: 6px; }
+/* Escuta viva e qualidade medida (B11, ListenFacts): uma linha mais quieta
+   sob os números. O ponto repete o do selo da barra (.pb-tech__dot):
+   verde medido, âmbar lossy, neutro sem medição. */
+.lib-hero__facts {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  margin: 6px 0 0;
+  color: var(--fg-5);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.lib-hero__q { display: inline-flex; align-items: baseline; gap: 6px; }
+.lib-hero__q-dot {
+  align-self: center;
+  width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: var(--green-ring);
+}
+.lib-hero__q[data-tone="lossy"] .lib-hero__q-dot { background: var(--amber-ring); }
+.lib-hero__q[data-tone="none"] .lib-hero__q-dot { background: var(--fg-6); }
 html[data-density="compact"] .lib-hero__cover { width: 140px; height: 140px; }
 
 .pl-hero-actions {

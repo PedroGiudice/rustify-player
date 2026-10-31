@@ -25,6 +25,7 @@ import { ALBUM_TRACK_LIMIT, albumHref } from "../lib/albumRoute";
 import { truncTipEvent } from "../lib/truncTip";
 import { plural, totalDur } from "../lib/count";
 import { LibHero } from "../components/LibHero";
+import { ListenFacts } from "../components/ListenFacts";
 
 /** Teto das faixas do artista (cobre discografia inteira). */
 const ARTIST_TRACK_LIMIT = 5000;
@@ -97,6 +98,7 @@ export default function ArtistView() {
         title={name() ?? "Artista"}
         round
         cover={<CoverArt seed={name() ?? "x"} src={coverUrl(heroCover())} size="lg" class="lib-hero__art" />}
+        facts={<ListenFacts query={name() ? { artist: name() } : null} />}
         stats={
           <>
             <b>{plural(albums().length, "álbum", "álbuns")}</b>

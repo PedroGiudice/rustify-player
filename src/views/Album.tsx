@@ -21,6 +21,7 @@ import { dataOf, listState, peek, settle } from "../lib/loaded";
 import { ALBUM_TRACK_LIMIT, parseAlbumParam } from "../lib/albumRoute";
 import { plural, totalDur } from "../lib/count";
 import { LibHero } from "../components/LibHero";
+import { ListenFacts } from "../components/ListenFacts";
 
 export default function AlbumView() {
   const parsed = () => parseAlbumParam(route().param);
@@ -78,6 +79,10 @@ export default function AlbumView() {
         kicker={album()?.year ? `Álbum · ${album()!.year}` : "Álbum"}
         title={title() ?? "Álbum"}
         cover={<CoverArt seed={title()} src={coverUrl(album()?.cover_path ?? null)} size="lg" class="lib-hero__art" />}
+        facts={
+          // Sem artista na rota, espera o álbum resolver: só o título misturaria homônimos.
+          <ListenFacts query={title() && (artistName() || !albumRes.loading) ? { artist: artistName(), album: title() } : null} />
+        }
         stats={
           <>
             <Show when={artistName()} fallback={<span>—</span>}>
