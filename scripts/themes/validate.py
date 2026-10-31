@@ -13,8 +13,11 @@ par de contraste AA reprovado (incluindo on-primary sobre primary/container,
 buraco que deixou o Uvinha shippar botão ilegível), ou hex malformado em
 token de cor.
 
+Os sinais (ok/aviso/erro) são medidos onde moram: canvas, soft, faint e o
+próprio fundo -bg (rgba composto sobre o paper).
+
 Além dos erros, emite AVISOS (não reprovam): colapso semântico entre
-sig-ok/warn/err, erro indistinguível do accent, hierarquia de texto
+sig-ok/warn/err por ΔE OKLab, erro indistinguível do accent, hierarquia de texto
 duplicada, rampa fg invertida (fg-7/fg-8 mais fortes que o degrau
 anterior — o backend corrige na saída, com os mesmos números daqui). Avisos existem pra guiar a curadoria (theme-maker); temas
 monocromáticos legítimos os disparariam como erro, por isso não gateiam.
@@ -116,6 +119,19 @@ PAIRS = [
     ("ok/canvas",         "--green-fg","--bg-canvas"),
     ("warn/canvas",       "--amber-fg","--bg-canvas"),
     ("erro/canvas",       "--rose-fg", "--bg-canvas"),
+    # Sinais onde eles moram de fato (A22, 31/10/2026): pílula do Crate
+    # sobre o card (soft), linha em hover, fader ativo (faint) e o próprio
+    # fundo -bg (rgba composto sobre o paper). Só contra o canvas, o erro
+    # do Really Dark passava a 4,56 e lia a 3,62:1 sobre o faint.
+    ("ok/soft",           "--green-fg","--bg-soft"),
+    ("warn/soft",         "--amber-fg","--bg-soft"),
+    ("erro/soft",         "--rose-fg", "--bg-soft"),
+    ("ok/faint",          "--green-fg","--bg-faint"),
+    ("warn/faint",        "--amber-fg","--bg-faint"),
+    ("erro/faint",        "--rose-fg", "--bg-faint"),
+    ("ok/fundo",          "--green-fg","--green-bg"),
+    ("warn/fundo",        "--amber-fg","--amber-bg"),
+    ("erro/fundo",        "--rose-fg", "--rose-bg"),
     ("on-primary/primary",   "--on-primary", "--primary"),
     ("on-primary/container", "--on-primary-container", "--primary-container"),
 ]
@@ -296,6 +312,54 @@ def enforce_fg_ramp(vars_):
     return fixes
 
 
+def opaque_bg(v, vars_):
+    """Fundo opaco do par. Hex passa direto; rgba/#rrggbbaa translúcido é
+    composto sobre o paper (onde pílula e lavagem são pintadas). Sem paper
+    hex, o par é pulado. Espelho de opaque_bg no desktop.rs."""
+    c = parse_css_color(v)
+    if c is None:
+        return None
+    if c[3] >= 1.0:
+        return c[:3]
+    paper = parse_css_color(vars_.get("--bg-paper", ""))
+    if paper is None or paper[3] < 1.0:
+        return None
+    return _over(c, paper[:3])
+
+
+def srgb_to_oklab(rgb):
+    """sRGB 0..1 -> OKLab (L, a, b). Mesmas matrizes de src/lib/color.ts."""
+    lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    l = (0.4122214708 * lin[0] + 0.5363325363 * lin[1] + 0.0514459929 * lin[2]) ** (1 / 3)
+    m = (0.2119034982 * lin[0] + 0.6806995451 * lin[1] + 0.1073969566 * lin[2]) ** (1 / 3)
+    s = (0.0883024619 * lin[0] + 0.2817188376 * lin[1] + 0.6299787005 * lin[2]) ** (1 / 3)
+    return (
+        0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    )
+
+
+def delta_e_ok(c1, c2):
+    """ΔE em OKLab, x100 (1 ~ diferença no limiar de percepção)."""
+    a, b = srgb_to_oklab(c1), srgb_to_oklab(c2)
+    return 100 * ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+
+
+def chroma_ok(c):
+    _, a, b = srgb_to_oklab(c)
+    return (a * a + b * b) ** 0.5
+
+
+# Abaixo disso dois sinais só se distinguem lendo o rótulo. ok/warn do
+# Really Dark davam 2,9; warn/err 5,9.
+DELTA_E_COLAPSO = 5.0
+# Croma OKLCH abaixo do qual a cor é cinza (mesmo corte do app,
+# ACHROMATIC_CHROMA em src/lib/color.ts): sinais cinza = tema monocromático
+# de propósito, não avisa.
+CROMA_CINZA = 0.02
+
+
 def rgb_to_hsl(r, g, b):
     mx, mn = max(r, g, b), min(r, g, b)
     l = (mx + mn) / 2
@@ -318,24 +382,32 @@ def hue_dist_deg(h1, h2):
 
 
 def semantic_warnings(vars_):
-    """Avisos de curadoria: só falam quando AMBAS as cores têm chroma real
-    (s >= 0.2) — tema monocromático de propósito não dispara nada."""
+    """Avisos de curadoria por distância percebida (ΔE OKLab), não por
+    saturação HSL: o gate antigo (s >= 0,2 nas duas) nunca disparava em
+    sinais apagados como os do Really Dark (s 0,09-0,13), que só se
+    distinguiam pelo texto. Tema monocromático de propósito (as duas cores
+    cinza, croma < CROMA_CINZA) não dispara nada."""
     warns = []
-    def hsl(key):
+    def rgb(key):
         v = vars_.get(key)
-        rgb = hex_to_rgb(v) if v else None
-        return rgb_to_hsl(*rgb) if rgb else None
+        return hex_to_rgb(v) if v else None
 
-    sigs = {k: hsl(f"--sig-{k}") for k in ("ok", "warn", "err")}
+    def colapsa(ca, cb):
+        if ca is None or cb is None:
+            return False
+        if chroma_ok(ca) < CROMA_CINZA and chroma_ok(cb) < CROMA_CINZA:
+            return False
+        return delta_e_ok(ca, cb) < DELTA_E_COLAPSO
+
+    sigs = {k: rgb(f"--sig-{k}") for k in ("ok", "warn", "err")}
     for a, b in (("ok", "warn"), ("warn", "err"), ("ok", "err")):
-        ca, cb = sigs[a], sigs[b]
-        if ca and cb and ca[1] >= 0.2 and cb[1] >= 0.2:
-            if hue_dist_deg(ca[0], cb[0]) < 18 and abs(ca[2] - cb[2]) < 0.18:
-                warns.append(f"sinais sig-{a} e sig-{b} quase idênticos (colapso semântico)")
-    err, prim = hsl("--sig-err"), hsl("--primary")
-    if err and prim and err[1] >= 0.2 and prim[1] >= 0.2:
-        if hue_dist_deg(err[0], prim[0]) < 10 and abs(err[2] - prim[2]) < 0.10:
-            warns.append("sig-err indistinguível do accent (--primary)")
+        if colapsa(sigs[a], sigs[b]):
+            warns.append(
+                f"sinais sig-{a} e sig-{b} quase idênticos (ΔE OKLab "
+                f"{delta_e_ok(sigs[a], sigs[b]):.1f} < {DELTA_E_COLAPSO:.0f}; colapso semântico)"
+            )
+    if colapsa(sigs["err"], rgb("--primary")):
+        warns.append("sig-err indistinguível do accent (--primary)")
     if vars_.get("--fg-2") and vars_.get("--fg-2") == vars_.get("--fg-3"):
         warns.append("fg-2 == fg-3 (hierarquia de texto duplicada)")
     ink, canvas = vars_.get("--bg-ink"), vars_.get("--bg-canvas")
@@ -387,9 +459,9 @@ def validate_file(fn):
         fg, bg = vars_.get(fgk), vars_.get(bgk)
         if fg is None or bg is None:
             continue  # par não populado: mesmo comportamento do backend
-        c1, c2 = hex_to_rgb(fg), hex_to_rgb(bg)
+        c1, c2 = hex_to_rgb(fg), opaque_bg(bg, vars_)
         if c1 is None or c2 is None:
-            continue  # rgba etc: backend também pula
+            continue  # cor não parseável: backend também pula
         r = contrast(c1, c2)
         if r < 4.5:
             problems.append(f"contraste AA reprovado {label}: {r:.2f} (fg={fg} bg={bg})")

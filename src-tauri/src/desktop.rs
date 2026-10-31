@@ -1644,6 +1644,100 @@ fn bridge_legacy_to_extractor_lab(vars: &mut std::collections::HashMap<String, S
     }
 }
 
+/// Fundo opaco de um par de contraste. Hex passa direto; rgba/#rrggbbaa
+/// translúcido é composto sobre o paper (onde pílula e lavagem são pintadas).
+/// Sem paper opaco, o par é pulado. Espelho de `opaque_bg` no validate.py.
+fn opaque_bg(v: &str, vars: &std::collections::HashMap<String, String>) -> Option<Rgb> {
+    let (r, g, b, a) = parse_css_color(v)?;
+    if a >= 1.0 {
+        return Some((r, g, b));
+    }
+    let (pr, pg, pb, pa) = parse_css_color(vars.get("--bg-paper")?)?;
+    if pa < 1.0 {
+        return None;
+    }
+    Some(over((r, g, b, a), (pr, pg, pb)))
+}
+
+/// Pares WCAG que o `load_theme` reporta (Settings mostra AA/AAA por par).
+/// Mesmos pares do scripts/themes/validate.py, que reprova o que aqui sai
+/// com `pass_aa = false`.
+fn theme_contrast_checks(vars: &std::collections::HashMap<String, String>) -> Vec<ContrastCheck> {
+    let mut checks = Vec::new();
+    // Pares semanticamente relevantes para verificacao WCAG.
+    // Somente pares cujos dois tokens existem no mapa sao incluidos.
+    // Apos o bridge, todos os pares abaixo devem estar populados para
+    // YAMLs que seguem o vocabulario legado (surfaces/text/accent/signal).
+    let pairs = [
+        // Texto principal
+        ("texto/canvas",      "--fg-1",    "--bg-canvas"),
+        ("texto/paper",       "--fg-1",    "--bg-paper"),
+        ("secundario/canvas", "--fg-3",    "--bg-canvas"),
+        ("secundario/paper",  "--fg-3",    "--bg-paper"),
+        ("apagado/paper",     "--fg-5",    "--bg-paper"),
+        ("apagado/canvas",    "--fg-5",    "--bg-canvas"),
+        // Accent azul
+        ("accent/canvas",     "--blue-fg", "--bg-canvas"),
+        ("accent/paper",      "--blue-fg", "--bg-paper"),
+        ("texto/accent-bg",   "--fg-1",    "--blue-bg"),
+        // Sinais semanticos (ok / warn / erro)
+        ("ok/canvas",         "--green-fg","--bg-canvas"),
+        ("warn/canvas",       "--amber-fg","--bg-canvas"),
+        ("erro/canvas",       "--rose-fg", "--bg-canvas"),
+        // Sinais onde moram (A22, 31/10/2026): pílula do Crate sobre o card
+        // (soft), fader ativo e linha (faint), e o próprio fundo -bg (rgba
+        // composto sobre o paper). Só contra o canvas, o erro do Really Dark
+        // passava a 4,56 e lia a 3,62:1 sobre o faint. Espelho do validate.py.
+        ("ok/soft",           "--green-fg","--bg-soft"),
+        ("warn/soft",         "--amber-fg","--bg-soft"),
+        ("erro/soft",         "--rose-fg", "--bg-soft"),
+        ("ok/faint",          "--green-fg","--bg-faint"),
+        ("warn/faint",        "--amber-fg","--bg-faint"),
+        ("erro/faint",        "--rose-fg", "--bg-faint"),
+        ("ok/fundo",          "--green-fg","--green-bg"),
+        ("warn/fundo",        "--amber-fg","--amber-bg"),
+        ("erro/fundo",        "--rose-fg", "--rose-bg"),
+        // Texto sobre o accent (botões primary). Buraco histórico: Uvinha
+        // shipava on-primary 1.46:1 sobre primary sem o checker acusar.
+        ("on-primary/primary",    "--on-primary", "--primary"),
+        ("on-primary/container",  "--on-primary-container", "--primary-container"),
+    ];
+    // Tones declarados pelo tema: o texto principal precisa ler sobre cada
+    // card pastel. Só checa os que o YAML define — tema sem tones não ganha
+    // pares extras (mesma semântica dos pares fixos com token ausente).
+    let mut tone_pairs: Vec<(String, &'static str, String)> = vars
+        .keys()
+        .filter_map(|k| {
+            let name = k.strip_prefix("--tone-")?.strip_suffix("-bg")?;
+            Some((format!("tone-{name}"), "--fg-1", k.clone()))
+        })
+        .collect();
+    tone_pairs.sort();
+
+    let all_pairs = pairs
+        .iter()
+        .map(|(l, f, b)| (l.to_string(), *f, b.to_string()))
+        .chain(tone_pairs);
+
+    for (label, fg_key, bg_key) in all_pairs {
+        if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key.as_str())) {
+            if let (Some(fg_rgb), Some(bg_rgb)) = (hex_to_rgb(fg), opaque_bg(bg, vars)) {
+                let l1 = relative_luminance(fg_rgb.0, fg_rgb.1, fg_rgb.2);
+                let l2 = relative_luminance(bg_rgb.0, bg_rgb.1, bg_rgb.2);
+                let ratio = contrast_ratio(l1, l2);
+                checks.push(ContrastCheck {
+                    pair: label,
+                    ratio: (ratio * 100.0).round() / 100.0,
+                    pass_aa: ratio >= 4.5,
+                    pass_aaa: ratio >= 7.0,
+                });
+            }
+        }
+    }
+
+    checks
+}
+
 #[tauri::command]
 fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
     let path = themes_dir().join(&filename);
@@ -1671,65 +1765,7 @@ fn load_theme(filename: String) -> Result<ThemeLoadResult, String> {
         }
     }
 
-    let mut checks = Vec::new();
-    // Pares semanticamente relevantes para verificacao WCAG.
-    // Somente pares cujos dois tokens existem no mapa sao incluidos.
-    // Apos o bridge, todos os pares abaixo devem estar populados para
-    // YAMLs que seguem o vocabulario legado (surfaces/text/accent/signal).
-    let pairs = [
-        // Texto principal
-        ("texto/canvas",      "--fg-1",    "--bg-canvas"),
-        ("texto/paper",       "--fg-1",    "--bg-paper"),
-        ("secundario/canvas", "--fg-3",    "--bg-canvas"),
-        ("secundario/paper",  "--fg-3",    "--bg-paper"),
-        ("apagado/paper",     "--fg-5",    "--bg-paper"),
-        ("apagado/canvas",    "--fg-5",    "--bg-canvas"),
-        // Accent azul
-        ("accent/canvas",     "--blue-fg", "--bg-canvas"),
-        ("accent/paper",      "--blue-fg", "--bg-paper"),
-        ("texto/accent-bg",   "--fg-1",    "--blue-bg"),
-        // Sinais semanticos (ok / warn / erro)
-        ("ok/canvas",         "--green-fg","--bg-canvas"),
-        ("warn/canvas",       "--amber-fg","--bg-canvas"),
-        ("erro/canvas",       "--rose-fg", "--bg-canvas"),
-        // Texto sobre o accent (botões primary). Buraco histórico: Uvinha
-        // shipava on-primary 1.46:1 sobre primary sem o checker acusar.
-        ("on-primary/primary",    "--on-primary", "--primary"),
-        ("on-primary/container",  "--on-primary-container", "--primary-container"),
-    ];
-    // Tones declarados pelo tema: o texto principal precisa ler sobre cada
-    // card pastel. Só checa os que o YAML define — tema sem tones não ganha
-    // pares extras (mesma semântica dos pares fixos com token ausente).
-    let mut tone_pairs: Vec<(String, &'static str, String)> = vars
-        .keys()
-        .filter_map(|k| {
-            let name = k.strip_prefix("--tone-")?.strip_suffix("-bg")?;
-            Some((format!("tone-{name}"), "--fg-1", k.clone()))
-        })
-        .collect();
-    tone_pairs.sort();
-
-    let all_pairs = pairs
-        .iter()
-        .map(|(l, f, b)| (l.to_string(), *f, b.to_string()))
-        .chain(tone_pairs);
-
-    for (label, fg_key, bg_key) in all_pairs {
-        if let (Some(fg), Some(bg)) = (vars.get(fg_key), vars.get(bg_key.as_str())) {
-            if let (Some(fg_rgb), Some(bg_rgb)) = (hex_to_rgb(fg), hex_to_rgb(bg)) {
-                let l1 = relative_luminance(fg_rgb.0, fg_rgb.1, fg_rgb.2);
-                let l2 = relative_luminance(bg_rgb.0, bg_rgb.1, bg_rgb.2);
-                let ratio = contrast_ratio(l1, l2);
-                checks.push(ContrastCheck {
-                    pair: label,
-                    ratio: (ratio * 100.0).round() / 100.0,
-                    pass_aa: ratio >= 4.5,
-                    pass_aaa: ratio >= 7.0,
-                });
-            }
-        }
-    }
-
+    let checks = theme_contrast_checks(&vars);
     Ok(ThemeLoadResult { vars, contrast: checks })
 }
 
@@ -5154,6 +5190,63 @@ fg-8: '#404040'
             assert!(vars.contains_key(fg), "token {fg} ausente — par de contraste sera ignorado");
             assert!(vars.contains_key(bg), "token {bg} ausente — par de contraste sera ignorado");
         }
+    }
+
+    // A22 (31/10/2026): os sinais do Really Dark passavam contra o canvas e
+    // liam abaixo do piso onde moram (card soft, faint, o próprio fundo -bg).
+    // Mesmos pares e números do scripts/themes/test_validate.py.
+    const TEMA_RD_SINAIS: &str = r##"
+name: Really Dark
+surfaces:
+  lowest: "#050505"
+  base: "#0c0c0c"
+  container-low: "#111111"
+  container: "#161616"
+  container-high: "#1c1c1c"
+  container-highest: "#242424"
+text:
+  primary: "#F0F0F0"
+  secondary: "#b8b8b8"
+  muted: "#808080"
+green-bg: "rgba(128,144,120,0.12)"
+amber-bg: "rgba(144,136,112,0.12)"
+rose-bg: "rgba(139,117,117,0.12)"
+signal:
+  ok: "#809078"
+  warn: "#908870"
+  error: "#8b7575"
+"##;
+
+    fn par<'a>(checks: &'a [ContrastCheck], nome: &str) -> &'a ContrastCheck {
+        checks
+            .iter()
+            .find(|c| c.pair == nome)
+            .unwrap_or_else(|| panic!("par {nome} não calculado"))
+    }
+
+    #[test]
+    fn sinais_medidos_sobre_soft_faint_e_proprio_fundo() {
+        let checks = theme_contrast_checks(&parse_tema(TEMA_RD_SINAIS));
+        assert!(par(&checks, "erro/canvas").pass_aa);
+        assert!(!par(&checks, "erro/soft").pass_aa, "erro 4,22:1 sobre o soft");
+        assert!(!par(&checks, "erro/faint").pass_aa, "erro 3,62:1 sobre o faint");
+        assert!(!par(&checks, "warn/faint").pass_aa, "aviso 4,39:1 sobre o faint");
+        assert!(par(&checks, "ok/faint").pass_aa, "ok 4,57:1 sobre o faint");
+        // rose-bg é rgba: composto sobre o paper, 4,09:1.
+        let fundo = par(&checks, "erro/fundo");
+        assert!(!fundo.pass_aa);
+        assert!((fundo.ratio - 4.09).abs() < 0.02, "erro/fundo = {}", fundo.ratio);
+    }
+
+    #[test]
+    fn sinais_novos_do_really_dark_passam_em_todos_os_pares() {
+        let yaml = TEMA_RD_SINAIS
+            .replace("#809078", "#819279")
+            .replace("#908870", "#958d74")
+            .replace("#8b7575", "#9d8787");
+        let checks = theme_contrast_checks(&parse_tema(&yaml));
+        let reprovados: Vec<_> = checks.iter().filter(|c| !c.pass_aa).map(|c| c.pair.clone()).collect();
+        assert!(reprovados.is_empty(), "reprovados: {reprovados:?}");
     }
 
     // ── Testes de stations ────────────────────────────────────────────────────
